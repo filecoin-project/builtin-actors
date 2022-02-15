@@ -1,6 +1,6 @@
 [package]
-name = "fvm_actor_market"
-description = "Builtin market actor for Filecoin"
+name = "fvm_actor_miner"
+description = "Builtin miner actor for Filecoin"
 version = "1.0.0"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>"]
@@ -9,19 +9,19 @@ repository = "https://github.com/filecoin-project/canonical-actors"
 
 [dependencies]
 actors-runtime = { path = "../runtime" }
-fvm_shared = { path = "../../fvm/shared", default-features = false }
-num-traits = "0.2"
-num-derive = "0.3.0"
-bitfield = { package = "ipld_bitfield", path = "../../fvm/ipld/bitfield" }
-ahash = "0.7"
+fvm_shared = { path = "../../../fvm/shared", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
+num-traits = "0.2"
+num-derive = "0.3.0"
+bitfield = { package = "ipld_bitfield", path = "../../../fvm/ipld/bitfield" }
+ipld_amt = { path = "../../../fvm/ipld/amt", features = ["go-interop"]}
+lazy_static = "1.4.0"
 log = "0.4.8"
+byteorder = "1.3.4"
+ipld_hamt = { path = "../../../fvm/ipld/hamt" }
 anyhow = "1.0.51"
-
-[dev-dependencies]
-actors-runtime = { path = "../runtime", features = ["test_utils"] }
-ipld_amt = { path = "../../fvm/ipld/amt", features = ["go-interop"]}
+itertools = "0.10.3"
 
 [features]
 default = []

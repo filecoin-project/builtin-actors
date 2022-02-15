@@ -1,17 +1,6 @@
 [workspace]
 members = [
-     "account",
-     "cron",
-     "init",
-     "market",
-     "miner",
-     "multisig",
-     "paych",
-     "power",
-     "reward",
-     "runtime",
-     "system",
-     "verifreg",
+     "builtin/*",
 ]
 
 #[dependencies]
