@@ -1,0 +1,41 @@
+[workspace]
+members = [
+     "account",
+     "cron",
+     "init",
+     "market",
+     "miner",
+     "multisig",
+     "paych",
+     "power",
+     "reward",
+     "runtime",
+     "system",
+     "verifreg",
+]
+
+#[dependencies]
+#cid = { git = "https://github.com/multiformats/rust-cid", branch = "steb/cbor-hack", default-features = false, features = ["serde-codec"] }
+#multihash = { git = "https://github.com/multiformats/rust-multihash", branch = "next", default-features = false, features = ["identity"] }
+
+#[patch.crates-io]
+#fvm_shared = { path = "../fvm/shared" }
+#fvm_sdk = { path = "../fvm/sdk" }
+#ipld_hamt = { path = "../fvm/ipld/hamt" }
+#ipld_amt = { path = "../fvm/ipld/amt", features = ["go-interop"] }
+#ipld_bitfield = { path = "../fvm/ipld/bitfield"}
+
+[patch."https://github.com/filecoin-project/ref-fvm"]
+fvm_shared = { path = "../fvm/shared" }
+fvm_sdk = { path = "../fvm/sdk" }
+ipld_hamt = { path = "../fvm/ipld/hamt" }
+ipld_amt = { path = "../fvm/ipld/amt" }
+ipld_bitfield = { path = "../fvm/ipld/bitfield"}
+
+[patch.crates-io]
+cid = { git = "https://github.com/multiformats/rust-cid", branch = "steb/cbor-hack" }
+fvm_shared = { path = "../fvm/shared" }
+fvm_sdk = { path = "../fvm/sdk" }
+ipld_hamt = { path = "../fvm/ipld/hamt" }
+ipld_amt = { path = "../fvm/ipld/amt" }
+ipld_bitfield = { path = "../fvm/ipld/bitfield"}
