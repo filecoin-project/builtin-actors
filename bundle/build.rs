@@ -1,3 +1,14 @@
+///! This build script generates two files in the Cargo OUT_DIR:
+///
+/// - bundle.car: a CAR file containing the bytecode of the canonical actors.
+///   Its has a multiroot header, enumerating the CID of every actor bytecode.
+///   Each bytecode entry is encoded as a single IPLD slab; there is no DAG
+///   being formed for now. This may change in the future.
+/// - manifest: a comma-separated text file containing a manifest of actors and
+///   their CIDs.
+///
+/// Because Cargo randomizes the OUT_DIR (at least on my tested platforms), this
+/// solution is less than ideal. We need to find a way to output to a stable path.
 use async_std::channel::bounded;
 use async_std::task;
 use async_std::task::block_on;
@@ -12,7 +23,6 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-// TODO: This shouldn't be defined here.
 const IPLD_RAW: u64 = 0x55;
 
 fn main() -> Result<(), Box<dyn Error>> {
