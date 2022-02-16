@@ -1,6 +1,7 @@
 [workspace]
 members = [
      "builtin/*",
+     "bundle",
 ]
 
 #[dependencies]
