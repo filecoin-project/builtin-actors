@@ -6,20 +6,13 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 repository = "https://github.com/filecoin-project/canonical-actors"
 
-[build-dependencies]
-fvm_actor_account = { path = "../builtin/account" }
-fvm_actor_cron = { path = "../builtin/cron" }
-fvm_actor_init = { path = "../builtin/init" }
-fvm_actor_market = { path = "../builtin/market" }
-fvm_actor_miner = { path = "../builtin/miner" }
-fvm_actor_multisig = { path = "../builtin/multisig" }
-fvm_actor_paych = { path = "../builtin/paych" }
-fvm_actor_power = { path = "../builtin/power" }
-fvm_actor_reward = { path = "../builtin/reward" }
-fvm_actor_system = { path = "../builtin/system" }
-fvm_actor_verifreg = { path = "../builtin/verifreg" }
+[dependencies]
+clap = { version= "3.0.14", features = ["derive"] }
+wasm-builder = { package = "substrate-wasm-builder", git = "https://github.com/paritytech/substrate" }
 fvm_shared = { path = "../../fvm/shared" }
 ipld_car = { path = "../../fvm/ipld/car" }
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
+multihash = { version = "0.16.1", default-features = false, features = ["identity"] }
 async-std = { version = "1.10.0" }
 futures = "0.3.21"
+
