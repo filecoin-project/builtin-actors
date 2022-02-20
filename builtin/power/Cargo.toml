@@ -20,15 +20,3 @@ lazy_static = "1.4.0"
 serde = { version = "1.0", features = ["derive"] }
 ipld_hamt = { path = "../../../fvm/ipld/hamt" }
 anyhow = "1.0.51"
-
-[features]
-default = []
-
-# This feature is set when building wasm
-runtime-wasm = ["actors-runtime/runtime-wasm"]
-
-
-[build-dependencies]
-wasm-builder = { package = "substrate-wasm-builder", git = "https://github.com/paritytech/substrate" }
-
-

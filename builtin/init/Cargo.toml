@@ -20,15 +20,3 @@ log = "0.4.14"
 
 [dev-dependencies]
 actors-runtime = { path = "../runtime", features = ["test_utils"] }
-
-[features]
-default = []
-
-# This feature is set when building wasm
-runtime-wasm = ["actors-runtime/runtime-wasm"]
-
-
-[build-dependencies]
-wasm-builder = { package = "substrate-wasm-builder", git = "https://github.com/paritytech/substrate" }
-
-

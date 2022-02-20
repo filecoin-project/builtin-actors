@@ -40,23 +40,6 @@ mod policy;
 mod state;
 mod types;
 
-/// Export the wasm binary
-#[cfg(not(feature = "runtime-wasm"))]
-pub mod wasm {
-    include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn test_wasm_binaries() {
-            assert!(!WASM_BINARY.unwrap().is_empty());
-            assert!(!WASM_BINARY_BLOATY.unwrap().is_empty());
-        }
-    }
-}
-
 wasm_trampoline!(Actor);
 
 fn request_miner_control_addrs<BS, RT>(

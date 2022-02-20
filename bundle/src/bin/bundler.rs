@@ -160,7 +160,7 @@ async fn write_car(bs: MemoryBlockstore, cids: &[Cid], dst: &str) -> std::io::Re
         task::spawn(async move { car.write_stream_async(&mut out, &mut rx).await.unwrap() });
 
     for cid in cids.iter() {
-        println!("adding cid {} to CAR", cid.to_string());
+        println!("adding cid {} to bundle CAR", cid.to_string());
         let bytecode = bs.get(cid).unwrap().unwrap();
         tx.send((*cid, bytecode)).await.unwrap();
     }

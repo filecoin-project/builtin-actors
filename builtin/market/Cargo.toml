@@ -22,15 +22,3 @@ anyhow = "1.0.51"
 [dev-dependencies]
 actors-runtime = { path = "../runtime", features = ["test_utils"] }
 ipld_amt = { path = "../../../fvm/ipld/amt", features = ["go-interop"]}
-
-[features]
-default = []
-
-# This feature is set when building wasm
-runtime-wasm = ["actors-runtime/runtime-wasm"]
-
-
-[build-dependencies]
-wasm-builder = { package = "substrate-wasm-builder", git = "https://github.com/paritytech/substrate" }
-
-
