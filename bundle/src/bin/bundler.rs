@@ -27,12 +27,11 @@ and the destination path of the bundle (--bundle-dst).
 By default, this tool computes the CIDs of the bytecodes using the IPLD_RAW
 multicodec (0x55) and a Blake2b256 multihash.
 
-The user may override CID generation by supplying a prefix
-(--override-cids-prefix) and a comma-separated list of actor names
-(--actor-names). In that case, the tool will concatenate the prefix and the
-actor name, and will use a CID with the IPLD_RAW multicodec (0x55) and an
-Identity hash. This feature is useful when looking to preserve pre-FVM mainnet
-compatibility.
+You may override CID generation by supplying a prefix (--override-cids-prefix)
+and a comma-separated list of actor names (--actor-names). In that case, the
+tool will concatenate the prefix and the actor name, and will use a CID with
+the IPLD_RAW multicodec (0x55) and an Identity hash. This feature is useful
+when looking to preserve pre-FVM mainnet compatibility.
 
 This tool can also generate a CSV manifest of actor name => CID, to use as a
 lookup table or reference. Provide the destination path of the manifest
@@ -42,10 +41,10 @@ In all cases, when providing a list of actor names (--actor-names), its length
 must match the length of the paths being bundled. ", long_about = None)]
 struct Cli {
     /// The paths of the Wasm bytecode files to bundle.
-    #[clap(long, required = true)]
+    #[clap(long, required = true, multiple_values = true)]
     bytecode_paths: Vec<String>,
     /// Actor names to include their CIDs in the manifest.
-    #[clap(long)]
+    #[clap(long, multiple_values = true)]
     actor_names: Vec<String>,
     /// Overrides the CIDs of the bundled actors with synthetic CIDs, for
     /// compatibility with networks prior to FIP-0031.
@@ -68,7 +67,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let synthetic_cids = cli.override_cids_prefix.is_some();
     let manifest = cli.manifest_dst.is_some();
     if (manifest || synthetic_cids) && cli.actor_names.len() != cli.bytecode_paths.len() {
-        panic!("number of actor names should be equal to number of paths");
+        return Err("number of actor names should be equal to number of paths".into());
     }
 
     // Create a memory blockstore and add all bytecodes to it, getting their CIDs.
