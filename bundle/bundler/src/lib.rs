@@ -9,21 +9,25 @@ use anyhow::Context;
 use anyhow::Result;
 use cid::multihash::Code;
 use cid::Cid;
+use fvm_shared::actor;
 use fvm_shared::blockstore::{Block, Blockstore, MemoryBlockstore};
 use fvm_shared::encoding::DAG_CBOR;
 use ipld_car::CarHeader;
 
 const IPLD_RAW: u64 = 0x55;
 
-/// A library to bundle the Wasm bytecode of actors into a CAR file.
+type ActorIndex = BTreeMap<fvm_shared::actor::builtin::Type, Cid>;
+
+/// A library to bundle the Wasm bytecode of builtin actors into a CAR file.
 ///
-/// The single root CID of the CAR file points to an CBOR-encoded IPLD map
-/// String => Cid, enumerating actor names and their CIDs.
+/// The single root CID of the CAR file points to an CBOR-encoded IPLD
+/// Map<Cid, i32> where i32 is to be interpreted as an
+/// fvm_shared::actor::builtin::Type enum value.
 pub struct Bundler {
     /// Staging blockstore.
     blockstore: MemoryBlockstore,
-    /// Tracks the Cids that we've added.
-    added: BTreeMap<String, Cid>,
+    /// Tracks the mapping of actors to Cids. Inverted when writing. Allows overriding.
+    added: ActorIndex,
     /// Path of the output bundle.
     bundle_dst: PathBuf,
 }
@@ -43,7 +47,7 @@ impl Bundler {
     /// Adds bytecode from a byte slice.
     pub fn add_from_bytes(
         &mut self,
-        actor_name: String,
+        actor_type: actor::builtin::Type,
         forced_cid: Option<Cid>,
         bytecode: &[u8],
     ) -> Result<Cid> {
@@ -51,8 +55,8 @@ impl Bundler {
             Some(cid) => {
                 self.blockstore.put_keyed(&cid, bytecode).with_context(|| {
                     format!(
-                        "failed to put bytecode for actor {} into blockstore",
-                        &actor_name
+                        "failed to put bytecode for actor {:?} into blockstore",
+                        actor_type
                     )
                 })?;
                 cid
@@ -66,25 +70,25 @@ impl Bundler {
                     .put(Code::Blake2b256, blk)
                     .with_context(|| {
                         format!(
-                            "failed to put bytecode for actor {} into blockstore",
-                            &actor_name
+                            "failed to put bytecode for actor {:?} into blockstore",
+                            actor_type
                         )
                     })?
             }
         };
-        self.added.insert(actor_name, cid);
+        self.added.insert(actor_type, cid);
         Ok(cid)
     }
 
     /// Adds bytecode from a file.
     pub fn add_from_file<P: AsRef<Path>>(
         &mut self,
-        actor_name: String,
+        actor_type: actor::builtin::Type,
         forced_cid: Option<Cid>,
         bytecode_path: P,
     ) -> Result<Cid> {
         let bytecode = std::fs::read(bytecode_path).context("failed to open bytecode file")?;
-        self.add_from_bytes(actor_name, forced_cid, bytecode.as_slice())
+        self.add_from_bytes(actor_type, forced_cid, bytecode.as_slice())
     }
 
     /// Commits the added bytecode entries and writes the CAR file to disk.
@@ -144,23 +148,23 @@ fn test_bundler() {
     let path = tmp.path().join("test_bundle.car");
 
     // Write 20 random payloads to the bundle.
-    let mut cids = Vec::with_capacity(20);
+    let mut cids = Vec::with_capacity(10);
     let mut bundler = Bundler::new(&path);
 
-    // First 10 have real CIDs; last 10 have forced CIDs.
-    for i in 0..20 {
-        let name = format!("foo-{}", i);
-        let forced_cid = if i < 10 {
+    // First 5 have real CIDs, last 5 have forced CIDs.
+    for i in 1..=10 {
+        let forced_cid = if i < 5 {
             None
         } else {
             Some(Cid::new_v1(
                 IPLD_RAW,
-                Code::Identity.digest(&name.as_bytes()),
+                Code::Identity.digest(format!("actor-{}", i).as_bytes()),
             ))
         };
-
+        use num_traits::FromPrimitive;
+        let typ = actor::builtin::Type::from_i32(i).unwrap();
         let cid = bundler
-            .add_from_bytes(name, forced_cid, &rand::thread_rng().gen::<[u8; 32]>())
+            .add_from_bytes(typ, forced_cid, &rand::thread_rng().gen::<[u8; 32]>())
             .unwrap();
 
         dbg!(cid.to_string());

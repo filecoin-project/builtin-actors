@@ -73,12 +73,12 @@ fn main() {
     let out_dir = std::env::var_os("OUT_DIR").expect("no OUT_DIR env var");
     let dst = Path::new(&out_dir).join("bundle.car");
     let mut bundler = Bundler::new(&dst);
-    for act in ACTORS {
+    for act in ACTORS.into_iter() {
         let bytecode_path = target_dir
             .join("wasm32-unknown-unknown/wasm")
             .join(format!("fvm_actor_{}.wasm", act));
         let cid = bundler
-            .add_from_file((*act).to_owned(), None, &bytecode_path)
+            .add_from_file((*act).try_into().unwrap(), None, &bytecode_path)
             .unwrap_or_else(|err| {
                 panic!(
                     "failed to add file {:?} to bundle for actor {}: {}",

@@ -56,12 +56,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let mut bundler = Bundler::new(cli.bundle_dst);
-    for (path, name) in cli.bytecode_paths.iter().zip(cli.actor_names.iter()) {
+    for (path, name) in cli.bytecode_paths.into_iter().zip(cli.actor_names.iter()) {
         let cid = cli.override_cids_prefix.as_ref().map(|prefix| {
             let identity = prefix.to_owned() + name.as_ref();
             Cid::new_v1(IPLD_RAW, Code::Identity.digest(identity.as_bytes()))
         });
-        let cid = bundler.add_from_file(name.into(), cid, path)?;
+        let cid = bundler.add_from_file(name.as_str().try_into().unwrap(), cid, path)?;
         println!("added actor {} with CID {}", name, cid)
     }
 
