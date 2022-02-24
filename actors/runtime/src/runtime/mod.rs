@@ -24,10 +24,10 @@ use crate::ActorError;
 
 mod actor_code;
 
-#[cfg(feature = "runtime-wasm")]
+#[cfg(target_arch = "wasm32")]
 pub mod fvm;
 
-#[cfg(feature = "runtime-wasm")]
+#[cfg(target_arch = "wasm32")]
 mod actor_blockstore;
 
 /// Runtime is the VM's internal runtime object.
