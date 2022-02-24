@@ -7,6 +7,9 @@ authors = ["ChainSafe Systems <info@chainsafe.io>"]
 edition = "2018"
 repository = "https://github.com/filecoin-project/canonical-actors"
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
 actors-runtime = { path = "../runtime" }
 fvm_shared = { path = "../../../fvm/shared", default-features = false }

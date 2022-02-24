@@ -1,6 +1,7 @@
 [workspace]
 members = [
      "builtin/*",
+     "bundle/bundler",
      "bundle",
 ]
 
@@ -29,3 +30,10 @@ fvm_sdk = { path = "../fvm/sdk" }
 ipld_hamt = { path = "../fvm/ipld/hamt" }
 ipld_amt = { path = "../fvm/ipld/amt" }
 ipld_bitfield = { path = "../fvm/ipld/bitfield"}
+
+[profile.wasm]
+inherits = "release"
+panic = "abort"
+overflow-checks = true
+lto = "thin"
+opt-level = "z"
