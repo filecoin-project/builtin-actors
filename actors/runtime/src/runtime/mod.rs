@@ -21,12 +21,13 @@ use fvm_shared::{ActorID, MethodNum};
 
 pub use self::actor_code::*;
 use crate::ActorError;
+
 mod actor_code;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "runtime-wasm")]
 pub mod fvm;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "runtime-wasm")]
 mod actor_blockstore;
 
 /// Runtime is the VM's internal runtime object.
