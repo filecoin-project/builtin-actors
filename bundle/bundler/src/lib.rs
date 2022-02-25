@@ -96,16 +96,23 @@ impl Bundler {
         block_on(self.write_car())
     }
 
-    async fn write_car(&self) -> Result<()> {
+    async fn write_car(self) -> Result<()> {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
+        // Invert the actor index so that it's CID => Type.
+        let index: BTreeMap<_, _> = self
+            .added
+            .into_iter()
+            .map(|(typ, cid)| (cid, typ))
+            .collect();
+
         // Create an index data structure to use as a root.
-        let index = serde_cbor::to_vec(&self.added)?;
+        let index_bytes = serde_cbor::to_vec(&index)?;
         let root = self.blockstore.put(
             Code::Blake2b256,
             &Block {
                 codec: DAG_CBOR,
-                data: &index,
+                data: &index_bytes,
             },
         )?;
 
@@ -120,13 +127,13 @@ impl Bundler {
             task::spawn(async move { car.write_stream_async(&mut out, &mut rx).await.unwrap() });
 
         // Add the root payload.
-        tx.send((root, index)).await.unwrap();
+        tx.send((root, index_bytes)).await.unwrap();
 
         // Add the bytecodes.
-        for cid in self.added.iter().map(|(_, cid)| *cid) {
+        for cid in index.iter().map(|(cid, _)| cid) {
             println!("adding cid {} to bundle CAR", cid.to_string());
-            let data = self.blockstore.get(&cid).unwrap().unwrap();
-            tx.send((cid, data)).await.unwrap();
+            let data = self.blockstore.get(cid).unwrap().unwrap();
+            tx.send((*cid, data)).await.unwrap();
         }
 
         drop(tx);

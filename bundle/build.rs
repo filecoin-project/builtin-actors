@@ -1,6 +1,9 @@
+use cid::multihash::{Code, MultihashDigest};
+use cid::Cid;
 use fil_actor_bundler::Bundler;
+use std::error::Error;
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 
@@ -9,9 +12,16 @@ const ACTORS: &[&'static str] = &[
     "power", "init",
 ];
 
-fn main() {
+const IPLD_RAW: u64 = 0x55;
+const FORCED_CID_PREFIX: &str = "fil/6/";
+
+fn main() -> Result<(), Box<dyn Error>> {
     // Cargo executable location.
     let cargo = std::env::var_os("CARGO").expect("no CARGO env var");
+    println!("cargo:warning=cargo: {:?}", &cargo);
+
+    let out_dir = std::env::var_os("OUT_DIR").expect("no OUT_DIR env var");
+    println!("cargo:warning=out_dir: {:?}", &out_dir);
 
     // Compute the package names.
     let packages = ACTORS
@@ -19,29 +29,36 @@ fn main() {
         .map(|actor| String::from("fvm_actor_") + actor)
         .collect::<Vec<String>>();
 
+    let manifest_path = {
+        let curr_dir = std::env::current_dir()?;
+        let workspace_dir = curr_dir.parent().unwrap();
+        workspace_dir.join("Cargo.toml")
+    };
+    println!("cargo:warning=manifest_path={:?}", &manifest_path);
+
     // Cargo build command for all actors at once.
     let mut cmd = Command::new(&cargo);
     cmd.arg("build")
-        .args(packages.iter().map(|pkg| String::from("-p=") + pkg))
+        .args(packages.iter().map(|pkg| "-p=".to_owned() + pkg))
         .arg("--target=wasm32-unknown-unknown")
         .arg("--profile=wasm")
+        .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
         .env(
             "RUSTFLAGS",
             "-Ctarget-feature=+crt-static -Clink-arg=--export-table",
         )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        // Unset the `CARGO_TARGET_DIR` to prevent a cargo deadlock (cargo locks a target dir
-        // exclusive). The runner project is created in `CARGO_TARGET_DIR` and executing it will
-        // create a sub target directory inside of `CARGO_TARGET_DIR`.
-        .env_remove("CARGO_TARGET_DIR")
+        // We are supposed to only generate artifacts under OUT_DIR,
+        // so set OUT_DIR as the target directory for this build.
+        .env("CARGO_TARGET_DIR", &out_dir)
         // As we are being called inside a build-script, this env variable is set. However, we set
         // our own `RUSTFLAGS` and thus, we need to remove this. Otherwise cargo favors this
         // env variable.
         .env_remove("CARGO_ENCODED_RUSTFLAGS");
 
     // Print out the command line we're about to run.
-    println!("cargo:warning={:?}", &cmd);
+    println!("cargo:warning=cmd={:?}", &cmd);
 
     // Launch the command.
     let mut child = cmd.spawn().expect("failed to launch cargo build");
@@ -64,21 +81,21 @@ fn main() {
     j1.join().unwrap();
     j2.join().unwrap();
 
-    let target_dir = locate_target_dir().expect("no target directory located");
-    println!(
-        "cargo:warning=target directory located at: {:?}",
-        &target_dir
-    );
-
-    let out_dir = std::env::var_os("OUT_DIR").expect("no OUT_DIR env var");
     let dst = Path::new(&out_dir).join("bundle.car");
     let mut bundler = Bundler::new(&dst);
     for act in ACTORS.into_iter() {
-        let bytecode_path = target_dir
+        let bytecode_path = Path::new(&out_dir)
             .join("wasm32-unknown-unknown/wasm")
             .join(format!("fvm_actor_{}.wasm", act));
+
+        // This actor version uses forced CIDs.
+        let forced_cid = {
+            let identity = FORCED_CID_PREFIX.to_owned() + act.as_ref();
+            Cid::new_v1(IPLD_RAW, Code::Identity.digest(identity.as_bytes()))
+        };
+
         let cid = bundler
-            .add_from_file((*act).try_into().unwrap(), None, &bytecode_path)
+            .add_from_file((*act).try_into().unwrap(), Some(forced_cid), &bytecode_path)
             .unwrap_or_else(|err| {
                 panic!(
                     "failed to add file {:?} to bundle for actor {}: {}",
@@ -92,21 +109,7 @@ fn main() {
     }
     bundler.finish().expect("failed to finish bundle");
 
-    println!("cargo:warning=bundle written to: {}", dst.to_str().unwrap());
-}
+    println!("cargo:warning=bundle={}", dst.display());
 
-/// Locates the workspce target directory by walking up from the OUT_DIR.
-fn locate_target_dir() -> Option<PathBuf> {
-    let mut out_dir = std::env::var_os("OUT_DIR")
-        .map(|dir| PathBuf::from(dir))
-        .expect("no OUT_DIR env variable");
-
-    loop {
-        if out_dir.ends_with("target") {
-            return Some(out_dir);
-        }
-        if !out_dir.pop() {
-            return None;
-        }
-    }
+    Ok(())
 }

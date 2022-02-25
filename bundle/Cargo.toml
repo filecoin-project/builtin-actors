@@ -18,3 +18,4 @@ fil_actor_bundler = { path = "./bundler" }
 
 [build-dependencies]
 fil_actor_bundler = { path = "./bundler" }
+cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
