@@ -7,9 +7,24 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 
-const ACTORS: &[&'static str] = &[
-    "account", "cron", "market", "miner", "multisig", "paych", "reward", "system", "verifreg",
-    "power", "init",
+/// Cargo package for an actor.
+type Package = str;
+
+/// Technical identifier for the actor in legacy CodeCIDs and else.
+type ID = str;
+
+const ACTORS: &[(&'static Package, &'static ID)] = &[
+    ("system", "system"),
+    ("init", "init"),
+    ("cron", "cron"),
+    ("account", "account"),
+    ("multisig", "multisig"),
+    ("power", "storagepower"),
+    ("miner", "storageminer"),
+    ("market", "storagemarket"),
+    ("paych", "paymentchannel"),
+    ("reward", "reward"),
+    ("verifreg", "verifiedregistry"),
 ];
 
 const IPLD_RAW: u64 = 0x55;
@@ -26,7 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Compute the package names.
     let packages = ACTORS
         .iter()
-        .map(|actor| String::from("fvm_actor_") + actor)
+        .map(|(pkg, _)| String::from("fvm_actor_") + pkg)
         .collect::<Vec<String>>();
 
     let manifest_path = {
@@ -83,28 +98,28 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let dst = Path::new(&out_dir).join("bundle.car");
     let mut bundler = Bundler::new(&dst);
-    for act in ACTORS.into_iter() {
+    for (pkg, id) in ACTORS.into_iter() {
         let bytecode_path = Path::new(&out_dir)
             .join("wasm32-unknown-unknown/wasm")
-            .join(format!("fvm_actor_{}.wasm", act));
+            .join(format!("fvm_actor_{}.wasm", pkg));
 
         // This actor version uses forced CIDs.
         let forced_cid = {
-            let identity = FORCED_CID_PREFIX.to_owned() + act.as_ref();
+            let identity = FORCED_CID_PREFIX.to_owned() + id.as_ref();
             Cid::new_v1(IPLD_RAW, Code::Identity.digest(identity.as_bytes()))
         };
 
         let cid = bundler
-            .add_from_file((*act).try_into().unwrap(), Some(forced_cid), &bytecode_path)
+            .add_from_file((*id).try_into().unwrap(), Some(forced_cid), &bytecode_path)
             .unwrap_or_else(|err| {
                 panic!(
                     "failed to add file {:?} to bundle for actor {}: {}",
-                    bytecode_path, act, err
+                    bytecode_path, id, err
                 )
             });
         println!(
             "cargo:warning=added actor {} to bundle with CID {}",
-            act, cid
+            id, cid
         );
     }
     bundler.finish().expect("failed to finish bundle");

@@ -10,13 +10,12 @@ use anyhow::Result;
 use cid::multihash::Code;
 use cid::Cid;
 use fvm_shared::actor;
+use fvm_shared::actor::builtin::Manifest;
 use fvm_shared::blockstore::{Block, Blockstore, MemoryBlockstore};
 use fvm_shared::encoding::DAG_CBOR;
 use ipld_car::CarHeader;
 
 const IPLD_RAW: u64 = 0x55;
-
-type ActorIndex = BTreeMap<fvm_shared::actor::builtin::Type, Cid>;
 
 /// A library to bundle the Wasm bytecode of builtin actors into a CAR file.
 ///
@@ -27,7 +26,7 @@ pub struct Bundler {
     /// Staging blockstore.
     blockstore: MemoryBlockstore,
     /// Tracks the mapping of actors to Cids. Inverted when writing. Allows overriding.
-    added: ActorIndex,
+    added: BTreeMap<fvm_shared::actor::builtin::Type, Cid>,
     /// Path of the output bundle.
     bundle_dst: PathBuf,
 }
@@ -100,19 +99,18 @@ impl Bundler {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
         // Invert the actor index so that it's CID => Type.
-        let index: BTreeMap<_, _> = self
+        let manifest: Manifest = self
             .added
             .into_iter()
             .map(|(typ, cid)| (cid, typ))
             .collect();
 
-        // Create an index data structure to use as a root.
-        let index_bytes = serde_cbor::to_vec(&index)?;
+        let manifest_bytes = serde_cbor::to_vec(&manifest)?;
         let root = self.blockstore.put(
             Code::Blake2b256,
             &Block {
                 codec: DAG_CBOR,
-                data: &index_bytes,
+                data: &manifest_bytes,
             },
         )?;
 
@@ -127,10 +125,10 @@ impl Bundler {
             task::spawn(async move { car.write_stream_async(&mut out, &mut rx).await.unwrap() });
 
         // Add the root payload.
-        tx.send((root, index_bytes)).await.unwrap();
+        tx.send((root, manifest_bytes)).await.unwrap();
 
         // Add the bytecodes.
-        for cid in index.iter().map(|(cid, _)| cid) {
+        for cid in manifest.iter().map(|(cid, _)| cid) {
             println!("adding cid {} to bundle CAR", cid.to_string());
             let data = self.blockstore.get(cid).unwrap().unwrap();
             tx.send((*cid, data)).await.unwrap();
@@ -149,12 +147,13 @@ fn test_bundler() {
     use async_std::fs::File;
     use cid::multihash::MultihashDigest;
     use ipld_car::{load_car, CarReader};
+    use num_traits::FromPrimitive;
     use rand::Rng;
 
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("test_bundle.car");
 
-    // Write 20 random payloads to the bundle.
+    // Write 10 random payloads to the bundle.
     let mut cids = Vec::with_capacity(10);
     let mut bundler = Bundler::new(&path);
 
@@ -168,7 +167,6 @@ fn test_bundler() {
                 Code::Identity.digest(format!("actor-{}", i).as_bytes()),
             ))
         };
-        use num_traits::FromPrimitive;
         let typ = actor::builtin::Type::from_i32(i).unwrap();
         let cid = bundler
             .add_from_bytes(typ, forced_cid, &rand::thread_rng().gen::<[u8; 32]>())
@@ -198,25 +196,25 @@ fn test_bundler() {
     // Compare that the previous root matches this one.
     assert_eq!(reader.header.roots[0], roots[0]);
 
-    // The single root represents the index.
-    let index_cid = roots[0];
-    let index_data = bs.get(&index_cid).unwrap().unwrap();
+    // The single root represents the manifest.
+    let manifest_cid = roots[0];
+    let manifest_data = bs.get(&manifest_cid).unwrap().unwrap();
 
-    // Deserialize the index.
-    let index: BTreeMap<String, Cid> = serde_cbor::from_slice(index_data.as_slice()).unwrap();
+    // Deserialize the manifest.
+    let manifest: Manifest = serde_cbor::from_slice(manifest_data.as_slice()).unwrap();
 
-    // Verify the index contains what we expect.
-    for (i, (actor, cid)) in (0..20)
-        .map(|i| format!("foo-{}", i).to_owned())
-        .zip(cids.iter())
-        .enumerate()
-    {
-        assert_eq!(index[&actor], *cid);
-        // Verify that the last 10 CIDs are really forced CIDs.
-        if i > 10 {
-            let expected = Cid::new_v1(IPLD_RAW, Code::Identity.digest(actor.as_bytes()));
-            assert_eq!(*cid, expected)
+    // Verify the manifest contains what we expect.
+    for (i, cid) in cids.into_iter().enumerate() {
+        let typ = actor::builtin::Type::from_i32((i + 1) as i32).unwrap();
+        assert_eq!(manifest[&cid], typ);
+        // Verify that the last 5 CIDs are really forced CIDs.
+        if i > 5 {
+            let expected = Cid::new_v1(
+                IPLD_RAW,
+                Code::Identity.digest(format!("actor-{}", i + 1).as_bytes()),
+            );
+            assert_eq!(cid, expected)
         }
-        assert!(bs.has(cid).unwrap());
+        assert!(bs.has(&cid).unwrap());
     }
 }
