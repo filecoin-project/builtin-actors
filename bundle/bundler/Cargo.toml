@@ -9,7 +9,7 @@ repository = "https://github.com/filecoin-project/canonical-actors"
 [dependencies]
 clap = { version= "3.0.14", features = ["derive"] }
 fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors" }
-ipld_car = { path = "../../../fvm/ipld/car" }
+ipld_car = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors" }
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false, features = ["identity"] }
 async-std = { version = "1.10.0" }
