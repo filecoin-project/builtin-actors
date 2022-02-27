@@ -2,6 +2,7 @@ use anyhow::{anyhow, Error};
 use cid::multihash::{Code, MultihashDigest};
 use cid::Cid;
 use fvm_sdk as fvm;
+use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::blockstore::{Blockstore, CborStore};
 use fvm_shared::clock::ChainEpoch;
@@ -120,7 +121,7 @@ where
 
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
-        I: IntoIterator<Item = &'a Cid>,
+        I: IntoIterator<Item = Type>,
     {
         self.assert_not_validated()?;
 
@@ -128,10 +129,10 @@ where
         let caller_cid = self
             .get_actor_code_cid(&caller_addr)
             .expect("failed to lookup caller code");
-        if types.into_iter().any(|c| *c == caller_cid) {
+        if Some(typ) == self.is_builtin_actor(caller_cid) && types.into_iter().any(|t| t == typ) {
             Ok(())
         } else {
-            return Err(actor_error!(SysErrForbidden;
+            Err(actor_error!(SysErrForbidden;
                     "caller cid type {} not one of supported", caller_cid)
             .into());
         }
@@ -147,6 +148,10 @@ where
 
     fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
         fvm::actor::get_actor_code_cid(addr)
+    }
+
+    fn is_builtin_actor(&self, code_id: &Cid) -> Option<Type> {
+        fvm::actor::is_builtin_actor(code_id)
     }
 
     fn get_randomness_from_tickets(

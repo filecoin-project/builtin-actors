@@ -103,7 +103,12 @@ impl Actor {
                 rt.validate_immediate_caller_is(&args.addrs)?;
             }
             x if x == CALLER_VALIDATION_BRANCH_IS_TYPE => {
-                rt.validate_immediate_caller_type(&args.types)?;
+                // TODO Chaos actor test vectors pass in a CID here.
+                //  We no longer use static CIDs to identify actors, so
+                //  those vectors won't work. However, there is no loss here
+                //  because there are actually no FVM test vectors using the
+                //  chaos actor.
+                // rt.validate_immediate_caller_type(&args.types)?;
             }
             _ => panic!("invalid branch passed to CallerValidation"),
         }

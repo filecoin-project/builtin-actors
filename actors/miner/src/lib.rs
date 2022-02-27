@@ -8,7 +8,7 @@ use std::ops::Neg;
 
 use actors_runtime::runtime::{ActorCode, Runtime};
 use actors_runtime::{
-    actor_error, is_principal, wasm_trampoline, ActorDowncast, ActorError, ACCOUNT_ACTOR_CODE_ID,
+    actor_error, wasm_trampoline, ActorDowncast, ActorError, ACCOUNT_ACTOR_CODE_ID,
     BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
@@ -36,6 +36,7 @@ use fvm_shared::encoding::{from_slice, BytesDe, Cbor, RawBytes};
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
+use fvm_shared::actor::builtin::{is_principal, CALLER_TYPES_SIGNABLE};
 use fvm_shared::error::ExitCode::ErrPlaceholder as ErrBalanceInvariantBroken;
 use fvm_shared::error::*;
 use fvm_shared::randomness::*;
@@ -3728,7 +3729,13 @@ where
     let owner_code = rt
         .get_actor_code_cid(&resolved)
         .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address: {}", resolved))?;
-    if !is_principal(&owner_code) {
+
+    let is_principal = rt
+        .is_builtin_actor(&owner_code)
+        .map(is_principal)
+        .unwrap_or(false);
+
+    if !is_principal {
         return Err(actor_error!(
             ErrIllegalArgument,
             "owner actor type must be a principal, was {}",

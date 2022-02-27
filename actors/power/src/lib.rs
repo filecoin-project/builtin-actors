@@ -12,6 +12,7 @@ use actors_runtime::{
 };
 use anyhow::anyhow;
 use ext::init;
+use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
 use fvm_shared::blockstore::Blockstore;
@@ -170,7 +171,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(&*MINER_ACTOR_CODE_ID))?;
+        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
         let miner_addr = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
@@ -210,7 +211,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(&*MINER_ACTOR_CODE_ID))?;
+        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
         let miner_event = CronEvent {
             miner_addr: rt.message().caller(),
             callback_payload: params.payload.clone(),
@@ -299,7 +300,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(&*MINER_ACTOR_CODE_ID))?;
+        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
         rt.transaction(|st: &mut State, rt| {
             st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;
             st.add_pledge_total(pledge_delta);
@@ -322,7 +323,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(&*MINER_ACTOR_CODE_ID))?;
+        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
 
         rt.transaction(|st: &mut State, rt| {
             st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;

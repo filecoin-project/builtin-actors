@@ -10,6 +10,7 @@ use actors_runtime::{
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use bitfield::BitField;
+use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::blockstore::Blockstore;
@@ -520,7 +521,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(&*MINER_ACTOR_CODE_ID))?;
+        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
@@ -561,7 +562,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(&*MINER_ACTOR_CODE_ID))?;
+        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
@@ -689,7 +690,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(&*MINER_ACTOR_CODE_ID))?;
+        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
         let miner_addr = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
@@ -779,7 +780,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(&*MINER_ACTOR_CODE_ID))?;
+        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
 
         let st: State = rt.state()?;
 
