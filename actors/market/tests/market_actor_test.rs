@@ -185,7 +185,7 @@ fn add_non_provider_funds() {
 
             let amount = TokenAmount::from(test_case.0 as u64);
             rt.set_value(amount);
-            rt.expect_validate_caller_type(*CALLER_TYPES_SIGNABLE);
+            rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
             assert!(rt
                 .call::<MarketActor>(
