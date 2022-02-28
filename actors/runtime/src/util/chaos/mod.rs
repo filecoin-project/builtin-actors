@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
+use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::encoding::RawBytes;
@@ -103,12 +104,12 @@ impl Actor {
                 rt.validate_immediate_caller_is(&args.addrs)?;
             }
             x if x == CALLER_VALIDATION_BRANCH_IS_TYPE => {
-                // TODO Chaos actor test vectors pass in a CID here.
-                //  We no longer use static CIDs to identify actors, so
-                //  those vectors won't work. However, there is no loss here
-                //  because there are actually no FVM test vectors using the
-                //  chaos actor.
-                // rt.validate_immediate_caller_type(&args.types)?;
+                let types: Vec<Type> = args
+                    .types
+                    .iter()
+                    .map(|typ| rt.is_builtin_actor(typ).unwrap())
+                    .collect();
+                rt.validate_immediate_caller_type(&types)?;
             }
             _ => panic!("invalid branch passed to CallerValidation"),
         }

@@ -252,7 +252,7 @@ impl Actor {
             actor_error!(ErrIllegalArgument, "no code ID for address {}", provider)
         })?;
 
-        if rt.is_builtin_actor(&code_id) != Some(Miner) {
+        if rt.is_builtin_actor(&code_id) != Some(Type::Miner) {
             return Err(actor_error!(
                 ErrIllegalArgument,
                 "deal provider is not a storage miner actor"
