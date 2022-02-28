@@ -3,9 +3,7 @@
 
 use actors_runtime::test_utils::*;
 use actors_runtime::{
-    ActorError, Multimap, ACCOUNT_ACTOR_CODE_ID, FIRST_NON_SINGLETON_ADDR, MINER_ACTOR_CODE_ID,
-    MULTISIG_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID, POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, SYSTEM_ACTOR_CODE_ID,
+    ActorError, Multimap, FIRST_NON_SINGLETON_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use cid::Cid;
 use fvm_actor_init::{

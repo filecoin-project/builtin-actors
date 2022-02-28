@@ -7,9 +7,8 @@ use actors_runtime::runtime::Runtime;
 use actors_runtime::test_utils::*;
 use actors_runtime::util::BALANCE_TABLE_BITWIDTH;
 use actors_runtime::{
-    make_empty_map, ActorError, BalanceTable, SetMultimap, ACCOUNT_ACTOR_CODE_ID,
-    CALLER_TYPES_SIGNABLE, INIT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    make_empty_map, ActorError, BalanceTable, SetMultimap, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_actor_market::{
     ext, Actor as MarketActor, Method, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
