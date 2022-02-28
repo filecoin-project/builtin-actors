@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let identity = prefix.to_owned() + name.as_ref();
             Cid::new_v1(IPLD_RAW, Code::Identity.digest(identity.as_bytes()))
         });
-        let cid = bundler.add_from_file(name.as_str().try_into().unwrap(), cid, path)?;
+        let cid = bundler.add_from_file(name.as_str().try_into().unwrap(), cid.as_ref(), path)?;
         println!("added actor {} with CID {}", name, cid)
     }
 

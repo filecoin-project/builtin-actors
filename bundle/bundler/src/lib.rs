@@ -47,34 +47,25 @@ impl Bundler {
     pub fn add_from_bytes(
         &mut self,
         actor_type: actor::builtin::Type,
-        forced_cid: Option<Cid>,
+        forced_cid: Option<&Cid>,
         bytecode: &[u8],
     ) -> Result<Cid> {
         let cid = match forced_cid {
-            Some(cid) => {
-                self.blockstore.put_keyed(&cid, bytecode).with_context(|| {
-                    format!(
-                        "failed to put bytecode for actor {:?} into blockstore",
-                        actor_type
-                    )
-                })?;
-                cid
-            }
-            None => {
-                let blk = &Block {
+            Some(cid) => self.blockstore.put_keyed(cid, bytecode).and(Ok(*cid)),
+            None => self.blockstore.put(
+                Code::Blake2b256,
+                &Block {
                     codec: IPLD_RAW,
                     data: bytecode,
-                };
-                self.blockstore
-                    .put(Code::Blake2b256, blk)
-                    .with_context(|| {
-                        format!(
-                            "failed to put bytecode for actor {:?} into blockstore",
-                            actor_type
-                        )
-                    })?
-            }
-        };
+                },
+            ),
+        }
+        .with_context(|| {
+            format!(
+                "failed to put bytecode for actor {:?} into blockstore",
+                actor_type
+            )
+        })?;
         self.added.insert(actor_type, cid);
         Ok(cid)
     }
@@ -83,7 +74,7 @@ impl Bundler {
     pub fn add_from_file<P: AsRef<Path>>(
         &mut self,
         actor_type: actor::builtin::Type,
-        forced_cid: Option<Cid>,
+        forced_cid: Option<&Cid>,
         bytecode_path: P,
     ) -> Result<Cid> {
         let bytecode = std::fs::read(bytecode_path).context("failed to open bytecode file")?;

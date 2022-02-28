@@ -35,7 +35,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cargo = std::env::var_os("CARGO").expect("no CARGO env var");
     println!("cargo:warning=cargo: {:?}", &cargo);
 
-    let out_dir = std::env::var_os("OUT_DIR").expect("no OUT_DIR env var");
+    let out_dir = std::env::var_os("OUT_DIR")
+        .as_ref()
+        .map(Path::new)
+        .map(|p| p.join("bundle"))
+        .expect("no OUT_DIR env var");
     println!("cargo:warning=out_dir: {:?}", &out_dir);
 
     // Compute the package names.
@@ -98,7 +102,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let dst = Path::new(&out_dir).join("bundle.car");
     let mut bundler = Bundler::new(&dst);
-    for (pkg, id) in ACTORS.into_iter() {
+    for (pkg, id) in ACTORS {
         let bytecode_path = Path::new(&out_dir)
             .join("wasm32-unknown-unknown/wasm")
             .join(format!("fvm_actor_{}.wasm", pkg));
@@ -110,7 +114,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         };
 
         let cid = bundler
-            .add_from_file((*id).try_into().unwrap(), Some(forced_cid), &bytecode_path)
+            .add_from_file((*id).try_into().unwrap(), Some(&forced_cid), &bytecode_path)
             .unwrap_or_else(|err| {
                 panic!(
                     "failed to add file {:?} to bundle for actor {}: {}",
