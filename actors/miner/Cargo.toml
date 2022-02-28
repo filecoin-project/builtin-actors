@@ -1,0 +1,27 @@
+[package]
+name = "fvm_actor_miner"
+description = "Builtin miner actor for Filecoin"
+version = "1.0.0"
+license = "MIT OR Apache-2.0"
+authors = ["ChainSafe Systems <info@chainsafe.io>"]
+edition = "2018"
+repository = "https://github.com/filecoin-project/canonical-actors"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+actors-runtime = { path = "../runtime" }
+fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors", default-features = false }
+bitfield = { package = "ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors" }
+ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors", features = ["go-interop"]}
+ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors" }
+serde = { version = "1.0", features = ["derive"] }
+cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
+num-traits = "0.2"
+num-derive = "0.3.0"
+lazy_static = "1.4.0"
+log = "0.4.8"
+byteorder = "1.3.4"
+anyhow = "1.0.51"
+itertools = "0.10.3"

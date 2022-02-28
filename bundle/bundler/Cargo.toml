@@ -1,0 +1,24 @@
+[package]
+name = "fil_actor_bundler"
+description = "An IPLD CAR bundling tool for Wasm bytecode"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+repository = "https://github.com/filecoin-project/canonical-actors"
+
+[dependencies]
+clap = { version= "3.0.14", features = ["derive"] }
+fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors" }
+ipld_car = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors" }
+cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
+multihash = { version = "0.16.1", default-features = false, features = ["identity"] }
+async-std = { version = "1.10.0" }
+futures = "0.3.21"
+anyhow = "1.0.53"
+serde_cbor = "0.11.2"
+serde_json = "1.0.79"
+
+[dev-dependencies]
+tempfile = "3.3.0"
+rand = "0.8.5"
+num-traits = "0.2.14"

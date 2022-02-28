@@ -1,0 +1,34 @@
+[workspace]
+members = [
+     "actors/*",
+     "bundle/bundler",
+     "bundle",
+]
+
+## Uncomment when working locally on ref-fvm and this repo simultaneously.
+## Assumes the ref-fvm checkout is in a sibling directory with the same name.
+## (Valid while FVM modules aren't published to crates.io)
+#[patch."https://github.com/filecoin-project/ref-fvm"]
+#fvm_shared = { path = "../ref-fvm/shared" }
+#fvm_sdk = { path = "../ref-fvm/sdk" }
+#ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
+#ipld_amt = { path = "../ref-fvm/ipld/amt" }
+#ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
+
+## Uncomment entries below when working locally on ref-fvm and this repo simultaneously.
+## Assumes the ref-fvm checkout is in a sibling directory with the same name.
+## (Valid once FVM modules are published to crates.io)
+[patch.crates-io]
+cid = { git = "https://github.com/multiformats/rust-cid", branch = "steb/cbor-hack" }
+#fvm_shared = { path = "../ref-fvm/shared" }
+#fvm_sdk = { path = "../ref-fvm/sdk" }
+#ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
+#ipld_amt = { path = "../ref-fvm/ipld/amt" }
+#ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
+
+[profile.wasm]
+inherits = "release"
+panic = "abort"
+overflow-checks = true
+lto = "thin"
+opt-level = "z"
