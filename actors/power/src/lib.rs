@@ -7,8 +7,7 @@ use std::convert::TryInto;
 use actors_runtime::runtime::{ActorCode, Runtime};
 use actors_runtime::{
     actor_error, make_map_with_root_and_bitwidth, wasm_trampoline, ActorDowncast, ActorError,
-    Multimap, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, MINER_ACTOR_CODE_ID,
-    REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use anyhow::anyhow;
 use ext::init;
@@ -102,6 +101,8 @@ impl Actor {
             control_addresses: Default::default(),
         })?;
 
+        let miner_actor_code_cid = rt.get_code_cid_for_type(Type::Miner);
+
         let ext::init::ExecReturn {
             id_address,
             robust_address,
@@ -110,7 +111,7 @@ impl Actor {
                 *INIT_ACTOR_ADDR,
                 ext::init::EXEC_METHOD,
                 RawBytes::serialize(init::ExecParams {
-                    code_cid: *MINER_ACTOR_CODE_ID,
+                    code_cid: miner_actor_code_cid,
                     constructor_params,
                 })?,
                 value,
@@ -171,7 +172,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
@@ -211,7 +212,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_event = CronEvent {
             miner_addr: rt.message().caller(),
             callback_payload: params.payload.clone(),
@@ -300,7 +301,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         rt.transaction(|st: &mut State, rt| {
             st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;
             st.add_pledge_total(pledge_delta);
@@ -323,7 +324,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         rt.transaction(|st: &mut State, rt| {
             st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;

@@ -8,9 +8,8 @@ use std::ops::Neg;
 
 use actors_runtime::runtime::{ActorCode, Runtime};
 use actors_runtime::{
-    actor_error, wasm_trampoline, ActorDowncast, ActorError, ACCOUNT_ACTOR_CODE_ID,
-    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    actor_error, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use anyhow::anyhow;
 use bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -36,7 +35,7 @@ use fvm_shared::encoding::{from_slice, BytesDe, Cbor, RawBytes};
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
-use fvm_shared::actor::builtin::{is_principal, CALLER_TYPES_SIGNABLE};
+use fvm_shared::actor::builtin::{is_principal, Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::error::ExitCode::ErrPlaceholder as ErrBalanceInvariantBroken;
 use fvm_shared::error::*;
 use fvm_shared::randomness::*;
@@ -3760,7 +3759,7 @@ where
     let worker_code = rt
         .get_actor_code_cid(&resolved)
         .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address: {}", resolved))?;
-    if worker_code != *ACCOUNT_ACTOR_CODE_ID {
+    if rt.is_builtin_actor(&worker_code) != Some(Type::Account) {
         return Err(actor_error!(
             ErrIllegalArgument,
             "worker actor type must be an account, was {}",

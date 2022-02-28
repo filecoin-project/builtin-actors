@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use actors_runtime::runtime::{ActorCode, Runtime};
 use actors_runtime::{
     actor_error, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR, MINER_ACTOR_CODE_ID, REWARD_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use bitfield::BitField;
 use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
@@ -251,7 +251,8 @@ impl Actor {
         let code_id = rt.get_actor_code_cid(&provider).ok_or_else(|| {
             actor_error!(ErrIllegalArgument, "no code ID for address {}", provider)
         })?;
-        if code_id != *MINER_ACTOR_CODE_ID {
+
+        if rt.is_builtin_actor(&code_id) != Some(Miner) {
             return Err(actor_error!(
                 ErrIllegalArgument,
                 "deal provider is not a storage miner actor"
@@ -521,7 +522,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
@@ -562,7 +563,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
@@ -690,7 +691,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
@@ -780,7 +781,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(Type::Miner))?;
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         let st: State = rt.state()?;
 
@@ -1403,7 +1404,7 @@ where
         .get_actor_code_cid(&nominal)
         .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address {}", nominal))?;
 
-    if code_id == *MINER_ACTOR_CODE_ID {
+    if rt.is_builtin_actor(&code_id) == Some(Type::Miner) {
         // Storage miner actor entry; implied funds recipient is the associated owner address.
         let (owner_addr, worker_addr, _) = request_miner_control_addrs(rt, nominal)?;
         return Ok((nominal, owner_addr, vec![owner_addr, worker_addr]));

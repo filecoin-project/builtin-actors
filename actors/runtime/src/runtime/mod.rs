@@ -51,7 +51,7 @@ pub trait Runtime<BS: Blockstore>: Syscalls {
         I: IntoIterator<Item = &'a Address>;
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
-        I: IntoIterator<Item = Type>;
+        I: IntoIterator<Item = &'a Type>;
 
     /// The balance of the receiver.
     fn current_balance(&self) -> TokenAmount;
@@ -138,6 +138,10 @@ pub trait Runtime<BS: Blockstore>: Syscalls {
 
     /// Returns whether the specified CodeCID belongs to a built-in actor.
     fn is_builtin_actor(&self, code_id: &Cid) -> Option<Type>;
+
+    /// Returns the CodeCID for a built-in actor type. The kernel will abort
+    /// if the supplied type is invalid.
+    fn get_code_cid_for_type(&self, typ: Type) -> Cid;
 
     /// Returns the total token supply in circulation at the beginning of the current epoch.
     /// The circulating supply is the sum of:
