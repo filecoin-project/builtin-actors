@@ -15,6 +15,13 @@ this bundle is standardized. Read below for details.
 This codebase is on track to be canonicalized in [FIP-0031](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0031.md).
 As a result, this actor implementation will be the only one recognized by the network.
 
+## Pre-FVM actors
+
+Actors for the following network versions are provided as well:
+
+- nv14 actors are provided to facilitate testing.
+- nv15 actors are provided to enable the eventual nv15=>nv16 upgrade.
+
 ## Importable bundle
 
 The main output of this repo is a [CARv1 archive](https://ipld.io/specs/transport/car/carv1/)
@@ -22,11 +29,13 @@ bundling all Wasm bytecode for all actors into a single file, with the following
 characteristics:
 
 - The CARv1 header points to a single root CID.
-- The CID resolves to a data structure that should be interpreted as an IPLD
-  `Map<Cid, i32>`. Every entry represents a built-in actor.
-  - Keys are CIDs pointing to the Wasm bytecode of an actor as a single block.
-  - Values identify the actor type, and are to be interpreted according to the
-    `fvm_shared::actor::builtin::Type` enum:
+- The CID resolves to a Manifest data structure that associates code CIDs with
+  their corresponding built-in actor types.
+- The Manifest payload should be interpreted as an IPLD `Map<Cid, i32>`. Every
+  entry represents a built-in actor.
+- Manifest keys (CID) point to the Wasm bytecode of an actor as a single block.
+- Manifest values (i32) identify the actor type, to be parsed as the
+  `fvm_shared::actor::builtin::Type` enum:
     - System = 1
     - Init = 2
     - Cron = 3
@@ -42,28 +51,57 @@ characteristics:
 The CARv1 is embedded as a byte slice at the root of the library, and exported
 under the `BUNDLE_CAR` public const, for easier consumption by Rust code.
 
-## Instructions for clients
+Precompiled actor bundles may also be provided as release binaries in this repo,
+if requested by implementors.
 
-This is how client implementations are expected to use this repo. Steps 1-4 can
-be automated as part of your build process, or can be performed manually.
+## Instructions for client implementations
+
+### Obtaining an actors bundle
+
+There are two options:
+
+1. Building from source.
+2. Downloading the precompiled release bundle from GitHub.
+
+Instructions to build from source (option 1):
 
 1. Clone the repo.
 2. Check out the relevant branch or tag (see Versioning section below).
-3. Copy the CAR file generated the location printed in this log line:
+3. `cargo build` from the workspace root.
+4. Copy the CARv1 file generated the location printed in this log line:
     ```
    warning: bundle=/path/to/repo/target/debug/build/filecoin_canonical_actors_bundle-aef13b28a60e195b/out/bundle/bundle.car
    ```
-   This line is only printed as a warning due to limitations in the Cargo build
-   script mechanisms (preceded by other logs).
-4. Embed the CAR file bytes into your binary.
-5. At client start, import the embedded CAR file into a blockstore.
-6. Retain the root CID in memory to pass it to the FVM implementation. If using
-   ref-fvm, it expects it as a Machine constructor argument.
+   All output is printed as a warning only due to limitations in the Cargo build
+   script mechanisms.
 
-Because each network version is backed by different actor code, you will need
-to repeat the steps above for every network version your client supports. We
-advise to use some form of an array or lookup table mapping network versions to
-their respective embedded bundles.
+Both options are compatible with automation via scripts or CI pipelines.
+
+### Integrating an actors bundle
+
+This part is implementation-specific. Options include:
+
+1. Embedding the bundle's CARv1 bytes into the distribution's binary.
+2. Downloading CARv1 files on start (with some form of checksumming for added security).
+
+### Loading and using the actors bundle with ref-fvm
+
+Once the implementation has validated the authenticity of the bundle, it is
+expected to do the following:
+
+1. Import the CARv1 into the blockstore.
+2. Retain the root CID in memory, indexed by network version.
+3. Feed the root CID to ref-fvm's Machine constructor, to tell ref-fvm which
+   CodeCID maps to which built-in actor.
+
+### Multiple network version support
+
+Because every network version may be backed by different actor code,
+implementations should be ready to load multiple actor bundles and index them
+by network version.
+
+When instantiating the ref-fvm Machine, both the network version and the
+corresponding Manifest root CID must be passed.
 
 ## Versioning
 
@@ -86,8 +124,9 @@ and fulfils two roles:
 
 ### Credits
 
-This codebase was originally forked from the Chocolate  [Forest client](https://github.com/ChainSafe/forest/)
-and was adapted to the FVM environment.
+This codebase was originally forked from the actors v6 implementation of the
+[Forest client](https://github.com/ChainSafe/forest/), and was adapted to the
+FVM environment.
 
 ## Community
 
