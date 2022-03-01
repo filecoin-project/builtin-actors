@@ -1,6 +1,6 @@
 [package]
-name = "filecoin_canonical_actors_bundle"
-description = "Bundle containing Filecoin canonical actors"
+name = "fil_builtin_actors_bundle"
+description = "Bundle of FVM-compatible Wasm bytecode for Filecoin builtin actors"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 edition = "2021"

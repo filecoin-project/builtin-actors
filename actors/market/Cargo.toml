@@ -1,5 +1,5 @@
 [package]
-name = "fvm_actor_market"
+name = "fil_actor_market"
 description = "Builtin market actor for Filecoin"
 version = "1.0.0"
 license = "MIT OR Apache-2.0"

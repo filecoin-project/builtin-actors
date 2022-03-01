@@ -1,5 +1,5 @@
 [package]
-name = "fvm_actor_miner"
+name = "fil_actor_miner"
 description = "Builtin miner actor for Filecoin"
 version = "1.0.0"
 license = "MIT OR Apache-2.0"

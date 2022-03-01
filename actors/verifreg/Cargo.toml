@@ -1,5 +1,5 @@
 [package]
-name = "fvm_actor_verifreg"
+name = "fil_actor_verifreg"
 description = "Builtin verifreg actor for Filecoin"
 version = "1.0.0"
 license = "MIT OR Apache-2.0"

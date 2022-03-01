@@ -6,7 +6,7 @@ use actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };
-use fvm_actor_reward::{
+use fil_actor_reward::{
     ext, Actor as RewardActor, AwardBlockRewardParams, Method, State, ThisEpochRewardReturn,
     BASELINE_INITIAL_VALUE, PENALTY_MULTIPLIER,
 };

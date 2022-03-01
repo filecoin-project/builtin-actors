@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Compute the package names.
     let packages = ACTORS
         .iter()
-        .map(|(pkg, _)| String::from("fvm_actor_") + pkg)
+        .map(|(pkg, _)| String::from("fil_actor_") + pkg)
         .collect::<Vec<String>>();
 
     let manifest_path = {
@@ -105,7 +105,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     for (pkg, id) in ACTORS {
         let bytecode_path = Path::new(&out_dir)
             .join("wasm32-unknown-unknown/wasm")
-            .join(format!("fvm_actor_{}.wasm", pkg));
+            .join(format!("fil_actor_{}.wasm", pkg));
 
         // This actor version uses forced CIDs.
         let forced_cid = {
