@@ -120,7 +120,7 @@ impl Bundler {
 
         // Add the bytecodes.
         for cid in manifest.iter().map(|(cid, _)| cid) {
-            println!("adding cid {} to bundle CAR", cid.to_string());
+            println!("adding cid {} to bundle CAR", cid);
             let data = self.blockstore.get(cid).unwrap().unwrap();
             tx.send((*cid, data)).await.unwrap();
         }
