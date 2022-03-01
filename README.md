@@ -105,13 +105,26 @@ corresponding Manifest root CID must be passed.
 
 ## Versioning
 
-With the transition to Wasm actors, every network version that modifies built-in
-actor code will result in a release of this repo. In practice, this breaks the
-distinction between network version and actor versions. For further details on
-this, refer to [FIP-0031](https://github.com/filecoin-project/FIPs/tree/master/FIPS/fip-0031.md#non-versioned-changes-and-state-tree-migrations).
+A fair question is how crate versioning relates to the protocol concept of
+`ActorVersion`. We adopt a policy similar to specs-actors:
 
-For this reason, releases of this repo will be made with version numbers that
-correlate to network versions, starting from v14.0.
+- Major number in crate version correlates with `ActorVersion`.
+- We generally don't use minor versions; these are always set to `0`.
+- We strive for round major crate versions to denote the definitive release for
+  a given network upgrade. However, due to the inability to predict certain
+  aspects of software engineering, this is not a hard rule and further releases
+  may be made by bumping the patch number.
+
+Development versions will use qualifiers such as -rc (release candidate).
+
+As an example of application of this policy to a v10 actor version lineage:
+
+- Unstable development versions are referenced by commit hash.
+- Stable development versions are tagged as release candidates: 10.0.0-rc1, 10.0.0-rc2, etc.
+- Definitive release: 10.0.0.
+- Patched definitive release: 10.0.1.
+- Patched definitive release: 10.0.2.
+- Network upgrade goes live with 10.0.2.
 
 ## About this codebase
 
