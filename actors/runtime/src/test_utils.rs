@@ -706,7 +706,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         Ok(())
     }
 
-    fn is_builtin_actor(&self, code_id: &Cid) -> Option<Type> {
+    fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
         self.require_in_call();
         (*ACTOR_TYPES).get(code_id).cloned()
     }

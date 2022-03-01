@@ -83,7 +83,7 @@ impl Actor {
             .get_actor_code_cid(&resolved)
             .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address {}", resolved))?;
 
-        let typ = rt.is_builtin_actor(&code_cid);
+        let typ = rt.resolve_builtin_actor_type(&code_cid);
 
         if typ != Some(Type::Account) {
             Err(actor_error!(

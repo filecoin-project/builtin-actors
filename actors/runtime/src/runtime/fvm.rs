@@ -131,7 +131,7 @@ where
                 .expect("failed to lookup caller code")
         };
 
-        match self.is_builtin_actor(&caller_cid) {
+        match self.resolve_builtin_actor_type(&caller_cid) {
             Some(typ) if types.into_iter().any(|t| *t == typ) => Ok(()),
             _ => Err(actor_error!(SysErrForbidden;
                     "caller cid type {} not one of supported", caller_cid)
@@ -151,8 +151,8 @@ where
         fvm::actor::get_actor_code_cid(addr)
     }
 
-    fn is_builtin_actor(&self, code_id: &Cid) -> Option<Type> {
-        fvm::actor::is_builtin_actor(code_id)
+    fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
+        fvm::actor::resolve_builtin_actor_type(code_id)
     }
 
     fn get_code_cid_for_type(&self, typ: Type) -> Cid {

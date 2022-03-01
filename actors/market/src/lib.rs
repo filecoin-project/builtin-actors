@@ -252,7 +252,7 @@ impl Actor {
             actor_error!(ErrIllegalArgument, "no code ID for address {}", provider)
         })?;
 
-        if rt.is_builtin_actor(&code_id) != Some(Type::Miner) {
+        if rt.resolve_builtin_actor_type(&code_id) != Some(Type::Miner) {
             return Err(actor_error!(
                 ErrIllegalArgument,
                 "deal provider is not a storage miner actor"
@@ -1404,7 +1404,7 @@ where
         .get_actor_code_cid(&nominal)
         .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address {}", nominal))?;
 
-    if rt.is_builtin_actor(&code_id) == Some(Type::Miner) {
+    if rt.resolve_builtin_actor_type(&code_id) == Some(Type::Miner) {
         // Storage miner actor entry; implied funds recipient is the associated owner address.
         let (owner_addr, worker_addr, _) = request_miner_control_addrs(rt, nominal)?;
         return Ok((nominal, owner_addr, vec![owner_addr, worker_addr]));

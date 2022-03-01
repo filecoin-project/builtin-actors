@@ -3730,7 +3730,7 @@ where
         .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address: {}", resolved))?;
 
     let is_principal = rt
-        .is_builtin_actor(&owner_code)
+        .resolve_builtin_actor_type(&owner_code)
         .map(is_principal)
         .unwrap_or(false);
 
@@ -3759,7 +3759,7 @@ where
     let worker_code = rt
         .get_actor_code_cid(&resolved)
         .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address: {}", resolved))?;
-    if rt.is_builtin_actor(&worker_code) != Some(Type::Account) {
+    if rt.resolve_builtin_actor_type(&worker_code) != Some(Type::Account) {
         return Err(actor_error!(
             ErrIllegalArgument,
             "worker actor type must be an account, was {}",

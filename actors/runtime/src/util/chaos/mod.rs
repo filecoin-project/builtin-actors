@@ -107,7 +107,7 @@ impl Actor {
                 let types: Vec<Type> = args
                     .types
                     .iter()
-                    .map(|typ| rt.is_builtin_actor(typ).unwrap())
+                    .map(|typ| rt.resolve_builtin_actor_type(typ).unwrap())
                     .collect();
                 rt.validate_immediate_caller_type(&types)?;
             }

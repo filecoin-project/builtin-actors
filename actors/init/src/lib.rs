@@ -148,10 +148,10 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    rt.is_builtin_actor(exec)
+    rt.resolve_builtin_actor_type(exec)
         .map(|typ| match typ {
             Type::Multisig | Type::PaymentChannel => true,
-            Type::Miner if rt.is_builtin_actor(caller) == Some(Type::Power) => true,
+            Type::Miner if rt.resolve_builtin_actor_type(caller) == Some(Type::Power) => true,
             _ => false,
         })
         .unwrap_or(false)

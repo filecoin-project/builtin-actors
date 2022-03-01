@@ -137,7 +137,7 @@ pub trait Runtime<BS: Blockstore>: Syscalls {
     fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), ActorError>;
 
     /// Returns whether the specified CodeCID belongs to a built-in actor.
-    fn is_builtin_actor(&self, code_id: &Cid) -> Option<Type>;
+    fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type>;
 
     /// Returns the CodeCID for a built-in actor type. The kernel will abort
     /// if the supplied type is invalid.
