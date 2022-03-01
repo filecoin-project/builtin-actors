@@ -1,5 +1,5 @@
 [package]
-name = "fvm_actor_system"
+name = "fil_actor_system"
 description = "Builtin system actor for Filecoin"
 version = "1.0.0"
 license = "MIT OR Apache-2.0"

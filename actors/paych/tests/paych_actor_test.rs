@@ -9,7 +9,7 @@ use actors_runtime::INIT_ACTOR_ADDR;
 use anyhow::anyhow;
 use cid::Cid;
 use derive_builder::Builder;
-use fvm_actor_paych::{
+use fil_actor_paych::{
     Actor as PaychActor, ConstructorParams, LaneState, Merge, Method, ModVerifyParams,
     PaymentVerifyParams, SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE,
     SETTLE_DELAY,

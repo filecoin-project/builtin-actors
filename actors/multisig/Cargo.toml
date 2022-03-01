@@ -1,5 +1,5 @@
 [package]
-name = "fvm_actor_multisig"
+name = "fil_actor_multisig"
 description = "Builtin multisig actor for Filecoin"
 version = "1.0.0"
 license = "MIT OR Apache-2.0"

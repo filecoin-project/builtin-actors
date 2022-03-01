@@ -21,7 +21,7 @@ pub mod miner {
 pub mod verifreg {
     use super::*;
 
-    // based on fvm_actor_verifreg
+    // based on fil_actor_verifreg
     pub const USE_BYTES_METHOD: u64 = 5;
     pub const RESTORE_BYTES_METHOD: u64 = 6;
     pub type UseBytesParams = BytesParams;

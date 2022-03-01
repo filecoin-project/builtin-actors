@@ -6,7 +6,7 @@ use actors_runtime::{
     ActorError, Multimap, FIRST_NON_SINGLETON_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use cid::Cid;
-use fvm_actor_init::{
+use fil_actor_init::{
     Actor as InitActor, ConstructorParams, ExecParams, ExecReturn, Method, State,
 };
 use fvm_shared::address::Address;

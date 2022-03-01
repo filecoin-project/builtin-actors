@@ -10,7 +10,7 @@ use actors_runtime::{
     make_empty_map, ActorError, BalanceTable, SetMultimap, STORAGE_MARKET_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };
-use fvm_actor_market::{
+use fil_actor_market::{
     ext, Actor as MarketActor, Method, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
     STATES_AMT_BITWIDTH,
 };

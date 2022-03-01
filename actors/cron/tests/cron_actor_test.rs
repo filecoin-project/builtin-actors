@@ -3,7 +3,7 @@
 
 use actors_runtime::test_utils::*;
 use actors_runtime::SYSTEM_ACTOR_ADDR;
-use fvm_actor_cron::{Actor as CronActor, ConstructorParams, Entry, State};
+use fil_actor_cron::{Actor as CronActor, ConstructorParams, Entry, State};
 use fvm_shared::address::Address;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;

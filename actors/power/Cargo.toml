@@ -1,5 +1,5 @@
 [package]
-name = "fvm_actor_power"
+name = "fil_actor_power"
 description = "Builtin power actor for Filecoin"
 version = "1.0.0"
 license = "MIT OR Apache-2.0"

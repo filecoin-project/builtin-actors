@@ -3,7 +3,7 @@
 
 use actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use actors_runtime::test_utils::*;
-use fvm_actor_account::{Actor as AccountActor, State};
+use fil_actor_account::{Actor as AccountActor, State};
 use fvm_shared::address::Address;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;

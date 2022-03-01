@@ -1,5 +1,5 @@
 [package]
-name = "fvm_actor_init"
+name = "fil_actor_init"
 description = "Builtin init actor for Filecoin"
 version = "1.0.0"
 license = "MIT OR Apache-2.0"
