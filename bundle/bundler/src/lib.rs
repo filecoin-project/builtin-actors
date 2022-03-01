@@ -149,18 +149,20 @@ fn test_bundler() {
     let mut bundler = Bundler::new(&path);
 
     // First 5 have real CIDs, last 5 have forced CIDs.
-    for i in 1..=10 {
-        let forced_cid = if i < 5 {
-            None
-        } else {
-            Some(Cid::new_v1(
+    for i in 0..10 {
+        let forced_cid = (i > 5).then(|| {
+            Cid::new_v1(
                 IPLD_RAW,
                 Code::Identity.digest(format!("actor-{}", i).as_bytes()),
-            ))
-        };
-        let typ = actor::builtin::Type::from_i32(i).unwrap();
+            )
+        });
+        let typ = actor::builtin::Type::from_i32(i + 1).unwrap();
         let cid = bundler
-            .add_from_bytes(typ, forced_cid, &rand::thread_rng().gen::<[u8; 32]>())
+            .add_from_bytes(
+                typ,
+                forced_cid.as_ref(),
+                &rand::thread_rng().gen::<[u8; 32]>(),
+            )
             .unwrap();
 
         dbg!(cid.to_string());
@@ -202,7 +204,7 @@ fn test_bundler() {
         if i > 5 {
             let expected = Cid::new_v1(
                 IPLD_RAW,
-                Code::Identity.digest(format!("actor-{}", i + 1).as_bytes()),
+                Code::Identity.digest(format!("actor-{}", i).as_bytes()),
             );
             assert_eq!(cid, expected)
         }
