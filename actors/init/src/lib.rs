@@ -148,16 +148,11 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    let exec_type = match rt.is_builtin_actor(exec) {
-        Some(typ) => typ,
-        None => return false,
-    };
-    if exec_type == Type::Multisig || exec_type == Type::PaymentChannel {
-        return true;
-    }
-    let caller_type = match rt.is_builtin_actor(caller) {
-        Some(typ) => typ,
-        None => return false,
-    };
-    exec_type == Type::Miner && caller_type == Type::Power
+    rt.is_builtin_actor(exec)
+        .map(|typ| match typ {
+            Type::Multisig | Type::PaymentChannel => true,
+            Type::Miner if rt.is_builtin_actor(caller) == Some(Type::Power) => true,
+            _ => false,
+        })
+        .unwrap_or(false)
 }
