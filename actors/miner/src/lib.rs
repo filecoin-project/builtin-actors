@@ -35,7 +35,7 @@ use fvm_shared::encoding::{from_slice, BytesDe, Cbor, RawBytes};
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
-use fvm_shared::actor::builtin::{is_principal, Type, CALLER_TYPES_SIGNABLE};
+use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::error::ExitCode::ErrPlaceholder as ErrBalanceInvariantBroken;
 use fvm_shared::error::*;
 use fvm_shared::randomness::*;
@@ -3731,7 +3731,8 @@ where
 
     let is_principal = rt
         .resolve_builtin_actor_type(&owner_code)
-        .map(is_principal)
+        .as_ref()
+        .map(Type::is_principal)
         .unwrap_or(false);
 
     if !is_principal {
