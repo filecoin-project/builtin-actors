@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use anyhow::anyhow;
-use cid::multihash::Code;
+use cid::multihash::{Code, MultihashDigest};
 use cid::Cid;
+use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::blockstore::{CborStore, MemoryBlockstore};
 use fvm_shared::clock::ChainEpoch;
@@ -27,6 +28,43 @@ use fvm_shared::{ActorID, MethodNum};
 
 use crate::runtime::{ActorCode, MessageInfo, Runtime, Syscalls};
 use crate::{actor_error, ActorError};
+
+lazy_static! {
+    pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/system");
+    pub static ref INIT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/init");
+    pub static ref CRON_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/cron");
+    pub static ref ACCOUNT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/account");
+    pub static ref POWER_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storagepower");
+    pub static ref MINER_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storageminer");
+    pub static ref MARKET_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storagemarket");
+    pub static ref PAYCH_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/paymentchannel");
+    pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/multisig");
+    pub static ref REWARD_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/reward");
+    pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/verifiedregistry");
+    pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
+        let mut map = BTreeMap::new();
+        map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
+        map.insert(*INIT_ACTOR_CODE_ID, Type::Init);
+        map.insert(*CRON_ACTOR_CODE_ID, Type::Cron);
+        map.insert(*ACCOUNT_ACTOR_CODE_ID, Type::Account);
+        map.insert(*POWER_ACTOR_CODE_ID, Type::Power);
+        map.insert(*MINER_ACTOR_CODE_ID, Type::Miner);
+        map.insert(*MARKET_ACTOR_CODE_ID, Type::Market);
+        map.insert(*PAYCH_ACTOR_CODE_ID, Type::PaymentChannel);
+        map.insert(*MULTISIG_ACTOR_CODE_ID, Type::Multisig);
+        map.insert(*REWARD_ACTOR_CODE_ID, Type::Reward);
+        map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
+        map
+    };
+    pub static ref CALLER_TYPES_SIGNABLE: Vec<Cid> =
+        vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID];
+}
+
+const IPLD_RAW: u64 = 0x55;
+
+fn make_builtin(bz: &[u8]) -> Cid {
+    Cid::new_v1(IPLD_RAW, Code::Identity.digest(bz))
+}
 
 pub struct MockRuntime {
     pub epoch: ChainEpoch,
@@ -454,10 +492,9 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     }
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
-        I: IntoIterator<Item = &'a Cid>,
+        I: IntoIterator<Item = &'a Type>,
     {
         self.require_in_call();
-        let types: Vec<Cid> = types.into_iter().cloned().collect();
         assert!(
             self.expectations
                 .borrow_mut()
@@ -465,6 +502,15 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
                 .is_some(),
             "unexpected validate caller code"
         );
+
+        let find_by_type = |typ| {
+            (*ACTOR_TYPES)
+                .iter()
+                .find_map(|(cid, t)| if t == typ { Some(cid) } else { None })
+                .cloned()
+                .unwrap()
+        };
+        let types: Vec<Cid> = types.into_iter().map(find_by_type).collect();
         assert_eq!(
             &types,
             self.expectations
@@ -658,6 +704,20 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             );
         }
         Ok(())
+    }
+
+    fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
+        self.require_in_call();
+        (*ACTOR_TYPES).get(code_id).cloned()
+    }
+
+    fn get_code_cid_for_type(&self, typ: Type) -> Cid {
+        self.require_in_call();
+        (*ACTOR_TYPES)
+            .iter()
+            .find_map(|(cid, t)| if *t == typ { Some(cid) } else { None })
+            .cloned()
+            .unwrap()
     }
 
     fn total_fil_circ_supply(&self) -> TokenAmount {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
+use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;
@@ -50,7 +51,7 @@ pub trait Runtime<BS: Blockstore>: Syscalls {
         I: IntoIterator<Item = &'a Address>;
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
-        I: IntoIterator<Item = &'a Cid>;
+        I: IntoIterator<Item = &'a Type>;
 
     /// The balance of the receiver.
     fn current_balance(&self) -> TokenAmount;
@@ -134,6 +135,13 @@ pub trait Runtime<BS: Blockstore>: Syscalls {
     /// Aborts if the beneficiary does not exist.
     /// May only be called by the actor itself.
     fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), ActorError>;
+
+    /// Returns whether the specified CodeCID belongs to a built-in actor.
+    fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type>;
+
+    /// Returns the CodeCID for a built-in actor type. The kernel will abort
+    /// if the supplied type is invalid.
+    fn get_code_cid_for_type(&self, typ: Type) -> Cid;
 
     /// Returns the total token supply in circulation at the beginning of the current epoch.
     /// The circulating supply is the sum of:

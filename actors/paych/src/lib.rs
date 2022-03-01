@@ -4,8 +4,8 @@
 use actors_runtime::runtime::{ActorCode, Runtime};
 use actors_runtime::{
     actor_error, resolve_to_id_addr, wasm_trampoline, ActorDowncast, ActorError, Array,
-    ACCOUNT_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID,
 };
+use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Sign};
 use fvm_shared::blockstore::Blockstore;
@@ -48,7 +48,7 @@ impl Actor {
     {
         // Only InitActor can create a payment channel actor. It creates the actor on
         // behalf of the payer/payee.
-        rt.validate_immediate_caller_type(std::iter::once(&*INIT_ACTOR_CODE_ID))?;
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
 
         // Check both parties are capable of signing vouchers
         let to = Self::resolve_account(rt, &params.to)?;
@@ -83,13 +83,15 @@ impl Actor {
             .get_actor_code_cid(&resolved)
             .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address {}", resolved))?;
 
-        if code_cid != *ACCOUNT_ACTOR_CODE_ID {
+        let typ = rt.resolve_builtin_actor_type(&code_cid);
+
+        if typ != Some(Type::Account) {
             Err(actor_error!(
                 ErrForbidden,
-                "actor {} must be an account ({}), was {}",
+                "actor {} must be an account, was {} ({:?})",
                 raw,
-                *ACCOUNT_ACTOR_CODE_ID,
-                code_cid
+                code_cid,
+                typ
             ))
         } else {
             Ok(resolved)

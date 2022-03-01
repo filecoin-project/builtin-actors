@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use actors_runtime::runtime::{ActorCode, Runtime};
-use actors_runtime::{
-    actor_error, wasm_trampoline, ActorDowncast, ActorError, MINER_ACTOR_CODE_ID,
-    MULTISIG_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID, POWER_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR,
-};
+use actors_runtime::{actor_error, wasm_trampoline, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
 use cid::Cid;
+use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::encoding::RawBytes;
@@ -78,7 +76,7 @@ impl Actor {
 
         log::trace!("caller code CID: {:?}", &caller_code);
 
-        if !can_exec(&caller_code, &params.code_cid) {
+        if !can_exec(rt, &caller_code, &params.code_cid) {
             return Err(actor_error!(ErrForbidden;
                     "called type {} cannot exec actor type {}",
                     &caller_code, &params.code_cid
@@ -145,8 +143,16 @@ impl ActorCode for Actor {
     }
 }
 
-fn can_exec(caller: &Cid, exec: &Cid) -> bool {
-    (exec == &*MINER_ACTOR_CODE_ID && caller == &*POWER_ACTOR_CODE_ID)
-        || exec == &*MULTISIG_ACTOR_CODE_ID
-        || exec == &*PAYCH_ACTOR_CODE_ID
+fn can_exec<BS, RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    rt.resolve_builtin_actor_type(exec)
+        .map(|typ| match typ {
+            Type::Multisig | Type::PaymentChannel => true,
+            Type::Miner if rt.resolve_builtin_actor_type(caller) == Some(Type::Power) => true,
+            _ => false,
+        })
+        .unwrap_or(false)
 }

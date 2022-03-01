@@ -5,9 +5,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use actors_runtime::test_utils::*;
-use actors_runtime::{
-    ACCOUNT_ACTOR_CODE_ID, INIT_ACTOR_ADDR, INIT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
-};
+use actors_runtime::INIT_ACTOR_ADDR;
 use anyhow::anyhow;
 use cid::Cid;
 use derive_builder::Builder;

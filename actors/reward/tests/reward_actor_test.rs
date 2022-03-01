@@ -3,8 +3,8 @@
 
 use actors_runtime::test_utils::*;
 use actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, POWER_ACTOR_CODE_ID, REWARD_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, SYSTEM_ACTOR_CODE_ID,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_actor_reward::{
     ext, Actor as RewardActor, AwardBlockRewardParams, Method, State, ThisEpochRewardReturn,
