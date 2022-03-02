@@ -13,12 +13,12 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-actors-runtime = { path = "../runtime" }
-fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
+actors-runtime = { version = "6.0.0", path = "../runtime" }
+fvm_shared = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 num-traits = "0.2"
 num-derive = "0.3.0"
 
 [dev-dependencies]
-actors-runtime = { path = "../runtime", features = ["test_utils"] }
+actors-runtime = { version = "6.0.0", path = "../runtime", features = ["test_utils"] }
 

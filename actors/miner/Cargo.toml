@@ -14,11 +14,11 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-actors-runtime = { path = "../runtime" }
-fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
+actors-runtime = { version = "6.0.0", path = "../runtime" }
+fvm_shared = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
 bitfield = { package = "fvm_ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm" }
-fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}
-fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
+fvm_ipld_amt = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}
+fvm_ipld_hamt = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm" }
 serde = { version = "1.0", features = ["derive"] }
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
 num-traits = "0.2"
