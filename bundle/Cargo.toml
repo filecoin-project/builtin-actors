@@ -1,10 +1,12 @@
 [package]
 name = "fil_builtin_actors_bundle"
 description = "Bundle of FVM-compatible Wasm bytecode for Filecoin builtin actors"
-version = "0.1.0"
+version = "6.0.0"
 license = "MIT OR Apache-2.0"
+authors = ["Filecoin Core Devs"]
 edition = "2021"
-repository = "https://github.com/filecoin-project/canonical-actors"
+repository = "https://github.com/filecoin-project/builtin-actors"
+keywords = ["filecoin", "web3", "wasm"]
 
 [dependencies]
 clap = { version= "3.0.14", features = ["derive"] }

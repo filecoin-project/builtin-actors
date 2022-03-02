@@ -3,7 +3,7 @@ name = "actors-runtime"
 description = "System actors for the Filecoin protocol"
 version = "4.0.0"
 license = "MIT OR Apache-2.0"
-authors = ["ChainSafe Systems <info@chainsafe.io>"]
+authors = ["Filecoin Core Devs"]
 edition = "2018"
 repository = "https://github.com/ChainSafe/forest"
 
