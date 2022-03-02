@@ -14,10 +14,10 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 actors-runtime = { path = "../runtime" }
-fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors", default-features = false }
-bitfield = { package = "ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors" }
-ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors", features = ["go-interop"]}
-ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors" }
+fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
+bitfield = { package = "ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm" }
+ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}
+ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
 serde = { version = "1.0", features = ["derive"] }
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
 num-traits = "0.2"

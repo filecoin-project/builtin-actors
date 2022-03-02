@@ -14,8 +14,8 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 actors-runtime = { path = "../runtime" }
-fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors", default-features = false }
-ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors" }
+fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
+ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
 serde = { version = "1.0", features = ["derive"] }
 num-traits = "0.2"
 num-derive = "0.3.0"

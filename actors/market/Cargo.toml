@@ -14,8 +14,8 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 actors-runtime = { path = "../runtime" }
-fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors", default-features = false }
-bitfield = { package = "ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors" }
+fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
+bitfield = { package = "ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm" }
 num-traits = "0.2"
 num-derive = "0.3.0"
 ahash = "0.7"
@@ -26,4 +26,4 @@ anyhow = "1.0.51"
 
 [dev-dependencies]
 actors-runtime = { path = "../runtime", features = ["test_utils"] }
-ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/extract-actors", features = ["go-interop"]}
+ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}
