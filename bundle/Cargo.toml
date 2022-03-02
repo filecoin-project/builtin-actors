@@ -11,13 +11,13 @@ keywords = ["filecoin", "web3", "wasm"]
 [dependencies]
 clap = { version= "3.0.14", features = ["derive"] }
 fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
-ipld_car = { git = "https://github.com/filecoin-project/ref-fvm" }
+fvm_ipld_car = { git = "https://github.com/filecoin-project/ref-fvm" }
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false, features = ["identity"] }
 async-std = { version = "1.10.0" }
 futures = "0.3.21"
-fil_actor_bundler = { path = "./bundler" }
+fil_actor_bundler = { version = "1.0.0", path = "./bundler" }
 
 [build-dependencies]
-fil_actor_bundler = { path = "./bundler" }
+fil_actor_bundler = { version = "1.0.0", path = "./bundler" }
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }

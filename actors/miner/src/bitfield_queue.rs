@@ -6,9 +6,9 @@ use std::convert::TryInto;
 use actors_runtime::{ActorDowncast, Array};
 use bitfield::BitField;
 use cid::Cid;
+use fvm_ipld_amt::Error as AmtError;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
-use ipld_amt::Error as AmtError;
 use itertools::Itertools;
 
 /// Wrapper for working with an AMT[ChainEpoch]*Bitfield functioning as a queue, bucketed by epoch.

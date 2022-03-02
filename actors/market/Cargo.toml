@@ -16,7 +16,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 actors-runtime = { path = "../runtime" }
 fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
-bitfield = { package = "ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm" }
+bitfield = { package = "fvm_ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm" }
 num-traits = "0.2"
 num-derive = "0.3.0"
 ahash = "0.7"
@@ -27,4 +27,4 @@ anyhow = "1.0.51"
 
 [dev-dependencies]
 actors-runtime = { path = "../runtime", features = ["test_utils"] }
-ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}
+fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}

@@ -16,7 +16,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 actors-runtime = { path = "../runtime" }
 fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
-ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
+fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
 num-traits = "0.2"
 num-derive = "0.3.0"
 log = "0.4.8"

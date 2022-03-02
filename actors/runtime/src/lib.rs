@@ -10,15 +10,15 @@ extern crate serde;
 
 use builtin::HAMT_BIT_WIDTH;
 use cid::Cid;
+use fvm_ipld_amt::Amt;
+use fvm_ipld_hamt::{BytesKey, Error as HamtError, Hamt};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::blockstore::Blockstore;
 pub use fvm_shared::BLOCKS_PER_EPOCH as EXPECTED_LEADERS_PER_EPOCH;
-use ipld_amt::Amt;
-use ipld_hamt::{BytesKey, Error as HamtError, Hamt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use unsigned_varint::decode::Error as UVarintError;
-pub use {ipld_amt, ipld_hamt};
+pub use {fvm_ipld_amt, fvm_ipld_hamt};
 
 pub use self::actor_error::*;
 pub use self::builtin::*;

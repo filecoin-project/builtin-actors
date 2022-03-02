@@ -14,6 +14,7 @@ use fil_actor_market::{
     ext, Actor as MarketActor, Method, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
     STATES_AMT_BITWIDTH,
 };
+use fvm_ipld_amt::Amt;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::EPOCH_UNDEFINED;
@@ -21,7 +22,6 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
-use ipld_amt::Amt;
 
 const OWNER_ID: u64 = 101;
 const PROVIDER_ID: u64 = 102;

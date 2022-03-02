@@ -7,10 +7,10 @@ use actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
 use anyhow::anyhow;
 use bitfield::BitField;
 use cid::Cid;
+use fvm_ipld_amt::Error as AmtError;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{SectorNumber, MAX_SECTOR_NUMBER};
-use ipld_amt::Error as AmtError;
 
 use super::SectorOnChainInfo;
 
