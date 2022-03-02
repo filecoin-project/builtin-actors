@@ -14,6 +14,7 @@ use fil_actor_paych::{
     PaymentVerifyParams, SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE,
     SETTLE_DELAY,
 };
+use fvm_ipld_amt::Amt;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -22,7 +23,6 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_CONSTRUCTOR;
-use ipld_amt::Amt;
 
 const PAYCH_ID: u64 = 100;
 const PAYER_ID: u64 = 102;

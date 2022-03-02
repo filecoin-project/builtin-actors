@@ -8,13 +8,13 @@ use actors_runtime::{ActorDowncast, Array};
 use anyhow::anyhow;
 use bitfield::BitField;
 use cid::Cid;
+use fvm_ipld_amt::{Error as AmtError, ValueMut};
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::tuple::*;
 use fvm_shared::sector::{SectorNumber, SectorSize};
-use ipld_amt::{Error as AmtError, ValueMut};
 use num_traits::{Signed, Zero};
 
 use super::{power_for_sector, PowerPair, SectorOnChainInfo};

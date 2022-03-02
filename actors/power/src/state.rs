@@ -9,6 +9,7 @@ use actors_runtime::{
 };
 use anyhow::{anyhow, Context};
 use cid::Cid;
+use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::blockstore::Blockstore;
@@ -21,7 +22,6 @@ use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use fvm_shared::smooth::{AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA};
 use fvm_shared::HAMT_BIT_WIDTH;
 use integer_encoding::VarInt;
-use ipld_hamt::BytesKey;
 use lazy_static::lazy_static;
 use num_traits::Signed;
 

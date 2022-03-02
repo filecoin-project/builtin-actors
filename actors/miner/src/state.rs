@@ -12,6 +12,8 @@ use anyhow::anyhow;
 use bitfield::BitField;
 use cid::multihash::Code;
 use cid::Cid;
+use fvm_ipld_amt::Error as AmtError;
+use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::blockstore::{Blockstore, CborStore};
@@ -22,8 +24,6 @@ use fvm_shared::encoding::{serde_bytes, BytesDe, Cbor};
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
 use fvm_shared::HAMT_BIT_WIDTH;
-use ipld_amt::Error as AmtError;
-use ipld_hamt::Error as HamtError;
 use num_traits::{Signed, Zero};
 
 use super::deadlines::new_deadline_info;

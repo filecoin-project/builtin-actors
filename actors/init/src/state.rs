@@ -4,12 +4,12 @@
 use actors_runtime::{make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR};
 use anyhow::anyhow;
 use cid::Cid;
+use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::encoding::tuple::*;
 use fvm_shared::encoding::Cbor;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
-use ipld_hamt::Error as HamtError;
 
 /// State is reponsible for creating
 #[derive(Serialize_tuple, Deserialize_tuple)]

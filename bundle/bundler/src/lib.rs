@@ -9,11 +9,11 @@ use anyhow::Context;
 use anyhow::Result;
 use cid::multihash::Code;
 use cid::Cid;
+use fvm_ipld_car::CarHeader;
 use fvm_shared::actor;
 use fvm_shared::actor::builtin::Manifest;
 use fvm_shared::blockstore::{Block, Blockstore, MemoryBlockstore};
 use fvm_shared::encoding::DAG_CBOR;
-use ipld_car::CarHeader;
 
 const IPLD_RAW: u64 = 0x55;
 
@@ -137,7 +137,7 @@ impl Bundler {
 fn test_bundler() {
     use async_std::fs::File;
     use cid::multihash::MultihashDigest;
-    use ipld_car::{load_car, CarReader};
+    use fvm_ipld_car::{load_car, CarReader};
     use num_traits::FromPrimitive;
     use rand::Rng;
 

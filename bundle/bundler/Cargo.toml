@@ -3,7 +3,7 @@ name = "fil_actor_bundler"
 description = "An IPLD CAR bundling tool for Wasm bytecode"
 version = "1.0.0"
 license = "MIT OR Apache-2.0"
-authors = ["Filecoin Core Devs"]
+authors = ["Protocol Labs", "Filecoin Core Devs"]
 edition = "2021"
 repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm"]
@@ -11,7 +11,7 @@ keywords = ["filecoin", "web3", "wasm"]
 [dependencies]
 clap = { version= "3.0.14", features = ["derive"] }
 fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
-ipld_car = { git = "https://github.com/filecoin-project/ref-fvm" }
+fvm_ipld_car = { git = "https://github.com/filecoin-project/ref-fvm" }
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false, features = ["identity"] }
 async-std = { version = "1.10.0" }

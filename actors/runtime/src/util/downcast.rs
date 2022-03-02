@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
+use fvm_ipld_amt::Error as AmtError;
+use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::encoding::error::Error as CborError;
 use fvm_shared::encoding::Error as EncodingError;
 use fvm_shared::error::ExitCode;
-use ipld_amt::Error as AmtError;
-use ipld_hamt::Error as HamtError;
 
 use crate::ActorError;
 

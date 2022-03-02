@@ -3,7 +3,7 @@ name = "fil_actor_paych"
 description = "Builtin paych actor for Filecoin"
 version = "6.0.0"
 license = "MIT OR Apache-2.0"
-authors = ["Filecoin Core Devs"]
+authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
 repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm"]
@@ -24,5 +24,5 @@ anyhow = "1.0.51"
 
 [dev-dependencies]
 actors-runtime = { path = "../runtime", features = ["test_utils"] }
-ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}
+fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}
 derive_builder = "0.10"
