@@ -1,10 +1,12 @@
 [package]
 name = "fil_actor_bundler"
 description = "An IPLD CAR bundling tool for Wasm bytecode"
-version = "0.1.0"
+version = "1.0.0"
 license = "MIT OR Apache-2.0"
+authors = ["Filecoin Core Devs"]
 edition = "2021"
-repository = "https://github.com/filecoin-project/canonical-actors"
+repository = "https://github.com/filecoin-project/builtin-actors"
+keywords = ["filecoin", "web3", "wasm"]
 
 [dependencies]
 clap = { version= "3.0.14", features = ["derive"] }

@@ -1,11 +1,12 @@
 [package]
 name = "fil_actor_power"
 description = "Builtin power actor for Filecoin"
-version = "1.0.0"
+version = "6.0.0"
 license = "MIT OR Apache-2.0"
-authors = ["ChainSafe Systems <info@chainsafe.io>"]
+authors = ["Filecoin Core Devs"]
 edition = "2018"
-repository = "https://github.com/filecoin-project/canonical-actors"
+repository = "https://github.com/filecoin-project/builtin-actors"
+keywords = ["filecoin", "web3", "wasm"]
 
 [lib]
 ## lib is necessary for integration tests
