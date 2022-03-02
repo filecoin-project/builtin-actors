@@ -13,11 +13,13 @@ use fvm_shared::encoding::tuple::*;
 use fvm_shared::encoding::{serde_bytes, BytesDe};
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
-    PoStProof, RegisteredPoStProof, RegisteredSealProof, SectorNumber, StoragePower,
+    PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
+    StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
 
 pub type CronEvent = i64;
+
 pub const CRON_EVENT_WORKER_KEY_CHANGE: CronEvent = 0;
 pub const CRON_EVENT_PROVING_DEADLINE: CronEvent = 1;
 pub const CRON_EVENT_PROCESS_EARLY_TERMINATIONS: CronEvent = 2;
@@ -269,7 +271,7 @@ pub struct SectorPreCommitOnChainInfo {
 }
 
 /// Information stored on-chain for a proven sector.
-#[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorOnChainInfo {
     pub sector_number: SectorNumber,
     /// The seal proof type implies the PoSt proofs
@@ -301,6 +303,8 @@ pub struct SectorOnChainInfo {
     /// Day reward of sector this sector replace or zero
     #[serde(with = "bigint_ser")]
     pub replaced_day_reward: TokenAmount,
+    /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
+    pub sector_key_cid: Option<Cid>,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]
@@ -329,4 +333,21 @@ pub struct ProveCommitAggregateParams {
     pub sector_numbers: UnvalidatedBitField,
     #[serde(with = "serde_bytes")]
     pub aggregate_proof: Vec<u8>,
+}
+
+#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct ReplicaUpdate {
+    pub sector_number: SectorNumber,
+    pub deadline: u64,
+    pub partition: u64,
+    pub new_sealed_cid: Cid,
+    pub deals: Vec<DealID>,
+    pub update_proof_type: RegisteredUpdateProof,
+    #[serde(with = "serde_bytes")]
+    pub replica_proof: Vec<u8>,
+}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ProveReplicaUpdatesParams {
+    pub updates: Vec<ReplicaUpdate>,
 }

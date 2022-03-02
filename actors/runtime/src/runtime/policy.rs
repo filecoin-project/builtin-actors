@@ -20,6 +20,9 @@ pub struct Policy {
     /// The maximum number of sector pre-commitments in a single batch.
     /// 32 sectors per epoch would support a single miner onboarding 1EiB of 32GiB sectors in 1 year.
     pub pre_commit_sector_batch_max_size: usize,
+    /// The maximum number of sector replica updates in a single batch.
+    pub prove_replica_updates_max_size: usize,
+
     /// The delay between pre commit expiration and clean up from state. This enforces that expired pre-commits
     /// stay in state for a period of time creating a grace period during which a late-running aggregated prove-commit
     /// can still prove its non-expired precommits without resubmitting a message
@@ -135,6 +138,7 @@ impl Default for Policy {
             min_aggregated_sectors: policy_constants::MIN_AGGREGATED_SECTORS,
             max_aggregated_proof_size: policy_constants::MAX_AGGREGATED_PROOF_SIZE,
             pre_commit_sector_batch_max_size: policy_constants::PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
+            prove_replica_updates_max_size: policy_constants::PROVE_REPLICA_UPDATES_MAX_SIZE,
             expired_pre_commit_clean_up_delay: policy_constants::EXPIRED_PRE_COMMIT_CLEAN_UP_DELAY,
             wpost_proving_period: policy_constants::WPOST_PROVING_PERIOD,
             wpost_challenge_window: policy_constants::WPOST_CHALLENGE_WINDOW,
@@ -203,6 +207,11 @@ mod policy_constants {
     /// The maximum number of sector pre-commitments in a single batch.
     /// 32 sectors per epoch would support a single miner onboarding 1EiB of 32GiB sectors in 1 year.
     pub const PRE_COMMIT_SECTOR_BATCH_MAX_SIZE: usize = 256;
+
+    /// The maximum number of sector replica updates in a single batch.
+    /// Same as PRE_COMMIT_SECTOR_BATCH_MAX_SIZE for consistency
+    pub const PROVE_REPLICA_UPDATES_MAX_SIZE: usize = PRE_COMMIT_SECTOR_BATCH_MAX_SIZE;
+
     /// The delay between pre commit expiration and clean up from state. This enforces that expired pre-commits
     /// stay in state for a period of time creating a grace period during which a late-running aggregated prove-commit
     /// can still prove its non-expired precommits without resubmitting a message
