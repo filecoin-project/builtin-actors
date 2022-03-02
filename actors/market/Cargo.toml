@@ -16,7 +16,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 actors-runtime = { version = "6.0.0", path = "../runtime" }
 fvm_shared = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
-bitfield = { package = "fvm_ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm" }
+bitfield = { version = "0.1.0", package = "fvm_ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm" }
 num-traits = "0.2"
 num-derive = "0.3.0"
 ahash = "0.7"
