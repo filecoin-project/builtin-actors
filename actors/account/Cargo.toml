@@ -3,7 +3,7 @@ name = "fil_actor_account"
 description = "Builtin account actor for Filecoin"
 version = "6.0.0"
 license = "MIT OR Apache-2.0"
-authors = ["Filecoin Core Devs"]
+authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
 keywords = ["filecoin", "web3", "wasm"]
 
