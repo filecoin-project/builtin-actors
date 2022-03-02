@@ -28,7 +28,7 @@ const ACTORS: &[(&'static Package, &'static ID)] = &[
 ];
 
 const IPLD_RAW: u64 = 0x55;
-const FORCED_CID_PREFIX: &str = "fil/6/";
+const FORCED_CID_PREFIX: &str = "fil/7/";
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Cargo executable location.
