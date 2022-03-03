@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use actors_runtime::Set;
+use fil_actors_runtime::Set;
 
 #[test]
 fn put() {

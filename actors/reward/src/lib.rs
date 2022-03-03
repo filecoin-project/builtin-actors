@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use actors_runtime::runtime::{ActorCode, Runtime};
-use actors_runtime::{
+use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fil_actors_runtime::{
     actor_error, wasm_trampoline, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };

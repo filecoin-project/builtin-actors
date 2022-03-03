@@ -1,14 +1,14 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use actors_runtime::test_utils::*;
-use actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
-};
 use fil_actor_reward::{
     ext, Actor as RewardActor, AwardBlockRewardParams, Method, State, ThisEpochRewardReturn,
     BASELINE_INITIAL_VALUE, PENALTY_MULTIPLIER,
+};
+use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;

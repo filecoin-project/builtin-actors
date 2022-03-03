@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-actors-runtime = { version = "6.0.0", path = "../runtime" }
+fil_actors_runtime = { version = "6.0.0", path = "../runtime" }
 fvm_shared = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
 bitfield = { version = "0.1.0", package = "fvm_ipld_bitfield", git = "https://github.com/filecoin-project/ref-fvm" }
 num-traits = "0.2"
@@ -26,7 +26,7 @@ log = "0.4.8"
 anyhow = "1.0.51"
 
 [dev-dependencies]
-actors-runtime = { version = "6.0.0", path = "../runtime", features = ["test_utils"] }
+fil_actors_runtime = { version = "6.0.0", path = "../runtime", features = ["test_utils"] }
 fvm_ipld_amt = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}
 
 [build-dependencies]

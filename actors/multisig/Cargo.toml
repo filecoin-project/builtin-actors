@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-actors-runtime = { version = "6.0.0", path = "../runtime" }
+fil_actors_runtime = { version = "6.0.0", path = "../runtime" }
 fvm_shared = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
 fvm_ipld_hamt = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm" }
 num-traits = "0.2"

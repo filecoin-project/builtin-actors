@@ -4,8 +4,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use actors_runtime::test_utils::*;
-use actors_runtime::INIT_ACTOR_ADDR;
 use anyhow::anyhow;
 use cid::Cid;
 use derive_builder::Builder;
@@ -14,6 +12,8 @@ use fil_actor_paych::{
     PaymentVerifyParams, SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE,
     SETTLE_DELAY,
 };
+use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_amt::Amt;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
