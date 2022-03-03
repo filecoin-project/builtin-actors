@@ -5,7 +5,7 @@ version = "6.0.1"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
-repository = "https://github.com/ChainSafe/forest"
+repository = "https://github.com/filecoin-project/builtin-actors"
 
 [dependencies]
 fvm_ipld_hamt = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm" }
