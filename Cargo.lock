@@ -306,15 +306,15 @@ dependencies = [
 
 [[package]]
 name = "cid"
-version = "0.8.2"
-source = "git+https://github.com/multiformats/rust-cid?branch=steb/cbor-hack#df4265606c099d5a751abe4bf9278710fbd31508"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd5d90881dc52bb7867dd4341dfe6836077370f879df51cee353daa74e035a13"
 dependencies = [
  "core2",
- "cs_serde_bytes",
- "cs_serde_cbor",
  "multibase",
  "multihash",
  "serde",
+ "serde_bytes",
  "unsigned-varint",
 ]
 
@@ -578,7 +578,7 @@ dependencies = [
  "multihash",
  "num-traits",
  "rand",
- "serde_cbor",
+ "serde_ipld_dagcbor",
  "serde_json",
  "tempfile",
 ]
@@ -1444,12 +1444,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_cbor"
-version = "0.11.2"
+name = "serde_bytes"
+version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bef2ebfde456fb76bbcf9f59315333decc4fda0b2b44b420243c11e0f5ec1f5"
+checksum = "16ae07dd2f88a366f15bd0632ba725227018c69a1c8550a927324f8eb8368bb9"
 dependencies = [
- "half",
  "serde",
 ]
 
@@ -1462,6 +1461,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_ipld_dagcbor"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "762aec89078f8714aed28e2ab810fabaf5562ab6706fda85e28b37bc307fa242"
+dependencies = [
+ "cid",
+ "half",
+ "serde",
 ]
 
 [[package]]
