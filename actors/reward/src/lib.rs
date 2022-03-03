@@ -21,6 +21,9 @@ pub use self::logic::*;
 pub use self::state::{Reward, State, VestingFunction};
 pub use self::types::*;
 
+#[cfg(feature = "wasm")]
+pub const WASM_BINARY: &[u8] = include_bytes!(env!("WASM_BINARY"));
+
 wasm_trampoline!(Actor);
 
 pub(crate) mod expneg;

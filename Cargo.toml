@@ -3,6 +3,7 @@ members = [
      "actors/*",
      "bundle/bundler",
      "bundle",
+     "builder",
 ]
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.

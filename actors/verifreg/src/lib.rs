@@ -18,6 +18,9 @@ use num_traits::{FromPrimitive, Signed};
 pub use self::state::State;
 pub use self::types::*;
 
+#[cfg(feature = "wasm")]
+pub const WASM_BINARY: &[u8] = include_bytes!(env!("WASM_BINARY"));
+
 wasm_trampoline!(Actor);
 
 mod state;

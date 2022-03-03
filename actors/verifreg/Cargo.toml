@@ -22,3 +22,9 @@ num-derive = "0.3.0"
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
 lazy_static = "1.4"
 anyhow = "1.0.51"
+
+[build-dependencies]
+fil_builtin_actors_builder = { version = "0.1.0", path = "../../builder" }
+
+[features]
+wasm = []
