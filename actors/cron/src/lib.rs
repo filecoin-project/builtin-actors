@@ -15,6 +15,9 @@ pub use self::state::{Entry, State};
 
 mod state;
 
+#[cfg(feature = "wasm")]
+pub const WASM_BINARY: &[u8] = include_bytes!(env!("WASM_BINARY"));
+
 wasm_trampoline!(Actor);
 
 // * Updated to specs-actors commit: 845089a6d2580e46055c24415a6c32ee688e5186 (v3.0.0)

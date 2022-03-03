@@ -28,3 +28,10 @@ log = "0.4.8"
 byteorder = "1.3.4"
 anyhow = "1.0.51"
 itertools = "0.10.3"
+
+[build-dependencies]
+fil_builtin_actors_builder = { version = "0.1.0", path = "../../builder" }
+
+[features]
+wasm = []
+
