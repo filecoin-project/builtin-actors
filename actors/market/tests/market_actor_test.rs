@@ -3,16 +3,16 @@
 
 use std::collections::HashMap;
 
-use actors_runtime::runtime::Runtime;
-use actors_runtime::test_utils::*;
-use actors_runtime::util::BALANCE_TABLE_BITWIDTH;
-use actors_runtime::{
-    make_empty_map, ActorError, BalanceTable, SetMultimap, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
-};
 use fil_actor_market::{
     ext, Actor as MarketActor, Method, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
     STATES_AMT_BITWIDTH,
+};
+use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::util::BALANCE_TABLE_BITWIDTH;
+use fil_actors_runtime::{
+    make_empty_map, ActorError, BalanceTable, SetMultimap, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::address::Address;

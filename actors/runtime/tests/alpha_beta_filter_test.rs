@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime::EPOCHS_IN_DAY;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::math::{poly_parse, PRECISION};

@@ -1,5 +1,5 @@
-use actors_runtime::DealWeight;
 use cid::Cid;
+use fil_actors_runtime::DealWeight;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;

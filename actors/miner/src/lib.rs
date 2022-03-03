@@ -6,11 +6,6 @@ use std::collections::BTreeMap;
 use std::iter;
 use std::ops::Neg;
 
-use actors_runtime::runtime::{ActorCode, Runtime};
-use actors_runtime::{
-    actor_error, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-};
 use anyhow::anyhow;
 use bitfield::{BitField, UnvalidatedBitField, Validate};
 pub use bitfield_queue::*;
@@ -22,6 +17,11 @@ pub use deadline_info::*;
 pub use deadline_state::*;
 pub use deadlines::*;
 pub use expiration_queue::*;
+use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fil_actors_runtime::{
+    actor_error, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::{BigInt, Integer};
@@ -4231,7 +4231,7 @@ where
                 this_epoch_reward_smoothed,
                 quality_adj_power_smoothed,
                 &power,
-                actors_runtime::EPOCHS_IN_DAY,
+                fil_actors_runtime::EPOCHS_IN_DAY,
             );
 
             // The storage pledge is recorded for use in computing the penalty if this sector is terminated

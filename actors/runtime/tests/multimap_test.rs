@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use actors_runtime::Multimap;
+use fil_actors_runtime::Multimap;
 use fvm_ipld_amt::Amt;
 use fvm_shared::address::Address;
 use fvm_shared::blockstore::MemoryBlockstore;

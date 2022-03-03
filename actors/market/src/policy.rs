@@ -3,8 +3,8 @@
 
 use std::cmp::max;
 
-use actors_runtime::network::EPOCHS_IN_DAY;
-use actors_runtime::DealWeight;
+use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::DealWeight;
 use fvm_shared::bigint::Integer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;

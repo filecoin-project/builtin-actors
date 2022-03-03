@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use actors_runtime::{u64_key, SetMultimap};
+use fil_actors_runtime::{u64_key, SetMultimap};
 use fvm_shared::blockstore::MemoryBlockstore;
 use fvm_shared::clock::ChainEpoch;
 
