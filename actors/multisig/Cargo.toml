@@ -25,6 +25,9 @@ integer-encoding = { version = "3.0", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 anyhow = "1.0.51"
 
+[dev-dependencies]
+fil_actors_runtime = { version = "6.0.0", path = "../runtime", features = ["test_utils"] }
+
 [build-dependencies]
 fil_builtin_actors_builder = { version = "6.0.1", path = "../../builder" }
 
