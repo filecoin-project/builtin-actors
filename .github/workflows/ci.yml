@@ -35,8 +35,6 @@ jobs:
           - name: build
             command: build
             push: true
-          - name: package
-            command: package
     env:
       SCCACHE_CACHE_SIZE: 2G
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
