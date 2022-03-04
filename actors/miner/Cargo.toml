@@ -29,9 +29,14 @@ byteorder = "1.3.4"
 anyhow = "1.0.51"
 itertools = "0.10.3"
 
+[dev-dependencies]
+fil_actors_runtime = { version = "6.0.0", path = "../runtime", features = ["test_utils"] }
+fil_actor_account = { version = "6.0.0", path = "../account" }
+rand = { version = "0.8.5" }
+cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
+
 [build-dependencies]
 fil_builtin_actors_builder = { version = "6.0.1", path = "../../builder" }
 
 [features]
 wasm = []
-
