@@ -26,10 +26,3 @@ anyhow = "1.0.51"
 fil_actors_runtime = { version = "6.0.0", path = "../runtime", features = ["test_utils"] }
 fvm_ipld_amt = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}
 derive_builder = "0.10"
-
-[build-dependencies]
-fil_builtin_actors_builder = { version = "0.1.0", path = "../../builder" }
-
-[features]
-wasm = []
-

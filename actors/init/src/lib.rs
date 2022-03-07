@@ -21,9 +21,6 @@ pub use self::types::*;
 mod state;
 mod types;
 
-#[cfg(feature = "wasm")]
-pub const WASM_BINARY: &[u8] = include_bytes!(env!("WASM_BINARY"));
-
 wasm_trampoline!(Actor);
 
 // * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)

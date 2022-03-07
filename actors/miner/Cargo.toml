@@ -34,9 +34,3 @@ fil_actors_runtime = { version = "6.0.0", path = "../runtime", features = ["test
 fil_actor_account = { version = "6.0.0", path = "../account" }
 rand = { version = "0.8.5" }
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
-
-[build-dependencies]
-fil_builtin_actors_builder = { version = "0.1.0", path = "../../builder" }
-
-[features]
-wasm = []

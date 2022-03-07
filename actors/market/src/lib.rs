@@ -41,9 +41,6 @@ mod policy;
 mod state;
 mod types;
 
-#[cfg(feature = "wasm")]
-pub const WASM_BINARY: &[u8] = include_bytes!(env!("WASM_BINARY"));
-
 wasm_trampoline!(Actor);
 
 fn request_miner_control_addrs<BS, RT>(
