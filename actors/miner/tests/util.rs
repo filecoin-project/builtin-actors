@@ -2,7 +2,9 @@ use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 
 use fil_actor_account::Method as AccountMethod;
-use fil_actor_miner::{Actor, Method, MinerConstructorParams as ConstructorParams};
+use fil_actor_miner::{
+    Actor, ChangePeerIDParams, Method, MinerConstructorParams as ConstructorParams, State,
+};
 
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -109,6 +111,7 @@ impl ActorHarness {
             rt.actor_code_cids.insert(*a, *ACCOUNT_ACTOR_CODE_ID);
         }
 
+        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
         rt.expect_send(
             self.worker,
@@ -118,7 +121,6 @@ impl ActorHarness {
             RawBytes::serialize(self.worker_key).unwrap(),
             ExitCode::Ok,
         );
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
 
         let result = rt
             .call::<Actor>(
@@ -128,5 +130,32 @@ impl ActorHarness {
             .unwrap();
         assert_eq!(result.bytes().len(), 0);
         rt.verify();
+    }
+
+    pub fn set_peer_id(self: &Self, rt: &mut MockRuntime, new_id: Vec<u8>) {
+        let params = ChangePeerIDParams {
+            new_id: new_id.clone(),
+        };
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        let mut caller_addrs = self.control_addrs.clone();
+        caller_addrs.push(self.worker.clone());
+        caller_addrs.push(self.owner.clone());
+        rt.expect_validate_caller_addr(caller_addrs);
+
+        let result = rt
+            .call::<Actor>(
+                Method::ChangePeerID as u64,
+                &RawBytes::serialize(params).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(result.bytes().len(), 0);
+        rt.verify();
+
+        let state = rt.get_state::<State>().unwrap();
+        let info = state.get_info(&rt.store).unwrap();
+
+        assert_eq!(new_id, info.peer_id);
     }
 }
