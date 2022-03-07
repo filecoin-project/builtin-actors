@@ -22,3 +22,6 @@ num-derive = "0.3.0"
 cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
 lazy_static = "1.4"
 anyhow = "1.0.51"
+
+[dev-dependencies]
+fil_actors_runtime = { version = "7.0.0", path = "../runtime", features = ["test_utils"] }
