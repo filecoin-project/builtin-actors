@@ -194,7 +194,7 @@ fn control_addresses_are_resolved_during_construction() {
 }
 
 #[test]
-fn fails_if_control_address_is_not_an_acount_actor() {
+fn fails_if_control_address_is_not_an_account_actor() {
     let mut env = prepare_env();
 
     let control1 = Address::new_id(501);
