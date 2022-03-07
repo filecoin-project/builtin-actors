@@ -459,28 +459,22 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
         let addrs: Vec<Address> = addresses.into_iter().cloned().collect();
 
+        let mut expectations = self.expectations.borrow_mut();
         assert!(
-            self.expectations
-                .borrow_mut()
-                .expect_validate_caller_addr
-                .is_some(),
+            expectations.expect_validate_caller_addr.is_some(),
             "unexpected validate caller addrs"
         );
+
+        let expected_addrs = expectations.expect_validate_caller_addr.as_ref().unwrap();
         assert_eq!(
-            &addrs,
-            self.expectations
-                .borrow_mut()
-                .expect_validate_caller_addr
-                .as_ref()
-                .unwrap(),
+            &addrs, expected_addrs,
             "unexpected validate caller addrs {:?}, expected {:?}",
-            addrs,
-            self.expectations.borrow_mut().expect_validate_caller_addr
+            addrs, &expectations.expect_validate_caller_addr
         );
 
         for expected in &addrs {
             if self.message().caller() == *expected {
-                self.expectations.borrow_mut().expect_validate_caller_addr = None;
+                expectations.expect_validate_caller_addr = None;
                 return Ok(());
             }
         }
