@@ -221,3 +221,7 @@ impl ActorHarness {
         rt.verify();
     }
 }
+
+pub fn check_state_invariants(_rt: &MockRuntime) {
+    // TODO check state invariants
+}
