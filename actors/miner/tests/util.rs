@@ -158,4 +158,21 @@ impl ActorHarness {
 
         assert_eq!(new_id, info.peer_id);
     }
+
+    pub fn set_peer_id_fail(self: &Self, rt: &mut MockRuntime, new_id: Vec<u8>) {
+        let params = ChangePeerIDParams {
+            new_id: new_id.clone(),
+        };
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        let result = rt
+            .call::<Actor>(
+                Method::ChangePeerID as u64,
+                &RawBytes::serialize(params).unwrap(),
+            )
+            .unwrap_err();
+        assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+        rt.verify();
+    }
 }
