@@ -4,7 +4,7 @@ use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{
     Actor, Deadline, Deadlines, Method, MinerConstructorParams as ConstructorParams, State,
-    WPOST_CHALLENGE_WINDOW, WPOST_PERIOD_DEADLINES, MAX_PEER_ID_LENGTH,
+    WPOST_CHALLENGE_WINDOW, WPOST_PERIOD_DEADLINES, MAX_PEER_ID_LENGTH, MAX_CONTROL_ADDRESSES,
 };
 
 use fvm_shared::address::Address;
@@ -249,7 +249,26 @@ fn test_construct_with_invalid_peer_id() {
 }
 
 #[test]
-fn fails_if_control_addresses_exceeds_maximum_length() {}
+fn fails_if_control_addresses_exceeds_maximum_length() {
+    let mut env = prepare_env();
+    env.control_addrs = Vec::new();
+    for i in 0..MAX_CONTROL_ADDRESSES+1 {
+        env.control_addrs.push(Address::new_id(i as u64));
+    }
+
+    let params = constructor_params(&env);
+    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+
+    let result = env
+        .rt
+        .call::<Actor>(
+            Method::Constructor as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+    env.rt.verify();
+}
 
 #[test]
 fn test_construct_with_large_multiaddr() {}
