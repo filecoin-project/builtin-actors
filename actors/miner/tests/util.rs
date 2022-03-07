@@ -3,14 +3,15 @@ use fil_actors_runtime::INIT_ACTOR_ADDR;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{
-    Actor, ChangePeerIDParams, Method, MinerConstructorParams as ConstructorParams, State,
+    Actor, ChangeMultiaddrsParams, ChangePeerIDParams, Method,
+    MinerConstructorParams as ConstructorParams, State,
 };
 
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::RawBytes;
+use fvm_shared::encoding::{BytesDe, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{
     RegisteredPoStProof, RegisteredSealProof, SectorNumber, SectorSize, StoragePower,
@@ -169,6 +170,50 @@ impl ActorHarness {
         let result = rt
             .call::<Actor>(
                 Method::ChangePeerID as u64,
+                &RawBytes::serialize(params).unwrap(),
+            )
+            .unwrap_err();
+        assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+        rt.verify();
+    }
+
+    pub fn set_multiaddr(self: &Self, rt: &mut MockRuntime, new_multiaddrs: Vec<BytesDe>) {
+        let params = ChangeMultiaddrsParams {
+            new_multi_addrs: new_multiaddrs.clone(),
+        };
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        let mut caller_addrs = self.control_addrs.clone();
+        caller_addrs.push(self.worker.clone());
+        caller_addrs.push(self.owner.clone());
+        rt.expect_validate_caller_addr(caller_addrs);
+
+        let result = rt
+            .call::<Actor>(
+                Method::ChangeMultiaddrs as u64,
+                &RawBytes::serialize(params).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(result.bytes().len(), 0);
+        rt.verify();
+
+        let state = rt.get_state::<State>().unwrap();
+        let info = state.get_info(&rt.store).unwrap();
+
+        assert_eq!(new_multiaddrs, info.multi_address);
+    }
+
+    pub fn set_multiaddr_fail(self: &Self, rt: &mut MockRuntime, new_multiaddrs: Vec<BytesDe>) {
+        let params = ChangeMultiaddrsParams {
+            new_multi_addrs: new_multiaddrs.clone(),
+        };
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        let result = rt
+            .call::<Actor>(
+                Method::ChangeMultiaddrs as u64,
                 &RawBytes::serialize(params).unwrap(),
             )
             .unwrap_err();
