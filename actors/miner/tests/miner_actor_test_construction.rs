@@ -146,7 +146,56 @@ fn simple_construction() {
 }
 
 #[test]
-fn control_addresses_are_resolved_during_construction() {}
+fn control_addresses_are_resolved_during_construction() {
+    let mut env = prepare_env();
+
+    let control1 = util::new_bls_addr(1);
+    let control1id = Address::new_id(555);
+    let control2 = util::new_bls_addr(2);
+    let control2id = Address::new_id(655);
+
+    env.control_addrs = vec!(control1, control2);
+    env.rt
+        .actor_code_cids
+        .insert(control1id, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt
+        .actor_code_cids
+        .insert(control2id, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt
+        .id_addresses
+        .insert(control1, control1id);
+    env.rt
+        .id_addresses
+        .insert(control2, control2id);
+
+    let params = constructor_params(&env);
+    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+    env.rt.expect_send(
+        env.worker,
+        AccountMethod::PubkeyAddress as u64,
+        RawBytes::default(),
+        TokenAmount::from(0),
+        RawBytes::serialize(env.worker_key).unwrap(),
+        ExitCode::Ok,
+    );
+
+    let result = env
+        .rt
+        .call::<Actor>(
+            Method::Constructor as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(result.bytes().len(), 0);
+    env.rt.verify();
+
+    let state = env.rt.get_state::<State>().unwrap();
+    let info = state.get_info(&env.rt.store).unwrap();
+
+    assert_eq!(2, info.control_addresses.len());
+    assert_eq!(control1id, info.control_addresses[0]);
+    assert_eq!(control2id, info.control_addresses[1]);
+}
 
 #[test]
 fn fails_if_control_address_is_not_an_acount_actor() {}
