@@ -198,7 +198,36 @@ fn control_addresses_are_resolved_during_construction() {
 }
 
 #[test]
-fn fails_if_control_address_is_not_an_acount_actor() {}
+fn fails_if_control_address_is_not_an_acount_actor() {
+    let mut env = prepare_env();
+
+    let control1 = Address::new_id(501);
+    env.control_addrs = vec!(control1);
+    env.rt
+        .actor_code_cids
+        .insert(control1, *PAYCH_ACTOR_CODE_ID);
+
+    let params = constructor_params(&env);
+    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+    env.rt.expect_send(
+        env.worker,
+        AccountMethod::PubkeyAddress as u64,
+        RawBytes::default(),
+        TokenAmount::from(0),
+        RawBytes::serialize(env.worker_key).unwrap(),
+        ExitCode::Ok,
+    );
+
+    let result = env
+        .rt
+        .call::<Actor>(
+            Method::Constructor as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+    env.rt.verify();
+}
 
 #[test]
 fn test_construct_with_invalid_peer_id() {}
