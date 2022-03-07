@@ -8,15 +8,18 @@ edition = "2021"
 repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm"]
 
-[dependencies]
-clap = { version= "3.0.14", features = ["derive"] }
-fvm_shared = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm" }
-fvm_ipld_car = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm" }
-cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
-multihash = { version = "0.16.1", default-features = false, features = ["identity"] }
-async-std = { version = "1.10.0" }
-futures = "0.3.21"
-fil_actor_bundler = { version = "1.0.0", path = "./bundler" }
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+fil_actor_account = { version = "6.0.0", path = "../actors/account" }
+fil_actor_verifreg = { version = "6.0.0", path = "../actors/verifreg" }
+fil_actor_cron = { version = "6.0.0", path = "../actors/cron" }
+fil_actor_market = { version = "6.0.0", path = "../actors/market" }
+fil_actor_multisig = { version = "6.0.0", path = "../actors/multisig" }
+fil_actor_paych = { version = "6.0.0", path = "../actors/paych" }
+fil_actor_power = { version = "6.0.0", path = "../actors/power" }
+fil_actor_miner = { version = "6.0.0", path = "../actors/miner" }
+fil_actor_reward = { version = "6.0.0", path = "../actors/reward" }
+fil_actor_system = { version = "6.0.0", path = "../actors/system" }
+fil_actor_init = { version = "6.0.0", path = "../actors/init" }
 
 [build-dependencies]
 fil_actor_bundler = { version = "1.0.0", path = "./bundler" }

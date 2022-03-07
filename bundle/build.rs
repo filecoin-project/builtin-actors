@@ -48,11 +48,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map(|(pkg, _)| String::from("fil_actor_") + pkg)
         .collect::<Vec<String>>();
 
-    let manifest_path = {
-        let curr_dir = std::env::current_dir()?;
-        let workspace_dir = curr_dir.parent().unwrap();
-        workspace_dir.join("Cargo.toml")
-    };
+    let manifest_path =
+        Path::new(&std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR unset"))
+            .join("Cargo.toml");
     println!("cargo:warning=manifest_path={:?}", &manifest_path);
 
     // Cargo build command for all actors at once.
