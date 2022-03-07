@@ -271,7 +271,26 @@ fn fails_if_control_addresses_exceeds_maximum_length() {
 }
 
 #[test]
-fn test_construct_with_large_multiaddr() {}
+fn test_construct_with_large_multiaddr() {
+    let mut env = prepare_env();
+    env.multiaddrs = Vec::new();
+    for _ in 0..100 {
+        env.multiaddrs.push(BytesDe(vec![0,1,2,3,4,5,6,7,8,9,10,11]));
+    }
+
+    let params = constructor_params(&env);
+    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+
+    let result = env
+        .rt
+        .call::<Actor>(
+            Method::Constructor as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+    env.rt.verify();
+}
 
 #[test]
 fn test_construct_with_empty_multiaddr() {}
