@@ -293,4 +293,22 @@ fn test_construct_with_large_multiaddr() {
 }
 
 #[test]
-fn test_construct_with_empty_multiaddr() {}
+fn test_construct_with_empty_multiaddr() {
+    let mut env = prepare_env();
+    env.multiaddrs = Vec::new();
+    env.multiaddrs.push(BytesDe(vec!()));
+    env.multiaddrs.push(BytesDe(vec!(1)));
+
+    let params = constructor_params(&env);
+    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+
+    let result = env
+        .rt
+        .call::<Actor>(
+            Method::Constructor as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+    env.rt.verify();
+}
