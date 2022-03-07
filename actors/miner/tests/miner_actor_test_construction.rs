@@ -4,7 +4,7 @@ use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{
     Actor, Deadline, Deadlines, Method, MinerConstructorParams as ConstructorParams, State,
-    WPOST_CHALLENGE_WINDOW, WPOST_PERIOD_DEADLINES, MAX_PEER_ID_LENGTH, MAX_CONTROL_ADDRESSES,
+    MAX_CONTROL_ADDRESSES, MAX_PEER_ID_LENGTH, WPOST_CHALLENGE_WINDOW, WPOST_PERIOD_DEADLINES,
 };
 
 use fvm_shared::address::Address;
@@ -154,19 +154,15 @@ fn control_addresses_are_resolved_during_construction() {
     let control2 = util::new_bls_addr(2);
     let control2id = Address::new_id(655);
 
-    env.control_addrs = vec!(control1, control2);
+    env.control_addrs = vec![control1, control2];
     env.rt
         .actor_code_cids
         .insert(control1id, *ACCOUNT_ACTOR_CODE_ID);
     env.rt
         .actor_code_cids
         .insert(control2id, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt
-        .id_addresses
-        .insert(control1, control1id);
-    env.rt
-        .id_addresses
-        .insert(control2, control2id);
+    env.rt.id_addresses.insert(control1, control1id);
+    env.rt.id_addresses.insert(control2, control2id);
 
     let params = constructor_params(&env);
     env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
@@ -202,7 +198,7 @@ fn fails_if_control_address_is_not_an_acount_actor() {
     let mut env = prepare_env();
 
     let control1 = Address::new_id(501);
-    env.control_addrs = vec!(control1);
+    env.control_addrs = vec![control1];
     env.rt
         .actor_code_cids
         .insert(control1, *PAYCH_ACTOR_CODE_ID);
@@ -232,7 +228,7 @@ fn fails_if_control_address_is_not_an_acount_actor() {
 #[test]
 fn test_construct_with_invalid_peer_id() {
     let mut env = prepare_env();
-    env.peer_id = vec![0; MAX_PEER_ID_LENGTH+1];
+    env.peer_id = vec![0; MAX_PEER_ID_LENGTH + 1];
 
     let params = constructor_params(&env);
     env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
@@ -252,7 +248,7 @@ fn test_construct_with_invalid_peer_id() {
 fn fails_if_control_addresses_exceeds_maximum_length() {
     let mut env = prepare_env();
     env.control_addrs = Vec::new();
-    for i in 0..MAX_CONTROL_ADDRESSES+1 {
+    for i in 0..MAX_CONTROL_ADDRESSES + 1 {
         env.control_addrs.push(Address::new_id(i as u64));
     }
 
@@ -275,7 +271,8 @@ fn test_construct_with_large_multiaddr() {
     let mut env = prepare_env();
     env.multiaddrs = Vec::new();
     for _ in 0..100 {
-        env.multiaddrs.push(BytesDe(vec![0,1,2,3,4,5,6,7,8,9,10,11]));
+        env.multiaddrs
+            .push(BytesDe(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]));
     }
 
     let params = constructor_params(&env);
@@ -296,8 +293,8 @@ fn test_construct_with_large_multiaddr() {
 fn test_construct_with_empty_multiaddr() {
     let mut env = prepare_env();
     env.multiaddrs = Vec::new();
-    env.multiaddrs.push(BytesDe(vec!()));
-    env.multiaddrs.push(BytesDe(vec!(1)));
+    env.multiaddrs.push(BytesDe(vec![]));
+    env.multiaddrs.push(BytesDe(vec![1]));
 
     let params = constructor_params(&env);
     env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
