@@ -1,9 +1,35 @@
+[package]
+name = "fil_builtin_actors_bundle"
+description = "Bundle of FVM-compatible Wasm bytecode for Filecoin builtin actors"
+version = "6.0.2"
+license = "MIT OR Apache-2.0"
+authors = ["Protocol Labs", "Filecoin Core Devs"]
+edition = "2021"
+repository = "https://github.com/filecoin-project/builtin-actors"
+keywords = ["filecoin", "web3", "wasm"]
+exclude = ["examples", ".github"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+fil_actor_account = { version = "6.0.2", path = "./actors/account" }
+fil_actor_verifreg = { version = "6.0.2", path = "./actors/verifreg" }
+fil_actor_cron = { version = "6.0.2", path = "./actors/cron" }
+fil_actor_market = { version = "6.0.2", path = "./actors/market" }
+fil_actor_multisig = { version = "6.0.2", path = "./actors/multisig" }
+fil_actor_paych = { version = "6.0.2", path = "./actors/paych" }
+fil_actor_power = { version = "6.0.2", path = "./actors/power" }
+fil_actor_miner = { version = "6.0.2", path = "./actors/miner" }
+fil_actor_reward = { version = "6.0.2", path = "./actors/reward" }
+fil_actor_system = { version = "6.0.2", path = "./actors/system" }
+fil_actor_init = { version = "6.0.2", path = "./actors/init" }
+
+[build-dependencies]
+fil_actor_bundler = { version = "1.0.0", path = "./bundler" }
+cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
+
 [workspace]
 members = [
      "actors/*",
-     "bundle/bundler",
-     "bundle",
-     "builder",
+     "bundler",
 ]
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
