@@ -245,29 +245,25 @@ pub struct ExpectComputeUnsealedSectorCid {
     exit_code: ExitCode,
 }
 
-pub fn expect_abort_contains_message<F: FnOnce() -> Result<RawBytes, ActorError>>(
-    exit_code: ExitCode,
+
+pub fn expect_abort_contains_message(
+    expect_exit_code: ExitCode,
     expect_msg: &str,
-    f: F,
+    res: Result<RawBytes, ActorError>,
 ) {
-    let res = f();
-    assert!(
-        res.is_err(),
-        "expected abort with exit code {} but call succeeded",
-        exit_code
-    );
-    let err = res.expect_err("unreachable, checked result is error before unwrapping");
+    let err = res.expect_err(&format!("expected abort with exit code {}, but call succeeded", expect_exit_code));
+    assert_eq!(err.exit_code(), expect_exit_code, "expected failure with exit code {}, but failed with exit code {}", expect_exit_code, err.exit_code());
     let err_msg = err.msg();
     assert!(
         err.msg().contains(expect_msg),
         "expected err message  {} to contain {}",
         err_msg,
-        expect_msg
+        expect_msg,
     );
 }
 
-pub fn expect_abort<F: FnOnce() -> Result<RawBytes, ActorError>>(exit_code: ExitCode, f: F) {
-    expect_abort_contains_message(exit_code, "", f);
+pub fn expect_abort(exit_code: ExitCode, res: Result<RawBytes, ActorError>) {
+    expect_abort_contains_message(exit_code, "", res);
 }
 
 impl MockRuntime {

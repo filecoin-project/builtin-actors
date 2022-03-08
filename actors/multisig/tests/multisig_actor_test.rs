@@ -1,7 +1,7 @@
 // use cid::Cid;
 use fil_actor_multisig::{Actor as MultisigActor, ConstructorParams, Method, SIGNERS_MAX};
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{ActorError, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_shared::address::Address;
 // use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
@@ -31,12 +31,10 @@ fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
 
     expect_abort(
         ExitCode::ErrIllegalArgument,
-        || -> Result<RawBytes, ActorError> {
-            rt.call::<MultisigActor>(
-                Method::Constructor as u64,
-                &RawBytes::serialize(&zero_signer_params).unwrap(),
-            )
-        },
+        rt.call::<MultisigActor>(
+            Method::Constructor as u64,
+            &RawBytes::serialize(&zero_signer_params).unwrap(),
+        ),
     );
     rt.verify();
 }
@@ -60,12 +58,10 @@ fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
     rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
     expect_abort(
         ExitCode::ErrIllegalArgument,
-        || -> Result<RawBytes, ActorError> {
-            rt.call::<MultisigActor>(
-                Method::Constructor as u64,
-                &RawBytes::serialize(&over_max_signers_params).unwrap(),
-            )
-        },
+        rt.call::<MultisigActor>(
+            Method::Constructor as u64,
+            &RawBytes::serialize(&over_max_signers_params).unwrap(),
+        ),
     );
     rt.verify();
 }
