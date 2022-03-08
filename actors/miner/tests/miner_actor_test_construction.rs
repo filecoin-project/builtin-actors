@@ -142,7 +142,7 @@ fn simple_construction() {
 
     assert!(state.early_terminations.is_empty());
 
-    // TODO: check state invariants
+    util::check_state_invariants(&env.rt);
 }
 
 #[test]
