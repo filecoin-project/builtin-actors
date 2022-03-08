@@ -59,6 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .args(packages.iter().map(|pkg| "-p=".to_owned() + pkg))
         .arg("--target=wasm32-unknown-unknown")
         .arg("--profile=wasm")
+        .arg("--locked")
         .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
         .env(
             "RUSTFLAGS",
