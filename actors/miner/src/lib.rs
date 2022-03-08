@@ -4224,7 +4224,7 @@ fn consensus_fault_active(info: &MinerInfo, curr_epoch: ChainEpoch) -> bool {
     curr_epoch <= info.consensus_fault_elapsed
 }
 
-fn power_for_sector(sector_size: SectorSize, sector: &SectorOnChainInfo) -> PowerPair {
+pub fn power_for_sector(sector_size: SectorSize, sector: &SectorOnChainInfo) -> PowerPair {
     PowerPair {
         raw: BigInt::from(sector_size as u64),
         qa: qa_power_for_sector(sector_size, sector),
