@@ -28,7 +28,6 @@ pub fn new_bls_addr(s: u8) -> Address {
     Address::new_bls(&key).unwrap()
 }
 
-#[allow(dead_code)]
 pub struct ActorHarness {
     pub receiver: Address,
     pub owner: Address,
