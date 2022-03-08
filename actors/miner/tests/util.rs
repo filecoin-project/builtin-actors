@@ -3,7 +3,7 @@ use fil_actors_runtime::INIT_ACTOR_ADDR;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{
-    Actor, ChangeMultiaddrsParams, ChangePeerIDParams, Method,
+    Actor, ChangeMultiaddrsParams, ChangePeerIDParams, GetControlAddressesReturn, Method,
     MinerConstructorParams as ConstructorParams, State,
 };
 
@@ -218,6 +218,21 @@ impl ActorHarness {
             .unwrap_err();
         assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
         rt.verify();
+    }
+
+    pub fn get_control_addresses(
+        self: &Self,
+        rt: &mut MockRuntime,
+    ) -> (Address, Address, Vec<Address>) {
+        rt.expect_validate_caller_any();
+
+        let result = rt
+            .call::<Actor>(Method::ControlAddresses as u64, &RawBytes::default())
+            .unwrap();
+        rt.verify();
+
+        let value = result.deserialize::<GetControlAddressesReturn>().unwrap();
+        (value.owner, value.worker, value.control_addresses)
     }
 }
 
