@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 /// SignersMax is the maximum number of signers allowed in a multisig. If more
 /// are required, please use a combining tree of multisigs.
-pub(super) const SIGNERS_MAX: usize = 256;
+pub const SIGNERS_MAX: usize = 256;
 
 /// Transaction ID type
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
