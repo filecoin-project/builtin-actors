@@ -249,6 +249,10 @@ pub struct ExpectComputeUnsealedSectorCid {
     exit_code: ExitCode,
 }
 
+pub fn expect_ok<T: fmt::Debug>(res: Result<T, ActorError>) -> T {
+    res.unwrap()
+}
+
 pub fn expect_abort_contains_message<T: fmt::Debug>(
     expect_exit_code: ExitCode,
     expect_msg: &str,
