@@ -98,6 +98,8 @@ pub struct MockRuntime {
 
     // policy
     pub policy: Policy,
+
+    pub circulating_supply: TokenAmount,
 }
 
 #[derive(Default)]
@@ -113,6 +115,8 @@ pub struct Expectations {
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: Option<ExpectComputeUnsealedSectorCid>,
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
+    pub expect_get_randomness_tickets: Option<ExpectRandomness>,
+    pub expect_get_randomness_beacon: Option<ExpectRandomness>,
 }
 
 impl Expectations {
@@ -127,6 +131,8 @@ impl Expectations {
         self.expect_verify_post = None;
         self.expect_compute_unsealed_sector_cid = None;
         self.expect_verify_consensus_fault = None;
+        self.expect_get_randomness_tickets = None;
+        self.expect_get_randomness_beacon = None;
     }
     fn verify(&mut self) {
         assert!(!self.expect_validate_caller_any, "expected ValidateCallerAny, not received");
@@ -163,6 +169,14 @@ impl Expectations {
             self.expect_verify_consensus_fault.is_none(),
             "expect_verify_consensus_fault not received",
         );
+        assert!(
+            self.expect_get_randomness_tickets.is_none(),
+            "expect_get_randomness_tickets not received",
+        );
+        assert!(
+            self.expect_get_randomness_beacon.is_none(),
+            "expect_get_randomness_beacon not received",
+        );
     }
 }
 
@@ -189,6 +203,7 @@ impl Default for MockRuntime {
             in_transaction: Default::default(),
             expectations: Default::default(),
             policy: Default::default(),
+            circulating_supply: Default::default(),
         }
     }
 }
@@ -249,8 +264,20 @@ pub struct ExpectComputeUnsealedSectorCid {
     exit_code: ExitCode,
 }
 
+#[derive(Clone, Debug)]
+pub struct ExpectRandomness {
+    tag: DomainSeparationTag,
+    epoch: ChainEpoch,
+    entropy: Vec<u8>,
+    out: Randomness,
+}
+
 pub fn expect_ok<T: fmt::Debug>(res: Result<T, ActorError>) -> T {
     res.unwrap()
+}
+
+pub fn expect_empty(res: RawBytes) {
+    assert_eq!(res, RawBytes::default());
 }
 
 pub fn expect_abort_contains_message<T: fmt::Debug>(
@@ -446,6 +473,30 @@ impl MockRuntime {
     pub fn replace_state<C: Cbor>(&mut self, obj: &C) {
         self.state = Some(self.store.put_cbor(obj, Code::Blake2b256).unwrap());
     }
+
+    #[allow(dead_code)]
+    pub fn expect_get_randomness_from_tickets(
+        &mut self,
+        tag: DomainSeparationTag,
+        epoch: ChainEpoch,
+        entropy: Vec<u8>,
+        out: Randomness,
+    ) {
+        let a = ExpectRandomness { tag, epoch, entropy, out };
+        self.expectations.borrow_mut().expect_get_randomness_tickets = Some(a);
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_get_randomness_from_beacon(
+        &mut self,
+        tag: DomainSeparationTag,
+        epoch: ChainEpoch,
+        entropy: Vec<u8>,
+        out: Randomness,
+    ) {
+        let a = ExpectRandomness { tag, epoch, entropy, out };
+        self.expectations.borrow_mut().expect_get_randomness_beacon = Some(a);
+    }
 }
 
 impl MessageInfo for MockRuntime {
@@ -536,12 +587,12 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
                 .unwrap()
         };
         let types: Vec<Cid> = types.into_iter().map(find_by_type).collect();
+        let expected_caller_type =
+            self.expectations.borrow_mut().expect_validate_caller_type.clone().unwrap();
         assert_eq!(
-            &types,
-            self.expectations.borrow_mut().expect_validate_caller_type.as_ref().unwrap(),
+            &types, &expected_caller_type,
             "unexpected validate caller code {:?}, expected {:?}",
-            types,
-            self.expectations.borrow_mut().expect_validate_caller_type
+            types, expected_caller_type,
         );
 
         for expected in &types {
@@ -579,20 +630,74 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
     fn get_randomness_from_tickets(
         &self,
-        _personalization: DomainSeparationTag,
-        _rand_epoch: ChainEpoch,
-        _entropy: &[u8],
+        tag: DomainSeparationTag,
+        epoch: ChainEpoch,
+        entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
-        unimplemented!()
+        let expected = self
+            .expectations
+            .borrow_mut()
+            .expect_get_randomness_tickets
+            .take()
+            .expect("unexpected call to get_randomness_from_tickets");
+
+        assert!(epoch <= self.epoch, "attempt to get randomness from future");
+        assert!(
+            expected.tag == tag,
+            "unexpected domain separation tag, expected: {:?}, actual: {:?}",
+            expected.tag,
+            tag
+        );
+        assert!(
+            expected.epoch == epoch,
+            "unexpected epoch, expected: {:?}, actual: {:?}",
+            expected.epoch,
+            epoch
+        );
+        assert!(
+            expected.entropy == Vec::from(entropy),
+            "unexpected entroy, expected {:?}, actual: {:?}",
+            expected.entropy,
+            entropy
+        );
+
+        Ok(expected.out)
     }
 
     fn get_randomness_from_beacon(
         &self,
-        _personalization: DomainSeparationTag,
-        _rand_epoch: ChainEpoch,
-        _entropy: &[u8],
+        tag: DomainSeparationTag,
+        epoch: ChainEpoch,
+        entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
-        unimplemented!()
+        let expected = self
+            .expectations
+            .borrow_mut()
+            .expect_get_randomness_beacon
+            .take()
+            .expect("unexpected call to get_randomness_from_beacon");
+
+        assert!(epoch <= self.epoch, "attempt to get randomness from future");
+        assert!(
+            expected.tag == tag,
+            "unexpected domain separation tag, expected: {:?}, actual: {:?}",
+            expected.tag,
+            tag
+        );
+        assert!(
+            expected.epoch == epoch,
+            "unexpected epoch, expected: {:?}, actual: {:?}",
+            expected.epoch,
+            epoch
+        );
+        assert!(
+            expected.entropy == Vec::from(entropy),
+            "unexpected entroy, expected {:?}, actual: {:?}",
+            expected.entropy,
+            entropy
+        );
+
+        Ok(expected.out)
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
@@ -726,7 +831,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     }
 
     fn total_fil_circ_supply(&self) -> TokenAmount {
-        unimplemented!();
+        self.circulating_supply.clone()
     }
 
     fn charge_gas(&mut self, _: &'static str, _: i64) {

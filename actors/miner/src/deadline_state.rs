@@ -26,12 +26,12 @@ use crate::SECTORS_AMT_BITWIDTH;
 
 // Bitwidth of AMTs determined empirically from mutation patterns and projections of mainnet data.
 // Usually a small array
-const DEADLINE_PARTITIONS_AMT_BITWIDTH: u32 = 3;
-const DEADLINE_EXPIRATIONS_AMT_BITWIDTH: u32 = 5;
+pub const DEADLINE_PARTITIONS_AMT_BITWIDTH: u32 = 3;
+pub const DEADLINE_EXPIRATIONS_AMT_BITWIDTH: u32 = 5;
 
 // Given that 4 partitions can be proven in one post, this AMT's height will
 // only exceed the partition AMT's height at ~0.75EiB of storage.
-const DEADLINE_OPTIMISTIC_POST_SUBMISSIONS_AMT_BITWIDTH: u32 = 2;
+pub const DEADLINE_OPTIMISTIC_POST_SUBMISSIONS_AMT_BITWIDTH: u32 = 2;
 
 /// Deadlines contains Deadline objects, describing the sectors due at the given
 /// deadline and their state (faulty, terminated, recovering, etc.).
@@ -149,26 +149,26 @@ pub struct Deadline {
 
     // Snapshot of partition state at the end of the previous challenge
     // window for this deadline.
-    partitions_snapshot: Cid,
+    pub partitions_snapshot: Cid,
 
     // Snapshot of the proofs submitted by the end of the previous challenge
     // window for this deadline.
     //
     // These proofs may be disputed via DisputeWindowedPoSt. Successfully
     // disputed window PoSts are removed from the snapshot.
-    optimistic_post_submissions_snapshot: Cid,
+    pub optimistic_post_submissions_snapshot: Cid,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct WindowedPoSt {
     // Partitions proved by this WindowedPoSt.
-    partitions: BitField,
+    pub partitions: BitField,
 
     // Array of proofs, one per distinct registered proof type present in
     // the sectors being proven. In the usual case of a single proof type,
     // this array will always have a single element (independent of number
     // of partitions).
-    proofs: Vec<PoStProof>,
+    pub proofs: Vec<PoStProof>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

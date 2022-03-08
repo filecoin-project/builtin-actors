@@ -32,5 +32,9 @@ itertools = "0.10.3"
 [dev-dependencies]
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features = ["test_utils", "sector-default"] }
 fil_actor_account = { version = "8.0.0-alpha.1", path = "../account" }
+fil_actor_reward = { version = "8.0.0-alpha.1", path = "../reward" }
+fil_actor_power = { version = "8.0.0-alpha.1", path = "../power" }
+fil_actor_market = { version = "8.0.0-alpha.1", path = "../market" }
 rand = "0.8.5"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+multihash = { version = "0.16.1", default-features = false }
