@@ -555,7 +555,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_account"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "fil_actors_runtime",
  "fvm_shared",
@@ -585,7 +585,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_cron"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "fil_actors_runtime",
  "fvm_shared",
@@ -597,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_init"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "anyhow",
  "cid",
@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_market"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "ahash",
  "anyhow",
@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_miner"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_multisig"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "anyhow",
  "cid",
@@ -667,7 +667,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_paych"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "anyhow",
  "cid",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_power"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "anyhow",
  "cid",
@@ -700,7 +700,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_reward"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "fil_actors_runtime",
  "fvm_shared",
@@ -713,7 +713,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_system"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "fil_actors_runtime",
  "fvm_shared",
@@ -724,7 +724,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_verifreg"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "anyhow",
  "cid",
@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_runtime"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "anyhow",
  "base64",
@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_bundle"
-version = "6.0.0"
+version = "6.0.2"
 dependencies = [
  "cid",
  "fil_actor_account",
