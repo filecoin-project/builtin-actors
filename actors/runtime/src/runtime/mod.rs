@@ -36,7 +36,7 @@ pub use self::policy::*;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
-pub trait Runtime<BS: Blockstore>: Syscalls {
+pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
     /// The network protocol version number at the current epoch.
     fn network_version(&self) -> NetworkVersion;
 
