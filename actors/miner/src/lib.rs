@@ -130,9 +130,9 @@ impl Actor {
     {
         rt.validate_immediate_caller_is(&[*INIT_ACTOR_ADDR])?;
 
-        check_control_addresses(rt.get_policy(), &params.control_addresses)?;
-        check_peer_info(rt.get_policy(), &params.peer_id, &params.multi_addresses)?;
-        check_valid_post_proof_type(rt.get_policy(), params.window_post_proof_type)?;
+        check_control_addresses(rt.policy(), &params.control_addresses)?;
+        check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
+        check_valid_post_proof_type(rt.policy(), params.window_post_proof_type)?;
 
         let owner = resolve_control_address(rt, params.owner)?;
         let worker = resolve_worker_address(rt, params.worker)?;
@@ -142,7 +142,7 @@ impl Actor {
             .map(|address| resolve_control_address(rt, address))
             .collect::<Result<_, _>>()?;
 
-        let policy = rt.get_policy();
+        let policy = rt.policy();
         let current_epoch = rt.curr_epoch();
         let blake2b = |b: &[u8]| rt.hash_blake2b(b);
         let offset = assign_proving_period_offset(policy, rt.message().receiver(), current_epoch, blake2b)
@@ -221,7 +221,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        check_control_addresses(rt.get_policy(), &params.new_control_addresses)?;
+        check_control_addresses(rt.policy(), &params.new_control_addresses)?;
 
         let new_worker = resolve_worker_address(rt, params.new_worker)?;
         let control_addresses: Vec<Address> = params
@@ -243,7 +243,7 @@ impl Actor {
             if new_worker != info.worker && info.pending_worker_key.is_none() {
                 info.pending_worker_key = Some(WorkerKeyChange {
                     new_worker,
-                    effective_at: rt.curr_epoch() + rt.get_policy().worker_key_change_delay,
+                    effective_at: rt.curr_epoch() + rt.policy().worker_key_change_delay,
                 })
             }
 
@@ -334,7 +334,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let policy = rt.get_policy();
+        let policy = rt.policy();
         check_peer_info(policy, &params.new_id, &[])?;
 
         rt.transaction(|state: &mut State, rt| {
@@ -364,7 +364,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let policy = rt.get_policy();
+        let policy = rt.policy();
         check_peer_info(policy, &[], &params.new_multi_addrs)?;
 
         rt.transaction(|state: &mut State, rt| {
@@ -398,7 +398,7 @@ impl Actor {
         let current_epoch = rt.curr_epoch();
 
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if params.proofs.len() != 1 {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -482,7 +482,7 @@ impl Actor {
 
             // Validate that the miner didn't try to prove too many partitions at once.
             let submission_partition_limit =
-                load_partitions_sectors_max(rt.get_policy(), info.window_post_partition_sectors);
+                load_partitions_sectors_max(rt.policy(), info.window_post_partition_sectors);
             if params.partitions.len() as u64 > submission_partition_limit {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -492,7 +492,7 @@ impl Actor {
                 ));
             }
 
-            let current_deadline = state.deadline_info(rt.get_policy(), current_epoch);
+            let current_deadline = state.deadline_info(rt.policy(), current_epoch);
 
             // Check that the miner state indicates that the current proving deadline has started.
             // This should only fail if the cron actor wasn't invoked, and matters only in case that it hasn't been
@@ -560,7 +560,7 @@ impl Actor {
                 .map_err(|e| e.wrap("failed to load deadlines"))?;
 
             let mut deadline = deadlines
-                .load_deadline(rt.get_policy(), rt.store(), params.deadline)
+                .load_deadline(rt.policy(), rt.store(), params.deadline)
                 .map_err(|e| {
                     e.downcast_default(
                         ExitCode::ErrIllegalState,
@@ -577,7 +577,7 @@ impl Actor {
             //
             // While we could perform _all_ operations at the end of challenge window, we do as we can here to avoid
             // overloading cron.
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             let fault_expiration = current_deadline.last() + policy.fault_max_age;
             let post_result = deadline
                 .record_proven_sectors(
@@ -693,7 +693,7 @@ impl Actor {
         let agg_sectors_count = sector_numbers.len();
 
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if agg_sectors_count > policy.max_aggregated_sectors {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -737,7 +737,7 @@ impl Actor {
         let mut compute_data_commitments_inputs = Vec::with_capacity(precommits.len());
         let mut precommits_to_confirm = Vec::new();
         for (i, precommit) in precommits.iter().enumerate() {
-            let msd = max_prove_commit_duration(rt.get_policy(), precommit.info.seal_proof).ok_or_else(|| {
+            let msd = max_prove_commit_duration(rt.policy(), precommit.info.seal_proof).ok_or_else(|| {
                 actor_error!(
                     ErrIllegalState,
                     "no max seal duration for proof type: {}",
@@ -790,7 +790,7 @@ impl Actor {
         })?;
 
         for (i, precommit) in precommits.iter().enumerate() {
-            let interactive_epoch = precommit.pre_commit_epoch + rt.get_policy().pre_commit_challenge_delay;
+            let interactive_epoch = precommit.pre_commit_epoch + rt.policy().pre_commit_challenge_delay;
             if rt.curr_epoch() <= interactive_epoch {
                 return Err(actor_error!(
                     ErrForbidden,
@@ -886,7 +886,7 @@ impl Actor {
         let reporter = rt.message().caller();
 
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if params.deadline >= policy.wpost_period_deadlines {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -908,7 +908,7 @@ impl Actor {
 
         let (pledge_delta, mut to_burn, power_delta, to_reward) =
             rt.transaction(|st: &mut State, rt| {
-                let policy = rt.get_policy();
+                let policy = rt.policy();
                 let dl_info = st.deadline_info(policy, current_epoch);
 
                 if !deadline_available_for_optimistic_post_dispute(
@@ -1136,7 +1136,7 @@ impl Actor {
     {
         let curr_epoch = rt.curr_epoch();
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if params.sectors.is_empty() {
                 return Err(actor_error!(ErrIllegalArgument, "batch empty"));
             } else if params.sectors.len() > policy.pre_commit_sector_batch_max_size {
@@ -1149,7 +1149,7 @@ impl Actor {
             }
         }
         // Check per-sector preconditions before opening state transaction or sending other messages.
-        let challenge_earliest = curr_epoch - rt.get_policy().max_pre_commit_randomness_lookback;
+        let challenge_earliest = curr_epoch - rt.policy().max_pre_commit_randomness_lookback;
         let mut sectors_deals = Vec::with_capacity(params.sectors.len());
         let mut sector_numbers = BitField::new();
         for precommit in params.sectors.iter() {
@@ -1162,7 +1162,7 @@ impl Actor {
                 ));
             }
             sector_numbers.set(precommit.sector_number);
-            if !can_pre_commit_seal_proof(rt.get_policy(), precommit.seal_proof) {
+            if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof) {
                 return Err(actor_error!(
                     ErrIllegalArgument,
                     "unsupported seal proof type {}",
@@ -1204,7 +1204,7 @@ impl Actor {
             // Require sector lifetime meets minimum by assuming activation happens at last epoch permitted for seal proof.
             // This could make sector maximum lifetime validation more lenient if the maximum sector limit isn't hit first.
             let max_activation =
-                curr_epoch + max_prove_commit_duration(rt.get_policy(), precommit.seal_proof).unwrap_or_default();
+                curr_epoch + max_prove_commit_duration(rt.policy(), precommit.seal_proof).unwrap_or_default();
             validate_expiration(
                 rt,
                 max_activation,
@@ -1218,7 +1218,7 @@ impl Actor {
                     "cannot replace sector without committing deals"
                 ));
             }
-            if precommit.replace_sector_deadline as u64 >= rt.get_policy().wpost_period_deadlines {
+            if precommit.replace_sector_deadline as u64 >= rt.policy().wpost_period_deadlines {
                 return Err(actor_error!(
                     ErrIllegalArgument,
                     "invalid deadline {}",
@@ -1294,7 +1294,7 @@ impl Actor {
             let mut chain_infos = Vec::with_capacity(params.sectors.len());
             let mut total_deposit_required = BigInt::zero();
             let mut clean_up_events = Vec::with_capacity(params.sectors.len());
-            let deal_count_max = sector_deals_max(rt.get_policy(), info.sector_size);
+            let deal_count_max = sector_deals_max(rt.policy(), info.sector_size);
 
             for (i, precommit) in params.sectors.iter().enumerate() {
                 // Sector must have the same Window PoSt proof type as the miner's recorded seal type.
@@ -1319,7 +1319,7 @@ impl Actor {
                     return Err(actor_error!(ErrIllegalArgument, "deals too large to fit in sector {} > {}", deal_weight.deal_space, info.sector_size));
                 }
                 if precommit.replace_capacity {
-                    validate_replace_sector(rt.get_policy(), state, store, precommit)?
+                    validate_replace_sector(rt.policy(), state, store, precommit)?
                 }
                 // Estimate the sector weight using the current epoch as an estimate for activation,
             	// and compute the pre-commit deposit using that weight.
@@ -1338,12 +1338,12 @@ impl Actor {
                 total_deposit_required += deposit_req;
 
                 // Calculate pre-commit cleanup
-                let msd = max_prove_commit_duration(rt.get_policy(), precommit.seal_proof)
+                let msd = max_prove_commit_duration(rt.policy(), precommit.seal_proof)
                 .ok_or_else(|| actor_error!(ErrIllegalArgument, "no max seal duration set for proof type: {}", i64::from(precommit.seal_proof)))?;
                 // PreCommitCleanUpDelay > 0 here is critical for the batch verification of proofs. Without it, if a proof arrived exactly on the
 			    // due epoch, ProveCommitSector would accept it, then the expiry event would remove it, and then
 			    // ConfirmSectorProofsValid would fail to find it.
-                let clean_up_bound = curr_epoch + msd + rt.get_policy().expired_pre_commit_clean_up_delay;
+                let clean_up_bound = curr_epoch + msd + rt.policy().expired_pre_commit_clean_up_delay;
                 clean_up_events.push((clean_up_bound, precommit.sector_number));
             }
             // Batch update actor state.
@@ -1365,7 +1365,7 @@ impl Actor {
                 .map_err(|e|
                     e.downcast_default(ExitCode::ErrIllegalState, "failed to write pre-committed sectors")
                 )?;
-            state.add_pre_commit_clean_ups(rt.get_policy(), store, clean_up_events)
+            state.add_pre_commit_clean_ups(rt.policy(), store, clean_up_events)
                 .map_err(|e| {
                     e.downcast_default(ExitCode::ErrIllegalState, "failed to add pre-commit expiry to queue")
                 })?;
@@ -1385,7 +1385,7 @@ impl Actor {
                 )
             })?;
         if needs_cron {
-            let new_dl_info = state.deadline_info(rt.get_policy(), curr_epoch);
+            let new_dl_info = state.deadline_info(rt.policy(), curr_epoch);
             enroll_cron_event(
                 rt,
                 new_dl_info.last(),
@@ -1447,7 +1447,7 @@ impl Actor {
             ));
         }
 
-        let msd = max_prove_commit_duration(rt.get_policy(), precommit.info.seal_proof).ok_or_else(|| {
+        let msd = max_prove_commit_duration(rt.policy(), precommit.info.seal_proof).ok_or_else(|| {
             actor_error!(
                 ErrIllegalState,
                 "no max seal duration set for proof type: {:?}",
@@ -1469,7 +1469,7 @@ impl Actor {
             rt,
             SealVerifyParams {
                 sealed_cid: precommit.info.sealed_cid,
-                interactive_epoch: precommit.pre_commit_epoch + rt.get_policy().pre_commit_challenge_delay,
+                interactive_epoch: precommit.pre_commit_epoch + rt.policy().pre_commit_challenge_delay,
                 seal_rand_epoch: precommit.info.seal_rand_epoch,
                 proof: params.proof,
                 deal_ids: precommit.info.deal_ids.clone(),
@@ -1575,7 +1575,7 @@ impl Actor {
     {
 
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if params.extensions.len() as u64 > policy.delcarations_max {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -1591,7 +1591,7 @@ impl Actor {
         let mut sector_count: u64 = 0;
 
         for decl in &mut params.extensions {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if decl.deadline >= policy.wpost_period_deadlines {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -1626,7 +1626,7 @@ impl Actor {
         }
 
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if sector_count > policy.addressed_sectors_max {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -1656,8 +1656,8 @@ impl Actor {
 
             // Group declarations by deadline, and remember iteration order.
             //
-            let mut decls_by_deadline = Vec::with_capacity(rt.get_policy().wpost_period_deadlines as usize);
-            for _ in 0..rt.get_policy().wpost_period_deadlines {
+            let mut decls_by_deadline = Vec::with_capacity(rt.policy().wpost_period_deadlines as usize);
+            for _ in 0..rt.policy().wpost_period_deadlines {
                 decls_by_deadline.push(Vec::new());
             }
             let mut deadlines_to_load = Vec::<u64>::new();
@@ -1679,7 +1679,7 @@ impl Actor {
             let mut pledge_delta = TokenAmount::zero();
 
             for deadline_idx in deadlines_to_load {
-                let policy = rt.get_policy();
+                let policy = rt.policy();
                 let mut deadline = deadlines.load_deadline(policy, store, deadline_idx).map_err(|e| {
                     e.downcast_default(
                         ExitCode::ErrIllegalState,
@@ -1905,7 +1905,7 @@ impl Actor {
         // They must be allowed to expire (and deposit burnt).
 
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if params.terminations.len() as u64 > policy.delcarations_max {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -1923,7 +1923,7 @@ impl Actor {
             let partition = term.partition;
 
             to_process
-                .add(rt.get_policy(), deadline, partition, term.sectors)
+                .add(rt.policy(), deadline, partition, term.sectors)
                 .map_err(|e| {
                     actor_error!(
                         ErrIllegalArgument,
@@ -1936,7 +1936,7 @@ impl Actor {
         }
 
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             to_process
                 .check(policy.addressed_partitions_max, policy.addressed_sectors_max)
                 .map_err(|e| {
@@ -1977,8 +1977,8 @@ impl Actor {
                 // If the deadline the current or next deadline to prove, don't allow terminating sectors.
                 // We assume that deadlines are immutable when being proven.
                 if !deadline_is_mutable(
-                    rt.get_policy(),
-                    state.current_proving_period_start(rt.get_policy(), curr_epoch),
+                    rt.policy(),
+                    state.current_proving_period_start(rt.policy(), curr_epoch),
                     deadline_idx,
                     curr_epoch,
                 ) {
@@ -1989,8 +1989,8 @@ impl Actor {
                     ));
                 }
 
-                let quant = state.quant_spec_for_deadline(rt.get_policy(), deadline_idx);
-                let mut deadline = deadlines.load_deadline(rt.get_policy(), store, deadline_idx).map_err(|e| {
+                let quant = state.quant_spec_for_deadline(rt.policy(), deadline_idx);
+                let mut deadline = deadlines.load_deadline(rt.policy(), store, deadline_idx).map_err(|e| {
                     e.downcast_default(
                         ExitCode::ErrIllegalState,
                         format!("failed to load deadline {}", deadline_idx),
@@ -1999,7 +1999,7 @@ impl Actor {
 
                 let removed_power = deadline
                     .terminate_sectors(
-                        rt.get_policy(),
+                        rt.policy(),
                         store,
                         &sectors,
                         curr_epoch,
@@ -2018,7 +2018,7 @@ impl Actor {
                 power_delta -= &removed_power;
 
                 deadlines
-                    .update_deadline(rt.get_policy(), store, deadline_idx, &deadline)
+                    .update_deadline(rt.policy(), store, deadline_idx, &deadline)
                     .map_err(|e| {
                         e.downcast_default(
                             ExitCode::ErrIllegalState,
@@ -2071,7 +2071,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if params.faults.len() as u64 > policy.delcarations_max {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -2089,7 +2089,7 @@ impl Actor {
             let partition = term.partition;
 
             to_process
-                .add(rt.get_policy(), deadline, partition, term.sectors)
+                .add(rt.policy(), deadline, partition, term.sectors)
                 .map_err(|e| {
                     actor_error!(
                         ErrIllegalArgument,
@@ -2102,7 +2102,7 @@ impl Actor {
         }
 
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             to_process
                 .check(policy.addressed_partitions_max, policy.addressed_sectors_max)
                 .map_err(|e| {
@@ -2136,7 +2136,7 @@ impl Actor {
             let mut new_fault_power_total = PowerPair::zero();
             let curr_epoch = rt.curr_epoch();
             for (deadline_idx, partition_map) in to_process.iter() {
-                let policy = rt.get_policy();
+                let policy = rt.policy();
                 let target_deadline = declaration_deadline_info(
                     policy,
                     state.current_proving_period_start(policy, curr_epoch),
@@ -2224,7 +2224,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if params.recoveries.len() as u64 > policy.delcarations_max {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -2242,7 +2242,7 @@ impl Actor {
             let partition = term.partition;
 
             to_process
-                .add(rt.get_policy(), deadline, partition, term.sectors)
+                .add(rt.policy(), deadline, partition, term.sectors)
                 .map_err(|e| {
                     actor_error!(
                         ErrIllegalArgument,
@@ -2255,7 +2255,7 @@ impl Actor {
         }
 
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             to_process
                 .check(policy.addressed_partitions_max, policy.addressed_sectors_max)
                 .map_err(|e| {
@@ -2298,7 +2298,7 @@ impl Actor {
             })?;
             let curr_epoch = rt.curr_epoch();
             for (deadline_idx, partition_map) in to_process.iter() {
-                let policy = rt.get_policy();
+                let policy = rt.policy();
                 let target_deadline = declaration_deadline_info(
                     policy,
                     state.current_proving_period_start(policy, curr_epoch),
@@ -2386,7 +2386,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             if params.deadline >= policy.wpost_period_deadlines {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -2417,7 +2417,7 @@ impl Actor {
             )?;
 
             let store = rt.store();
-            let policy = rt.get_policy();
+            let policy = rt.policy();
 
             if !deadline_available_for_compaction(
                 policy,
@@ -2764,7 +2764,7 @@ impl Actor {
             let reward_amount = std::cmp::min(&burn_amount, &slasher_reward).clone();
             burn_amount -= &reward_amount;
 
-            info.consensus_fault_elapsed = rt.curr_epoch() + rt.get_policy().consensus_fault_ineligibility_duration;
+            info.consensus_fault_elapsed = rt.curr_epoch() + rt.policy().consensus_fault_ineligibility_duration;
 
             st.save_info(rt.store(), &info).map_err(|e| {
                 e.downcast_default(ExitCode::ErrSerialization, "failed to save miner info")
@@ -3012,7 +3012,7 @@ where
     let (result, more, deals_to_terminate, penalty, pledge_delta) =
         rt.transaction(|state: &mut State, rt| {
             let store = rt.store();
-            let policy = rt.get_policy();
+            let policy = rt.policy();
 
             let (result, more) = state
                 .pop_early_terminations(policy, store, policy.addressed_partitions_max, policy.addressed_sectors_max)
@@ -3152,7 +3152,7 @@ where
     let mut continue_cron = false;
 
     let state: State = rt.transaction(|state: &mut State, rt| {
-        let policy = rt.get_policy();
+        let policy = rt.policy();
         // Vest locked funds.
         // This happens first so that any subsequent penalties are taken
         // from locked vesting funds before funds free this epoch.
@@ -3244,7 +3244,7 @@ where
 
     // Schedule cron callback for next deadline's last epoch.
     if continue_cron {
-        let new_deadline_info = state.deadline_info(rt.get_policy(), curr_epoch + 1);
+        let new_deadline_info = state.deadline_info(rt.policy(), curr_epoch + 1);
         enroll_cron_event(
             rt,
             new_deadline_info.last(),
@@ -3290,7 +3290,7 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    let policy = rt.get_policy();
+    let policy = rt.policy();
 
     // Expiration must be after activation. Check this explicitly to avoid an underflow below.
     if expiration <= activation {
@@ -4217,7 +4217,7 @@ where
             }
         }
         if pre_commit.info.replace_capacity {
-            let policy = rt.get_policy();
+            let policy = rt.policy();
             replace_sectors
                 .add_values(
                     policy,
@@ -4245,7 +4245,7 @@ where
     }
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
-        let policy = rt.get_policy();
+        let policy = rt.policy();
         let store = rt.store();
         let info = get_miner_info(store, state)?;
         // Schedule expiration for replaced sectors to the end of their next deadline window.

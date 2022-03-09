@@ -5,7 +5,7 @@ use fvm_shared::sector::{RegisteredPoStProof,RegisteredSealProof};
 
 // A trait for runtime policy configuration
 pub trait RuntimePolicy {
-    fn get_policy(&self) -> &Policy;
+    fn policy(&self) -> &Policy;
 }
 
 // The policy itself
