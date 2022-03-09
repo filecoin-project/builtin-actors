@@ -20,7 +20,7 @@ use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
-use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Syscalls};
+use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Policy, RuntimePolicy, Syscalls};
 use crate::{actor_error, ActorError, Runtime};
 
 lazy_static! {
@@ -39,6 +39,8 @@ pub struct FvmRuntime<B = ActorBlockstore> {
     in_transaction: bool,
     /// Indicates that the caller has been validated.
     caller_validated: bool,
+    /// The runtime policy
+    policy: Policy,
 }
 
 impl Default for FvmRuntime {
@@ -47,6 +49,7 @@ impl Default for FvmRuntime {
             blockstore: ActorBlockstore,
             in_transaction: false,
             caller_validated: false,
+            policy: Policy::default(),
         }
     }
 }
@@ -62,6 +65,11 @@ impl<B> FvmRuntime<B> {
         }
         self.caller_validated = true;
         Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn policy_mut(&mut self) -> &mut Policy {
+        &mut self.policy
     }
 }
 
@@ -388,6 +396,15 @@ where
             Ok(true) => Ok(()),
             Ok(false) | Err(_) => Err(Error::msg("invalid aggregate")),
         }
+    }
+}
+
+impl<B> RuntimePolicy for FvmRuntime<B>
+where
+    B: Blockstore,
+{
+    fn policy(&self) -> &Policy {
+        &self.policy
     }
 }
 

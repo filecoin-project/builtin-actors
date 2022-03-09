@@ -1,15 +1,17 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::Array;
+
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::sector::SectorNumber;
 
-use super::policy::*;
 use super::{DeadlineInfo, Deadlines, Partition};
 
 pub fn new_deadline_info(
+    policy: &Policy,
     proving_period_start: ChainEpoch,
     deadline_idx: u64,
     current_epoch: ChainEpoch,
@@ -18,11 +20,11 @@ pub fn new_deadline_info(
         proving_period_start,
         deadline_idx,
         current_epoch,
-        WPOST_PERIOD_DEADLINES,
-        WPOST_PROVING_PERIOD,
-        WPOST_CHALLENGE_WINDOW,
-        WPOST_CHALLENGE_LOOKBACK,
-        FAULT_DECLARATION_CUTOFF,
+        policy.wpost_period_deadlines,
+        policy.wpost_proving_period,
+        policy.wpost_challenge_window,
+        policy.wpost_challenge_lookback,
+        policy.fault_declaration_cutoff,
     )
 }
 
@@ -31,12 +33,13 @@ impl Deadlines {
     /// Returns an error if the sector number is not tracked by `self`.
     pub fn find_sector<BS: Blockstore>(
         &self,
+        policy: &Policy,
         store: &BS,
         sector_number: SectorNumber,
     ) -> anyhow::Result<(u64, u64)> {
         for i in 0..self.due.len() {
             let deadline_idx = i as u64;
-            let deadline = self.load_deadline(store, deadline_idx)?;
+            let deadline = self.load_deadline(policy, store, deadline_idx)?;
             let partitions = Array::<Partition, _>::load(&deadline.partitions, store)?;
 
             let mut partition_idx = None;
@@ -64,6 +67,7 @@ impl Deadlines {
 
 /// Returns true if the deadline at the given index is currently mutable.
 pub fn deadline_is_mutable(
+    policy: &Policy,
     proving_period_start: ChainEpoch,
     deadline_idx: u64,
     current_epoch: ChainEpoch,
@@ -71,16 +75,17 @@ pub fn deadline_is_mutable(
     // Get the next non-elapsed deadline (i.e., the next time we care about
     // mutations to the deadline).
     let deadline_info =
-        new_deadline_info(proving_period_start, deadline_idx, current_epoch).next_not_elapsed();
+        new_deadline_info(policy, proving_period_start, deadline_idx, current_epoch)
+            .next_not_elapsed();
 
     // Ensure that the current epoch is at least one challenge window before
     // that deadline opens.
-    current_epoch < deadline_info.open - WPOST_CHALLENGE_WINDOW
+    current_epoch < deadline_info.open - policy.wpost_challenge_window
 }
 
-pub fn quant_spec_for_deadline(di: &DeadlineInfo) -> QuantSpec {
+pub fn quant_spec_for_deadline(policy: &Policy, di: &DeadlineInfo) -> QuantSpec {
     QuantSpec {
-        unit: WPOST_PROVING_PERIOD,
+        unit: policy.wpost_proving_period,
         offset: di.last(),
     }
 }
@@ -91,6 +96,7 @@ pub fn quant_spec_for_deadline(di: &DeadlineInfo) -> QuantSpec {
 // 1. Optimistic PoSts may not be disputed while the challenge window is open.
 // 2. Optimistic PoSts may not be disputed after the miner could have compacted the deadline.
 pub fn deadline_available_for_optimistic_post_dispute(
+    policy: &Policy,
     proving_period_start: ChainEpoch,
     deadline_idx: u64,
     current_epoch: ChainEpoch,
@@ -98,11 +104,12 @@ pub fn deadline_available_for_optimistic_post_dispute(
     if proving_period_start > current_epoch {
         return false;
     }
-    let dl_info =
-        new_deadline_info(proving_period_start, deadline_idx, current_epoch).next_not_elapsed();
+    let dl_info = new_deadline_info(policy, proving_period_start, deadline_idx, current_epoch)
+        .next_not_elapsed();
 
     !dl_info.is_open()
-        && current_epoch < (dl_info.close - WPOST_PROVING_PERIOD) + WPOST_DISPUTE_WINDOW
+        && current_epoch
+            < (dl_info.close - policy.wpost_proving_period) + policy.wpost_dispute_window
 }
 
 // Returns true if the given deadline may compacted in the current epoch.
@@ -113,12 +120,14 @@ pub fn deadline_available_for_optimistic_post_dispute(
 // 3. Optimistically accepted posts from the deadline's last challenge window
 //    can currently be disputed.
 pub fn deadline_available_for_compaction(
+    policy: &Policy,
     proving_period_start: ChainEpoch,
     deadline_idx: u64,
     current_epoch: ChainEpoch,
 ) -> bool {
-    deadline_is_mutable(proving_period_start, deadline_idx, current_epoch)
+    deadline_is_mutable(policy, proving_period_start, deadline_idx, current_epoch)
         && !deadline_available_for_optimistic_post_dispute(
+            policy,
             proving_period_start,
             deadline_idx,
             current_epoch,
@@ -129,16 +138,22 @@ pub fn deadline_available_for_compaction(
 // the offset implied by the proving period. This works correctly even for the state
 // of a miner actor without an active deadline cron
 pub fn new_deadline_info_from_offset_and_epoch(
+    policy: &Policy,
     period_start_seed: ChainEpoch,
     current_epoch: ChainEpoch,
 ) -> DeadlineInfo {
     let q = QuantSpec {
-        unit: WPOST_PROVING_PERIOD,
+        unit: policy.wpost_proving_period,
         offset: period_start_seed,
     };
     let current_period_start = q.quantize_down(current_epoch);
-    let current_deadline_idx = ((current_epoch - current_period_start) / WPOST_CHALLENGE_WINDOW)
-        as u64
-        % WPOST_PERIOD_DEADLINES;
-    new_deadline_info(current_period_start, current_deadline_idx, current_epoch)
+    let current_deadline_idx = ((current_epoch - current_period_start)
+        / policy.wpost_challenge_window) as u64
+        % policy.wpost_period_deadlines;
+    new_deadline_info(
+        policy,
+        current_period_start,
+        current_deadline_idx,
+        current_epoch,
+    )
 }

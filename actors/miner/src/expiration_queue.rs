@@ -7,6 +7,7 @@ use std::convert::TryInto;
 use anyhow::anyhow;
 use bitfield::BitField;
 use cid::Cid;
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{ActorDowncast, Array};
 use fvm_ipld_amt::{Error as AmtError, ValueMut};
 use fvm_shared::bigint::bigint_ser;
@@ -18,7 +19,6 @@ use fvm_shared::sector::{SectorNumber, SectorSize};
 use num_traits::{Signed, Zero};
 
 use super::{power_for_sector, PowerPair, SectorOnChainInfo};
-use crate::policy::ADDRESSED_SECTORS_MAX;
 
 /// An internal limit on the cardinality of a bitfield in a queue entry.
 /// This must be at least large enough to support the maximum number of sectors in a partition.
@@ -470,6 +470,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     /// Fails if any sectors are not found in the queue.
     pub fn remove_sectors(
         &mut self,
+        policy: &Policy,
         sectors: &[SectorOnChainInfo],
         faults: &BitField,
         recovering: &BitField,
@@ -480,13 +481,13 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         // ADDRESSED_SECTORS_MAX is defined as 25000, so this will not error.
         let faults_map: BTreeSet<_> = faults
-            .bounded_iter(ADDRESSED_SECTORS_MAX)
+            .bounded_iter(policy.addressed_sectors_max)
             .map_err(|e| anyhow!("failed to expand faults: {}", e))?
             .map(|i| i as SectorNumber)
             .collect();
 
         let recovering_map: BTreeSet<_> = recovering
-            .bounded_iter(ADDRESSED_SECTORS_MAX)
+            .bounded_iter(policy.addressed_sectors_max)
             .map_err(|e| anyhow!("failed to expand recoveries: {}", e))?
             .map(|i| i as SectorNumber)
             .collect();
