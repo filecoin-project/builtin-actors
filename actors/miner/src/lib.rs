@@ -1662,11 +1662,9 @@ impl Actor {
 
             // Group declarations by deadline, and remember iteration order.
             //
-            let mut decls_by_deadline =
-                Vec::with_capacity(rt.policy().wpost_period_deadlines as usize);
-            for _ in 0..rt.policy().wpost_period_deadlines {
-                decls_by_deadline.push(Vec::new());
-            }
+            let mut decls_by_deadline: Vec<_> = iter::repeat_with(Vec::new)
+                .take(rt.policy().wpost_period_deadlines as usize)
+                .collect();
             let mut deadlines_to_load = Vec::<u64>::new();
 
             for decl in params.extensions {
