@@ -3,9 +3,13 @@ use std::collections::HashSet;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::RegisteredPoStProof;
 
-// A triat for runtime policy configuration
+// A trait for runtime policy configuration
 pub trait RuntimePolicy {
     fn get_policy<'a>() -> &'a Policy;
+}
+
+// A trait for scope allowed policy udpates, e.g. tests and builder objects
+pub trait RuntimePolicyUpdate {
     fn update_policy(update: dyn FnOnce(&mut Policy));
 }
 
