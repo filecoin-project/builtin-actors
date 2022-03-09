@@ -6,6 +6,8 @@ use std::collections::BinaryHeap;
 
 use anyhow::anyhow;
 
+use fil_actors_runtime::runtime::Policy;
+
 use super::{Deadline, SectorOnChainInfo};
 
 fn div_rounding_up(dividend: u64, divisor: u64) -> u64 {
@@ -134,6 +136,7 @@ fn cmp(a: &DeadlineAssignmentInfo, b: &DeadlineAssignmentInfo, partition_size: u
 // Assigns partitions to deadlines, first filling partial partitions, then
 // adding new partitions to deadlines with the fewest live sectors.
 pub fn assign_deadlines(
+    policy: &Policy,
     max_partitions: u64,
     partition_size: u64,
     deadlines: &[Option<Deadline>],
@@ -181,7 +184,7 @@ pub fn assign_deadlines(
 
     assert!(!heap.is_empty());
 
-    let mut changes = vec![Vec::new(); super::WPOST_PERIOD_DEADLINES as usize];
+    let mut changes = vec![Vec::new(); policy.wpost_period_deadlines as usize];
 
     for sector in sectors {
         let info = &mut heap.peek_mut().unwrap().info;

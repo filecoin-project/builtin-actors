@@ -8,6 +8,7 @@ use anyhow::anyhow;
 use bitfield::{BitField, UnvalidatedBitField, Validate};
 use cid::Cid;
 use fil_actors_runtime::{actor_error, ActorDowncast, Array};
+use fil_actors_runtime::runtime::Policy;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
@@ -482,6 +483,7 @@ impl Partition {
     /// The epoch of termination is recorded for future termination fee calculation.
     pub fn terminate_sectors<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         store: &BS,
         sectors: &Sectors<'_, BS>,
         epoch: ChainEpoch,
@@ -506,7 +508,7 @@ impl Partition {
         let mut expirations = ExpirationQueue::new(store, &self.expirations_epochs, quant)
             .map_err(|e| e.downcast_wrap("failed to load sector expirations"))?;
         let (mut removed, removed_recovering) = expirations
-            .remove_sectors(&sector_infos, &self.faults, &self.recoveries, sector_size)
+            .remove_sectors(policy, &sector_infos, &self.faults, &self.recoveries, sector_size)
             .map_err(|e| e.downcast_wrap("failed to remove sector expirations"))?;
 
         self.expirations_epochs = expirations

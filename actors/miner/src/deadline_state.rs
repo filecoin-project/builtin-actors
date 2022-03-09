@@ -9,6 +9,7 @@ use bitfield::BitField;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::runtime::Policy;
 use fvm_shared::blockstore::{Blockstore, CborStore};
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
@@ -19,7 +20,7 @@ use num_traits::{Signed, Zero};
 
 use super::{
     BitFieldQueue, ExpirationSet, Partition, PartitionSectorMap, PoStPartition, PowerPair,
-    SectorOnChainInfo, Sectors, TerminationResult, WPOST_PERIOD_DEADLINES,
+    SectorOnChainInfo, Sectors, TerminationResult,
 };
 
 // Bitwidth of AMTs determined empirically from mutation patterns and projections of mainnet data.
@@ -42,18 +43,19 @@ pub struct Deadlines {
 }
 
 impl Deadlines {
-    pub fn new(empty_deadline_cid: Cid) -> Self {
+    pub fn new(policy: &Policy, empty_deadline_cid: Cid) -> Self {
         Self {
-            due: vec![empty_deadline_cid; WPOST_PERIOD_DEADLINES as usize],
+            due: vec![empty_deadline_cid; policy.wpost_period_deadlines as usize],
         }
     }
 
     pub fn load_deadline<BS: Blockstore>(
         &self,
+        policy: &Policy,
         store: &BS,
         deadline_idx: u64,
     ) -> anyhow::Result<Deadline> {
-        if deadline_idx >= WPOST_PERIOD_DEADLINES {
+        if deadline_idx >= policy.wpost_period_deadlines {
             return Err(anyhow!(actor_error!(
                 ErrIllegalArgument,
                 "invalid deadline {}",
@@ -74,12 +76,13 @@ impl Deadlines {
 
     pub fn for_each<BS: Blockstore>(
         &self,
+        policy: &Policy,
         store: &BS,
         mut f: impl FnMut(u64, Deadline) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
         for i in 0..(self.due.len() as u64) {
             let index = i;
-            let deadline = self.load_deadline(store, index)?;
+            let deadline = self.load_deadline(policy, store, index)?;
             f(index, deadline)?;
         }
         Ok(())
@@ -87,11 +90,12 @@ impl Deadlines {
 
     pub fn update_deadline<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         store: &BS,
         deadline_idx: u64,
         deadline: &Deadline,
     ) -> anyhow::Result<()> {
-        if deadline_idx >= WPOST_PERIOD_DEADLINES {
+        if deadline_idx >= policy.wpost_period_deadlines {
             return Err(anyhow!("invalid deadline {}", deadline_idx));
         }
 
@@ -550,6 +554,7 @@ impl Deadline {
 
     pub fn terminate_sectors<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         store: &BS,
         sectors: &Sectors<'_, BS>,
         epoch: ChainEpoch,
@@ -572,7 +577,7 @@ impl Deadline {
                 .clone();
 
             let removed = partition
-                .terminate_sectors(store, sectors, epoch, sector_numbers, sector_size, quant)
+                .terminate_sectors(policy, store, sectors, epoch, sector_numbers, sector_size, quant)
                 .map_err(|e| {
                     e.downcast_wrap(format!(
                         "failed to terminate sectors in partition {}",

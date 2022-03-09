@@ -7,7 +7,7 @@ use anyhow::anyhow;
 use bitfield::{BitField, UnvalidatedBitField, Validate};
 use serde::{Deserialize, Serialize};
 
-use super::WPOST_PERIOD_DEADLINES;
+use fil_actors_runtime::runtime::Policy;
 
 /// Maps deadlines to partition maps.
 #[derive(Default)]
@@ -68,11 +68,12 @@ impl DeadlineSectorMap {
     /// Records the given sector bitfield at the given deadline/partition index.
     pub fn add(
         &mut self,
+        policy: &Policy,
         deadline_idx: u64,
         partition_idx: u64,
         sector_numbers: UnvalidatedBitField,
     ) -> anyhow::Result<()> {
-        if deadline_idx >= WPOST_PERIOD_DEADLINES {
+        if deadline_idx >= policy.wpost_period_deadlines {
             return Err(anyhow!("invalid deadline {}", deadline_idx));
         }
 
@@ -85,11 +86,13 @@ impl DeadlineSectorMap {
     /// Records the given sectors at the given deadline/partition index.
     pub fn add_values(
         &mut self,
+        policy: &Policy,
         deadline_idx: u64,
         partition_idx: u64,
         sector_numbers: &[u64],
     ) -> anyhow::Result<()> {
         self.add(
+            policy,
             deadline_idx,
             partition_idx,
             sector_numbers.iter().copied().collect::<BitField>().into(),

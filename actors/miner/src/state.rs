@@ -12,6 +12,7 @@ use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorDowncast,
     ActorError, Array,
 };
+use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
@@ -122,6 +123,7 @@ impl Cbor for State {}
 impl State {
     #[allow(clippy::too_many_arguments)]
     pub fn new<BS: Blockstore>(
+        policy: &Policy,
         store: &BS,
         info_cid: Cid,
         period_start: ChainEpoch,
@@ -170,7 +172,7 @@ impl State {
         })?;
 
         let empty_deadlines = store
-            .put_cbor(&Deadlines::new(empty_deadline), Code::Blake2b256)
+            .put_cbor(&Deadlines::new(policy, empty_deadline), Code::Blake2b256)
             .map_err(|e| {
                 e.downcast_default(
                     ExitCode::ErrIllegalState,
@@ -229,13 +231,14 @@ impl State {
     }
 
     /// Returns deadline calculations for the current (according to state) proving period.
-    pub fn deadline_info(&self, current_epoch: ChainEpoch) -> DeadlineInfo {
-        new_deadline_info_from_offset_and_epoch(self.proving_period_start, current_epoch)
+    pub fn deadline_info(&self, policy: &Policy, current_epoch: ChainEpoch) -> DeadlineInfo {
+        new_deadline_info_from_offset_and_epoch(policy, self.proving_period_start, current_epoch)
     }
     // Returns deadline calculations for the state recorded proving period and deadline.
     // This is out of date if the a miner does not have an active miner cron
-    pub fn recorded_deadline_info(&self, current_epoch: ChainEpoch) -> DeadlineInfo {
+    pub fn recorded_deadline_info(&self, policy: &Policy, current_epoch: ChainEpoch) -> DeadlineInfo {
         new_deadline_info(
+            policy,
             self.proving_period_start,
             self.current_deadline,
             current_epoch,
@@ -243,14 +246,14 @@ impl State {
     }
 
     // Returns current proving period start for the current epoch according to the current epoch and constant state offset
-    pub fn current_proving_period_start(&self, current_epoch: ChainEpoch) -> ChainEpoch {
-        let dl_info = self.deadline_info(current_epoch);
+    pub fn current_proving_period_start(&self, policy: &Policy, current_epoch: ChainEpoch) -> ChainEpoch {
+        let dl_info = self.deadline_info(policy, current_epoch);
         dl_info.period_start
     }
 
     /// Returns deadline calculations for the current (according to state) proving period.
-    pub fn quant_spec_for_deadline(&self, deadline_idx: u64) -> QuantSpec {
-        new_deadline_info(self.proving_period_start, deadline_idx, 0).quant_spec()
+    pub fn quant_spec_for_deadline(&self, policy: &Policy, deadline_idx: u64) -> QuantSpec {
+        new_deadline_info(policy, self.proving_period_start, deadline_idx, 0).quant_spec()
     }
 
     /// Marks a set of sector numbers as having been allocated.
@@ -448,11 +451,12 @@ impl State {
     /// Returns the deadline and partition index for a sector number.
     pub fn find_sector<BS: Blockstore>(
         &self,
+        policy: &Policy,
         store: &BS,
         sector_number: SectorNumber,
     ) -> anyhow::Result<(u64, u64)> {
         let deadlines = self.load_deadlines(store)?;
-        deadlines.find_sector(store, sector_number)
+        deadlines.find_sector(policy, store, sector_number)
     }
 
     /// Schedules each sector to expire at its next deadline end. If it can't find
@@ -466,6 +470,7 @@ impl State {
     /// sectors instead of failing. That way, the new sectors can still be proved.
     pub fn reschedule_sector_expirations<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         store: &BS,
         current_epoch: ChainEpoch,
         sector_size: SectorSize,
@@ -477,13 +482,14 @@ impl State {
         let mut all_replaced = Vec::new();
         for (deadline_idx, partition_sectors) in deadline_sectors.iter() {
             let deadline_info = new_deadline_info(
-                self.current_proving_period_start(current_epoch),
+                policy,
+                self.current_proving_period_start(policy, current_epoch),
                 deadline_idx,
                 current_epoch,
             )
             .next_not_elapsed();
             let new_expiration = deadline_info.last();
-            let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
+            let mut deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
 
             let replaced = deadline.reschedule_sector_expirations(
                 store,
@@ -495,7 +501,7 @@ impl State {
             )?;
             all_replaced.extend(replaced);
 
-            deadlines.update_deadline(store, deadline_idx, &deadline)?;
+            deadlines.update_deadline(policy, store, deadline_idx, &deadline)?;
         }
 
         self.save_deadlines(store, deadlines)?;
@@ -506,6 +512,7 @@ impl State {
     /// Assign new sectors to deadlines.
     pub fn assign_sectors_to_deadlines<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         store: &BS,
         current_epoch: ChainEpoch,
         mut sectors: Vec<SectorOnChainInfo>,
@@ -518,12 +525,13 @@ impl State {
         sectors.sort_by_key(|info| info.sector_number);
 
         let mut deadline_vec: Vec<Option<Deadline>> =
-            (0..WPOST_PERIOD_DEADLINES).map(|_| None).collect();
+            (0..policy.wpost_period_deadlines).map(|_| None).collect();
 
-        deadlines.for_each(store, |deadline_idx, deadline| {
+        deadlines.for_each(policy, store, |deadline_idx, deadline| {
             // Skip deadlines that aren't currently mutable.
             if deadline_is_mutable(
-                self.current_proving_period_start(current_epoch),
+                policy,
+                self.current_proving_period_start(policy, current_epoch),
                 deadline_idx,
                 current_epoch,
             ) {
@@ -534,7 +542,8 @@ impl State {
         })?;
 
         let deadline_to_sectors = assign_deadlines(
-            MAX_PARTITIONS_PER_DEADLINE,
+            policy,
+            policy.max_partitions_per_deadline,
             partition_size,
             &deadline_vec,
             sectors,
@@ -545,7 +554,7 @@ impl State {
                 continue;
             }
 
-            let quant = self.quant_spec_for_deadline(deadline_idx as u64);
+            let quant = self.quant_spec_for_deadline(policy, deadline_idx as u64);
             let deadline = deadline_vec[deadline_idx].as_mut().unwrap();
 
             // The power returned from AddSectors is ignored because it's not activated (proven) yet.
@@ -559,7 +568,7 @@ impl State {
                 quant,
             )?;
 
-            deadlines.update_deadline(store, deadline_idx as u64, deadline)?;
+            deadlines.update_deadline(policy, store, deadline_idx as u64, deadline)?;
         }
 
         self.save_deadlines(store, deadlines)?;
@@ -572,6 +581,7 @@ impl State {
     /// Returns `true` if we still have more early terminations to process.
     pub fn pop_early_terminations<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         store: &BS,
         max_partitions: u64,
         max_sectors: u64,
@@ -592,7 +602,7 @@ impl State {
             let deadline_idx = i;
 
             // Load deadline + partitions.
-            let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
+            let mut deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
 
             let (deadline_result, more) = deadline
                 .pop_early_terminations(
@@ -614,7 +624,7 @@ impl State {
             }
 
             // Save the deadline
-            deadlines.update_deadline(store, deadline_idx, &deadline)?;
+            deadlines.update_deadline(policy, store, deadline_idx, &deadline)?;
 
             if !result.below_limit(max_partitions, max_sectors) {
                 break;
@@ -637,13 +647,14 @@ impl State {
     // /Returns an error if the target sector cannot be found and/or is faulty/terminated.
     pub fn check_sector_health<BS: Blockstore>(
         &self,
+        policy: &Policy,
         store: &BS,
         deadline_idx: u64,
         partition_idx: u64,
         sector_number: SectorNumber,
     ) -> anyhow::Result<()> {
         let deadlines = self.load_deadlines(store)?;
-        let deadline = deadlines.load_deadline(store, deadline_idx)?;
+        let deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
         let partition = deadline.load_partition(store, partition_idx)?;
 
         if !partition.sectors.get(sector_number) {
@@ -976,20 +987,21 @@ impl State {
     }
 
     /// pre-commit expiry
-    pub fn quant_spec_every_deadline(&self) -> QuantSpec {
+    pub fn quant_spec_every_deadline(&self, policy: &Policy) -> QuantSpec {
         QuantSpec {
-            unit: WPOST_CHALLENGE_WINDOW,
+            unit: policy.wpost_challenge_window,
             offset: self.proving_period_start,
         }
     }
 
     pub fn add_pre_commit_clean_ups<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         store: &BS,
         cleanup_events: Vec<(ChainEpoch, u64)>,
     ) -> anyhow::Result<()> {
         // Load BitField Queue for sector expiry
-        let quant = self.quant_spec_every_deadline();
+        let quant = self.quant_spec_every_deadline(policy);
         let mut queue =
             super::BitFieldQueue::new(store, &self.pre_committed_sectors_cleanup, quant)
                 .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))?;
@@ -1001,6 +1013,7 @@ impl State {
 
     pub fn cleanup_expired_pre_commits<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         store: &BS,
         current_epoch: ChainEpoch,
     ) -> anyhow::Result<TokenAmount> {
@@ -1010,7 +1023,7 @@ impl State {
         let mut cleanup_queue = BitFieldQueue::new(
             store,
             &self.pre_committed_sectors_cleanup,
-            self.quant_spec_every_deadline(),
+            self.quant_spec_every_deadline(policy),
         )?;
 
         let (sectors, modified) = cleanup_queue.pop_until(current_epoch)?;
@@ -1055,12 +1068,13 @@ impl State {
 
     pub fn advance_deadline<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         store: &BS,
         current_epoch: ChainEpoch,
     ) -> anyhow::Result<AdvanceDeadlineResult> {
         let mut pledge_delta = TokenAmount::zero();
 
-        let dl_info = self.deadline_info(current_epoch);
+        let dl_info = self.deadline_info(policy, current_epoch);
 
         if !dl_info.period_started() {
             return Ok(AdvanceDeadlineResult {
@@ -1072,14 +1086,14 @@ impl State {
             });
         }
 
-        self.current_deadline = (dl_info.index + 1) % WPOST_PERIOD_DEADLINES;
+        self.current_deadline = (dl_info.index + 1) % policy.wpost_period_deadlines;
         if self.current_deadline == 0 {
-            self.proving_period_start = dl_info.period_start + WPOST_PROVING_PERIOD;
+            self.proving_period_start = dl_info.period_start + policy.wpost_proving_period;
         }
 
         let mut deadlines = self.load_deadlines(store)?;
 
-        let mut deadline = deadlines.load_deadline(store, dl_info.index)?;
+        let mut deadline = deadlines.load_deadline(policy, store, dl_info.index)?;
 
         let previously_faulty_power = deadline.faulty_power.clone();
 
@@ -1093,10 +1107,10 @@ impl State {
             });
         }
 
-        let quant = quant_spec_for_deadline(&dl_info);
+        let quant = quant_spec_for_deadline(policy, &dl_info);
 
         // Detect and penalize missing proofs.
-        let fault_expiration = dl_info.last() + FAULT_MAX_AGE;
+        let fault_expiration = dl_info.last() + policy.fault_max_age;
 
         let (mut power_delta, detected_faulty_power) =
             deadline.process_deadline_end(store, quant, fault_expiration)?;
@@ -1123,7 +1137,7 @@ impl State {
             self.early_terminations.set(dl_info.index);
         }
 
-        deadlines.update_deadline(store, dl_info.index, &deadline)?;
+        deadlines.update_deadline(policy, store, dl_info.index, &deadline)?;
 
         self.save_deadlines(store, deadlines)?;
 
