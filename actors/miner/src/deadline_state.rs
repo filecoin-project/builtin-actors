@@ -25,8 +25,8 @@ use super::{
 use crate::SECTORS_AMT_BITWIDTH;
 
 // Bitwidth of AMTs determined empirically from mutation patterns and projections of mainnet data.
-const DEADLINE_PARTITIONS_AMT_BITWIDTH: u32 = 3;
 // Usually a small array
+const DEADLINE_PARTITIONS_AMT_BITWIDTH: u32 = 3;
 const DEADLINE_EXPIRATIONS_AMT_BITWIDTH: u32 = 5;
 
 // Given that 4 partitions can be proven in one post, this AMT's height will

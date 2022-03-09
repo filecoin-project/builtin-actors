@@ -16,6 +16,8 @@ pub struct Policy {
     pub min_aggregated_sectors: u64,
     /// Maximum total aggregated proof size.
     pub max_aggregated_proof_size: usize,
+    /// Maximum total replica update proof size.
+    pub max_replica_update_proof_size: usize,
 
     /// The maximum number of sector pre-commitments in a single batch.
     /// 32 sectors per epoch would support a single miner onboarding 1EiB of 32GiB sectors in 1 year.
@@ -137,6 +139,7 @@ impl Default for Policy {
             max_aggregated_sectors: policy_constants::MAX_AGGREGATED_SECTORS,
             min_aggregated_sectors: policy_constants::MIN_AGGREGATED_SECTORS,
             max_aggregated_proof_size: policy_constants::MAX_AGGREGATED_PROOF_SIZE,
+            max_replica_update_proof_size: policy_constants::MAX_REPLICA_UPDATE_PROOF_SIZE,
             pre_commit_sector_batch_max_size: policy_constants::PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
             prove_replica_updates_max_size: policy_constants::PROVE_REPLICA_UPDATES_MAX_SIZE,
             expired_pre_commit_clean_up_delay: policy_constants::EXPIRED_PRE_COMMIT_CLEAN_UP_DELAY,
@@ -203,6 +206,8 @@ mod policy_constants {
     pub const MIN_AGGREGATED_SECTORS: u64 = 4;
     /// Maximum total aggregated proof size.
     pub const MAX_AGGREGATED_PROOF_SIZE: usize = 81960;
+    /// Maximum total aggregated proof size.
+    pub const MAX_REPLICA_UPDATE_PROOF_SIZE: usize = 4096;
 
     /// The maximum number of sector pre-commitments in a single batch.
     /// 32 sectors per epoch would support a single miner onboarding 1EiB of 32GiB sectors in 1 year.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::iter;
 use std::ops::Neg;
 
@@ -997,29 +997,24 @@ impl Actor {
                 continue;
             }
 
-            if let Ok(healthy) = state.check_sector_active(
-                rt.policy(),
-                rt.store(),
-                update.deadline,
-                update.partition,
-                update.sector_number,
-                true,
-            ) {
-                if !healthy {
-                    info!(
-                        "sector isn't healthy, skipping sector {}",
-                        update.sector_number
-                    );
-                    continue;
-                }
-            } else {
-                return Err(actor_error!(
-                    ErrIllegalArgument,
-                    "error checking sector health"
-                ));
+            if !state
+                .check_sector_active(
+                    rt.policy(),
+                    rt.store(),
+                    update.deadline,
+                    update.partition,
+                    update.sector_number,
+                    true,
+                )
+                .map_err(|_| actor_error!(ErrIllegalArgument, "error checking sector health"))?
+            {
+                info!(
+                    "sector isn't healthy, skipping sector {}",
+                    update.sector_number
+                );
+                continue;
             }
 
-            // TODO: must_get has never been used before, so check impl
             let res = Sectors::must_get(&sectors, update.sector_number);
             let sector_info = if let Ok(value) = res {
                 value
@@ -1108,17 +1103,17 @@ impl Actor {
         }
 
         // Group declarations by deadline
-        let mut decls_by_deadline = HashMap::<u64, Vec<UpdateWithDetails>>::new();
+        let mut decls_by_deadline = BTreeMap::<u64, Vec<UpdateWithDetails>>::new();
         let mut deadlines_to_load = Vec::<u64>::new();
         for (i, with_sector_info) in validated_updates.iter().enumerate() {
             let dl = with_sector_info.update.deadline;
-            if decls_by_deadline.get(&dl).is_none() {
+            if !decls_by_deadline.contains_key(&dl) {
                 deadlines_to_load.push(dl);
-                decls_by_deadline.insert(dl, vec![]);
             }
+
             decls_by_deadline
-                .get_mut(&dl)
-                .unwrap()
+                .entry(dl)
+                .or_default()
                 .push(UpdateWithDetails {
                     update: with_sector_info.update,
                     sector_info: &with_sector_info.sector_info,
@@ -1135,7 +1130,7 @@ impl Actor {
             let mut deadlines = state
                 .load_deadlines(rt.store())?;
 
-            let mut new_sectors = vec!(SectorOnChainInfo::default(); validated_updates.len());
+            let mut new_sectors = vec![SectorOnChainInfo::default(); validated_updates.len()];
             for &dl_idx in deadlines_to_load.iter() {
                 let mut deadline = deadlines
                     .load_deadline(rt.policy(),rt.store(), dl_idx)
@@ -1160,7 +1155,7 @@ impl Actor {
                 for (i, with_details) in decls_by_deadline[&dl_idx].iter().enumerate() {
                     let update_proof_type = with_details.sector_info.seal_proof
                         .registered_update_proof()
-                        .map_err(|_e|
+                        .map_err(|_|
                             actor_error!(
                                 ErrIllegalState,
                                 "couldn't load update proof type"
@@ -1243,7 +1238,7 @@ impl Actor {
 
                         let unlocked_balance = state
                             .get_unlocked_balance(&rt.current_balance())
-                            .map_err(|_e|
+                            .map_err(|_|
                                 actor_error!(ErrIllegalState, "failed to calculate unlocked balance")
                             )?;
                         if unlocked_balance < deficit {

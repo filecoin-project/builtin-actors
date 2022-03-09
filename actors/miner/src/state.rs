@@ -1165,7 +1165,7 @@ impl State {
         let fault_expiration = dl_info.last() + policy.fault_max_age;
 
         let (mut power_delta, detected_faulty_power) =
-            deadline.process_deadline_end(store, quant, fault_expiration, self.sectors.clone())?;
+            deadline.process_deadline_end(store, quant, fault_expiration, self.sectors)?;
 
         // Capture deadline's faulty power after new faults have been detected, but before it is
         // dropped along with faulty sectors expiring this round.
