@@ -188,6 +188,7 @@ impl Default for MockRuntime {
             store: Default::default(),
             in_transaction: Default::default(),
             expectations: Default::default(),
+            policy: Default::default(),
         }
     }
 }
