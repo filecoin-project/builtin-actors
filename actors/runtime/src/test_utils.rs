@@ -26,7 +26,7 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
-use crate::runtime::{ActorCode, MessageInfo, Runtime, Syscalls};
+use crate::runtime::{ActorCode, MessageInfo, Runtime, Syscalls, Policy, RuntimePolicy};
 use crate::{actor_error, ActorError};
 
 lazy_static! {
@@ -92,6 +92,9 @@ pub struct MockRuntime {
 
     // Expectations
     pub expectations: RefCell<Expectations>,
+
+    // policy
+    pub policy: Policy,
 }
 
 #[derive(Default)]
@@ -923,4 +926,8 @@ impl Syscalls for MockRuntime {
         // TODO: Implement this if we need it. Currently don't have a need.
         todo!()
     }
+}
+
+impl RuntimePolicy for MockRuntime {
+    fn get_policy<'a>(&self) -> &'a Policy { self.policy }
 }

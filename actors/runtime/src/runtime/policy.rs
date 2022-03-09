@@ -5,12 +5,7 @@ use fvm_shared::sector::RegisteredPoStProof;
 
 // A trait for runtime policy configuration
 pub trait RuntimePolicy {
-    fn get_policy<'a>() -> &'a Policy;
-}
-
-// A trait for scope allowed policy udpates, e.g. tests and builder objects
-pub trait RuntimePolicyUpdate {
-    fn update_policy(update: dyn FnOnce(&mut Policy));
+    fn get_policy<'a>(&self) -> &'a Policy;
 }
 
 // The policy itself

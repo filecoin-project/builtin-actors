@@ -20,7 +20,7 @@ use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
-use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Syscalls};
+use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Syscalls, Policy, RuntimePolicy};
 use crate::{actor_error, ActorError, Runtime};
 
 lazy_static! {
@@ -39,6 +39,8 @@ pub struct FvmRuntime<B = ActorBlockstore> {
     in_transaction: bool,
     /// Indicates that the caller has been validated.
     caller_validated: bool,
+    /// The runtime policy
+    policy: Policy,
 }
 
 impl Default for FvmRuntime {
@@ -390,6 +392,14 @@ where
         }
     }
 }
+
+impl<B> RuntimePolicy<B> for FvmRuntime<B>
+where
+    B: Blockstore,
+{
+    fn get_policy<'a>(&self) -> &'a Policy { self.policy }
+}
+
 
 /// A convenience function that built-in actors can delegate their execution to.
 ///
