@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::sector::RegisteredPoStProof;
+use fvm_shared::sector::{RegisteredPoStProof,RegisteredSealProof};
 
 // A trait for runtime policy configuration
 pub trait RuntimePolicy {
@@ -125,11 +125,15 @@ pub struct Policy {
 
     /// Allowed post proof types for new miners
     pub valid_post_proof_type: HashSet<RegisteredPoStProof>,
+
+    /// Allowed pre commit proof types for new miners
+    pub valid_pre_commit_proof_type: HashSet<RegisteredSealProof>,
 }
 
 impl Default for Policy {
     fn default() -> Policy {
-        Policy {
+        #[allow(unused_mut)] // for devnet mutation below
+        let mut policy = Policy {
             max_aggregated_sectors: policy_constants::MAX_AGGREGATED_SECTORS,
             min_aggregated_sectors: policy_constants::MIN_AGGREGATED_SECTORS,
             max_aggregated_proof_size: policy_constants::MAX_AGGREGATED_PROOF_SIZE,
@@ -169,7 +173,19 @@ impl Default for Policy {
                 RegisteredPoStProof::StackedDRGWindow32GiBV1,
                 RegisteredPoStProof::StackedDRGWindow64GiBV1,
             ]),
-        }
+            valid_pre_commit_proof_type: HashSet::<RegisteredSealProof>::from([
+                RegisteredSealProof::StackedDRG32GiBV1P1,
+                RegisteredSealProof::StackedDRG64GiBV1P1,
+            ]),
+        };
+
+        #[cfg(feature = "devnet")]
+        {
+            policy.valid_pre_commit_proof_type.insert(RegisteredSealProof::StackedDRG2KiBV1);
+            policy.valid_pre_commit_proof_type.insert(RegisteredSealProof::StackedDRG2KiBV1P1);
+        };
+
+        policy
     }
 }
 
