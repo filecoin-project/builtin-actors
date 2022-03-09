@@ -1,4 +1,4 @@
-# Built-in Filecoin actors (v6)
+# Built-in Filecoin actors (v7)
 
 This repo contains the code for the on-chain built-in actors that power the
 Filecoin network starting from network version 16.
