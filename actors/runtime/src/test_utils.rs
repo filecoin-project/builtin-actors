@@ -930,5 +930,5 @@ impl Syscalls for MockRuntime {
 }
 
 impl RuntimePolicy for MockRuntime {
-    fn get_policy<'a>(&self) -> &'a Policy { self.policy }
+    fn get_policy(&self) -> &Policy { &self.policy }
 }

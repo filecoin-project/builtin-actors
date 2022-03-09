@@ -49,6 +49,7 @@ impl Default for FvmRuntime {
             blockstore: ActorBlockstore,
             in_transaction: false,
             caller_validated: false,
+            policy: Policy::default(),
         }
     }
 }
@@ -393,11 +394,11 @@ where
     }
 }
 
-impl<B> RuntimePolicy<B> for FvmRuntime<B>
+impl<B> RuntimePolicy for FvmRuntime<B>
 where
     B: Blockstore,
 {
-    fn get_policy<'a>(&self) -> &'a Policy { self.policy }
+    fn get_policy(&self) -> &Policy { &self.policy }
 }
 
 
