@@ -66,6 +66,9 @@ impl<B> FvmRuntime<B> {
         self.caller_validated = true;
         Ok(())
     }
+
+    #[allow(dead_code)]
+    fn policy_mut(&mut self) -> &mut Policy { &mut self.policy }
 }
 
 /// A stub MessageInfo implementation performing FVM syscalls to obtain its fields.
