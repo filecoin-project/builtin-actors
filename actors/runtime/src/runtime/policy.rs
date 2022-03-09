@@ -57,9 +57,6 @@ pub struct Policy {
     /// MaxMultiaddrData is the maximum amount of data that can be stored in multiaddrs.
     pub max_multiaddr_data: usize,
 
-    pub max_prove_commit_size_v4: usize,
-    pub max_prove_commit_size_v5: usize,
-
     /// The maximum number of partitions that may be required to be loaded in a single invocation.
     /// This limits the number of simultaneous fault, recovery, or sector-extension declarations.
     /// With 48 deadlines (half-hour), 200 partitions per declaration permits loading a full EiB of 32GiB
@@ -149,8 +146,6 @@ impl Default for Policy {
             max_control_addresses: policy_constants::MAX_CONTROL_ADDRESSES,
             max_peer_id_length: policy_constants::MAX_PEER_ID_LENGTH,
             max_multiaddr_data: policy_constants::MAX_MULTIADDR_DATA,
-            max_prove_commit_size_v4: policy_constants::MAX_PROVE_COMMIT_SIZE_V4,
-            max_prove_commit_size_v5: policy_constants::MAX_PROVE_COMMIT_SIZE_V5,
             addressed_partitions_max: policy_constants::ADDRESSED_PARTITIONS_MAX,
             delcarations_max: policy_constants::DELCARATIONS_MAX,
             addressed_sectors_max: policy_constants::ADDRESSED_SECTORS_MAX,
@@ -244,9 +239,6 @@ mod policy_constants {
 
     /// MaxMultiaddrData is the maximum amount of data that can be stored in multiaddrs.
     pub const MAX_MULTIADDR_DATA: usize = 1024;
-
-    pub const MAX_PROVE_COMMIT_SIZE_V4: usize = 1024;
-    pub const MAX_PROVE_COMMIT_SIZE_V5: usize = 10240;
 
     /// The maximum number of partitions that may be required to be loaded in a single invocation.
     /// This limits the number of simultaneous fault, recovery, or sector-extension declarations.
