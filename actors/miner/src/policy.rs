@@ -5,8 +5,8 @@ use std::cmp;
 
 use cid::{Cid, Version};
 use fil_actors_runtime::network::*;
-use fil_actors_runtime::{DealWeight, EXPECTED_LEADERS_PER_EPOCH};
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::{DealWeight, EXPECTED_LEADERS_PER_EPOCH};
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, POSEIDON_BLS12_381_A1_FC1};
@@ -43,7 +43,11 @@ pub fn can_pre_commit_seal_proof(policy: &Policy, proof: RegisteredSealProof) ->
 }
 
 /// Checks whether a seal proof type is supported for new miners and sectors.
-pub fn can_extend_seal_proof_type(_policy: &Policy, proof: RegisteredSealProof, nv: NetworkVersion) -> bool {
+pub fn can_extend_seal_proof_type(
+    _policy: &Policy,
+    proof: RegisteredSealProof,
+    nv: NetworkVersion,
+) -> bool {
     // TODO encode this in the policy somehow
     use RegisteredSealProof::*;
     // Between V7 and V11, older seal proof types could not be extended (see FIP 0014).
@@ -55,7 +59,10 @@ pub fn can_extend_seal_proof_type(_policy: &Policy, proof: RegisteredSealProof, 
 
 /// Maximum duration to allow for the sealing process for seal algorithms.
 /// Dependent on algorithm and sector size
-pub fn max_prove_commit_duration(policy: &Policy, proof: RegisteredSealProof) -> Option<ChainEpoch> {
+pub fn max_prove_commit_duration(
+    policy: &Policy,
+    proof: RegisteredSealProof,
+) -> Option<ChainEpoch> {
     use RegisteredSealProof::*;
     match proof {
         StackedDRG32GiBV1 | StackedDRG2KiBV1 | StackedDRG8MiBV1 | StackedDRG512MiBV1
@@ -92,7 +99,6 @@ pub fn seal_proof_sector_maximum_lifetime(
         _ => None,
     }
 }
-
 
 /// DealWeight and VerifiedDealWeight are spacetime occupied by regular deals and verified deals in a sector.
 /// Sum of DealWeight and VerifiedDealWeight should be less than or equal to total SpaceTime of a sector.

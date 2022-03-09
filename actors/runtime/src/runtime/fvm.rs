@@ -20,7 +20,7 @@ use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
-use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Syscalls, Policy, RuntimePolicy};
+use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Policy, RuntimePolicy, Syscalls};
 use crate::{actor_error, ActorError, Runtime};
 
 lazy_static! {
@@ -68,7 +68,9 @@ impl<B> FvmRuntime<B> {
     }
 
     #[allow(dead_code)]
-    fn policy_mut(&mut self) -> &mut Policy { &mut self.policy }
+    fn policy_mut(&mut self) -> &mut Policy {
+        &mut self.policy
+    }
 }
 
 /// A stub MessageInfo implementation performing FVM syscalls to obtain its fields.
@@ -401,9 +403,10 @@ impl<B> RuntimePolicy for FvmRuntime<B>
 where
     B: Blockstore,
 {
-    fn policy(&self) -> &Policy { &self.policy }
+    fn policy(&self) -> &Policy {
+        &self.policy
+    }
 }
-
 
 /// A convenience function that built-in actors can delegate their execution to.
 ///

@@ -8,11 +8,11 @@ use anyhow::anyhow;
 use bitfield::BitField;
 use cid::multihash::Code;
 use cid::Cid;
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorDowncast,
     ActorError, Array,
 };
-use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
@@ -236,7 +236,11 @@ impl State {
     }
     // Returns deadline calculations for the state recorded proving period and deadline.
     // This is out of date if the a miner does not have an active miner cron
-    pub fn recorded_deadline_info(&self, policy: &Policy, current_epoch: ChainEpoch) -> DeadlineInfo {
+    pub fn recorded_deadline_info(
+        &self,
+        policy: &Policy,
+        current_epoch: ChainEpoch,
+    ) -> DeadlineInfo {
         new_deadline_info(
             policy,
             self.proving_period_start,
@@ -246,7 +250,11 @@ impl State {
     }
 
     // Returns current proving period start for the current epoch according to the current epoch and constant state offset
-    pub fn current_proving_period_start(&self, policy: &Policy, current_epoch: ChainEpoch) -> ChainEpoch {
+    pub fn current_proving_period_start(
+        &self,
+        policy: &Policy,
+        current_epoch: ChainEpoch,
+    ) -> ChainEpoch {
         let dl_info = self.deadline_info(policy, current_epoch);
         dl_info.period_start
     }

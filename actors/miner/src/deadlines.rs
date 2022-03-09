@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::Array;
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::Array;
 
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
@@ -75,7 +75,8 @@ pub fn deadline_is_mutable(
     // Get the next non-elapsed deadline (i.e., the next time we care about
     // mutations to the deadline).
     let deadline_info =
-        new_deadline_info(policy, proving_period_start, deadline_idx, current_epoch).next_not_elapsed();
+        new_deadline_info(policy, proving_period_start, deadline_idx, current_epoch)
+            .next_not_elapsed();
 
     // Ensure that the current epoch is at least one challenge window before
     // that deadline opens.
@@ -103,11 +104,12 @@ pub fn deadline_available_for_optimistic_post_dispute(
     if proving_period_start > current_epoch {
         return false;
     }
-    let dl_info =
-        new_deadline_info(policy, proving_period_start, deadline_idx, current_epoch).next_not_elapsed();
+    let dl_info = new_deadline_info(policy, proving_period_start, deadline_idx, current_epoch)
+        .next_not_elapsed();
 
     !dl_info.is_open()
-        && current_epoch < (dl_info.close - policy.wpost_proving_period) + policy.wpost_dispute_window
+        && current_epoch
+            < (dl_info.close - policy.wpost_proving_period) + policy.wpost_dispute_window
 }
 
 // Returns true if the given deadline may compacted in the current epoch.
@@ -145,8 +147,13 @@ pub fn new_deadline_info_from_offset_and_epoch(
         offset: period_start_seed,
     };
     let current_period_start = q.quantize_down(current_epoch);
-    let current_deadline_idx = ((current_epoch - current_period_start) / policy.wpost_challenge_window)
-        as u64
+    let current_deadline_idx = ((current_epoch - current_period_start)
+        / policy.wpost_challenge_window) as u64
         % policy.wpost_period_deadlines;
-    new_deadline_info(policy, current_period_start, current_deadline_idx, current_epoch)
+    new_deadline_info(
+        policy,
+        current_period_start,
+        current_deadline_idx,
+        current_epoch,
+    )
 }

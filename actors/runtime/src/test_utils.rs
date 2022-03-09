@@ -26,7 +26,7 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
-use crate::runtime::{ActorCode, MessageInfo, Runtime, Syscalls, Policy, RuntimePolicy};
+use crate::runtime::{ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls};
 use crate::{actor_error, ActorError};
 
 lazy_static! {
@@ -930,5 +930,7 @@ impl Syscalls for MockRuntime {
 }
 
 impl RuntimePolicy for MockRuntime {
-    fn policy(&self) -> &Policy { &self.policy }
+    fn policy(&self) -> &Policy {
+        &self.policy
+    }
 }

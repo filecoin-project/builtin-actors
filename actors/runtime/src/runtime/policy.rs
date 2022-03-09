@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::sector::{RegisteredPoStProof,RegisteredSealProof};
+use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 
 // A trait for runtime policy configuration
 pub trait RuntimePolicy {
@@ -181,8 +181,12 @@ impl Default for Policy {
 
         #[cfg(feature = "devnet")]
         {
-            policy.valid_pre_commit_proof_type.insert(RegisteredSealProof::StackedDRG2KiBV1);
-            policy.valid_pre_commit_proof_type.insert(RegisteredSealProof::StackedDRG2KiBV1P1);
+            policy
+                .valid_pre_commit_proof_type
+                .insert(RegisteredSealProof::StackedDRG2KiBV1);
+            policy
+                .valid_pre_commit_proof_type
+                .insert(RegisteredSealProof::StackedDRG2KiBV1P1);
         };
 
         policy

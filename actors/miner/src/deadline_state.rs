@@ -8,8 +8,8 @@ use anyhow::anyhow;
 use bitfield::BitField;
 use cid::multihash::Code;
 use cid::Cid;
-use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
 use fvm_shared::blockstore::{Blockstore, CborStore};
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
@@ -577,7 +577,15 @@ impl Deadline {
                 .clone();
 
             let removed = partition
-                .terminate_sectors(policy, store, sectors, epoch, sector_numbers, sector_size, quant)
+                .terminate_sectors(
+                    policy,
+                    store,
+                    sectors,
+                    epoch,
+                    sector_numbers,
+                    sector_size,
+                    quant,
+                )
                 .map_err(|e| {
                     e.downcast_wrap(format!(
                         "failed to terminate sectors in partition {}",
