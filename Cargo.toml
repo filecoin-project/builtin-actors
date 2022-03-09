@@ -35,7 +35,7 @@ members = [
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
 ## (Valid while FVM modules aren't published to crates.io)
-#[patch."https://github.com/filecoin-project/ref-fvm"]
+[patch."https://github.com/filecoin-project/ref-fvm"]
 #fvm_shared = { path = "../ref-fvm/shared" }
 #fvm_sdk = { path = "../ref-fvm/sdk" }
 #fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
@@ -46,8 +46,7 @@ members = [
 ## Uncomment entries below when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
 ## (Valid once FVM modules are published to crates.io)
-[patch.crates-io]
-cid = { git = "https://github.com/multiformats/rust-cid", branch = "steb/cbor-hack" }
+#[patch.crates-io]
 #fvm_shared = { path = "../ref-fvm/shared" }
 #fvm_sdk = { path = "../ref-fvm/sdk" }
 #fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }

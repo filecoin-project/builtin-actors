@@ -96,7 +96,7 @@ impl Bundler {
             .map(|(typ, cid)| (cid, typ))
             .collect();
 
-        let manifest_bytes = serde_cbor::to_vec(&manifest)?;
+        let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
         let root = self.blockstore.put(
             Code::Blake2b256,
             &Block {
@@ -194,7 +194,7 @@ fn test_bundler() {
     let manifest_data = bs.get(&manifest_cid).unwrap().unwrap();
 
     // Deserialize the manifest.
-    let manifest: Manifest = serde_cbor::from_slice(manifest_data.as_slice()).unwrap();
+    let manifest: Manifest = serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
 
     // Verify the manifest contains what we expect.
     for (i, cid) in cids.into_iter().enumerate() {
