@@ -4,7 +4,6 @@ use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{
     Actor, Deadline, Deadlines, Method, MinerConstructorParams as ConstructorParams, State,
-    MAX_CONTROL_ADDRESSES, MAX_PEER_ID_LENGTH, WPOST_CHALLENGE_WINDOW, WPOST_PERIOD_DEADLINES,
 };
 
 use fvm_shared::address::Address;
@@ -121,7 +120,7 @@ fn simple_construction() {
     let proving_period_start = -2222;
     assert_eq!(proving_period_start, state.proving_period_start);
     // this is supposed to be the proving period cron
-    let dl_idx = (env.rt.epoch - proving_period_start) / WPOST_CHALLENGE_WINDOW;
+    let dl_idx = (env.rt.epoch - proving_period_start) / env.rt.policy.wpost_challenge_window;
     assert_eq!(dl_idx as u64, state.current_deadline);
 
     let deadlines = env
@@ -130,7 +129,7 @@ fn simple_construction() {
         .get_cbor::<Deadlines>(&state.deadlines)
         .unwrap()
         .unwrap();
-    for i in 0..WPOST_PERIOD_DEADLINES {
+    for i in 0..env.rt.policy.wpost_period_deadlines {
         let c = deadlines.due[i as usize];
         let deadline = env.rt.store.get_cbor::<Deadline>(&c).unwrap().unwrap();
         assert_ne!(Cid::default(), deadline.partitions);
@@ -228,7 +227,7 @@ fn fails_if_control_address_is_not_an_account_actor() {
 #[test]
 fn test_construct_with_invalid_peer_id() {
     let mut env = prepare_env();
-    env.peer_id = vec![0; MAX_PEER_ID_LENGTH + 1];
+    env.peer_id = vec![0; env.rt.policy.max_peer_id_length + 1];
 
     let params = constructor_params(&env);
     env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
@@ -248,7 +247,7 @@ fn test_construct_with_invalid_peer_id() {
 fn fails_if_control_addresses_exceeds_maximum_length() {
     let mut env = prepare_env();
     env.control_addrs = Vec::new();
-    for i in 0..MAX_CONTROL_ADDRESSES + 1 {
+    for i in 0..env.rt.policy.max_control_addresses + 1 {
         env.control_addrs.push(Address::new_id(i as u64));
     }
 
