@@ -13,7 +13,7 @@ type Package = str;
 /// Technical identifier for the actor in legacy CodeCIDs and else.
 type ID = str;
 
-const ACTORS: &[(&'static Package, &'static ID)] = &[
+const ACTORS: &[(&Package, &ID)] = &[
     ("system", "system"),
     ("init", "init"),
     ("cron", "cron"),
@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         // This actor version uses forced CIDs.
         let forced_cid = {
-            let identity = FORCED_CID_PREFIX.to_owned() + id.as_ref();
+            let identity = FORCED_CID_PREFIX.to_owned() + id;
             Cid::new_v1(IPLD_RAW, Code::Identity.digest(identity.as_bytes()))
         };
 

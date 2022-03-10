@@ -544,6 +544,7 @@ impl Deadline {
         Ok((popped, modified))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn terminate_sectors<BS: Blockstore>(
         &mut self,
         policy: &Policy,

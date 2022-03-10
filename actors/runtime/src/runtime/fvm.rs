@@ -61,8 +61,7 @@ impl<B> FvmRuntime<B> {
             return Err(actor_error!(
                 SysErrIllegalActor,
                 "Method must validate caller identity exactly once"
-            )
-            .into());
+            ));
         }
         self.caller_validated = true;
         Ok(())
@@ -123,8 +122,7 @@ where
         } else {
             return Err(actor_error!(SysErrForbidden;
                 "caller {} is not one of supported", caller_addr
-            )
-            .into());
+            ));
         }
     }
 
@@ -142,8 +140,7 @@ where
         match self.resolve_builtin_actor_type(&caller_cid) {
             Some(typ) if types.into_iter().any(|t| *t == typ) => Ok(()),
             _ => Err(actor_error!(SysErrForbidden;
-                    "caller cid type {} not one of supported", caller_cid)
-            .into()),
+                    "caller cid type {} not one of supported", caller_cid)),
         }
     }
 
