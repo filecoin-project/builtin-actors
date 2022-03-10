@@ -1,40 +1,40 @@
 [package]
 name = "fil_actors_runtime"
 description = "System actors for the Filecoin protocol"
-version = "6.0.2"
+version = "6.0.4"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
 repository = "https://github.com/filecoin-project/builtin-actors"
 
 [dependencies]
-fvm_ipld_hamt = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm" }
-fvm_ipld_amt = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm", features = ["go-interop"]}
-fvm_shared = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm", default-features = false }
-num-traits = "0.2"
-num-derive = "0.3.0"
-serde = { version = "1.0", features = ["derive"] }
+fvm_ipld_hamt = "0.2.0"
+fvm_ipld_amt = { version = "0.2.0", features = ["go-interop"] }
+fvm_shared = { version = "0.2.0", default-features = false }
+num-traits = "0.2.14"
+num-derive = "0.3.3"
+serde = { version = "1.0.136", features = ["derive"] }
 lazy_static = "1.4.0"
 unsigned-varint = "0.7.1"
-integer-encoding = { version = "3.0", default-features = false }
-byteorder = "1.3.4"
-cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
+integer-encoding = { version = "3.0.3", default-features = false }
+byteorder = "1.4.3"
+cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false, features = ["identity"] }
-base64 = "0.13"
-log = "0.4.8"
-indexmap = { version = "1.7.0", features = ["serde-1"] }
+base64 = "0.13.0"
+log = "0.4.14"
+indexmap = { version = "1.8.0", features = ["serde-1"] }
 thiserror = "1.0.30"
 # enforce wasm compat
-getrandom = { version = "0.2", features = ["js"] }
-hex = { version = "0.4.2", optional = true }
-anyhow = "1.0.51"
+getrandom = { version = "0.2.5", features = ["js"] }
+hex = { version = "0.4.3", optional = true }
+anyhow = "1.0.56"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-fvm_sdk = { version = "0.1.0", git = "https://github.com/filecoin-project/ref-fvm" }
+fvm_sdk = "0.2.0"
 
 [dev-dependencies]
-derive_builder = "0.10"
-hex = "0.4.2"
+derive_builder = "0.10.2"
+hex = "0.4.3"
 
 [features]
 default = []
