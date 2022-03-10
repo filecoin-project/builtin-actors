@@ -477,6 +477,7 @@ impl Partition {
     /// Marks a collection of sectors as terminated.
     /// The sectors are removed from Faults and Recoveries.
     /// The epoch of termination is recorded for future termination fee calculation.
+    #[allow(clippy::too_many_arguments)]
     pub fn terminate_sectors<BS: Blockstore>(
         &mut self,
         policy: &Policy,
