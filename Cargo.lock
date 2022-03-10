@@ -755,7 +755,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_bundle"
-version = "6.0.4"
+version = "6.0.5"
 dependencies = [
  "cid",
  "fil_actor_account",
