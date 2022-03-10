@@ -24,7 +24,7 @@ fil_actor_init = { version = "7.0.0", path = "./actors/init" }
 
 [build-dependencies]
 fil_actor_bundler = { version = "1.0.1", path = "./bundler" }
-cid = { version = "0.8.2", default-features = false, features = ["serde-codec"] }
+cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
 [workspace]
 members = [
