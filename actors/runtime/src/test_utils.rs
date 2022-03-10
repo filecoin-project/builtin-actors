@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use core::fmt;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
@@ -63,6 +64,7 @@ lazy_static! {
 
 const IPLD_RAW: u64 = 0x55;
 
+/// Returns an identify CID for bz.
 fn make_builtin(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, Code::Identity.digest(bz))
 }
@@ -250,10 +252,10 @@ pub struct ExpectComputeUnsealedSectorCid {
     exit_code: ExitCode,
 }
 
-pub fn expect_abort_contains_message(
+pub fn expect_abort_contains_message<T: fmt::Debug>(
     expect_exit_code: ExitCode,
     expect_msg: &str,
-    res: Result<RawBytes, ActorError>,
+    res: Result<T, ActorError>,
 ) {
     let err = res.expect_err(&format!(
         "expected abort with exit code {}, but call succeeded",
@@ -275,7 +277,7 @@ pub fn expect_abort_contains_message(
     );
 }
 
-pub fn expect_abort(exit_code: ExitCode, res: Result<RawBytes, ActorError>) {
+pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorError>) {
     expect_abort_contains_message(exit_code, "", res);
 }
 
@@ -297,6 +299,14 @@ impl MockRuntime {
     pub fn get_state<T: Cbor>(&self) -> Result<T, ActorError> {
         // TODO this doesn't handle errors exactly as go implementation
         self.state()
+    }
+
+    #[allow(dead_code)]
+    pub fn get_id_address(&self, address: &Address) -> Option<Address> {
+        if address.protocol() == Protocol::ID {
+            return Some(*address);
+        }
+        self.id_addresses.get(address).cloned()
     }
 
     #[allow(dead_code)]
@@ -512,7 +522,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
                 return Ok(());
             }
         }
-        self.expectations.borrow_mut().expect_validate_caller_addr = None;
+        expectations.expect_validate_caller_addr = None;
         return Err(actor_error!(ErrForbidden;
                 "caller address {:?} forbidden, allowed: {:?}",
                 self.message().caller(), &addrs
