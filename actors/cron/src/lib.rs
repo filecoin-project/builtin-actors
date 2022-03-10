@@ -45,9 +45,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
-        rt.create(&State {
-            entries: params.entries,
-        })?;
+        rt.create(&State { entries: params.entries })?;
         Ok(())
     }
     /// Executes built-in periodic actions, run at every Epoch.

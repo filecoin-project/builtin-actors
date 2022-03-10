@@ -85,10 +85,7 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
 
         if verifier == st.root_key {
-            return Err(actor_error!(
-                ErrIllegalArgument,
-                "Rootkey cannot be added as verifier"
-            ));
+            return Err(actor_error!(ErrIllegalArgument, "Rootkey cannot be added as verifier"));
         }
 
         rt.transaction(|st: &mut State, rt| {
@@ -109,14 +106,12 @@ impl Actor {
                 e.downcast_default(ExitCode::ErrIllegalState, "failed to load verified clients")
             })?;
 
-            let found = verified_clients
-                .contains_key(&verifier.to_bytes())
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::ErrIllegalState,
-                        format!("failed to get client state for {}", verifier),
-                    )
-                })?;
+            let found = verified_clients.contains_key(&verifier.to_bytes()).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::ErrIllegalState,
+                    format!("failed to get client state for {}", verifier),
+                )
+            })?;
             if found {
                 return Err(actor_error!(
                     ErrIllegalArgument,
@@ -125,14 +120,9 @@ impl Actor {
                 ));
             }
 
-            verifiers
-                .set(
-                    verifier.to_bytes().into(),
-                    BigIntDe(params.allowance.clone()),
-                )
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::ErrIllegalState, "failed to add verifier")
-                })?;
+            verifiers.set(verifier.to_bytes().into(), BigIntDe(params.allowance.clone())).map_err(
+                |e| e.downcast_default(ExitCode::ErrIllegalState, "failed to add verifier"),
+            )?;
             st.verifiers = verifiers.flush().map_err(|e| {
                 e.downcast_default(ExitCode::ErrIllegalState, "failed to flush verifiers")
             })?;
@@ -214,10 +204,7 @@ impl Actor {
 
         let st: State = rt.state()?;
         if client == st.root_key {
-            return Err(actor_error!(
-                ErrIllegalArgument,
-                "Rootkey cannot be added as verifier"
-            ));
+            return Err(actor_error!(ErrIllegalArgument, "Rootkey cannot be added as verifier"));
         }
 
         rt.transaction(|st: &mut State, rt| {
@@ -272,14 +259,12 @@ impl Actor {
             }
             let new_verifier_cap = verifier_cap - &params.allowance;
 
-            verifiers
-                .set(verifier.to_bytes().into(), BigIntDe(new_verifier_cap))
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::ErrIllegalState,
-                        format!("Failed to update new verifier cap for {}", verifier),
-                    )
-                })?;
+            verifiers.set(verifier.to_bytes().into(), BigIntDe(new_verifier_cap)).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::ErrIllegalState,
+                    format!("Failed to update new verifier cap for {}", verifier),
+                )
+            })?;
 
             let client_cap = verified_clients.get(&client.to_bytes()).map_err(|e| {
                 e.downcast_default(
@@ -295,9 +280,8 @@ impl Actor {
                 params.allowance
             };
 
-            verified_clients
-                .set(client.to_bytes().into(), BigIntDe(client_cap.clone()))
-                .map_err(|e| {
+            verified_clients.set(client.to_bytes().into(), BigIntDe(client_cap.clone())).map_err(
+                |e| {
                     e.downcast_default(
                         ExitCode::ErrIllegalState,
                         format!(
@@ -305,16 +289,14 @@ impl Actor {
                             client, client_cap,
                         ),
                     )
-                })?;
+                },
+            )?;
 
             st.verifiers = verifiers.flush().map_err(|e| {
                 e.downcast_default(ExitCode::ErrIllegalState, "failed to flush verifiers")
             })?;
             st.verified_clients = verified_clients.flush().map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to flush verified clients",
-                )
+                e.downcast_default(ExitCode::ErrIllegalState, "failed to flush verified clients")
             })?;
 
             Ok(())
@@ -403,21 +385,18 @@ impl Actor {
                         )
                     })?;
             } else {
-                verified_clients
-                    .set(client.to_bytes().into(), BigIntDe(new_vc_cap))
-                    .map_err(|e| {
+                verified_clients.set(client.to_bytes().into(), BigIntDe(new_vc_cap)).map_err(
+                    |e| {
                         e.downcast_default(
                             ExitCode::ErrIllegalState,
                             format!("Failed to update verified client {}", client),
                         )
-                    })?;
+                    },
+                )?;
             }
 
             st.verified_clients = verified_clients.flush().map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to flush verified clients",
-                )
+                e.downcast_default(ExitCode::ErrIllegalState, "failed to flush verified clients")
             })?;
             Ok(())
         })?;
@@ -450,10 +429,7 @@ impl Actor {
 
         let st: State = rt.state()?;
         if client == st.root_key {
-            return Err(actor_error!(
-                ErrIllegalArgument,
-                "Cannot restore allowance for Rootkey"
-            ));
+            return Err(actor_error!(ErrIllegalArgument, "Cannot restore allowance for Rootkey"));
         }
 
         rt.transaction(|st: &mut State, rt| {
@@ -497,20 +473,15 @@ impl Actor {
 
             // Update to new cap
             let new_vc_cap = vc_cap + &params.deal_size;
-            verified_clients
-                .set(client.to_bytes().into(), BigIntDe(new_vc_cap))
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::ErrIllegalState,
-                        format!("Failed to put verified client {}", client),
-                    )
-                })?;
-
-            st.verified_clients = verified_clients.flush().map_err(|e| {
+            verified_clients.set(client.to_bytes().into(), BigIntDe(new_vc_cap)).map_err(|e| {
                 e.downcast_default(
                     ExitCode::ErrIllegalState,
-                    "failed to flush verified clients",
+                    format!("Failed to put verified client {}", client),
                 )
+            })?;
+
+            st.verified_clients = verified_clients.flush().map_err(|e| {
+                e.downcast_default(ExitCode::ErrIllegalState, "failed to flush verified clients")
             })?;
             Ok(())
         })?;

@@ -129,10 +129,7 @@ impl Expectations {
         self.expect_verify_consensus_fault = None;
     }
     fn verify(&mut self) {
-        assert!(
-            !self.expect_validate_caller_any,
-            "expected ValidateCallerAny, not received"
-        );
+        assert!(!self.expect_validate_caller_any, "expected ValidateCallerAny, not received");
         assert!(
             self.expect_validate_caller_addr.is_none(),
             "expected ValidateCallerAddr {:?}, not received",
@@ -283,10 +280,7 @@ pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorErro
 
 impl MockRuntime {
     fn require_in_call(&self) {
-        assert!(
-            self.in_call,
-            "invalid runtime invocation outside of method call",
-        )
+        assert!(self.in_call, "invalid runtime invocation outside of method call",)
     }
     fn put<C: Cbor>(&self, o: &C) -> Result<Cid, ActorError> {
         Ok(self.store.put_cbor(&o, Code::Blake2b256).unwrap())
@@ -317,10 +311,7 @@ impl MockRuntime {
 
     #[allow(dead_code)]
     pub fn expect_verify_signature(&self, exp: ExpectedVerifySig) {
-        self.expectations
-            .borrow_mut()
-            .expect_verify_sigs
-            .push_back(exp);
+        self.expectations.borrow_mut().expect_verify_sigs.push_back(exp);
     }
 
     #[allow(dead_code)]
@@ -355,9 +346,7 @@ impl MockRuntime {
 
     #[allow(dead_code)]
     pub fn expect_compute_unsealed_sector_cid(&self, exp: ExpectComputeUnsealedSectorCid) {
-        self.expectations
-            .borrow_mut()
-            .expect_compute_unsealed_sector_cid = Some(exp);
+        self.expectations.borrow_mut().expect_compute_unsealed_sector_cid = Some(exp);
     }
 
     #[allow(dead_code)]
@@ -409,17 +398,14 @@ impl MockRuntime {
         send_return: RawBytes,
         exit_code: ExitCode,
     ) {
-        self.expectations
-            .borrow_mut()
-            .expect_sends
-            .push_back(ExpectedMessage {
-                to,
-                method,
-                params,
-                value,
-                send_return,
-                exit_code,
-            })
+        self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
+            to,
+            method,
+            params,
+            value,
+            send_return,
+            exit_code,
+        })
     }
 
     #[allow(dead_code)]
@@ -534,10 +520,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     {
         self.require_in_call();
         assert!(
-            self.expectations
-                .borrow_mut()
-                .expect_validate_caller_type
-                .is_some(),
+            self.expectations.borrow_mut().expect_validate_caller_type.is_some(),
             "unexpected validate caller code"
         );
 
@@ -551,11 +534,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         let types: Vec<Cid> = types.into_iter().map(find_by_type).collect();
         assert_eq!(
             &types,
-            self.expectations
-                .borrow_mut()
-                .expect_validate_caller_type
-                .as_ref()
-                .unwrap(),
+            self.expectations.borrow_mut().expect_validate_caller_type.as_ref().unwrap(),
             "unexpected validate caller code {:?}, expected {:?}",
             types,
             self.expectations.borrow_mut().expect_validate_caller_type
@@ -570,10 +549,8 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
         self.expectations.borrow_mut().expect_validate_caller_type = None;
 
-        Err(
-            actor_error!(ErrForbidden; "caller type {:?} forbidden, allowed: {:?}",
-                self.caller_type, types),
-        )
+        Err(actor_error!(ErrForbidden; "caller type {:?} forbidden, allowed: {:?}",
+                self.caller_type, types))
     }
 
     fn current_balance(&self) -> TokenAmount {
@@ -623,11 +600,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     }
 
     fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        Ok(self
-            .store
-            .get_cbor(self.state.as_ref().unwrap())
-            .unwrap()
-            .unwrap())
+        Ok(self.store.get_cbor(self.state.as_ref().unwrap()).unwrap().unwrap())
     }
 
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
@@ -671,12 +644,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             params
         );
 
-        let expected_msg = self
-            .expectations
-            .borrow_mut()
-            .expect_sends
-            .pop_front()
-            .unwrap();
+        let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
 
         assert!(expected_msg.to == to && expected_msg.method == method && expected_msg.params == params && expected_msg.value == value,
                 "expectedMessage being sent does not match expectation.\nMessage -\t to: {:?} method: {:?} value: {:?} params: {:?}\nExpected -\t {:?}",
@@ -701,10 +669,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
         self.require_in_call();
-        let ret = *self
-            .new_actor_addr
-            .as_ref()
-            .expect("unexpected call to new actor address");
+        let ret = *self.new_actor_addr.as_ref().expect("unexpected call to new actor address");
         self.new_actor_addr = None;
         Ok(ret)
     }
@@ -735,11 +700,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             panic!("unexpected call to delete actor: {}", addr);
         }
         if exp_act.as_ref().unwrap() != addr {
-            panic!(
-                "attempt to delete wrong actor. Expected: {}, got: {}",
-                exp_act.unwrap(),
-                addr
-            );
+            panic!("attempt to delete wrong actor. Expected: {}, got: {}", exp_act.unwrap(), addr);
         }
         Ok(())
     }
@@ -786,11 +747,7 @@ impl Syscalls for MockRuntime {
                 hex::encode(plaintext)
             );
         }
-        let exp = self
-            .expectations
-            .borrow_mut()
-            .expect_verify_sigs
-            .pop_front();
+        let exp = self.expectations.borrow_mut().expect_verify_sigs.pop_front();
         if let Some(exp) = exp {
             if exp.sig != *signature || exp.signer != *signer || &exp.plaintext[..] != plaintext {
                 panic!(
@@ -825,12 +782,8 @@ impl Syscalls for MockRuntime {
         reg: RegisteredSealProof,
         pieces: &[PieceInfo],
     ) -> anyhow::Result<Cid> {
-        let exp = self
-            .expectations
-            .borrow_mut()
-            .expect_compute_unsealed_sector_cid
-            .take()
-            .ok_or_else(
+        let exp =
+            self.expectations.borrow_mut().expect_compute_unsealed_sector_cid.take().ok_or_else(
                 || actor_error!(ErrIllegalState; "Unexpected syscall to ComputeUnsealedSectorCID"),
             )?;
 
@@ -847,52 +800,35 @@ impl Syscalls for MockRuntime {
         }
 
         if exp.exit_code != ExitCode::Ok {
-            return Err(anyhow!(ActorError::new(
-                exp.exit_code,
-                "Expected Failure".to_string(),
-            )));
+            return Err(anyhow!(ActorError::new(exp.exit_code, "Expected Failure".to_string(),)));
         }
         Ok(exp.cid)
     }
     fn verify_seal(&self, seal: &SealVerifyInfo) -> anyhow::Result<()> {
-        let exp = self
-            .expectations
-            .borrow_mut()
-            .expect_verify_seal
-            .take()
-            .ok_or_else(|| actor_error!(ErrIllegalState; "Unexpected syscall to verify seal"))?;
+        let exp =
+            self.expectations.borrow_mut().expect_verify_seal.take().ok_or_else(
+                || actor_error!(ErrIllegalState; "Unexpected syscall to verify seal"),
+            )?;
 
         if exp.seal != *seal {
-            return Err(anyhow!(
-                actor_error!(ErrIllegalState; "Unexpected seal verification"),
-            ));
+            return Err(anyhow!(actor_error!(ErrIllegalState; "Unexpected seal verification"),));
         }
         if exp.exit_code != ExitCode::Ok {
-            return Err(anyhow!(ActorError::new(
-                exp.exit_code,
-                "Expected Failure".to_string(),
-            )));
+            return Err(anyhow!(ActorError::new(exp.exit_code, "Expected Failure".to_string(),)));
         }
         Ok(())
     }
     fn verify_post(&self, post: &WindowPoStVerifyInfo) -> anyhow::Result<()> {
-        let exp = self
-            .expectations
-            .borrow_mut()
-            .expect_verify_post
-            .take()
-            .ok_or_else(|| actor_error!(ErrIllegalState; "Unexpected syscall to verify PoSt"))?;
+        let exp =
+            self.expectations.borrow_mut().expect_verify_post.take().ok_or_else(
+                || actor_error!(ErrIllegalState; "Unexpected syscall to verify PoSt"),
+            )?;
 
         if exp.post != *post {
-            return Err(anyhow!(
-                actor_error!(ErrIllegalState; "Unexpected PoSt verification"),
-            ));
+            return Err(anyhow!(actor_error!(ErrIllegalState; "Unexpected PoSt verification"),));
         }
         if exp.exit_code != ExitCode::Ok {
-            return Err(anyhow!(ActorError::new(
-                exp.exit_code,
-                "Expected Failure".to_string(),
-            )));
+            return Err(anyhow!(ActorError::new(exp.exit_code, "Expected Failure".to_string(),)));
         }
         Ok(())
     }
@@ -902,14 +838,9 @@ impl Syscalls for MockRuntime {
         h2: &[u8],
         extra: &[u8],
     ) -> anyhow::Result<Option<ConsensusFault>> {
-        let exp = self
-            .expectations
-            .borrow_mut()
-            .expect_verify_consensus_fault
-            .take()
-            .ok_or_else(
-                || actor_error!(ErrIllegalState; "Unexpected syscall to verify_consensus_fault"),
-            )?;
+        let exp = self.expectations.borrow_mut().expect_verify_consensus_fault.take().ok_or_else(
+            || actor_error!(ErrIllegalState; "Unexpected syscall to verify_consensus_fault"),
+        )?;
         if exp.require_correct_input {
             if exp.block_header_1 != h1 {
                 return Err(anyhow!(actor_error!(ErrIllegalState; "Header 1 mismatch")));
@@ -918,16 +849,11 @@ impl Syscalls for MockRuntime {
                 return Err(anyhow!(actor_error!(ErrIllegalState; "Header 2 mismatch")));
             }
             if exp.block_header_extra != extra {
-                return Err(anyhow!(
-                    actor_error!(ErrIllegalState; "Header extra mismatch"),
-                ));
+                return Err(anyhow!(actor_error!(ErrIllegalState; "Header extra mismatch"),));
             }
         }
         if exp.exit_code != ExitCode::Ok {
-            return Err(anyhow!(ActorError::new(
-                exp.exit_code,
-                "Expected Failure".to_string(),
-            )));
+            return Err(anyhow!(ActorError::new(exp.exit_code, "Expected Failure".to_string(),)));
         }
         Ok(exp.fault)
     }

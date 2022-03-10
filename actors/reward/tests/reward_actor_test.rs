@@ -40,10 +40,7 @@ mod construction_tests {
         assert_eq!(ChainEpoch::from(0), state.epoch);
         assert_eq!(start_realized_power, state.cumsum_realized);
         assert_eq!(*EPOCH_ZERO_REWARD, state.this_epoch_reward);
-        assert_eq!(
-            &*BASELINE_INITIAL_VALUE - 1,
-            state.this_epoch_baseline_power
-        );
+        assert_eq!(&*BASELINE_INITIAL_VALUE - 1, state.this_epoch_baseline_power);
         assert_eq!(&*BASELINE_INITIAL_VALUE, &state.effective_baseline_power);
     }
 
@@ -297,14 +294,8 @@ mod test_this_epoch_reward {
 
         let resp: ThisEpochRewardReturn = this_epoch_reward(&mut rt);
 
-        assert_eq!(
-            state.this_epoch_baseline_power,
-            resp.this_epoch_baseline_power
-        );
-        assert_eq!(
-            state.this_epoch_reward_smoothed,
-            resp.this_epoch_reward_smoothed
-        );
+        assert_eq!(state.this_epoch_baseline_power, resp.this_epoch_baseline_power);
+        assert_eq!(state.this_epoch_reward_smoothed, resp.this_epoch_reward_smoothed);
     }
 }
 
@@ -373,13 +364,9 @@ fn award_block_reward(
         );
     }
 
-    let params = RawBytes::serialize(AwardBlockRewardParams {
-        miner,
-        penalty,
-        gas_reward,
-        win_count,
-    })
-    .unwrap();
+    let params =
+        RawBytes::serialize(AwardBlockRewardParams { miner, penalty, gas_reward, win_count })
+            .unwrap();
 
     let serialized_bytes = rt.call::<RewardActor>(Method::AwardBlockReward as u64, &params)?;
 
@@ -389,9 +376,8 @@ fn award_block_reward(
 
 fn this_epoch_reward(rt: &mut MockRuntime) -> ThisEpochRewardReturn {
     rt.expect_validate_caller_any();
-    let serialized_result = rt
-        .call::<RewardActor>(Method::ThisEpochReward as u64, &RawBytes::default())
-        .unwrap();
+    let serialized_result =
+        rt.call::<RewardActor>(Method::ThisEpochReward as u64, &RawBytes::default()).unwrap();
     let resp: ThisEpochRewardReturn = RawBytes::deserialize(&serialized_result).unwrap();
     rt.verify();
     resp
@@ -402,8 +388,6 @@ fn update_network_kpi(rt: &mut MockRuntime, curr_raw_power: &StoragePower) {
     rt.expect_validate_caller_addr(vec![*STORAGE_POWER_ACTOR_ADDR]);
 
     let params = &RawBytes::serialize(BigIntSer(curr_raw_power)).unwrap();
-    assert!(rt
-        .call::<RewardActor>(Method::UpdateNetworkKPI as u64, params)
-        .is_ok());
+    assert!(rt.call::<RewardActor>(Method::UpdateNetworkKPI as u64, params).is_ok());
     rt.verify();
 }

@@ -67,11 +67,8 @@ impl VestingFunds {
 
             epoch += spec.step_duration;
 
-            let vest_epoch = QuantSpec {
-                unit: spec.quantization,
-                offset: proving_period_start,
-            }
-            .quantize_up(epoch);
+            let vest_epoch = QuantSpec { unit: spec.quantization, offset: proving_period_start }
+                .quantize_up(epoch);
 
             let elapsed = vest_epoch - vest_begin;
             let target_vest = if elapsed < spec.vest_period {
@@ -84,10 +81,7 @@ impl VestingFunds {
             let vest_this_time = &target_vest - &vested_so_far;
             vested_so_far = target_vest;
 
-            Some(VestingFund {
-                epoch: vest_epoch,
-                amount: vest_this_time,
-            })
+            Some(VestingFund { epoch: vest_epoch, amount: vest_this_time })
         });
 
         // Take the old funds array and replace it with a new one.
@@ -96,17 +90,15 @@ impl VestingFunds {
 
         // Fill back in the funds array, merging existing and new schedule.
         self.funds.extend(
-            old_funds
-                .into_iter()
-                .merge_join_by(new_funds, |a, b| a.epoch.cmp(&b.epoch))
-                .map(|item| match item {
+            old_funds.into_iter().merge_join_by(new_funds, |a, b| a.epoch.cmp(&b.epoch)).map(
+                |item| match item {
                     EitherOrBoth::Left(a) => a,
                     EitherOrBoth::Right(b) => b,
-                    EitherOrBoth::Both(a, b) => VestingFund {
-                        epoch: a.epoch,
-                        amount: a.amount + b.amount,
-                    },
-                }),
+                    EitherOrBoth::Both(a, b) => {
+                        VestingFund { epoch: a.epoch, amount: a.amount + b.amount }
+                    }
+                },
+            ),
         );
     }
 

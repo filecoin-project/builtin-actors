@@ -99,9 +99,8 @@ impl Actor {
             return Err(actor_error!(ErrIllegalArgument; "negative unlock duration disallowed"));
         }
 
-        let empty_root = make_empty_map::<_, ()>(rt.store(), HAMT_BIT_WIDTH)
-            .flush()
-            .map_err(|e| {
+        let empty_root =
+            make_empty_map::<_, ()>(rt.store(), HAMT_BIT_WIDTH).flush().map_err(|e| {
                 e.downcast_default(ExitCode::ErrIllegalState, "Failed to create empty map")
             })?;
 
@@ -150,10 +149,7 @@ impl Actor {
             }
 
             let mut ptx = make_map_with_root(&st.pending_txs, rt.store()).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to load pending transactions",
-                )
+                e.downcast_default(ExitCode::ErrIllegalState, "failed to load pending transactions")
             })?;
 
             let t_id = st.next_tx_id;
@@ -186,12 +182,7 @@ impl Actor {
 
         let (applied, ret, code) = Self::approve_transaction(rt, txn_id, txn)?;
 
-        Ok(ProposeReturn {
-            txn_id,
-            applied,
-            code,
-            ret,
-        })
+        Ok(ProposeReturn { txn_id, applied, code, ret })
     }
 
     /// Multisig actor approve function
@@ -210,10 +201,7 @@ impl Actor {
             }
 
             let ptx = make_map_with_root(&st.pending_txs, rt.store()).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to load pending transactions",
-                )
+                e.downcast_default(ExitCode::ErrIllegalState, "failed to load pending transactions")
             })?;
 
             let txn = get_transaction(rt, &ptx, params.id, params.proposal_hash)?;
@@ -283,10 +271,7 @@ impl Actor {
             })?;
 
             if !params.proposal_hash.is_empty() && params.proposal_hash != calculated_hash {
-                return Err(actor_error!(
-                    ErrIllegalState,
-                    "hash does not match proposal params"
-                ));
+                return Err(actor_error!(ErrIllegalState, "hash does not match proposal params"));
             }
 
             st.pending_txs = ptx.flush().map_err(|e| {
@@ -358,11 +343,7 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             if !st.is_signer(&resolved_old_signer) {
-                return Err(actor_error!(
-                    ErrForbidden,
-                    "{} is not a signer",
-                    resolved_old_signer
-                ));
+                return Err(actor_error!(ErrForbidden, "{} is not a signer", resolved_old_signer));
             }
 
             if st.signers.len() == 1 {
@@ -391,13 +372,12 @@ impl Actor {
             }
 
             // Remove approvals from removed signer
-            st.purge_approvals(rt.store(), &resolved_old_signer)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::ErrIllegalState,
-                        "failed to purge approvals of removed signer",
-                    )
-                })?;
+            st.purge_approvals(rt.store(), &resolved_old_signer).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::ErrIllegalState,
+                    "failed to purge approvals of removed signer",
+                )
+            })?;
             st.signers.retain(|s| s != &resolved_old_signer);
 
             Ok(())
@@ -444,13 +424,12 @@ impl Actor {
             // Add new signer
             st.signers.push(to_resolved);
 
-            st.purge_approvals(rt.store(), &from_resolved)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::ErrIllegalState,
-                        "failed to purge approvals of removed signer",
-                    )
-                })?;
+            st.purge_approvals(rt.store(), &from_resolved).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::ErrIllegalState,
+                    "failed to purge approvals of removed signer",
+                )
+            })?;
             Ok(())
         })?;
 
@@ -493,25 +472,16 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
 
         if params.unlock_duration <= 0 {
-            return Err(actor_error!(
-                ErrIllegalArgument,
-                "unlock duration must be positive"
-            ));
+            return Err(actor_error!(ErrIllegalArgument, "unlock duration must be positive"));
         }
 
         if params.amount.is_negative() {
-            return Err(actor_error!(
-                ErrIllegalArgument,
-                "amount to lock must be positive"
-            ));
+            return Err(actor_error!(ErrIllegalArgument, "amount to lock must be positive"));
         }
 
         rt.transaction(|st: &mut State, _| {
             if st.unlock_duration != 0 {
-                return Err(actor_error!(
-                    ErrForbidden,
-                    "modification of unlock disallowed"
-                ));
+                return Err(actor_error!(ErrForbidden, "modification of unlock disallowed"));
             }
             st.set_locked(params.start_epoch, params.unlock_duration, params.amount);
             Ok(())
@@ -541,10 +511,7 @@ impl Actor {
 
         let st = rt.transaction(|st: &mut State, rt| {
             let mut ptx = make_map_with_root(&st.pending_txs, rt.store()).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to load pending transactions",
-                )
+                e.downcast_default(ExitCode::ErrIllegalState, "failed to load pending transactions")
             })?;
 
             // update approved on the transaction
@@ -588,10 +555,9 @@ where
     let mut applied = false;
     let threshold_met = txn.approved.len() as u64 >= st.num_approvals_threshold;
     if threshold_met {
-        st.check_available(rt.current_balance(), &txn.value, rt.curr_epoch())
-            .map_err(|e| {
-                actor_error!(ErrInsufficientFunds, "insufficient funds unlocked: {}", e)
-            })?;
+        st.check_available(rt.current_balance(), &txn.value, rt.curr_epoch()).map_err(|e| {
+            actor_error!(ErrInsufficientFunds, "insufficient funds unlocked: {}", e)
+        })?;
 
         match rt.send(txn.to, txn.method, txn.params.clone(), txn.value.clone()) {
             Ok(ser) => {

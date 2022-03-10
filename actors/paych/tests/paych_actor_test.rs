@@ -89,8 +89,7 @@ mod paych_constructor {
     fn create_paych_actor_test() {
         let caller_addr = Address::new_id(TEST_CALLER_ADDR);
         let mut rt = construct_runtime();
-        rt.actor_code_cids
-            .insert(caller_addr, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.insert(caller_addr, *ACCOUNT_ACTOR_CODE_ID);
         construct_and_verify(&mut rt, Address::new_id(TEST_PAYER_ADDR), caller_addr);
     }
 
@@ -146,10 +145,8 @@ mod paych_constructor {
             };
 
             rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
-            let params = ConstructorParams {
-                to: test_case.paych_addr,
-                from: Address::new_id(10001),
-            };
+            let params =
+                ConstructorParams { to: test_case.paych_addr, from: Address::new_id(10001) };
             expect_error(
                 &mut rt,
                 METHOD_CONSTRUCTOR,
@@ -309,11 +306,8 @@ mod create_lane_tests {
             rt.expect_validate_caller_addr(vec![payer_addr, payee_addr]);
 
             if test_case.sig.is_some() && test_case.secret_preimage.is_empty() {
-                let exp_exit_code = if !test_case.verify_sig {
-                    Err(anyhow!("bad signature"))
-                } else {
-                    Ok(())
-                };
+                let exp_exit_code =
+                    if !test_case.verify_sig { Err(anyhow!("bad signature")) } else { Ok(()) };
                 rt.expect_verify_signature(ExpectedVerifySig {
                     sig: sv.clone().signature.unwrap(),
                     signer: payer_addr,
@@ -380,10 +374,7 @@ mod update_channel_state_redeem {
         );
 
         rt.verify();
-        let exp_ls = LaneState {
-            redeemed: BigInt::from(9),
-            nonce: 2,
-        };
+        let exp_ls = LaneState { redeemed: BigInt::from(9), nonce: 2 };
         let exp_state = PState {
             from: state.from,
             to: state.to,
@@ -477,10 +468,7 @@ mod merge_tests {
         sv.lane = 0;
         let merge_nonce = merge_to.nonce + 10;
 
-        sv.merges = vec![Merge {
-            lane: 1,
-            nonce: merge_nonce,
-        }];
+        sv.merges = vec![Merge { lane: 1, nonce: merge_nonce }];
         let payee_addr = Address::new_id(PAYEE_ID);
         rt.expect_verify_signature(ExpectedVerifySig {
             sig: sv.clone().signature.unwrap(),
@@ -495,25 +483,16 @@ mod merge_tests {
             &RawBytes::serialize(UpdateChannelStateParams::from(sv.clone())).unwrap(),
         );
         rt.verify();
-        let exp_merge_to = LaneState {
-            redeemed: sv.amount.clone(),
-            nonce: sv.nonce,
-        };
-        let exp_merge_from = LaneState {
-            redeemed: merge_from.redeemed.clone(),
-            nonce: merge_nonce,
-        };
+        let exp_merge_to = LaneState { redeemed: sv.amount.clone(), nonce: sv.nonce };
+        let exp_merge_from =
+            LaneState { redeemed: merge_from.redeemed.clone(), nonce: merge_nonce };
         let redeemed = &merge_from.redeemed + &merge_to.redeemed;
         let exp_delta = &sv.amount - &redeemed;
         state.to_send = exp_delta + &state.to_send;
 
         state.lane_states = construct_lane_state_amt(
             &rt,
-            vec![
-                exp_merge_to,
-                exp_merge_from,
-                get_lane_state(&rt, &state.lane_states, 2),
-            ],
+            vec![exp_merge_to, exp_merge_from, get_lane_state(&rt, &state.lane_states, 2)],
         );
 
         verify_state(&mut rt, Some(num_lanes), state);
@@ -567,10 +546,7 @@ mod merge_tests {
 
             sv.lane = 0;
             sv.nonce = tc.voucher;
-            sv.merges = vec![Merge {
-                lane: tc.lane,
-                nonce: tc.merge,
-            }];
+            sv.merges = vec![Merge { lane: tc.lane, nonce: tc.merge }];
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
             failure_end(&mut rt, sv, tc.exit);
         }
@@ -584,10 +560,7 @@ mod merge_tests {
 
         sv.lane = 0;
         sv.nonce = 10;
-        sv.merges = vec![Merge {
-            lane: 999,
-            nonce: sv.nonce,
-        }];
+        sv.merges = vec![Merge { lane: 999, nonce: sv.nonce }];
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
         rt.expect_verify_signature(ExpectedVerifySig {
@@ -700,16 +673,8 @@ fn update_channel_settling() {
             exp_min_settle_height: state.min_settle_height,
             exp_settling_at: state.settling_at,
         },
-        TestCase {
-            min_settle: 2,
-            exp_min_settle_height: 2,
-            exp_settling_at: state.settling_at,
-        },
-        TestCase {
-            min_settle: 12,
-            exp_min_settle_height: 12,
-            exp_settling_at: state.settling_at,
-        },
+        TestCase { min_settle: 2, exp_min_settle_height: 2, exp_settling_at: state.settling_at },
+        TestCase { min_settle: 12, exp_min_settle_height: 12, exp_settling_at: state.settling_at },
         TestCase {
             min_settle: state.settling_at + 1,
             exp_min_settle_height: state.settling_at + 1,
@@ -727,11 +692,7 @@ fn update_channel_settling() {
             plaintext: ucp.sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        call(
-            &mut rt,
-            Method::UpdateChannelState as u64,
-            &RawBytes::serialize(&ucp).unwrap(),
-        );
+        call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(&ucp).unwrap());
         let new_state: PState = rt.get_state().unwrap();
         assert_eq!(tc.exp_settling_at, new_state.settling_at);
         assert_eq!(tc.exp_min_settle_height, new_state.min_settle_height);
@@ -757,11 +718,7 @@ mod secret_preimage {
             result: Ok(()),
         });
 
-        call(
-            &mut rt,
-            Method::UpdateChannelState as u64,
-            &RawBytes::serialize(ucp).unwrap(),
-        );
+        call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(ucp).unwrap());
 
         rt.verify();
     }
@@ -772,10 +729,7 @@ mod secret_preimage {
 
         let state: PState = rt.get_state().unwrap();
 
-        let mut ucp = UpdateChannelStateParams {
-            secret: b"Profesr".to_vec(),
-            sv: sv.clone(),
-        };
+        let mut ucp = UpdateChannelStateParams { secret: b"Profesr".to_vec(), sv: sv.clone() };
         let mut mag = b"Magneto".to_vec();
         mag.append(&mut vec![0; 25]);
         ucp.sv.secret_pre_image = mag;
@@ -852,11 +806,7 @@ mod actor_settle {
             plaintext: sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        call(
-            &mut rt,
-            Method::UpdateChannelState as u64,
-            &RawBytes::serialize(&ucp).unwrap(),
-        );
+        call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(&ucp).unwrap());
 
         state = rt.get_state().unwrap();
         assert_eq!(state.settling_at, 0);
@@ -1050,16 +1000,9 @@ fn require_add_new_lane(rt: &mut MockRuntime, param: LaneParams) -> SignedVouche
 }
 
 fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address) {
-    let params = ConstructorParams {
-        from: sender,
-        to: receiver,
-    };
+    let params = ConstructorParams { from: sender, to: receiver };
     rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
-    call(
-        rt,
-        METHOD_CONSTRUCTOR,
-        &RawBytes::serialize(&params).unwrap(),
-    );
+    call(rt, METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap());
     rt.verify();
     verify_initial_state(rt, sender, receiver);
 }

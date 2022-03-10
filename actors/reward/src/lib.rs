@@ -65,10 +65,7 @@ impl Actor {
             rt.create(&State::new(power))?;
             Ok(())
         } else {
-            Err(actor_error!(
-                ErrIllegalArgument,
-                "argument should not be nil"
-            ))
+            Err(actor_error!(ErrIllegalArgument, "argument should not be nil"))
         }
     }
 
@@ -93,11 +90,7 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
         let prior_balance = rt.current_balance();
         if params.penalty.sign() == Sign::Minus {
-            return Err(actor_error!(
-                ErrIllegalArgument,
-                "negative penalty {}",
-                params.penalty
-            ));
+            return Err(actor_error!(ErrIllegalArgument, "negative penalty {}", params.penalty));
         }
         if params.gas_reward.sign() == Sign::Minus {
             return Err(actor_error!(
@@ -115,11 +108,7 @@ impl Actor {
             ));
         }
         if params.win_count <= 0 {
-            return Err(actor_error!(
-                ErrIllegalArgument,
-                "invalid win count {}",
-                params.win_count
-            ));
+            return Err(actor_error!(ErrIllegalArgument, "invalid win count {}", params.win_count));
         }
 
         let miner_addr = rt
@@ -165,10 +154,7 @@ impl Actor {
         }
 
         // if this fails, we can assume the miner is responsible and avoid failing here.
-        let reward_params = ext::miner::ApplyRewardParams {
-            reward: total_reward.clone(),
-            penalty,
-        };
+        let reward_params = ext::miner::ApplyRewardParams { reward: total_reward.clone(), penalty };
         let res = rt.send(
             miner_addr,
             ext::miner::APPLY_REWARDS_METHOD,
@@ -181,12 +167,8 @@ impl Actor {
                 total_reward,
                 e.exit_code()
             );
-            let res = rt.send(
-                *BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                RawBytes::default(),
-                total_reward,
-            );
+            let res =
+                rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), total_reward);
             if let Err(e) = res {
                 error!(
                     "failed to send unsent reward to the burnt funds actor, code: {:?}",

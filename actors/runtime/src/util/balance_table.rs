@@ -26,11 +26,7 @@ where
 
     /// Initializes a balance table from a root Cid
     pub fn from_root(bs: &'a BS, cid: &Cid) -> Result<Self, Error> {
-        Ok(Self(make_map_with_root_and_bitwidth(
-            cid,
-            bs,
-            BALANCE_TABLE_BITWIDTH,
-        )?))
+        Ok(Self(make_map_with_root_and_bitwidth(cid, bs, BALANCE_TABLE_BITWIDTH)?))
     }
 
     /// Retrieve root from balance table

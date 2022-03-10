@@ -30,26 +30,12 @@ fn construct_with_empty_entries() {
 fn construct_with_entries() {
     let mut rt = construct_runtime();
 
-    let entry1 = Entry {
-        receiver: Address::new_id(1001),
-        method_num: 1001,
-    };
-    let entry2 = Entry {
-        receiver: Address::new_id(1002),
-        method_num: 1002,
-    };
-    let entry3 = Entry {
-        receiver: Address::new_id(1003),
-        method_num: 1003,
-    };
-    let entry4 = Entry {
-        receiver: Address::new_id(1004),
-        method_num: 1004,
-    };
+    let entry1 = Entry { receiver: Address::new_id(1001), method_num: 1001 };
+    let entry2 = Entry { receiver: Address::new_id(1002), method_num: 1002 };
+    let entry3 = Entry { receiver: Address::new_id(1003), method_num: 1003 };
+    let entry4 = Entry { receiver: Address::new_id(1004), method_num: 1004 };
 
-    let params = ConstructorParams {
-        entries: vec![entry1, entry2, entry3, entry4],
-    };
+    let params = ConstructorParams { entries: vec![entry1, entry2, entry3, entry4] };
 
     construct_and_verify(&mut rt, &params);
 
@@ -69,30 +55,13 @@ fn epoch_tick_with_empty_entries() {
 fn epoch_tick_with_entries() {
     let mut rt = construct_runtime();
 
-    let entry1 = Entry {
-        receiver: Address::new_id(1001),
-        method_num: 1001,
-    };
-    let entry2 = Entry {
-        receiver: Address::new_id(1002),
-        method_num: 1002,
-    };
-    let entry3 = Entry {
-        receiver: Address::new_id(1003),
-        method_num: 1003,
-    };
-    let entry4 = Entry {
-        receiver: Address::new_id(1004),
-        method_num: 1004,
-    };
+    let entry1 = Entry { receiver: Address::new_id(1001), method_num: 1001 };
+    let entry2 = Entry { receiver: Address::new_id(1002), method_num: 1002 };
+    let entry3 = Entry { receiver: Address::new_id(1003), method_num: 1003 };
+    let entry4 = Entry { receiver: Address::new_id(1004), method_num: 1004 };
 
     let params = ConstructorParams {
-        entries: vec![
-            entry1.clone(),
-            entry2.clone(),
-            entry3.clone(),
-            entry4.clone(),
-        ],
+        entries: vec![entry1.clone(), entry2.clone(), entry3.clone(), entry4.clone()],
     };
 
     construct_and_verify(&mut rt, &params);
@@ -136,9 +105,7 @@ fn epoch_tick_with_entries() {
 
 fn construct_and_verify(rt: &mut MockRuntime, params: &ConstructorParams) {
     rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
-    let ret = rt
-        .call::<CronActor>(1, &RawBytes::serialize(&params).unwrap())
-        .unwrap();
+    let ret = rt.call::<CronActor>(1, &RawBytes::serialize(&params).unwrap()).unwrap();
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
 }

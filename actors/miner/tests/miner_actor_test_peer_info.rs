@@ -55,10 +55,7 @@ fn can_set_multiple_multiaddrs() {
     let h = util::ActorHarness::new(0);
 
     h.construct_and_verify(&mut rt);
-    h.set_multiaddr(
-        &mut rt,
-        vec![BytesDe(vec![1, 3, 3, 7]), BytesDe(vec![2, 4, 4, 8])],
-    );
+    h.set_multiaddr(&mut rt, vec![BytesDe(vec![1, 3, 3, 7]), BytesDe(vec![2, 4, 4, 8])]);
 
     util::check_state_invariants(&rt);
 }

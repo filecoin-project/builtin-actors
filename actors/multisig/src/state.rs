@@ -112,10 +112,7 @@ impl State {
         curr_epoch: ChainEpoch,
     ) -> anyhow::Result<()> {
         if amount_to_spend < &0.into() {
-            return Err(anyhow!(
-                "amount to spend {} less than zero",
-                amount_to_spend
-            ));
+            return Err(anyhow!("amount to spend {} less than zero", amount_to_spend));
         }
         if &balance < amount_to_spend {
             return Err(anyhow!(

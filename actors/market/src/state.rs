@@ -241,10 +241,8 @@ where
         }
 
         if self.dpe_permit != Permission::Invalid {
-            self.deals_by_epoch = Some(SetMultimap::from_root(
-                self.store,
-                &self.st.deal_ops_by_epoch,
-            )?);
+            self.deals_by_epoch =
+                Some(SetMultimap::from_root(self.store, &self.st.deal_ops_by_epoch)?);
         }
 
         self.next_deal_id = self.st.next_id;
@@ -285,25 +283,22 @@ where
     pub(super) fn commit_state(&mut self) -> anyhow::Result<()> {
         if self.proposal_permit == Permission::Write {
             if let Some(s) = &mut self.deal_proposals {
-                self.st.proposals = s
-                    .flush()
-                    .map_err(|e| e.downcast_wrap("failed to flush deal proposals"))?;
+                self.st.proposals =
+                    s.flush().map_err(|e| e.downcast_wrap("failed to flush deal proposals"))?;
             }
         }
 
         if self.state_permit == Permission::Write {
             if let Some(s) = &mut self.deal_states {
-                self.st.states = s
-                    .flush()
-                    .map_err(|e| e.downcast_wrap("failed to flush deal states"))?;
+                self.st.states =
+                    s.flush().map_err(|e| e.downcast_wrap("failed to flush deal states"))?;
             }
         }
 
         if self.locked_permit == Permission::Write {
             if let Some(s) = &mut self.locked_table {
-                self.st.locked_table = s
-                    .root()
-                    .map_err(|e| e.downcast_wrap("failed to flush locked table"))?;
+                self.st.locked_table =
+                    s.root().map_err(|e| e.downcast_wrap("failed to flush locked table"))?;
             }
             if let Some(s) = &mut self.total_client_locked_colateral {
                 self.st.total_client_locked_colateral = s.clone();
@@ -318,25 +313,22 @@ where
 
         if self.escrow_permit == Permission::Write {
             if let Some(s) = &mut self.escrow_table {
-                self.st.escrow_table = s
-                    .root()
-                    .map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
+                self.st.escrow_table =
+                    s.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
             }
         }
 
         if self.pending_permit == Permission::Write {
             if let Some(s) = &mut self.pending_deals {
-                self.st.pending_proposals = s
-                    .root()
-                    .map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
+                self.st.pending_proposals =
+                    s.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
             }
         }
 
         if self.dpe_permit == Permission::Write {
             if let Some(s) = &mut self.deals_by_epoch {
-                self.st.deal_ops_by_epoch = s
-                    .root()
-                    .map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
+                self.st.deal_ops_by_epoch =
+                    s.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
             }
         }
 
@@ -421,17 +413,13 @@ where
                 })?;
 
             // Unlock client collateral
-            self.unlock_balance(
-                &deal.client,
-                &deal.client_collateral,
-                Reason::ClientCollateral,
-            )
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to unlock client collateral",
-                )
-            })?;
+            self.unlock_balance(&deal.client, &deal.client_collateral, Reason::ClientCollateral)
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::ErrIllegalState,
+                        "failed to unlock client collateral",
+                    )
+                })?;
 
             // slash provider collateral
             let slashed = deal.provider_collateral.clone();
@@ -461,50 +449,34 @@ where
         &mut self,
         deal: &DealProposal,
     ) -> Result<TokenAmount, ActorError> {
-        self.unlock_balance(
-            &deal.client,
-            &deal.total_storage_fee(),
-            Reason::ClientStorageFee,
-        )
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::ErrIllegalState,
-                "failure unlocking client storage fee",
-            )
-        })?;
+        self.unlock_balance(&deal.client, &deal.total_storage_fee(), Reason::ClientStorageFee)
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::ErrIllegalState,
+                    "failure unlocking client storage fee",
+                )
+            })?;
 
-        self.unlock_balance(
-            &deal.client,
-            &deal.client_collateral,
-            Reason::ClientCollateral,
-        )
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::ErrIllegalState,
-                "failure unlocking client collateral",
-            )
-        })?;
+        self.unlock_balance(&deal.client, &deal.client_collateral, Reason::ClientCollateral)
+            .map_err(|e| {
+                e.downcast_default(ExitCode::ErrIllegalState, "failure unlocking client collateral")
+            })?;
 
         let amount_slashed =
             collateral_penalty_for_deal_activation_missed(deal.provider_collateral.clone());
         let amount_remaining = deal.provider_balance_requirement() - &amount_slashed;
 
-        self.slash_balance(&deal.provider, &amount_slashed, Reason::ProviderCollateral)
-            .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to slash balance")
-            })?;
+        self.slash_balance(&deal.provider, &amount_slashed, Reason::ProviderCollateral).map_err(
+            |e| e.downcast_default(ExitCode::ErrIllegalState, "failed to slash balance"),
+        )?;
 
-        self.unlock_balance(
-            &deal.provider,
-            &amount_remaining,
-            Reason::ProviderCollateral,
-        )
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::ErrIllegalState,
-                "failed to unlock deal provider balance",
-            )
-        })?;
+        self.unlock_balance(&deal.provider, &amount_remaining, Reason::ProviderCollateral)
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::ErrIllegalState,
+                    "failed to unlock deal provider balance",
+                )
+            })?;
 
         Ok(amount_slashed)
     }
@@ -519,35 +491,24 @@ where
         BS: Blockstore,
     {
         if state.sector_start_epoch == EPOCH_UNDEFINED {
-            return Err(actor_error!(
-                ErrIllegalState,
-                "start sector epoch undefined"
-            ));
+            return Err(actor_error!(ErrIllegalState, "start sector epoch undefined"));
         }
 
-        self.unlock_balance(
-            &deal.provider,
-            &deal.provider_collateral,
-            Reason::ProviderCollateral,
-        )
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::ErrIllegalState,
-                "failed unlocking deal provider balance",
-            )
-        })?;
+        self.unlock_balance(&deal.provider, &deal.provider_collateral, Reason::ProviderCollateral)
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::ErrIllegalState,
+                    "failed unlocking deal provider balance",
+                )
+            })?;
 
-        self.unlock_balance(
-            &deal.client,
-            &deal.client_collateral,
-            Reason::ClientCollateral,
-        )
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::ErrIllegalState,
-                "failed unlocking deal client balance",
-            )
-        })?;
+        self.unlock_balance(&deal.client, &deal.client_collateral, Reason::ClientCollateral)
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::ErrIllegalState,
+                    "failed unlocking deal client balance",
+                )
+            })?;
 
         Ok(())
     }
@@ -564,22 +525,12 @@ where
         addr: Address,
         amount_to_lock: &TokenAmount,
     ) -> anyhow::Result<bool> {
-        let prev_locked = self
-            .locked_table
-            .as_ref()
-            .unwrap()
-            .get(&addr)
-            .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to get locked balance")
-            })?;
-        let escrow_balance = self
-            .escrow_table
-            .as_ref()
-            .unwrap()
-            .get(&addr)
-            .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to get escrow balance")
-            })?;
+        let prev_locked = self.locked_table.as_ref().unwrap().get(&addr).map_err(|e| {
+            e.downcast_default(ExitCode::ErrIllegalState, "failed to get locked balance")
+        })?;
+        let escrow_balance = self.escrow_table.as_ref().unwrap().get(&addr).map_err(|e| {
+            e.downcast_default(ExitCode::ErrIllegalState, "failed to get escrow balance")
+        })?;
         Ok((prev_locked + amount_to_lock) <= escrow_balance)
     }
 
@@ -589,11 +540,7 @@ where
         amount: &TokenAmount,
     ) -> Result<(), ActorError> {
         if amount.is_negative() {
-            return Err(actor_error!(
-                ErrIllegalState,
-                "cannot lock negative amount {}",
-                amount
-            ));
+            return Err(actor_error!(ErrIllegalState, "cannot lock negative amount {}", amount));
         }
 
         let prev_locked = self.locked_table.as_ref().unwrap().get(addr).map_err(|e| {
@@ -611,13 +558,9 @@ where
                     addr, escrow_balance, prev_locked, amount));
         }
 
-        self.locked_table
-            .as_mut()
-            .unwrap()
-            .add(addr, amount)
-            .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to add locked balance")
-            })?;
+        self.locked_table.as_mut().unwrap().add(addr, amount).map_err(|e| {
+            e.downcast_default(ExitCode::ErrIllegalState, "failed to add locked balance")
+        })?;
         Ok(())
     }
 
@@ -652,10 +595,7 @@ where
         if amount.is_negative() {
             return Err(actor_error!(ErrIllegalState, "unlock negative amount: {}", amount).into());
         }
-        self.locked_table
-            .as_mut()
-            .unwrap()
-            .must_subtract(addr, amount)?;
+        self.locked_table.as_mut().unwrap().must_subtract(addr, amount)?;
 
         match lock_reason {
             Reason::ClientCollateral => self.total_client_locked_colateral.as_mut().map(|v| {
@@ -680,11 +620,7 @@ where
         amount: &TokenAmount,
     ) -> Result<(), ActorError> {
         if amount.is_negative() {
-            return Err(actor_error!(
-                ErrIllegalState,
-                "transfer negative amount: {}",
-                amount
-            ));
+            return Err(actor_error!(ErrIllegalState, "transfer negative amount: {}", amount));
         }
 
         // Subtract from locked and escrow tables
@@ -715,15 +651,12 @@ where
     ) -> anyhow::Result<()> {
         if amount.is_negative() {
             return Err(
-                actor_error!(ErrIllegalState, "negative amount to slash: {}", amount).into(),
+                actor_error!(ErrIllegalState, "negative amount to slash: {}", amount).into()
             );
         }
 
         // Subtract from locked and escrow tables
-        self.escrow_table
-            .as_mut()
-            .unwrap()
-            .must_subtract(addr, amount)?;
+        self.escrow_table.as_mut().unwrap().must_subtract(addr, amount)?;
         self.unlock_balance(addr, amount, lock_reason)
     }
 }

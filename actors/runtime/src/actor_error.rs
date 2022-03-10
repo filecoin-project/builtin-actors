@@ -42,20 +42,14 @@ impl ActorError {
 // TODO former EncodingError
 impl From<fvm_shared::encoding::Error> for ActorError {
     fn from(e: fvm_shared::encoding::Error) -> Self {
-        Self {
-            exit_code: ExitCode::ErrSerialization,
-            msg: e.to_string(),
-        }
+        Self { exit_code: ExitCode::ErrSerialization, msg: e.to_string() }
     }
 }
 
 // TODO former CborError
 impl From<fvm_shared::encoding::error::Error> for ActorError {
     fn from(e: fvm_shared::encoding::error::Error) -> Self {
-        Self {
-            exit_code: ExitCode::ErrSerialization,
-            msg: e.to_string(),
-        }
+        Self { exit_code: ExitCode::ErrSerialization, msg: e.to_string() }
     }
 }
 
@@ -95,10 +89,7 @@ impl From<fvm_sdk::error::NoStateError> for ActorError {
 /// to ActorErrors. This facilitates propagation.
 impl From<ExitCode> for ActorError {
     fn from(e: ExitCode) -> Self {
-        ActorError {
-            exit_code: e,
-            msg: "".to_string(),
-        }
+        ActorError { exit_code: e, msg: "".to_string() }
     }
 }
 

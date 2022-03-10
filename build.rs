@@ -43,10 +43,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:warning=out_dir: {:?}", &out_dir);
 
     // Compute the package names.
-    let packages = ACTORS
-        .iter()
-        .map(|(pkg, _)| String::from("fil_actor_") + pkg)
-        .collect::<Vec<String>>();
+    let packages =
+        ACTORS.iter().map(|(pkg, _)| String::from("fil_actor_") + pkg).collect::<Vec<String>>();
 
     let manifest_path =
         Path::new(&std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR unset"))
@@ -61,10 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .arg("--profile=wasm")
         .arg("--locked")
         .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
-        .env(
-            "RUSTFLAGS",
-            "-Ctarget-feature=+crt-static -Clink-arg=--export-table",
-        )
+        .env("RUSTFLAGS", "-Ctarget-feature=+crt-static -Clink-arg=--export-table")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         // We are supposed to only generate artifacts under OUT_DIR,
@@ -115,15 +110,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let cid = bundler
             .add_from_file((*id).try_into().unwrap(), Some(&forced_cid), &bytecode_path)
             .unwrap_or_else(|err| {
-                panic!(
-                    "failed to add file {:?} to bundle for actor {}: {}",
-                    bytecode_path, id, err
-                )
+                panic!("failed to add file {:?} to bundle for actor {}: {}", bytecode_path, id, err)
             });
-        println!(
-            "cargo:warning=added actor {} to bundle with CID {}",
-            id, cid
-        );
+        println!("cargo:warning=added actor {} to bundle with CID {}", id, cid);
     }
     bundler.finish().expect("failed to finish bundle");
 

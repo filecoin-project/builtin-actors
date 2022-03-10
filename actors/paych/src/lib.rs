@@ -109,11 +109,7 @@ impl Actor {
         let st: State = rt.state()?;
 
         rt.validate_immediate_caller_is([st.from, st.to].iter())?;
-        let signer = if rt.message().caller() == st.from {
-            st.to
-        } else {
-            st.from
-        };
+        let signer = if rt.message().caller() == st.from { st.to } else { st.from };
         let sv = params.sv;
 
         // Pull signature from signed voucher
@@ -130,10 +126,7 @@ impl Actor {
         }
 
         if params.secret.len() > MAX_SECRET_SIZE {
-            return Err(actor_error!(
-                ErrIllegalArgument,
-                "secret must be at most 256 bytes long"
-            ));
+            return Err(actor_error!(ErrIllegalArgument, "secret must be at most 256 bytes long"));
         }
 
         // Generate unsigned bytes
@@ -346,10 +339,7 @@ where
     }
 
     ls.get(id).map_err(|e| {
-        e.downcast_default(
-            ExitCode::ErrIllegalState,
-            format!("failed to load lane {}", id),
-        )
+        e.downcast_default(ExitCode::ErrIllegalState, format!("failed to load lane {}", id))
     })
 }
 

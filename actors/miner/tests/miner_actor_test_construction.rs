@@ -42,18 +42,10 @@ fn prepare_env() -> TestEnv {
     };
 
     env.rt.receiver = env.receiver;
-    env.rt
-        .actor_code_cids
-        .insert(env.owner, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt
-        .actor_code_cids
-        .insert(env.worker, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt
-        .actor_code_cids
-        .insert(env.control_addrs[0], *ACCOUNT_ACTOR_CODE_ID);
-    env.rt
-        .actor_code_cids
-        .insert(env.control_addrs[1], *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.insert(env.owner, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.insert(env.worker, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.insert(env.control_addrs[0], *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.insert(env.control_addrs[1], *ACCOUNT_ACTOR_CODE_ID);
     env.rt.hash_func = Box::new(blake2b_256);
     env.rt.caller = *INIT_ACTOR_ADDR;
     env.rt.caller_type = *INIT_ACTOR_CODE_ID;
@@ -88,10 +80,7 @@ fn simple_construction() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
+        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap();
     assert_eq!(result.bytes().len(), 0);
     env.rt.verify();
@@ -104,10 +93,7 @@ fn simple_construction() {
     assert_eq!(env.control_addrs, info.control_addresses);
     assert_eq!(env.peer_id, info.peer_id);
     assert_eq!(env.multiaddrs, info.multi_address);
-    assert_eq!(
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        info.window_post_proof_type
-    );
+    assert_eq!(RegisteredPoStProof::StackedDRGWindow32GiBV1, info.window_post_proof_type);
     assert_eq!(SectorSize::_32GiB, info.sector_size);
     assert_eq!(2349, info.window_post_partition_sectors);
 
@@ -123,12 +109,7 @@ fn simple_construction() {
     let dl_idx = (env.rt.epoch - proving_period_start) / env.rt.policy.wpost_challenge_window;
     assert_eq!(dl_idx as u64, state.current_deadline);
 
-    let deadlines = env
-        .rt
-        .store
-        .get_cbor::<Deadlines>(&state.deadlines)
-        .unwrap()
-        .unwrap();
+    let deadlines = env.rt.store.get_cbor::<Deadlines>(&state.deadlines).unwrap().unwrap();
     for i in 0..env.rt.policy.wpost_period_deadlines {
         let c = deadlines.due[i as usize];
         let deadline = env.rt.store.get_cbor::<Deadline>(&c).unwrap().unwrap();
@@ -154,12 +135,8 @@ fn control_addresses_are_resolved_during_construction() {
     let control2id = Address::new_id(655);
 
     env.control_addrs = vec![control1, control2];
-    env.rt
-        .actor_code_cids
-        .insert(control1id, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt
-        .actor_code_cids
-        .insert(control2id, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.insert(control1id, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.insert(control2id, *ACCOUNT_ACTOR_CODE_ID);
     env.rt.id_addresses.insert(control1, control1id);
     env.rt.id_addresses.insert(control2, control2id);
 
@@ -176,10 +153,7 @@ fn control_addresses_are_resolved_during_construction() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
+        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap();
     assert_eq!(result.bytes().len(), 0);
     env.rt.verify();
@@ -198,9 +172,7 @@ fn fails_if_control_address_is_not_an_account_actor() {
 
     let control1 = Address::new_id(501);
     env.control_addrs = vec![control1];
-    env.rt
-        .actor_code_cids
-        .insert(control1, *PAYCH_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.insert(control1, *PAYCH_ACTOR_CODE_ID);
 
     let params = constructor_params(&env);
     env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
@@ -215,10 +187,7 @@ fn fails_if_control_address_is_not_an_account_actor() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
+        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
     env.rt.verify();
@@ -234,10 +203,7 @@ fn test_construct_with_invalid_peer_id() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
+        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
     env.rt.verify();
@@ -256,10 +222,7 @@ fn fails_if_control_addresses_exceeds_maximum_length() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
+        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
     env.rt.verify();
@@ -270,8 +233,7 @@ fn test_construct_with_large_multiaddr() {
     let mut env = prepare_env();
     env.multiaddrs = Vec::new();
     for _ in 0..100 {
-        env.multiaddrs
-            .push(BytesDe(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]));
+        env.multiaddrs.push(BytesDe(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]));
     }
 
     let params = constructor_params(&env);
@@ -279,10 +241,7 @@ fn test_construct_with_large_multiaddr() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
+        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
     env.rt.verify();
@@ -300,10 +259,7 @@ fn test_construct_with_empty_multiaddr() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
+        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
     env.rt.verify();

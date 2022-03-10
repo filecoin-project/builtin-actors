@@ -61,9 +61,7 @@ fn create_2_payment_channels() {
         let expected_id_addr = Address::new_id(expected_id);
         rt.expect_create_actor(*PAYCH_ACTOR_CODE_ID, expected_id);
 
-        let fake_params = ConstructorParams {
-            network_name: String::from("fake_param"),
-        };
+        let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
         // expect anne creating a payment channel to trigger a send to the payment channels constructor
         let balance = TokenAmount::from(100u8);
@@ -79,14 +77,8 @@ fn create_2_payment_channels() {
 
         let exec_ret = exec_and_verify(&mut rt, *PAYCH_ACTOR_CODE_ID, &fake_params).unwrap();
         let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
-        assert_eq!(
-            unique_address, exec_ret.robust_address,
-            "Robust Address does not match"
-        );
-        assert_eq!(
-            expected_id_addr, exec_ret.id_address,
-            "Id address does not match"
-        );
+        assert_eq!(unique_address, exec_ret.robust_address, "Robust Address does not match");
+        assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
 
         let state: State = rt.get_state().unwrap();
         let returned_address = state
@@ -113,9 +105,7 @@ fn create_storage_miner() {
     let expected_id_addr = Address::new_id(expected_id);
     rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id);
 
-    let fake_params = ConstructorParams {
-        network_name: String::from("fake_param"),
-    };
+    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
     rt.expect_send(
         expected_id_addr,
@@ -144,10 +134,7 @@ fn create_storage_miner() {
     let unknown_addr = Address::new_actor(b"flurbo");
 
     let returned_address = state.resolve_address(&rt.store, &unknown_addr).unwrap();
-    assert_eq!(
-        returned_address, None,
-        "Addresses should have not been found"
-    );
+    assert_eq!(returned_address, None, "Addresses should have not been found");
 }
 
 #[test]
@@ -168,9 +155,7 @@ fn create_multisig_actor() {
     let expected_id_addr = Address::new_id(expected_id);
     rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id);
 
-    let fake_params = ConstructorParams {
-        network_name: String::from("fake_param"),
-    };
+    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
     rt.expect_send(
         expected_id_addr,
@@ -184,14 +169,8 @@ fn create_multisig_actor() {
     // Return should have been successful. Check the returned addresses
     let exec_ret = exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
     let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
-    assert_eq!(
-        unique_address, exec_ret.robust_address,
-        "Robust address does not macth"
-    );
-    assert_eq!(
-        expected_id_addr, exec_ret.id_address,
-        "Id address does not match"
-    );
+    assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
+    assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
 }
 
 #[test]
@@ -211,9 +190,7 @@ fn sending_constructor_failure() {
     let expected_id_addr = Address::new_id(expected_id);
     rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id);
 
-    let fake_params = ConstructorParams {
-        network_name: String::from("fake_param"),
-    };
+    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     rt.expect_send(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
@@ -237,20 +214,14 @@ fn sending_constructor_failure() {
     let state: State = rt.get_state().unwrap();
 
     let returned_address = state.resolve_address(&rt.store, &unique_address).unwrap();
-    assert_eq!(
-        returned_address, None,
-        "Addresses should have not been found"
-    );
+    assert_eq!(returned_address, None, "Addresses should have not been found");
 }
 
 fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
-    let params = ConstructorParams {
-        network_name: "mock".to_string(),
-    };
-    let ret = rt
-        .call::<InitActor>(METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap())
-        .unwrap();
+    let params = ConstructorParams { network_name: "mock".to_string() };
+    let ret =
+        rt.call::<InitActor>(METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap()).unwrap();
 
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
@@ -258,9 +229,8 @@ fn construct_and_verify(rt: &mut MockRuntime) {
     let state_data: State = rt.get_state().unwrap();
 
     // Gets the Result(CID)
-    let empty_map = Multimap::from_root(&rt.store, &state_data.address_map, HAMT_BIT_WIDTH, 3)
-        .unwrap()
-        .root();
+    let empty_map =
+        Multimap::from_root(&rt.store, &state_data.address_map, HAMT_BIT_WIDTH, 3).unwrap().root();
 
     assert_eq!(empty_map.unwrap(), state_data.address_map);
     assert_eq!(FIRST_NON_SINGLETON_ADDR, state_data.next_id);
@@ -276,15 +246,11 @@ where
     S: Serialize,
 {
     rt.expect_validate_caller_any();
-    let exec_params = ExecParams {
-        code_cid: code_id,
-        constructor_params: RawBytes::serialize(params).unwrap(),
-    };
+    let exec_params =
+        ExecParams { code_cid: code_id, constructor_params: RawBytes::serialize(params).unwrap() };
 
-    let ret = rt.call::<InitActor>(
-        Method::Exec as u64,
-        &RawBytes::serialize(&exec_params).unwrap(),
-    );
+    let ret =
+        rt.call::<InitActor>(Method::Exec as u64, &RawBytes::serialize(&exec_params).unwrap());
 
     rt.verify();
     ret

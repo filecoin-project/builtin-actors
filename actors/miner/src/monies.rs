@@ -295,22 +295,14 @@ pub fn aggregate_prove_commit_network_fee(
     aggregate_size: i64,
     base_fee: &TokenAmount,
 ) -> TokenAmount {
-    aggregate_network_fee(
-        aggregate_size,
-        &ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE,
-        base_fee,
-    )
+    aggregate_network_fee(aggregate_size, &ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE, base_fee)
 }
 
 pub fn aggregate_pre_commit_network_fee(
     aggregate_size: i64,
     base_fee: &TokenAmount,
 ) -> TokenAmount {
-    aggregate_network_fee(
-        aggregate_size,
-        &ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE,
-        base_fee,
-    )
+    aggregate_network_fee(aggregate_size, &ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE, base_fee)
 }
 
 pub fn aggregate_network_fee(

@@ -136,8 +136,7 @@ where
 
         let caller_cid = {
             let caller_addr = self.message().caller();
-            self.get_actor_code_cid(&caller_addr)
-                .expect("failed to lookup caller code")
+            self.get_actor_code_cid(&caller_addr).expect("failed to lookup caller code")
         };
 
         match self.resolve_builtin_actor_type(&caller_cid) {
@@ -184,10 +183,7 @@ where
             ErrorNumber::LimitExceeded => {
                 actor_error!(ErrIllegalArgument; "randomness lookback exceeded: {}", e)
             }
-            e => panic!(
-                "get chain randomness failed with an unexpected error: {}",
-                e
-            ),
+            e => panic!("get chain randomness failed with an unexpected error: {}", e),
         })
     }
 
@@ -203,10 +199,7 @@ where
                 ErrorNumber::LimitExceeded => {
                     actor_error!(ErrIllegalArgument; "randomness lookback exceeded: {}", e)
                 }
-                e => panic!(
-                    "get chain randomness failed with an unexpected error: {}",
-                    e
-                ),
+                e => panic!("get chain randomness failed with an unexpected error: {}", e),
             },
         )
     }
@@ -433,9 +426,7 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     let method = fvm::message::method_number();
     let params = if params > 0 {
         log::debug!("fetching parameters block: {}", params);
-        let params = fvm::message::params_raw(params)
-            .expect("params block invalid")
-            .1;
+        let params = fvm::message::params_raw(params).expect("params block invalid").1;
         RawBytes::new(params)
     } else {
         RawBytes::default()
@@ -453,10 +444,7 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     // We do this after handling the error, because the actor may have encountered an error before
     // it even could validate the caller.
     if !rt.caller_validated {
-        fvm::vm::abort(
-            ExitCode::SysErrIllegalActor as u32,
-            Some("failed to validate caller"),
-        )
+        fvm::vm::abort(ExitCode::SysErrIllegalActor as u32, Some("failed to validate caller"))
     }
 
     // Then handle the return value.

@@ -183,12 +183,8 @@ impl Default for Policy {
 
         #[cfg(feature = "devnet")]
         {
-            policy
-                .valid_pre_commit_proof_type
-                .insert(RegisteredSealProof::StackedDRG2KiBV1);
-            policy
-                .valid_pre_commit_proof_type
-                .insert(RegisteredSealProof::StackedDRG2KiBV1P1);
+            policy.valid_pre_commit_proof_type.insert(RegisteredSealProof::StackedDRG2KiBV1);
+            policy.valid_pre_commit_proof_type.insert(RegisteredSealProof::StackedDRG2KiBV1P1);
         };
 
         policy

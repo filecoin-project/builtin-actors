@@ -22,26 +22,10 @@ fn total() {
         total: u64,
     }
     let test_vectors = [
-        TotalTestCase {
-            amount: 10,
-            addr: &addr1,
-            total: 10,
-        },
-        TotalTestCase {
-            amount: 20,
-            addr: &addr1,
-            total: 30,
-        },
-        TotalTestCase {
-            amount: 40,
-            addr: &addr2,
-            total: 70,
-        },
-        TotalTestCase {
-            amount: 50,
-            addr: &addr2,
-            total: 120,
-        },
+        TotalTestCase { amount: 10, addr: &addr1, total: 10 },
+        TotalTestCase { amount: 20, addr: &addr1, total: 30 },
+        TotalTestCase { amount: 40, addr: &addr2, total: 70 },
+        TotalTestCase { amount: 50, addr: &addr2, total: 120 },
     ];
 
     for t in test_vectors.iter() {

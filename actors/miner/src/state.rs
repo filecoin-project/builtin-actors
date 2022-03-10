@@ -129,9 +129,8 @@ impl State {
         period_start: ChainEpoch,
         deadline_idx: u64,
     ) -> anyhow::Result<Self> {
-        let empty_precommit_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
-            .flush()
-            .map_err(|e| {
+        let empty_precommit_map =
+            make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().map_err(|e| {
                 e.downcast_default(
                     ExitCode::ErrIllegalState,
                     "failed to construct empty precommit map",
@@ -155,38 +154,23 @@ impl State {
                         "failed to construct sectors array",
                     )
                 })?;
-        let empty_bitfield = store
-            .put_cbor(&BitField::new(), Code::Blake2b256)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to construct empty bitfield",
-                )
-            })?;
+        let empty_bitfield = store.put_cbor(&BitField::new(), Code::Blake2b256).map_err(|e| {
+            e.downcast_default(ExitCode::ErrIllegalState, "failed to construct empty bitfield")
+        })?;
         let deadline = Deadline::new(store)?;
         let empty_deadline = store.put_cbor(&deadline, Code::Blake2b256).map_err(|e| {
-            e.downcast_default(
-                ExitCode::ErrIllegalState,
-                "failed to construct illegal state",
-            )
+            e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
         })?;
 
         let empty_deadlines = store
             .put_cbor(&Deadlines::new(policy, empty_deadline), Code::Blake2b256)
             .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to construct illegal state",
-                )
+                e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
             })?;
 
-        let empty_vesting_funds_cid = store
-            .put_cbor(&VestingFunds::new(), Code::Blake2b256)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to construct illegal state",
-                )
+        let empty_vesting_funds_cid =
+            store.put_cbor(&VestingFunds::new(), Code::Blake2b256).map_err(|e| {
+                e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
             })?;
 
         Ok(Self {
@@ -241,12 +225,7 @@ impl State {
         policy: &Policy,
         current_epoch: ChainEpoch,
     ) -> DeadlineInfo {
-        new_deadline_info(
-            policy,
-            self.proving_period_start,
-            self.current_deadline,
-            current_epoch,
-        )
+        new_deadline_info(policy, self.proving_period_start, self.current_deadline, current_epoch)
     }
 
     // Returns current proving period start for the current epoch according to the current epoch and constant state offset
@@ -296,17 +275,15 @@ impl State {
         }
         let new_allocation = &prior_allocation | sector_numbers;
         self.allocated_sectors =
-            store
-                .put_cbor(&new_allocation, Code::Blake2b256)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::ErrIllegalArgument,
-                        format!(
-                            "failed to store allocated sectors bitfield after adding {:?}",
-                            sector_numbers,
-                        ),
-                    )
-                })?;
+            store.put_cbor(&new_allocation, Code::Blake2b256).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::ErrIllegalArgument,
+                    format!(
+                        "failed to store allocated sectors bitfield after adding {:?}",
+                        sector_numbers,
+                    ),
+                )
+            })?;
         Ok(())
     }
 
@@ -359,10 +336,7 @@ impl State {
 
         for &sector_number in sector_numbers {
             let info = match precommitted.get(&u64_key(sector_number)).map_err(|e| {
-                e.downcast_wrap(format!(
-                    "failed to load precommitment for {}",
-                    sector_number
-                ))
+                e.downcast_wrap(format!("failed to load precommitment for {}", sector_number))
             })? {
                 Some(info) => info.clone(),
                 None => continue,
@@ -412,10 +386,8 @@ impl State {
 
         sectors.store(new_sectors)?;
 
-        self.sectors = sectors
-            .amt
-            .flush()
-            .map_err(|e| e.downcast_wrap("failed to persist sectors"))?;
+        self.sectors =
+            sectors.amt.flush().map_err(|e| e.downcast_wrap("failed to persist sectors"))?;
 
         Ok(())
     }
@@ -893,9 +865,7 @@ impl State {
 
         // * It may be possible the go implementation catches a potential panic here
         if from_vesting > self.fee_debt {
-            return Err(anyhow!(
-                "should never unlock more than the debt we need to repay"
-            ));
+            return Err(anyhow!("should never unlock more than the debt we need to repay"));
         }
         self.fee_debt -= &from_vesting;
 
@@ -1012,19 +982,13 @@ impl State {
 
     pub fn check_balance_invariants(&self, balance: &TokenAmount) -> anyhow::Result<()> {
         if self.pre_commit_deposits.is_negative() {
-            return Err(anyhow!(
-                "pre-commit deposit is negative: {}",
-                self.pre_commit_deposits
-            ));
+            return Err(anyhow!("pre-commit deposit is negative: {}", self.pre_commit_deposits));
         }
         if self.locked_funds.is_negative() {
             return Err(anyhow!("locked funds is negative: {}", self.locked_funds));
         }
         if self.initial_pledge.is_negative() {
-            return Err(anyhow!(
-                "initial pledge is negative: {}",
-                self.initial_pledge
-            ));
+            return Err(anyhow!("initial pledge is negative: {}", self.initial_pledge));
         }
         if self.fee_debt.is_negative() {
             return Err(anyhow!("fee debt is negative: {}", self.fee_debt));
@@ -1040,10 +1004,7 @@ impl State {
 
     /// pre-commit expiry
     pub fn quant_spec_every_deadline(&self, policy: &Policy) -> QuantSpec {
-        QuantSpec {
-            unit: policy.wpost_challenge_window,
-            offset: self.proving_period_start,
-        }
+        QuantSpec { unit: policy.wpost_challenge_window, offset: self.proving_period_start }
     }
 
     pub fn add_pre_commit_clean_ups<BS: Blockstore>(
@@ -1213,7 +1174,7 @@ impl State {
         for sector_no in sector_nos.iter() {
             if sector_no as u64 > MAX_SECTOR_NUMBER {
                 return Err(
-                    actor_error!(ErrIllegalArgument; "sector number greater than maximum").into(),
+                    actor_error!(ErrIllegalArgument; "sector number greater than maximum").into()
                 );
             }
             let info: &SectorPreCommitOnChainInfo =
