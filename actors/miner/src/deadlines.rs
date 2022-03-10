@@ -58,10 +58,7 @@ impl Deadlines {
             }
         }
 
-        Err(anyhow::anyhow!(
-            "sector {} not due at any deadline",
-            sector_number
-        ))
+        Err(anyhow::anyhow!("sector {} not due at any deadline", sector_number))
     }
 }
 
@@ -84,10 +81,7 @@ pub fn deadline_is_mutable(
 }
 
 pub fn quant_spec_for_deadline(policy: &Policy, di: &DeadlineInfo) -> QuantSpec {
-    QuantSpec {
-        unit: policy.wpost_proving_period,
-        offset: di.last(),
-    }
+    QuantSpec { unit: policy.wpost_proving_period, offset: di.last() }
 }
 
 // Returns true if optimistically accepted posts submitted to the given deadline
@@ -142,18 +136,10 @@ pub fn new_deadline_info_from_offset_and_epoch(
     period_start_seed: ChainEpoch,
     current_epoch: ChainEpoch,
 ) -> DeadlineInfo {
-    let q = QuantSpec {
-        unit: policy.wpost_proving_period,
-        offset: period_start_seed,
-    };
+    let q = QuantSpec { unit: policy.wpost_proving_period, offset: period_start_seed };
     let current_period_start = q.quantize_down(current_epoch);
     let current_deadline_idx = ((current_epoch - current_period_start)
         / policy.wpost_challenge_window) as u64
         % policy.wpost_period_deadlines;
-    new_deadline_info(
-        policy,
-        current_period_start,
-        current_deadline_idx,
-        current_epoch,
-    )
+    new_deadline_info(policy, current_period_start, current_deadline_idx, current_epoch)
 }

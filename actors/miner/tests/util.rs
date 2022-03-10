@@ -57,11 +57,7 @@ impl ActorHarness {
     pub fn new(proving_period_offset: ChainEpoch) -> ActorHarness {
         let owner = Address::new_id(100);
         let worker = Address::new_id(101);
-        let control_addrs = vec![
-            Address::new_id(999),
-            Address::new_id(998),
-            Address::new_id(997),
-        ];
+        let control_addrs = vec![Address::new_id(999), Address::new_id(998), Address::new_id(997)];
         let worker_key = new_bls_addr(0);
         let receiver = Address::new_id(1000);
         let rwd = TokenAmount::from(10_000_000_000_000_000_000i128);
@@ -103,10 +99,8 @@ impl ActorHarness {
             multi_addresses: vec![],
         };
 
-        rt.actor_code_cids
-            .insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
-        rt.actor_code_cids
-            .insert(self.worker, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.insert(self.worker, *ACCOUNT_ACTOR_CODE_ID);
         for a in self.control_addrs.iter() {
             rt.actor_code_cids.insert(*a, *ACCOUNT_ACTOR_CODE_ID);
         }
@@ -123,19 +117,14 @@ impl ActorHarness {
         );
 
         let result = rt
-            .call::<Actor>(
-                Method::Constructor as u64,
-                &RawBytes::serialize(params).unwrap(),
-            )
+            .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
             .unwrap();
         assert_eq!(result.bytes().len(), 0);
         rt.verify();
     }
 
     pub fn set_peer_id(self: &Self, rt: &mut MockRuntime, new_id: Vec<u8>) {
-        let params = ChangePeerIDParams {
-            new_id: new_id.clone(),
-        };
+        let params = ChangePeerIDParams { new_id: new_id.clone() };
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
@@ -145,10 +134,7 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(caller_addrs);
 
         let result = rt
-            .call::<Actor>(
-                Method::ChangePeerID as u64,
-                &RawBytes::serialize(params).unwrap(),
-            )
+            .call::<Actor>(Method::ChangePeerID as u64, &RawBytes::serialize(params).unwrap())
             .unwrap();
         assert_eq!(result.bytes().len(), 0);
         rt.verify();
@@ -160,26 +146,19 @@ impl ActorHarness {
     }
 
     pub fn set_peer_id_fail(self: &Self, rt: &mut MockRuntime, new_id: Vec<u8>) {
-        let params = ChangePeerIDParams {
-            new_id: new_id.clone(),
-        };
+        let params = ChangePeerIDParams { new_id: new_id.clone() };
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         let result = rt
-            .call::<Actor>(
-                Method::ChangePeerID as u64,
-                &RawBytes::serialize(params).unwrap(),
-            )
+            .call::<Actor>(Method::ChangePeerID as u64, &RawBytes::serialize(params).unwrap())
             .unwrap_err();
         assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
         rt.verify();
     }
 
     pub fn set_multiaddr(self: &Self, rt: &mut MockRuntime, new_multiaddrs: Vec<BytesDe>) {
-        let params = ChangeMultiaddrsParams {
-            new_multi_addrs: new_multiaddrs.clone(),
-        };
+        let params = ChangeMultiaddrsParams { new_multi_addrs: new_multiaddrs.clone() };
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
@@ -189,10 +168,7 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(caller_addrs);
 
         let result = rt
-            .call::<Actor>(
-                Method::ChangeMultiaddrs as u64,
-                &RawBytes::serialize(params).unwrap(),
-            )
+            .call::<Actor>(Method::ChangeMultiaddrs as u64, &RawBytes::serialize(params).unwrap())
             .unwrap();
         assert_eq!(result.bytes().len(), 0);
         rt.verify();
@@ -204,17 +180,12 @@ impl ActorHarness {
     }
 
     pub fn set_multiaddr_fail(self: &Self, rt: &mut MockRuntime, new_multiaddrs: Vec<BytesDe>) {
-        let params = ChangeMultiaddrsParams {
-            new_multi_addrs: new_multiaddrs.clone(),
-        };
+        let params = ChangeMultiaddrsParams { new_multi_addrs: new_multiaddrs.clone() };
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         let result = rt
-            .call::<Actor>(
-                Method::ChangeMultiaddrs as u64,
-                &RawBytes::serialize(params).unwrap(),
-            )
+            .call::<Actor>(Method::ChangeMultiaddrs as u64, &RawBytes::serialize(params).unwrap())
             .unwrap_err();
         assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
         rt.verify();
@@ -226,9 +197,8 @@ impl ActorHarness {
     ) -> (Address, Address, Vec<Address>) {
         rt.expect_validate_caller_any();
 
-        let result = rt
-            .call::<Actor>(Method::ControlAddresses as u64, &RawBytes::default())
-            .unwrap();
+        let result =
+            rt.call::<Actor>(Method::ControlAddresses as u64, &RawBytes::default()).unwrap();
         rt.verify();
 
         let value = result.deserialize::<GetControlAddressesReturn>().unwrap();

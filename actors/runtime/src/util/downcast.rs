@@ -80,10 +80,7 @@ fn downcast_util(error: anyhow::Error) -> anyhow::Result<ActorError> {
     // Check if error is Encoding error, if so return `ErrSerialization`
     let error = match error.downcast::<EncodingError>() {
         Ok(enc_error) => {
-            return Ok(ActorError::new(
-                ExitCode::ErrSerialization,
-                enc_error.to_string(),
-            ))
+            return Ok(ActorError::new(ExitCode::ErrSerialization, enc_error.to_string()))
         }
         Err(other) => other,
     };
@@ -92,10 +89,7 @@ fn downcast_util(error: anyhow::Error) -> anyhow::Result<ActorError> {
     // future proof.
     let error = match error.downcast::<CborError>() {
         Ok(enc_error) => {
-            return Ok(ActorError::new(
-                ExitCode::ErrSerialization,
-                enc_error.to_string(),
-            ))
+            return Ok(ActorError::new(ExitCode::ErrSerialization, enc_error.to_string()))
         }
         Err(other) => other,
     };

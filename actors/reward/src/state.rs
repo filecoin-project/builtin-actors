@@ -137,11 +137,8 @@ impl State {
     }
 
     pub(super) fn update_smoothed_estimates(&mut self, delta: ChainEpoch) {
-        let filter_reward = AlphaBetaFilter::load(
-            &self.this_epoch_reward_smoothed,
-            &DEFAULT_ALPHA,
-            &DEFAULT_BETA,
-        );
+        let filter_reward =
+            AlphaBetaFilter::load(&self.this_epoch_reward_smoothed, &DEFAULT_ALPHA, &DEFAULT_BETA);
         self.this_epoch_reward_smoothed =
             filter_reward.next_estimate(&self.this_epoch_reward, delta);
     }

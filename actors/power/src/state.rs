@@ -82,10 +82,7 @@ impl State {
         let empty_mmap = Multimap::new(store, CRON_QUEUE_HAMT_BITWIDTH, CRON_QUEUE_AMT_BITWIDTH)
             .root()
             .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "Failed to get empty multimap cid",
-                )
+                e.downcast_default(ExitCode::ErrIllegalState, "Failed to get empty multimap cid")
             })?;
         Ok(State {
             cron_event_queue: empty_mmap,
@@ -230,15 +227,9 @@ impl State {
 
     pub fn current_total_power(&self) -> (StoragePower, StoragePower) {
         if self.miner_above_min_power_count < CONSENSUS_MINER_MIN_MINERS {
-            (
-                self.total_bytes_committed.clone(),
-                self.total_qa_bytes_committed.clone(),
-            )
+            (self.total_bytes_committed.clone(), self.total_qa_bytes_committed.clone())
         } else {
-            (
-                self.total_raw_byte_power.clone(),
-                self.total_quality_adj_power.clone(),
-            )
+            (self.total_raw_byte_power.clone(), self.total_quality_adj_power.clone())
         }
     }
 
@@ -316,10 +307,7 @@ impl State {
                 None => {
                     return Ok(());
                 }
-                Some(claim) => (
-                    claim.raw_byte_power.clone(),
-                    claim.quality_adj_power.clone(),
-                ),
+                Some(claim) => (claim.raw_byte_power.clone(), claim.quality_adj_power.clone()),
             };
 
         // Subtract from stats to remove power

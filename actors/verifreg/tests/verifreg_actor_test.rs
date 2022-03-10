@@ -51,9 +51,7 @@ mod construction {
     #[test]
     fn construct_with_root_id() {
         let mut rt = construct_runtime();
-        let h = Harness {
-            root: Address::new_id(101),
-        };
+        let h = Harness { root: Address::new_id(101) };
         h.construct_and_verify(&mut rt, &h.root);
         h.check_state();
     }
@@ -61,9 +59,7 @@ mod construction {
     #[test]
     fn construct_resolves_non_id() {
         let mut rt = construct_runtime();
-        let h = Harness {
-            root: Address::new_id(101),
-        };
+        let h = Harness { root: Address::new_id(101) };
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         rt.id_addresses.insert(root_pubkey, h.root);
         h.construct_and_verify(&mut rt, &root_pubkey);
@@ -183,8 +179,7 @@ mod verifiers {
     #[test]
     fn add_verifier_id_address() {
         let (h, mut rt) = make_harness();
-        h.add_verifier(&mut rt, &Address::new_id(201), &VERIFIER_ALLOWANCE)
-            .unwrap();
+        h.add_verifier(&mut rt, &Address::new_id(201), &VERIFIER_ALLOWANCE).unwrap();
         h.check_state();
     }
 
@@ -194,8 +189,7 @@ mod verifiers {
         let pubkey_addr = Address::new_secp256k1(&[0u8; 65]).unwrap();
         rt.id_addresses.insert(pubkey_addr, Address::new_id(201));
 
-        h.add_verifier(&mut rt, &pubkey_addr, &VERIFIER_ALLOWANCE)
-            .unwrap();
+        h.add_verifier(&mut rt, &pubkey_addr, &VERIFIER_ALLOWANCE).unwrap();
         h.check_state();
     }
 }
@@ -219,9 +213,7 @@ impl Harness {
         assert_eq!(RawBytes::default(), ret);
         rt.verify();
 
-        let empty_map = make_empty_map::<_, ()>(&rt.store, HAMT_BIT_WIDTH)
-            .flush()
-            .unwrap();
+        let empty_map = make_empty_map::<_, ()>(&rt.store, HAMT_BIT_WIDTH).flush().unwrap();
 
         let state: State = rt.get_state().unwrap();
 
@@ -238,10 +230,7 @@ impl Harness {
     ) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.root]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
-        let params = AddVerifierParams {
-            address: *verifier,
-            allowance: allowance.clone(),
-        };
+        let params = AddVerifierParams { address: *verifier, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifier as MethodNum,
             &RawBytes::serialize(params).unwrap(),
@@ -251,10 +240,7 @@ impl Harness {
 
         // Confirm the verifier was added to state.
         let verifier_id_addr = rt.get_id_address(&verifier).unwrap();
-        assert_eq!(
-            *allowance,
-            self.get_verifier_allowance(rt, &verifier_id_addr)
-        );
+        assert_eq!(*allowance, self.get_verifier_allowance(rt, &verifier_id_addr));
         Result::Ok(())
     }
 
@@ -280,10 +266,7 @@ impl Harness {
     ) -> Result<(), ActorError> {
         rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *verifier);
-        let params = AddVerifierClientParams {
-            address: *client,
-            allowance: allowance.clone(),
-        };
+        let params = AddVerifierClientParams { address: *client, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
             &RawBytes::serialize(params).unwrap(),
@@ -293,10 +276,7 @@ impl Harness {
 
         // Confirm the verifier was added to state.
         let client_id_addr = rt.get_id_address(&client).unwrap();
-        assert_eq!(
-            *expected_allowance,
-            self.get_client_allowance(rt, &client_id_addr)
-        );
+        assert_eq!(*expected_allowance, self.get_client_allowance(rt, &client_id_addr));
         Result::Ok(())
     }
 
@@ -321,8 +301,7 @@ impl Harness {
         client_allowance: &DataCap,
     ) {
         self.add_verifier(rt, verifier, verifier_allowance).unwrap();
-        self.add_client(rt, verifier, client, client_allowance, client_allowance)
-            .unwrap();
+        self.add_client(rt, verifier, client, client_allowance, client_allowance).unwrap();
     }
 
     fn check_state(&self) {

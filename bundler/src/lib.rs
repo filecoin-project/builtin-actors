@@ -52,19 +52,12 @@ impl Bundler {
     ) -> Result<Cid> {
         let cid = match forced_cid {
             Some(cid) => self.blockstore.put_keyed(cid, bytecode).and(Ok(*cid)),
-            None => self.blockstore.put(
-                Code::Blake2b256,
-                &Block {
-                    codec: IPLD_RAW,
-                    data: bytecode,
-                },
-            ),
+            None => {
+                self.blockstore.put(Code::Blake2b256, &Block { codec: IPLD_RAW, data: bytecode })
+            }
         }
         .with_context(|| {
-            format!(
-                "failed to put bytecode for actor {:?} into blockstore",
-                actor_type
-            )
+            format!("failed to put bytecode for actor {:?} into blockstore", actor_type)
         })?;
         self.added.insert(actor_type, cid);
         Ok(cid)
@@ -90,26 +83,15 @@ impl Bundler {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
         // Invert the actor index so that it's CID => Type.
-        let manifest: Manifest = self
-            .added
-            .into_iter()
-            .map(|(typ, cid)| (cid, typ))
-            .collect();
+        let manifest: Manifest = self.added.into_iter().map(|(typ, cid)| (cid, typ)).collect();
 
         let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
-        let root = self.blockstore.put(
-            Code::Blake2b256,
-            &Block {
-                codec: DAG_CBOR,
-                data: &manifest_bytes,
-            },
-        )?;
+        let root = self
+            .blockstore
+            .put(Code::Blake2b256, &Block { codec: DAG_CBOR, data: &manifest_bytes })?;
 
         // Create a CAR header.
-        let car = CarHeader {
-            roots: vec![root],
-            version: 1,
-        };
+        let car = CarHeader { roots: vec![root], version: 1 };
 
         let (tx, mut rx) = bounded(16);
         let write_task =
@@ -151,18 +133,11 @@ fn test_bundler() {
     // First 5 have real CIDs, last 5 have forced CIDs.
     for i in 0..10 {
         let forced_cid = (i > 5).then(|| {
-            Cid::new_v1(
-                IPLD_RAW,
-                Code::Identity.digest(format!("actor-{}", i).as_bytes()),
-            )
+            Cid::new_v1(IPLD_RAW, Code::Identity.digest(format!("actor-{}", i).as_bytes()))
         });
         let typ = actor::builtin::Type::from_i32(i + 1).unwrap();
         let cid = bundler
-            .add_from_bytes(
-                typ,
-                forced_cid.as_ref(),
-                &rand::thread_rng().gen::<[u8; 32]>(),
-            )
+            .add_from_bytes(typ, forced_cid.as_ref(), &rand::thread_rng().gen::<[u8; 32]>())
             .unwrap();
 
         dbg!(cid.to_string());
@@ -202,10 +177,8 @@ fn test_bundler() {
         assert_eq!(manifest.get_by_left(&cid).unwrap(), &typ);
         // Verify that the last 5 CIDs are really forced CIDs.
         if i > 5 {
-            let expected = Cid::new_v1(
-                IPLD_RAW,
-                Code::Identity.digest(format!("actor-{}", i).as_bytes()),
-            );
+            let expected =
+                Cid::new_v1(IPLD_RAW, Code::Identity.digest(format!("actor-{}", i).as_bytes()));
             assert_eq!(cid, expected)
         }
         assert!(bs.has(&cid).unwrap());

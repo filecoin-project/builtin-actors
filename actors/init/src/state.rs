@@ -26,11 +26,7 @@ impl State {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
             .map_err(|e| anyhow!("failed to create empty map: {}", e))?;
-        Ok(Self {
-            address_map: empty_map,
-            next_id: FIRST_NON_SINGLETON_ADDR,
-            network_name,
-        })
+        Ok(Self { address_map: empty_map, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
     }
 
     /// Allocates a new ID address and stores a mapping of the argument address to it.

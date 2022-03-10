@@ -22,11 +22,7 @@ impl State {
             .flush()
             .map_err(|e| anyhow::anyhow!("Failed to create empty map: {}", e))?;
 
-        Ok(State {
-            root_key,
-            verifiers: empty_map,
-            verified_clients: empty_map,
-        })
+        Ok(State { root_key, verifiers: empty_map, verified_clients: empty_map })
     }
 }
 

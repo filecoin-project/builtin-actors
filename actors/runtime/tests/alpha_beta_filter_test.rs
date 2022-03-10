@@ -57,12 +57,7 @@ fn assert_err_bound(
     let analytic = ecsor(delta, t0, num, denom);
     let iterative = iterative_cum_sum_of_ratio(num, denom, t0, delta);
     let actual_err = per_million_error(&analytic, &iterative);
-    assert!(
-        actual_err < err_bound,
-        "Values are {} and {}",
-        actual_err,
-        err_bound
-    );
+    assert!(actual_err < err_bound, "Values are {} and {}", actual_err, err_bound);
 }
 
 // Returns an estimate with position val and velocity 0
@@ -141,26 +136,14 @@ fn constant_estimate() {
 fn both_positive_velocity() {
     let num_estimate = testing_estimate(BigInt::from(111), BigInt::from(12));
     let denom_estimate = testing_estimate(BigInt::from(3456), BigInt::from(8));
-    assert_err_bound(
-        &num_estimate,
-        &denom_estimate,
-        10_000,
-        0,
-        BigInt::from(ERR_BOUND),
-    );
+    assert_err_bound(&num_estimate, &denom_estimate, 10_000, 0, BigInt::from(ERR_BOUND));
 }
 
 #[test]
 fn flipped_signs() {
     let num_estimate = testing_estimate(BigInt::from(1_000_000), BigInt::from(-100));
     let denom_estimate = testing_estimate(BigInt::from(70_000), BigInt::from(1000));
-    assert_err_bound(
-        &num_estimate,
-        &denom_estimate,
-        100_000,
-        0,
-        BigInt::from(ERR_BOUND),
-    );
+    assert_err_bound(&num_estimate, &denom_estimate, 100_000, 0, BigInt::from(ERR_BOUND));
 }
 
 #[test]

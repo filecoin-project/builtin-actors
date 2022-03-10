@@ -46,9 +46,7 @@ pub struct Deadlines {
 
 impl Deadlines {
     pub fn new(policy: &Policy, empty_deadline_cid: Cid) -> Self {
-        Self {
-            due: vec![empty_deadline_cid; policy.wpost_period_deadlines as usize],
-        }
+        Self { due: vec![empty_deadline_cid; policy.wpost_period_deadlines as usize] }
     }
 
     pub fn load_deadline<BS: Blockstore>(
@@ -65,15 +63,9 @@ impl Deadlines {
             )));
         }
 
-        store
-            .get_cbor(&self.due[deadline_idx as usize])?
-            .ok_or_else(|| {
-                anyhow!(actor_error!(
-                    ErrIllegalState,
-                    "failed to lookup deadline {}",
-                    deadline_idx
-                ))
-            })
+        store.get_cbor(&self.due[deadline_idx as usize])?.ok_or_else(|| {
+            anyhow!(actor_error!(ErrIllegalState, "failed to lookup deadline {}", deadline_idx))
+        })
     }
 
     pub fn for_each<BS: Blockstore>(
@@ -246,10 +238,7 @@ impl Deadline {
         &self,
         store: &'db BS,
     ) -> anyhow::Result<Array<'db, WindowedPoSt, BS>> {
-        Ok(Array::load(
-            &self.optimistic_post_submissions_snapshot,
-            store,
-        )?)
+        Ok(Array::load(&self.optimistic_post_submissions_snapshot, store)?)
     }
 
     pub fn load_partition<BS: Blockstore>(
@@ -310,10 +299,8 @@ impl Deadline {
         queue
             .add_to_queue_values(expiration_epoch, partitions.iter().copied())
             .map_err(|e| e.downcast_wrap("failed to mutate expiration queue"))?;
-        self.expirations_epochs = queue
-            .amt
-            .flush()
-            .map_err(|e| e.downcast_wrap("failed to save expiration queue"))?;
+        self.expirations_epochs =
+            queue.amt.flush().map_err(|e| e.downcast_wrap("failed to save expiration queue"))?;
 
         Ok(())
     }
@@ -351,14 +338,12 @@ impl Deadline {
                 .ok_or_else(|| anyhow!("missing expected partition {}", partition_idx))?;
 
             let partition_expiration =
-                partition
-                    .pop_expired_sectors(store, until, quant)
-                    .map_err(|e| {
-                        e.downcast_wrap(format!(
-                            "failed to pop expired sectors from partition {}",
-                            partition_idx
-                        ))
-                    })?;
+                partition.pop_expired_sectors(store, until, quant).map_err(|e| {
+                    e.downcast_wrap(format!(
+                        "failed to pop expired sectors from partition {}",
+                        partition_idx
+                    ))
+                })?;
 
             if !partition_expiration.early_sectors.is_empty() {
                 partitions_with_early_terminations.push(partition_idx);
@@ -462,11 +447,8 @@ impl Deadline {
             partitions.set(partition_idx, partition)?;
 
             // Record deadline -> partition mapping so we can later update the deadlines.
-            partition_deadline_updates.extend(
-                partition_new_sectors
-                    .iter()
-                    .map(|s| (s.expiration, partition_idx)),
-            )
+            partition_deadline_updates
+                .extend(partition_new_sectors.iter().map(|s| (s.expiration, partition_idx)))
         }
 
         // Save partitions back.
@@ -536,9 +518,8 @@ impl Deadline {
         }
 
         // Save deadline's partitions
-        self.partitions = partitions
-            .flush()
-            .map_err(|e| e.downcast_wrap("failed to update partitions"))?;
+        self.partitions =
+            partitions.flush().map_err(|e| e.downcast_wrap("failed to update partitions"))?;
 
         // Update global early terminations bitfield.
         let no_early_terminations = self.early_terminations.is_empty();
@@ -605,10 +586,7 @@ impl Deadline {
                 })?;
 
             partitions.set(partition_idx, partition).map_err(|e| {
-                e.downcast_wrap(format!(
-                    "failed to store updated partition {}",
-                    partition_idx
-                ))
+                e.downcast_wrap(format!("failed to store updated partition {}", partition_idx))
             })?;
 
             if !removed.is_empty() {
@@ -626,9 +604,8 @@ impl Deadline {
         }
 
         // save partitions back
-        self.partitions = partitions
-            .flush()
-            .map_err(|e| e.downcast_wrap("failed to persist partitions"))?;
+        self.partitions =
+            partitions.flush().map_err(|e| e.downcast_wrap("failed to persist partitions"))?;
 
         Ok(power_lost)
     }
@@ -651,9 +628,8 @@ impl Deadline {
         ),
         anyhow::Error,
     > {
-        let old_partitions = self
-            .partitions_amt(store)
-            .map_err(|e| e.downcast_wrap("failed to load partitions"))?;
+        let old_partitions =
+            self.partitions_amt(store).map_err(|e| e.downcast_wrap("failed to load partitions"))?;
 
         let partition_count = old_partitions.count();
         let to_remove_set: BTreeSet<_> = to_remove
@@ -935,10 +911,7 @@ impl Deadline {
                 .map_err(|e| {
                     e.downcast_default(
                         ExitCode::ErrIllegalState,
-                        format!(
-                            "failed to record missed PoSt for partition {}",
-                            partition_idx
-                        ),
+                        format!("failed to record missed PoSt for partition {}", partition_idx),
                     )
                 })?;
 
@@ -993,10 +966,7 @@ impl Deadline {
         )
         .flush()
         .map_err(|e| {
-            e.downcast_default(
-                ExitCode::ErrIllegalState,
-                "failed to clear pending proofs array",
-            )
+            e.downcast_default(ExitCode::ErrIllegalState, "failed to clear pending proofs array")
         })?;
 
         // only snapshot sectors if there's a proof that might be disputed (this is equivalent to asking if the OptimisticPoStSubmissionsSnapshot is empty)
@@ -1004,14 +974,14 @@ impl Deadline {
             self.sectors_snapshot = sectors;
         } else {
             self.sectors_snapshot =
-                Array::<(), BS>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH)
-                    .flush()
-                    .map_err(|e| {
+                Array::<(), BS>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH).flush().map_err(
+                    |e| {
                         e.downcast_default(
                             ExitCode::ErrIllegalState,
                             "failed to clear sectors snapshot array",
                         )
-                    })?;
+                    },
+                )?;
         }
         Ok((power_delta, penalized_power))
     }
@@ -1154,10 +1124,7 @@ impl Deadline {
 
         let num_partitions = partition_indexes.len();
         if num_partitions != post_partitions.len() as u64 {
-            return Err(anyhow!(actor_error!(
-                ErrIllegalArgument,
-                "duplicate partitions proven"
-            )));
+            return Err(anyhow!(actor_error!(ErrIllegalArgument, "duplicate partitions proven")));
         }
 
         // First check to see if we're proving any already proven partitions.
@@ -1214,9 +1181,8 @@ impl Deadline {
                 rescheduled_partitions.push(post.index);
             }
 
-            let recovered_power = partition
-                .recover_faults(store, sectors, sector_size, quant)
-                .map_err(|e| {
+            let recovered_power =
+                partition.recover_faults(store, sectors, sector_size, quant).map_err(|e| {
                     e.downcast_wrap(format!(
                         "failed to recover faulty sectors for partition {}",
                         post.index
@@ -1296,15 +1262,10 @@ impl Deadline {
             .set(
                 proof_arr.count(),
                 // TODO: Can we do this with out cloning?
-                WindowedPoSt {
-                    partitions: partitions.clone(),
-                    proofs: proofs.to_vec(),
-                },
+                WindowedPoSt { partitions: partitions.clone(), proofs: proofs.to_vec() },
             )
             .map_err(|e| e.downcast_wrap("failed to store proof"))?;
-        let root = proof_arr
-            .flush()
-            .map_err(|e| e.downcast_wrap("failed to save proofs"))?;
+        let root = proof_arr.flush().map_err(|e| e.downcast_wrap("failed to save proofs"))?;
         self.optimistic_post_submissions = root;
         Ok(())
     }
@@ -1327,9 +1288,7 @@ impl Deadline {
             .map_err(|e| e.downcast_wrap(format!("failed to retrieve proof {}", idx)))?
             .ok_or_else(|| actor_error!(ErrIllegalArgument, "proof {} not found", idx))?;
 
-        let root = proof_arr
-            .flush()
-            .map_err(|e| e.downcast_wrap("failed to save proofs"))?;
+        let root = proof_arr.flush().map_err(|e| e.downcast_wrap("failed to save proofs"))?;
         self.optimistic_post_submissions_snapshot = root;
         Ok((post.partitions, post.proofs))
     }
@@ -1399,9 +1358,8 @@ impl Deadline {
         }
 
         if !rescheduled_partitions.is_empty() {
-            self.partitions = partitions
-                .flush()
-                .map_err(|e| e.downcast_wrap("failed to save partitions"))?;
+            self.partitions =
+                partitions.flush().map_err(|e| e.downcast_wrap("failed to save partitions"))?;
 
             self.add_expiration_partitions(store, expiration, &rescheduled_partitions, quant)
                 .map_err(|e| e.downcast_wrap("failed to reschedule partition expirations"))?;
