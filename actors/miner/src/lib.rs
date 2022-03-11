@@ -2861,12 +2861,10 @@ impl Actor {
             .map_err(|e| actor_error!(ErrIllegalArgument, "invalid mask bitfield: {}", e))?;
 
         let last_sector_number = mask_sector_numbers
-            .iter()
             .last()
             .ok_or_else(|| actor_error!(ErrIllegalArgument, "invalid mask bitfield"))?
             as SectorNumber;
 
-        #[allow(clippy::absurd_extreme_comparisons)]
         if last_sector_number > MAX_SECTOR_NUMBER {
             return Err(actor_error!(
                 ErrIllegalArgument,
