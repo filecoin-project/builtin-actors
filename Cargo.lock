@@ -556,7 +556,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_bundler"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "async-std",
@@ -565,7 +565,6 @@ dependencies = [
  "futures",
  "fvm_ipld_car",
  "fvm_shared",
- "multihash",
  "num-traits",
  "rand",
  "serde_ipld_dagcbor",
@@ -745,7 +744,6 @@ dependencies = [
  "integer-encoding",
  "lazy_static",
  "log",
- "multihash",
  "num-derive",
  "num-traits",
  "serde",

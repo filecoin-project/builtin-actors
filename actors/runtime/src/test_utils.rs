@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use anyhow::anyhow;
-use cid::multihash::{Code, MultihashDigest};
+use cid::multihash::{Code, Multihash};
 use cid::Cid;
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
@@ -66,7 +66,7 @@ const IPLD_RAW: u64 = 0x55;
 
 /// Returns an identify CID for bz.
 fn make_builtin(bz: &[u8]) -> Cid {
-    Cid::new_v1(IPLD_RAW, Code::Identity.digest(bz))
+    Cid::new_v1(IPLD_RAW, Multihash::wrap(0, bz).expect("name too long"))
 }
 
 pub struct MockRuntime {

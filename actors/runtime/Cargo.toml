@@ -19,7 +19,6 @@ unsigned-varint = "0.7.1"
 integer-encoding = { version = "3.0.3", default-features = false }
 byteorder = "1.4.3"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-multihash = { version = "0.16.1", default-features = false, features = ["identity"] }
 base64 = "0.13.0"
 log = "0.4.14"
 indexmap = { version = "1.8.0", features = ["serde-1"] }
