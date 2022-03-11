@@ -1,7 +1,7 @@
 [package]
 name = "fil_actor_market"
 description = "Builtin market actor for Filecoin"
-version = "7.0.0"
+version = "7.0.1"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
@@ -27,4 +27,4 @@ anyhow = "1.0.56"
 
 [dev-dependencies]
 fil_actors_runtime = { version = "7.0.0", path = "../runtime", features = ["test_utils"] }
-fvm_ipld_amt = { version = "0.2.0", features = ["go-interop"]}
+fvm_ipld_amt = { version = "0.2.0", features = ["go-interop"] }
