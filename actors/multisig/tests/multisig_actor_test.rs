@@ -26,6 +26,8 @@ fn construct_runtime(reciever: Address) -> MockRuntime {
     }
 }
 
+// Constructor
+
 #[test]
 fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
     let msig = Address::new_id(1000);
@@ -48,6 +50,8 @@ fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
     );
     rt.verify();
 }
+
+
 
 #[test]
 fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
@@ -76,6 +80,28 @@ fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
     );
     rt.verify();
 }
+
+// Propose
+
+#[test]
+fn test_simple_propose () {
+    let msig = Address::new_id(1000);
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness {};
+
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let no_unlock_duration = 0;
+    let start_epoch = 0;
+    let signers = vec![anne, bob];
+
+    h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+
+}
+
+// AddSigner
 
 #[test]
 fn test_happy_path_add_signer() {

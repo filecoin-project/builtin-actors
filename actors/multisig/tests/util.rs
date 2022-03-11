@@ -1,9 +1,11 @@
-use fil_actor_multisig::{Actor, AddSignerParams, ConstructorParams, Method};
+use fil_actor_multisig::{Actor, AddSignerParams, ConstructorParams, Method, Transaction, ProposalHashData, ProposeParams};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_shared::address::Address;
+use fvm_shared::MethodNum;
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
 pub struct ActorHarness {}
 
@@ -42,5 +44,25 @@ impl ActorHarness {
         let ret = rt.call::<Actor>(Method::AddSigner as u64, &RawBytes::serialize(params).unwrap());
         rt.verify();
         ret
+    }
+
+    pub fn propose_ok(
+        self: &Self,
+        rt: &mut MockRuntime,
+        to: Address,
+        value: TokenAmount,
+        method: MethodNum, 
+        params: RawBytes,
+
+    ) -> RawBytes {
+        // compute proposal hash
+        let txn = Transaction {
+            to: to,
+            value: value,
+            method: method,
+            params: params,
+            approved: vec![rt.caller],
+        };
+        compute_proposal_hash(&txn, rt).unwrap();
     }
 }
