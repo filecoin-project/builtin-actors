@@ -1,12 +1,17 @@
-use fil_actor_multisig::{Actor, AddSignerParams, ConstructorParams, Method, Transaction, ProposalHashData, ProposeParams};
+use fil_actor_multisig::{
+    compute_proposal_hash, Actor, AddSignerParams, ConstructorParams, Method, ProposeParams, State,
+    Transaction, TxnID,
+};
+//use fil_actor_multisig::types::{TxnID, BytesKey};
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::ActorError;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime::{make_map_with_root, ActorError};
 use fvm_shared::address::Address;
-use fvm_shared::MethodNum;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
+use fvm_shared::MethodNum;
+use std::collections::HashMap;
 pub struct ActorHarness {}
 
 impl ActorHarness {
@@ -51,10 +56,16 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         to: Address,
         value: TokenAmount,
-        method: MethodNum, 
+        method: MethodNum,
         params: RawBytes,
-
-    ) -> RawBytes {
+    ) -> [u8; 32] {
+        //expect_ok(self.propose(rt, to, value, method, params));
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        let propose_params =
+            ProposeParams { to: to, value: value.clone(), method: method, params: params.clone() };
+        expect_ok(
+            rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap()),
+        );
         // compute proposal hash
         let txn = Transaction {
             to: to,
@@ -63,6 +74,29 @@ impl ActorHarness {
             params: params,
             approved: vec![rt.caller],
         };
-        compute_proposal_hash(&txn, rt).unwrap();
+        compute_proposal_hash(&txn, rt).unwrap()
+    }
+
+    pub fn assert_transactions(
+        self: &Self,
+        rt: &MockRuntime,
+        expect_txns: HashMap<TxnID, Transaction>,
+    ) {
+        let st = rt.get_state::<State>().unwrap();
+        let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &rt.store).unwrap();
+        let expect_count = expect_txns.len();
+        // check that all expected txns exist in state
+        for (txn_id, expect_v) in expect_txns {
+            let v = ptx.get(&txn_id.key()).unwrap().unwrap();
+            assert_eq!(expect_v, *v);
+        }
+        // check that there are no more txns in state than in expected
+        let mut count = 0;
+        ptx.for_each(|_tx_id, _txn: &Transaction| {
+            count += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(expect_count, count)
     }
 }

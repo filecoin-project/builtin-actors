@@ -1,11 +1,16 @@
+use std::collections::HashMap;
+
 // use cid::Cid;
-use fil_actor_multisig::{Actor as MultisigActor, ConstructorParams, Method, State, SIGNERS_MAX};
+use fil_actor_multisig::{
+    Actor as MultisigActor, ConstructorParams, Method, State, Transaction, TxnID, SIGNERS_MAX,
+};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_shared::address::Address;
-// use fvm_shared::econ::TokenAmount;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
+use fvm_shared::METHOD_SEND;
 
 mod util;
 
@@ -51,8 +56,6 @@ fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
     rt.verify();
 }
 
-
-
 #[test]
 fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
     let msig = Address::new_id(1000);
@@ -84,7 +87,7 @@ fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
 // Propose
 
 #[test]
-fn test_simple_propose () {
+fn test_simple_propose() {
     let msig = Address::new_id(1000);
     let mut rt = construct_runtime(msig);
     let h = util::ActorHarness {};
@@ -96,9 +99,22 @@ fn test_simple_propose () {
     let start_epoch = 0;
     let signers = vec![anne, bob];
 
+    let send_value = TokenAmount::from(10u8);
     h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-
+    h.propose_ok(&mut rt, chuck, send_value.clone(), METHOD_SEND, RawBytes::default());
+    let mut expect_txns = HashMap::new();
+    expect_txns.insert(
+        TxnID(0),
+        Transaction {
+            to: chuck,
+            value: send_value,
+            method: METHOD_SEND,
+            params: RawBytes::default(),
+            approved: vec![anne],
+        },
+    );
+    h.assert_transactions(&rt, expect_txns)
 }
 
 // AddSigner

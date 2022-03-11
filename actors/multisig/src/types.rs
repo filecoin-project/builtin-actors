@@ -18,8 +18,7 @@ use serde::{Deserialize, Serialize};
 pub const SIGNERS_MAX: usize = 256;
 
 /// Transaction ID type
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct TxnID(pub i64);
 
 impl TxnID {
