@@ -718,6 +718,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
+ "fvm_ipld_hamt",
  "fvm_shared",
  "lazy_static",
  "num-derive",

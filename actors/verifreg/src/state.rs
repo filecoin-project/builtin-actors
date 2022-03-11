@@ -14,6 +14,7 @@ pub struct State {
     pub root_key: Address,
     pub verifiers: Cid,
     pub verified_clients: Cid,
+    pub remove_data_cap_proposal_ids: Cid,
 }
 
 impl State {
@@ -22,7 +23,12 @@ impl State {
             .flush()
             .map_err(|e| anyhow::anyhow!("Failed to create empty map: {}", e))?;
 
-        Ok(State { root_key, verifiers: empty_map, verified_clients: empty_map })
+        Ok(State {
+            root_key,
+            verifiers: empty_map,
+            verified_clients: empty_map,
+            remove_data_cap_proposal_ids: empty_map,
+        })
     }
 }
 
