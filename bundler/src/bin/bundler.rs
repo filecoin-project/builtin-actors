@@ -1,7 +1,7 @@
 ///! A Wasm bytecode CAR bundling utility. See helptext of command for docs.
 use std::error::Error;
 
-use cid::multihash::{Code, MultihashDigest};
+use cid::multihash::Multihash;
 use cid::Cid;
 use clap::Parser;
 use fil_actor_bundler::Bundler;
@@ -57,10 +57,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut bundler = Bundler::new(cli.bundle_dst);
     for (path, name) in cli.bytecode_paths.into_iter().zip(cli.actor_names.iter()) {
-        let cid = cli.override_cids_prefix.as_ref().map(|prefix| {
-            let identity = prefix.to_owned() + name.as_ref();
-            Cid::new_v1(IPLD_RAW, Code::Identity.digest(identity.as_bytes()))
-        });
+        let cid = cli
+            .override_cids_prefix
+            .as_ref()
+            .map(|prefix| {
+                let identity = prefix.to_owned() + name.as_ref();
+                Multihash::wrap(0, identity.as_bytes()).map(|mh| Cid::new_v1(IPLD_RAW, mh))
+            })
+            .transpose()?;
         let cid = bundler.add_from_file(name.as_str().try_into().unwrap(), cid.as_ref(), path)?;
         println!("added actor {} with CID {}", name, cid)
     }

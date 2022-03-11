@@ -1,4 +1,4 @@
-use cid::multihash::{Code, MultihashDigest};
+use cid::multihash::Multihash;
 use cid::Cid;
 use fil_actor_bundler::Bundler;
 use std::error::Error;
@@ -104,7 +104,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         // This actor version uses forced CIDs.
         let forced_cid = {
             let identity = FORCED_CID_PREFIX.to_owned() + id;
-            Cid::new_v1(IPLD_RAW, Code::Identity.digest(identity.as_bytes()))
+            Cid::new_v1(IPLD_RAW, Multihash::wrap(0, identity.as_bytes())?)
         };
 
         let cid = bundler
