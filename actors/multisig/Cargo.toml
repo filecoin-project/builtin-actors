@@ -26,4 +26,4 @@ serde = { version = "1.0.136", features = ["derive"] }
 anyhow = "1.0.56"
 
 [dev-dependencies]
-fil_actors_runtime = { version = "7.0.0", path = "../runtime", features = ["test_utils"] }
+fil_actors_runtime = { version = "7.0.0", path = "../runtime", features = ["test_utils", "sector-default"] }

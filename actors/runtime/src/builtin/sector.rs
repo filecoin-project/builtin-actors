@@ -17,14 +17,14 @@ pub fn consensus_miner_min_power(p: RegisteredPoStProof) -> anyhow::Result<Stora
         | StackedDRGWindow512MiBV1
         | StackedDRGWindow32GiBV1
         | StackedDRGWindow64GiBV1 => {
-            if cfg!(feature = "devnet") {
-                return Ok(StoragePower::from(2048));
-            }
-            if cfg!(feature = "interopnet") {
-                return Ok(StoragePower::from(2 << 30));
-            }
-
-            Ok(StoragePower::from(10u64 << 40))
+            let power: u64 = if cfg!(feature = "min-power-2k") {
+                2 << 10
+            } else if cfg!(feature = "min-power-2g") {
+                2 << 30
+            } else {
+                10 << 40
+            };
+            Ok(StoragePower::from(power))
         }
         Invalid(i) => Err(anyhow::anyhow!("unsupported proof type: {}", i)),
     }

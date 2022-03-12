@@ -26,5 +26,5 @@ log = "0.4.14"
 anyhow = "1.0.56"
 
 [dev-dependencies]
-fil_actors_runtime = { version = "7.0.0", path = "../runtime", features = ["test_utils"] }
+fil_actors_runtime = { version = "7.0.0", path = "../runtime", features = ["test_utils", "sector-default"] }
 fvm_ipld_amt = { version = "0.2.0", features = ["go-interop"] }

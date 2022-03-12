@@ -30,7 +30,7 @@ anyhow = "1.0.56"
 itertools = "0.10.3"
 
 [dev-dependencies]
-fil_actors_runtime = { version = "7.0.0", path = "../runtime", features = ["test_utils"] }
+fil_actors_runtime = { version = "7.0.0", path = "../runtime", features = ["test_utils", "sector-default"] }
 fil_actor_account = { version = "7.0.0", path = "../account" }
 rand = "0.8.5"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }

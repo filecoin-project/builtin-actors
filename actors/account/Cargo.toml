@@ -20,5 +20,5 @@ num-traits = "0.2.14"
 num-derive = "0.3.3"
 
 [dev-dependencies]
-fil_actors_runtime = { version = "7.0.1", path = "../runtime", features = ["test_utils"] }
+fil_actors_runtime = { version = "7.0.0", path = "../runtime", features = ["test_utils", "sector-default"] }
 

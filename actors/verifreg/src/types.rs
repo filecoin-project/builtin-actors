@@ -10,12 +10,12 @@ use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
 
-#[cfg(not(feature = "devnet"))]
+#[cfg(not(feature = "small-deals"))]
 lazy_static! {
     pub static ref MINIMUM_VERIFIED_DEAL_SIZE: StoragePower = StoragePower::from_i32(1 << 20).unwrap(); // placeholder
 }
 
-#[cfg(feature = "devnet")]
+#[cfg(feature = "small-deals")]
 lazy_static! {
     pub static ref MINIMUM_VERIFIED_DEAL_SIZE: StoragePower = StoragePower::from_i32(256).unwrap(); // placeholder
 }
