@@ -172,19 +172,29 @@ impl Default for Policy {
             chain_finality: policy_constants::CHAIN_FINALITY,
 
             valid_post_proof_type: HashSet::<RegisteredPoStProof>::from([
+                #[cfg(feature = "sector-2k")]
+                RegisteredPoStProof::StackedDRGWindow2KiBV1,
+                #[cfg(feature = "sector-8m")]
+                RegisteredPoStProof::StackedDRGWindow8MiBV1,
+                #[cfg(feature = "sector-512m")]
+                RegisteredPoStProof::StackedDRGWindow512MiBV1,
+                #[cfg(feature = "sector-32g")]
                 RegisteredPoStProof::StackedDRGWindow32GiBV1,
+                #[cfg(feature = "sector-64g")]
                 RegisteredPoStProof::StackedDRGWindow64GiBV1,
             ]),
             valid_pre_commit_proof_type: HashSet::<RegisteredSealProof>::from([
+                #[cfg(feature = "sector-2k")]
+                RegisteredSealProof::StackedDRG2KiBV1P1,
+                #[cfg(feature = "sector-8m")]
+                RegisteredSealProof::StackedDRG8MiBV1P1,
+                #[cfg(feature = "sector-512m")]
+                RegisteredSealProof::StackedDRG512MiBV1P1,
+                #[cfg(feature = "sector-32g")]
                 RegisteredSealProof::StackedDRG32GiBV1P1,
+                #[cfg(feature = "sector-64g")]
                 RegisteredSealProof::StackedDRG64GiBV1P1,
             ]),
-        };
-
-        #[cfg(feature = "devnet")]
-        {
-            policy.valid_pre_commit_proof_type.insert(RegisteredSealProof::StackedDRG2KiBV1);
-            policy.valid_pre_commit_proof_type.insert(RegisteredSealProof::StackedDRG2KiBV1P1);
         };
 
         policy
@@ -266,9 +276,9 @@ mod policy_constants {
 
     /// Number of epochs between publishing the precommit and when the challenge for interactive PoRep is drawn
     /// used to ensure it is not predictable by miner.
-    #[cfg(not(feature = "devnet"))]
+    #[cfg(not(feature = "short-precommit"))]
     pub const PRE_COMMIT_CHALLENGE_DELAY: ChainEpoch = 150;
-    #[cfg(feature = "devnet")]
+    #[cfg(feature = "short-precommit")]
     pub const PRE_COMMIT_CHALLENGE_DELAY: ChainEpoch = 10;
 
     /// Lookback from the deadline's challenge window opening from which to sample chain randomness for the challenge seed.

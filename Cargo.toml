@@ -21,10 +21,33 @@ fil_actor_miner = { version = "7.0.0", path = "./actors/miner" }
 fil_actor_reward = { version = "7.0.0", path = "./actors/reward" }
 fil_actor_system = { version = "7.0.0", path = "./actors/system" }
 fil_actor_init = { version = "7.0.0", path = "./actors/init" }
+fil_actors_runtime = { version = "7.0.0", path = "./actors/runtime" }
 
 [build-dependencies]
 fil_actor_bundler = { version = "1.0.2", path = "./bundler" }
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+
+
+[features]
+default = [
+    "fil_actors_runtime/sector-32g",
+    "fil_actors_runtime/sector-64g",
+]
+caterpillarnet = [
+    "fil_actors_runtime/sector-512m",
+    "fil_actors_runtime/sector-32g",
+    "fil_actors_runtime/sector-64g",
+    "fil_actors_runtime/small-deals",
+    "fil_actors_runtime/short-precommit",
+    "fil_actors_runtime/min-power-2g",
+]
+devnet = [
+    "fil_actors_runtime/sector-2k",
+    "fil_actors_runtime/sector-8m",
+    "fil_actors_runtime/small-deals",
+    "fil_actors_runtime/short-precommit",
+    "fil_actors_runtime/min-power-2k",
+]
 
 [workspace]
 members = [
