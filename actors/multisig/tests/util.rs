@@ -59,7 +59,6 @@ impl ActorHarness {
         method: MethodNum,
         params: RawBytes,
     ) -> [u8; 32] {
-        //expect_ok(self.propose(rt, to, value, method, params));
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
         let propose_params =
             ProposeParams { to: to, value: value.clone(), method: method, params: params.clone() };
