@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-
-// use cid::Cid;
 use fil_actor_multisig::{
     Actor as MultisigActor, ConstructorParams, Method, State, Transaction, TxnID, SIGNERS_MAX,
 };
@@ -13,8 +10,6 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
 mod util;
-
-// use serde::Serialize;
 
 fn construct_runtime(receiver: Address) -> MockRuntime {
     MockRuntime {
@@ -97,18 +92,15 @@ fn test_simple_propose() {
     h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
     h.propose_ok(&mut rt, chuck, send_value.clone(), METHOD_SEND, RawBytes::default());
-    let mut expect_txns = HashMap::new();
-    expect_txns.insert(
-        TxnID(0),
-        Transaction {
-            to: chuck,
-            value: send_value,
-            method: METHOD_SEND,
-            params: RawBytes::default(),
-            approved: vec![anne],
-        },
-    );
-    h.assert_transactions(&rt, expect_txns)
+    let txn0 = Transaction {
+        to: chuck,
+        value: send_value,
+        method: METHOD_SEND,
+        params: RawBytes::default(),
+        approved: vec![anne],
+    };
+    let expect_txns = vec![(TxnID(0), txn0)];
+    h.assert_transactions(&rt, expect_txns);
 }
 
 // AddSigner

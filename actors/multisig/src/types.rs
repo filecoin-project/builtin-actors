@@ -19,6 +19,7 @@ pub const SIGNERS_MAX: usize = 256;
 
 /// Transaction ID type
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[serde(transparent)]
 pub struct TxnID(pub i64);
 
 impl TxnID {

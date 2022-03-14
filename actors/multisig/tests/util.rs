@@ -4,13 +4,12 @@ use fil_actor_multisig::{
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
-use fil_actors_runtime::{make_map_with_root, ActorError};
+use fil_actors_runtime::{make_map_with_root, parse_uint_key, ActorError};
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::MethodNum;
-use std::collections::HashMap;
 pub struct ActorHarness {}
 
 impl ActorHarness {
@@ -78,23 +77,18 @@ impl ActorHarness {
     pub fn assert_transactions(
         self: &Self,
         rt: &MockRuntime,
-        expect_txns: HashMap<TxnID, Transaction>,
+        mut expect_txns: Vec<(TxnID, Transaction)>,
     ) {
         let st = rt.get_state::<State>().unwrap();
         let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &rt.store).unwrap();
-        let expect_count = expect_txns.len();
-        // check that all expected txns exist in state
-        for (txn_id, expect_v) in expect_txns {
-            let v = ptx.get(&txn_id.key()).unwrap().unwrap();
-            assert_eq!(expect_v, *v);
-        }
-        // check that there are no more txns in state than in expected
-        let mut count = 0;
-        ptx.for_each(|_tx_id, _txn: &Transaction| {
-            count += 1;
+        let mut actual_txns = Vec::new();
+        ptx.for_each(|k, txn: &Transaction| {
+            actual_txns.push((TxnID(parse_uint_key(k)? as i64), txn.clone()));
             Ok(())
         })
         .unwrap();
-        assert_eq!(expect_count, count)
+        expect_txns.sort_by_key(|(TxnID(id), _txn)| (*id));
+        actual_txns.sort_by_key(|(TxnID(id), _txn)| (*id));
+        assert_eq!(expect_txns, actual_txns);
     }
 }
