@@ -513,7 +513,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             }
         }
         expectations.expect_validate_caller_addr = None;
-        return Err(actor_error!(ErrForbidden;
+        return Err(actor_error!(SysErrForbidden;
                 "caller address {:?} forbidden, allowed: {:?}",
                 self.message().caller(), &addrs
         ));
@@ -553,7 +553,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
         self.expectations.borrow_mut().expect_validate_caller_type = None;
 
-        Err(actor_error!(ErrForbidden; "caller type {:?} forbidden, allowed: {:?}",
+        Err(actor_error!(SysErrForbidden; "caller type {:?} forbidden, allowed: {:?}",
                 self.caller_type, types))
     }
 
@@ -617,10 +617,12 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         }
         let mut read_only = self.state()?;
         self.in_transaction = true;
-        let ret = f(&mut read_only, self)?;
-        self.state = Some(self.put(&read_only).unwrap());
+        let ret = f(&mut read_only, self);
+        if ret.is_ok() {
+            self.state = Some(self.put(&read_only).unwrap());
+        }
         self.in_transaction = false;
-        Ok(ret)
+        ret
     }
 
     fn store(&self) -> &MemoryBlockstore {
