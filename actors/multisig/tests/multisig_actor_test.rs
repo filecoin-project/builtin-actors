@@ -1,16 +1,19 @@
 // use cid::Cid;
-use fil_actor_multisig::{Actor as MultisigActor, ConstructorParams, Method, SIGNERS_MAX};
+use fil_actor_multisig::{Actor as MultisigActor, ConstructorParams, Method, State, SIGNERS_MAX};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_shared::address::Address;
 // use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
+
+mod util;
+
 // use serde::Serialize;
 
-fn construct_runtime() -> MockRuntime {
+fn construct_runtime(receiver: Address) -> MockRuntime {
     MockRuntime {
-        receiver: Address::new_id(1000),
+        receiver: receiver,
         caller: *SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
@@ -19,7 +22,8 @@ fn construct_runtime() -> MockRuntime {
 
 #[test]
 fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
-    let mut rt = construct_runtime();
+    let msig = Address::new_id(1000);
+    let mut rt = construct_runtime(msig);
     let zero_signer_params = ConstructorParams {
         signers: Vec::new(),
         num_approvals_threshold: 1,
@@ -41,7 +45,8 @@ fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
 
 #[test]
 fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
-    let mut rt = construct_runtime();
+    let msig = Address::new_id(1000);
+    let mut rt = construct_runtime(msig);
     let mut signers = Vec::new();
     let mut i: u64 = 0;
     while i <= SIGNERS_MAX as u64 {
@@ -64,4 +69,30 @@ fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
         ),
     );
     rt.verify();
+}
+
+#[test]
+fn test_happy_path_add_signer() {
+    let msig = Address::new_id(100);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let mut rt = construct_runtime(msig);
+    let initial_signers = vec![anne, bob];
+    let initial_approvals: u64 = 2;
+
+    // construct the multisig actor and add id addrs to runtime
+    let h = util::ActorHarness {};
+    h.construct_and_verify(&mut rt, initial_approvals, 0, 0, initial_signers);
+    // add the signer with the expected params
+    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+    expect_ok(h.add_signer(&mut rt, chuck, false));
+
+    // check that the state matches what we expect
+    let expected_signers = vec![anne, bob, chuck];
+    let expected_approvals = initial_approvals;
+
+    let st = rt.get_state::<State>().unwrap();
+    assert_eq!(expected_signers, st.signers);
+    assert_eq!(expected_approvals, st.num_approvals_threshold);
 }
