@@ -2,7 +2,6 @@ use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ConstructorParams, Method, ProposeParams, State,
     Transaction, TxnID,
 };
-//use fil_actor_multisig::types::{TxnID, BytesKey};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actors_runtime::{make_map_with_root, ActorError};

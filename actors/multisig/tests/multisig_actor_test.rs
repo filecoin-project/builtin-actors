@@ -16,15 +16,9 @@ mod util;
 
 // use serde::Serialize;
 
-<<<<<<< HEAD
 fn construct_runtime(receiver: Address) -> MockRuntime {
     MockRuntime {
         receiver: receiver,
-=======
-fn construct_runtime(reciever: Address) -> MockRuntime {
-    MockRuntime {
-        receiver: reciever,
->>>>>>> 1805053 (TestAddSigners happy path test)
         caller: *SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
