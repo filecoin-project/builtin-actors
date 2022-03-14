@@ -2,10 +2,7 @@
 
 use lazy_static::lazy_static;
 
-use fil_actor_verifreg::{
-    DataCap,
-    MINIMUM_VERIFIED_DEAL_SIZE,
-};
+use fil_actor_verifreg::{DataCap, MINIMUM_VERIFIED_DEAL_SIZE};
 
 mod harness;
 
@@ -21,8 +18,8 @@ mod construction {
     use fvm_shared::MethodNum;
 
     use fil_actor_verifreg::{Actor as VerifregActor, Method};
-    use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
     use fil_actors_runtime::test_utils::*;
+    use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 
     use crate::harness;
     use harness::*;
@@ -62,11 +59,11 @@ mod construction {
 }
 
 mod verifiers {
-    use fvm_shared::{METHOD_SEND, MethodNum};
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::encoding::RawBytes;
     use fvm_shared::error::ExitCode;
+    use fvm_shared::{MethodNum, METHOD_SEND};
 
     use fil_actor_verifreg::{
         Actor as VerifregActor, AddVerifierParams, DataCap, Method, MINIMUM_VERIFIED_DEAL_SIZE,
@@ -222,11 +219,11 @@ mod verifiers {
 }
 
 mod clients {
-    use fvm_shared::{METHOD_SEND, MethodNum};
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::encoding::RawBytes;
     use fvm_shared::error::ExitCode;
+    use fvm_shared::{MethodNum, METHOD_SEND};
 
     use fil_actor_verifreg::{
         Actor as VerifregActor, AddVerifierClientParams, DataCap, Method,
@@ -234,7 +231,7 @@ mod clients {
     };
     use fil_actors_runtime::test_utils::*;
 
-    use crate::{CLIENT_ALLOWANCE, harness, VERIFIER_ALLOWANCE};
+    use crate::{harness, CLIENT_ALLOWANCE, VERIFIER_ALLOWANCE};
     use harness::*;
 
     #[test]
