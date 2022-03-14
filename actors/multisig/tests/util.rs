@@ -1,10 +1,15 @@
-use fil_actor_multisig::{Actor, AddSignerParams, ConstructorParams, Method};
+use fil_actor_multisig::{
+    compute_proposal_hash, Actor, AddSignerParams, ConstructorParams, Method, ProposeParams, State,
+    Transaction, TxnID,
+};
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::ActorError;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime::{make_map_with_root, parse_uint_key, ActorError};
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
+use fvm_shared::MethodNum;
 pub struct ActorHarness {}
 
 impl ActorHarness {
@@ -42,5 +47,48 @@ impl ActorHarness {
         let ret = rt.call::<Actor>(Method::AddSigner as u64, &RawBytes::serialize(params).unwrap());
         rt.verify();
         ret
+    }
+
+    pub fn propose_ok(
+        self: &Self,
+        rt: &mut MockRuntime,
+        to: Address,
+        value: TokenAmount,
+        method: MethodNum,
+        params: RawBytes,
+    ) -> [u8; 32] {
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        let propose_params =
+            ProposeParams { to: to, value: value.clone(), method: method, params: params.clone() };
+        expect_ok(
+            rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap()),
+        );
+        // compute proposal hash
+        let txn = Transaction {
+            to: to,
+            value: value,
+            method: method,
+            params: params,
+            approved: vec![rt.caller],
+        };
+        compute_proposal_hash(&txn, rt).unwrap()
+    }
+
+    pub fn assert_transactions(
+        self: &Self,
+        rt: &MockRuntime,
+        mut expect_txns: Vec<(TxnID, Transaction)>,
+    ) {
+        let st = rt.get_state::<State>().unwrap();
+        let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &rt.store).unwrap();
+        let mut actual_txns = Vec::new();
+        ptx.for_each(|k, txn: &Transaction| {
+            actual_txns.push((TxnID(parse_uint_key(k)? as i64), txn.clone()));
+            Ok(())
+        })
+        .unwrap();
+        expect_txns.sort_by_key(|(TxnID(id), _txn)| (*id));
+        actual_txns.sort_by_key(|(TxnID(id), _txn)| (*id));
+        assert_eq!(expect_txns, actual_txns);
     }
 }
