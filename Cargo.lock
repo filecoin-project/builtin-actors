@@ -910,9 +910,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_bitfield"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc1af49e67e51d326297440c0250f2012dd0f9d19b2ebec5c26b0c8d5171b540"
+checksum = "075a50062801672269626dabfe211a9f01487c08d6fbd1677a4e550a2b864fad"
 dependencies = [
  "cs_serde_bytes",
  "fvm_shared",
@@ -1477,9 +1477,9 @@ dependencies = [
 
 [[package]]
 name = "serde_ipld_dagcbor"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "762aec89078f8714aed28e2ab810fabaf5562ab6706fda85e28b37bc307fa242"
+checksum = "288c13e731ed502f0e5d5ab8d1cc0740515e1cd759ad1b86b837565299a57e49"
 dependencies = [
  "cid",
  "half",
