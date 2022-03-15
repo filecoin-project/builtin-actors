@@ -5,11 +5,11 @@ use std::cmp;
 use std::collections::BTreeSet;
 
 use anyhow::anyhow;
-use bitfield::BitField;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
+use fvm_ipld_bitfield::BitField;
 use fvm_shared::blockstore::{Blockstore, CborStore};
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;

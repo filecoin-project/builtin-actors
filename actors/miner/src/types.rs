@@ -1,9 +1,9 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use bitfield::UnvalidatedBitField;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
+use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;

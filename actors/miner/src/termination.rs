@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::ops::AddAssign;
 
-use bitfield::BitField;
+use fvm_ipld_bitfield::BitField;
 use fvm_shared::clock::ChainEpoch;
 
 #[derive(Default)]
