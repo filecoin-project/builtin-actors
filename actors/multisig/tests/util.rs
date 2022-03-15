@@ -1,6 +1,7 @@
+use fil_actor_multisig::TxnIDParams;
 use fil_actor_multisig::{
-    compute_proposal_hash, Actor, AddSignerParams, ConstructorParams, Method, ProposeParams, State,
-    Transaction, TxnID,
+    compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,
+    ProposeParams, State, Transaction, TxnID,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
@@ -9,10 +10,15 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
+use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
 pub struct ActorHarness {}
 
 impl ActorHarness {
+    pub fn new() -> ActorHarness {
+        ActorHarness {}
+    }
+
     pub fn construct_and_verify(
         self: &Self,
         rt: &mut MockRuntime,
@@ -63,6 +69,7 @@ impl ActorHarness {
         expect_ok(
             rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap()),
         );
+        rt.verify();
         // compute proposal hash
         let txn = Transaction {
             to: to,
@@ -72,6 +79,35 @@ impl ActorHarness {
             approved: vec![rt.caller],
         };
         compute_proposal_hash(&txn, rt).unwrap()
+    }
+
+    // requires that the approval finishes the transaction and that the resulting invocation succeeds.
+    // returns the (raw) output of the successful invocation.
+    pub fn approve_ok(
+        self: &Self,
+        rt: &mut MockRuntime,
+        txn_id: TxnID,
+        proposal_hash: [u8; 32],
+    ) -> RawBytes {
+        let ret = self.approve(rt, txn_id, proposal_hash).unwrap();
+        let approve_ret = ret.deserialize::<ApproveReturn>().unwrap();
+        assert_eq!(ExitCode::Ok, approve_ret.code);
+        approve_ret.ret
+    }
+
+    pub fn approve(
+        self: &Self,
+        rt: &mut MockRuntime,
+        txn_id: TxnID,
+        proposal_hash: [u8; 32],
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        let approve_params =
+            TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
+        let ret =
+            rt.call::<Actor>(Method::Approve as u64, &RawBytes::serialize(approve_params).unwrap());
+        rt.verify();
+        ret
     }
 
     pub fn assert_transactions(
