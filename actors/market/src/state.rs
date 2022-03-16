@@ -1,10 +1,11 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use crate::balance_table::BalanceTable;
 use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::{
-    actor_error, make_empty_map, ActorDowncast, ActorError, Array, BalanceTable, Set, SetMultimap,
+    actor_error, make_empty_map, ActorDowncast, ActorError, Array, Set, SetMultimap,
 };
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
