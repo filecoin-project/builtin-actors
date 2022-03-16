@@ -1,6 +1,7 @@
 SHELL=/usr/bin/env bash
 
 ORDERED_PACKAGES:=fil_actors_runtime \
+				  fil_actor_account \
                   fil_actor_cron \
                   fil_actor_init \
                   fil_actor_market \
