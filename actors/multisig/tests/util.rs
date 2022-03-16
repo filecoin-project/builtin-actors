@@ -110,6 +110,21 @@ impl ActorHarness {
         ret
     }
 
+    pub fn cancel(
+        self: &Self,
+        rt: &mut MockRuntime,
+        txn_id: TxnID,
+        proposal_hash: [u8; 32],
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        let cancel_params =
+            TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
+        let ret =
+            rt.call::<Actor>(Method::Cancel as u64, &RawBytes::serialize(cancel_params).unwrap());
+        rt.verify();
+        ret
+    }
+
     pub fn assert_transactions(
         self: &Self,
         rt: &MockRuntime,

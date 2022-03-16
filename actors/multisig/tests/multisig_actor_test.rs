@@ -173,3 +173,32 @@ fn test_approve_simple_propose_and_approval() {
     h.approve_ok(&mut rt, TxnID(0), proposal_hash);
     h.assert_transactions(&rt, vec![]);
 }
+
+// Cancel
+#[test]
+fn test_simple_propose_and_cancel() {
+    let msig = Address::new_id(100);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+    let signers = vec![anne, bob];
+
+    h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+
+    let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
+    let fake_method = 42;
+    let send_value = TokenAmount::from(10u8);
+    // anne proposes tx
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+    let proposal_hash = h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params);
+
+    // anne cancels the tx
+    let ret = h.cancel(&mut rt, TxnID(0), proposal_hash).unwrap();
+    assert_eq!(RawBytes::default(), ret);
+
+    // tx should be removed from actor state
+    h.assert_transactions(&rt, vec![]);
+}
