@@ -609,6 +609,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
+ "fvm_ipld_hamt",
  "fvm_shared",
  "log",
  "num-derive",

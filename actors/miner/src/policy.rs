@@ -15,9 +15,24 @@ use fvm_shared::sector::{
     RegisteredPoStProof, RegisteredSealProof, SectorQuality, SectorSize, StoragePower,
 };
 use fvm_shared::version::NetworkVersion;
+use lazy_static::lazy_static;
 
 use super::types::SectorOnChainInfo;
 use super::{PowerPair, BASE_REWARD_FOR_DISPUTED_WINDOW_POST};
+
+/// Precision used for making QA power calculations
+pub const SECTOR_QUALITY_PRECISION: i64 = 20;
+
+lazy_static! {
+    /// Quality multiplier for committed capacity (no deals) in a sector
+    pub static ref QUALITY_BASE_MULTIPLIER: BigInt = BigInt::from(10);
+
+    /// Quality multiplier for unverified deals in a sector
+    pub static ref DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(10);
+
+    /// Quality multiplier for verified deals in a sector
+    pub static ref VERIFIED_DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(100);
+}
 
 /// The maximum number of partitions that may be required to be loaded in a single invocation,
 /// when all the sector infos for the partitions will be loaded.
