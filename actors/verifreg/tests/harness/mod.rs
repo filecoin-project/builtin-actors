@@ -75,7 +75,7 @@ impl Harness {
         assert_eq!(RawBytes::default(), ret);
         rt.verify();
 
-        self.assert_verifier_allowance(rt, &verifier, allowance);
+        self.assert_verifier_allowance(rt, verifier, allowance);
         Ok(())
     }
 
@@ -108,14 +108,14 @@ impl Harness {
     }
 
     pub fn get_verifier_allowance(&self, rt: &MockRuntime, verifier: &Address) -> DataCap {
-        let verifiers = load_verifiers(&rt);
+        let verifiers = load_verifiers(rt);
         let BigIntDe(allowance) = verifiers.get(&verifier.to_bytes()).unwrap().unwrap();
         return allowance.clone();
     }
 
     pub fn assert_verifier_removed(&self, rt: &MockRuntime, verifier: &Address) {
         let verifier_id_addr = rt.get_id_address(verifier).unwrap();
-        let verifiers = load_verifiers(&rt);
+        let verifiers = load_verifiers(rt);
         assert_eq!(false, verifiers.contains_key(&verifier_id_addr.to_bytes()).unwrap())
     }
 
@@ -138,8 +138,7 @@ impl Harness {
         rt.verify();
 
         // Confirm the verifier was added to state.
-        let client_id_addr = rt.get_id_address(&client).unwrap();
-        assert_eq!(*expected_allowance, self.get_client_allowance(rt, &client_id_addr));
+        self.assert_client_allowance(rt, client, expected_allowance);
         Ok(())
     }
 

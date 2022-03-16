@@ -175,8 +175,10 @@ mod verifiers {
         let verifier = Address::new_id(201);
         h.add_verifier(&mut rt, &verifier, &VERIFIER_ALLOWANCE).unwrap();
 
+        let caller = Address::new_id(501);
         rt.expect_validate_caller_addr(vec![h.root]);
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(501));
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
+        assert_ne!(h.root, caller);
         expect_abort(
             ExitCode::SysErrForbidden,
             rt.call::<VerifregActor>(
