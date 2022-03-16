@@ -1,7 +1,6 @@
-use fil_actor_multisig::TxnIDParams;
 use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,
-    ProposeParams, State, Transaction, TxnID,
+    ProposeParams, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID, TxnIDParams,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
@@ -51,6 +50,34 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
         let params = AddSignerParams { signer: signer, increase: increase };
         let ret = rt.call::<Actor>(Method::AddSigner as u64, &RawBytes::serialize(params).unwrap());
+        rt.verify();
+        ret
+    }
+
+    pub fn remove_signer(
+        self: &Self,
+        rt: &mut MockRuntime,
+        signer: Address,
+        decrease: bool,
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_addr(vec![rt.receiver]);
+        let params = RemoveSignerParams { signer: signer, decrease: decrease };
+        let ret =
+            rt.call::<Actor>(Method::RemoveSigner as u64, &RawBytes::serialize(params).unwrap());
+        rt.verify();
+        ret
+    }
+
+    pub fn swap_signers(
+        self: &Self,
+        rt: &mut MockRuntime,
+        old_signer: Address,
+        new_signer: Address,
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_addr(vec![rt.receiver]);
+        let params = SwapSignerParams { from: old_signer, to: new_signer };
+        let ret =
+            rt.call::<Actor>(Method::SwapSigner as u64, &RawBytes::serialize(params).unwrap());
         rt.verify();
         ret
     }
@@ -106,6 +133,21 @@ impl ActorHarness {
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
         let ret =
             rt.call::<Actor>(Method::Approve as u64, &RawBytes::serialize(approve_params).unwrap());
+        rt.verify();
+        ret
+    }
+
+    pub fn cancel(
+        self: &Self,
+        rt: &mut MockRuntime,
+        txn_id: TxnID,
+        proposal_hash: [u8; 32],
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        let cancel_params =
+            TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
+        let ret =
+            rt.call::<Actor>(Method::Cancel as u64, &RawBytes::serialize(cancel_params).unwrap());
         rt.verify();
         ret
     }
