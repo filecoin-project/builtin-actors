@@ -8,11 +8,13 @@ use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
 
 use fil_actor_verifreg::{
-    Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, DataCap, Method, State,
+    Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, DataCap, Method,
+    RestoreBytesParams, State, UseBytesParams,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map, SYSTEM_ACTOR_ADDR,
+    make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 
 lazy_static! {
@@ -153,6 +155,12 @@ impl Harness {
         return allowance.clone();
     }
 
+    pub fn assert_client_removed(&self, rt: &MockRuntime, client: &Address) {
+        let client_id_addr = rt.get_id_address(client).unwrap();
+        let clients = load_clients(rt);
+        assert_eq!(false, clients.contains_key(&client_id_addr.to_bytes()).unwrap())
+    }
+
     pub fn add_verifier_and_client(
         &self,
         rt: &mut MockRuntime,
@@ -163,6 +171,42 @@ impl Harness {
     ) {
         self.add_verifier(rt, verifier, verifier_allowance).unwrap();
         self.add_client(rt, verifier, client, client_allowance, client_allowance).unwrap();
+    }
+
+    pub fn use_bytes(
+        &self,
+        rt: &mut MockRuntime,
+        client: &Address,
+        amount: &DataCap,
+    ) -> Result<(), ActorError> {
+        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR);
+        let params = UseBytesParams { address: *client, deal_size: amount.clone() };
+        let ret = rt.call::<VerifregActor>(
+            Method::UseBytes as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        assert_eq!(RawBytes::default(), ret);
+        rt.verify();
+        Ok(())
+    }
+
+    pub fn restore_bytes(
+        &self,
+        rt: &mut MockRuntime,
+        client: &Address,
+        amount: &DataCap,
+    ) -> Result<(), ActorError> {
+        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR);
+        let params = RestoreBytesParams { address: *client, deal_size: amount.clone() };
+        let ret = rt.call::<VerifregActor>(
+            Method::RestoreBytes as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        assert_eq!(RawBytes::default(), ret);
+        rt.verify();
+        Ok(())
     }
 
     pub fn check_state(&self) {
