@@ -1,8 +1,7 @@
 use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,
-    ProposeParams, State, Transaction, TxnID,
+    ProposeParams, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID, TxnIDParams,
 };
-use fil_actor_multisig::{RemoveSignerParams, TxnIDParams};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actors_runtime::{make_map_with_root, parse_uint_key, ActorError};
@@ -65,6 +64,20 @@ impl ActorHarness {
         let params = RemoveSignerParams { signer: signer, decrease: decrease };
         let ret =
             rt.call::<Actor>(Method::RemoveSigner as u64, &RawBytes::serialize(params).unwrap());
+        rt.verify();
+        ret
+    }
+
+    pub fn swap_signers(
+        self: &Self,
+        rt: &mut MockRuntime,
+        old_signer: Address,
+        new_signer: Address,
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_addr(vec![rt.receiver]);
+        let params = SwapSignerParams { from: old_signer, to: new_signer };
+        let ret =
+            rt.call::<Actor>(Method::SwapSigner as u64, &RawBytes::serialize(params).unwrap());
         rt.verify();
         ret
     }
