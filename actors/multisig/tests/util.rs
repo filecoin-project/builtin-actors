@@ -1,8 +1,8 @@
-use fil_actor_multisig::TxnIDParams;
 use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,
     ProposeParams, State, Transaction, TxnID,
 };
+use fil_actor_multisig::{RemoveSignerParams, TxnIDParams};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actors_runtime::{make_map_with_root, parse_uint_key, ActorError};
@@ -51,6 +51,20 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
         let params = AddSignerParams { signer: signer, increase: increase };
         let ret = rt.call::<Actor>(Method::AddSigner as u64, &RawBytes::serialize(params).unwrap());
+        rt.verify();
+        ret
+    }
+
+    pub fn remove_signer(
+        self: &Self,
+        rt: &mut MockRuntime,
+        signer: Address,
+        decrease: bool,
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_addr(vec![rt.receiver]);
+        let params = RemoveSignerParams { signer: signer, decrease: decrease };
+        let ret =
+            rt.call::<Actor>(Method::RemoveSigner as u64, &RawBytes::serialize(params).unwrap());
         rt.verify();
         ret
     }

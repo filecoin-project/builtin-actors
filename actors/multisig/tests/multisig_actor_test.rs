@@ -131,6 +131,36 @@ fn test_happy_path_add_signer() {
     assert_eq!(expected_approvals, st.num_approvals_threshold);
 }
 
+// RemoveSigner
+
+#[test]
+fn test_happy_path_remove_signer() {
+    let msig = Address::new_id(100);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let mut rt = construct_runtime(msig);
+    let initial_signers = vec![anne, bob, chuck];
+    let initial_approvals: u64 = 2;
+
+    // construct
+    let h = util::ActorHarness::new();
+    h.construct_and_verify(&mut rt, initial_approvals, 0, 0, initial_signers);
+
+    // remove chuck
+    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+    let ret = h.remove_signer(&mut rt, chuck, false).unwrap();
+    assert_eq!(RawBytes::default(), ret);
+
+    // check that the state matches what we expect
+    let expected_signers = vec![anne, bob];
+    let expected_approvals = initial_approvals;
+
+    let st = rt.get_state::<State>().unwrap();
+    assert_eq!(expected_signers, st.signers);
+    assert_eq!(expected_approvals, st.num_approvals_threshold);
+}
+
 // Approve
 
 #[test]
