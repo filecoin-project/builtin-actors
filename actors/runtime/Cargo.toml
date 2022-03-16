@@ -1,7 +1,7 @@
 [package]
 name = "fil_actors_runtime"
 description = "System actors for the Filecoin protocol"
-version = "7.0.4"
+version = "7.0.5-alpha.1"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
