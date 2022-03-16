@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::{
-    ext, Actor as MarketActor, Method, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
+    ext, Actor as MarketActor, Label, Method, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
     STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::runtime::Runtime;
@@ -14,7 +14,7 @@ use fil_actors_runtime::{
     make_empty_map, ActorError, SetMultimap, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::EPOCH_UNDEFINED;
@@ -94,6 +94,22 @@ fn simple_construction() {
     assert_eq!(0, state_data.next_id);
     assert_eq!(empty_multimap, state_data.deal_ops_by_epoch);
     assert_eq!(state_data.last_cron, EPOCH_UNDEFINED);
+}
+
+#[test]
+fn label_cbor() {
+    let label = Label::String("i_am_random_string____i_am_random_string____".parse().unwrap());
+    let sv_bz = to_vec(&label)
+        .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
+        .unwrap();
+    println!("{:?}", sv_bz);
+
+    let label2 = Label::Bytes(b"i_am_random_____i_am_random_____".to_vec());
+    println!("{:?}", (b"i_am_random_____i_am_random_____".to_vec()));
+    let sv_bz = to_vec(&label2)
+        .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
+        .unwrap();
+    println!("{:?}", sv_bz);
 }
 
 #[ignore]

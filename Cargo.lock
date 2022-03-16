@@ -619,6 +619,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared 0.4.0",
+ "libipld-core",
  "log",
  "num-derive",
  "num-traits",
