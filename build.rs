@@ -28,7 +28,6 @@ const ACTORS: &[(&Package, &ID)] = &[
 ];
 
 const IPLD_RAW: u64 = 0x55;
-const FORCED_CID_PREFIX: &str = "fil/7/";
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Cargo executable location.
@@ -101,14 +100,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             .join("wasm32-unknown-unknown/wasm")
             .join(format!("fil_actor_{}.wasm", pkg));
 
-        // This actor version uses forced CIDs.
-        let forced_cid = {
-            let identity = FORCED_CID_PREFIX.to_owned() + id;
-            Cid::new_v1(IPLD_RAW, Multihash::wrap(0, identity.as_bytes())?)
-        };
+        // This actor version doesn't force synthetic CIDs; it uses genuine
+        // content-addressed CIDs.
+        let forced_cid = None;
 
         let cid = bundler
-            .add_from_file((*id).try_into().unwrap(), Some(&forced_cid), &bytecode_path)
+            .add_from_file((*id).try_into().unwrap(), forced_cid, &bytecode_path)
             .unwrap_or_else(|err| {
                 panic!("failed to add file {:?} to bundle for actor {}: {}", bytecode_path, id, err)
             });
