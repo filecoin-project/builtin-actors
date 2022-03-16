@@ -33,10 +33,10 @@ pub use self::state::*;
 pub use self::types::*;
 use crate::ext::verifreg::UseBytesParams;
 
-// export for testing
+pub mod balance_table; // export for testing
 mod deal;
 #[doc(hidden)]
-pub mod ext;
+pub mod ext; // export for testing
 mod policy;
 mod state;
 mod types;
