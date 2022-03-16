@@ -24,15 +24,9 @@ macro_rules! account_tests {
                 rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
 
                 if exit_code.is_success() {
-                    rt
-                    .call::<AccountActor>(
-                        1,
-                        &RawBytes::serialize(addr).unwrap(),
-                    )
-                    .unwrap();
+                    rt.call::<AccountActor>(1, &RawBytes::serialize(addr).unwrap()).unwrap();
 
                     let state: State = rt.get_state().unwrap();
-
                     assert_eq!(state.address, addr);
                     rt.expect_validate_caller_any();
 
@@ -43,11 +37,10 @@ macro_rules! account_tests {
                         .unwrap();
                     assert_eq!(pk, addr);
                 } else {
-                    let res = rt.call::<AccountActor>(
-                        1,
-                        &RawBytes::serialize(addr).unwrap(),
-                    ).map_err(|e| e.exit_code());
-                    assert_eq!(res, Err(exit_code))
+                    expect_abort(
+                        exit_code,
+                        rt.call::<AccountActor>(1,&RawBytes::serialize(addr).unwrap())
+                    )
                 }
                 rt.verify();
             }
