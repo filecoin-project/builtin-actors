@@ -3809,17 +3809,8 @@ where
         WindowPoStVerifyInfo { randomness, proofs, challenged_sectors, prover: miner_actor_id };
 
     // verify the post proof
-    rt.verify_post(&pv_info).map_err(|e| {
-        e.downcast_default(
-            ExitCode::ErrIllegalArgument,
-            format!(
-                "invalid PoSt: proofs({:?}), randomness({:?})",
-                pv_info.proofs, pv_info.randomness
-            ),
-        )
-    })?;
-
-    Ok(true)
+    let result = rt.verify_post(&pv_info);
+    Ok(!result.is_err())
 }
 
 fn get_verify_info<BS, RT>(
