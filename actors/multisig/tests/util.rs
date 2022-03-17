@@ -2,6 +2,7 @@ use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,
     ProposeParams, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID, TxnIDParams,
 };
+use fil_actor_multisig::{ChangeNumApprovalsThresholdParams, LockBalanceParams};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actors_runtime::{make_map_with_root, parse_uint_key, ActorError};
@@ -148,6 +149,40 @@ impl ActorHarness {
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
         let ret =
             rt.call::<Actor>(Method::Cancel as u64, &RawBytes::serialize(cancel_params).unwrap());
+        rt.verify();
+        ret
+    }
+
+    pub fn lock_balance(
+        self: &Self,
+        rt: &mut MockRuntime,
+        start: ChainEpoch,
+        duration: ChainEpoch,
+        amount: TokenAmount,
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_addr(vec![rt.receiver]);
+        let lock_balance_params =
+            LockBalanceParams { start_epoch: start, unlock_duration: duration, amount: amount };
+        let ret = rt.call::<Actor>(
+            Method::LockBalance as u64,
+            &RawBytes::serialize(lock_balance_params).unwrap(),
+        );
+        rt.verify();
+        ret
+    }
+
+    pub fn change_num_approvals_threshold(
+        self: &Self,
+        rt: &mut MockRuntime,
+        new_threshold: u64,
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_addr(vec![rt.receiver]);
+        let change_threshold_params =
+            ChangeNumApprovalsThresholdParams { new_threshold: new_threshold };
+        let ret = rt.call::<Actor>(
+            Method::ChangeNumApprovalsThreshold as u64,
+            &RawBytes::serialize(change_threshold_params).unwrap(),
+        );
         rt.verify();
         ret
     }
