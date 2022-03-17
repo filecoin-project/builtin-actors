@@ -1,14 +1,15 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, wasm_trampoline, ActorError, SYSTEM_ACTOR_ADDR};
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::encoding::{Cbor, RawBytes};
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
+
+use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fil_actors_runtime::{actor_error, wasm_trampoline, ActorError, SYSTEM_ACTOR_ADDR};
 
 wasm_trampoline!(Actor);
 
@@ -60,5 +61,36 @@ impl ActorCode for Actor {
             }
             None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fvm_shared::encoding::RawBytes;
+    use fvm_shared::MethodNum;
+
+    use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
+    use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
+
+    use crate::{Actor, Method, State};
+
+    pub fn new_runtime() -> MockRuntime {
+        MockRuntime {
+            receiver: *SYSTEM_ACTOR_ADDR,
+            caller: *SYSTEM_ACTOR_ADDR,
+            caller_type: *SYSTEM_ACTOR_CODE_ID,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn construct_with_root_id() {
+        let mut rt = new_runtime();
+        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, *SYSTEM_ACTOR_ADDR);
+        rt.call::<Actor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
+
+        let state: State = rt.get_state().unwrap();
+        assert_eq!([(); 0], state.0);
     }
 }
