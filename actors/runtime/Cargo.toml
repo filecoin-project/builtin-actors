@@ -36,8 +36,10 @@ derive_builder = "0.10.2"
 hex = "0.4.3"
 
 [features]
-default = []
+default = ["actor"]
 
+# https://github.com/filecoin-project/builtin-actors/issues/109#issuecomment-1068286220
+actor = []
 # Enable 2k sectors
 sector-2k = []
 # Enable 8m sectors
