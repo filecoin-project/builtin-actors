@@ -4,10 +4,10 @@
 use std::collections::BTreeSet;
 
 use anyhow::anyhow;
-use bitfield::BitField;
 use cid::Cid;
 use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
 use fvm_ipld_amt::Error as AmtError;
+use fvm_ipld_bitfield::BitField;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{SectorNumber, MAX_SECTOR_NUMBER};
@@ -25,7 +25,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
 
     pub fn load_sector<'a>(
         &self,
-        sector_numbers: impl bitfield::Validate<'a>,
+        sector_numbers: impl fvm_ipld_bitfield::Validate<'a>,
     ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
         let sector_numbers = match sector_numbers.validate() {
             Ok(sector_numbers) => sector_numbers,
