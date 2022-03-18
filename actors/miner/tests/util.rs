@@ -815,7 +815,7 @@ impl ActorHarness {
         rt.verify();
     }
 
-    fn submit_window_post_raw(
+    pub fn submit_window_post_raw(
         &self,
         rt: &mut MockRuntime,
         deadline: &DeadlineInfo,
@@ -843,11 +843,14 @@ impl ActorHarness {
         let mut all_recovered = BitField::new();
         let dln = self.get_deadline(rt, deadline.index);
         for p in &params.partitions {
-            let partition = dln.load_partition(&rt.store, p.index).unwrap();
-            let expected_faults = &partition.faults - &partition.recoveries;
-            let skipped = get_bitfield(&p.skipped);
-            all_ignored |= &(&expected_faults | &skipped);
-            all_recovered |= &(&partition.recoveries - &skipped);
+            let maybe_partition = dln.load_partition(&rt.store, p.index);
+            if maybe_partition.is_ok() {
+                let partition = maybe_partition.unwrap();
+                let expected_faults = &partition.faults - &partition.recoveries;
+                let skipped = get_bitfield(&p.skipped);
+                all_ignored |= &(&expected_faults | &skipped);
+                all_recovered |= &(&partition.recoveries - &skipped);
+            }
         }
         let optimistic = all_recovered.is_empty();
 
@@ -1106,6 +1109,22 @@ impl PoStConfig {
             verification_exit: None,
         }
     }
+
+    pub fn with_randomness(rand: Randomness) -> PoStConfig {
+        PoStConfig {
+            chain_randomness: Some(rand),
+            expected_power_delta: None,
+            verification_exit: None,
+        }
+    }
+
+    pub fn empty() -> PoStConfig {
+        PoStConfig {
+            chain_randomness: None,
+            expected_power_delta: None,
+            verification_exit: None,
+        }
+    }
 }
 
 pub struct PreCommitConfig {
@@ -1183,6 +1202,28 @@ pub fn assert_bitfield_equals(bf: &BitField, bits: &[u64]) {
     assert!(bf == &rbf);
 }
 
+#[allow(dead_code)]
+pub fn make_empty_bitfield() -> UnvalidatedBitField {
+    UnvalidatedBitField::Validated(BitField::new())
+}
+
+#[allow(dead_code)]
+pub fn make_bitfield(bits: &[u64])  -> UnvalidatedBitField {
+    let mut bf = BitField::new();
+    for bit in bits {
+        bf.set(*bit);
+    }
+    UnvalidatedBitField::Validated(bf)
+}
+
+fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
+    match ubf {
+        UnvalidatedBitField::Validated(bf) => bf.clone(),
+        UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(&bytes).unwrap(),
+    }
+}
+
+
 // multihash library doesn't support poseidon hashing, so we fake it
 #[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
 #[mh(alloc_size = 64)]
@@ -1206,7 +1247,7 @@ fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     sum
 }
 
-fn make_post_proofs(proof_type: RegisteredPoStProof) -> Vec<PoStProof> {
+pub fn make_post_proofs(proof_type: RegisteredPoStProof) -> Vec<PoStProof> {
     let proof = PoStProof { post_proof: proof_type, proof_bytes: Vec::from(b"proof1".clone()) };
     vec![proof]
 }
@@ -1236,13 +1277,6 @@ fn make_deferred_cron_event_params(
         event_payload: Vec::from(RawBytes::serialize(payload).unwrap().bytes()),
         reward_smoothed: epoch_reward_smooth,
         quality_adj_power_smoothed: epoch_qa_power_smooth,
-    }
-}
-
-fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
-    match ubf {
-        UnvalidatedBitField::Validated(bf) => bf.clone(),
-        UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(&bytes).unwrap(),
     }
 }
 
