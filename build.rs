@@ -1,5 +1,3 @@
-use cid::multihash::Multihash;
-use cid::Cid;
 use fil_actor_bundler::Bundler;
 use std::error::Error;
 use std::io::{BufRead, BufReader};
@@ -27,7 +25,32 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("verifreg", "verifiedregistry"),
 ];
 
-const IPLD_RAW: u64 = 0x55;
+const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";
+
+/// Returns the configured network name, checking both the environment and feature flags.
+fn network_name() -> String {
+    let env_network = std::env::var_os(NETWORK_ENV);
+
+    let cfg_network = if cfg!(feature = "caterpillarnet") {
+        Some("caterpillarnet")
+    } else if cfg!(feature = "devnet") {
+        Some("devnet")
+    } else {
+        None
+    };
+
+    // Make sure they match if they're both set. Otherwise, pick the one that's set, or fallback on
+    // "default".
+    match (cfg_network, &env_network) {
+        (Some(from_feature), Some(from_env)) => {
+            assert_eq!(from_feature, from_env, "different target network configured via the features than via the {} environment variable", NETWORK_ENV);
+            from_feature
+        }
+        (Some(net), None) => net,
+        (None, Some(net)) => net.to_str().expect("network name not utf8"),
+        (None, None) => "default",
+    }.to_owned()
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Cargo executable location.
@@ -50,6 +73,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             .join("Cargo.toml");
     println!("cargo:warning=manifest_path={:?}", &manifest_path);
 
+    // Determine the network name.
+    let network_name = network_name();
+    println!("cargo:warning=network name: {}", network_name);
+
+    // Make sure we re-build if the network name changes.
+    println!("cargo:rerun-if-env-changed={}", NETWORK_ENV);
+
     // Cargo build command for all actors at once.
     let mut cmd = Command::new(&cargo);
     cmd.arg("build")
@@ -59,6 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .arg("--locked")
         .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
         .env("RUSTFLAGS", "-Ctarget-feature=+crt-static -Clink-arg=--export-table")
+        .env(NETWORK_ENV, network_name)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         // We are supposed to only generate artifacts under OUT_DIR,
