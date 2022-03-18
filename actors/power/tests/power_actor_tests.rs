@@ -1,5 +1,3 @@
-#![deny(unused_must_use)] // Force unwrapping Result<_, Err>
-
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::BytesDe;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};

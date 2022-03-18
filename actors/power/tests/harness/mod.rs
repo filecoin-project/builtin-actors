@@ -1,5 +1,3 @@
-#![deny(unused_must_use)] // Force unwrapping Result<_, Err>
-
 use std::borrow::Borrow;
 
 use cid::Cid;

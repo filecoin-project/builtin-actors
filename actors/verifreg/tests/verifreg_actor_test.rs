@@ -1,5 +1,3 @@
-#![deny(unused_must_use)] // Force unwrapping Result<_, Err>
-
 use fvm_shared::address::Address;
 use lazy_static::lazy_static;
 
