@@ -1,0 +1,5 @@
+[build]
+rustflags = [
+    # Force unwrapping Result<_, Err>, especially for tests.
+    "-D", "unused_must_use",
+]
