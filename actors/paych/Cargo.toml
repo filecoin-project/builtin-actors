@@ -26,3 +26,9 @@ anyhow = "1.0.56"
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features = ["test_utils", "sector-default"] }
 fvm_ipld_amt = { version = "0.2.0", features = ["go-interop"] }
 derive_builder = "0.10.2"
+
+[features]
+default = []
+
+# https://github.com/filecoin-project/builtin-actors/issues/109#issuecomment-1068286220
+actor = []

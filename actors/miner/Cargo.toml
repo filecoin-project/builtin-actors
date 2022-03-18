@@ -34,3 +34,9 @@ fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features 
 fil_actor_account = { version = "8.0.0-alpha.1", path = "../account" }
 rand = "0.8.5"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+
+[features]
+default = []
+
+# https://github.com/filecoin-project/builtin-actors/issues/109#issuecomment-1068286220
+actor = []

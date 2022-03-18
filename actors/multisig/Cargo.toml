@@ -27,3 +27,9 @@ anyhow = "1.0.56"
 
 [dev-dependencies]
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features = ["test_utils", "sector-default"] }
+
+[features]
+default = []
+
+# https://github.com/filecoin-project/builtin-actors/issues/109#issuecomment-1068286220
+actor = []

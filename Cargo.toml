@@ -32,6 +32,17 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 default = [
     "fil_actors_runtime/sector-32g",
     "fil_actors_runtime/sector-64g",
+    "fil_actor_account/actor",
+    "fil_actor_verifreg/actor",
+    "fil_actor_cron/actor",
+    "fil_actor_market/actor",
+    "fil_actor_multisig/actor",
+    "fil_actor_paych/actor",
+    "fil_actor_power/actor",
+    "fil_actor_miner/actor",
+    "fil_actor_reward/actor",
+    "fil_actor_system/actor",
+    "fil_actor_init/actor",
 ]
 caterpillarnet = [
     "fil_actors_runtime/sector-512m",
