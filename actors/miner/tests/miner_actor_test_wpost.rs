@@ -3,10 +3,10 @@ use fil_actors_runtime::test_utils::*;
 
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::RegisteredPoStProof;
+use fvm_shared::sector::RegisteredSealProof;
 
 mod util;
 use util::*;
@@ -41,10 +41,8 @@ fn basic_post_and_dispute() {
     let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
 
     // Submit PoSt
-    let post_partitions = vec![miner::PoStPartition {
-        index: pidx,
-        skipped: make_empty_bitfield(),
-    }];
+    let post_partitions =
+        vec![miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() }];
     let post_sectors = vec![sector.clone()];
     h.submit_window_post(
         &mut rt,
@@ -116,34 +114,47 @@ fn invalid_submissions() {
 
     // Invalid deadline.
     {
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: rt.policy.wpost_period_deadlines,
+            partitions: vec![partition],
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           rt.policy.wpost_period_deadlines,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
         expect_abort_contains_message(ExitCode::ErrIllegalArgument, "invalid deadline", result);
         rt.reset();
     }
 
     // No partitions.
-	// This is a weird message because we don't check this precondition explicitly.
+    // This is a weird message because we don't check this precondition explicitly.
     {
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         Vec::new(),
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "expected proof to be smaller", result);
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: Vec::new(),
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+        };
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
+        expect_abort_contains_message(
+            ExitCode::ErrIllegalArgument,
+            "expected proof to be smaller",
+            result,
+        );
         rt.reset();
     }
 
@@ -152,148 +163,193 @@ fn invalid_submissions() {
         let too_many = 11;
         let mut partitions = Vec::with_capacity(too_many);
         for i in 0..too_many {
-            let partition = miner::PoStPartition{
-                index: pidx + i as u64,
-                skipped: make_empty_bitfield(),
-            };
+            let partition =
+                miner::PoStPartition { index: pidx + i as u64, skipped: make_empty_bitfield() };
             partitions.push(partition);
         }
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         partitions,
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: partitions,
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+        };
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
         expect_abort_contains_message(ExitCode::ErrIllegalArgument, "too many partitions", result);
         rt.reset();
     }
 
     // Invalid partition index.
     {
-        let partition = miner::PoStPartition{
-            index: pidx+1,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx + 1, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
         expect_abort_contains_message(ExitCode::ErrNotFound, "no such partition", result);
         rt.reset();
     }
 
     // Skip sectors that don't exist.
     {
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_bitfield(&[123]),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_bitfield(&[123]) };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "skipped faults contains sectors outside partition", result);
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
+        expect_abort_contains_message(
+            ExitCode::ErrIllegalArgument,
+            "skipped faults contains sectors outside partition",
+            result,
+        );
         rt.reset();
     }
 
     // Empty proofs array.
     {
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: Vec::new(),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             Vec::new(),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "expected exactly one proof", result);
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
+        expect_abort_contains_message(
+            ExitCode::ErrIllegalArgument,
+            "expected exactly one proof",
+            result,
+        );
         rt.reset();
     }
 
     // Invalid proof type
     {
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: make_post_proofs(RegisteredPoStProof::StackedDRGWindow8MiBV1),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(RegisteredPoStProof::StackedDRGWindow8MiBV1),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "proof type StackedDRGWindow8MiBV1 not allowed", result);
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
+        expect_abort_contains_message(
+            ExitCode::ErrIllegalArgument,
+            "proof type StackedDRGWindow8MiBV1 not allowed",
+            result,
+        );
         rt.reset();
     }
 
     // Unexpected proof type
     {
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: make_post_proofs(RegisteredPoStProof::StackedDRGWindow64GiBV1),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(RegisteredPoStProof::StackedDRGWindow64GiBV1),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "expected proof of type", result);
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
+        expect_abort_contains_message(
+            ExitCode::ErrIllegalArgument,
+            "expected proof of type",
+            result,
+        );
         rt.reset();
     }
 
     // Proof too large
     {
         let mut proofs = make_post_proofs(h.window_post_proof_type);
-        proofs[0].proof_bytes = Vec::from([0u8; 192+1]);
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        proofs[0].proof_bytes = Vec::from([0u8; 192 + 1]);
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: proofs,
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             proofs,
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "expected proof to be smaller", result);
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
+        expect_abort_contains_message(
+            ExitCode::ErrIllegalArgument,
+            "expected proof to be smaller",
+            result,
+        );
         rt.reset();
     }
 
     // Invalid randomness type
     {
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"123456789012345678901234567890123".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"123456789012345678901234567890123".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
         expect_abort_contains_message(ExitCode::ErrIllegalArgument, "bytes of randomness", result);
         rt.reset();
     }
@@ -301,18 +357,21 @@ fn invalid_submissions() {
     // Deadline not open.
     {
         rt.epoch += rt.policy.wpost_challenge_window;
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: dlinfo.challenge + rt.policy.wpost_proving_period / 2,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: dlinfo.challenge + rt.policy.wpost_proving_period/2,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
         // TODO there is discrepancy with the original test, which expects deadline 2 while the error
         //      reports deadline 0.  this probably warrants some investigation as it could be some
         //      kind of bug; for now we have relaxed the expected error message.
@@ -323,72 +382,96 @@ fn invalid_submissions() {
 
     // Chain commit epoch too old.
     {
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: dlinfo.challenge - 1,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: dlinfo.challenge - 1,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "expected chain commit epoch", result);
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
+        expect_abort_contains_message(
+            ExitCode::ErrIllegalArgument,
+            "expected chain commit epoch",
+            result,
+        );
         rt.reset();
     }
 
     // Chain commit epoch too new.
     {
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: rt.epoch,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: rt.epoch,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::empty());
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "must be less than the current epoch", result);
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::empty(),
+        );
+        expect_abort_contains_message(
+            ExitCode::ErrIllegalArgument,
+            "must be less than the current epoch",
+            result,
+        );
         rt.reset();
     }
 
     // Mismatched randomness
     {
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"boo".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"boo".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::with_randomness(Randomness(Vec::from(b"far".clone()))));
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "randomness mismatched", result);
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::with_randomness(Randomness(Vec::from(b"far".clone()))),
+        );
+        expect_abort_contains_message(
+            ExitCode::ErrIllegalArgument,
+            "randomness mismatched",
+            result,
+        );
         rt.reset();
     }
 
     // Demonstrate the good params are good.
     {
-        let partition = miner::PoStPartition{
-            index: pidx,
-            skipped: make_empty_bitfield(),
+        let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+        let params = miner::SubmitWindowedPoStParams {
+            deadline: dlinfo.index,
+            partitions: vec![partition],
+            proofs: make_post_proofs(h.window_post_proof_type),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
         };
-		let params = miner::SubmitWindowedPoStParams {
-			deadline:           dlinfo.index,
-			partitions:         vec![partition],
-			proofs:             make_post_proofs(h.window_post_proof_type),
-			chain_commit_epoch: dlinfo.challenge,
-			chain_commit_rand:  Randomness(Vec::from(b"chaincommitment".clone())),
-		};
-		let result = h.submit_window_post_raw(&mut rt, &dlinfo, vec![sector.clone()], params, PoStConfig::with_expected_power_delta(&pwr));
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            vec![sector.clone()],
+            params,
+            PoStConfig::with_expected_power_delta(&pwr),
+        );
         expect_ok(result);
         rt.verify();
     }

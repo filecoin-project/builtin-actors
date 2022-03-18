@@ -1119,11 +1119,7 @@ impl PoStConfig {
     }
 
     pub fn empty() -> PoStConfig {
-        PoStConfig {
-            chain_randomness: None,
-            expected_power_delta: None,
-            verification_exit: None,
-        }
+        PoStConfig { chain_randomness: None, expected_power_delta: None, verification_exit: None }
     }
 }
 
@@ -1208,7 +1204,7 @@ pub fn make_empty_bitfield() -> UnvalidatedBitField {
 }
 
 #[allow(dead_code)]
-pub fn make_bitfield(bits: &[u64])  -> UnvalidatedBitField {
+pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
     let mut bf = BitField::new();
     for bit in bits {
         bf.set(*bit);
@@ -1222,7 +1218,6 @@ fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
         UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(&bytes).unwrap(),
     }
 }
-
 
 // multihash library doesn't support poseidon hashing, so we fake it
 #[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
