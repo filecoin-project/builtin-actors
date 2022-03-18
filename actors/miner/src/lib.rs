@@ -466,7 +466,7 @@ impl Actor {
             if params.proofs[0].proof_bytes.len() > max_size {
                 return Err(actor_error!(
                     ErrIllegalArgument,
-                    "expect proof to be smaller than {} bytes",
+                    "expected proof to be smaller than {} bytes",
                     max_size
                 ));
             }
