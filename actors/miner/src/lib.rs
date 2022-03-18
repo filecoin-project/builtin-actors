@@ -523,7 +523,7 @@ impl Actor {
             if params.chain_commit_epoch >= current_epoch {
                 return Err(actor_error!(
                     ErrIllegalArgument,
-                    "chain commit epoch {} must be less tha the current epoch {}",
+                    "chain commit epoch {} must be less than the current epoch {}",
                     params.chain_commit_epoch,
                     current_epoch
                 ));
