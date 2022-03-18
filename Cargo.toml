@@ -1,7 +1,7 @@
 [package]
 name = "fil_builtin_actors_bundle"
 description = "Bundle of FVM-compatible Wasm bytecode for Filecoin builtin actors"
-version = "7.0.5-alpha.1"
+version = "7.0.5"
 license = "MIT OR Apache-2.0"
 authors = ["Protocol Labs", "Filecoin Core Devs"]
 edition = "2021"
@@ -10,18 +10,18 @@ keywords = ["filecoin", "web3", "wasm"]
 exclude = ["examples", ".github"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-fil_actor_account = { version = "7.0.5-alpha.1", path = "./actors/account" }
-fil_actor_verifreg = { version = "7.0.5-alpha.1", path = "./actors/verifreg" }
-fil_actor_cron = { version = "7.0.5-alpha.1", path = "./actors/cron" }
-fil_actor_market = { version = "7.0.5-alpha.1", path = "./actors/market" }
-fil_actor_multisig = { version = "7.0.5-alpha.1", path = "./actors/multisig" }
-fil_actor_paych = { version = "7.0.5-alpha.1", path = "./actors/paych" }
-fil_actor_power = { version = "7.0.5-alpha.1", path = "./actors/power" }
-fil_actor_miner = { version = "7.0.5-alpha.1", path = "./actors/miner" }
-fil_actor_reward = { version = "7.0.5-alpha.1", path = "./actors/reward" }
-fil_actor_system = { version = "7.0.5-alpha.1", path = "./actors/system" }
-fil_actor_init = { version = "7.0.5-alpha.1", path = "./actors/init" }
-fil_actors_runtime = { version = "7.0.5-alpha.1", path = "./actors/runtime" }
+fil_actor_account = { version = "7.0.5", path = "./actors/account" }
+fil_actor_verifreg = { version = "7.0.5", path = "./actors/verifreg" }
+fil_actor_cron = { version = "7.0.5", path = "./actors/cron" }
+fil_actor_market = { version = "7.0.5", path = "./actors/market" }
+fil_actor_multisig = { version = "7.0.5", path = "./actors/multisig" }
+fil_actor_paych = { version = "7.0.5", path = "./actors/paych" }
+fil_actor_power = { version = "7.0.5", path = "./actors/power" }
+fil_actor_miner = { version = "7.0.5", path = "./actors/miner" }
+fil_actor_reward = { version = "7.0.5", path = "./actors/reward" }
+fil_actor_system = { version = "7.0.5", path = "./actors/system" }
+fil_actor_init = { version = "7.0.5", path = "./actors/init" }
+fil_actors_runtime = { version = "7.0.5", path = "./actors/runtime" }
 
 [build-dependencies]
 fil_actor_bundler = { version = "1.0.2", path = "./bundler" }
