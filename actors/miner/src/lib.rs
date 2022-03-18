@@ -7,7 +7,6 @@ use std::iter;
 use std::ops::Neg;
 
 use anyhow::anyhow;
-use bitfield::{BitField, UnvalidatedBitField, Validate};
 pub use bitfield_queue::*;
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::multihash::Code;
@@ -22,6 +21,7 @@ use fil_actors_runtime::{
     actor_error, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
+use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::{BigInt, Integer};
@@ -3809,17 +3809,8 @@ where
         WindowPoStVerifyInfo { randomness, proofs, challenged_sectors, prover: miner_actor_id };
 
     // verify the post proof
-    rt.verify_post(&pv_info).map_err(|e| {
-        e.downcast_default(
-            ExitCode::ErrIllegalArgument,
-            format!(
-                "invalid PoSt: proofs({:?}), randomness({:?})",
-                pv_info.proofs, pv_info.randomness
-            ),
-        )
-    })?;
-
-    Ok(true)
+    let result = rt.verify_post(&pv_info);
+    Ok(!result.is_err())
 }
 
 fn get_verify_info<BS, RT>(
@@ -4224,7 +4215,7 @@ fn consensus_fault_active(info: &MinerInfo, curr_epoch: ChainEpoch) -> bool {
     curr_epoch <= info.consensus_fault_elapsed
 }
 
-fn power_for_sector(sector_size: SectorSize, sector: &SectorOnChainInfo) -> PowerPair {
+pub fn power_for_sector(sector_size: SectorSize, sector: &SectorOnChainInfo) -> PowerPair {
     PowerPair {
         raw: BigInt::from(sector_size as u64),
         qa: qa_power_for_sector(sector_size, sector),

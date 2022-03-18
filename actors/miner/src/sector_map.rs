@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::anyhow;
-use bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use serde::{Deserialize, Serialize};
 
 use fil_actors_runtime::runtime::Policy;

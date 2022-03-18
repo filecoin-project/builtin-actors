@@ -3,10 +3,10 @@
 
 use std::convert::TryInto;
 
-use bitfield::BitField;
 use cid::Cid;
 use fil_actors_runtime::{ActorDowncast, Array};
 use fvm_ipld_amt::Error as AmtError;
+use fvm_ipld_bitfield::BitField;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use itertools::Itertools;

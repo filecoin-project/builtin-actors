@@ -5,7 +5,6 @@ use std::cmp;
 use std::ops::Neg;
 
 use anyhow::anyhow;
-use bitfield::BitField;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
@@ -14,6 +13,7 @@ use fil_actors_runtime::{
     ActorError, Array,
 };
 use fvm_ipld_amt::Error as AmtError;
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;

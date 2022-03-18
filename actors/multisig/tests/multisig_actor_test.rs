@@ -4,6 +4,7 @@ use fil_actor_multisig::{
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_shared::address::Address;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
@@ -256,4 +257,55 @@ fn test_simple_propose_and_cancel() {
 
     // tx should be removed from actor state
     h.assert_transactions(&rt, vec![]);
+}
+
+// LockBalance
+#[test]
+fn test_lock_balance_checks_preconditions() {
+    let msig = Address::new_id(100);
+    let anne = Address::new_id(101);
+
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+
+    h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+
+    let vest_start = 0 as ChainEpoch;
+    let lock_amount = TokenAmount::from(100_000u32);
+    let vest_duration = 1000 as ChainEpoch;
+
+    // Disallow negative duration but allow negative start epoch
+    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+    expect_abort(
+        ExitCode::ErrIllegalArgument,
+        h.lock_balance(&mut rt, vest_start, -1 as ChainEpoch, lock_amount.clone()),
+    );
+
+    // Disallow negative amount
+    expect_abort(
+        ExitCode::ErrIllegalArgument,
+        h.lock_balance(&mut rt, vest_start, vest_duration, TokenAmount::from(-1i32)),
+    );
+}
+
+// ChangeNumApprovalsThreshold
+#[test]
+fn test_change_threshold_happy_path_decrease_threshold() {
+    let msig = Address::new_id(100);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+    let signers = vec![anne, bob, chuck];
+    let initial_threshold = 2;
+
+    h.construct_and_verify(&mut rt, initial_threshold, 0, 0, signers);
+
+    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+    let ret = h.change_num_approvals_threshold(&mut rt, 1).unwrap();
+    assert_eq!(RawBytes::default(), ret);
+    let st = rt.get_state::<State>().unwrap();
+    assert_eq!(1, st.num_approvals_threshold);
 }

@@ -17,7 +17,7 @@ crate-type = ["cdylib", "lib"]
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime" }
 fvm_ipld_hamt = "0.2.0"
 fvm_shared = { version = "0.2.0", default-features = false }
-bitfield = { version = "0.2.0", package = "fvm_ipld_bitfield" }
+fvm_ipld_bitfield = { version = "0.2.0" }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 ahash = "0.7.6"

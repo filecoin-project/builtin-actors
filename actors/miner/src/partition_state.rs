@@ -5,10 +5,10 @@ use std::convert::TryInto;
 use std::ops::{self, Neg};
 
 use anyhow::anyhow;
-use bitfield::{BitField, UnvalidatedBitField, Validate};
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{actor_error, ActorDowncast, Array};
+use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
