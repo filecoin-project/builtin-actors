@@ -1,11 +1,13 @@
 use cid::multihash::Multihash;
 use cid::Cid;
 use fil_actor_bundler::Bundler;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
+use toml::value::Table;
 
 /// Cargo package for an actor.
 type Package = str;
@@ -51,6 +53,41 @@ fn main() -> Result<(), Box<dyn Error>> {
             .join("Cargo.toml");
     println!("cargo:warning=manifest_path={:?}", &manifest_path);
 
+    // Extract relevent features for the actors. This is far from perfect, bit it's "good enough"
+    // for what we're doing here.
+    let features = {
+        let mut cargo_toml: Table = toml::from_str(
+            &std::fs::read_to_string(&manifest_path).expect("failed to read Cargo.toml"),
+        )
+        .expect("failed to parse Cargo.toml");
+
+        if let Some(features_table) = cargo_toml.remove("features") {
+            let features_table: HashMap<String, Vec<String>> =
+                features_table.try_into().expect("failed to parse features table");
+
+            // Extract the features from the environment.
+            let features = std::env::vars_os()
+                .filter_map(|(key, _)| {
+                    key.to_str()
+                        .and_then(|k| k.strip_prefix("CARGO_FEATURE_"))
+                        .map(|k| k.to_owned())
+                })
+                .collect::<HashSet<_>>();
+
+            // Collect the transitive features. This is a best-effort operation because cargo messes
+            // with the feature names when it stores them in the environment, but it's good enough
+            // for our purposes here.
+            features_table
+                .into_iter()
+                .filter(|(k, _)| features.contains(&k.to_uppercase().replace('-', "_")))
+                .flat_map(|(_, v)| v)
+                .collect::<Vec<_>>()
+                .join(",")
+        } else {
+            String::new()
+        }
+    };
+
     // Cargo build command for all actors at once.
     let mut cmd = Command::new(&cargo);
     cmd.arg("build")
@@ -58,6 +95,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .arg("--target=wasm32-unknown-unknown")
         .arg("--profile=wasm")
         .arg("--locked")
+        .arg("--features=".to_owned() + &features)
         .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
         .env("RUSTFLAGS", "-Ctarget-feature=+crt-static -Clink-arg=--export-table")
         .stdout(Stdio::piped())
