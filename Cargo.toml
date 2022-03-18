@@ -26,6 +26,7 @@ fil_actors_runtime = { version = "8.0.0-alpha.1", path = "./actors/runtime" }
 [build-dependencies]
 fil_actor_bundler = { version = "1.0.2", path = "./bundler" }
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+toml = "0.5.8"
 
 
 [features]
