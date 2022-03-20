@@ -3,3 +3,5 @@ target
 *.wasm
 .idea/
 **/.DS_Store
+# .cache is sccache directory
+.cache
