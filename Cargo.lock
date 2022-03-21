@@ -775,7 +775,6 @@ dependencies = [
  "fil_actor_system",
  "fil_actor_verifreg",
  "fil_actors_runtime",
- "toml",
 ]
 
 [[package]]
