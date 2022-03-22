@@ -20,13 +20,13 @@ const IPLD_RAW: u64 = 0x55;
 /// A library to bundle the Wasm bytecode of builtin actors into a CAR file.
 ///
 /// The single root CID of the CAR file points to an CBOR-encoded IPLD
-/// Map<Cid, i32> where i32 is to be interpreted as an
-/// fvm_shared::actor::builtin::Type enum value.
+/// Map<String, Cid> where the string is the versioned builtin actor name
+/// and Cid is its code cid.
 pub struct Bundler {
     /// Staging blockstore.
     blockstore: MemoryBlockstore,
     /// Tracks the mapping of actors to Cids. Inverted when writing. Allows overriding.
-    added: BTreeMap<fvm_shared::actor::builtin::Type, Cid>,
+    added: BTreeMap<String, Cid>,
     /// Path of the output bundle.
     bundle_dst: PathBuf,
 }
@@ -59,7 +59,7 @@ impl Bundler {
         .with_context(|| {
             format!("failed to put bytecode for actor {:?} into blockstore", actor_type)
         })?;
-        self.added.insert(actor_type, cid);
+        self.added.insert(actor_type.name(), cid);
         Ok(cid)
     }
 
@@ -83,7 +83,7 @@ impl Bundler {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
         // Invert the actor index so that it's CID => Type.
-        let manifest: Manifest = self.added.into_iter().map(|(typ, cid)| (cid, typ)).collect();
+        let manifest: Manifest = self.added.into_iter().collect();
 
         let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
         let root = self
@@ -101,7 +101,7 @@ impl Bundler {
         tx.send((root, manifest_bytes)).await.unwrap();
 
         // Add the bytecodes.
-        for cid in manifest.iter().map(|(cid, _)| cid) {
+        for cid in manifest.iter().map(|(_, cid)| cid) {
             println!("adding cid {} to bundle CAR", cid);
             let data = self.blockstore.get(cid).unwrap().unwrap();
             tx.send((*cid, data)).await.unwrap();
@@ -174,8 +174,9 @@ fn test_bundler() {
 
     // Verify the manifest contains what we expect.
     for (i, cid) in cids.into_iter().enumerate() {
-        let typ = actor::builtin::Type::from_i32((i + 1) as i32).unwrap();
-        assert_eq!(manifest.get_by_left(&cid).unwrap(), &typ);
+        let typ = Type::from_i32((i + 1) as i32).unwrap();
+        let name = typ.name();
+        assert_eq!(manifest.get_by_left(&name).unwrap(), &cid);
         // Verify that the last 5 CIDs are really forced CIDs.
         if i > 5 {
             let expected = Cid::new_v1(
