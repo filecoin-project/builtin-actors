@@ -10,8 +10,7 @@ use anyhow::Result;
 use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_car::CarHeader;
-use fvm_shared::actor;
-use fvm_shared::actor::builtin::Type;
+use fvm_shared::actor::builtin::{Type as ActorType};
 use fvm_shared::blockstore::{Block, Blockstore, MemoryBlockstore};
 use fvm_shared::encoding::DAG_CBOR;
 
@@ -26,7 +25,7 @@ pub struct Bundler {
     /// Staging blockstore.
     blockstore: MemoryBlockstore,
     /// Tracks the mapping of actors to Cids. Inverted when writing. Allows overriding.
-    added: BTreeMap<Type, Cid>,
+    added: BTreeMap<ActorType, Cid>,
     /// Path of the output bundle.
     bundle_dst: PathBuf,
 }
@@ -46,7 +45,7 @@ impl Bundler {
     /// Adds bytecode from a byte slice.
     pub fn add_from_bytes(
         &mut self,
-        actor_type: actor::builtin::Type,
+        actor_type: ActorType,
         forced_cid: Option<&Cid>,
         bytecode: &[u8],
     ) -> Result<Cid> {
@@ -66,7 +65,7 @@ impl Bundler {
     /// Adds bytecode from a file.
     pub fn add_from_file<P: AsRef<Path>>(
         &mut self,
-        actor_type: actor::builtin::Type,
+        actor_type: ActorType,
         forced_cid: Option<&Cid>,
         bytecode_path: P,
     ) -> Result<Cid> {
@@ -135,7 +134,7 @@ fn test_bundler() {
             // identity hash
             Cid::new_v1(IPLD_RAW, Multihash::wrap(0, format!("actor-{}", i).as_bytes()).unwrap())
         });
-        let typ = actor::builtin::Type::from_i32(i + 1).unwrap();
+        let typ = ActorType::from_i32(i + 1).unwrap();
         let cid = bundler
             .add_from_bytes(typ, forced_cid.as_ref(), &rand::thread_rng().gen::<[u8; 32]>())
             .unwrap();
@@ -171,14 +170,14 @@ fn test_bundler() {
     // Deserialize the manifest.
     let manifest_vec: Vec<(String, Cid)> =
         serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
-    let manifest: BTreeMap<Type, Cid> = manifest_vec
+    let manifest: BTreeMap<ActorType, Cid> = manifest_vec
         .iter()
-        .map(|(s, c)| (Type::try_from(s.as_str()).unwrap(), c.clone()))
+        .map(|(s, c)| (ActorType::try_from(s.as_str()).unwrap(), c.clone()))
         .collect();
 
     // Verify the manifest contains what we expect.
     for (i, cid) in cids.into_iter().enumerate() {
-        let typ = actor::builtin::Type::from_i32((i + 1) as i32).unwrap();
+        let typ = ActorType::from_i32((i + 1) as i32).unwrap();
         assert_eq!(manifest.get(&typ).unwrap(), &cid);
 
         // Verify that the last 5 CIDs are really forced CIDs.
