@@ -26,7 +26,7 @@ pub enum Method {
 #[derive(Default, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct State {
-    builtin_actors: Cid
+    builtin_actors: Cid,
 }
 impl Cbor for State {}
 
@@ -74,7 +74,7 @@ mod tests {
     use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 
-    use crate::{Actor, Method, State, Cid};
+    use crate::{Actor, Cid, Method, State};
 
     pub fn new_runtime() -> MockRuntime {
         MockRuntime {

@@ -82,7 +82,8 @@ impl Bundler {
     async fn write_car(self) -> Result<()> {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
-        let manifest: Vec<(String, Cid)> = self.added.iter().map(|(t, c)| (String::from(t), c.clone())).collect();
+        let manifest: Vec<(String, Cid)> =
+            self.added.iter().map(|(t, c)| (String::from(t), c.clone())).collect();
         let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
         let root = self
             .blockstore
@@ -170,8 +171,10 @@ fn test_bundler() {
     // Deserialize the manifest.
     let manifest_vec: Vec<(String, Cid)> =
         serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
-    let manifest: BTreeMap<Type, Cid> =
-        manifest_vec.iter().map(|(s, c)| { (Type::try_from(s.as_str()).unwrap(), c.clone()) }).collect();
+    let manifest: BTreeMap<Type, Cid> = manifest_vec
+        .iter()
+        .map(|(s, c)| (Type::try_from(s.as_str()).unwrap(), c.clone()))
+        .collect();
 
     // Verify the manifest contains what we expect.
     for (i, cid) in cids.into_iter().enumerate() {
