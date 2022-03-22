@@ -1,7 +1,5 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
-use std::collections::BTreeMap;
-
 use cid::Cid;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::encoding::{Cbor, RawBytes};
@@ -28,7 +26,7 @@ pub enum Method {
 #[derive(Default, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct State {
-    builtin_actors: BTreeMap<String, Cid>,
+    builtin_actors: Cid
 }
 impl Cbor for State {}
 
@@ -76,7 +74,7 @@ mod tests {
     use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 
-    use crate::{Actor, Method, State};
+    use crate::{Actor, Method, State, Cid};
 
     pub fn new_runtime() -> MockRuntime {
         MockRuntime {
@@ -95,6 +93,6 @@ mod tests {
         rt.call::<Actor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
 
         let state: State = rt.get_state().unwrap();
-        assert!(state.builtin_actors.is_empty());
+        assert_eq!(state.builtin_actors, Cid::default());
     }
 }
