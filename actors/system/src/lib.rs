@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 use cid::Cid;
-use fvm_shared::blockstore::Blockstore;
+use fvm_shared::blockstore::{Blockstore, CborStore};
 use fvm_shared::encoding::{Cbor, RawBytes};
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
@@ -26,9 +26,23 @@ pub enum Method {
 #[derive(Default, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct State {
+    // builtin actor registry: Vec<(String, Cid)>
     builtin_actors: Cid,
 }
 impl Cbor for State {}
+
+impl State {
+    pub fn get_builtin_actors<B: Blockstore>(
+        &self,
+        store: &B,
+    ) -> Result<Vec<(String, Cid)>, String> {
+        match store.get_cbor(&self.builtin_actors) {
+            Ok(Some(obj)) => Ok(obj),
+            Ok(None) => Err("failed to load builtin actor registry; not found".to_string()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
 
 /// System actor.
 pub struct Actor;
