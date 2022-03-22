@@ -183,7 +183,8 @@ fn test_bundler() {
     let manifest_data = bs.get(&manifest_cid).unwrap().unwrap();
 
     // Deserialize the manifest.
-    let manifest: BTreeMap<String, Cid> = serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
+    let manifest: BTreeMap<String, Cid> =
+        serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
 
     // Verify the manifest contains what we expect.
     for (i, cid) in cids.into_iter().enumerate() {
