@@ -11,7 +11,7 @@ use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_car::CarHeader;
 use fvm_shared::actor;
-use fvm_shared::actor::builtin::Manifest;
+use fvm_shared::actor::builtin::Type;
 use fvm_shared::blockstore::{Block, Blockstore, MemoryBlockstore};
 use fvm_shared::encoding::DAG_CBOR;
 
@@ -26,7 +26,7 @@ pub struct Bundler {
     /// Staging blockstore.
     blockstore: MemoryBlockstore,
     /// Tracks the mapping of actors to Cids. Inverted when writing. Allows overriding.
-    added: BTreeMap<fvm_shared::actor::builtin::Type, Cid>,
+    added: BTreeMap<String, Cid>,
     /// Path of the output bundle.
     bundle_dst: PathBuf,
 }
@@ -59,7 +59,7 @@ impl Bundler {
         .with_context(|| {
             format!("failed to put bytecode for actor {:?} into blockstore", actor_type)
         })?;
-        self.added.insert(actor_type, cid);
+        self.added.insert(actor_name(actor_type), cid);
         Ok(cid)
     }
 
@@ -82,10 +82,7 @@ impl Bundler {
     async fn write_car(self) -> Result<()> {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
-        // Invert the actor index so that it's CID => Type.
-        let manifest: Manifest = self.added.into_iter().map(|(typ, cid)| (cid, typ)).collect();
-
-        let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
+        let manifest_bytes = serde_ipld_dagcbor::to_vec(&self.added)?;
         let root = self
             .blockstore
             .put(Code::Blake2b256, &Block { codec: DAG_CBOR, data: &manifest_bytes })?;
@@ -101,7 +98,7 @@ impl Bundler {
         tx.send((root, manifest_bytes)).await.unwrap();
 
         // Add the bytecodes.
-        for cid in manifest.iter().map(|(cid, _)| cid) {
+        for cid in self.added.iter().map(|(_, cid)| cid) {
             println!("adding cid {} to bundle CAR", cid);
             let data = self.blockstore.get(cid).unwrap().unwrap();
             tx.send((*cid, data)).await.unwrap();
@@ -112,6 +109,22 @@ impl Bundler {
         write_task.await;
 
         Ok(())
+    }
+}
+
+fn actor_name(t: Type) -> String {
+    match t {
+        Type::System => String::from("fil/v7/system"),
+        Type::Init => String::from("fil/v7/init"),
+        Type::Cron => String::from("fil/v7/cron"),
+        Type::Account => String::from("fil/v7/account"),
+        Type::Power => String::from("fil/v7/storagepower"),
+        Type::Miner => String::from("fil/v7/storageminer"),
+        Type::Market => String::from("fil/v7/storagemarket"),
+        Type::PaymentChannel => String::from("fil/v7/paymentchannel"),
+        Type::Multisig => String::from("fil/v7/multisig"),
+        Type::Reward => String::from("fil/v7/reward"),
+        Type::VerifiedRegistry => String::from("fil/v7/verifiedregistry"),
     }
 }
 
