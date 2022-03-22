@@ -26,7 +26,7 @@ pub struct Bundler {
     /// Staging blockstore.
     blockstore: MemoryBlockstore,
     /// Tracks the mapping of actors to Cids. Inverted when writing. Allows overriding.
-    added: BTreeMap<String, Cid>,
+    added: BTreeMap<Type, Cid>,
     /// Path of the output bundle.
     bundle_dst: PathBuf,
 }
@@ -59,7 +59,7 @@ impl Bundler {
         .with_context(|| {
             format!("failed to put bytecode for actor {:?} into blockstore", actor_type)
         })?;
-        self.added.insert(actor_name(actor_type), cid);
+        self.added.insert(actor_type, cid);
         Ok(cid)
     }
 
@@ -82,7 +82,8 @@ impl Bundler {
     async fn write_car(self) -> Result<()> {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
-        let manifest_bytes = serde_ipld_dagcbor::to_vec(&self.added)?;
+        let manifest: Vec<(String, Cid)> = self.added.iter().map(|(t, c)| (String::from(t), c.clone())).collect();
+        let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
         let root = self
             .blockstore
             .put(Code::Blake2b256, &Block { codec: DAG_CBOR, data: &manifest_bytes })?;
@@ -109,22 +110,6 @@ impl Bundler {
         write_task.await;
 
         Ok(())
-    }
-}
-
-fn actor_name(t: Type) -> String {
-    match t {
-        Type::System => String::from("fil/v7/system"),
-        Type::Init => String::from("fil/v7/init"),
-        Type::Cron => String::from("fil/v7/cron"),
-        Type::Account => String::from("fil/v7/account"),
-        Type::Power => String::from("fil/v7/storagepower"),
-        Type::Miner => String::from("fil/v7/storageminer"),
-        Type::Market => String::from("fil/v7/storagemarket"),
-        Type::PaymentChannel => String::from("fil/v7/paymentchannel"),
-        Type::Multisig => String::from("fil/v7/multisig"),
-        Type::Reward => String::from("fil/v7/reward"),
-        Type::VerifiedRegistry => String::from("fil/v7/verifiedregistry"),
     }
 }
 
@@ -183,13 +168,15 @@ fn test_bundler() {
     let manifest_data = bs.get(&manifest_cid).unwrap().unwrap();
 
     // Deserialize the manifest.
-    let manifest: BTreeMap<String, Cid> =
+    let manifest_vec: Vec<(String, Cid)> =
         serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
+    let manifest: BTreeMap<Type, Cid> =
+        manifest_vec.iter().map(|(s, c)| { (Type::try_from(s.as_str()).unwrap(), c.clone()) }).collect();
 
     // Verify the manifest contains what we expect.
     for (i, cid) in cids.into_iter().enumerate() {
         let typ = actor::builtin::Type::from_i32((i + 1) as i32).unwrap();
-        assert_eq!(manifest.get(&actor_name(typ)).unwrap(), &cid);
+        assert_eq!(manifest.get(&typ).unwrap(), &cid);
 
         // Verify that the last 5 CIDs are really forced CIDs.
         if i > 5 {
