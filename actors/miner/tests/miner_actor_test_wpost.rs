@@ -372,9 +372,12 @@ fn invalid_submissions() {
             params,
             PoStConfig::empty(),
         );
-        // TODO there is discrepancy with the original test, which expects deadline 2 while the error
-        //      reports deadline 0.  this probably warrants some investigation as it could be some
-        //      kind of bug; for now we have relaxed the expected error message.
+        //      There is discrepancy with the original test, which expects deadline 2 while the error
+        //      reports deadline 0.  This is because the specs-actors tests use a fixed hasher for rt.hashfunc
+        //      giving a starting deadline index of 46 whereas these tests use blake2b directly
+        //      giving a starting deadline of 20.  Because committing a sector takes 2 deadlines the
+        //      specs-actors test does sector assignment in an immutable deadline 0 forcing assignment to
+        //      deadline 2.
         expect_abort_contains_message(ExitCode::ErrIllegalArgument, "invalid deadline", result);
         rt.epoch = dlinfo.current_epoch;
         rt.reset();
