@@ -183,12 +183,13 @@ fn test_bundler() {
     let manifest_data = bs.get(&manifest_cid).unwrap().unwrap();
 
     // Deserialize the manifest.
-    let manifest: Manifest = serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
+    let manifest: BTreeMap<String, Cid> = serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
 
     // Verify the manifest contains what we expect.
     for (i, cid) in cids.into_iter().enumerate() {
         let typ = actor::builtin::Type::from_i32((i + 1) as i32).unwrap();
-        assert_eq!(manifest.get_by_left(&cid).unwrap(), &typ);
+        assert_eq!(manifest.get(&actor_name(typ)).unwrap(), &cid);
+
         // Verify that the last 5 CIDs are really forced CIDs.
         if i > 5 {
             let expected = Cid::new_v1(
