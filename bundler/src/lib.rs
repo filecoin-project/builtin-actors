@@ -82,9 +82,7 @@ impl Bundler {
     async fn write_car(self) -> Result<()> {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
-        // Invert the actor index so that it's CID => Type.
         let manifest: Manifest = self.added.into_iter().collect();
-
         let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
         let root = self
             .blockstore
