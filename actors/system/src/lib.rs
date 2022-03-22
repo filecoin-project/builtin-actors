@@ -1,5 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
+use std::collections::BTreeMap;
 
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::encoding::{Cbor, RawBytes};
@@ -7,6 +8,7 @@ use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
+use cid::Cid;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, wasm_trampoline, ActorError, SYSTEM_ACTOR_ADDR};
@@ -25,7 +27,9 @@ pub enum Method {
 /// System actor state.
 #[derive(Default, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct State([(); 0]);
+pub struct State {
+    builtin_actors: BTreeMap<String, Cid>,
+}
 impl Cbor for State {}
 
 /// System actor.
@@ -91,6 +95,6 @@ mod tests {
         rt.call::<Actor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
 
         let state: State = rt.get_state().unwrap();
-        assert_eq!([(); 0], state.0);
+        assert!(state.builtin_actors.is_empty());
     }
 }
