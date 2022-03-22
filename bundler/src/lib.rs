@@ -10,7 +10,7 @@ use anyhow::Result;
 use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_car::CarHeader;
-use fvm_shared::actor::builtin::{Type as ActorType};
+use fvm_shared::actor::builtin::Type as ActorType;
 use fvm_shared::blockstore::{Block, Blockstore, MemoryBlockstore};
 use fvm_shared::encoding::DAG_CBOR;
 
