@@ -120,7 +120,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -141,7 +141,7 @@ fn invalid_submissions() {
             partitions: Vec::new(),
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -172,7 +172,7 @@ fn invalid_submissions() {
             partitions: partitions,
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -193,7 +193,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -214,7 +214,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -239,7 +239,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: Vec::new(),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -264,7 +264,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(RegisteredPoStProof::StackedDRGWindow8MiBV1),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -289,7 +289,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(RegisteredPoStProof::StackedDRGWindow64GiBV1),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -316,7 +316,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: proofs,
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -341,7 +341,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"123456789012345678901234567890123".clone())),
+            chain_commit_rand: Randomness(b"123456789012345678901234567890123".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -363,7 +363,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge + rt.policy.wpost_proving_period / 2,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -391,7 +391,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge - 1,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -416,7 +416,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: rt.epoch,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -441,14 +441,14 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"boo".clone())),
+            chain_commit_rand: Randomness(b"boo".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
             &dlinfo,
             vec![sector.clone()],
             params,
-            PoStConfig::with_randomness(Randomness(Vec::from(b"far".clone()))),
+            PoStConfig::with_randomness(Randomness(b"far".to_vec())),
         );
         expect_abort_contains_message(
             ExitCode::ErrIllegalArgument,
@@ -466,7 +466,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,

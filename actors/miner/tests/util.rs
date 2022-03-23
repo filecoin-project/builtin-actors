@@ -809,7 +809,7 @@ impl ActorHarness {
             partitions: partitions,
             proofs: make_post_proofs(self.window_post_proof_type),
             chain_commit_epoch: deadline.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         self.submit_window_post_raw(rt, deadline, infos, params, cfg).unwrap();
         rt.verify();
