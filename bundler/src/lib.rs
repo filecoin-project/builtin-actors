@@ -12,6 +12,8 @@ use cid::Cid;
 use fvm_ipld_car::CarHeader;
 use fvm_shared::actor::builtin::Type as ActorType;
 use fvm_shared::blockstore::{Block, Blockstore, MemoryBlockstore};
+use fvm_shared::encoding::tuple::*;
+use fvm_shared::encoding::Cbor;
 use fvm_shared::encoding::DAG_CBOR;
 
 const IPLD_RAW: u64 = 0x55;
@@ -81,8 +83,16 @@ impl Bundler {
     async fn write_car(self) -> Result<()> {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
-        let manifest: Vec<(String, Cid)> = self.added.iter().map(|(t, c)| (t.into(), *c)).collect();
+        let manifest_payload: Vec<(String, Cid)> =
+            self.added.iter().map(|(t, c)| (t.into(), *c)).collect();
+        let manifest_data = serde_ipld_dagcbor::to_vec(&manifest_payload)?;
+        let manifest_link = self
+            .blockstore
+            .put(Code::Blake2b256, &Block { codec: DAG_CBOR, data: &manifest_data })?;
+
+        let manifest = Manifest { version: 1, data: manifest_link };
         let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
+
         let root = self
             .blockstore
             .put(Code::Blake2b256, &Block { codec: DAG_CBOR, data: &manifest_bytes })?;
@@ -96,6 +106,9 @@ impl Bundler {
 
         // Add the root payload.
         tx.send((root, manifest_bytes)).await.unwrap();
+
+        // Add the manifest payload.
+        tx.send((manifest_link, manifest_data)).await.unwrap();
 
         // Add the bytecodes.
         for cid in self.added.iter().map(|(_, cid)| cid) {
@@ -111,6 +124,14 @@ impl Bundler {
         Ok(())
     }
 }
+
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+pub struct Manifest {
+    pub version: u32,
+    pub data: Cid,
+}
+
+impl Cbor for Manifest {}
 
 #[test]
 fn test_bundler() {
@@ -164,9 +185,13 @@ fn test_bundler() {
 
     // The single root represents the manifest.
     let manifest_cid = roots[0];
-    let manifest_data = bs.get(&manifest_cid).unwrap().unwrap();
+    let manifest_bytes = bs.get(&manifest_cid).unwrap().unwrap();
 
     // Deserialize the manifest.
+    let manifest: Manifest = serde_ipld_dagcbor::from_slice(manifest_bytes.as_slice()).unwrap();
+    assert_eq!(manifest.version, 1);
+
+    let manifest_data = bs.get(&manifest.data).unwrap().unwrap();
     let manifest_vec: Vec<(String, Cid)> =
         serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
     let manifest: BTreeMap<ActorType, Cid> = manifest_vec
