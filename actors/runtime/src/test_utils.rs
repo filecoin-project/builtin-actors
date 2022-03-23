@@ -292,14 +292,15 @@ pub fn expect_abort_contains_message<T: fmt::Debug>(
     assert_eq!(
         err.exit_code(),
         expect_exit_code,
-        "expected failure with exit code {}, but failed with exit code {}",
+        "expected failure with exit code {}, but failed with exit code {}; error message: {}",
         expect_exit_code,
-        err.exit_code()
+        err.exit_code(),
+        err.msg(),
     );
     let err_msg = err.msg();
     assert!(
         err.msg().contains(expect_msg),
-        "expected err message  {} to contain {}",
+        "expected err message  '{}' to contain '{}'",
         err_msg,
         expect_msg,
     );
