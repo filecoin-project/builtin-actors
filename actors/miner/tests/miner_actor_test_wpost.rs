@@ -161,10 +161,9 @@ fn invalid_submissions() {
     // Too many partitions.
     {
         let too_many = 11;
-        let partitions: Vec<_> = (0u64..too_many).map(|i| miner::PoStPartition {
-            index: pidx + i,
-            skipped: make_empty_bitfield(),
-        }).collect();
+        let partitions: Vec<_> = (0u64..too_many)
+            .map(|i| miner::PoStPartition { index: pidx + i, skipped: make_empty_bitfield() })
+            .collect();
         let params = miner::SubmitWindowedPoStParams {
             deadline: dlinfo.index,
             partitions: partitions,
