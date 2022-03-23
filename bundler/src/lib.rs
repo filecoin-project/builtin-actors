@@ -125,6 +125,9 @@ impl Bundler {
     }
 }
 
+/// The Manifest struct is the versioned envelope for builtin actor manifests.
+/// The only currently supported version is 1, which encodes the data as a tuple
+/// of strings (actor names) and actor code cids.
 #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct Manifest {
     pub version: u32,
