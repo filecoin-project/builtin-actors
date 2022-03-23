@@ -82,7 +82,7 @@ impl Bundler {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
         let manifest: Vec<(String, Cid)> =
-            self.added.iter().map(|(t, c)| (String::from(t), c.clone())).collect();
+            self.added.iter().map(|(t, c)| (String::from(t), *c)).collect();
         let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
         let root = self
             .blockstore
