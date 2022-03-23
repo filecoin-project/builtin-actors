@@ -81,8 +81,7 @@ impl Bundler {
     async fn write_car(self) -> Result<()> {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
-        let manifest: Vec<(String, Cid)> =
-            self.added.iter().map(|(t, c)| (t.into(), *c)).collect();
+        let manifest: Vec<(String, Cid)> = self.added.iter().map(|(t, c)| (t.into(), *c)).collect();
         let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
         let root = self
             .blockstore
