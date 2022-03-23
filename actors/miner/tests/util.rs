@@ -1205,11 +1205,7 @@ pub fn make_empty_bitfield() -> UnvalidatedBitField {
 
 #[allow(dead_code)]
 pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
-    let mut bf = BitField::new();
-    for bit in bits {
-        bf.set(*bit);
-    }
-    UnvalidatedBitField::Validated(bf)
+    UnvalidatedBitField::Validated(bits.iter().copied().collect())
 }
 
 fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
