@@ -656,7 +656,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             epoch
         );
         assert!(
-            expected.entropy == Vec::from(entropy),
+            expected.entropy == *entropy,
             "unexpected entroy, expected {:?}, actual: {:?}",
             expected.entropy,
             entropy
@@ -692,7 +692,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             epoch
         );
         assert!(
-            expected.entropy == Vec::from(entropy),
+            expected.entropy == *entropy,
             "unexpected entroy, expected {:?}, actual: {:?}",
             expected.entropy,
             entropy

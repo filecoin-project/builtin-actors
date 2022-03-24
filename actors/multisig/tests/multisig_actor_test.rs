@@ -4,7 +4,6 @@ use fil_actor_multisig::{
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
-use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
@@ -14,7 +13,7 @@ mod util;
 
 fn construct_runtime(receiver: Address) -> MockRuntime {
     MockRuntime {
-        receiver: receiver,
+        receiver,
         caller: *SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
@@ -54,10 +53,10 @@ fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
     let mut i: u64 = 0;
     while i <= SIGNERS_MAX as u64 {
         signers.push(Address::new_id(i + 1000));
-        i = i + 1;
+        i += 1;
     }
     let over_max_signers_params = ConstructorParams {
-        signers: signers,
+        signers,
         num_approvals_threshold: 1,
         unlock_duration: 1,
         start_epoch: 0,
@@ -327,7 +326,7 @@ fn test_simple_propose_and_cancel() {
     let send_value = TokenAmount::from(10u8);
     // anne proposes tx
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-    let proposal_hash = h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params);
+    let proposal_hash = h.propose_ok(&mut rt, chuck, send_value, fake_method, fake_params);
 
     // anne cancels the tx
     let ret = h.cancel(&mut rt, TxnID(0), proposal_hash).unwrap();
@@ -348,15 +347,15 @@ fn test_lock_balance_checks_preconditions() {
 
     h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
 
-    let vest_start = 0 as ChainEpoch;
+    let vest_start = 0_i64;
     let lock_amount = TokenAmount::from(100_000u32);
-    let vest_duration = 1000 as ChainEpoch;
+    let vest_duration = 1000_i64;
 
     // Disallow negative duration but allow negative start epoch
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
     expect_abort(
         ExitCode::ErrIllegalArgument,
-        h.lock_balance(&mut rt, vest_start, -1 as ChainEpoch, lock_amount.clone()),
+        h.lock_balance(&mut rt, vest_start, -1_i64, lock_amount),
     );
 
     // Disallow negative amount

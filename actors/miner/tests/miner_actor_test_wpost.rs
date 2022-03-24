@@ -73,7 +73,7 @@ fn basic_post_and_dispute() {
     );
 
     // Try a failed dispute.
-    let dispute_sectors = vec![sector.clone()];
+    let dispute_sectors = vec![sector];
     h.dispute_window_post(&mut rt, &dlinfo, 0, &dispute_sectors, None);
 
     // Now a successful dispute.
@@ -166,7 +166,7 @@ fn invalid_submissions() {
             .collect();
         let params = miner::SubmitWindowedPoStParams {
             deadline: dlinfo.index,
-            partitions: partitions,
+            partitions,
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
             chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
@@ -311,7 +311,7 @@ fn invalid_submissions() {
         let params = miner::SubmitWindowedPoStParams {
             deadline: dlinfo.index,
             partitions: vec![partition],
-            proofs: proofs,
+            proofs,
             chain_commit_epoch: dlinfo.challenge,
             chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
@@ -468,7 +468,7 @@ fn invalid_submissions() {
         let result = h.submit_window_post_raw(
             &mut rt,
             &dlinfo,
-            vec![sector.clone()],
+            vec![sector],
             params,
             PoStConfig::with_expected_power_delta(&pwr),
         );
