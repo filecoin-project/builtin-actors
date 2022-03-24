@@ -4223,7 +4223,7 @@ pub fn power_for_sector(sector_size: SectorSize, sector: &SectorOnChainInfo) -> 
 }
 
 /// Returns the sum of the raw byte and quality-adjusted power for sectors.
-fn power_for_sectors(sector_size: SectorSize, sectors: &[SectorOnChainInfo]) -> PowerPair {
+pub fn power_for_sectors(sector_size: SectorSize, sectors: &[SectorOnChainInfo]) -> PowerPair {
     let qa = sectors.iter().map(|s| qa_power_for_sector(sector_size, s)).sum();
 
     PowerPair { raw: BigInt::from(sector_size as u64) * BigInt::from(sectors.len()), qa }
