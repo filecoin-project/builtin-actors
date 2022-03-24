@@ -161,7 +161,7 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
     /// `name` provides information about gas charging point
     fn charge_gas(&mut self, name: &'static str, compute: i64);
 
-    /// This function is a workaround for go-implementation's faulty exit code handling of
+    /// This function is a workaround for Lotus's faulty exit code handling of
     /// parameters before version 7
     fn deserialize_params<O: de::DeserializeOwned>(
         &self,

@@ -855,6 +855,7 @@ impl Actor {
     ) -> Result<BitField, ActorError>
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
+        // https://github.com/filecoin-project/builtin-actors/issues/133
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {

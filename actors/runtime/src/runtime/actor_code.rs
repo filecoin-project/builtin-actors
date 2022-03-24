@@ -19,6 +19,7 @@ pub trait ActorCode {
     where
         // TODO: remove the clone requirement on the blockstore when we fix "replica update" to not
         // hold onto state between transactions.
+        // https://github.com/filecoin-project/builtin-actors/issues/133
         BS: Blockstore + Clone,
         RT: Runtime<BS>;
 }
