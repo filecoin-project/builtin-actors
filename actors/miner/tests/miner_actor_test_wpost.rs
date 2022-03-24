@@ -2,13 +2,13 @@ use fil_actor_miner as miner;
 use fil_actors_runtime::test_utils::*;
 
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::sector::RegisteredSealProof;
-use fvm_shared::encoding::RawBytes;
-use fvm_shared::crypto::randomness::DomainSeparationTag;
 
 mod util;
 use util::*;
@@ -520,13 +520,11 @@ fn duplicate_proof_rejected() {
     assert_bitfield_equals(&deadline.partitions_posted, &deadline_bits);
 
     // Submit a duplicate proof for the same partition. This will be rejected because after ignoring the
-	// already-proven partition, there are no sectors remaining.
-	// The skipped fault declared here has no effect.
+    // already-proven partition, there are no sectors remaining.
+    // The skipped fault declared here has no effect.
     let commit_rand = Randomness(b"chaincommitment".to_vec());
-    let partition = miner::PoStPartition {
-        index: pidx,
-        skipped: make_bitfield(&[sector.sector_number]),
-    };
+    let partition =
+        miner::PoStPartition { index: pidx, skipped: make_bitfield(&[sector.sector_number]) };
     let params = miner::SubmitWindowedPoStParams {
         deadline: dlidx,
         partitions: vec![partition],
@@ -547,12 +545,15 @@ fn duplicate_proof_rejected() {
         commit_rand.clone(),
     );
 
-    let result = rt.call::<miner::Actor>(miner::Method::SubmitWindowedPoSt as u64, &RawBytes::serialize(params).unwrap());
+    let result = rt.call::<miner::Actor>(
+        miner::Method::SubmitWindowedPoSt as u64,
+        &RawBytes::serialize(params).unwrap(),
+    );
     expect_abort_contains_message(ExitCode::ErrIllegalArgument, "partition already proven", result);
     rt.reset();
 
     // Advance to end-of-deadline cron to verify no penalties.
-	h.advance_deadline(&mut rt, CronConfig::empty());
+    h.advance_deadline(&mut rt, CronConfig::empty());
     check_state_invariants(&rt);
 }
 
@@ -572,7 +573,13 @@ fn duplicate_proof_rejected_with_many_partitions() {
 
     // Commit more sectors than fit in one partition in every eligible deadline, overflowing to a second partition.
     let sectors_to_commit = (rt.policy.wpost_period_deadlines - 2) * h.partition_size + 1;
-    let sectors = h.commit_and_prove_sectors(&mut rt, sectors_to_commit as usize, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let sectors = h.commit_and_prove_sectors(
+        &mut rt,
+        sectors_to_commit as usize,
+        DEFAULT_SECTOR_EXPIRATION,
+        vec![],
+        true,
+    );
     let last_sector = sectors.last().unwrap();
 
     // Skip to the due deadline.
@@ -584,7 +591,8 @@ fn duplicate_proof_rejected_with_many_partitions() {
         // Submit PoSt for partition 0 on its own.
         let post_partitions =
             vec![miner::PoStPartition { index: 0, skipped: make_empty_bitfield() }];
-        let sectors_to_prove: Vec<_> = (0..h.partition_size).map(|i| sectors[i as usize].clone()).collect();
+        let sectors_to_prove: Vec<_> =
+            (0..h.partition_size).map(|i| sectors[i as usize].clone()).collect();
         let pwr = miner::power_for_sectors(h.sector_size, &sectors_to_prove);
         h.submit_window_post(
             &mut rt,
@@ -600,12 +608,12 @@ fn duplicate_proof_rejected_with_many_partitions() {
     }
     {
         // Attempt PoSt for both partitions, thus duplicating proof for partition 0, so rejected
-        let post_partitions =
-            vec![
-                miner::PoStPartition { index: 0, skipped: make_empty_bitfield() },
-                miner::PoStPartition { index: 1, skipped: make_empty_bitfield() },
-            ];
-        let mut sectors_to_prove: Vec<_> = (0..h.partition_size).map(|i| sectors[i as usize].clone()).collect();
+        let post_partitions = vec![
+            miner::PoStPartition { index: 0, skipped: make_empty_bitfield() },
+            miner::PoStPartition { index: 1, skipped: make_empty_bitfield() },
+        ];
+        let mut sectors_to_prove: Vec<_> =
+            (0..h.partition_size).map(|i| sectors[i as usize].clone()).collect();
         sectors_to_prove.push(last_sector.clone());
         let pwr = miner::power_for_sectors(h.sector_size, &sectors_to_prove);
 
@@ -616,8 +624,18 @@ fn duplicate_proof_rejected_with_many_partitions() {
             chain_commit_epoch: dlinfo.challenge,
             chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
-        let result = h.submit_window_post_raw(&mut rt, &dlinfo, sectors_to_prove, params, PoStConfig::with_expected_power_delta(&pwr));
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "partition already proven", result);
+        let result = h.submit_window_post_raw(
+            &mut rt,
+            &dlinfo,
+            sectors_to_prove,
+            params,
+            PoStConfig::with_expected_power_delta(&pwr),
+        );
+        expect_abort_contains_message(
+            ExitCode::ErrIllegalArgument,
+            "partition already proven",
+            result,
+        );
         rt.reset();
     }
     {
@@ -640,7 +658,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
     }
 
     // Advance to end-of-deadline cron to verify no penalties.
-	h.advance_deadline(&mut rt, CronConfig::empty());
+    h.advance_deadline(&mut rt, CronConfig::empty());
     check_state_invariants(&rt);
 }
 
