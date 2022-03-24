@@ -432,7 +432,7 @@ impl ActorHarness {
         state.get_precommitted_sector(&rt.store, sector_number).unwrap().unwrap()
     }
 
-    fn expect_query_network_info(&self, rt: &mut MockRuntime) {
+    pub fn expect_query_network_info(&self, rt: &mut MockRuntime) {
         let current_power = CurrentTotalPowerReturn {
             raw_byte_power: self.network_raw_power.clone(),
             quality_adj_power: self.network_qa_power.clone(),
@@ -1085,7 +1085,7 @@ impl ActorHarness {
         state.load_deadlines(&rt.store).unwrap()
     }
 
-    fn caller_addrs(&self) -> Vec<Address> {
+    pub fn caller_addrs(&self) -> Vec<Address> {
         let mut caller_addrs = self.control_addrs.clone();
         caller_addrs.push(self.worker.clone());
         caller_addrs.push(self.owner.clone());
