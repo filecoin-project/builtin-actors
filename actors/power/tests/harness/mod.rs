@@ -1,5 +1,3 @@
-use std::borrow::Borrow;
-
 use cid::Cid;
 use fvm_ipld_hamt::BytesKey;
 use fvm_ipld_hamt::Error;
@@ -64,9 +62,10 @@ pub fn setup() -> (Harness, MockRuntime) {
     let mut rt = new_runtime();
     let h = new_harness();
     h.construct(&mut rt);
-    return (h, rt);
+    (h, rt)
 }
 
+#[allow(dead_code)]
 pub struct Harness {
     miner_seq: i64,
     seal_proof: RegisteredSealProof,
@@ -101,6 +100,7 @@ impl Harness {
         verify_empty_map(rt, st.cron_event_queue);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn create_miner(
         &self,
         rt: &mut MockRuntime,
@@ -143,8 +143,8 @@ impl Harness {
             owner: *owner,
             worker: *worker,
             window_post_proof_type,
-            peer: peer.clone(),
-            multiaddrs: multiaddrs.clone(),
+            peer,
+            multiaddrs,
         };
         rt.call::<PowerActor>(
             Method::CreateMiner as MethodNum,
@@ -191,5 +191,5 @@ where
 pub fn verify_empty_map(rt: &MockRuntime, key: Cid) {
     let map =
         make_map_with_root_and_bitwidth::<_, BigIntDe>(&key, &rt.store, HAMT_BIT_WIDTH).unwrap();
-    map.for_each(|key, val| panic!("expected no keys")).unwrap();
+    map.for_each(|_key, _val| panic!("expected no keys")).unwrap();
 }

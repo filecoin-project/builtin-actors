@@ -3810,7 +3810,7 @@ where
 
     // verify the post proof
     let result = rt.verify_post(&pv_info);
-    Ok(!result.is_err())
+    Ok(result.is_ok())
 }
 
 fn get_verify_info<BS, RT>(

@@ -12,15 +12,17 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
+
+#[derive(Default)]
 pub struct ActorHarness {}
 
 impl ActorHarness {
     pub fn new() -> ActorHarness {
-        ActorHarness {}
+        Default::default()
     }
 
     pub fn construct_and_verify(
-        self: &Self,
+        &self,
         rt: &mut MockRuntime,
         initial_approvals: u64,
         unlock_duration: ChainEpoch,
@@ -30,8 +32,8 @@ impl ActorHarness {
         let params = ConstructorParams {
             signers: initial_signers,
             num_approvals_threshold: initial_approvals,
-            unlock_duration: unlock_duration,
-            start_epoch: start_epoch,
+            unlock_duration,
+            start_epoch,
         };
         rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
@@ -43,26 +45,26 @@ impl ActorHarness {
     }
 
     pub fn add_signer(
-        self: &Self,
+        &self,
         rt: &mut MockRuntime,
         signer: Address,
         increase: bool,
     ) -> Result<RawBytes, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
-        let params = AddSignerParams { signer: signer, increase: increase };
+        let params = AddSignerParams { signer, increase };
         let ret = rt.call::<Actor>(Method::AddSigner as u64, &RawBytes::serialize(params).unwrap());
         rt.verify();
         ret
     }
 
     pub fn remove_signer(
-        self: &Self,
+        &self,
         rt: &mut MockRuntime,
         signer: Address,
         decrease: bool,
     ) -> Result<RawBytes, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
-        let params = RemoveSignerParams { signer: signer, decrease: decrease };
+        let params = RemoveSignerParams { signer, decrease };
         let ret =
             rt.call::<Actor>(Method::RemoveSigner as u64, &RawBytes::serialize(params).unwrap());
         rt.verify();
@@ -70,7 +72,7 @@ impl ActorHarness {
     }
 
     pub fn swap_signers(
-        self: &Self,
+        &self,
         rt: &mut MockRuntime,
         old_signer: Address,
         new_signer: Address,
@@ -84,7 +86,7 @@ impl ActorHarness {
     }
 
     pub fn propose_ok(
-        self: &Self,
+        &self,
         rt: &mut MockRuntime,
         to: Address,
         value: TokenAmount,
@@ -93,26 +95,20 @@ impl ActorHarness {
     ) -> [u8; 32] {
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
         let propose_params =
-            ProposeParams { to: to, value: value.clone(), method: method, params: params.clone() };
+            ProposeParams { to, value: value.clone(), method, params: params.clone() };
         expect_ok(
             rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap()),
         );
         rt.verify();
         // compute proposal hash
-        let txn = Transaction {
-            to: to,
-            value: value,
-            method: method,
-            params: params,
-            approved: vec![rt.caller],
-        };
+        let txn = Transaction { to, value, method, params, approved: vec![rt.caller] };
         compute_proposal_hash(&txn, rt).unwrap()
     }
 
     // requires that the approval finishes the transaction and that the resulting invocation succeeds.
     // returns the (raw) output of the successful invocation.
     pub fn approve_ok(
-        self: &Self,
+        &self,
         rt: &mut MockRuntime,
         txn_id: TxnID,
         proposal_hash: [u8; 32],
@@ -124,7 +120,7 @@ impl ActorHarness {
     }
 
     pub fn approve(
-        self: &Self,
+        &self,
         rt: &mut MockRuntime,
         txn_id: TxnID,
         proposal_hash: [u8; 32],
@@ -139,7 +135,7 @@ impl ActorHarness {
     }
 
     pub fn cancel(
-        self: &Self,
+        &self,
         rt: &mut MockRuntime,
         txn_id: TxnID,
         proposal_hash: [u8; 32],
@@ -154,7 +150,7 @@ impl ActorHarness {
     }
 
     pub fn lock_balance(
-        self: &Self,
+        &self,
         rt: &mut MockRuntime,
         start: ChainEpoch,
         duration: ChainEpoch,
@@ -162,7 +158,7 @@ impl ActorHarness {
     ) -> Result<RawBytes, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
         let lock_balance_params =
-            LockBalanceParams { start_epoch: start, unlock_duration: duration, amount: amount };
+            LockBalanceParams { start_epoch: start, unlock_duration: duration, amount };
         let ret = rt.call::<Actor>(
             Method::LockBalance as u64,
             &RawBytes::serialize(lock_balance_params).unwrap(),
@@ -172,13 +168,12 @@ impl ActorHarness {
     }
 
     pub fn change_num_approvals_threshold(
-        self: &Self,
+        &self,
         rt: &mut MockRuntime,
         new_threshold: u64,
     ) -> Result<RawBytes, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
-        let change_threshold_params =
-            ChangeNumApprovalsThresholdParams { new_threshold: new_threshold };
+        let change_threshold_params = ChangeNumApprovalsThresholdParams { new_threshold };
         let ret = rt.call::<Actor>(
             Method::ChangeNumApprovalsThreshold as u64,
             &RawBytes::serialize(change_threshold_params).unwrap(),
@@ -188,7 +183,7 @@ impl ActorHarness {
     }
 
     pub fn assert_transactions(
-        self: &Self,
+        &self,
         rt: &MockRuntime,
         mut expect_txns: Vec<(TxnID, Transaction)>,
     ) {

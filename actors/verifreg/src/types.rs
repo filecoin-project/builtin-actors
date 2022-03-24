@@ -87,7 +87,7 @@ pub struct AddrPairKey {
 
 impl AddrPairKey {
     pub fn new(first: Address, second: Address) -> Self {
-        AddrPairKey { first: first, second: second }
+        AddrPairKey { first, second }
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
