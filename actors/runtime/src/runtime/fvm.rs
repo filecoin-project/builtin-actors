@@ -2,6 +2,7 @@ use anyhow::{anyhow, Error};
 use cid::multihash::{Code, MultihashDigest};
 use cid::Cid;
 use fvm_sdk as fvm;
+use fvm_sdk::message::NO_DATA_BLOCK_ID;
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::blockstore::{Blockstore, CborStore};
@@ -421,14 +422,9 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     fvm::debug::init_logging();
 
     let method = fvm::message::method_number();
-    let params = if params > 0 {
-        log::debug!("fetching parameters block: {}", params);
-        let params = fvm::message::params_raw(params).expect("params block invalid").1;
-        RawBytes::new(params)
-    } else {
-        RawBytes::default()
-    };
-
+    log::debug!("fetching parameters block: {}", params);
+    let params = fvm::message::params_raw(params).expect("params block invalid").1;
+    let params = RawBytes::new(params);
     log::debug!("input params: {:x?}", params.bytes());
 
     // Construct a new runtime.
@@ -446,7 +442,7 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
 
     // Then handle the return value.
     if ret.is_empty() {
-        0
+        NO_DATA_BLOCK_ID
     } else {
         fvm::ipld::put_block(DAG_CBOR, ret.bytes()).expect("failed to write result")
     }
