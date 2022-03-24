@@ -1134,7 +1134,7 @@ impl Deadline {
         if !already_proven.is_empty() {
             return Err(anyhow!(actor_error!(
                 ErrIllegalArgument,
-                "parition already proven: {:?}",
+                "partition already proven: {:?}",
                 already_proven
             )));
         }
