@@ -197,10 +197,8 @@ fn test_bundler() {
     let manifest_data = bs.get(&manifest.data).unwrap().unwrap();
     let manifest_vec: Vec<(String, Cid)> =
         serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
-    let manifest: BTreeMap<ActorType, Cid> = manifest_vec
-        .iter()
-        .map(|(s, c)| (ActorType::try_from(s.as_str()).unwrap(), *c))
-        .collect();
+    let manifest: BTreeMap<ActorType, Cid> =
+        manifest_vec.iter().map(|(s, c)| (ActorType::try_from(s.as_str()).unwrap(), *c)).collect();
 
     // Verify the manifest contains what we expect.
     for (i, cid) in cids.into_iter().enumerate() {
