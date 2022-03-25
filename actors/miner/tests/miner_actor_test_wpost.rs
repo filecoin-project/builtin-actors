@@ -542,7 +542,7 @@ fn duplicate_proof_rejected() {
         DomainSeparationTag::PoStChainCommit,
         dlinfo.challenge,
         Vec::new(),
-        commit_rand.clone(),
+        commit_rand,
     );
 
     let result = rt.call::<miner::Actor>(
