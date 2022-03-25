@@ -10,12 +10,8 @@ keywords = ["filecoin", "web3", "wasm"]
 
 [dependencies]
 clap = { version = "3.1.6", features = ["derive"] }
-## TODO fix those links for fvm release -- this is just my local dev environment
-# fvm_shared = "0.2.0"
-# fvm_ipld_car = "0.2.0"
-fvm_shared = { path = "../../ref-fvm/shared" }
-fvm_ipld_car = { path = "../../ref-fvm/ipld/car" }
-##
+fvm_shared = "0.2.2"
+fvm_ipld_car = "0.2.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 async-std = "1.10.0"
 futures = "0.3.21"
