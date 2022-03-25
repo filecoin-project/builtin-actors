@@ -1078,7 +1078,7 @@ impl Actor {
             let mut deadlines = state
                 .load_deadlines(rt.store())?;
 
-            let mut new_sectors = vec![SectorOnChainInfo::default(); validated_updates.len()];
+            let mut new_sectors = vec![SectorOnChainInfo::default()];
             for &dl_idx in deadlines_to_load.iter() {
                 let mut deadline = deadlines
                     .load_deadline(rt.policy(),rt.store(), dl_idx)
@@ -1100,7 +1100,7 @@ impl Actor {
 
                 let quant = state.quant_spec_for_deadline(rt.policy(),dl_idx);
 
-                for (i, with_details) in decls_by_deadline[&dl_idx].iter().enumerate() {
+                for with_details in decls_by_deadline[&dl_idx].iter().enumerate() {
                     let update_proof_type = with_details.sector_info.seal_proof
                         .registered_update_proof()
                         .map_err(|_|
@@ -1247,7 +1247,7 @@ impl Actor {
                         })?;
 
                     succeeded.push(new_sector_info.sector_number);
-                    new_sectors[i] = new_sector_info;
+                    new_sectors.push(new_sector_info);
                 }
 
                 deadline.partitions = partitions.flush().map_err(|e| {
