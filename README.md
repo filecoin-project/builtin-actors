@@ -54,6 +54,36 @@ under the `BUNDLE_CAR` public const, for easier consumption by Rust code.
 Precompiled actor bundles may also be provided as release binaries in this repo,
 if requested by implementors.
 
+## Releasing
+
+First install `jq` (with your favorite package manager) and `cargo-edit` (with `cargo install
+cargo-edit`).
+
+To cut a new patch version, run:
+
+```bash
+make release
+```
+
+To cut a major version, append `BUMP=major`
+
+```bash
+make release BUMP=major
+```
+
+These commands will:
+
+1. Run all tests/checks.
+2. Bump the version of the actor runtime, all actors, and the actor bundle.
+3. Update runtime/actor versions in workspace crates.
+
+When you're happy, commit the version bump changes.
+
+Run `make publish` to publish all packages to crates.io. This will likely take a while as
+it re-builds everything from scratch for validation (multiple times).
+
+Finally, repeat the "release" step with `make release BUMP=alpha`, and commit that.
+
 ## Instructions for client implementations
 
 ### Obtaining an actors bundle
