@@ -238,9 +238,7 @@ pub trait Syscalls {
         extra: &[u8],
     ) -> Result<Option<ConsensusFault>, anyhow::Error>;
 
-    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
-        Ok(batch.iter().map(|si| self.verify_seal(si).is_ok()).collect())
-    }
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>>;
 
     fn verify_aggregate_seals(
         &self,
