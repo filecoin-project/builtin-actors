@@ -14,7 +14,6 @@ clap = { version = "3.1.6", features = ["derive"] }
 fvm_shared = "0.2.0"
 fvm_ipld_car = "0.2.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-multihash = { version = "0.16.1", default-features = false, features = ["identity"] }
 async-std = "1.10.0"
 futures = "0.3.21"
 anyhow = "1.0.56"

@@ -136,7 +136,7 @@ impl Bundler {
 #[test]
 fn test_bundler() {
     use async_std::fs::File;
-    use cid::multihash::MultihashDigest;
+    use cid::multihash::Multihash;
     use fvm_ipld_car::{load_car, CarReader};
     use num_traits::FromPrimitive;
     use rand::Rng;
@@ -151,9 +151,10 @@ fn test_bundler() {
     // First 5 have real CIDs, last 5 have forced CIDs.
     for i in 0..10 {
         let forced_cid = (i > 5).then(|| {
+            // identity hash
             Cid::new_v1(
                 IPLD_RAW,
-                Code::Identity.digest(format!("actor-{}", i).as_bytes()),
+                Multihash::wrap(0, format!("actor-{}", i).as_bytes()).unwrap(),
             )
         });
         let typ = actor::builtin::Type::from_i32(i + 1).unwrap();
@@ -204,7 +205,7 @@ fn test_bundler() {
         if i > 5 {
             let expected = Cid::new_v1(
                 IPLD_RAW,
-                Code::Identity.digest(format!("actor-{}", i).as_bytes()),
+                Multihash::wrap(0, format!("actor-{}", i).as_bytes()).expect("name too long"),
             );
             assert_eq!(cid, expected)
         }
