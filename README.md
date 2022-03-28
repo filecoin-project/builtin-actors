@@ -56,33 +56,83 @@ if requested by implementors.
 
 ## Releasing
 
-First install `jq` (with your favorite package manager) and `cargo-edit` (with `cargo install
-cargo-edit`).
+We usually release all actors, the runtime, and the bundle at the same time. That means releasing:
 
-To cut a new patch version, run:
+- `fil_actors_runtime`
+- `fil_actor_account`
+- `fil_actor_cron`
+- `fil_actor_init`
+- `fil_actor_market`
+- `fil_actor_miner`
+- `fil_actor_multisig`
+- `fil_actor_paych`
+- `fil_actor_power`
+- `fil_actor_reward`
+- `fil_actor_system`
+- `fil_actor_verifreg`
+- `fil_builtin_actors_bundle`
+
+(in that order)
+
+To make this easier, we've added some helper scripts to the Makefile. Instructions follow.
+
+### 1: Install Dependencies
+
+Install:
+
+- `jq` (with your favorite package manager)
+- `cargo-edit` (with `cargo install cargo-edit`).
+
+### 2: Bump Versions (Release)
+
+You can bump the runtime, actors, and bundle versions with the `bump-version` target. See [Versioning](#versioning) to determine the correct version bump.
 
 ```bash
-make release
+make bump-version
 ```
 
-To cut a major version, append `BUMP=major`
+By default, this bumps the patch version. To bump to a different version, append, e.g. `BUMP=major`. Valid options are:
+
+- `patch`
+- `minor`
+- `major`
+- `alpha`
+- `beta`
+
+You can also _set_ a specific version with the `set-version` target.
 
 ```bash
-make release BUMP=major
+make set-version VERSION=7.1.1
 ```
 
-These commands will:
+Finally, commit the version changes:
 
-1. Run all tests/checks.
-2. Bump the version of the actor runtime, all actors, and the actor bundle.
-3. Update runtime/actor versions in workspace crates.
+```bash
+git commit -a -m "Release $(make --quiet version)"
+```
 
-When you're happy, commit the version bump changes.
+### 3: Publish Crates
 
-Run `make publish` to publish all packages to crates.io. This will likely take a while as
-it re-builds everything from scratch for validation (multiple times).
+**NOTE:** If you're a not a member of the core FVM team, you'll need help with this step. Please
+make a PR at this point and ask the core team to publish a release.
 
-Finally, repeat the "release" step with `make release BUMP=alpha`, and commit that.
+Run `make publish` to publish all crates to crates.io. This will likely take a while as it re-builds
+everything from scratch for validation (multiple times).
+
+**NOTE**: To do this, you'll need to:
+
+1. Register an account with `https://crates.io` and confirm your email address (if you haven't already).
+2. Login locally with `cargo login`.
+3. Get yourself added to the [fvm-crate-owners](https://github.com/orgs/filecoin-project/teams/fvm-crate-owners) team.
+
+### 4: Bump Versions (Alpha)
+
+Finally, bump the versions to the next alpha and commit the changes:
+
+```bash
+make bump-version BUMP=alpha
+git commit -a -m "Release $(make --quiet version)"
+```
 
 ## Instructions for client implementations
 
