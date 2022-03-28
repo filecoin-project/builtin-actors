@@ -15,7 +15,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 fil_actors_runtime = { version = "7.0.8-alpha.1", path = "../runtime" }
-fvm_shared = { version = "0.2.0", default-features = false }
+fvm_shared = { version = "0.2.2", default-features = false }
 bitfield = { version = "0.2.1", package = "fvm_ipld_bitfield" }
 fvm_ipld_amt = { version = "0.2.0", features = ["go-interop"] }
 fvm_ipld_hamt = "0.2.0"
