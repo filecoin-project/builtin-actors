@@ -54,6 +54,86 @@ under the `BUNDLE_CAR` public const, for easier consumption by Rust code.
 Precompiled actor bundles may also be provided as release binaries in this repo,
 if requested by implementors.
 
+## Releasing
+
+We usually release all actors, the runtime, and the bundle at the same time. That means releasing:
+
+- `fil_actors_runtime`
+- `fil_actor_account`
+- `fil_actor_cron`
+- `fil_actor_init`
+- `fil_actor_market`
+- `fil_actor_miner`
+- `fil_actor_multisig`
+- `fil_actor_paych`
+- `fil_actor_power`
+- `fil_actor_reward`
+- `fil_actor_system`
+- `fil_actor_verifreg`
+- `fil_builtin_actors_bundle`
+
+(in that order)
+
+To make this easier, we've added some helper scripts to the Makefile. Instructions follow.
+
+### 1: Install Dependencies
+
+Install:
+
+- `jq` (with your favorite package manager)
+- `cargo-edit` (with `cargo install cargo-edit`).
+
+### 2: Bump Versions (Release)
+
+You can bump the runtime, actors, and bundle versions with the `bump-version` target. See [Versioning](#versioning) to determine the correct version bump.
+
+```bash
+make bump-version
+```
+
+By default, this bumps the patch version. To bump to a different version, append, e.g. `BUMP=major`. Valid options are:
+
+- `patch`
+- `minor`
+- `major`
+- `alpha`
+- `beta`
+
+You can also _set_ a specific version with the `set-version` target.
+
+```bash
+make set-version VERSION=7.1.1
+```
+
+Finally, commit the version changes:
+
+```bash
+git commit -a -m "Release $(make --quiet version)"
+```
+
+### 3: Publish Crates
+
+**NOTE:** If you're a not a member of the core FVM team, you'll need help with this step. Please
+make a PR at this point and ask the core team to publish a release.
+
+Run `make publish` to publish all crates to crates.io. This will likely take a while as it re-builds
+everything from scratch for validation (multiple times).
+
+**NOTE**: To do this, you'll need to:
+
+1. Register an account with `https://crates.io` and confirm your email address (if you haven't already).
+2. Login locally with `cargo login`.
+3. Get yourself added to the [fvm-crate-owners](https://github.com/orgs/filecoin-project/teams/fvm-crate-owners) team.
+
+### 4: Bump Versions (Alpha)
+
+Finally, bump the versions to the next alpha and commit the changes:
+
+```bash
+make bump-version BUMP=alpha
+git commit -a -m "Release $(make --quiet version)"
+```
+
 ## Instructions for client implementations
 
 ### Obtaining an actors bundle
