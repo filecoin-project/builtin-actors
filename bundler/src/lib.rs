@@ -10,9 +10,10 @@ use anyhow::Result;
 use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_car::CarHeader;
-use fvm_shared::actor;
-use fvm_shared::actor::builtin::Manifest;
+use fvm_shared::actor::builtin::Type as ActorType;
 use fvm_shared::blockstore::{Block, Blockstore, MemoryBlockstore};
+use fvm_shared::encoding::tuple::*;
+use fvm_shared::encoding::Cbor;
 use fvm_shared::encoding::DAG_CBOR;
 
 const IPLD_RAW: u64 = 0x55;
@@ -26,7 +27,7 @@ pub struct Bundler {
     /// Staging blockstore.
     blockstore: MemoryBlockstore,
     /// Tracks the mapping of actors to Cids. Inverted when writing. Allows overriding.
-    added: BTreeMap<fvm_shared::actor::builtin::Type, Cid>,
+    added: BTreeMap<ActorType, Cid>,
     /// Path of the output bundle.
     bundle_dst: PathBuf,
 }
@@ -46,7 +47,7 @@ impl Bundler {
     /// Adds bytecode from a byte slice.
     pub fn add_from_bytes(
         &mut self,
-        actor_type: actor::builtin::Type,
+        actor_type: ActorType,
         forced_cid: Option<&Cid>,
         bytecode: &[u8],
     ) -> Result<Cid> {
@@ -73,7 +74,7 @@ impl Bundler {
     /// Adds bytecode from a file.
     pub fn add_from_file<P: AsRef<Path>>(
         &mut self,
-        actor_type: actor::builtin::Type,
+        actor_type: ActorType,
         forced_cid: Option<&Cid>,
         bytecode_path: P,
     ) -> Result<Cid> {
@@ -89,14 +90,23 @@ impl Bundler {
     async fn write_car(self) -> Result<()> {
         let mut out = async_std::fs::File::create(&self.bundle_dst).await?;
 
-        // Invert the actor index so that it's CID => Type.
-        let manifest: Manifest = self
-            .added
-            .into_iter()
-            .map(|(typ, cid)| (cid, typ))
-            .collect();
+        let manifest_payload: Vec<(String, Cid)> =
+            self.added.iter().map(|(t, c)| (t.into(), *c)).collect();
+        let manifest_data = serde_ipld_dagcbor::to_vec(&manifest_payload)?;
+        let manifest_link = self.blockstore.put(
+            Code::Blake2b256,
+            &Block {
+                codec: DAG_CBOR,
+                data: &manifest_data,
+            },
+        )?;
 
+        let manifest = Manifest {
+            version: 1,
+            data: manifest_link,
+        };
         let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
+
         let root = self.blockstore.put(
             Code::Blake2b256,
             &Block {
@@ -118,8 +128,11 @@ impl Bundler {
         // Add the root payload.
         tx.send((root, manifest_bytes)).await.unwrap();
 
+        // Add the manifest payload.
+        tx.send((manifest_link, manifest_data)).await.unwrap();
+
         // Add the bytecodes.
-        for cid in manifest.iter().map(|(cid, _)| cid) {
+        for cid in self.added.iter().map(|(_, cid)| cid) {
             println!("adding cid {} to bundle CAR", cid);
             let data = self.blockstore.get(cid).unwrap().unwrap();
             tx.send((*cid, data)).await.unwrap();
@@ -132,6 +145,17 @@ impl Bundler {
         Ok(())
     }
 }
+
+/// The Manifest struct is the versioned envelope for builtin actor manifests.
+/// The only currently supported version is 1, which encodes the data as a tuple
+/// of strings (actor names) and actor code cids.
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+pub struct Manifest {
+    pub version: u32,
+    pub data: Cid,
+}
+
+impl Cbor for Manifest {}
 
 #[test]
 fn test_bundler() {
@@ -157,7 +181,7 @@ fn test_bundler() {
                 Multihash::wrap(0, format!("actor-{}", i).as_bytes()).unwrap(),
             )
         });
-        let typ = actor::builtin::Type::from_i32(i + 1).unwrap();
+        let typ = ActorType::from_i32(i + 1).unwrap();
         let cid = bundler
             .add_from_bytes(
                 typ,
@@ -192,15 +216,25 @@ fn test_bundler() {
 
     // The single root represents the manifest.
     let manifest_cid = roots[0];
-    let manifest_data = bs.get(&manifest_cid).unwrap().unwrap();
+    let manifest_bytes = bs.get(&manifest_cid).unwrap().unwrap();
 
     // Deserialize the manifest.
-    let manifest: Manifest = serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
+    let manifest: Manifest = serde_ipld_dagcbor::from_slice(manifest_bytes.as_slice()).unwrap();
+    assert_eq!(manifest.version, 1);
+
+    let manifest_data = bs.get(&manifest.data).unwrap().unwrap();
+    let manifest_vec: Vec<(String, Cid)> =
+        serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
+    let manifest: BTreeMap<ActorType, Cid> = manifest_vec
+        .iter()
+        .map(|(s, c)| (ActorType::try_from(s.as_str()).unwrap(), *c))
+        .collect();
 
     // Verify the manifest contains what we expect.
     for (i, cid) in cids.into_iter().enumerate() {
-        let typ = actor::builtin::Type::from_i32((i + 1) as i32).unwrap();
-        assert_eq!(manifest.get_by_left(&cid).unwrap(), &typ);
+        let typ = ActorType::from_i32((i + 1) as i32).unwrap();
+        assert_eq!(manifest.get(&typ).unwrap(), &cid);
+
         // Verify that the last 5 CIDs are really forced CIDs.
         if i > 5 {
             let expected = Cid::new_v1(
