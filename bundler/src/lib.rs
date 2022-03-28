@@ -93,16 +93,27 @@ impl Bundler {
         let manifest_payload: Vec<(String, Cid)> =
             self.added.iter().map(|(t, c)| (t.into(), *c)).collect();
         let manifest_data = serde_ipld_dagcbor::to_vec(&manifest_payload)?;
-        let manifest_link = self
-            .blockstore
-            .put(Code::Blake2b256, &Block { codec: DAG_CBOR, data: &manifest_data })?;
+        let manifest_link = self.blockstore.put(
+            Code::Blake2b256,
+            &Block {
+                codec: DAG_CBOR,
+                data: &manifest_data,
+            },
+        )?;
 
-        let manifest = Manifest { version: 1, data: manifest_link };
+        let manifest = Manifest {
+            version: 1,
+            data: manifest_link,
+        };
         let manifest_bytes = serde_ipld_dagcbor::to_vec(&manifest)?;
 
-        let root = self
-            .blockstore
-            .put(Code::Blake2b256, &Block { codec: DAG_CBOR, data: &manifest_bytes })?;
+        let root = self.blockstore.put(
+            Code::Blake2b256,
+            &Block {
+                codec: DAG_CBOR,
+                data: &manifest_bytes,
+            },
+        )?;
 
         // Create a CAR header.
         let car = CarHeader {
@@ -214,8 +225,10 @@ fn test_bundler() {
     let manifest_data = bs.get(&manifest.data).unwrap().unwrap();
     let manifest_vec: Vec<(String, Cid)> =
         serde_ipld_dagcbor::from_slice(manifest_data.as_slice()).unwrap();
-    let manifest: BTreeMap<ActorType, Cid> =
-        manifest_vec.iter().map(|(s, c)| (ActorType::try_from(s.as_str()).unwrap(), *c)).collect();
+    let manifest: BTreeMap<ActorType, Cid> = manifest_vec
+        .iter()
+        .map(|(s, c)| (ActorType::try_from(s.as_str()).unwrap(), *c))
+        .collect();
 
     // Verify the manifest contains what we expect.
     for (i, cid) in cids.into_iter().enumerate() {
