@@ -23,7 +23,7 @@ check: deps-build
 	cargo check --workspace --tests --benches --lib --bins --examples
 
 # Ensure we have the build dependencies
-deps:
+deps-build:
 	rustup target add wasm32-unknown-unknown
 
 # Print out the current "bundle" version.
