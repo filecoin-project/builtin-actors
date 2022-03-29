@@ -1100,7 +1100,7 @@ impl Actor {
 
                 let quant = state.quant_spec_for_deadline(rt.policy(),dl_idx);
 
-                for (_, with_details ) in decls_by_deadline[&dl_idx].iter().enumerate() {
+                for with_details in &decls_by_deadline[&dl_idx] {
                     let update_proof_type = with_details.sector_info.seal_proof
                         .registered_update_proof()
                         .map_err(|_|
