@@ -1276,6 +1276,14 @@ impl Actor {
                     validated_updates.len()
                 ));
             }
+            if new_sectors.len() != validated_updates.len() {
+                return Err(actor_error!(
+                    ErrIllegalState,
+                    "unexpected new_sectors len {} != {}",
+                    new_sectors.len(),
+                    validated_updates.len()
+                ));
+            }
 
             // Overwrite sector infos.
             sectors.store(new_sectors).map_err(|e| {
