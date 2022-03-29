@@ -23,13 +23,12 @@ fil_actor_system = { version = "6.0.6", path = "./actors/system" }
 fil_actor_init = { version = "6.0.6", path = "./actors/init" }
 
 [build-dependencies]
-fil_actor_bundler = { version = "1.0.2", path = "./bundler" }
+fil_actor_bundler = { version = "2.0.0" }
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
 [workspace]
 members = [
      "actors/*",
-     "bundler",
 ]
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
