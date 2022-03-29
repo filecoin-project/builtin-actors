@@ -2015,7 +2015,6 @@ impl Actor {
 
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
-            let nv = rt.network_version();
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
@@ -2092,7 +2091,7 @@ impl Actor {
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
                         .map(|sector| {
-                            if !can_extend_seal_proof_type(policy, sector.seal_proof, nv) {
+                            if !can_extend_seal_proof_type(sector.seal_proof) {
                                 return Err(actor_error!(
                                     ErrForbidden,
                                     "cannot extend expiration for sector {} with unsupported \
@@ -3569,10 +3568,9 @@ where
     }
 
     // total sector lifetime cannot exceed SectorMaximumLifetime for the sector's seal proof
-    let max_lifetime = seal_proof_sector_maximum_lifetime(policy, seal_proof, rt.network_version())
-        .ok_or_else(|| {
-            actor_error!(ErrIllegalArgument, "unrecognized seal proof type {:?}", seal_proof)
-        })?;
+    let max_lifetime = seal_proof_sector_maximum_lifetime(seal_proof).ok_or_else(|| {
+        actor_error!(ErrIllegalArgument, "unrecognized seal proof type {:?}", seal_proof)
+    })?;
     if expiration - activation > max_lifetime {
         return Err(actor_error!(
             ErrIllegalArgument,
