@@ -46,13 +46,6 @@ impl From<fvm_shared::encoding::Error> for ActorError {
     }
 }
 
-// TODO former CborError
-impl From<fvm_shared::encoding::error::Error> for ActorError {
-    fn from(e: fvm_shared::encoding::error::Error) -> Self {
-        Self { exit_code: ExitCode::ErrSerialization, msg: e.to_string() }
-    }
-}
-
 /// Converts an actor deletion error into an actor error with the appropriate exit code. This
 /// facilitates propagation.
 #[cfg(target_arch = "wasm32")]
