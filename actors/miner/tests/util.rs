@@ -1,3 +1,5 @@
+#![allow(clippy::all)]
+
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
     ActivateDealsParams, ComputeDataCommitmentParams, ComputeDataCommitmentReturn,
@@ -5,13 +7,16 @@ use fil_actor_market::{
     VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::{
-    initial_pledge_for_power, new_deadline_info_from_offset_and_epoch, qa_power_for_weight, Actor,
-    ChangeMultiaddrsParams, ChangePeerIDParams, ConfirmSectorProofsParams, CronEventPayload,
-    Deadline, DeadlineInfo, Deadlines, DeferredCronEventParams, DisputeWindowedPoStParams,
-    GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
-    PoStPartition, PowerPair, PreCommitSectorParams, ProveCommitSectorParams, SectorOnChainInfo,
-    SectorPreCommitOnChainInfo, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt,
-    CRON_EVENT_PROVING_DEADLINE,
+    initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
+    pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
+    ApplyRewardParams, ChangeMultiaddrsParams, ChangePeerIDParams, ConfirmSectorProofsParams,
+    CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
+    DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
+    FaultDeclaration, GetControlAddressesReturn, Method,
+    MinerConstructorParams as ConstructorParams, Partition, PoStPartition, PowerPair,
+    PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo,
+    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, VestingFunds,
+    WindowedPoSt, CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -51,7 +56,7 @@ use multihash::MultihashDigest;
 
 use rand::prelude::*;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 const RECEIVER_ID: u64 = 1000;
 
@@ -682,7 +687,7 @@ impl ActorHarness {
         dlinfo
     }
 
-    fn deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
+    pub fn deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
         let state = self.get_state(rt);
         state.recorded_deadline_info(&rt.policy, rt.epoch)
     }
@@ -1090,6 +1095,279 @@ impl ActorHarness {
         caller_addrs.push(self.owner);
         caller_addrs
     }
+
+    pub fn apply_rewards(&self, rt: &mut MockRuntime, amt: TokenAmount, penalty: TokenAmount) {
+        // This harness function does not handle the state where apply rewards is
+        // on a miner with existing fee debt.  This state is not protocol reachable
+        // because currently fee debt prevents election participation.
+        //
+        // We further assume the miner can pay the penalty.  If the miner
+        // goes into debt we can't rely on the harness call
+        // TODO unify those cases
+        let (lock_amt, _) = locked_reward_from_reward(amt.clone());
+        let pledge_delta = lock_amt - &penalty;
+
+        rt.set_caller(*REWARD_ACTOR_CODE_ID, *REWARD_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![*REWARD_ACTOR_ADDR]);
+        // expect pledge update
+        rt.expect_send(
+            *STORAGE_POWER_ACTOR_ADDR,
+            PowerMethod::UpdatePledgeTotal as u64,
+            RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
+            TokenAmount::from(0),
+            RawBytes::default(),
+            ExitCode::Ok,
+        );
+
+        if penalty > TokenAmount::from(0) {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                penalty.clone(),
+                RawBytes::default(),
+                ExitCode::Ok,
+            );
+        }
+
+        let params = ApplyRewardParams { reward: amt, penalty: penalty };
+        rt.call::<Actor>(Method::ApplyRewards as u64, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+    }
+
+    pub fn get_locked_funds(&self, rt: &MockRuntime) -> TokenAmount {
+        let state = self.get_state(rt);
+        state.locked_funds
+    }
+
+    pub fn advance_and_submit_posts(&self, rt: &mut MockRuntime, sectors: &[SectorOnChainInfo]) {
+        // Advance between 0 and 48 deadlines submitting window posts where necessary to keep
+        // sectors proven.  If sectors is empty this is a noop. If sectors is a singleton this
+        // will advance to that sector's proving deadline running deadline crons up to and
+        // including this deadline. If sectors includes a sector assigned to the furthest
+        // away deadline this will process a whole proving period.
+        let state = self.get_state(rt);
+
+        // this has to go into the loop or else go deal with the borrow checker (hint: you lose)
+        //let sector_arr = Sectors::load(&rt.store, &state.sectors).unwrap();
+        let mut deadlines: BTreeMap<u64, Vec<SectorOnChainInfo>> = BTreeMap::new();
+        for sector in sectors {
+            let (dlidx, _) =
+                state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+            match deadlines.get_mut(&dlidx) {
+                Some(dl_sectors) => {
+                    dl_sectors.push(sector.clone());
+                }
+                None => {
+                    deadlines.insert(dlidx, vec![sector.clone()]);
+                }
+            }
+        }
+
+        let mut dlinfo = self.current_deadline(rt);
+        while deadlines.len() > 0 {
+            match deadlines.get(&dlinfo.index) {
+                None => {}
+                Some(dl_sectors) => {
+                    let mut sector_nos = BitField::new();
+                    for sector in dl_sectors {
+                        sector_nos.set(sector.sector_number);
+                    }
+
+                    let dl_arr = state.load_deadlines(&rt.store).unwrap();
+                    let dl = dl_arr.load_deadline(&rt.policy, &rt.store, dlinfo.index).unwrap();
+                    let parts = Array::<Partition, _>::load(&dl.partitions, &rt.store).unwrap();
+
+                    let mut partitions: Vec<PoStPartition> = Vec::new();
+                    let mut power_delta = PowerPair::zero();
+                    parts
+                        .for_each(|part_idx, part| {
+                            let sector_arr = Sectors::load(&rt.store, &state.sectors).unwrap();
+                            let live = part.live_sectors();
+                            let to_prove = &live & &sector_nos;
+                            if to_prove.is_empty() {
+                                return Ok(());
+                            }
+
+                            let mut to_skip = &live - &to_prove;
+                            let not_recovering = &part.faults - &part.recoveries;
+
+                            // Don't double-count skips.
+                            to_skip -= &not_recovering;
+
+                            let skipped_proven = &to_skip - &part.unproven;
+                            let mut skipped_proven_sector_infos = Vec::new();
+                            sector_arr
+                                .amt
+                                .for_each(|i, sector| {
+                                    if skipped_proven.get(i) {
+                                        skipped_proven_sector_infos.push(sector.clone());
+                                    }
+                                    Ok(())
+                                })
+                                .unwrap();
+                            let new_faulty_power =
+                                self.power_pair_for_sectors(&skipped_proven_sector_infos);
+
+                            let new_proven = &part.unproven - &to_skip;
+                            let mut new_proven_infos = Vec::new();
+                            sector_arr
+                                .amt
+                                .for_each(|i, sector| {
+                                    if new_proven.get(i) {
+                                        new_proven_infos.push(sector.clone());
+                                    }
+                                    Ok(())
+                                })
+                                .unwrap();
+                            let new_proven_power = self.power_pair_for_sectors(&new_proven_infos);
+
+                            power_delta -= &new_faulty_power;
+                            power_delta += &new_proven_power;
+
+                            partitions.push(PoStPartition {
+                                index: part_idx,
+                                skipped: UnvalidatedBitField::Validated(to_skip),
+                            });
+
+                            Ok(())
+                        })
+                        .unwrap();
+
+                    self.submit_window_post(
+                        rt,
+                        &dlinfo,
+                        partitions,
+                        dl_sectors.clone(),
+                        PoStConfig::with_expected_power_delta(&power_delta),
+                    );
+                    deadlines.remove(&dlinfo.index);
+                }
+            }
+
+            self.advance_deadline(rt, CronConfig::empty());
+            dlinfo = self.current_deadline(rt);
+        }
+    }
+
+    pub fn declare_faults(
+        &self,
+        rt: &mut MockRuntime,
+        fault_sector_infos: &[SectorOnChainInfo],
+    ) -> PowerPair {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let ss = fault_sector_infos[0].seal_proof.sector_size().unwrap();
+        let expected_delta = power_for_sectors(ss, fault_sector_infos);
+        let expected_raw_delta = -expected_delta.raw;
+        let expected_qa_delta = -expected_delta.qa;
+
+        // expect power update
+        let claim = UpdateClaimedPowerParams {
+            raw_byte_delta: expected_raw_delta.clone(),
+            quality_adjusted_delta: expected_qa_delta.clone(),
+        };
+        rt.expect_send(
+            *STORAGE_POWER_ACTOR_ADDR,
+            PowerMethod::UpdateClaimedPower as u64,
+            RawBytes::serialize(claim).unwrap(),
+            TokenAmount::from(0),
+            RawBytes::default(),
+            ExitCode::Ok,
+        );
+
+        // Calculate params from faulted sector infos
+        let state = self.get_state(rt);
+        let params = make_fault_params_from_faulting_sectors(&rt, &state, fault_sector_infos);
+        rt.call::<Actor>(Method::DeclareFaults as u64, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+
+        PowerPair { raw: expected_raw_delta, qa: expected_qa_delta }
+    }
+
+    pub fn declare_recoveries(
+        &self,
+        rt: &mut MockRuntime,
+        dlidx: u64,
+        pidx: u64,
+        recovery_sectors: BitField,
+        expected_debt_repaid: TokenAmount,
+    ) {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        if expected_debt_repaid > TokenAmount::from(0) {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_debt_repaid,
+                RawBytes::default(),
+                ExitCode::Ok,
+            );
+        }
+
+        // Calculate params from faulted sector infos
+        let recovery = RecoveryDeclaration {
+            deadline: dlidx,
+            partition: pidx,
+            sectors: UnvalidatedBitField::Validated(recovery_sectors),
+        };
+        let params = DeclareFaultsRecoveredParams { recoveries: vec![recovery] };
+        rt.call::<Actor>(
+            Method::DeclareFaultsRecovered as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+        rt.verify();
+    }
+
+    pub fn continued_fault_penalty(&self, sectors: &[SectorOnChainInfo]) -> TokenAmount {
+        let pwr = power_for_sectors(self.sector_size, sectors);
+        pledge_penalty_for_continued_fault(
+            &self.epoch_reward_smooth,
+            &self.epoch_qa_power_smooth,
+            &pwr.qa,
+        )
+    }
+
+    pub fn find_sector(&self, rt: &MockRuntime, sno: SectorNumber) -> (Deadline, Partition) {
+        let state = self.get_state(rt);
+        let deadlines = state.load_deadlines(&rt.store).unwrap();
+        let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sno).unwrap();
+
+        let deadline = deadlines.load_deadline(&rt.policy, &rt.store, dlidx).unwrap();
+        let partition = deadline.load_partition(&rt.store, pidx).unwrap();
+
+        (deadline, partition)
+    }
+
+    fn current_deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
+        let state = self.get_state(rt);
+        state.deadline_info(&rt.policy, rt.epoch)
+    }
+
+    fn power_pair_for_sectors(&self, sectors: &[SectorOnChainInfo]) -> PowerPair {
+        power_for_sectors(self.sector_size, sectors)
+    }
+
+    pub fn get_deadline_and_partition(
+        &self,
+        rt: &MockRuntime,
+        dlidx: u64,
+        pidx: u64,
+    ) -> (Deadline, Partition) {
+        let deadline = self.get_deadline(&rt, dlidx);
+        let partition = self.get_partition(&rt, &deadline, pidx);
+        (deadline, partition)
+    }
+
+    fn get_partition(&self, rt: &MockRuntime, deadline: &Deadline, pidx: u64) -> Partition {
+        deadline.load_partition(&rt.store, pidx).unwrap()
+    }
 }
 
 #[allow(dead_code)]
@@ -1177,6 +1455,22 @@ impl CronConfig {
             penalty_from_unlocked: TokenAmount::from(0),
         }
     }
+
+    pub fn with_continued_faults_penalty(fault_fee: TokenAmount) -> CronConfig {
+        let mut cfg = CronConfig::empty();
+        cfg.continued_faults_penalty = fault_fee;
+        cfg
+    }
+
+    pub fn with_detected_faults_power_delta_and_continued_faults_penalty(
+        pwr_delta: &PowerPair,
+        fault_fee: TokenAmount,
+    ) -> CronConfig {
+        let mut cfg = CronConfig::empty();
+        cfg.detected_faults_power_delta = Some(pwr_delta.clone());
+        cfg.continued_faults_penalty = fault_fee;
+        cfg
+    }
 }
 
 #[allow(dead_code)]
@@ -1207,7 +1501,8 @@ pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
     UnvalidatedBitField::Validated(BitField::try_from_bits(bits.iter().copied()).unwrap())
 }
 
-fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
+#[allow(dead_code)]
+pub fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
     match ubf {
         UnvalidatedBitField::Validated(bf) => bf.clone(),
         UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes).unwrap(),
@@ -1270,6 +1565,42 @@ fn make_deferred_cron_event_params(
     }
 }
 
+fn make_fault_params_from_faulting_sectors(
+    rt: &MockRuntime,
+    state: &State,
+    fault_sector_infos: &[SectorOnChainInfo],
+) -> DeclareFaultsParams {
+    let mut declaration_map: BTreeMap<(u64, u64), FaultDeclaration> = BTreeMap::new();
+    for sector in fault_sector_infos {
+        let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+        match declaration_map.get_mut(&(dlidx, pidx)) {
+            Some(declaration) => {
+                declaration.sectors.validate_mut().unwrap().set(sector.sector_number);
+            }
+            None => {
+                let mut bf = BitField::new();
+                bf.set(sector.sector_number);
+
+                let declaration = FaultDeclaration {
+                    deadline: dlidx,
+                    partition: pidx,
+                    sectors: UnvalidatedBitField::Validated(bf),
+                };
+
+                declaration_map.insert((dlidx, pidx), declaration);
+            }
+        }
+    }
+
+    // I want to just write:
+    // let declarations = declaration_map.values().collect();
+    // but the compiler doesn't let me; so I do it by hand like a savange
+    let keys: Vec<(u64, u64)> = declaration_map.keys().cloned().collect();
+    let declarations = keys.iter().map(|k| declaration_map.remove(k).unwrap()).collect();
+
+    DeclareFaultsParams { faults: declarations }
+}
+
 #[allow(dead_code)]
 pub fn amt_to_vec<T>(rt: &MockRuntime, c: &Cid) -> Vec<T>
 where
@@ -1300,7 +1631,7 @@ fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
     let hash = move |_: &[u8]| -> [u8; 32] {
         let mut result = [0u8; 32];
         for (i, item) in result.iter_mut().enumerate().take(8) {
-            *item = ((offset >> (7 - i)) & 0xff) as u8;
+            *item = ((offset >> (8 * (7 - i))) & 0xff) as u8;
         }
         result
     };
