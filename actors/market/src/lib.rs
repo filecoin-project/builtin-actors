@@ -3,12 +3,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{
-    actor_error, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
-};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::address::Address;
@@ -17,7 +11,7 @@ use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{to_vec, Cbor, RawBytes};
+use fvm_shared::encoding::{Cbor, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::reward::ThisEpochRewardReturn;
@@ -27,11 +21,20 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
+use fil_actors_runtime::cbor::serialize_vec;
+use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fil_actors_runtime::{
+    actor_error, cbor, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
+};
+
+use crate::ext::verifreg::UseBytesParams;
+
 pub use self::deal::*;
 use self::policy::*;
 pub use self::state::*;
 pub use self::types::*;
-use crate::ext::verifreg::UseBytesParams;
 
 pub mod balance_table; // export for testing
 mod deal;
@@ -1230,9 +1233,7 @@ where
     RT: Runtime<BS>,
 {
     // Generate unsigned bytes
-    let sv_bz = to_vec(&proposal.proposal)
-        .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))?;
-
+    let sv_bz = serialize_vec(&proposal.proposal, "deal proposal")?;
     rt.verify_signature(&proposal.client_signature, &proposal.proposal.client, &sv_bz).map_err(
         |e| e.downcast_default(ExitCode::ErrIllegalArgument, "signature proposal invalid"),
     )?;
@@ -1319,31 +1320,31 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::AddBalance) => {
-                Self::add_balance(rt, rt.deserialize_params(params)?)?;
+                Self::add_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::WithdrawBalance) => {
-                let res = Self::withdraw_balance(rt, rt.deserialize_params(params)?)?;
+                let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::PublishStorageDeals) => {
-                let res = Self::publish_storage_deals(rt, rt.deserialize_params(params)?)?;
+                let res = Self::publish_storage_deals(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::VerifyDealsForActivation) => {
-                let res = Self::verify_deals_for_activation(rt, rt.deserialize_params(params)?)?;
+                let res = Self::verify_deals_for_activation(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ActivateDeals) => {
-                Self::activate_deals(rt, rt.deserialize_params(params)?)?;
+                Self::activate_deals(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::OnMinerSectorsTerminate) => {
-                Self::on_miner_sectors_terminate(rt, rt.deserialize_params(params)?)?;
+                Self::on_miner_sectors_terminate(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ComputeDataCommitment) => {
-                let res = Self::compute_data_commitment(rt, rt.deserialize_params(params)?)?;
+                let res = Self::compute_data_commitment(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::CronTick) => {

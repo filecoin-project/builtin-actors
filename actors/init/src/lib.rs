@@ -4,7 +4,7 @@
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, wasm_trampoline, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, wasm_trampoline, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
@@ -120,11 +120,11 @@ impl ActorCode for Actor {
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, rt.deserialize_params(params)?)?;
+                Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::Exec) => {
-                let res = Self::exec(rt, rt.deserialize_params(params)?)?;
+                let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),

@@ -3,7 +3,7 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, make_map_with_root_and_bitwidth, resolve_to_id_addr, wasm_trampoline,
+    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_id_addr, wasm_trampoline,
     ActorDowncast, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_hamt::BytesKey;
@@ -760,31 +760,31 @@ impl ActorCode for Actor {
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, rt.deserialize_params(params)?)?;
+                Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::AddVerifier) => {
-                Self::add_verifier(rt, rt.deserialize_params(params)?)?;
+                Self::add_verifier(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::RemoveVerifier) => {
-                Self::remove_verifier(rt, rt.deserialize_params(params)?)?;
+                Self::remove_verifier(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::AddVerifiedClient) => {
-                Self::add_verified_client(rt, rt.deserialize_params(params)?)?;
+                Self::add_verified_client(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::UseBytes) => {
-                Self::use_bytes(rt, rt.deserialize_params(params)?)?;
+                Self::use_bytes(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::RestoreBytes) => {
-                Self::restore_bytes(rt, rt.deserialize_params(params)?)?;
+                Self::restore_bytes(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::RemoveVerifiedClientDataCap) => {
-                Self::remove_verified_client_data_cap(rt, rt.deserialize_params(params)?)?;
+                Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),

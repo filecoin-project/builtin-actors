@@ -3,7 +3,7 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, resolve_to_id_addr, wasm_trampoline, ActorDowncast, ActorError, Array,
+    actor_error, cbor, resolve_to_id_addr, wasm_trampoline, ActorDowncast, ActorError, Array,
 };
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
@@ -130,9 +130,12 @@ impl Actor {
         }
 
         // Generate unsigned bytes
-        let sv_bz = sv
-            .signing_bytes()
-            .map_err(|e| ActorError::from(e).wrap("failed to serialized SignedVoucher"))?;
+        let sv_bz = sv.signing_bytes().map_err(|e| {
+            ActorError::new(
+                ExitCode::ErrSerialization,
+                format!("failed to serialized SignedVoucher: {}", e.to_string()),
+            )
+        })?;
 
         // Validate signature
         rt.verify_signature(sig, &signer, &sv_bz).map_err(|e| {
@@ -355,11 +358,11 @@ impl ActorCode for Actor {
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, rt.deserialize_params(params)?)?;
+                Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::UpdateChannelState) => {
-                Self::update_channel_state(rt, rt.deserialize_params(params)?)?;
+                Self::update_channel_state(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::Settle) => {

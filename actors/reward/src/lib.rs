@@ -3,8 +3,8 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, wasm_trampoline, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, wasm_trampoline, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{Integer, Sign};
@@ -240,12 +240,12 @@ impl ActorCode for Actor {
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                let param: Option<BigIntDe> = rt.deserialize_params(params)?;
+                let param: Option<BigIntDe> = cbor::deserialize_params(params)?;
                 Self::constructor(rt, param.map(|v| v.0))?;
                 Ok(RawBytes::default())
             }
             Some(Method::AwardBlockReward) => {
-                Self::award_block_reward(rt, rt.deserialize_params(params)?)?;
+                Self::award_block_reward(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ThisEpochReward) => {
@@ -253,7 +253,7 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(&res)?)
             }
             Some(Method::UpdateNetworkKPI) => {
-                let param: Option<BigIntDe> = rt.deserialize_params(params)?;
+                let param: Option<BigIntDe> = cbor::deserialize_params(params)?;
                 Self::update_network_kpi(rt, param.map(|v| v.0))?;
                 Ok(RawBytes::default())
             }
