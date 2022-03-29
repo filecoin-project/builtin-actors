@@ -47,8 +47,7 @@ set-version: check-clean deps-release check test
 
 # Publish the current version to crates.io
 publish:
-	echo "$(ORDERED_PACKAGES)" | xargs -n1 cargo publish -p "$$pkg"
-	done
+	for pkg in "$(ORDERED_PACKAGES)"; do cargo publish -p "$$pkg" && sleep 5; done
 
 
 # Check if the working tree is clean.
