@@ -361,9 +361,9 @@ impl Deadline {
         self.partitions = partitions.flush()?;
 
         // Update early expiration bitmap.
-        for partition_idx in partitions_with_early_terminations {
-            self.early_terminations.set(partition_idx);
-        }
+        let new_early_terminations = BitField::try_from_bits(partitions_with_early_terminations)
+            .map_err(|_| actor_error!(ErrIllegalState; "partition index out of bitfield range"))?;
+        self.early_terminations |= &new_early_terminations;
 
         let all_on_time_sectors = BitField::union(&on_time_sectors);
         let all_early_sectors = BitField::union(&early_sectors);
@@ -635,9 +635,7 @@ impl Deadline {
         let partition_count = old_partitions.count();
         let to_remove_set: BTreeSet<_> = to_remove
             .bounded_iter(partition_count)
-            .map_err(
-                |e| actor_error!(ErrIllegalArgument; "failed to expand partitions into map: {}", e),
-            )?
+            .ok_or_else(|| actor_error!(ErrIllegalArgument; "partitions to remove exceeds total"))?
             .collect();
 
         if to_remove_set.is_empty() {}
@@ -1118,10 +1116,10 @@ impl Deadline {
         fault_expiration: ChainEpoch,
         post_partitions: &mut [PoStPartition],
     ) -> anyhow::Result<PoStResult> {
-        let mut partition_indexes = BitField::new();
-        for p in post_partitions.iter() {
-            partition_indexes.set(p.index);
-        }
+        let partition_indexes = BitField::try_from_bits(post_partitions.iter().map(|p| p.index))
+            .map_err(
+                |_| actor_error!(ErrIllegalArgument; "partition index out of bitfield range"),
+            )?;
 
         let num_partitions = partition_indexes.len();
         if num_partitions != post_partitions.len() as u64 {
