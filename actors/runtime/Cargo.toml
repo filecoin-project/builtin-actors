@@ -8,9 +8,9 @@ edition = "2018"
 repository = "https://github.com/filecoin-project/builtin-actors"
 
 [dependencies]
-fvm_ipld_hamt = "0.2.0"
-fvm_ipld_amt = { version = "0.2.0", features = ["go-interop"] }
-fvm_shared = { version = "0.2.2", default-features = false }
+fvm_ipld_hamt = "0.3.0"
+fvm_ipld_amt = { version = "0.3.0", features = ["go-interop"] }
+fvm_shared = { version = "0.3.1", default-features = false }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 serde = { version = "1.0.136", features = ["derive"] }
@@ -29,7 +29,7 @@ hex = { version = "0.4.3", optional = true }
 anyhow = "1.0.56"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-fvm_sdk = "0.2.0"
+fvm_sdk = "0.3.0"
 
 [dev-dependencies]
 derive_builder = "0.10.2"
