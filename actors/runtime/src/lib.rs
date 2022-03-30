@@ -93,7 +93,7 @@ where
 pub fn u64_key(k: u64) -> BytesKey {
     let mut bz = unsigned_varint::encode::u64_buffer();
     let slice = unsigned_varint::encode::u64(k, &mut bz);
-    slice.to_vec().into()
+    slice.into()
 }
 
 pub fn parse_uint_key(s: &[u8]) -> Result<u64, UVarintError> {

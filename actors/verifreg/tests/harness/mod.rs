@@ -32,7 +32,7 @@ pub fn new_harness() -> (Harness, MockRuntime) {
     let mut rt = new_runtime();
     let h = Harness { root: *ROOT_ADDR };
     h.construct_and_verify(&mut rt, &h.root);
-    return (h, rt);
+    (h, rt)
 }
 
 pub struct Harness {
@@ -110,13 +110,13 @@ impl Harness {
     pub fn get_verifier_allowance(&self, rt: &MockRuntime, verifier: &Address) -> DataCap {
         let verifiers = load_verifiers(rt);
         let BigIntDe(allowance) = verifiers.get(&verifier.to_bytes()).unwrap().unwrap();
-        return allowance.clone();
+        allowance.clone()
     }
 
     pub fn assert_verifier_removed(&self, rt: &MockRuntime, verifier: &Address) {
         let verifier_id_addr = rt.get_id_address(verifier).unwrap();
         let verifiers = load_verifiers(rt);
-        assert_eq!(false, verifiers.contains_key(&verifier_id_addr.to_bytes()).unwrap())
+        assert!(!verifiers.contains_key(&verifier_id_addr.to_bytes()).unwrap())
     }
 
     pub fn add_client(
@@ -148,15 +148,15 @@ impl Harness {
     }
 
     pub fn get_client_allowance(&self, rt: &MockRuntime, client: &Address) -> DataCap {
-        let clients = load_clients(&rt);
+        let clients = load_clients(rt);
         let BigIntDe(allowance) = clients.get(&client.to_bytes()).unwrap().unwrap();
-        return allowance.clone();
+        allowance.clone()
     }
 
     pub fn assert_client_removed(&self, rt: &MockRuntime, client: &Address) {
         let client_id_addr = rt.get_id_address(client).unwrap();
         let clients = load_clients(rt);
-        assert_eq!(false, clients.contains_key(&client_id_addr.to_bytes()).unwrap())
+        assert!(!clients.contains_key(&client_id_addr.to_bytes()).unwrap())
     }
 
     pub fn add_verifier_and_client(

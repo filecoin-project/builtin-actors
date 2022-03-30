@@ -548,7 +548,7 @@ name = "fil_actor_account"
 version = "8.0.0-alpha.1"
 dependencies = [
  "fil_actors_runtime",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "num-derive",
  "num-traits",
  "serde",
@@ -556,7 +556,9 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_bundler"
-version = "1.0.2"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acdb9c600e969dec295da976f2f649babefe6f216cb6db9a26ecc35b2cd5a2c1"
 dependencies = [
  "anyhow",
  "async-std",
@@ -564,12 +566,10 @@ dependencies = [
  "clap",
  "futures",
  "fvm_ipld_car",
- "fvm_shared",
- "num-traits",
- "rand",
+ "fvm_shared 0.2.2",
+ "serde",
  "serde_ipld_dagcbor",
  "serde_json",
- "tempfile",
 ]
 
 [[package]]
@@ -577,7 +577,7 @@ name = "fil_actor_cron"
 version = "8.0.0-alpha.1"
 dependencies = [
  "fil_actors_runtime",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "log",
  "num-derive",
  "num-traits",
@@ -592,7 +592,7 @@ dependencies = [
  "cid",
  "fil_actors_runtime",
  "fvm_ipld_hamt",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "log",
  "num-derive",
  "num-traits",
@@ -610,7 +610,7 @@ dependencies = [
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
  "fvm_ipld_hamt",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "log",
  "num-derive",
  "num-traits",
@@ -632,7 +632,7 @@ dependencies = [
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
  "fvm_ipld_hamt",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "itertools",
  "lazy_static",
  "log",
@@ -651,7 +651,7 @@ dependencies = [
  "cid",
  "fil_actors_runtime",
  "fvm_ipld_hamt",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "indexmap",
  "integer-encoding",
  "num-derive",
@@ -668,7 +668,7 @@ dependencies = [
  "derive_builder",
  "fil_actors_runtime",
  "fvm_ipld_amt",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "num-derive",
  "num-traits",
  "serde",
@@ -682,7 +682,7 @@ dependencies = [
  "cid",
  "fil_actors_runtime",
  "fvm_ipld_hamt",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "indexmap",
  "integer-encoding",
  "lazy_static",
@@ -697,7 +697,7 @@ name = "fil_actor_reward"
 version = "8.0.0-alpha.1"
 dependencies = [
  "fil_actors_runtime",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "lazy_static",
  "log",
  "num-derive",
@@ -709,8 +709,9 @@ dependencies = [
 name = "fil_actor_system"
 version = "8.0.0-alpha.1"
 dependencies = [
+ "cid",
  "fil_actors_runtime",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "num-derive",
  "num-traits",
  "serde",
@@ -724,7 +725,7 @@ dependencies = [
  "cid",
  "fil_actors_runtime",
  "fvm_ipld_hamt",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "lazy_static",
  "num-derive",
  "num-traits",
@@ -743,7 +744,7 @@ dependencies = [
  "fvm_ipld_amt",
  "fvm_ipld_hamt",
  "fvm_sdk",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "getrandom",
  "hex",
  "indexmap",
@@ -899,14 +900,14 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_amt"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2390a9be38948b76ee749da692a342e70000bce9cfc988e90c64729a915962e"
+checksum = "a81859c063e5b746cfeb333a4d9bf2c5bb324e4c29494c771a424af259852116"
 dependencies = [
  "ahash",
  "anyhow",
  "cid",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "itertools",
  "once_cell",
  "serde",
@@ -915,13 +916,14 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_bitfield"
-version = "0.2.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "075a50062801672269626dabfe211a9f01487c08d6fbd1677a4e550a2b864fad"
+checksum = "e10b0c2784b4c434ccb2229bd14e95378572ef02f1caa6bda95cc475ad9a95ff"
 dependencies = [
  "cs_serde_bytes",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "serde",
+ "thiserror",
  "unsigned-varint",
 ]
 
@@ -933,7 +935,7 @@ checksum = "ce7ed46e948d0e83894d77dcb9b351615ef7ee15dc2a09b35fe9878d8cca5e5c"
 dependencies = [
  "cid",
  "futures",
- "fvm_shared",
+ "fvm_shared 0.2.2",
  "integer-encoding",
  "serde",
  "thiserror",
@@ -941,16 +943,16 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_hamt"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd4f07857e1978ce116716012ea6a675803fea00fb36504c307656f935f32578"
+checksum = "1ef3da1590125b4d46a48fc7ebe6121c46eea36ec5bc497642d9d551f2529bf3"
 dependencies = [
  "anyhow",
  "byteorder",
  "cid",
  "cs_serde_bytes",
  "forest_hash_utils",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "libipld-core",
  "once_cell",
  "serde",
@@ -960,12 +962,12 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce94d50a234db99c4fb445ad74e1520d0f35c934bd5d543625dbab14a157b53f"
+checksum = "51d0ea5d8bd391470e762ca3969b81a396cdd571dacc1684b8318689e23319cc"
 dependencies = [
  "cid",
- "fvm_shared",
+ "fvm_shared 0.3.1",
  "lazy_static",
  "log",
  "num-traits",
@@ -974,9 +976,39 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ab18d5c021bdca31f7b8719d540c157d3af8a116a1b1dfc2f7c09ff901a2606"
+checksum = "0ee9d14e8700cc796800d89b4e9bd1c886e1735e6a07c760b54cd8730c680b3e"
+dependencies = [
+ "anyhow",
+ "bimap",
+ "blake2b_simd",
+ "byteorder",
+ "chrono",
+ "cid",
+ "cs_serde_bytes",
+ "data-encoding",
+ "data-encoding-macro",
+ "lazy_static",
+ "log",
+ "multihash",
+ "num-bigint",
+ "num-derive",
+ "num-integer",
+ "num-traits",
+ "serde",
+ "serde_ipld_dagcbor",
+ "serde_repr",
+ "serde_tuple",
+ "thiserror",
+ "unsigned-varint",
+]
+
+[[package]]
+name = "fvm_shared"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d264f7227e65f5469e0d28461b3d86f958ff89d0f4788d7b35c7c4d42c3fcf8"
 dependencies = [
  "anyhow",
  "bimap",
@@ -1418,24 +1450,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "redox_syscall"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8380fe0152551244f0747b1bf41737e0f8a74f97a14ccefd1148187271634f3c"
-dependencies = [
- "bitflags",
-]
-
-[[package]]
-name = "remove_dir_all"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3acd125665422973a33ac9d3dd2df85edad0f4ae9b00dafb1a05e43a9f5ef8e7"
-dependencies = [
- "winapi",
-]
-
-[[package]]
 name = "ryu"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1482,9 +1496,9 @@ dependencies = [
 
 [[package]]
 name = "serde_ipld_dagcbor"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "288c13e731ed502f0e5d5ab8d1cc0740515e1cd759ad1b86b837565299a57e49"
+checksum = "950f35fcae42dd9268d9253eb8f846dcef4d66e4e7d56494f38c8eb13e16d87b"
 dependencies = [
  "cid",
  "half",
@@ -1598,20 +1612,6 @@ dependencies = [
  "quote",
  "syn",
  "unicode-xid",
-]
-
-[[package]]
-name = "tempfile"
-version = "3.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cdb1ef4eaeeaddc8fbd371e5017057064af0911902ef36b39801f67cc6d79e4"
-dependencies = [
- "cfg-if",
- "fastrand",
- "libc",
- "redox_syscall",
- "remove_dir_all",
- "winapi",
 ]
 
 [[package]]

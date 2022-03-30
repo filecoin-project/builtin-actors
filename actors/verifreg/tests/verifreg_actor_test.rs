@@ -642,7 +642,7 @@ mod datacap {
         // Use allowance.
         let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone();
         h.use_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
-        h.assert_client_removed(&mut rt, &CLIENT);
+        h.assert_client_removed(&rt, &CLIENT);
 
         // Restore it. Client has only the restored bytes (lost the +1 in original allowance).
         h.restore_bytes(&mut rt, &CLIENT, &deal_size).unwrap();

@@ -940,7 +940,7 @@ fn require_create_cannel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouch
         caller: *INIT_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         actor_code_cids,
-        received,
+        value_received: received,
         balance: RefCell::new(balance),
         epoch: curr_epoch,
         ..Default::default()

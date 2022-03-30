@@ -10,8 +10,7 @@ use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{de, Cbor, RawBytes};
-use fvm_shared::error::ExitCode;
+use fvm_shared::encoding::{Cbor, RawBytes};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
@@ -21,8 +20,10 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
-pub use self::actor_code::*;
 use crate::ActorError;
+
+pub use self::actor_code::*;
+pub use self::policy::*;
 
 mod actor_code;
 
@@ -33,7 +34,6 @@ pub mod fvm;
 mod actor_blockstore;
 
 mod policy;
-pub use self::policy::*;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
@@ -161,24 +161,6 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
     /// `name` provides information about gas charging point
     fn charge_gas(&mut self, name: &'static str, compute: i64);
 
-    /// This function is a workaround for go-implementation's faulty exit code handling of
-    /// parameters before version 7
-    fn deserialize_params<O: de::DeserializeOwned>(
-        &self,
-        params: &RawBytes,
-    ) -> Result<O, ActorError> {
-        params.deserialize().map_err(|e| {
-            if self.network_version() < NetworkVersion::V7 {
-                ActorError::new(
-                    ExitCode::SysErrSenderInvalid,
-                    format!("failed to decode parameters: {}", e),
-                )
-            } else {
-                ActorError::from(e).wrap("failed to decode parameters")
-            }
-        })
-    }
-
     fn base_fee(&self) -> TokenAmount;
 }
 
@@ -238,9 +220,7 @@ pub trait Syscalls {
         extra: &[u8],
     ) -> Result<Option<ConsensusFault>, anyhow::Error>;
 
-    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
-        Ok(batch.iter().map(|si| self.verify_seal(si).is_ok()).collect())
-    }
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>>;
 
     fn verify_aggregate_seals(
         &self,

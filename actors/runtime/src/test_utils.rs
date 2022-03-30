@@ -22,8 +22,8 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
-    AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
-    WindowPoStVerifyInfo,
+    AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, RegisteredSealProof,
+    ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
 };
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
@@ -64,7 +64,7 @@ lazy_static! {
 
 const IPLD_RAW: u64 = 0x55;
 
-/// Returns an identify CID for bz.
+/// Returns an identity CID for bz.
 fn make_builtin(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, Multihash::wrap(0, bz).expect("name too long"))
 }
@@ -86,7 +86,6 @@ pub struct MockRuntime {
     // Actor State
     pub state: Option<Cid>,
     pub balance: RefCell<TokenAmount>,
-    pub received: TokenAmount,
 
     // VM Impl
     pub in_call: bool,
@@ -95,6 +94,7 @@ pub struct MockRuntime {
 
     // Expectations
     pub expectations: RefCell<Expectations>,
+    // FIXME add stateUsedObjs
 
     // policy
     pub policy: Policy,
@@ -117,23 +117,21 @@ pub struct Expectations {
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
     pub expect_get_randomness_tickets: Option<ExpectRandomness>,
     pub expect_get_randomness_beacon: Option<ExpectRandomness>,
+    pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
+    pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
+    pub expect_replica_verify: Option<ExpectReplicaVerify>,
+    pub expect_gas_charge: VecDeque<i64>,
+    // FIXME batch verify seals
+    // FIXME aggregate verify seals
+    // FIXME replica verify
+    // FIXME gas charged
 }
 
 impl Expectations {
     fn reset(&mut self) {
-        self.expect_validate_caller_any = false;
-        self.expect_validate_caller_addr = None;
-        self.expect_validate_caller_type = None;
-        self.expect_create_actor = None;
-        self.expect_sends.clear();
-        self.expect_verify_sigs.clear();
-        self.expect_verify_seal = None;
-        self.expect_verify_post = None;
-        self.expect_compute_unsealed_sector_cid = None;
-        self.expect_verify_consensus_fault = None;
-        self.expect_get_randomness_tickets = None;
-        self.expect_get_randomness_beacon = None;
+        *self = Default::default();
     }
+
     fn verify(&mut self) {
         assert!(!self.expect_validate_caller_any, "expected ValidateCallerAny, not received");
         assert!(
@@ -167,15 +165,38 @@ impl Expectations {
         );
         assert!(
             self.expect_verify_consensus_fault.is_none(),
-            "expect_verify_consensus_fault not received",
+            "expect_verify_consensus_fault {:?}, not received",
+            self.expect_verify_consensus_fault
         );
         assert!(
             self.expect_get_randomness_tickets.is_none(),
-            "expect_get_randomness_tickets not received",
+            "expect_get_randomness_tickets {:?}, not received",
+            self.expect_get_randomness_tickets
         );
         assert!(
             self.expect_get_randomness_beacon.is_none(),
-            "expect_get_randomness_beacon not received",
+            "expect_get_randomness_beacon {:?}, not received",
+            self.expect_get_randomness_beacon
+        );
+        assert!(
+            self.expect_batch_verify_seals.is_none(),
+            "expect_batch_verify_seals {:?}, not received",
+            self.expect_batch_verify_seals
+        );
+        assert!(
+            self.expect_aggregate_verify_seals.is_none(),
+            "expect_aggregate_verify_seals {:?}, not received",
+            self.expect_aggregate_verify_seals
+        );
+        assert!(
+            self.expect_replica_verify.is_none(),
+            "expect_replica_verify {:?}, not received",
+            self.expect_replica_verify
+        );
+        assert!(
+            self.expect_gas_charge.is_empty(),
+            "expect_gas_charge {:?}, not received",
+            self.expect_gas_charge
         );
     }
 }
@@ -197,7 +218,6 @@ impl Default for MockRuntime {
             network_version: NetworkVersion::V0,
             state: Default::default(),
             balance: Default::default(),
-            received: Default::default(),
             in_call: Default::default(),
             store: Default::default(),
             in_transaction: Default::default(),
@@ -246,7 +266,7 @@ pub struct ExpectVerifyPoSt {
     exit_code: ExitCode,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ExpectVerifyConsensusFault {
     require_correct_input: bool,
     block_header_1: Vec<u8>,
@@ -256,7 +276,7 @@ pub struct ExpectVerifyConsensusFault {
     exit_code: ExitCode,
 }
 
-#[derive(Clone)]
+#[derive(Clone)] // TODO: derive Debug when PieceInfo does.
 pub struct ExpectComputeUnsealedSectorCid {
     reg: RegisteredSealProof,
     pieces: Vec<PieceInfo>,
@@ -270,6 +290,25 @@ pub struct ExpectRandomness {
     epoch: ChainEpoch,
     entropy: Vec<u8>,
     out: Randomness,
+}
+
+#[derive(Debug)]
+pub struct ExpectBatchVerifySeals {
+    input: Vec<SealVerifyInfo>,
+    result: anyhow::Result<Vec<bool>>,
+}
+
+#[derive(Debug)]
+pub struct ExpectAggregateVerifySeals {
+    in_svis: Vec<AggregateSealVerifyInfo>,
+    in_proof: Vec<u8>,
+    result: anyhow::Result<()>,
+}
+
+#[derive(Debug)]
+pub struct ExpectReplicaVerify {
+    input: ReplicaUpdateInfo,
+    result: anyhow::Result<()>,
 }
 
 pub fn expect_ok<T: fmt::Debug>(res: Result<T, ActorError>) -> T {
@@ -292,14 +331,15 @@ pub fn expect_abort_contains_message<T: fmt::Debug>(
     assert_eq!(
         err.exit_code(),
         expect_exit_code,
-        "expected failure with exit code {}, but failed with exit code {}",
+        "expected failure with exit code {}, but failed with exit code {}; error message: {}",
         expect_exit_code,
-        err.exit_code()
+        err.exit_code(),
+        err.msg(),
     );
     let err_msg = err.msg();
     assert!(
         err.msg().contains(expect_msg),
-        "expected err message  {} to contain {}",
+        "expected err message  '{}' to contain '{}'",
         err_msg,
         expect_msg,
     );
@@ -497,6 +537,38 @@ impl MockRuntime {
         let a = ExpectRandomness { tag, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_beacon = Some(a);
     }
+
+    #[allow(dead_code)]
+    pub fn expect_batch_verify_seals(
+        &mut self,
+        input: Vec<SealVerifyInfo>,
+        result: anyhow::Result<Vec<bool>>,
+    ) {
+        let a = ExpectBatchVerifySeals { input, result };
+        self.expectations.borrow_mut().expect_batch_verify_seals = Some(a);
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_aggregate_verify_seals(
+        &mut self,
+        in_svis: Vec<AggregateSealVerifyInfo>,
+        in_proof: Vec<u8>,
+        result: anyhow::Result<()>,
+    ) {
+        let a = ExpectAggregateVerifySeals { in_svis, in_proof, result };
+        self.expectations.borrow_mut().expect_aggregate_verify_seals = Some(a);
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_replica_verify(&mut self, input: ReplicaUpdateInfo, result: anyhow::Result<()>) {
+        let a = ExpectReplicaVerify { input, result };
+        self.expectations.borrow_mut().expect_replica_verify = Some(a);
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_gas_charge(&mut self, value: i64) {
+        self.expectations.borrow_mut().expect_gas_charge.push_back(value);
+    }
 }
 
 impl MessageInfo for MockRuntime {
@@ -642,23 +714,20 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             .expect("unexpected call to get_randomness_from_tickets");
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
-        assert!(
-            expected.tag == tag,
+        assert_eq!(
+            expected.tag, tag,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
-            expected.tag,
-            tag
+            expected.tag, tag
         );
-        assert!(
-            expected.epoch == epoch,
+        assert_eq!(
+            expected.epoch, epoch,
             "unexpected epoch, expected: {:?}, actual: {:?}",
-            expected.epoch,
-            epoch
+            expected.epoch, epoch
         );
-        assert!(
-            expected.entropy == Vec::from(entropy),
+        assert_eq!(
+            expected.entropy, *entropy,
             "unexpected entroy, expected {:?}, actual: {:?}",
-            expected.entropy,
-            entropy
+            expected.entropy, entropy
         );
 
         Ok(expected.out)
@@ -678,23 +747,20 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             .expect("unexpected call to get_randomness_from_beacon");
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
-        assert!(
-            expected.tag == tag,
+        assert_eq!(
+            expected.tag, tag,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
-            expected.tag,
-            tag
+            expected.tag, tag
         );
-        assert!(
-            expected.epoch == epoch,
+        assert_eq!(
+            expected.epoch, epoch,
             "unexpected epoch, expected: {:?}, actual: {:?}",
-            expected.epoch,
-            epoch
+            expected.epoch, epoch
         );
-        assert!(
-            expected.entropy == Vec::from(entropy),
+        assert_eq!(
+            expected.entropy, *entropy,
             "unexpected entroy, expected {:?}, actual: {:?}",
-            expected.entropy,
-            entropy
+            expected.entropy, entropy
         );
 
         Ok(expected.out)
@@ -834,8 +900,11 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         self.circulating_supply.clone()
     }
 
-    fn charge_gas(&mut self, _: &'static str, _: i64) {
-        // TODO implement functionality if needed for testing
+    fn charge_gas(&mut self, _: &'static str, value: i64) {
+        let mut exs = self.expectations.borrow_mut();
+        assert!(exs.expect_gas_charge.is_empty(), "unexpected gas charge {:?}", value);
+        let expected = exs.expect_gas_charge.pop_front().unwrap();
+        assert_eq!(expected, value, "expected gas charge {:?}, actual {:?}", expected, value);
     }
 
     fn base_fee(&self) -> TokenAmount {
@@ -968,16 +1037,67 @@ impl Syscalls for MockRuntime {
         }
         Ok(exp.fault)
     }
+
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_batch_verify_seals
+            .take()
+            .expect("unexpected call to batch verify seals");
+        assert_eq!(exp.input.len(), batch.len(), "length mismatch");
+
+        for (i, exp_svi) in exp.input.iter().enumerate() {
+            assert_eq!(
+                exp_svi.sealed_cid, batch[i].sealed_cid,
+                "sealed CID mismatch at index {}",
+                i
+            );
+            assert_eq!(
+                exp_svi.unsealed_cid, batch[i].unsealed_cid,
+                "unsealed CID mismatch at index {}",
+                i
+            );
+        }
+        exp.result
+    }
+
     fn verify_aggregate_seals(
         &self,
-        _aggregate: &AggregateSealVerifyProofAndInfos,
+        aggregate: &AggregateSealVerifyProofAndInfos,
     ) -> anyhow::Result<()> {
-        // TODO: Implement this if we need it. Currently don't have a need.
-        todo!()
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_aggregate_verify_seals
+            .take()
+            .expect("unexpected call to verify aggregate seals");
+        assert_eq!(exp.in_svis.len(), aggregate.infos.len(), "length mismatch");
+        for (i, exp_svi) in exp.in_svis.iter().enumerate() {
+            assert_eq!(exp_svi.sealed_cid, aggregate.infos[i].sealed_cid, "mismatched sealed CID");
+            assert_eq!(
+                exp_svi.unsealed_cid, aggregate.infos[i].unsealed_cid,
+                "mismatched unsealed CID"
+            );
+        }
+        assert_eq!(exp.in_proof, aggregate.proof, "proof mismatch");
+        exp.result
     }
-    fn verify_replica_update(&self, _replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
-        // TODO: Implement this if we need it. Currently don't have a need.
-        todo!()
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> anyhow::Result<()> {
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_replica_verify
+            .take()
+            .expect("unexpected call to verify replica update");
+        assert_eq!(exp.input.update_proof_type, replica.update_proof_type, "mismatched proof type");
+        assert_eq!(exp.input.new_sealed_cid, replica.new_sealed_cid, "mismatched new sealed CID");
+        assert_eq!(exp.input.old_sealed_cid, replica.old_sealed_cid, "mismatched old sealed CID");
+        assert_eq!(
+            exp.input.new_unsealed_cid, replica.new_unsealed_cid,
+            "mismatched new unsealed CID"
+        );
+        exp.result
     }
 }
 

@@ -3,8 +3,7 @@ use fil_actor_multisig::{
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
-use fvm_shared::address::Address;
-use fvm_shared::clock::ChainEpoch;
+use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
@@ -14,7 +13,7 @@ mod util;
 
 fn construct_runtime(receiver: Address) -> MockRuntime {
     MockRuntime {
-        receiver: receiver,
+        receiver,
         caller: *SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
@@ -54,10 +53,10 @@ fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
     let mut i: u64 = 0;
     while i <= SIGNERS_MAX as u64 {
         signers.push(Address::new_id(i + 1000));
-        i = i + 1;
+        i += 1;
     }
     let over_max_signers_params = ConstructorParams {
-        signers: signers,
+        signers,
         num_approvals_threshold: 1,
         unlock_duration: 1,
         start_epoch: 0,
@@ -105,31 +104,109 @@ fn test_simple_propose() {
 }
 
 // AddSigner
-
 #[test]
-fn test_happy_path_add_signer() {
+fn test_add_signer() {
     let msig = Address::new_id(100);
     let anne = Address::new_id(101);
     let bob = Address::new_id(102);
     let chuck = Address::new_id(103);
-    let mut rt = construct_runtime(msig);
-    let initial_signers = vec![anne, bob];
-    let initial_approvals: u64 = 2;
+    let chuck_pubkey = Address::new_bls(&[3u8; BLS_PUB_LEN]).unwrap();
 
-    // construct the multisig actor and add id addrs to runtime
-    let h = util::ActorHarness::new();
-    h.construct_and_verify(&mut rt, initial_approvals, 0, 0, initial_signers);
-    // add the signer with the expected params
-    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-    expect_ok(h.add_signer(&mut rt, chuck, false));
+    struct TestCase<'a> {
+        #[allow(dead_code)]
+        desc: &'a str,
 
-    // check that the state matches what we expect
-    let expected_signers = vec![anne, bob, chuck];
-    let expected_approvals = initial_approvals;
+        id_addr_mapping: Vec<(Address, Address)>, // non-id to id
+        initial_signers: Vec<Address>,
+        initial_approvals: u64,
 
-    let st = rt.get_state::<State>().unwrap();
-    assert_eq!(expected_signers, st.signers);
-    assert_eq!(expected_approvals, st.num_approvals_threshold);
+        add_signer: Address,
+        increase: bool,
+
+        expect_signers: Vec<Address>,
+        expect_approvals: u64,
+        code: ExitCode,
+    }
+
+    let test_cases = vec![
+        TestCase{
+            desc: "happy path add signer",
+            id_addr_mapping: Vec::new(),
+            initial_signers: vec![anne, bob],
+            initial_approvals: 2,
+            add_signer: chuck,
+            increase: false,
+            expect_signers: vec![anne, bob, chuck],
+            expect_approvals: 2,
+            code: ExitCode::Ok,
+        },
+        TestCase{
+            desc: "add signer and increase threshold",
+            id_addr_mapping: Vec::new(),
+            initial_signers: vec![anne, bob],
+            initial_approvals: 2,
+            add_signer: chuck,
+            increase: true,
+            expect_signers: vec![anne, bob, chuck],
+            expect_approvals: 3,
+            code: ExitCode::Ok,
+        },
+        TestCase{
+            desc: "fail to add signer that already exists",
+            id_addr_mapping: Vec::new(),
+            initial_signers: vec![anne, bob, chuck],
+            initial_approvals: 2,
+            add_signer: chuck,
+            increase: false,
+            expect_signers: vec![anne, bob, chuck],
+            expect_approvals: 3,
+            code: ExitCode::ErrForbidden,
+        },
+        TestCase{
+            desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
+            id_addr_mapping: vec![(chuck_pubkey, chuck)],
+            initial_signers: vec![anne, bob, chuck_pubkey],
+            initial_approvals: 3,
+            add_signer: chuck,
+            increase:false,
+            expect_signers: vec![anne, bob, chuck],
+            expect_approvals: 3,
+            code: ExitCode::ErrForbidden,
+        },
+        TestCase{
+            desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
+            id_addr_mapping: vec![(chuck_pubkey, chuck)],
+            initial_signers: vec![anne, bob, chuck],
+            initial_approvals: 3,
+            add_signer: chuck_pubkey,
+            increase:false,
+            expect_signers: vec![anne, bob, chuck],
+            expect_approvals: 3,
+            code: ExitCode::ErrForbidden,
+        }
+    ];
+
+    for tc in test_cases {
+        let mut rt = construct_runtime(msig);
+        let h = util::ActorHarness::new();
+        for (src, target) in tc.id_addr_mapping {
+            rt.id_addresses.insert(src, target);
+        }
+
+        h.construct_and_verify(&mut rt, tc.initial_approvals, 0, 0, tc.initial_signers);
+
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        match tc.code {
+            ExitCode::Ok => {
+                let ret = h.add_signer(&mut rt, tc.add_signer, tc.increase).unwrap();
+                assert_eq!(RawBytes::default(), ret);
+                let st = rt.get_state::<State>().unwrap();
+                assert_eq!(tc.expect_signers, st.signers);
+                assert_eq!(tc.expect_approvals, st.num_approvals_threshold);
+            }
+            _ => expect_abort(tc.code, h.add_signer(&mut rt, tc.add_signer, tc.increase)),
+        }
+    }
 }
 
 // RemoveSigner
@@ -249,7 +326,7 @@ fn test_simple_propose_and_cancel() {
     let send_value = TokenAmount::from(10u8);
     // anne proposes tx
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-    let proposal_hash = h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params);
+    let proposal_hash = h.propose_ok(&mut rt, chuck, send_value, fake_method, fake_params);
 
     // anne cancels the tx
     let ret = h.cancel(&mut rt, TxnID(0), proposal_hash).unwrap();
@@ -270,15 +347,15 @@ fn test_lock_balance_checks_preconditions() {
 
     h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
 
-    let vest_start = 0 as ChainEpoch;
+    let vest_start = 0_i64;
     let lock_amount = TokenAmount::from(100_000u32);
-    let vest_duration = 1000 as ChainEpoch;
+    let vest_duration = 1000_i64;
 
     // Disallow negative duration but allow negative start epoch
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
     expect_abort(
         ExitCode::ErrIllegalArgument,
-        h.lock_balance(&mut rt, vest_start, -1 as ChainEpoch, lock_amount.clone()),
+        h.lock_balance(&mut rt, vest_start, -1_i64, lock_amount),
     );
 
     // Disallow negative amount

@@ -24,14 +24,12 @@ fil_actor_init = { version = "8.0.0-alpha.1", path = "./actors/init" }
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "./actors/runtime" }
 
 [build-dependencies]
-fil_actor_bundler = { version = "1.0.2", path = "./bundler" }
+fil_actor_bundler = { version = "2.0.0" }
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
 
 [features]
 default = [
-    "fil_actors_runtime/sector-32g",
-    "fil_actors_runtime/sector-64g",
     "fil_actor_account/actor",
     "fil_actor_verifreg/actor",
     "fil_actor_cron/actor",
@@ -44,26 +42,12 @@ default = [
     "fil_actor_system/actor",
     "fil_actor_init/actor",
 ]
-caterpillarnet = [
-    "fil_actors_runtime/sector-512m",
-    "fil_actors_runtime/sector-32g",
-    "fil_actors_runtime/sector-64g",
-    "fil_actors_runtime/small-deals",
-    "fil_actors_runtime/short-precommit",
-    "fil_actors_runtime/min-power-2g",
-]
-devnet = [
-    "fil_actors_runtime/sector-2k",
-    "fil_actors_runtime/sector-8m",
-    "fil_actors_runtime/small-deals",
-    "fil_actors_runtime/short-precommit",
-    "fil_actors_runtime/min-power-2k",
-]
+caterpillarnet = []
+devnet = []
 
 [workspace]
 members = [
      "actors/*",
-     "bundler",
 ]
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.

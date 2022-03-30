@@ -18,7 +18,7 @@ pub use deadlines::*;
 pub use expiration_queue::*;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    actor_error, cbor, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -35,6 +35,7 @@ use fvm_shared::encoding::{from_slice, BytesDe, Cbor, RawBytes};
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
+use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::error::ExitCode::ErrPlaceholder as ErrBalanceInvariantBroken;
 use fvm_shared::error::*;
@@ -466,7 +467,7 @@ impl Actor {
             if params.proofs[0].proof_bytes.len() > max_size {
                 return Err(actor_error!(
                     ErrIllegalArgument,
-                    "expect proof to be smaller than {} bytes",
+                    "expected proof to be smaller than {} bytes",
                     max_size
                 ));
             }
@@ -523,7 +524,7 @@ impl Actor {
             if params.chain_commit_epoch >= current_epoch {
                 return Err(actor_error!(
                     ErrIllegalArgument,
-                    "chain commit epoch {} must be less tha the current epoch {}",
+                    "chain commit epoch {} must be less than the current epoch {}",
                     params.chain_commit_epoch,
                     current_epoch
                 ));
@@ -764,9 +765,8 @@ impl Actor {
                 rt.message().receiver()
             ));
         };
-        let receiver_bytes = rt.message().receiver().marshal_cbor().map_err(|e| {
-            ActorError::from(e).wrap("failed to marshal address for seal verification challenge")
-        })?;
+        let receiver_bytes =
+            serialize_vec(&rt.message().receiver(), "address for seal verification challenge")?;
 
         for (i, precommit) in precommits.iter().enumerate() {
             let interactive_epoch =
@@ -855,6 +855,7 @@ impl Actor {
     ) -> Result<BitField, ActorError>
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
+        // https://github.com/filecoin-project/builtin-actors/issues/133
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
@@ -900,7 +901,10 @@ impl Actor {
                 continue;
             }
 
-            sector_numbers.set(update.sector_number);
+            if sector_numbers.try_set(update.sector_number).is_err() {
+                info!("invalid sector number, skipping");
+                continue;
+            }
 
             if update.replica_proof.len() > 4096 {
                 info!(
@@ -1070,7 +1074,7 @@ impl Actor {
         let pow = request_current_total_power(rt)?;
 
         let succeeded_sectors = rt.transaction(|state: &mut State, rt| {
-            let mut bf = BitField::new();
+            let mut succeeded = Vec::new();
             let mut deadlines = state
                 .load_deadlines(rt.store())?;
 
@@ -1242,7 +1246,7 @@ impl Actor {
                             )
                         })?;
 
-                    bf.set(new_sector_info.sector_number);
+                    succeeded.push(new_sector_info.sector_number);
                     new_sectors[i] = new_sector_info;
                 }
 
@@ -1263,8 +1267,8 @@ impl Actor {
                     })?;
             }
 
-            let success_len = bf.len();
-            if success_len != validated_updates.len() as u64 {
+            let success_len = succeeded.len();
+            if success_len != validated_updates.len() {
                 return Err(actor_error!(
                     ErrIllegalState,
                     "unexpected success_len {} != {}",
@@ -1288,7 +1292,9 @@ impl Actor {
                 e.downcast_default(ExitCode::ErrIllegalState, "failed to save deadlines")
             })?;
 
-            Ok(bf)
+            BitField::try_from_bits(succeeded).map_err(|_|{
+                actor_error!(ErrIllegalArgument; "invalid sector number")
+            })
         })?;
 
         notify_pledge_changed(rt, &pledge_delta)?;
@@ -1570,19 +1576,19 @@ impl Actor {
                     precommit.sector_number
                 ));
             }
+            if precommit.sector_number > MAX_SECTOR_NUMBER {
+                return Err(actor_error!(
+                    ErrIllegalArgument,
+                    "sector number {} out of range 0..(2^63-1)",
+                    precommit.sector_number
+                ));
+            }
             sector_numbers.set(precommit.sector_number);
             if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof) {
                 return Err(actor_error!(
                     ErrIllegalArgument,
                     "unsupported seal proof type {}",
                     i64::from(precommit.seal_proof)
-                ));
-            }
-            if precommit.sector_number > MAX_SECTOR_NUMBER {
-                return Err(actor_error!(
-                    ErrIllegalArgument,
-                    "sector number {} out of range 0..(2^63-1)",
-                    precommit.sector_number
                 ));
             }
             // Skip checking if CID is defined because it cannot be so in Rust
@@ -2014,7 +2020,6 @@ impl Actor {
 
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
-            let nv = rt.network_version();
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
@@ -2091,7 +2096,7 @@ impl Actor {
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
                         .map(|sector| {
-                            if !can_extend_seal_proof_type(policy, sector.seal_proof, nv) {
+                            if !can_extend_seal_proof_type(sector.seal_proof) {
                                 return Err(actor_error!(
                                     ErrForbidden,
                                     "cannot extend expiration for sector {} with unsupported \
@@ -3568,10 +3573,9 @@ where
     }
 
     // total sector lifetime cannot exceed SectorMaximumLifetime for the sector's seal proof
-    let max_lifetime = seal_proof_sector_maximum_lifetime(policy, seal_proof, rt.network_version())
-        .ok_or_else(|| {
-            actor_error!(ErrIllegalArgument, "unrecognized seal proof type {:?}", seal_proof)
-        })?;
+    let max_lifetime = seal_proof_sector_maximum_lifetime(seal_proof).ok_or_else(|| {
+        actor_error!(ErrIllegalArgument, "unrecognized seal proof type {:?}", seal_proof)
+    })?;
     if expiration - activation > max_lifetime {
         return Err(actor_error!(
             ErrIllegalArgument,
@@ -3683,11 +3687,9 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    let payload = RawBytes::serialize(cb)
-        .map_err(|e| ActorError::from(e).wrap("failed to serialize payload: {}"))?;
-
+    let payload = serialize(&cb, "cron payload")?;
     let ser_params =
-        RawBytes::serialize(ext::power::EnrollCronEventParams { event_epoch, payload })?;
+        serialize(&ext::power::EnrollCronEventParams { event_epoch, payload }, "cron params")?;
     rt.send(
         *STORAGE_POWER_ACTOR_ADDR,
         ext::power::ENROLL_CRON_EVENT_METHOD,
@@ -3789,9 +3791,7 @@ where
     };
 
     // Regenerate challenge randomness, which must match that generated for the proof.
-    let entropy = rt.message().receiver().marshal_cbor().map_err(|e| {
-        ActorError::from(e).wrap("failed to marshal address for window post challenge")
-    })?;
+    let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
     let randomness: PoStRandomness =
         rt.get_randomness_from_beacon(WindowedPoStChallengeSeed, challenge_epoch, &entropy)?;
 
@@ -3810,7 +3810,7 @@ where
 
     // verify the post proof
     let result = rt.verify_post(&pv_info);
-    Ok(!result.is_err())
+    Ok(result.is_ok())
 }
 
 fn get_verify_info<BS, RT>(
@@ -3842,10 +3842,7 @@ where
             rt.message().receiver()
         ));
     };
-    let entropy =
-        rt.message().receiver().marshal_cbor().map_err(|e| {
-            ActorError::from(e).wrap("failed to marshal address for get verify info")
-        })?;
+    let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
     let randomness: SealRandomness = rt.get_randomness_from_tickets(
         DomainSeparationTag::SealRandomness,
         params.seal_rand_epoch,
@@ -3955,10 +3952,7 @@ where
         )
         .map_err(|e| e.wrap("failed to check epoch baseline power"))?;
 
-    let ret: ThisEpochRewardReturn = ret
-        .deserialize()
-        .map_err(|e| ActorError::from(e).wrap("failed to unmarshal target power value"))?;
-
+    let ret: ThisEpochRewardReturn = deserialize(&ret, "epoch reward response")?;
     Ok(ret)
 }
 
@@ -3979,10 +3973,7 @@ where
         )
         .map_err(|e| e.wrap("failed to check current power"))?;
 
-    let power: ext::power::CurrentTotalPowerReturn = ret
-        .deserialize()
-        .map_err(|e| ActorError::from(e).wrap("failed to unmarshal power total value"))?;
-
+    let power: ext::power::CurrentTotalPowerReturn = deserialize(&ret, "total power response")?;
     Ok(power)
 }
 
@@ -4046,9 +4037,7 @@ where
             RawBytes::default(),
             TokenAmount::zero(),
         )?;
-        let pub_key: Address = ret.deserialize().map_err(|e| {
-            ActorError::from(e).wrap(format!("failed to deserialize address result: {:?}", ret))
-        })?;
+        let pub_key: Address = deserialize(&ret, "address response")?;
         if pub_key.protocol() != Protocol::BLS {
             return Err(actor_error!(
                 ErrIllegalArgument,
@@ -4223,7 +4212,7 @@ pub fn power_for_sector(sector_size: SectorSize, sector: &SectorOnChainInfo) -> 
 }
 
 /// Returns the sum of the raw byte and quality-adjusted power for sectors.
-fn power_for_sectors(sector_size: SectorSize, sectors: &[SectorOnChainInfo]) -> PowerPair {
+pub fn power_for_sectors(sector_size: SectorSize, sectors: &[SectorOnChainInfo]) -> PowerPair {
     let qa = sectors.iter().map(|s| qa_power_for_sector(sector_size, s)).sum();
 
     PowerPair { raw: BigInt::from(sector_size as u64) * BigInt::from(sectors.len()), qa }
@@ -4548,7 +4537,7 @@ impl ActorCode for Actor {
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, rt.deserialize_params(params)?)?;
+                Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ControlAddresses) => {
@@ -4556,75 +4545,75 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(&res)?)
             }
             Some(Method::ChangeWorkerAddress) => {
-                Self::change_worker_address(rt, rt.deserialize_params(params)?)?;
+                Self::change_worker_address(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ChangePeerID) => {
-                Self::change_peer_id(rt, rt.deserialize_params(params)?)?;
+                Self::change_peer_id(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::SubmitWindowedPoSt) => {
-                Self::submit_windowed_post(rt, rt.deserialize_params(params)?)?;
+                Self::submit_windowed_post(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::PreCommitSector) => {
-                Self::pre_commit_sector(rt, rt.deserialize_params(params)?)?;
+                Self::pre_commit_sector(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ProveCommitSector) => {
-                Self::prove_commit_sector(rt, rt.deserialize_params(params)?)?;
+                Self::prove_commit_sector(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ExtendSectorExpiration) => {
-                Self::extend_sector_expiration(rt, rt.deserialize_params(params)?)?;
+                Self::extend_sector_expiration(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::TerminateSectors) => {
-                let ret = Self::terminate_sectors(rt, rt.deserialize_params(params)?)?;
+                let ret = Self::terminate_sectors(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(ret)?)
             }
             Some(Method::DeclareFaults) => {
-                Self::declare_faults(rt, rt.deserialize_params(params)?)?;
+                Self::declare_faults(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::DeclareFaultsRecovered) => {
-                Self::declare_faults_recovered(rt, rt.deserialize_params(params)?)?;
+                Self::declare_faults_recovered(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::OnDeferredCronEvent) => {
-                Self::on_deferred_cron_event(rt, rt.deserialize_params(params)?)?;
+                Self::on_deferred_cron_event(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::CheckSectorProven) => {
-                Self::check_sector_proven(rt, rt.deserialize_params(params)?)?;
+                Self::check_sector_proven(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ApplyRewards) => {
-                Self::apply_rewards(rt, rt.deserialize_params(params)?)?;
+                Self::apply_rewards(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ReportConsensusFault) => {
-                Self::report_consensus_fault(rt, rt.deserialize_params(params)?)?;
+                Self::report_consensus_fault(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::WithdrawBalance) => {
-                let res = Self::withdraw_balance(rt, rt.deserialize_params(params)?)?;
+                let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(&res)?)
             }
             Some(Method::ConfirmSectorProofsValid) => {
-                Self::confirm_sector_proofs_valid(rt, rt.deserialize_params(params)?)?;
+                Self::confirm_sector_proofs_valid(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ChangeMultiaddrs) => {
-                Self::change_multiaddresses(rt, rt.deserialize_params(params)?)?;
+                Self::change_multiaddresses(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::CompactPartitions) => {
-                Self::compact_partitions(rt, rt.deserialize_params(params)?)?;
+                Self::compact_partitions(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::CompactSectorNumbers) => {
-                Self::compact_sector_numbers(rt, rt.deserialize_params(params)?)?;
+                Self::compact_sector_numbers(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ConfirmUpdateWorkerKey) => {
@@ -4636,23 +4625,23 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::ChangeOwnerAddress) => {
-                Self::change_owner_address(rt, rt.deserialize_params(params)?)?;
+                Self::change_owner_address(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::DisputeWindowedPoSt) => {
-                Self::dispute_windowed_post(rt, rt.deserialize_params(params)?)?;
+                Self::dispute_windowed_post(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::PreCommitSectorBatch) => {
-                Self::pre_commit_sector_batch(rt, rt.deserialize_params(params)?)?;
+                Self::pre_commit_sector_batch(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ProveCommitAggregate) => {
-                Self::prove_commit_aggregate(rt, rt.deserialize_params(params)?)?;
+                Self::prove_commit_aggregate(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ProveReplicaUpdates) => {
-                let res = Self::prove_replica_updates(rt, rt.deserialize_params(params)?)?;
+                let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(SysErrInvalidMethod, "Invalid method")),

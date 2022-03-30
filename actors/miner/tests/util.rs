@@ -101,11 +101,11 @@ impl ActorHarness {
         let proof_type = RegisteredSealProof::StackedDRG32GiBV1;
 
         ActorHarness {
-            receiver: receiver,
-            owner: owner,
-            worker: worker,
-            worker_key: worker_key,
-            control_addrs: control_addrs,
+            receiver,
+            owner,
+            worker,
+            worker_key,
+            control_addrs,
 
             seal_proof_type: proof_type,
             window_post_proof_type: proof_type.registered_window_post_proof().unwrap(),
@@ -120,8 +120,8 @@ impl ActorHarness {
             network_qa_power: pwr.clone(),
             baseline_power: pwr.clone(),
 
-            epoch_reward_smooth: FilterEstimate::new(rwd.clone(), BigInt::from(0)),
-            epoch_qa_power_smooth: FilterEstimate::new(pwr.clone(), BigInt::from(0)),
+            epoch_reward_smooth: FilterEstimate::new(rwd, BigInt::from(0)),
+            epoch_qa_power_smooth: FilterEstimate::new(pwr, BigInt::from(0)),
         }
     }
 
@@ -135,11 +135,11 @@ impl ActorHarness {
         rt.policy.valid_post_proof_type.insert(self.window_post_proof_type);
         rt.policy.valid_pre_commit_proof_type.insert(self.seal_proof_type);
 
-        rt.receiver = self.receiver.clone();
-        rt.actor_code_cids.insert(self.owner.clone(), *ACCOUNT_ACTOR_CODE_ID);
-        rt.actor_code_cids.insert(self.worker.clone(), *ACCOUNT_ACTOR_CODE_ID);
+        rt.receiver = self.receiver;
+        rt.actor_code_cids.insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.insert(self.worker, *ACCOUNT_ACTOR_CODE_ID);
         for addr in &self.control_addrs {
-            rt.actor_code_cids.insert(addr.clone(), *ACCOUNT_ACTOR_CODE_ID);
+            rt.actor_code_cids.insert(*addr, *ACCOUNT_ACTOR_CODE_ID);
         }
 
         rt.hash_func = fixed_hasher(self.period_offset);
@@ -156,8 +156,8 @@ impl ActorHarness {
 
     pub fn construct_and_verify(&self, rt: &mut MockRuntime) {
         let params = ConstructorParams {
-            owner: self.owner.clone(),
-            worker: self.worker.clone(),
+            owner: self.owner,
+            worker: self.worker,
             control_addresses: self.control_addrs.clone(),
             window_post_proof_type: self.window_post_proof_type,
             peer_id: vec![0],
@@ -194,8 +194,8 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         let mut caller_addrs = self.control_addrs.clone();
-        caller_addrs.push(self.worker.clone());
-        caller_addrs.push(self.owner.clone());
+        caller_addrs.push(self.worker);
+        caller_addrs.push(self.owner);
         rt.expect_validate_caller_addr(caller_addrs);
 
         let result = rt
@@ -211,7 +211,7 @@ impl ActorHarness {
     }
 
     pub fn set_peer_id_fail(&self, rt: &mut MockRuntime, new_id: Vec<u8>) {
-        let params = ChangePeerIDParams { new_id: new_id.clone() };
+        let params = ChangePeerIDParams { new_id };
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
@@ -241,7 +241,7 @@ impl ActorHarness {
     }
 
     pub fn set_multiaddr_fail(&self, rt: &mut MockRuntime, new_multiaddrs: Vec<BytesDe>) {
-        let params = ChangeMultiaddrsParams { new_multi_addrs: new_multiaddrs.clone() };
+        let params = ChangeMultiaddrsParams { new_multi_addrs: new_multiaddrs };
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
@@ -332,7 +332,7 @@ impl ActorHarness {
             sealed_cid: make_sealed_cid(b"commr"),
             seal_rand_epoch: challenge,
             deal_ids: sector_deal_ids,
-            expiration: expiration,
+            expiration,
             // unused
             replace_capacity: false,
             replace_sector_deadline: 0,
@@ -356,7 +356,7 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
         self.expect_query_network_info(rt);
 
-        if params.deal_ids.len() > 0 {
+        if !params.deal_ids.is_empty() {
             let vdparams = VerifyDealsForActivationParams {
                 sectors: vec![SectorDeals {
                     sector_expiry: params.expiration,
@@ -432,7 +432,7 @@ impl ActorHarness {
         state.get_precommitted_sector(&rt.store, sector_number).unwrap().unwrap()
     }
 
-    fn expect_query_network_info(&self, rt: &mut MockRuntime) {
+    pub fn expect_query_network_info(&self, rt: &mut MockRuntime) {
         let current_power = CurrentTotalPowerReturn {
             raw_byte_power: self.network_raw_power.clone(),
             quality_adj_power: self.network_qa_power.clone(),
@@ -500,7 +500,7 @@ impl ActorHarness {
             ExitCode::Ok,
         );
 
-        let entropy = RawBytes::serialize(self.receiver.clone()).unwrap();
+        let entropy = RawBytes::serialize(self.receiver).unwrap();
         rt.expect_get_randomness_from_tickets(
             DomainSeparationTag::SealRandomness,
             pc.info.seal_rand_epoch,
@@ -575,11 +575,11 @@ impl ActorHarness {
         &self,
         rt: &mut MockRuntime,
         cfg: ProveCommitConfig,
-        pcs: &Vec<SectorPreCommitOnChainInfo>,
+        pcs: &[SectorPreCommitOnChainInfo],
     ) {
         let mut valid_pcs = Vec::new();
         for pc in pcs {
-            if pc.info.deal_ids.len() > 0 {
+            if !pc.info.deal_ids.is_empty() {
                 let params = ActivateDealsParams {
                     deal_ids: pc.info.deal_ids.clone(),
                     sector_expiry: pc.info.expiration,
@@ -588,7 +588,7 @@ impl ActorHarness {
                 let mut exit = ExitCode::Ok;
                 match cfg.verify_deals_exit.get(&pc.info.sector_number) {
                     Some(exit_code) => {
-                        exit = exit_code.clone();
+                        exit = *exit_code;
                     }
                     None => {
                         valid_pcs.push(pc);
@@ -608,7 +608,7 @@ impl ActorHarness {
             }
         }
 
-        if valid_pcs.len() > 0 {
+        if !valid_pcs.is_empty() {
             let mut expected_pledge = TokenAmount::from(0);
             let mut expected_qa_power = BigInt::from(0);
             let mut expected_raw_power = BigInt::from(0);
@@ -713,8 +713,8 @@ impl ActorHarness {
 
         // preamble
         let mut power_delta = PowerPair::zero();
-        power_delta += &cfg.detected_faults_power_delta.unwrap_or(PowerPair::zero());
-        power_delta += &cfg.expired_sectors_power_delta.unwrap_or(PowerPair::zero());
+        power_delta += &cfg.detected_faults_power_delta.unwrap_or_else(PowerPair::zero);
+        power_delta += &cfg.expired_sectors_power_delta.unwrap_or_else(PowerPair::zero);
 
         if !power_delta.is_zero() {
             let params = UpdateClaimedPowerParams {
@@ -806,16 +806,16 @@ impl ActorHarness {
     ) {
         let params = SubmitWindowedPoStParams {
             deadline: deadline.index,
-            partitions: partitions,
+            partitions,
             proofs: make_post_proofs(self.window_post_proof_type),
             chain_commit_epoch: deadline.challenge,
-            chain_commit_rand: Randomness(Vec::from(b"chaincommitment".clone())),
+            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
         self.submit_window_post_raw(rt, deadline, infos, params, cfg).unwrap();
         rt.verify();
     }
 
-    fn submit_window_post_raw(
+    pub fn submit_window_post_raw(
         &self,
         rt: &mut MockRuntime,
         deadline: &DeadlineInfo,
@@ -843,11 +843,13 @@ impl ActorHarness {
         let mut all_recovered = BitField::new();
         let dln = self.get_deadline(rt, deadline.index);
         for p in &params.partitions {
-            let partition = dln.load_partition(&rt.store, p.index).unwrap();
-            let expected_faults = &partition.faults - &partition.recoveries;
-            let skipped = get_bitfield(&p.skipped);
-            all_ignored |= &(&expected_faults | &skipped);
-            all_recovered |= &(&partition.recoveries - &skipped);
+            let maybe_partition = dln.load_partition(&rt.store, p.index);
+            if let Ok(partition) = maybe_partition {
+                let expected_faults = &partition.faults - &partition.recoveries;
+                let skipped = get_bitfield(&p.skipped);
+                all_ignored |= &(&expected_faults | &skipped);
+                all_recovered |= &(&partition.recoveries - &skipped);
+            }
         }
         let optimistic = all_recovered.is_empty();
 
@@ -861,28 +863,29 @@ impl ActorHarness {
         }
 
         // good_info == None indicates all the sectors have been skipped and PoSt verification should not occur
-        if !optimistic && maybe_good_info.is_some() {
-            let good_info = maybe_good_info.unwrap();
-            let entropy = RawBytes::serialize(self.receiver.clone()).unwrap();
-            rt.expect_get_randomness_from_beacon(
-                DomainSeparationTag::WindowedPoStChallengeSeed,
-                deadline.challenge,
-                entropy.to_vec(),
-                challenge_rand.clone(),
-            );
+        if !optimistic {
+            if let Some(good_info) = maybe_good_info {
+                let entropy = RawBytes::serialize(self.receiver).unwrap();
+                rt.expect_get_randomness_from_beacon(
+                    DomainSeparationTag::WindowedPoStChallengeSeed,
+                    deadline.challenge,
+                    entropy.to_vec(),
+                    challenge_rand.clone(),
+                );
 
-            let vi = self.make_window_post_verify_info(
-                &infos,
-                &all_ignored,
-                good_info.clone(),
-                challenge_rand.clone(),
-                params.proofs.clone(),
-            );
-            let exit_code = match cfg.verification_exit {
-                Some(exit_code) => exit_code,
-                None => ExitCode::Ok,
-            };
-            rt.expect_verify_post(vi, exit_code);
+                let vi = self.make_window_post_verify_info(
+                    &infos,
+                    &all_ignored,
+                    good_info,
+                    challenge_rand,
+                    params.proofs.clone(),
+                );
+                let exit_code = match cfg.verification_exit {
+                    Some(exit_code) => exit_code,
+                    None => ExitCode::Ok,
+                };
+                rt.expect_verify_post(vi, exit_code);
+            }
         }
 
         if cfg.expected_power_delta.is_some() {
@@ -906,7 +909,7 @@ impl ActorHarness {
 
     fn make_window_post_verify_info(
         &self,
-        infos: &Vec<SectorOnChainInfo>,
+        infos: &[SectorOnChainInfo],
         all_ignored: &BitField,
         good_info: SectorOnChainInfo,
         challenge_rand: Randomness,
@@ -928,7 +931,7 @@ impl ActorHarness {
 
         WindowPoStVerifyInfo {
             randomness: challenge_rand,
-            proofs: proofs,
+            proofs,
             challenged_sectors: proof_infos,
             prover: RECEIVER_ID,
         }
@@ -939,7 +942,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         deadline: &DeadlineInfo,
         proof_index: u64,
-        infos: &Vec<SectorOnChainInfo>,
+        infos: &[SectorOnChainInfo],
         expect_success: Option<PoStDisputeResult>,
     ) {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
@@ -968,7 +971,7 @@ impl ActorHarness {
         }
         let good_info = maybe_good_info.unwrap();
 
-        let entropy = RawBytes::serialize(self.receiver.clone()).unwrap();
+        let entropy = RawBytes::serialize(self.receiver).unwrap();
         rt.expect_get_randomness_from_beacon(
             DomainSeparationTag::WindowedPoStChallengeSeed,
             deadline.challenge,
@@ -979,9 +982,9 @@ impl ActorHarness {
         let vi = self.make_window_post_verify_info(
             infos,
             &all_ignored,
-            good_info.clone(),
-            challenge_rand.clone(),
-            post.proofs.clone(),
+            good_info,
+            challenge_rand,
+            post.proofs,
         );
         let verify_result = match expect_success {
             Some(_) => ExitCode::ErrIllegalArgument,
@@ -1011,7 +1014,7 @@ impl ActorHarness {
             if dispute_result.expected_reward.is_some() {
                 let expected_reward = dispute_result.expected_reward.unwrap();
                 rt.expect_send(
-                    self.worker.clone(),
+                    self.worker,
                     METHOD_SEND,
                     RawBytes::default(),
                     expected_reward,
@@ -1057,7 +1060,7 @@ impl ActorHarness {
         } else {
             expect_abort_contains_message(
                 ExitCode::ErrIllegalArgument,
-                &"failed to dispute valid post",
+                "failed to dispute valid post",
                 result,
             );
         }
@@ -1078,14 +1081,14 @@ impl ActorHarness {
     }
 
     fn get_deadlines(&self, rt: &MockRuntime) -> Deadlines {
-        let state = self.get_state(&rt);
+        let state = self.get_state(rt);
         state.load_deadlines(&rt.store).unwrap()
     }
 
-    fn caller_addrs(&self) -> Vec<Address> {
+    pub fn caller_addrs(&self) -> Vec<Address> {
         let mut caller_addrs = self.control_addrs.clone();
-        caller_addrs.push(self.worker.clone());
-        caller_addrs.push(self.owner.clone());
+        caller_addrs.push(self.worker);
+        caller_addrs.push(self.owner);
         caller_addrs
     }
 }
@@ -1105,6 +1108,18 @@ impl PoStConfig {
             expected_power_delta: Some(pwr.clone()),
             verification_exit: None,
         }
+    }
+
+    pub fn with_randomness(rand: Randomness) -> PoStConfig {
+        PoStConfig {
+            chain_randomness: Some(rand),
+            expected_power_delta: None,
+            verification_exit: None,
+        }
+    }
+
+    pub fn empty() -> PoStConfig {
+        PoStConfig { chain_randomness: None, expected_power_delta: None, verification_exit: None }
     }
 }
 
@@ -1183,6 +1198,23 @@ pub fn assert_bitfield_equals(bf: &BitField, bits: &[u64]) {
     assert!(bf == &rbf);
 }
 
+#[allow(dead_code)]
+pub fn make_empty_bitfield() -> UnvalidatedBitField {
+    UnvalidatedBitField::Validated(BitField::new())
+}
+
+#[allow(dead_code)]
+pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
+    UnvalidatedBitField::Validated(BitField::try_from_bits(bits.iter().copied()).unwrap())
+}
+
+fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
+    match ubf {
+        UnvalidatedBitField::Validated(bf) => bf.clone(),
+        UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes).unwrap(),
+    }
+}
+
 // multihash library doesn't support poseidon hashing, so we fake it
 #[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
 #[mh(alloc_size = 64)]
@@ -1206,8 +1238,8 @@ fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     sum
 }
 
-fn make_post_proofs(proof_type: RegisteredPoStProof) -> Vec<PoStProof> {
-    let proof = PoStProof { post_proof: proof_type, proof_bytes: Vec::from(b"proof1".clone()) };
+pub fn make_post_proofs(proof_type: RegisteredPoStProof) -> Vec<PoStProof> {
+    let proof = PoStProof { post_proof: proof_type, proof_bytes: Vec::from(*b"proof1") };
     vec![proof]
 }
 
@@ -1236,13 +1268,6 @@ fn make_deferred_cron_event_params(
         event_payload: Vec::from(RawBytes::serialize(payload).unwrap().bytes()),
         reward_smoothed: epoch_reward_smooth,
         quality_adj_power_smoothed: epoch_qa_power_smooth,
-    }
-}
-
-fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
-    match ubf {
-        UnvalidatedBitField::Validated(bf) => bf.clone(),
-        UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(&bytes).unwrap(),
     }
 }
 
@@ -1275,8 +1300,8 @@ where
 fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
     let hash = move |_: &[u8]| -> [u8; 32] {
         let mut result = [0u8; 32];
-        for i in 0..8 {
-            result[i] = ((offset >> (7 - i)) & 0xff) as u8;
+        for (i, item) in result.iter_mut().enumerate().take(8) {
+            *item = ((offset >> (7 - i)) & 0xff) as u8;
         }
         result
     };

@@ -6,6 +6,7 @@ pub use self::multimap::*;
 pub use self::set::Set;
 pub use self::set_multimap::SetMultimap;
 
+pub mod cbor;
 pub mod chaos;
 mod downcast;
 mod multimap;
