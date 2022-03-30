@@ -80,6 +80,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Make sure we re-build if the network name changes.
     println!("cargo:rerun-if-env-changed={}", NETWORK_ENV);
 
+    // Rerun if the source, dependencies, build options, build script _or_ actors have changed. We
+    // need to check if the actors have changed because otherwise, when building in a workspace, we
+    // won't re-run the build script and therefore won't re-compile them.
+    //
+    // This _isn't_ an issue when building as a dependency fetched from crates.io (because the crate
+    // is immutable).
+    for file in ["actors", "Cargo.toml", "Cargo.lock", "src", "build.rs"] {
+        println!("cargo:rerun-if-changed={}", file);
+    }
+
     // Cargo build command for all actors at once.
     let mut cmd = Command::new(&cargo);
     cmd.arg("build")
