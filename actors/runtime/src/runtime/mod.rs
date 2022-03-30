@@ -11,7 +11,6 @@ use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::{de, Cbor, RawBytes};
-use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
@@ -161,22 +160,12 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
     /// `name` provides information about gas charging point
     fn charge_gas(&mut self, name: &'static str, compute: i64);
 
-    /// This function is a workaround for Lotus's faulty exit code handling of
-    /// parameters before version 7
+    /// This should be removed from runtime now that it doesn't depend on network version.
     fn deserialize_params<O: de::DeserializeOwned>(
         &self,
         params: &RawBytes,
     ) -> Result<O, ActorError> {
-        params.deserialize().map_err(|e| {
-            if self.network_version() < NetworkVersion::V7 {
-                ActorError::new(
-                    ExitCode::SysErrSenderInvalid,
-                    format!("failed to decode parameters: {}", e),
-                )
-            } else {
-                ActorError::from(e).wrap("failed to decode parameters")
-            }
-        })
+        params.deserialize().map_err(|e| ActorError::from(e).wrap("failed to decode parameters"))
     }
 
     fn base_fee(&self) -> TokenAmount;
