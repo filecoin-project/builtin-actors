@@ -25,6 +25,8 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("verifreg", "verifiedregistry"),
 ];
 
+const WASM_FEATURES: &[&str] = &["+bulk-memory", "+crt-static"];
+
 const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";
 
 /// Returns the configured network name, checking both the environment and feature flags.
@@ -90,6 +92,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("cargo:rerun-if-changed={}", file);
     }
 
+    let rustflags =
+        WASM_FEATURES.iter().flat_map(|flag| ["-Ctarget-feature=", *flag, " "]).collect::<String>()
+            + "-Clink-arg=--export-table";
+
     // Cargo build command for all actors at once.
     let mut cmd = Command::new(&cargo);
     cmd.arg("build")
@@ -98,7 +104,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .arg("--profile=wasm")
         .arg("--locked")
         .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
-        .env("RUSTFLAGS", "-Ctarget-feature=+crt-static -Clink-arg=--export-table")
+        .env("RUSTFLAGS", rustflags)
         .env(NETWORK_ENV, network_name)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
