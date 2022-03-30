@@ -11,10 +11,7 @@ where
     T: ser::Serialize + ?Sized,
 {
     to_vec(value).map_err(|e| {
-        ActorError::new(
-            ExitCode::ErrSerialization,
-            format!("failed to serialize {}: {}", desc, e.to_string()),
-        )
+        ActorError::new(ExitCode::ErrSerialization, format!("failed to serialize {}: {}", desc, e))
     })
 }
 
@@ -33,7 +30,7 @@ pub fn deserialize<O: de::DeserializeOwned>(v: &RawBytes, desc: &str) -> Result<
     v.deserialize().map_err(|e| {
         ActorError::new(
             ExitCode::ErrSerialization,
-            format!("failed to deserialize {}: {}", desc, e.to_string()),
+            format!("failed to deserialize {}: {}", desc, e),
         )
     })
 }

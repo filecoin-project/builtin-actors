@@ -133,7 +133,7 @@ impl Actor {
         let sv_bz = sv.signing_bytes().map_err(|e| {
             ActorError::new(
                 ExitCode::ErrSerialization,
-                format!("failed to serialized SignedVoucher: {}", e.to_string()),
+                format!("failed to serialized SignedVoucher: {}", e),
             )
         })?;
 
