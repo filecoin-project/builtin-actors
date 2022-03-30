@@ -4,7 +4,7 @@
 use std::convert::TryInto;
 use std::ops::{self, Neg};
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{actor_error, ActorDowncast, Array};
@@ -663,9 +663,8 @@ impl Partition {
                 let limit = max_sectors - result.sectors_processed;
 
                 let to_process = if limit < count {
-                    let to_process = sectors
-                        .slice(0, limit)
-                        .map_err(|e| anyhow!("failed to slice early terminations: {}", e))?;
+                    let to_process =
+                        sectors.slice(0, limit).context("expected more sectors in bitfield")?;
                     let rest = sectors - &to_process;
                     remaining = Some((rest, epoch));
                     result.sectors_processed += limit;
