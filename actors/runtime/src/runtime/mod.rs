@@ -27,10 +27,10 @@ pub use self::policy::*;
 
 mod actor_code;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "fil-actor")]
 pub mod fvm;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "fil-actor")]
 mod actor_blockstore;
 
 mod policy;

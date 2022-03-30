@@ -6,8 +6,8 @@ use std::collections::BTreeSet;
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Runtime, Syscalls};
 use fil_actors_runtime::{
-    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, wasm_trampoline,
-    ActorDowncast, ActorError, Map, INIT_ACTOR_ADDR,
+    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorDowncast,
+    ActorError, Map, INIT_ACTOR_ADDR,
 };
 use fvm_shared::actor::builtin::CALLER_TYPES_SIGNABLE;
 use fvm_shared::address::Address;
@@ -23,7 +23,8 @@ use num_traits::{FromPrimitive, Signed};
 pub use self::state::*;
 pub use self::types::*;
 
-wasm_trampoline!(Actor);
+#[cfg(feature = "fil-actor")]
+fil_actors_runtime::wasm_trampoline!(Actor);
 
 mod state;
 mod types;
