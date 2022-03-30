@@ -3,9 +3,10 @@
 
 use std::collections::BTreeSet;
 
+use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Runtime, Syscalls};
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root, resolve_to_id_addr, wasm_trampoline,
+    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, wasm_trampoline,
     ActorDowncast, ActorError, Map, INIT_ACTOR_ADDR,
 };
 use fvm_shared::actor::builtin::CALLER_TYPES_SIGNABLE;
@@ -13,7 +14,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::Sign;
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{to_vec, RawBytes};
+use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
@@ -649,9 +650,7 @@ pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Syscalls) -> anyhow::R
         method: &txn.method,
         params: &txn.params,
     };
-    let data = to_vec(&proposal_hash)
-        .map_err(|e| ActorError::from(e).wrap("failed to construct multisig approval hash"))?;
-
+    let data = serialize_vec(&proposal_hash, "proposal hash")?;
     Ok(sys.hash_blake2b(&data))
 }
 
@@ -667,39 +666,39 @@ impl ActorCode for Actor {
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, rt.deserialize_params(params)?)?;
+                Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::Propose) => {
-                let res = Self::propose(rt, rt.deserialize_params(params)?)?;
+                let res = Self::propose(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::Approve) => {
-                let res = Self::approve(rt, rt.deserialize_params(params)?)?;
+                let res = Self::approve(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::Cancel) => {
-                Self::cancel(rt, rt.deserialize_params(params)?)?;
+                Self::cancel(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::AddSigner) => {
-                Self::add_signer(rt, rt.deserialize_params(params)?)?;
+                Self::add_signer(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::RemoveSigner) => {
-                Self::remove_signer(rt, rt.deserialize_params(params)?)?;
+                Self::remove_signer(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::SwapSigner) => {
-                Self::swap_signer(rt, rt.deserialize_params(params)?)?;
+                Self::swap_signer(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ChangeNumApprovalsThreshold) => {
-                Self::change_num_approvals_threshold(rt, rt.deserialize_params(params)?)?;
+                Self::change_num_approvals_threshold(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::LockBalance) => {
-                Self::lock_balance(rt, rt.deserialize_params(params)?)?;
+                Self::lock_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(SysErrInvalidMethod, "Invalid method")),

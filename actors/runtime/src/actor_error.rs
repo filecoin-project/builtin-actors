@@ -39,7 +39,7 @@ impl ActorError {
     }
 }
 
-// TODO former EncodingError
+/// Converts a raw encoding error into an ErrSerialization.
 impl From<fvm_shared::encoding::Error> for ActorError {
     fn from(e: fvm_shared::encoding::Error) -> Self {
         Self { exit_code: ExitCode::ErrSerialization, msg: e.to_string() }

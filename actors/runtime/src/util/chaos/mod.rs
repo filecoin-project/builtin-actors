@@ -14,7 +14,7 @@ pub use state::*;
 pub use types::*;
 
 use crate::runtime::{ActorCode, Runtime};
-use crate::{actor_error, ActorError};
+use crate::{actor_error, cbor, ActorError};
 
 mod state;
 mod types;
@@ -208,36 +208,36 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::CallerValidation) => {
-                Self::caller_validation(rt, rt.deserialize_params(params)?)?;
+                Self::caller_validation(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
 
             Some(Method::CreateActor) => {
-                Self::create_actor(rt, rt.deserialize_params(params)?)?;
+                Self::create_actor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ResolveAddress) => {
-                let res = Self::resolve_address(rt, rt.deserialize_params(params)?)?;
+                let res = Self::resolve_address(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
 
             Some(Method::Send) => {
-                let res: SendReturn = Self::send(rt, rt.deserialize_params(params)?)?;
+                let res: SendReturn = Self::send(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
 
             Some(Method::DeleteActor) => {
-                Self::delete_actor(rt, rt.deserialize_params(params)?)?;
+                Self::delete_actor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
 
             Some(Method::MutateState) => {
-                Self::mutate_state(rt, rt.deserialize_params(params)?)?;
+                Self::mutate_state(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
 
             Some(Method::AbortWith) => {
-                Self::abort_with(rt.deserialize_params(params)?)?;
+                Self::abort_with(cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
 

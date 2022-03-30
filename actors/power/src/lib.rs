@@ -8,7 +8,7 @@ use anyhow::anyhow;
 use ext::init;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, make_map_with_root_and_bitwidth, wasm_trampoline, ActorDowncast, ActorError,
+    actor_error, cbor, make_map_with_root_and_bitwidth, wasm_trampoline, ActorDowncast, ActorError,
     Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
@@ -657,15 +657,15 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::CreateMiner) => {
-                let res = Self::create_miner(rt, rt.deserialize_params(params)?)?;
+                let res = Self::create_miner(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::UpdateClaimedPower) => {
-                Self::update_claimed_power(rt, rt.deserialize_params(params)?)?;
+                Self::update_claimed_power(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::EnrollCronEvent) => {
-                Self::enroll_cron_event(rt, rt.deserialize_params(params)?)?;
+                Self::enroll_cron_event(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::OnEpochTickEnd) => {
@@ -673,12 +673,12 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::UpdatePledgeTotal) => {
-                let BigIntDe(param) = rt.deserialize_params(params)?;
+                let BigIntDe(param) = cbor::deserialize_params(params)?;
                 Self::update_pledge_total(rt, param)?;
                 Ok(RawBytes::default())
             }
             Some(Method::SubmitPoRepForBulkVerify) => {
-                Self::submit_porep_for_bulk_verify(rt, rt.deserialize_params(params)?)?;
+                Self::submit_porep_for_bulk_verify(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::CurrentTotalPower) => {

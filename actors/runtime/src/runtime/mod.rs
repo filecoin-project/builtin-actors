@@ -10,7 +10,7 @@ use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{de, Cbor, RawBytes};
+use fvm_shared::encoding::{Cbor, RawBytes};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
@@ -20,8 +20,10 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
-pub use self::actor_code::*;
 use crate::ActorError;
+
+pub use self::actor_code::*;
+pub use self::policy::*;
 
 mod actor_code;
 
@@ -32,7 +34,6 @@ pub mod fvm;
 mod actor_blockstore;
 
 mod policy;
-pub use self::policy::*;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
@@ -159,14 +160,6 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
     /// ChargeGas charges specified amount of `gas` for execution.
     /// `name` provides information about gas charging point
     fn charge_gas(&mut self, name: &'static str, compute: i64);
-
-    /// This should be removed from runtime now that it doesn't depend on network version.
-    fn deserialize_params<O: de::DeserializeOwned>(
-        &self,
-        params: &RawBytes,
-    ) -> Result<O, ActorError> {
-        params.deserialize().map_err(|e| ActorError::from(e).wrap("failed to decode parameters"))
-    }
 
     fn base_fee(&self) -> TokenAmount;
 }

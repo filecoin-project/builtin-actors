@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, wasm_trampoline, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{actor_error, cbor, wasm_trampoline, ActorError, SYSTEM_ACTOR_ADDR};
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::tuple::*;
@@ -91,7 +91,7 @@ impl ActorCode for Actor {
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, rt.deserialize_params(params)?)?;
+                Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::EpochTick) => {

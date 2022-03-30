@@ -18,7 +18,7 @@ pub use deadlines::*;
 pub use expiration_queue::*;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    actor_error, cbor, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -35,6 +35,7 @@ use fvm_shared::encoding::{from_slice, BytesDe, Cbor, RawBytes};
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
+use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::error::ExitCode::ErrPlaceholder as ErrBalanceInvariantBroken;
 use fvm_shared::error::*;
@@ -764,9 +765,8 @@ impl Actor {
                 rt.message().receiver()
             ));
         };
-        let receiver_bytes = rt.message().receiver().marshal_cbor().map_err(|e| {
-            ActorError::from(e).wrap("failed to marshal address for seal verification challenge")
-        })?;
+        let receiver_bytes =
+            serialize_vec(&rt.message().receiver(), "address for seal verification challenge")?;
 
         for (i, precommit) in precommits.iter().enumerate() {
             let interactive_epoch =
@@ -3682,11 +3682,9 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    let payload = RawBytes::serialize(cb)
-        .map_err(|e| ActorError::from(e).wrap("failed to serialize payload: {}"))?;
-
+    let payload = serialize(&cb, "cron payload")?;
     let ser_params =
-        RawBytes::serialize(ext::power::EnrollCronEventParams { event_epoch, payload })?;
+        serialize(&ext::power::EnrollCronEventParams { event_epoch, payload }, "cron params")?;
     rt.send(
         *STORAGE_POWER_ACTOR_ADDR,
         ext::power::ENROLL_CRON_EVENT_METHOD,
@@ -3788,9 +3786,7 @@ where
     };
 
     // Regenerate challenge randomness, which must match that generated for the proof.
-    let entropy = rt.message().receiver().marshal_cbor().map_err(|e| {
-        ActorError::from(e).wrap("failed to marshal address for window post challenge")
-    })?;
+    let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
     let randomness: PoStRandomness =
         rt.get_randomness_from_beacon(WindowedPoStChallengeSeed, challenge_epoch, &entropy)?;
 
@@ -3841,10 +3837,7 @@ where
             rt.message().receiver()
         ));
     };
-    let entropy =
-        rt.message().receiver().marshal_cbor().map_err(|e| {
-            ActorError::from(e).wrap("failed to marshal address for get verify info")
-        })?;
+    let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
     let randomness: SealRandomness = rt.get_randomness_from_tickets(
         DomainSeparationTag::SealRandomness,
         params.seal_rand_epoch,
@@ -3954,10 +3947,7 @@ where
         )
         .map_err(|e| e.wrap("failed to check epoch baseline power"))?;
 
-    let ret: ThisEpochRewardReturn = ret
-        .deserialize()
-        .map_err(|e| ActorError::from(e).wrap("failed to unmarshal target power value"))?;
-
+    let ret: ThisEpochRewardReturn = deserialize(&ret, "epoch reward response")?;
     Ok(ret)
 }
 
@@ -3978,10 +3968,7 @@ where
         )
         .map_err(|e| e.wrap("failed to check current power"))?;
 
-    let power: ext::power::CurrentTotalPowerReturn = ret
-        .deserialize()
-        .map_err(|e| ActorError::from(e).wrap("failed to unmarshal power total value"))?;
-
+    let power: ext::power::CurrentTotalPowerReturn = deserialize(&ret, "total power response")?;
     Ok(power)
 }
 
@@ -4045,9 +4032,7 @@ where
             RawBytes::default(),
             TokenAmount::zero(),
         )?;
-        let pub_key: Address = ret.deserialize().map_err(|e| {
-            ActorError::from(e).wrap(format!("failed to deserialize address result: {:?}", ret))
-        })?;
+        let pub_key: Address = deserialize(&ret, "address response")?;
         if pub_key.protocol() != Protocol::BLS {
             return Err(actor_error!(
                 ErrIllegalArgument,
@@ -4547,7 +4532,7 @@ impl ActorCode for Actor {
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, rt.deserialize_params(params)?)?;
+                Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ControlAddresses) => {
@@ -4555,75 +4540,75 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(&res)?)
             }
             Some(Method::ChangeWorkerAddress) => {
-                Self::change_worker_address(rt, rt.deserialize_params(params)?)?;
+                Self::change_worker_address(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ChangePeerID) => {
-                Self::change_peer_id(rt, rt.deserialize_params(params)?)?;
+                Self::change_peer_id(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::SubmitWindowedPoSt) => {
-                Self::submit_windowed_post(rt, rt.deserialize_params(params)?)?;
+                Self::submit_windowed_post(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::PreCommitSector) => {
-                Self::pre_commit_sector(rt, rt.deserialize_params(params)?)?;
+                Self::pre_commit_sector(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ProveCommitSector) => {
-                Self::prove_commit_sector(rt, rt.deserialize_params(params)?)?;
+                Self::prove_commit_sector(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ExtendSectorExpiration) => {
-                Self::extend_sector_expiration(rt, rt.deserialize_params(params)?)?;
+                Self::extend_sector_expiration(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::TerminateSectors) => {
-                let ret = Self::terminate_sectors(rt, rt.deserialize_params(params)?)?;
+                let ret = Self::terminate_sectors(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(ret)?)
             }
             Some(Method::DeclareFaults) => {
-                Self::declare_faults(rt, rt.deserialize_params(params)?)?;
+                Self::declare_faults(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::DeclareFaultsRecovered) => {
-                Self::declare_faults_recovered(rt, rt.deserialize_params(params)?)?;
+                Self::declare_faults_recovered(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::OnDeferredCronEvent) => {
-                Self::on_deferred_cron_event(rt, rt.deserialize_params(params)?)?;
+                Self::on_deferred_cron_event(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::CheckSectorProven) => {
-                Self::check_sector_proven(rt, rt.deserialize_params(params)?)?;
+                Self::check_sector_proven(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ApplyRewards) => {
-                Self::apply_rewards(rt, rt.deserialize_params(params)?)?;
+                Self::apply_rewards(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ReportConsensusFault) => {
-                Self::report_consensus_fault(rt, rt.deserialize_params(params)?)?;
+                Self::report_consensus_fault(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::WithdrawBalance) => {
-                let res = Self::withdraw_balance(rt, rt.deserialize_params(params)?)?;
+                let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(&res)?)
             }
             Some(Method::ConfirmSectorProofsValid) => {
-                Self::confirm_sector_proofs_valid(rt, rt.deserialize_params(params)?)?;
+                Self::confirm_sector_proofs_valid(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ChangeMultiaddrs) => {
-                Self::change_multiaddresses(rt, rt.deserialize_params(params)?)?;
+                Self::change_multiaddresses(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::CompactPartitions) => {
-                Self::compact_partitions(rt, rt.deserialize_params(params)?)?;
+                Self::compact_partitions(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::CompactSectorNumbers) => {
-                Self::compact_sector_numbers(rt, rt.deserialize_params(params)?)?;
+                Self::compact_sector_numbers(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ConfirmUpdateWorkerKey) => {
@@ -4635,23 +4620,23 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::ChangeOwnerAddress) => {
-                Self::change_owner_address(rt, rt.deserialize_params(params)?)?;
+                Self::change_owner_address(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::DisputeWindowedPoSt) => {
-                Self::dispute_windowed_post(rt, rt.deserialize_params(params)?)?;
+                Self::dispute_windowed_post(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::PreCommitSectorBatch) => {
-                Self::pre_commit_sector_batch(rt, rt.deserialize_params(params)?)?;
+                Self::pre_commit_sector_batch(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ProveCommitAggregate) => {
-                Self::prove_commit_aggregate(rt, rt.deserialize_params(params)?)?;
+                Self::prove_commit_aggregate(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ProveReplicaUpdates) => {
-                let res = Self::prove_replica_updates(rt, rt.deserialize_params(params)?)?;
+                let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(SysErrInvalidMethod, "Invalid method")),
