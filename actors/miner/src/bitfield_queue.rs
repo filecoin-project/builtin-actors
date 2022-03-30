@@ -51,7 +51,7 @@ impl<'db, BS: Blockstore> BitFieldQueue<'db, BS> {
         epoch: ChainEpoch,
         values: impl IntoIterator<Item = u64>,
     ) -> anyhow::Result<()> {
-        self.add_to_queue(epoch, &values.into_iter().collect())
+        self.add_to_queue(epoch, &BitField::try_from_bits(values)?)
     }
 
     /// Cut cuts the elements from the bits in the given bitfield out of the queue,

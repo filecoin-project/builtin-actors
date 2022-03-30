@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use bitfield::BitField;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
@@ -179,7 +179,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut total_sectors = Vec::<BitField>::new();
 
         for group in group_new_sectors_by_declared_expiration(sector_size, sectors, self.quant) {
-            let sector_numbers: BitField = group.sectors.iter().copied().collect();
+            let sector_numbers = BitField::try_from_bits(group.sectors)?;
 
             self.add(
                 group.epoch,
@@ -258,8 +258,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 expiring_power += &group.sector_epoch_set.power;
             } else {
                 // Remove sectors from on-time expiry and active power.
-                let sectors_bitfield: BitField =
-                    group.sector_epoch_set.sectors.iter().copied().collect();
+                let sectors_bitfield =
+                    BitField::try_from_bits(group.sector_epoch_set.sectors.iter().copied())?;
                 group.expiration_set.on_time_sectors -= &sectors_bitfield;
                 group.expiration_set.on_time_pledge -= &group.sector_epoch_set.pledge;
                 group.expiration_set.active_power -= &group.sector_epoch_set.power;
@@ -276,7 +276,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         if !sectors_total.is_empty() {
             // Add sectors to new expiration as early-terminating and faulty.
-            let early_sectors: BitField = sectors_total.iter().copied().collect();
+            let early_sectors = BitField::try_from_bits(sectors_total)?;
             self.add(
                 new_expiration,
                 &BitField::new(),
@@ -375,14 +375,14 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             let on_time_sectors: BTreeSet<SectorNumber> = expiration_set
                 .on_time_sectors
                 .bounded_iter(ENTRY_SECTORS_MAX)
-                .map_err(|e| anyhow!(e))?
+                .context("too many sectors to reschedule")?
                 .map(|i| i as SectorNumber)
                 .collect();
 
             let early_sectors: BTreeSet<SectorNumber> = expiration_set
                 .early_sectors
                 .bounded_iter(ENTRY_SECTORS_MAX)
-                .map_err(|e| anyhow!(e))?
+                .context("too many sectors to reschedule")?
                 .map(|i| i as SectorNumber)
                 .collect();
 
@@ -476,13 +476,13 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         // ADDRESSED_SECTORS_MAX is defined as 25000, so this will not error.
         let faults_map: BTreeSet<_> = faults
             .bounded_iter(policy.addressed_sectors_max)
-            .map_err(|e| anyhow!("failed to expand faults: {}", e))?
+            .context("too many faults to expand")?
             .map(|i| i as SectorNumber)
             .collect();
 
         let recovering_map: BTreeSet<_> = recovering
             .bounded_iter(policy.addressed_sectors_max)
-            .map_err(|e| anyhow!("failed to expand recoveries: {}", e))?
+            .context("too many recoveries to expand")?
             .map(|i| i as SectorNumber)
             .collect();
 
@@ -524,14 +524,14 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             let on_time_sectors: BTreeSet<SectorNumber> = expiration_set
                 .on_time_sectors
                 .bounded_iter(ENTRY_SECTORS_MAX)
-                .map_err(|e| anyhow!(e))?
+                .context("too many on-time sectors to expand")?
                 .map(|i| i as SectorNumber)
                 .collect();
 
             let early_sectors: BTreeSet<SectorNumber> = expiration_set
                 .early_sectors
                 .bounded_iter(ENTRY_SECTORS_MAX)
-                .map_err(|e| anyhow!(e))?
+                .context("too many early sectors to expand")?
                 .map(|i| i as SectorNumber)
                 .collect();
 
@@ -672,15 +672,15 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         sectors: &[SectorOnChainInfo],
         sector_size: SectorSize,
     ) -> anyhow::Result<(BitField, PowerPair, TokenAmount)> {
-        let mut removed_sector_numbers = BitField::new();
+        let mut removed_sector_numbers = Vec::<u64>::new();
         let mut removed_power = PowerPair::zero();
         let mut removed_pledge = TokenAmount::zero();
 
         // Group sectors by their expiration, then remove from existing queue entries according to those groups.
         let groups = self.find_sectors_by_expiration(sector_size, sectors)?;
         for group in groups {
-            let sectors_bitfield: BitField =
-                group.sector_epoch_set.sectors.iter().copied().collect();
+            let sectors_bitfield =
+                BitField::try_from_bits(group.sector_epoch_set.sectors.iter().copied())?;
             self.remove(
                 group.sector_epoch_set.epoch,
                 &sectors_bitfield,
@@ -690,15 +690,13 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 &group.sector_epoch_set.pledge,
             )?;
 
-            for n in group.sector_epoch_set.sectors {
-                removed_sector_numbers.set(n);
-            }
+            removed_sector_numbers.extend(&group.sector_epoch_set.sectors);
 
             removed_power += &group.sector_epoch_set.power;
             removed_pledge += &group.sector_epoch_set.pledge;
         }
 
-        Ok((removed_sector_numbers, removed_power, removed_pledge))
+        Ok((BitField::try_from_bits(removed_sector_numbers)?, removed_power, removed_pledge))
     }
 
     /// Traverses the entire queue with a callback function that may mutate entries.

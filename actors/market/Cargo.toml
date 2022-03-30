@@ -19,7 +19,7 @@ fvm_ipld_blockstore = "0.1.0"
 fvm_ipld_encoding = "0.1.0"
 fvm_ipld_hamt = "0.4.0"
 fvm_shared = { version = "0.4.0", default-features = false }
-bitfield = { version = "0.2.0", package = "fvm_ipld_bitfield" }
+bitfield = { version = "0.5.0", package = "fvm_ipld_bitfield" }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 ahash = "0.7.6"

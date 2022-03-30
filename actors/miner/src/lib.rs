@@ -900,7 +900,10 @@ impl Actor {
                 continue;
             }
 
-            sector_numbers.set(update.sector_number);
+            if sector_numbers.try_set(update.sector_number).is_err() {
+                info!("invalid sector number, skipping");
+                continue;
+            }
 
             if update.replica_proof.len() > 4096 {
                 info!(
@@ -1070,7 +1073,7 @@ impl Actor {
         let pow = request_current_total_power(rt)?;
 
         let succeeded_sectors = rt.transaction(|state: &mut State, rt| {
-            let mut bf = BitField::new();
+            let mut succeeded = Vec::new();
             let mut deadlines = state
                 .load_deadlines(rt.store())?;
 
@@ -1242,7 +1245,7 @@ impl Actor {
                             )
                         })?;
 
-                    bf.set(new_sector_info.sector_number);
+                    succeeded.push(new_sector_info.sector_number);
                     new_sectors[i] = new_sector_info;
                 }
 
@@ -1263,8 +1266,8 @@ impl Actor {
                     })?;
             }
 
-            let success_len = bf.len();
-            if success_len != validated_updates.len() as u64 {
+            let success_len = succeeded.len();
+            if success_len != validated_updates.len() {
                 return Err(actor_error!(
                     ErrIllegalState,
                     "unexpected success_len {} != {}",
@@ -1288,7 +1291,9 @@ impl Actor {
                 e.downcast_default(ExitCode::ErrIllegalState, "failed to save deadlines")
             })?;
 
-            Ok(bf)
+            BitField::try_from_bits(succeeded).map_err(|_|{
+                actor_error!(ErrIllegalArgument; "invalid sector number")
+            })
         })?;
 
         notify_pledge_changed(rt, &pledge_delta)?;
@@ -1570,19 +1575,19 @@ impl Actor {
                     precommit.sector_number
                 ));
             }
+            if precommit.sector_number > MAX_SECTOR_NUMBER {
+                return Err(actor_error!(
+                    ErrIllegalArgument,
+                    "sector number {} out of range 0..(2^63-1)",
+                    precommit.sector_number
+                ));
+            }
             sector_numbers.set(precommit.sector_number);
             if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof) {
                 return Err(actor_error!(
                     ErrIllegalArgument,
                     "unsupported seal proof type {}",
                     i64::from(precommit.seal_proof)
-                ));
-            }
-            if precommit.sector_number > MAX_SECTOR_NUMBER {
-                return Err(actor_error!(
-                    ErrIllegalArgument,
-                    "sector number {} out of range 0..(2^63-1)",
-                    precommit.sector_number
                 ));
             }
             // Skip checking if CID is defined because it cannot be so in Rust

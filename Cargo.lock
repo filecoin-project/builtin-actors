@@ -949,13 +949,14 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_bitfield"
-version = "0.2.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "075a50062801672269626dabfe211a9f01487c08d6fbd1677a4e550a2b864fad"
+checksum = "9011349297962982b8ab2663c220034525ec0f95f408c2b561d3d98867f1a803"
 dependencies = [
  "cs_serde_bytes",
- "fvm_shared 0.2.2",
+ "fvm_ipld_encoding",
  "serde",
+ "thiserror",
  "unsigned-varint",
 ]
 
