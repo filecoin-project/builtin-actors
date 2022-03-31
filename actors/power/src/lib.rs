@@ -29,7 +29,8 @@ pub use self::policy::*;
 pub use self::state::*;
 pub use self::types::*;
 
-wasm_trampoline!(Actor);
+#[cfg(feature = "fil-actor")]
+fil_actors_runtime::wasm_trampoline!(Actor);
 
 #[doc(hidden)]
 pub mod ext;
