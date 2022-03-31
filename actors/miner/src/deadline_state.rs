@@ -841,7 +841,7 @@ impl Deadline {
 
             partition
                 .declare_faults_recovered(sectors, sector_size, sector_numbers)
-                .map_err(|e| e.downcast_wrap("failed to add recoveries"))?;
+                .map_err(|e| actor_error!(ErrIllegalState; "failed to add recoveries: {}", e));
 
             partitions.set(partition_idx, partition).map_err(|e| {
                 e.downcast_default(
