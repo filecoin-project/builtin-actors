@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, wasm_trampoline, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{actor_error, cbor, ActorError, SYSTEM_ACTOR_ADDR};
 use fvm_shared::blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::tuple::*;
@@ -15,7 +15,8 @@ pub use self::state::{Entry, State};
 
 mod state;
 
-wasm_trampoline!(Actor);
+#[cfg(feature = "fil-actor")]
+fil_actors_runtime::wasm_trampoline!(Actor);
 
 // * Updated to specs-actors commit: 845089a6d2580e46055c24415a6c32ee688e5186 (v3.0.0)
 

@@ -24,9 +24,8 @@ use num_traits::{FromPrimitive, Signed, Zero};
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 use crate::ext::verifreg::UseBytesParams;
@@ -44,7 +43,8 @@ mod policy;
 mod state;
 mod types;
 
-wasm_trampoline!(Actor);
+#[cfg(feature = "fil-actor")]
+fil_actors_runtime::wasm_trampoline!(Actor);
 
 fn request_miner_control_addrs<BS, RT>(
     rt: &mut RT,

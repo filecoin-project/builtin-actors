@@ -3,8 +3,8 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, wasm_trampoline, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{Integer, Sign};
@@ -21,7 +21,8 @@ pub use self::logic::*;
 pub use self::state::{Reward, State, VestingFunction};
 pub use self::types::*;
 
-wasm_trampoline!(Actor);
+#[cfg(feature = "fil-actor")]
+fil_actors_runtime::wasm_trampoline!(Actor);
 
 pub(crate) mod expneg;
 mod logic;

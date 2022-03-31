@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{
-    actor_error, cbor, resolve_to_id_addr, wasm_trampoline, ActorDowncast, ActorError, Array,
-};
+use fil_actors_runtime::{actor_error, cbor, resolve_to_id_addr, ActorDowncast, ActorError, Array};
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Sign};
@@ -20,7 +18,8 @@ use num_traits::FromPrimitive;
 pub use self::state::{LaneState, Merge, State};
 pub use self::types::*;
 
-wasm_trampoline!(Actor);
+#[cfg(feature = "fil-actor")]
+fil_actors_runtime::wasm_trampoline!(Actor);
 
 mod state;
 mod types;

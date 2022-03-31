@@ -8,8 +8,8 @@ use anyhow::anyhow;
 use ext::init;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, wasm_trampoline, ActorDowncast, ActorError,
-    Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Multimap,
+    CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::address::Address;
@@ -29,7 +29,8 @@ pub use self::policy::*;
 pub use self::state::*;
 pub use self::types::*;
 
-wasm_trampoline!(Actor);
+#[cfg(feature = "fil-actor")]
+fil_actors_runtime::wasm_trampoline!(Actor);
 
 #[doc(hidden)]
 pub mod ext;

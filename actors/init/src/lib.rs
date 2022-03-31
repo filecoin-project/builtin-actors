@@ -3,9 +3,7 @@
 
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{
-    actor_error, cbor, wasm_trampoline, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR,
-};
+use fil_actors_runtime::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::blockstore::Blockstore;
@@ -21,7 +19,8 @@ pub use self::types::*;
 mod state;
 mod types;
 
-wasm_trampoline!(Actor);
+#[cfg(feature = "fil-actor")]
+fil_actors_runtime::wasm_trampoline!(Actor);
 
 // * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)
 

@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime" }
+fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features = ["fil-actor"] }
 fvm_shared = { version = "0.3.1", default-features = false }
 fvm_ipld_hamt = "0.3.0"
 num-traits = "0.2.14"
@@ -27,3 +27,6 @@ anyhow = "1.0.56"
 
 [dev-dependencies]
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features = ["test_utils", "sector-default"] }
+[features]
+fil-actor = []
+

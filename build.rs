@@ -103,6 +103,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .arg("--target=wasm32-unknown-unknown")
         .arg("--profile=wasm")
         .arg("--locked")
+        .arg("--features=fil-actor")
         .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
         .env("RUSTFLAGS", rustflags)
         .env(NETWORK_ENV, network_name)
