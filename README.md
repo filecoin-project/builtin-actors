@@ -105,11 +105,13 @@ You can also _set_ a specific version with the `set-version` target.
 make set-version VERSION=7.1.1
 ```
 
-Finally, commit the version changes:
+Commit the version changes:
 
 ```bash
 git commit -a -m "Release $(make --quiet version)"
 ```
+
+Finally, create a PR to commit your changes, make sure your PR is approved and merged before move to the next step!
 
 ### 3: Publish Crates
 
