@@ -36,6 +36,7 @@ devnet = []
 [workspace]
 members = [
      "actors/*",
+     "test_vm",
 ]
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
