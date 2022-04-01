@@ -1,11 +1,9 @@
-use cid::{multihash, Cid};
-use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
+use cid::{Cid};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
-use fvm_shared::address::{Address, Protocol};
-use fvm_shared::bigint::{bigint_ser, Integer};
-use fvm_shared::blockstore::{Blockstore, MemoryBlockstore};
+use fvm_shared::address::{Address};
+use fvm_shared::bigint::{bigint_ser};
+use fvm_shared::blockstore::{MemoryBlockstore};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::de::Deserialize;
 use fvm_shared::encoding::tuple::*;
 use std::error::Error;
 use std::fmt;
@@ -36,18 +34,18 @@ impl<'bs> VM<'bs> {
     }
 
     // blindly overwrite the actor at this address whether it previously existed or not
-    pub fn set_actor(&mut self, key: Address, a: Actor) -> Result<(), fvm_ipld_hamt::Error> {
+    pub fn set_actor(&mut self, key: Address, a: Actor) -> Result<(), TestVMError> {
         let _ = self.actors.set(key.to_bytes().into(), a)?;
         Ok(())
     }
 
-    pub fn checkpoint(&mut self) -> Result<Cid, fvm_ipld_hamt::Error> {
+    pub fn checkpoint(&mut self) -> Result<Cid, TestVMError> {
         self.state_root = self.actors.flush()?;
         self.actors_dirty = false;
         Ok(self.state_root)
     }
 
-    pub fn rollback(&mut self, root: Cid) -> Result<(), fvm_ipld_hamt::Error> {
+    pub fn rollback(&mut self, root: Cid) -> Result<(), TestVMError> {
         self.actors =
             Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(&root, &self.store)?;
         self.state_root = root;
