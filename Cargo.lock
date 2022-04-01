@@ -591,7 +591,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.3.0",
  "fvm_shared 0.3.1",
  "log",
  "num-derive",
@@ -609,7 +609,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.3.0",
  "fvm_shared 0.3.1",
  "log",
  "num-derive",
@@ -631,7 +631,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.3.0",
  "fvm_shared 0.3.1",
  "itertools",
  "lazy_static",
@@ -650,7 +650,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.3.0",
  "fvm_shared 0.3.1",
  "indexmap",
  "integer-encoding",
@@ -681,7 +681,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.3.0",
  "fvm_shared 0.3.1",
  "indexmap",
  "integer-encoding",
@@ -724,7 +724,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.3.0",
  "fvm_shared 0.3.1",
  "lazy_static",
  "num-derive",
@@ -742,7 +742,7 @@ dependencies = [
  "cid",
  "derive_builder",
  "fvm_ipld_amt",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.3.0",
  "fvm_sdk",
  "fvm_shared 0.3.1",
  "getrandom",
@@ -938,6 +938,25 @@ dependencies = [
  "fvm_shared 0.2.2",
  "integer-encoding",
  "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "fvm_ipld_hamt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd4f07857e1978ce116716012ea6a675803fea00fb36504c307656f935f32578"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "cid",
+ "cs_serde_bytes",
+ "forest_hash_utils",
+ "fvm_shared 0.2.2",
+ "libipld-core",
+ "once_cell",
+ "serde",
+ "sha2",
  "thiserror",
 ]
 
@@ -1621,6 +1640,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bab24d30b911b2376f3a13cc2cd443142f0c81dda04c118693e35b3835757755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "test_vm"
+version = "8.0.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_runtime",
+ "fvm_ipld_hamt 0.2.0",
+ "fvm_shared 0.2.2",
+ "indexmap",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]

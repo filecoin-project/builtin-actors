@@ -353,13 +353,6 @@ where
             .map_err(|e| anyhow!("failed to compute unsealed sector CID; exit code: {}", e))
     }
 
-    fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), Error> {
-        match fvm::crypto::verify_seal(vi) {
-            Ok(true) => Ok(()),
-            Ok(false) | Err(_) => Err(Error::msg("invalid seal")),
-        }
-    }
-
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_post(verify_info) {
             Ok(true) => Ok(()),

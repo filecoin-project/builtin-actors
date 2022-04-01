@@ -197,9 +197,6 @@ pub trait Syscalls {
         pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error>;
 
-    /// Verifies a sector seal proof.
-    fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), anyhow::Error>;
-
     /// Verifies a window proof of spacetime.
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error>;
 

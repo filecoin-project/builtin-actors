@@ -111,7 +111,6 @@ pub struct Expectations {
     pub expect_create_actor: Option<ExpectCreateActor>,
     pub expect_delete_actor: Option<Address>,
     pub expect_verify_sigs: VecDeque<ExpectedVerifySig>,
-    pub expect_verify_seal: Option<ExpectVerifySeal>,
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: Option<ExpectComputeUnsealedSectorCid>,
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
@@ -153,11 +152,6 @@ impl Expectations {
             self.expect_create_actor.is_none(),
             "expected actor to be created, uncreated actor: {:?}",
             self.expect_create_actor
-        );
-        assert!(
-            self.expect_verify_seal.is_none(),
-            "expect_verify_seal {:?}, not received",
-            self.expect_verify_seal.as_ref().unwrap()
         );
         assert!(
             self.expect_compute_unsealed_sector_cid.is_none(),
@@ -252,12 +246,6 @@ pub struct ExpectedVerifySig {
     pub signer: Address,
     pub plaintext: Vec<u8>,
     pub result: Result<(), anyhow::Error>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ExpectVerifySeal {
-    seal: SealVerifyInfo,
-    exit_code: ExitCode,
 }
 
 #[derive(Clone, Debug)]
@@ -483,12 +471,6 @@ impl MockRuntime {
     pub fn expect_create_actor(&mut self, code_id: Cid, actor_id: ActorID) {
         let a = ExpectCreateActor { code_id, actor_id };
         self.expectations.borrow_mut().expect_create_actor = Some(a);
-    }
-
-    #[allow(dead_code)]
-    pub fn expect_verify_seal(&mut self, seal: SealVerifyInfo, exit_code: ExitCode) {
-        let a = ExpectVerifySeal { seal, exit_code };
-        self.expectations.borrow_mut().expect_verify_seal = Some(a);
     }
 
     #[allow(dead_code)]
@@ -983,20 +965,6 @@ impl Syscalls for MockRuntime {
             return Err(anyhow!(ActorError::new(exp.exit_code, "Expected Failure".to_string(),)));
         }
         Ok(exp.cid)
-    }
-    fn verify_seal(&self, seal: &SealVerifyInfo) -> anyhow::Result<()> {
-        let exp =
-            self.expectations.borrow_mut().expect_verify_seal.take().ok_or_else(
-                || actor_error!(ErrIllegalState; "Unexpected syscall to verify seal"),
-            )?;
-
-        if exp.seal != *seal {
-            return Err(anyhow!(actor_error!(ErrIllegalState; "Unexpected seal verification"),));
-        }
-        if exp.exit_code != ExitCode::Ok {
-            return Err(anyhow!(ActorError::new(exp.exit_code, "Expected Failure".to_string(),)));
-        }
-        Ok(())
     }
     fn verify_post(&self, post: &WindowPoStVerifyInfo) -> anyhow::Result<()> {
         let exp =
