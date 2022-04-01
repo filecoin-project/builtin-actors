@@ -1,8 +1,8 @@
-use cid::{Cid};
+use cid::Cid;
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
-use fvm_shared::address::{Address};
-use fvm_shared::bigint::{bigint_ser};
-use fvm_shared::blockstore::{MemoryBlockstore};
+use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser;
+use fvm_shared::blockstore::MemoryBlockstore;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::encoding::tuple::*;
 use std::error::Error;
