@@ -39,10 +39,6 @@ mod types;
 
 // * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)
 
-/// GasOnSubmitVerifySeal is amount of gas charged for SubmitPoRepForBulkVerify
-/// This number is empirically determined
-const GAS_ON_SUBMIT_VERIFY_SEAL: i64 = 34721049;
-
 /// Storage power actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -356,7 +352,7 @@ impl Actor {
                 e.downcast_default(ExitCode::ErrIllegalState, "failed to flush proofs batch map")
             })?;
 
-            rt.charge_gas("OnSubmitVerifySeal", GAS_ON_SUBMIT_VERIFY_SEAL);
+            rt.on_submit_verify_seal();
             st.proof_validation_batch = Some(mmrc);
             Ok(())
         })?;

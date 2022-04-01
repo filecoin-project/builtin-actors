@@ -157,10 +157,6 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
     /// - deal collateral locked by the storage market actor
     fn total_fil_circ_supply(&self) -> TokenAmount;
 
-    /// ChargeGas charges specified amount of `gas` for execution.
-    /// `name` provides information about gas charging point
-    fn charge_gas(&mut self, name: &'static str, compute: i64);
-
     /// This function is a workaround for go-implementation's faulty exit code handling of
     /// parameters before version 7
     fn deserialize_params<O: de::DeserializeOwned>(
@@ -245,4 +241,6 @@ pub trait Syscalls {
     ) -> Result<(), anyhow::Error>;
 
     fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error>;
+
+    fn on_submit_verify_seal(&self);
 }
