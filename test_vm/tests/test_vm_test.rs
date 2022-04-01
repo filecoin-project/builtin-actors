@@ -1,28 +1,16 @@
-use test_vm::{
-    VM, Actor, actor,
-};
-use cid::{multihash, Cid};
-use fvm_shared::blockstore::{MemoryBlockstore};
-use fil_actors_runtime::{
-    INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-};
-use fil_actors_runtime::test_utils::{ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID, make_builtin};
+use fil_actors_runtime::test_utils::{make_builtin, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID};
+use fvm_shared::address::Address;
+use fvm_shared::blockstore::MemoryBlockstore;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::address::{Address};
-
+use test_vm::{actor, VM};
 
 #[test]
 fn state_control() {
-    let mut store = MemoryBlockstore::new();
+    let store = MemoryBlockstore::new();
     let mut v = VM::new(&store);
 
     // set actor
-    let a1 = actor(
-        *ACCOUNT_ACTOR_CODE_ID,
-        make_builtin(b"a1-head"),
-        42,
-        TokenAmount::from(10u8),
-    );
+    let a1 = actor(*ACCOUNT_ACTOR_CODE_ID, make_builtin(b"a1-head"), 42, TokenAmount::from(10u8));
     v.set_actor(Address::new_id(1000), a1.clone()).unwrap();
     let out = v.get_actor(Address::new_id(1000)).unwrap();
     assert_eq!(out, a1);
@@ -37,20 +25,4 @@ fn state_control() {
     // a2 is gone
     v.get_actor(Address::new_id(2222)).expect_err("a2 should be rolled back");
     assert_eq!(v.get_actor(Address::new_id(1000)).unwrap(), a1);
-
 }
-
-//#[test]
-//fn normalize_addr() {
-    // set up init actor
-
-    // set up account actor
-
-    // set up system actor
-
-    // normalize system actor => nop
-
-    // normalize account actor => nop
-
-    // normalize account actor by id addr => resolves 
-//}
