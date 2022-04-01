@@ -17,9 +17,9 @@ pub struct VM<'bs> {
 
 impl<'bs> VM<'bs> {
     pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
-        let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(&store);
+        let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
         VM {
-            store: &store,
+            store: store,
             state_root: actors.flush().unwrap(),
             actors_dirty: false,
             actors: actors,
@@ -47,7 +47,7 @@ impl<'bs> VM<'bs> {
 
     pub fn rollback(&mut self, root: Cid) -> Result<(), TestVMError> {
         self.actors =
-            Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(&root, &self.store)?;
+            Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(&root, self.store)?;
         self.state_root = root;
         self.actors_dirty = false;
         Ok(())
@@ -64,7 +64,7 @@ pub struct Actor {
 }
 
 pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
-    Actor { code: code, head: head, call_seq_num: seq, balance: bal }
+    Actor { code, head, call_seq_num: seq, balance: bal }
 }
 
 #[derive(Debug)]
