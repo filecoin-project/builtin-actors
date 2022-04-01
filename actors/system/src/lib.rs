@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 use cid::Cid;
 use fvm_shared::blockstore::{Blockstore, CborStore};
+use fvm_shared::encoding::tuple::*;
 use fvm_shared::encoding::{Cbor, RawBytes};
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use serde::{Deserialize, Serialize};
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, ActorError, SYSTEM_ACTOR_ADDR};
@@ -24,7 +24,7 @@ pub enum Method {
 }
 
 /// System actor state.
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Default, Deserialize_tuple, Serialize_tuple)]
 #[serde(transparent)]
 pub struct State {
     // builtin actor registry: Vec<(String, Cid)>
