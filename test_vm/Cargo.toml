@@ -22,5 +22,6 @@ serde = { version = "1.0.136", features = ["derive"] }
 thiserror = "1.0.30"
 anyhow = "1.0.56"
 [dev-dependencies]
+fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../actors/runtime", features = ["test_utils", "sector-default"] }
 
 
