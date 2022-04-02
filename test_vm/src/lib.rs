@@ -18,12 +18,7 @@ pub struct VM<'bs> {
 impl<'bs> VM<'bs> {
     pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
-        VM {
-            store,
-            state_root: actors.flush().unwrap(),
-            actors_dirty: false,
-            actors,
-        }
+        VM { store, state_root: actors.flush().unwrap(), actors_dirty: false, actors }
     }
 
     pub fn get_actor(&self, addr: Address) -> Result<Actor, TestVMError> {
