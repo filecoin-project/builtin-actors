@@ -1,15 +1,16 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
-use cid::Cid;
+use cid::{multihash, Cid};
 use fvm_shared::blockstore::{Blockstore, CborStore};
 use fvm_shared::encoding::tuple::*;
 use fvm_shared::encoding::{Cbor, RawBytes};
+use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -25,10 +26,9 @@ pub enum Method {
 
 /// System actor state.
 #[derive(Default, Deserialize_tuple, Serialize_tuple)]
-#[serde(transparent)]
 pub struct State {
     // builtin actor registry: Vec<(String, Cid)>
-    builtin_actors: Cid,
+    pub builtin_actors: Cid,
 }
 impl Cbor for State {}
 
@@ -56,7 +56,14 @@ impl Actor {
     {
         rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
 
-        rt.create(&State::default())?;
+        let c = rt
+            .store()
+            .put_cbor(&Vec::<(String, Cid)>::new(), multihash::Code::Blake2b256)
+            .map_err(|e| {
+                e.downcast_default(ExitCode::ErrIllegalState, "failed to construct state")
+            })?;
+
+        rt.create(&State { builtin_actors: c })?;
         Ok(())
     }
 }
@@ -89,7 +96,7 @@ mod tests {
     use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 
-    use crate::{Actor, Cid, Method, State};
+    use crate::{Actor, Method, State};
 
     pub fn new_runtime() -> MockRuntime {
         MockRuntime {
@@ -108,6 +115,7 @@ mod tests {
         rt.call::<Actor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
 
         let state: State = rt.get_state().unwrap();
-        assert_eq!(state.builtin_actors, Cid::default());
+        let builtin_actors = state.get_builtin_actors(&rt.store).unwrap();
+        assert!(builtin_actors.is_empty());
     }
 }
