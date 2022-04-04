@@ -21,31 +21,26 @@ impl<'bs> VM<'bs> {
         VM { store, state_root: actors.flush().unwrap(), actors_dirty: false, actors }
     }
 
-    pub fn get_actor(&self, addr: Address) -> Result<Actor, TestVMError> {
-        match self.actors.get(&addr.to_bytes())? {
-            None => Err(vm_err("failed to get addr")),
-            Some(a) => Ok(a.clone()),
-        }
+    pub fn get_actor(&self, addr: &Address) -> Option<&Actor> {
+        self.actors.get(&addr.to_bytes()).unwrap()
     }
 
     // blindly overwrite the actor at this address whether it previously existed or not
-    pub fn set_actor(&mut self, key: Address, a: Actor) -> Result<(), TestVMError> {
-        let _ = self.actors.set(key.to_bytes().into(), a)?;
-        Ok(())
+    pub fn set_actor(&mut self, key: &Address, a: Actor) {
+        let _ = self.actors.set(key.to_bytes().into(), a).unwrap();
     }
 
-    pub fn checkpoint(&mut self) -> Result<Cid, TestVMError> {
-        self.state_root = self.actors.flush()?;
+    pub fn checkpoint(&mut self) -> Cid {
+        self.state_root = self.actors.flush().unwrap();
         self.actors_dirty = false;
-        Ok(self.state_root)
+        self.state_root
     }
 
-    pub fn rollback(&mut self, root: Cid) -> Result<(), TestVMError> {
+    pub fn rollback(&mut self, root: &Cid) {
         self.actors =
-            Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(&root, self.store)?;
-        self.state_root = root;
+            Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(root, self.store).unwrap();
+        self.state_root = *root;
         self.actors_dirty = false;
-        Ok(())
     }
 }
 
