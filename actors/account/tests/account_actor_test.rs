@@ -4,8 +4,8 @@
 use fil_actor_account::{Actor as AccountActor, State};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::test_utils::*;
-use fvm_shared::address::Address;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
 
 macro_rules! account_tests {

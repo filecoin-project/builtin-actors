@@ -4,8 +4,8 @@
 use std::borrow::Borrow;
 
 use cid::Cid;
-use fvm_ipld_hamt::Error;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_hamt::Error;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::HAMT_BIT_WIDTH;

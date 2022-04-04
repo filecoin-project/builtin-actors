@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fvm_ipld_hamt::Error;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_hamt::Error;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 

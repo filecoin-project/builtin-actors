@@ -4,8 +4,8 @@
 use fil_actor_cron::{Actor as CronActor, ConstructorParams, Entry, State};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
-use fvm_shared::address::Address;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
 
 fn construct_runtime() -> MockRuntime {

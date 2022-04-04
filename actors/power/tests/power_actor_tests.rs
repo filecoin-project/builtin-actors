@@ -1,5 +1,5 @@
-use fvm_shared::econ::TokenAmount;
 use fvm_ipld_encoding::BytesDe;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use num_traits::Zero;
 
