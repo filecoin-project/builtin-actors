@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_shared::encoding::tuple::*;
-use fvm_shared::encoding::Cbor;
+use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::Cbor;
 
 use crate::util::unmarshallable::UnmarshallableCBOR;
 

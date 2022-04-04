@@ -25,18 +25,17 @@ use fil_actors_runtime::{
 };
 
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_encoding::de::Deserialize;
+use fvm_ipld_encoding::ser::Serialize;
+use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
-use fvm_shared::blockstore::CborStore;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::de::Deserialize;
-use fvm_shared::encoding::ser::Serialize;
-use fvm_shared::encoding::{BytesDe, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{

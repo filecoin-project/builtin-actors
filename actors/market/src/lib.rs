@@ -4,14 +4,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use fvm_ipld_bitfield::BitField;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
-use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{Cbor, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::reward::ThisEpochRewardReturn;
