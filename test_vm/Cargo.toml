@@ -1,0 +1,27 @@
+[package]
+name = "test_vm"
+description = "Reference vm for integration testing builtin actors"
+version = "8.0.0-alpha.1"
+license = "MIT OR Apache-2.0"
+authors = ["Protocol Labs", "Filecoin Core Devs"]
+edition = "2021"
+keywords = ["filecoin", "web3", "wasm"]
+
+[lib]
+
+[dependencies]
+fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../actors/runtime" }
+fvm_shared = { version = "0.2.2", default-features = false }
+fvm_ipld_hamt = "0.2.0"
+num-traits = "0.2.14"
+num-derive = "0.3.3"
+log = "0.4.14"
+indexmap = { version = "1.8.0", features = ["serde-1"] }
+cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+serde = { version = "1.0.136", features = ["derive"] }
+thiserror = "1.0.30"
+anyhow = "1.0.56"
+[dev-dependencies]
+fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../actors/runtime", features = ["test_utils", "sector-default"] }
+
+

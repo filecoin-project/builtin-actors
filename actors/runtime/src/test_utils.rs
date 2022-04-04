@@ -65,7 +65,7 @@ lazy_static! {
 const IPLD_RAW: u64 = 0x55;
 
 /// Returns an identity CID for bz.
-fn make_builtin(bz: &[u8]) -> Cid {
+pub fn make_builtin(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, Multihash::wrap(0, bz).expect("name too long"))
 }
 
