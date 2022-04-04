@@ -28,6 +28,8 @@ log = "0.4.14"
 byteorder = "1.4.3"
 anyhow = "1.0.56"
 itertools = "0.10.3"
+fvm_ipld_blockstore = { version = "0.1", git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+fvm_ipld_encoding = { version = "0.1", git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 
 [dev-dependencies]
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features = ["test_utils", "sector-default"] }

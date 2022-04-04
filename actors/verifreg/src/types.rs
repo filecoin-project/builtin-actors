@@ -4,7 +4,7 @@
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::crypto::signature::Signature;
-use fvm_shared::encoding::tuple::*;
+use fvm_ipld_encoding::tuple::*;
 use fvm_shared::sector::StoragePower;
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;

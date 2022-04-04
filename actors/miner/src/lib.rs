@@ -22,16 +22,16 @@ use fil_actors_runtime::{
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::{BigInt, Integer};
-use fvm_shared::blockstore::{Blockstore, CborStore};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::randomness::DomainSeparationTag::WindowedPoStChallengeSeed;
 use fvm_shared::crypto::randomness::*;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{from_slice, BytesDe, Cbor, RawBytes};
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.

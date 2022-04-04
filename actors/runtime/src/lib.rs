@@ -13,7 +13,7 @@ use cid::Cid;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_hamt::{BytesKey, Error as HamtError, Hamt};
 use fvm_shared::bigint::BigInt;
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
 pub use fvm_shared::BLOCKS_PER_EPOCH as EXPECTED_LEADERS_PER_EPOCH;
 use serde::de::DeserializeOwned;
 use serde::Serialize;

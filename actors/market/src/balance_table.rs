@@ -5,7 +5,7 @@ use cid::Cid;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
 use num_traits::{Signed, Zero};
 
@@ -106,7 +106,7 @@ where
 #[cfg(test)]
 mod tests {
     use fvm_shared::address::Address;
-    use fvm_shared::blockstore::MemoryBlockstore;
+    use fvm_ipld_blockstore::MemoryBlockstore;
     use fvm_shared::econ::TokenAmount;
 
     use crate::balance_table::BalanceTable;

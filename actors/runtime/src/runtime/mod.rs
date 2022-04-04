@@ -4,13 +4,13 @@
 use cid::Cid;
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{Cbor, RawBytes};
+use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{

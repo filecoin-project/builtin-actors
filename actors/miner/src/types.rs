@@ -9,8 +9,8 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
-use fvm_shared::encoding::{serde_bytes, BytesDe};
+use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::{serde_bytes, BytesDe};
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,

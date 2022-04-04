@@ -1,6 +1,6 @@
 use fil_actors_runtime::test_utils::{make_builtin, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::address::Address;
-use fvm_shared::blockstore::MemoryBlockstore;
 use fvm_shared::econ::TokenAmount;
 use test_vm::{actor, VM};
 

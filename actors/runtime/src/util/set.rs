@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_hamt::Error;
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::HAMT_BIT_WIDTH;
 
 use crate::{make_empty_map, make_map_with_root, BytesKey, Map};

@@ -4,7 +4,7 @@
 use fil_actors_runtime::Multimap;
 use fvm_ipld_amt::Amt;
 use fvm_shared::address::Address;
-use fvm_shared::blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::HAMT_BIT_WIDTH;
 
 #[test]

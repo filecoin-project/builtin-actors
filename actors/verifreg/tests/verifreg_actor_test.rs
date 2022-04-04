@@ -18,7 +18,7 @@ lazy_static! {
 
 mod construction {
     use fvm_shared::address::{Address, BLS_PUB_LEN};
-    use fvm_shared::encoding::RawBytes;
+    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::error::ExitCode;
     use fvm_shared::MethodNum;
 
@@ -66,7 +66,7 @@ mod construction {
 mod verifiers {
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
-    use fvm_shared::encoding::RawBytes;
+    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
 
@@ -220,7 +220,7 @@ mod verifiers {
 mod clients {
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
-    use fvm_shared::encoding::RawBytes;
+    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
 
@@ -406,7 +406,7 @@ mod clients {
 
 mod datacap {
     use fvm_shared::address::Address;
-    use fvm_shared::encoding::RawBytes;
+    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::error::ExitCode;
     use fvm_shared::MethodNum;
 

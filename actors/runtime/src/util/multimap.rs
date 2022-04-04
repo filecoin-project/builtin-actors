@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_hamt::Error;
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 

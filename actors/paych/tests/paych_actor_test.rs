@@ -20,7 +20,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::RawBytes;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_CONSTRUCTOR;
 

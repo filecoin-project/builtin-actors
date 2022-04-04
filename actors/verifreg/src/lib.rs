@@ -9,8 +9,8 @@ use fil_actors_runtime::{
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
-use fvm_shared::blockstore::Blockstore;
-use fvm_shared::encoding::RawBytes;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;

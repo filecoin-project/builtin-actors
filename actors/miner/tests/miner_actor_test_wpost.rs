@@ -4,7 +4,7 @@ use fil_actors_runtime::test_utils::*;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::RawBytes;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::RegisteredPoStProof;
