@@ -100,13 +100,13 @@ fn simple_construction() {
 #[test]
 fn label_cbor() {
     let label = Label::String("i_am_random_string____i_am_random_string____".parse().unwrap());
-    let sv_bz = to_vec(&label)
+    let _ = to_vec(&label)
         .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
         .unwrap();
 
     let label2 = Label::Bytes(b"i_am_random_____i_am_random_____".to_vec());
     println!("{:?}", (b"i_am_random_____i_am_random_____".to_vec()));
-    let sv_bz = to_vec(&label2)
+    let _ = to_vec(&label2)
         .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
         .unwrap();
 
