@@ -25,6 +25,7 @@ pub fn is_piece_cid(c: &Cid) -> bool {
         && c.hash().size() == 32
 }
 
+#[derive(Debug)]
 pub enum Label {
     String(String),
     Bytes(Vec<u8>),
