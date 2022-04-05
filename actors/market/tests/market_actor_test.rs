@@ -103,14 +103,20 @@ fn label_cbor() {
     let sv_bz = to_vec(&label)
         .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
         .unwrap();
-    println!("{:?}", sv_bz);
 
     let label2 = Label::Bytes(b"i_am_random_____i_am_random_____".to_vec());
     println!("{:?}", (b"i_am_random_____i_am_random_____".to_vec()));
     let sv_bz = to_vec(&label2)
         .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
         .unwrap();
-    println!("{:?}", sv_bz);
+
+    let empty_string_label = Label::String("".parse().unwrap());
+    let sv_bz = to_vec(&empty_string_label).unwrap();
+    assert_eq!(vec![0x60], sv_bz);
+
+    let empty_bytes_label = Label::Bytes(b"".to_vec());
+    let sv_bz = to_vec(&empty_bytes_label).unwrap();
+    assert_eq!(vec![0x40], sv_bz);
 }
 
 #[test]
