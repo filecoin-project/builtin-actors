@@ -73,10 +73,12 @@ jobs:
       with:
         command: ${{ matrix.command }}
         args: ${{ matrix.args }}
+    - name: making bundle
+      if: ${{ matrix.command == 'build' }}
+      run: ./build-bundle.sh
     - name: Publishing build artifacts
       if: ${{ matrix.command == 'build' }}
       uses: actions/upload-artifact@v2
       with:
         name: bundle
-        path: |
-          target/**/bundle.car
+        path: output/builtin-actors.car
