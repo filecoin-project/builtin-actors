@@ -7,10 +7,7 @@ mod abort {
 
     #[derive(thiserror::Error, Debug)]
     #[error("abort error")]
-    pub struct Abort {
-        /// This ensures that this error can not be crated outside.
-        _private: (),
-    }
+    pub enum Abort {}
 
     #[cfg(feature = "fil-actor")]
     fn maybe_abort(exit_code: ExitCode, msg: Option<&str>) -> ! {
