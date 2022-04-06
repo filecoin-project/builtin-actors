@@ -1173,6 +1173,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "hierarchical-sca"
+version = "8.0.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_runtime",
+ "fvm_ipld_hamt",
+ "fvm_shared 0.3.1",
+ "indexmap",
+ "integer-encoding",
+ "lazy_static",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
