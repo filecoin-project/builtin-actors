@@ -225,7 +225,7 @@ fn account_actor_check() {
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
 
     assert_eq!(
-        ExitCode::ErrForbidden,
+        ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
             Method::AddBalance as u64,
             &RawBytes::serialize(provider_addr).unwrap(),

@@ -254,7 +254,7 @@ mod test_award_block_reward {
             RawBytes::serialize(BigIntSer(&expected_reward)).unwrap(),
             expected_reward.clone(),
             RawBytes::default(),
-            ExitCode::ErrForbidden,
+            ExitCode::USR_FORBIDDEN,
         );
         rt.expect_send(
             *BURNT_FUNDS_ACTOR_ADDR,

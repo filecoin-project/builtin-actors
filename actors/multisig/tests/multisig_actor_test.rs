@@ -160,7 +160,7 @@ fn test_add_signer() {
             increase: false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
-            code: ExitCode::ErrForbidden,
+            code: ExitCode::USR_FORBIDDEN,
         },
         TestCase{
             desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
@@ -171,7 +171,7 @@ fn test_add_signer() {
             increase:false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
-            code: ExitCode::ErrForbidden,
+            code: ExitCode::USR_FORBIDDEN,
         },
         TestCase{
             desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
@@ -182,7 +182,7 @@ fn test_add_signer() {
             increase:false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
-            code: ExitCode::ErrForbidden,
+            code: ExitCode::USR_FORBIDDEN,
         }
     ];
 

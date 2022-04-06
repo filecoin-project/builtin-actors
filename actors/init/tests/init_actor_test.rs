@@ -36,7 +36,7 @@ fn abort_cant_call_exec() {
 
     let err =
         exec_and_verify(&mut rt, *POWER_ACTOR_CODE_ID, &"").expect_err("Exec should have failed");
-    assert_eq!(err.exit_code(), ExitCode::ErrForbidden);
+    assert_eq!(err.exit_code(), ExitCode::USR_FORBIDDEN);
 }
 
 #[test]

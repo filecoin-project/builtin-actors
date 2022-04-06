@@ -128,7 +128,7 @@ mod paych_constructor {
             caller_code: *INIT_ACTOR_CODE_ID,
             new_actor_code: *MULTISIG_ACTOR_CODE_ID,
             payer_code: *ACCOUNT_ACTOR_CODE_ID,
-            expected_exit_code: ExitCode::ErrForbidden,
+            expected_exit_code: ExitCode::USR_FORBIDDEN,
         }];
 
         for test_case in test_cases {
@@ -637,12 +637,12 @@ mod update_channel_state_extra {
     #[test]
     #[ignore = "old functionality -- test framework needs to be updated"]
     fn extra_call_fail() {
-        let (mut rt, sv) = construct_runtime(ExitCode::ErrPlaceholder);
+        let (mut rt, sv) = construct_runtime(ExitCode::USR_UNSPECIFIED);
         expect_error(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
-            ExitCode::ErrPlaceholder,
+            ExitCode::USR_UNSPECIFIED,
         );
         rt.verify();
     }
@@ -876,13 +876,13 @@ mod actor_collect {
             TestCase {
                 dont_settle: true,
                 exp_send_to: ExitCode::OK,
-                exp_collect_exit: ExitCode::ErrForbidden,
+                exp_collect_exit: ExitCode::USR_FORBIDDEN,
             },
             // fails if Failed to send funds to `To`
             TestCase {
                 dont_settle: false,
-                exp_send_to: ExitCode::ErrPlaceholder,
-                exp_collect_exit: ExitCode::ErrPlaceholder,
+                exp_send_to: ExitCode::USR_UNSPECIFIED,
+                exp_collect_exit: ExitCode::USR_UNSPECIFIED,
             },
         ];
 

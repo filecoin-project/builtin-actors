@@ -88,7 +88,7 @@ mod verifiers {
             allowance: VERIFIER_ALLOWANCE.clone(),
         };
         expect_abort(
-            ExitCode::SysErrForbidden,
+            ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::AddVerifier as MethodNum,
                 &RawBytes::serialize(params).unwrap(),
@@ -183,7 +183,7 @@ mod verifiers {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
         assert_ne!(h.root, caller);
         expect_abort(
-            ExitCode::SysErrForbidden,
+            ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::RemoveVerifier as MethodNum,
                 &RawBytes::serialize(*VERIFIER).unwrap(),
@@ -355,7 +355,7 @@ mod clients {
         let params =
             AddVerifierClientParams { address: *CLIENT, allowance: CLIENT_ALLOWANCE.clone() };
         expect_abort(
-            ExitCode::ErrNotFound,
+            ExitCode::USR_NOT_FOUND,
             rt.call::<VerifregActor>(
                 Method::AddVerifiedClient as MethodNum,
                 &RawBytes::serialize(params).unwrap(),
@@ -495,7 +495,7 @@ mod datacap {
         // Use full allowance.
         h.use_bytes(&mut rt, &CLIENT, &allowance).unwrap();
         // Fail to use any more because client was removed.
-        expect_abort(ExitCode::ErrNotFound, h.use_bytes(&mut rt, &CLIENT, &allowance));
+        expect_abort(ExitCode::USR_NOT_FOUND, h.use_bytes(&mut rt, &CLIENT, &allowance));
         h.check_state()
     }
 
@@ -507,7 +507,7 @@ mod datacap {
         let params =
             UseBytesParams { address: *CLIENT, deal_size: MINIMUM_VERIFIED_DEAL_SIZE.clone() };
         expect_abort(
-            ExitCode::SysErrForbidden,
+            ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::UseBytes as MethodNum,
                 &RawBytes::serialize(params).unwrap(),
@@ -536,7 +536,7 @@ mod datacap {
     fn consume_requires_client_exists() {
         let (h, mut rt) = new_harness();
         expect_abort(
-            ExitCode::ErrNotFound,
+            ExitCode::USR_NOT_FOUND,
             h.use_bytes(&mut rt, &CLIENT, &MINIMUM_VERIFIED_DEAL_SIZE),
         );
         h.check_state()
@@ -661,7 +661,7 @@ mod datacap {
         let params =
             RestoreBytesParams { address: *CLIENT, deal_size: MINIMUM_VERIFIED_DEAL_SIZE.clone() };
         expect_abort(
-            ExitCode::SysErrForbidden,
+            ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::RestoreBytes as MethodNum,
                 &RawBytes::serialize(params).unwrap(),

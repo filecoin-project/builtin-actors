@@ -205,7 +205,7 @@ fn invalid_submissions() {
             params,
             PoStConfig::empty(),
         );
-        expect_abort_contains_message(ExitCode::ErrNotFound, "no such partition", result);
+        expect_abort_contains_message(ExitCode::USR_NOT_FOUND, "no such partition", result);
         rt.reset();
     }
 
