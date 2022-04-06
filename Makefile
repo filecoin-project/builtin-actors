@@ -50,6 +50,9 @@ publish:
 	echo "$(ORDERED_PACKAGES)" | xargs -n1 cargo publish -p "$$pkg"
 	done
 
+# Create a bundle in a deterministic location
+bundle: deps-build
+	./build-bundle.sh
 
 # Check if the working tree is clean.
 check-clean:
@@ -69,4 +72,4 @@ deps-release:
 		exit 1; \
 	}
 
-.PHONY: check check-clean deps deps-release deps-release test publish bump-version set-version
+.PHONY: check check-clean deps deps-release deps-release test publish bump-version set-version bundle
