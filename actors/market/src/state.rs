@@ -7,14 +7,14 @@ use cid::Cid;
 use fil_actors_runtime::{
     actor_error, make_empty_map, ActorDowncast, ActorError, Array, Set, SetMultimap,
 };
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
-use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
-use fvm_shared::encoding::Cbor;
 use fvm_shared::error::ExitCode;
 use fvm_shared::HAMT_BIT_WIDTH;
 use num_traits::{Signed, Zero};

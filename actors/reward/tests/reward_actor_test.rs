@@ -10,11 +10,11 @@ use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
@@ -73,7 +73,7 @@ mod construction_tests {
 }
 
 mod test_award_block_reward {
-    use fvm_shared::encoding::RawBytes;
+    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::error::ExitCode;
     use fvm_shared::sector::StoragePower;
     use fvm_shared::METHOD_SEND;

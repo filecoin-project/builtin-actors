@@ -1,9 +1,10 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 use cid::{multihash, Cid};
-use fvm_shared::blockstore::{Blockstore, CborStore};
-use fvm_shared::encoding::tuple::*;
-use fvm_shared::encoding::{Cbor, RawBytes};
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::CborStore;
+use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
@@ -90,7 +91,7 @@ impl ActorCode for Actor {
 
 #[cfg(test)]
 mod tests {
-    use fvm_shared::encoding::RawBytes;
+    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::MethodNum;
 
     use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};

@@ -3,9 +3,9 @@ use fil_actor_multisig::{
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 

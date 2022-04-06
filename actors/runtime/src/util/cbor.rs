@@ -1,4 +1,4 @@
-use fvm_shared::encoding::{to_vec, RawBytes};
+use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::error::ExitCode;
 use serde::{de, ser};
 

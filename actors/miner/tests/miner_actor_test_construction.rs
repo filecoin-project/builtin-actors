@@ -6,10 +6,9 @@ use fil_actor_miner::{
     Actor, Deadline, Deadlines, Method, MinerConstructorParams as ConstructorParams, State,
 };
 
+use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
 use fvm_shared::address::Address;
-use fvm_shared::blockstore::CborStore;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{blake2b_256, BytesDe, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorSize};
 
