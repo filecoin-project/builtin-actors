@@ -104,4 +104,40 @@ macro_rules! actor_error {
     ( $code:ident, $msg:literal $(, $ex:expr)+ ) => {
         $crate::actor_error!($code; $msg $(, $ex)*)
     };
+
+    ($code:ident, $fmt:expr, $($arg:tt)*) => {
+        $crate::actor_error!($code, format!($fmt, $($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! ensure {
+    ($cond:expr, $code:ident, $msg:literal $(,)?) => {
+        if !$cond {
+            return Err($crate::actor_error!($code, $msg));
+        }
+    };
+    ($cond:expr, $code:ident, $err:expr $(,)?) => {
+        if !$cond {
+            return Err($crate::actor_error!($code, $err));
+        }
+    };
+    ($cond:expr, $code:ident, $fmt:expr, $($arg:tt)*) => {
+        if !$cond {
+            return Err($crate::actor_error!($code, $fmt, $($arg)*));
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! ensure_args {
+    ($cond:expr, $msg:literal $(,)?) => {
+        $crate::ensure!($cond, ErrIllegalArgument, $msg)
+    };
+    ($cond:expr, $err:expr $(,)?) => {
+        $crate::ensure!($cond, ErrIlegalArgument, $err)
+    };
+    ($cond:expr, $fmt:expr, $($arg:tt)*) => {
+        $crate::ensure!($cond, ErrIllegalArgument, $fmt, $($arg)*)
+    };
 }

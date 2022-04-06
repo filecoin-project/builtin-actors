@@ -9,6 +9,16 @@ use fvm_shared::error::ExitCode;
 
 use crate::ActorError;
 
+pub trait ActorCastResult<T, E: ActorDowncast> {
+    fn unwrap_with_default(self, code: ExitCode, msg: impl AsRef<str>) -> Result<T, ActorError>;
+}
+
+impl<T, E: ActorDowncast> ActorCastResult<T, E> for Result<T, E> {
+    fn unwrap_with_default(self, code: ExitCode, msg: impl AsRef<str>) -> Result<T, ActorError> {
+        self.map_err(|err| err.downcast_default(code, msg))
+    }
+}
+
 /// Trait to allow multiple error types to be able to be downcasted into an `ActorError`.
 pub trait ActorDowncast {
     /// Downcast a dynamic std Error into an `ActorError`. If the error cannot be downcasted

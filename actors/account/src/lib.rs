@@ -11,7 +11,7 @@ use num_traits::FromPrimitive;
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::cbor;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, ActorError};
+use fil_actors_runtime::{actor_error, ensure_args, ActorError};
 
 pub use self::state::State;
 
@@ -39,14 +39,12 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
-        match address.protocol() {
-            Protocol::Secp256k1 | Protocol::BLS => {}
-            protocol => {
-                return Err(actor_error!(ErrIllegalArgument;
-                    "address must use BLS or SECP protocol, got {}", protocol));
-            }
-        }
+        rt.validate_immediate_caller_is([&*SYSTEM_ACTOR_ADDR])?;
+        ensure_args!(
+            matches!(address.protocol(), Protocol::Secp256k1 | Protocol::BLS),
+            "address must use BLS or SECP protocol, got {}",
+            address.protocol(),
+        );
         rt.create(&State { address })?;
         Ok(())
     }

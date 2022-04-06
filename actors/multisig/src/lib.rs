@@ -6,8 +6,8 @@ use std::collections::BTreeSet;
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Runtime, Syscalls};
 use fil_actors_runtime::{
-    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorDowncast,
-    ActorError, Map, INIT_ACTOR_ADDR,
+    actor_error, cbor, ensure, ensure_args, make_empty_map, make_map_with_root, resolve_to_id_addr,
+    ActorCastResult, ActorDowncast, ActorError, Map, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -55,51 +55,37 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*INIT_ACTOR_ADDR))?;
-
-        if params.signers.is_empty() {
-            return Err(actor_error!(ErrIllegalArgument; "Must have at least one signer"));
-        }
-
-        if params.signers.len() > SIGNERS_MAX {
-            return Err(actor_error!(
-                ErrIllegalArgument,
-                "cannot add more than {} signers",
-                SIGNERS_MAX
-            ));
-        }
+        rt.validate_immediate_caller_is([&*INIT_ACTOR_ADDR])?;
+        ensure_args!(!params.signers.is_empty(), "Must have at least one signer");
+        ensure_args!(
+            params.signers.len() <= SIGNERS_MAX,
+            "cannot add more than {} signers",
+            SIGNERS_MAX
+        );
 
         // resolve signer addresses and do not allow duplicate signers
         let mut resolved_signers = Vec::with_capacity(params.signers.len());
         let mut dedup_signers = BTreeSet::new();
         for signer in &params.signers {
-            let resolved = resolve_to_id_addr(rt, signer).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    format!("failed to resolve addr {} to ID addr", signer),
-                )
-            })?;
-            if !dedup_signers.insert(resolved.id().expect("address should be resolved")) {
-                return Err(
-                    actor_error!(ErrIllegalArgument; "duplicate signer not allowed: {}", signer),
-                );
-            }
+            let resolved = resolve_to_id_addr(rt, signer).unwrap_with_default(
+                ExitCode::ErrIllegalState,
+                format!("failed to resolve addr {} to ID addr", signer),
+            )?;
+
+            ensure_args!(
+                dedup_signers.insert(resolved.id().expect("address should be resolved")),
+                "duplicate signer not allowed: {}",
+                signer,
+            );
+
             resolved_signers.push(resolved);
         }
-
-        if params.num_approvals_threshold > params.signers.len() as u64 {
-            return Err(
-                actor_error!(ErrIllegalArgument; "must not require more approvals than signers"),
-            );
-        }
-
-        if params.num_approvals_threshold < 1 {
-            return Err(actor_error!(ErrIllegalArgument; "must require at least one approval"));
-        }
-
-        if params.unlock_duration < 0 {
-            return Err(actor_error!(ErrIllegalArgument; "negative unlock duration disallowed"));
-        }
+        ensure_args!(
+            params.num_approvals_threshold <= params.signers.len() as u64,
+            "must not require more approvals than signers"
+        );
+        ensure_args!(params.num_approvals_threshold > 0, "must require at least one approval");
+        ensure_args!(params.unlock_duration >= 0, "negative unlock duration disallowed");
 
         let empty_root =
             make_empty_map::<_, ()>(rt.store(), HAMT_BIT_WIDTH).flush().map_err(|e| {
@@ -134,25 +120,22 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_type(&*CALLER_TYPES_SIGNABLE)?;
         let proposer: Address = rt.message().caller();
 
-        if params.value.sign() == Sign::Minus {
-            return Err(actor_error!(
-                ErrIllegalArgument,
-                "proposed value must be non-negative, was {}",
-                params.value
-            ));
-        }
+        ensure_args!(
+            params.value.sign() != Sign::Minus,
+            "proposed value must be non-negative, was {}",
+            params.value
+        );
 
         let (txn_id, txn) = rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&proposer) {
-                return Err(actor_error!(ErrForbidden, "{} is not a signer", proposer));
-            }
+            ensure!(st.is_signer(&proposer), ErrForbidden, "{} is not a signer", proposer);
 
-            let mut ptx = make_map_with_root(&st.pending_txs, rt.store()).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to load pending transactions")
-            })?;
+            let mut ptx = make_map_with_root(&st.pending_txs, rt.store()).unwrap_with_default(
+                ExitCode::ErrIllegalState,
+                "failed to load pending transactions",
+            )?;
 
             let t_id = st.next_tx_id;
             st.next_tx_id.0 += 1;
@@ -165,19 +148,15 @@ impl Actor {
                 approved: Vec::new(),
             };
 
-            ptx.set(t_id.key(), txn.clone()).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to put transaction for propose",
-                )
-            })?;
+            ptx.set(t_id.key(), txn.clone()).unwrap_with_default(
+                ExitCode::ErrIllegalState,
+                "failed to put transaction for propose",
+            )?;
 
-            st.pending_txs = ptx.flush().map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to flush pending transactions",
-                )
-            })?;
+            st.pending_txs = ptx.flush().unwrap_with_default(
+                ExitCode::ErrIllegalState,
+                "failed to flush pending transactions",
+            )?;
 
             Ok((t_id, txn))
         })?;
@@ -193,18 +172,17 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_type(&*CALLER_TYPES_SIGNABLE)?;
         let approver: Address = rt.message().caller();
 
         let id = params.id;
         let (st, txn) = rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&approver) {
-                return Err(actor_error!(ErrForbidden; "{} is not a signer", approver));
-            }
+            ensure!(st.is_signer(&approver), ErrForbidden, "{} is not a signer", approver);
 
-            let ptx = make_map_with_root(&st.pending_txs, rt.store()).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to load pending transactions")
-            })?;
+            let ptx = make_map_with_root(&st.pending_txs, rt.store()).unwrap_with_default(
+                ExitCode::ErrIllegalState,
+                "failed to load pending transactions",
+            )?;
 
             let txn = get_transaction(rt, &ptx, params.id, params.proposal_hash)?;
 
@@ -230,58 +208,50 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_type(&*CALLER_TYPES_SIGNABLE)?;
         let caller_addr: Address = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&caller_addr) {
-                return Err(actor_error!(ErrForbidden; "{} is not a signer", caller_addr));
-            }
+            ensure!(st.is_signer(&caller_addr), ErrForbidden, "{} is not a signer", caller_addr);
 
             let mut ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, rt.store())
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::ErrIllegalState,
-                        "failed to load pending transactions",
-                    )
-                })?;
+                .unwrap_with_default(
+                    ExitCode::ErrIllegalState,
+                    "failed to load pending transactions",
+                )?;
 
             let (_, tx) = ptx
                 .delete(&params.id.key())
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::ErrIllegalState,
-                        format!("failed to pop transaction {:?} for cancel", params.id),
-                    )
-                })?
+                .unwrap_with_default(
+                    ExitCode::ErrIllegalState,
+                    format!("failed to pop transaction {:?} for cancel", params.id),
+                )?
                 .ok_or_else(|| {
                     actor_error!(ErrNotFound, "no such transaction {:?} to cancel", params.id)
                 })?;
 
             // Check to make sure transaction proposer is caller address
-            if tx.approved.get(0) != Some(&caller_addr) {
-                return Err(
-                    actor_error!(ErrForbidden; "Cannot cancel another signers transaction"),
-                );
-            }
+            ensure!(
+                tx.approved.get(0) == Some(&caller_addr),
+                ErrForbidden,
+                "Cannot cancel another signers transaction"
+            );
 
-            let calculated_hash = compute_proposal_hash(&tx, rt).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    format!("failed to compute proposal hash for (tx: {:?})", params.id),
-                )
-            })?;
+            let calculated_hash = compute_proposal_hash(&tx, rt).unwrap_with_default(
+                ExitCode::ErrIllegalState,
+                format!("failed to compute proposal hash for (tx: {:?})", params.id),
+            )?;
 
-            if !params.proposal_hash.is_empty() && params.proposal_hash != calculated_hash {
-                return Err(actor_error!(ErrIllegalState, "hash does not match proposal params"));
-            }
+            ensure!(
+                params.proposal_hash.is_empty() || params.proposal_hash == calculated_hash,
+                ErrIllegalState,
+                "hash does not match proposal params"
+            );
 
-            st.pending_txs = ptx.flush().map_err(|e| {
-                e.downcast_default(
-                    ExitCode::ErrIllegalState,
-                    "failed to flush pending transactions",
-                )
-            })?;
+            st.pending_txs = ptx.flush().unwrap_with_default(
+                ExitCode::ErrIllegalState,
+                "failed to flush pending transactions",
+            )?;
 
             Ok(())
         })
