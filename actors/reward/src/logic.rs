@@ -102,3 +102,95 @@ fn compute_baseline_supply(theta: BigInt, baseline_total: &BigInt) -> BigInt {
 
     one_sub * baseline_total
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use num::BigRational;
+    use num::ToPrimitive;
+    use std::ops::Shl;
+
+    // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L18
+    // x => x/(2^128)
+    fn q128_to_f64(x: BigInt) -> f64 {
+        let denom = BigInt::from(1u64).shl(u128::BITS);
+        BigRational::new(x, denom).to_f64().expect("BigInt cannot be expressed as a 64bit float")
+    }
+
+    // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L25
+    #[test]
+    fn test_compute_r_theta() {
+        fn baseline_power_at(epoch: ChainEpoch) -> BigInt {
+            (BigInt::from(epoch) + BigInt::from(1i64)) * BigInt::from(2048)
+        }
+
+        assert_eq!(
+            q128_to_f64(compute_r_theta(
+                1,
+                &baseline_power_at(1),
+                &BigInt::from(2048 + 2 * 2048 / 2),
+                &BigInt::from(2048 + 2 * 2048),
+            )),
+            0.5
+        );
+
+        assert_eq!(
+            q128_to_f64(compute_r_theta(
+                1,
+                &baseline_power_at(1),
+                &BigInt::from(2048 + 2 * 2048 / 4),
+                &BigInt::from(2048 + 2 * 2048),
+            )),
+            0.25
+        );
+
+        let cumsum15 = (0..16).map(baseline_power_at).sum::<BigInt>();
+        assert_eq!(
+            q128_to_f64(compute_r_theta(
+                16,
+                &baseline_power_at(16),
+                &(&cumsum15 + baseline_power_at(16) / BigInt::from(4)),
+                &(&cumsum15 + baseline_power_at(16)),
+            )),
+            15.25
+        );
+    }
+
+    // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L43
+    // func TestBaselineReward(t *testing.T) {
+    //     step := gbig.NewInt(5000)
+    //     step = step.Lsh(step, math.Precision128)
+    //     step = step.Sub(step, gbig.NewInt(77777777777)) // offset from full integers
+
+    //     delta := gbig.NewInt(1)
+    //     delta = delta.Lsh(delta, math.Precision128)
+    //     delta = delta.Sub(delta, gbig.NewInt(33333333333)) // offset from full integers
+
+    //     prevTheta := new(gbig.Int)
+    //     theta := new(gbig.Int).Set(delta)
+
+    //     b := &bytes.Buffer{}
+    //     b.WriteString("t0, t1, y\n")
+    //     simple := computeReward(0, big.Zero(), big.Zero(), DefaultSimpleTotal, DefaultBaselineTotal)
+
+    //     for i := 0; i < 512; i++ {
+    //         reward := computeReward(0, big.NewFromGo(prevTheta), big.NewFromGo(theta), DefaultSimpleTotal, DefaultBaselineTotal)
+    //         reward = big.Sub(reward, simple)
+    //         fmt.Fprintf(b, "%s,%s,%s\n", prevTheta, theta, reward.Int)
+    //         prevTheta = prevTheta.Add(prevTheta, step)
+    //         theta = theta.Add(theta, step)
+    //     }
+
+    //     golden.Assert(t, b.Bytes())
+    // }
+    #[test]
+    #[ignore = "todo"]
+    fn test_baseline_reward() {
+        let step = BigInt::from(5000).shl(u128::BITS) - BigInt::from(77_777_777_777_i64);
+        let delta = BigInt::from(1).shl(u128::BITS) - BigInt::from(33_333_333_333_i64);
+
+        let prev_theta = BigInt::from(0);
+
+        todo!()
+    }
+}
