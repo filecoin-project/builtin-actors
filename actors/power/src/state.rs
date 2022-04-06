@@ -143,7 +143,7 @@ impl State {
         qa_power: &StoragePower,
     ) -> anyhow::Result<()> {
         let old_claim = get_claim(claims, miner)?
-            .ok_or_else(|| actor_error!(ErrNotFound, "no claim for actor {}", miner))?;
+            .ok_or_else(|| actor_error!(not_found, "no claim for actor {}", miner))?;
 
         self.total_qa_bytes_committed += qa_power;
         self.total_bytes_committed += power;
@@ -182,21 +182,21 @@ impl State {
 
         if new_claim.raw_byte_power.is_negative() {
             return Err(anyhow!(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "negative claimed raw byte power: {}",
                 new_claim.raw_byte_power
             )));
         }
         if new_claim.quality_adj_power.is_negative() {
             return Err(anyhow!(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "negative claimed quality adjusted power: {}",
                 new_claim.quality_adj_power
             )));
         }
         if self.miner_above_min_power_count < 0 {
             return Err(anyhow!(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "negative amount of miners lather than min: {}",
                 self.miner_above_min_power_count
             )));
@@ -266,15 +266,15 @@ impl State {
     where
         BS: Blockstore,
     {
-        let claims = make_map_with_root::<_, Claim>(&self.claims, store)
-            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims"))?;
+        let claims = make_map_with_root::<_, Claim>(&self.claims, store).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
+        })?;
 
-        if !claims
-            .contains_key(&miner_addr.to_bytes())
-            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to look up claim"))?
-        {
+        if !claims.contains_key(&miner_addr.to_bytes()).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to look up claim")
+        })? {
             return Err(actor_error!(
-                ErrForbidden,
+                forbidden,
                 "unknown miner {} forbidden to interact with power actor",
                 miner_addr
             ));
@@ -353,14 +353,14 @@ pub fn set_claim<BS: Blockstore>(
 ) -> anyhow::Result<()> {
     if claim.raw_byte_power.is_negative() {
         return Err(anyhow!(actor_error!(
-            ErrIllegalState,
+            illegal_state,
             "negative claim raw power {}",
             claim.raw_byte_power
         )));
     }
     if claim.quality_adj_power.is_negative() {
         return Err(anyhow!(actor_error!(
-            ErrIllegalState,
+            illegal_state,
             "negative claim quality-adjusted power {}",
             claim.quality_adj_power
         )));

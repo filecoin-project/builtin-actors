@@ -53,7 +53,7 @@ impl Actor {
         // root should be an ID address
         let id_addr = rt
             .resolve_address(&root_key)
-            .ok_or_else(|| actor_error!(ErrIllegalArgument, "root should be an ID address"))?;
+            .ok_or_else(|| actor_error!(illegal_argument, "root should be an ID address"))?;
 
         let st = State::new(rt.store(), id_addr).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create verifreg state")
@@ -70,7 +70,7 @@ impl Actor {
     {
         if &params.allowance < &MINIMUM_VERIFIED_DEAL_SIZE {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "Allowance {} below minimum deal size for add verifier {}",
                 params.allowance,
                 params.address
@@ -88,7 +88,7 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
 
         if verifier == st.root_key {
-            return Err(actor_error!(ErrIllegalArgument, "Rootkey cannot be added as verifier"));
+            return Err(actor_error!(illegal_argument, "Rootkey cannot be added as verifier"));
         }
 
         rt.transaction(|st: &mut State, rt| {
@@ -117,7 +117,7 @@ impl Actor {
             })?;
             if found {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "verified client {} cannot become a verifier",
                     verifier
                 ));
@@ -166,7 +166,7 @@ impl Actor {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to remove verifier")
                 })?
                 .ok_or_else(|| {
-                    actor_error!(ErrIllegalArgument, "failed to remove verifier: not found")
+                    actor_error!(illegal_argument, "failed to remove verifier: not found")
                 })?;
 
             st.verifiers = verifiers.flush().map_err(|e| {
@@ -191,7 +191,7 @@ impl Actor {
 
         if params.allowance < *MINIMUM_VERIFIED_DEAL_SIZE {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "Allowance {} below MinVerifiedDealSize for add verified client {}",
                 params.allowance,
                 params.address
@@ -207,7 +207,7 @@ impl Actor {
 
         let st: State = rt.state()?;
         if client == st.root_key {
-            return Err(actor_error!(ErrIllegalArgument, "Rootkey cannot be added as verifier"));
+            return Err(actor_error!(illegal_argument, "Rootkey cannot be added as verifier"));
         }
 
         rt.transaction(|st: &mut State, rt| {
@@ -222,7 +222,10 @@ impl Actor {
             let mut verified_clients =
                 make_map_with_root_and_bitwidth(&st.verified_clients, rt.store(), HAMT_BIT_WIDTH)
                     .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load verified clients")
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to load verified clients",
+                    )
                 })?;
 
             // Validate caller is one of the verifiers.
@@ -235,9 +238,7 @@ impl Actor {
                         format!("failed to get Verifier {}", verifier),
                     )
                 })?
-                .ok_or_else(|| {
-                    actor_error!(ErrNotFound, format!("no such Verifier {}", verifier))
-                })?;
+                .ok_or_else(|| actor_error!(not_found, format!("no such Verifier {}", verifier)))?;
 
             // Validate client to be added isn't a verifier
             let found = verifiers.contains_key(&client.to_bytes()).map_err(|e| {
@@ -245,7 +246,7 @@ impl Actor {
             })?;
             if found {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "verifier {} cannot be added as a verified client",
                     client
                 ));
@@ -254,7 +255,7 @@ impl Actor {
             // Compute new verifier cap and update.
             if verifier_cap < &params.allowance {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "Add more DataCap {} for VerifiedClient than allocated {}",
                     params.allowance,
                     verifier_cap
@@ -327,7 +328,7 @@ impl Actor {
 
         if params.deal_size < *MINIMUM_VERIFIED_DEAL_SIZE {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "Verified Dealsize {} is below minimum in usedbytes",
                 params.deal_size
             ));
@@ -337,7 +338,10 @@ impl Actor {
             let mut verified_clients =
                 make_map_with_root_and_bitwidth(&st.verified_clients, rt.store(), HAMT_BIT_WIDTH)
                     .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load verified clients")
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to load verified clients",
+                    )
                 })?;
 
             let BigIntDe(vc_cap) = verified_clients
@@ -348,10 +352,10 @@ impl Actor {
                         format!("failed to get verified client {}", &client),
                     )
                 })?
-                .ok_or_else(|| actor_error!(ErrNotFound, "no such verified client {}", client))?;
+                .ok_or_else(|| actor_error!(not_found, "no such verified client {}", client))?;
             if vc_cap.is_negative() {
                 return Err(actor_error!(
-                    ErrIllegalState,
+                    illegal_state,
                     "negative cap for client {}: {}",
                     client,
                     vc_cap
@@ -360,7 +364,7 @@ impl Actor {
 
             if &params.deal_size > vc_cap {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "Deal size of {} is greater than verifier_cap {} for verified client {}",
                     params.deal_size,
                     vc_cap,
@@ -382,7 +386,7 @@ impl Actor {
                     })?
                     .ok_or_else(|| {
                         actor_error!(
-                            ErrIllegalState,
+                            illegal_state,
                             "Failed to delete verified client {}: not found",
                             client
                         )
@@ -417,7 +421,7 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
         if params.deal_size < *MINIMUM_VERIFIED_DEAL_SIZE {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "Below minimum VerifiedDealSize requested in RestoreBytes: {}",
                 params.deal_size
             ));
@@ -432,14 +436,17 @@ impl Actor {
 
         let st: State = rt.state()?;
         if client == st.root_key {
-            return Err(actor_error!(ErrIllegalArgument, "Cannot restore allowance for Rootkey"));
+            return Err(actor_error!(illegal_argument, "Cannot restore allowance for Rootkey"));
         }
 
         rt.transaction(|st: &mut State, rt| {
             let mut verified_clients =
                 make_map_with_root_and_bitwidth(&st.verified_clients, rt.store(), HAMT_BIT_WIDTH)
                     .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load verified clients")
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to load verified clients",
+                    )
                 })?;
             let verifiers = make_map_with_root_and_bitwidth::<_, BigIntDe>(
                 &st.verifiers,
@@ -456,7 +463,7 @@ impl Actor {
             })?;
             if found {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "cannot restore allowance for a verifier {}",
                     client
                 ));
@@ -535,7 +542,7 @@ impl Actor {
 
         if verifier_1 == verifier_2 {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "need two different verifiers to send remove datacap request"
             ));
         }
@@ -556,7 +563,7 @@ impl Actor {
 
             // check that `client` is currently a verified client
             if !is_verifier(rt, st, client)? {
-                return Err(actor_error!(ErrNotFound, "{} is not a verified client", client));
+                return Err(actor_error!(not_found, "{} is not a verified client", client));
             }
 
             // get existing cap allocated to client
@@ -573,12 +580,12 @@ impl Actor {
 
             // check that `verifier_1` is currently a verified client
             if !is_verifier(rt, st, verifier_1)? {
-                return Err(actor_error!(ErrNotFound, "{} is not a verified client", verifier_1));
+                return Err(actor_error!(not_found, "{} is not a verified client", verifier_1));
             }
 
             // check that `verifier_2` is currently a verified client
             if !is_verifier(rt, st, verifier_2)? {
-                return Err(actor_error!(ErrNotFound, "{} is not a verified client", verifier_2));
+                return Err(actor_error!(not_found, "{} is not a verified client", verifier_2));
             }
 
             // validate signatures
@@ -637,14 +644,14 @@ impl Actor {
 
             st.remove_data_cap_proposal_ids = proposal_ids.flush().map_err(|e| {
                 actor_error! {
-                    ErrIllegalState,
+                    illegal_state,
                     "failed to flush proposal ids: {}",
                     e
                 }
             })?;
             st.verified_clients = verified_clients.flush().map_err(|e| {
                 actor_error! {
-                    ErrIllegalState,
+                    illegal_state,
                     "failed to flush verified clients: {}",
                     e
                 }
@@ -693,7 +700,7 @@ where
 
     let maybe_id = proposal_ids.get(&key.to_bytes()).map_err(|e| {
         actor_error!(
-            ErrIllegalState,
+            illegal_state,
             "failed to get proposal id for verifier {} and client {}: {}",
             verifier,
             client,
@@ -710,7 +717,7 @@ where
     let next_id = RemoveDataCapProposalID(curr_id.0 + 1);
     proposal_ids.set(BytesKey::from(key.to_bytes()), next_id.clone()).map_err(|e| {
         actor_error!(
-            ErrIllegalState,
+            illegal_state,
             "failed to update proposal id for verifier {} and client {}: {}",
             verifier,
             client,
@@ -740,13 +747,13 @@ where
 
     let b = RawBytes::serialize(proposal).map_err(|e| {
         actor_error!(
-                ErrSerialization; "failed to marshal remove datacap request: {}", e)
+                serialization; "failed to marshal remove datacap request: {}", e)
     })?;
 
     // verify signature of proposal
-    rt.verify_signature(&request.signature, &request.verifier, &b).map_err(|e|{
-        actor_error!(ErrIllegalArgument; "invalid signature for datacap removal request: {}", e)
-    })
+    rt.verify_signature(&request.signature, &request.verifier, &b).map_err(
+        |e| actor_error!(illegal_argument; "invalid signature for datacap removal request: {}", e),
+    )
 }
 
 impl ActorCode for Actor {
@@ -788,7 +795,7 @@ impl ActorCode for Actor {
                 Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            None => Err(actor_error!(ErrUnhandledMessage; "Invalid method")),
+            None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
 }

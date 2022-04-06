@@ -140,7 +140,7 @@ impl Actor {
 
             st.update_stats_for_new_miner(window_post_proof_type).map_err(|e| {
                 actor_error!(
-                    ErrIllegalState,
+                    illegal_state,
                     "failed to update power stats for new miner {}: {}",
                     &id_address,
                     e
@@ -214,7 +214,7 @@ impl Actor {
         // Ensure it is not possible to enter a large negative number which would cause
         // problems in cron processing.
         if params.event_epoch < 0 {
-            return Err(actor_error!(ErrIllegalArgument;
+            return Err(actor_error!(illegal_argument;
                 "cron event epoch {} cannot be less than zero", params.event_epoch));
         }
 
@@ -297,7 +297,7 @@ impl Actor {
             st.add_pledge_total(pledge_delta);
             if st.total_pledge_collateral.is_negative() {
                 return Err(actor_error!(
-                    ErrIllegalState,
+                    illegal_state,
                     "negative total pledge collateral {}",
                     st.total_pledge_collateral
                 ));
@@ -345,7 +345,7 @@ impl Actor {
             })?;
             if let Some(arr) = arr {
                 if arr.count() >= MAX_MINER_PROVE_COMMITS_PER_EPOCH {
-                    return Err(ActorError::new_unchecked(
+                    return Err(ActorError::unchecked(
                         ERR_TOO_MANY_PROVE_COMMITS,
                         format!(
                             "miner {} attempting to prove commit over {} sectors in epoch",
@@ -695,7 +695,7 @@ impl ActorCode for Actor {
                 let res = Self::current_total_power(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            None => Err(actor_error!(ErrUnhandledMessage; "Invalid method")),
+            None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
 }

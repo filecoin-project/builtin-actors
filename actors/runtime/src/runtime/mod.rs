@@ -21,8 +21,8 @@ use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
 pub use self::actor_code::*;
-use crate::{ActorError};
 pub use self::policy::*;
+use crate::ActorError;
 
 mod actor_code;
 

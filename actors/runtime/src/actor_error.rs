@@ -15,36 +15,37 @@ pub struct ActorError {
 impl ActorError {
     /// Creates a new ActorError. This method does not check that the code is in the
     /// range of valid actor abort codes.
-    pub fn new_unchecked(code: ExitCode, msg: String) -> Self {
+    pub fn unchecked(code: ExitCode, msg: String) -> Self {
         Self { exit_code: code, msg }
     }
 
-    pub fn ErrIllegalArgument(msg: String) -> Self {
+    pub fn illegal_argument(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_ILLEGAL_ARGUMENT, msg }
     }
-    pub fn ErrNotFound(msg: String) -> Self {
+    pub fn not_found(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_NOT_FOUND, msg }
     }
-    pub fn ErrForbidden(msg: String) -> Self {
+    pub fn forbidden(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_FORBIDDEN, msg }
     }
-    pub fn ErrInsufficientFunds(msg: String) -> Self {
+    pub fn insufficient_funds(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_INSUFFICIENT_FUNDS, msg }
     }
-    pub fn ErrIllegalState(msg: String) -> Self {
+    pub fn illegal_state(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_ILLEGAL_STATE, msg }
     }
-    pub fn ErrSerialization(msg: String) -> Self {
+    pub fn serialization(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_SERIALIZATION, msg }
     }
-    pub fn ErrUnhandledMessage(msg: String) -> Self {
+    pub fn unhandled_message(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_UNHANDLED_MESSAGE, msg }
     }
-    pub fn ErrUnspecified(msg: String) -> Self {
+    pub fn unspecified(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_UNSPECIFIED, msg }
     }
-    pub fn ErrInternalSendAborted(msg: String) -> Self {
-        Self { exit_code: ExitCode::from(24), msg } // TODO use symbolic constant when it's defined.
+    pub fn internal_send_aborted(msg: String) -> Self {
+        // TODO use symbolic constant for USR_SEND_ABORTED when it's defined.
+        Self { exit_code: ExitCode::from(24), msg }
     }
 
     /// Returns the exit code of the error.
@@ -88,14 +89,6 @@ impl From<fvm_sdk::error::NoStateError> for ActorError {
         Self { exit_code: ExitCode::USR_ILLEGAL_STATE, msg: e.to_string() }
     }
 }
-
-/// Performs conversions from SyscallResult, whose error type is ExitCode,
-/// to ActorErrors. This facilitates propagation.
-// impl From<ExitCode> for ActorError {
-//     fn from(e: ExitCode) -> Self {
-//         ActorError { exit_code: e, msg: "".to_string() }
-//     }
-// }
 
 /// Convenience macro for generating Actor Errors
 #[macro_export]

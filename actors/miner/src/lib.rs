@@ -161,7 +161,7 @@ impl Actor {
         let period_start = current_proving_period_start(policy, current_epoch, offset);
         if period_start > current_epoch {
             return Err(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "computed proving period start {} after current epoch {}",
                 period_start,
                 current_epoch
@@ -171,7 +171,7 @@ impl Actor {
         let deadline_idx = current_deadline_index(policy, current_epoch, period_start);
         if deadline_idx >= policy.wpost_period_deadlines {
             return Err(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "computed proving deadline index {} invalid",
                 deadline_idx
             ));
@@ -291,7 +291,7 @@ impl Actor {
         // * deserialized over the wire? If so, a workaround will be needed
 
         if !matches!(new_address.protocol(), Protocol::ID) {
-            return Err(actor_error!(ErrIllegalArgument, "owner address must be an ID address"));
+            return Err(actor_error!(illegal_argument, "owner address must be an ID address"));
         }
 
         rt.transaction(|state: &mut State, rt| {
@@ -305,7 +305,7 @@ impl Actor {
                 rt.validate_immediate_caller_is(std::iter::once(&pending_address))?;
                 if new_address != pending_address {
                     return Err(actor_error!(
-                        ErrIllegalArgument,
+                        illegal_argument,
                         "expected confirmation of {} got {}",
                         pending_address,
                         new_address
@@ -397,7 +397,7 @@ impl Actor {
             let policy = rt.policy();
             if params.proofs.len() != 1 {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "expected exactly one proof, got {}",
                     params.proofs.len()
                 ));
@@ -405,7 +405,7 @@ impl Actor {
 
             if check_valid_post_proof_type(policy, params.proofs[0].post_proof).is_err() {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "proof type {:?} not allowed",
                     params.proofs[0].post_proof
                 ));
@@ -413,7 +413,7 @@ impl Actor {
 
             if params.deadline >= policy.wpost_period_deadlines {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "invalid deadline {} of {}",
                     params.deadline,
                     policy.wpost_period_deadlines
@@ -422,7 +422,7 @@ impl Actor {
 
             if params.chain_commit_rand.0.len() > RANDOMNESS_LENGTH {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "expected at most {} bytes of randomness, got {}",
                     RANDOMNESS_LENGTH,
                     params.chain_commit_rand.0.len()
@@ -434,11 +434,7 @@ impl Actor {
             let info = get_miner_info(rt.store(), state)?;
 
             let max_proof_size = info.window_post_proof_type.proof_size().map_err(|e| {
-                actor_error!(
-                    ErrIllegalState,
-                    "failed to determine max window post proof size: {}",
-                    e
-                )
+                actor_error!(illegal_state, "failed to determine max window post proof size: {}", e)
             })?;
 
             rt.validate_immediate_caller_is(
@@ -448,7 +444,7 @@ impl Actor {
             // Verify that the miner has passed exactly 1 proof.
             if params.proofs.len() != 1 {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "expected exactly one proof, got {}",
                     params.proofs.len()
                 ));
@@ -457,7 +453,7 @@ impl Actor {
             // Make sure the miner is using the correct proof type.
             if params.proofs[0].post_proof != info.window_post_proof_type {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "expected proof of type {:?}, got {:?}",
                     params.proofs[0].post_proof,
                     info.window_post_proof_type
@@ -468,7 +464,7 @@ impl Actor {
             let max_size = max_proof_size * params.partitions.len();
             if params.proofs[0].proof_bytes.len() > max_size {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "expected proof to be smaller than {} bytes",
                     max_size
                 ));
@@ -479,7 +475,7 @@ impl Actor {
                 load_partitions_sectors_max(rt.policy(), info.window_post_partition_sectors);
             if params.partitions.len() as u64 > submission_partition_limit {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "too many partitions {}, limit {}",
                     params.partitions.len(),
                     submission_partition_limit
@@ -494,7 +490,7 @@ impl Actor {
             // of this deadline haven't been processed yet.
             if !current_deadline.is_open() {
                 return Err(actor_error!(
-                    ErrIllegalState,
+                    illegal_state,
                     "proving period {} not yet open at {}",
                     current_deadline.period_start,
                     current_epoch
@@ -504,7 +500,7 @@ impl Actor {
             // The miner may only submit a proof for the current deadline.
             if params.deadline != current_deadline.index {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "invalid deadline {} at epoch {}, expected {}",
                     params.deadline,
                     current_epoch,
@@ -516,7 +512,7 @@ impl Actor {
             // WPoStChallengeLookback+WPoStChallengeWindow in the past.
             if params.chain_commit_epoch < current_deadline.challenge {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "expected chain commit epoch {} to be after {}",
                     params.chain_commit_epoch,
                     current_deadline.challenge
@@ -525,7 +521,7 @@ impl Actor {
 
             if params.chain_commit_epoch >= current_epoch {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "chain commit epoch {} must be less than the current epoch {}",
                     params.chain_commit_epoch,
                     current_epoch
@@ -539,7 +535,7 @@ impl Actor {
                 &[],
             )?;
             if comm_rand != params.chain_commit_rand {
-                return Err(actor_error!(ErrIllegalArgument, "post commit randomness mismatched"));
+                return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
             }
 
             let sectors = Sectors::load(rt.store(), &state.sectors).map_err(|e| {
@@ -595,7 +591,7 @@ impl Actor {
                 // since that will just cause them to pay a penalty at deadline end that would otherwise be zero
                 // if they had *not* declared them.
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "cannot prove partitions with no active sectors"
                 ));
             }
@@ -666,11 +662,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         let sector_numbers = params.sector_numbers.validate().map_err(|e| {
-            actor_error!(
-                ErrIllegalState,
-                "Failed to validate bitfield for aggregated sectors: {}",
-                e
-            )
+            actor_error!(illegal_state, "Failed to validate bitfield for aggregated sectors: {}", e)
         })?;
         let agg_sectors_count = sector_numbers.len();
 
@@ -678,14 +670,14 @@ impl Actor {
             let policy = rt.policy();
             if agg_sectors_count > policy.max_aggregated_sectors {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "too many sectors addressed, addressed {} want <= {}",
                     agg_sectors_count,
                     policy.max_aggregated_sectors
                 ));
             } else if agg_sectors_count < policy.min_aggregated_sectors {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "too few sectors addressed, addressed {} want >= {}",
                     agg_sectors_count,
                     policy.min_aggregated_sectors
@@ -694,7 +686,7 @@ impl Actor {
 
             if params.aggregate_proof.len() > policy.max_aggregated_proof_size {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "sector prove-commit proof of size {} exceeds max size of {}",
                     params.aggregate_proof.len(),
                     policy.max_aggregated_proof_size
@@ -719,7 +711,7 @@ impl Actor {
             let msd = max_prove_commit_duration(rt.policy(), precommit.info.seal_proof)
                 .ok_or_else(|| {
                     actor_error!(
-                        ErrIllegalState,
+                        illegal_state,
                         "no max seal duration for proof type: {}",
                         i64::from(precommit.info.seal_proof)
                     )
@@ -740,7 +732,7 @@ impl Actor {
                 let prev_seal_proof = precommits[i - 1].info.seal_proof;
                 if prev_seal_proof != precommit.info.seal_proof {
                     return Err(actor_error!(
-                        ErrIllegalState,
+                        illegal_state,
                         "aggregate contains mismatched seal proofs {} and {}",
                         i64::from(prev_seal_proof),
                         i64::from(precommit.info.seal_proof)
@@ -760,7 +752,7 @@ impl Actor {
             *i
         } else {
             return Err(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "runtime provided non-ID receiver address {}",
                 rt.message().receiver()
             ));
@@ -773,7 +765,7 @@ impl Actor {
                 precommit.pre_commit_epoch + rt.policy().pre_commit_challenge_delay;
             if rt.curr_epoch() <= interactive_epoch {
                 return Err(actor_error!(
-                    ErrForbidden,
+                    forbidden,
                     "too early to prove sector {}",
                     precommit.info.sector_number
                 ));
@@ -801,7 +793,7 @@ impl Actor {
         let seal_proof = precommits[0].info.seal_proof;
         if precommits.is_empty() {
             return Err(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "bitfield non-empty but zero precommits read from state"
             ));
         }
@@ -833,10 +825,10 @@ impl Actor {
             aggregate_prove_commit_network_fee(precommits_to_confirm.len() as i64, &rt.base_fee());
         let unlocked_balance = state
             .get_unlocked_balance(&rt.current_balance())
-            .map_err(|_e| actor_error!(ErrIllegalState, "failed to determine unlocked balance"))?;
+            .map_err(|_e| actor_error!(illegal_state, "failed to determine unlocked balance"))?;
         if unlocked_balance < aggregate_fee {
             return Err(actor_error!(
-                ErrInsufficientFunds,
+                insufficient_funds,
                 "remaining unlocked funds after prove-commit {} are insufficient to pay aggregation fee of {}",
                 unlocked_balance,
                 aggregate_fee
@@ -861,7 +853,7 @@ impl Actor {
 
         if params.updates.len() > rt.policy().prove_replica_updates_max_size {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "too many updates ({} > {})",
                 params.updates.len(),
                 rt.policy().prove_replica_updates_max_size
@@ -967,7 +959,7 @@ impl Actor {
                     update.sector_number,
                     true,
                 )
-                .map_err(|_| actor_error!(ErrIllegalArgument, "error checking sector health"))?
+                .map_err(|_| actor_error!(illegal_argument, "error checking sector health"))?
             {
                 info!("sector isn't healthy, skipping sector {}", update.sector_number);
                 continue;
@@ -1019,7 +1011,7 @@ impl Actor {
         }
 
         if validated_updates.is_empty() {
-            return Err(actor_error!(ErrIllegalArgument, "no valid updates"));
+            return Err(actor_error!(illegal_argument, "no valid updates"));
         }
 
         // Errors past this point cause the prove_replica_updates call to fail (no more skipping sectors)
@@ -1027,7 +1019,7 @@ impl Actor {
         let deal_weights = request_deal_weights(rt, &sectors_deals)?;
         if deal_weights.sectors.len() != validated_updates.len() {
             return Err(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "deal weight request returned {} records, expected {}",
                 deal_weights.sectors.len(),
                 validated_updates.len()
@@ -1037,7 +1029,7 @@ impl Actor {
         let unsealed_sector_cids = request_unsealed_sector_cids(rt, &sectors_data_spec)?;
         if unsealed_sector_cids.len() != validated_updates.len() {
             return Err(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "unsealed sector cid request returned {} records, expected {}",
                 unsealed_sector_cids.len(),
                 validated_updates.len()
@@ -1103,13 +1095,13 @@ impl Actor {
                         .registered_update_proof()
                         .map_err(|_|
                             actor_error!(
-                                ErrIllegalState,
+                                illegal_state,
                                 "couldn't load update proof type"
                             )
                         )?;
                     if with_details.update.update_proof_type != update_proof_type {
                         return Err(actor_error!(
-                            ErrIllegalArgument,
+                            illegal_argument,
                             format!("unsupported update proof type {}", i64::from(with_details.update.update_proof_type))
                         ));
                     }
@@ -1185,11 +1177,11 @@ impl Actor {
                         let unlocked_balance = state
                             .get_unlocked_balance(&rt.current_balance())
                             .map_err(|_|
-                                actor_error!(ErrIllegalState, "failed to calculate unlocked balance")
+                                actor_error!(illegal_state, "failed to calculate unlocked balance")
                             )?;
                         if unlocked_balance < deficit {
                             return Err(actor_error!(
-                                ErrInsufficientFunds,
+                                insufficient_funds,
                                 "insufficient funds for new initial pledge requirement {}, available: {}, skipping sector {}",
                                 deficit,
                                 unlocked_balance,
@@ -1199,7 +1191,7 @@ impl Actor {
 
                         state.add_initial_pledge(&deficit).map_err(|_e|
                             actor_error!(
-                                ErrIllegalState,
+                                illegal_state,
                                 "failed to add initial pledge"
                             )
                         )?;
@@ -1216,7 +1208,7 @@ impl Actor {
                             )
                         )?
                         .cloned()
-                        .ok_or_else(|| actor_error!(ErrNotFound, "no such deadline {} partition {}", dl_idx, with_details.update.partition))?;
+                        .ok_or_else(|| actor_error!(not_found, "no such deadline {} partition {}", dl_idx, with_details.update.partition))?;
 
                     let (partition_power_delta, partition_pledge_delta) = partition
                         .replace_sectors(rt.store(),
@@ -1268,7 +1260,7 @@ impl Actor {
             let success_len = succeeded.len();
             if success_len != validated_updates.len() {
                 return Err(actor_error!(
-                    ErrIllegalState,
+                    illegal_state,
                     "unexpected success_len {} != {}",
                     success_len,
                     validated_updates.len()
@@ -1276,7 +1268,7 @@ impl Actor {
             }
             if new_sectors.len() != validated_updates.len() {
                 return Err(actor_error!(
-                    ErrIllegalState,
+                    illegal_state,
                     "unexpected new_sectors len {} != {}",
                     new_sectors.len(),
                     validated_updates.len()
@@ -1299,7 +1291,7 @@ impl Actor {
             })?;
 
             BitField::try_from_bits(succeeded).map_err(|_|{
-                actor_error!(ErrIllegalArgument; "invalid sector number")
+                actor_error!(illegal_argument; "invalid sector number")
             })
         })?;
 
@@ -1324,7 +1316,7 @@ impl Actor {
             let policy = rt.policy();
             if params.deadline >= policy.wpost_period_deadlines {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "invalid deadline {} of {}",
                     params.deadline,
                     policy.wpost_period_deadlines
@@ -1353,7 +1345,7 @@ impl Actor {
                     current_epoch,
                 ) {
                     return Err(actor_error!(
-                        ErrForbidden,
+                        forbidden,
                         "can only dispute window posts during the dispute window\
                     ({} epochs after the challenge window closes)",
                         policy.wpost_dispute_window
@@ -1426,7 +1418,7 @@ impl Actor {
 
                 // Check proof, we fail if validation succeeds.
                 if verify_windowed_post(rt, target_deadline.challenge, &sector_infos, proofs)? {
-                    return Err(actor_error!(ErrIllegalArgument, "failed to dispute valid post"));
+                    return Err(actor_error!(illegal_argument, "failed to dispute valid post"));
                 } else {
                     info!("Successfully disputed post- window post was invalid");
                 }
@@ -1484,7 +1476,7 @@ impl Actor {
                 // portion of their fee back as a reward.
                 let penalty_target = &penalty_base + &reward_target;
                 st.apply_penalty(&penalty_target)
-                    .map_err(|e| actor_error!(ErrIllegalState, "failed to apply penalty {}", e))?;
+                    .map_err(|e| actor_error!(illegal_state, "failed to apply penalty {}", e))?;
                 let (penalty_from_vesting, penalty_from_balance) = st
                     .repay_partial_debt_in_priority_order(
                         rt.store(),
@@ -1557,10 +1549,10 @@ impl Actor {
         {
             let policy = rt.policy();
             if params.sectors.is_empty() {
-                return Err(actor_error!(ErrIllegalArgument, "batch empty"));
+                return Err(actor_error!(illegal_argument, "batch empty"));
             } else if params.sectors.len() > policy.pre_commit_sector_batch_max_size {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "batch of {} too large, max {}",
                     params.sectors.len(),
                     policy.pre_commit_sector_batch_max_size
@@ -1575,14 +1567,14 @@ impl Actor {
             let set = sector_numbers.get(precommit.sector_number);
             if set {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "duplicate sector number {}",
                     precommit.sector_number
                 ));
             }
             if precommit.sector_number > MAX_SECTOR_NUMBER {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "sector number {} out of range 0..(2^63-1)",
                     precommit.sector_number
                 ));
@@ -1590,7 +1582,7 @@ impl Actor {
             sector_numbers.set(precommit.sector_number);
             if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof) {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "unsupported seal proof type {}",
                     i64::from(precommit.seal_proof)
                 ));
@@ -1598,11 +1590,11 @@ impl Actor {
             // Skip checking if CID is defined because it cannot be so in Rust
 
             if !is_sealed_sector(&precommit.sealed_cid) {
-                return Err(actor_error!(ErrIllegalArgument, "sealed CID had wrong prefix"));
+                return Err(actor_error!(illegal_argument, "sealed CID had wrong prefix"));
             }
             if precommit.seal_rand_epoch >= curr_epoch {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "seal challenge epoch {} must be before now {}",
                     precommit.seal_rand_epoch,
                     curr_epoch
@@ -1610,7 +1602,7 @@ impl Actor {
             }
             if precommit.seal_rand_epoch < challenge_earliest {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "seal challenge epoch {} too old, must be after {}",
                     precommit.seal_rand_epoch,
                     challenge_earliest
@@ -1625,7 +1617,7 @@ impl Actor {
 
             if precommit.replace_capacity {
                 return Err(actor_error!(
-                    ErrForbidden,
+                    forbidden,
                     "cc upgrade through precommit discontinued, use ProveReplicaUpdate"
                 ));
             }
@@ -1641,7 +1633,7 @@ impl Actor {
         let deal_weights = request_deal_weights(rt, &sectors_deals)?;
         if deal_weights.sectors.len() != params.sectors.len() {
             return Err(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "deal weight request returned {} records, expected {}",
                 deal_weights.sectors.len(),
                 params.sectors.len()
@@ -1657,7 +1649,7 @@ impl Actor {
                 state.apply_penalty(&aggregate_fee)
                     .map_err(|e| {
                         actor_error!(
-                        ErrIllegalState,
+                        illegal_state,
                         "failed to apply penalty: {}",
                         e
                     )
@@ -1670,7 +1662,7 @@ impl Actor {
                 .get_available_balance(&rt.current_balance())
                 .map_err(|e| {
                     actor_error!(
-                        ErrIllegalState,
+                        illegal_state,
                         "failed to calculate available balance: {}",
                         e
                     )
@@ -1686,7 +1678,7 @@ impl Actor {
             )?;
             let store = rt.store();
             if consensus_fault_active(&info, curr_epoch) {
-                return Err(actor_error!(ErrForbidden, "pre-commit not allowed during active consensus fault"));
+                return Err(actor_error!(forbidden, "pre-commit not allowed during active consensus fault"));
             }
 
             let mut chain_infos = Vec::with_capacity(params.sectors.len());
@@ -1700,21 +1692,21 @@ impl Actor {
                     .registered_window_post_proof()
                     .map_err(|_e|
                         actor_error!(
-                        ErrIllegalArgument,
+                        illegal_argument,
                         "failed to lookup Window PoSt proof type for sector seal proof {}",
                         i64::from(precommit.seal_proof)
                     ))?;
                 if sector_wpost_proof != info.window_post_proof_type {
-                    return Err(actor_error!(ErrIllegalArgument, "sector Window PoSt proof type %d must match miner Window PoSt proof type {} (seal proof type {})", i64::from(sector_wpost_proof), i64::from(info.window_post_proof_type)));
+                    return Err(actor_error!(illegal_argument, "sector Window PoSt proof type %d must match miner Window PoSt proof type {} (seal proof type {})", i64::from(sector_wpost_proof), i64::from(info.window_post_proof_type)));
                 }
                 if precommit.deal_ids.len() as u64 > deal_count_max {
-                    return Err(actor_error!(ErrIllegalArgument, "too many deals for sector {} > {}", precommit.deal_ids.len(), deal_count_max));
+                    return Err(actor_error!(illegal_argument, "too many deals for sector {} > {}", precommit.deal_ids.len(), deal_count_max));
                 }
 
                 // Ensure total deal space does not exceed sector size.
                 let deal_weight = &deal_weights.sectors[i];
                 if deal_weight.deal_space > info.sector_size as u64 {
-                    return Err(actor_error!(ErrIllegalArgument, "deals too large to fit in sector {} > {}", deal_weight.deal_space, info.sector_size));
+                    return Err(actor_error!(illegal_argument, "deals too large to fit in sector {} > {}", deal_weight.deal_space, info.sector_size));
                 }
                 if precommit.replace_capacity {
                     validate_replace_sector(rt.policy(), state, store, precommit)?
@@ -1737,7 +1729,7 @@ impl Actor {
 
                 // Calculate pre-commit cleanup
                 let msd = max_prove_commit_duration(rt.policy(), precommit.seal_proof)
-                .ok_or_else(|| actor_error!(ErrIllegalArgument, "no max seal duration set for proof type: {}", i64::from(precommit.seal_proof)))?;
+                .ok_or_else(|| actor_error!(illegal_argument, "no max seal duration set for proof type: {}", i64::from(precommit.seal_proof)))?;
                 // PreCommitCleanUpDelay > 0 here is critical for the batch verification of proofs. Without it, if a proof arrived exactly on the
 			    // due epoch, ProveCommitSector would accept it, then the expiry event would remove it, and then
 			    // ConfirmSectorProofsValid would fail to find it.
@@ -1746,12 +1738,12 @@ impl Actor {
             }
             // Batch update actor state.
             if available_balance < total_deposit_required {
-                return Err(actor_error!(ErrInsufficientFunds, "insufficient funds {} for pre-commit deposit: {}", available_balance, total_deposit_required));
+                return Err(actor_error!(insufficient_funds, "insufficient funds {} for pre-commit deposit: {}", available_balance, total_deposit_required));
             }
             state.add_pre_commit_deposit(&total_deposit_required)
                 .map_err(|e|
                     actor_error!(
-                        ErrIllegalState,
+                        illegal_state,
                         "failed to add pre-commit deposit {}: {}",
                         total_deposit_required, e
                 ))?;
@@ -1800,7 +1792,7 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
 
         if params.sector_number > MAX_SECTOR_NUMBER {
-            return Err(actor_error!(ErrIllegalArgument, "sector number greater than maximum"));
+            return Err(actor_error!(illegal_argument, "sector number greater than maximum"));
         }
 
         let sector_number = params.sector_number;
@@ -1814,11 +1806,11 @@ impl Actor {
                     format!("failed to load pre-committed sector {}", sector_number),
                 )
             })?
-            .ok_or_else(|| actor_error!(ErrNotFound, "no pre-commited sector {}", sector_number))?;
+            .ok_or_else(|| actor_error!(not_found, "no pre-commited sector {}", sector_number))?;
 
         let max_proof_size = precommit.info.seal_proof.proof_size().map_err(|e| {
             actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "failed to determine max proof size for sector {}: {}",
                 sector_number,
                 e
@@ -1826,7 +1818,7 @@ impl Actor {
         })?;
         if params.proof.len() > max_proof_size {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "sector prove-commit proof of size {} exceeds max size of {}",
                 params.proof.len(),
                 max_proof_size
@@ -1836,7 +1828,7 @@ impl Actor {
         let msd =
             max_prove_commit_duration(rt.policy(), precommit.info.seal_proof).ok_or_else(|| {
                 actor_error!(
-                    ErrIllegalState,
+                    illegal_state,
                     "no max seal duration set for proof type: {:?}",
                     precommit.info.seal_proof
                 )
@@ -1844,7 +1836,7 @@ impl Actor {
         let prove_commit_due = precommit.pre_commit_epoch + msd;
         if rt.curr_epoch() > prove_commit_due {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "commitment proof for {} too late at {}, due {}",
                 sector_number,
                 rt.curr_epoch(),
@@ -1925,21 +1917,19 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
 
         if params.sector_number > MAX_SECTOR_NUMBER {
-            return Err(actor_error!(ErrIllegalArgument, "sector number out of range"));
+            return Err(actor_error!(illegal_argument, "sector number out of range"));
         }
 
         let st: State = rt.state()?;
 
         match st.get_sector(rt.store(), params.sector_number) {
             Err(e) => Err(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "failed to load proven sector {}: {}",
                 params.sector_number,
                 e
             )),
-            Ok(None) => {
-                Err(actor_error!(ErrNotFound, "sector {} not proven", params.sector_number))
-            }
+            Ok(None) => Err(actor_error!(not_found, "sector {} not proven", params.sector_number)),
             Ok(Some(_sector)) => Ok(()),
         }
     }
@@ -1959,7 +1949,7 @@ impl Actor {
             let policy = rt.policy();
             if params.extensions.len() as u64 > policy.delcarations_max {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "too many declarations {}, max {}",
                     params.extensions.len(),
                     policy.delcarations_max
@@ -1975,7 +1965,7 @@ impl Actor {
             let policy = rt.policy();
             if decl.deadline >= policy.wpost_period_deadlines {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "deadline {} not in range 0..{}",
                     decl.deadline,
                     policy.wpost_period_deadlines
@@ -1986,7 +1976,7 @@ impl Actor {
                 Ok(sectors) => sectors,
                 Err(e) => {
                     return Err(actor_error!(
-                        ErrIllegalArgument,
+                        illegal_argument,
                         "failed to validate sectors for deadline {}, partition {}: {}",
                         decl.deadline,
                         decl.partition,
@@ -1998,10 +1988,7 @@ impl Actor {
             match sector_count.checked_add(sectors.len()) {
                 Some(sum) => sector_count = sum,
                 None => {
-                    return Err(actor_error!(
-                        ErrIllegalArgument,
-                        "sector bitfield integer overflow"
-                    ));
+                    return Err(actor_error!(illegal_argument, "sector bitfield integer overflow"));
                 }
             }
         }
@@ -2010,7 +1997,7 @@ impl Actor {
             let policy = rt.policy();
             if sector_count > policy.addressed_sectors_max {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "too many sectors for declaration {}, max {}",
                     sector_count,
                     policy.addressed_sectors_max
@@ -2089,7 +2076,7 @@ impl Actor {
                             )
                         })?
                         .cloned()
-                        .ok_or_else(|| actor_error!(ErrNotFound, "no such partition {:?}", key))?;
+                        .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
                     let old_sectors = sectors
                         .load_sector(&mut decl.sectors)
@@ -2100,7 +2087,7 @@ impl Actor {
                         .map(|sector| {
                             if !can_extend_seal_proof_type(sector.seal_proof) {
                                 return Err(actor_error!(
-                                    ErrForbidden,
+                                    forbidden,
                                     "cannot extend expiration for sector {} with unsupported \
                                     seal type {:?}",
                                     sector.sector_number,
@@ -2112,7 +2099,7 @@ impl Actor {
                             // because the end of its deadline hasn't passed yet.
                             if sector.expiration < rt.curr_epoch() {
                                 return Err(actor_error!(
-                                    ErrForbidden,
+                                    forbidden,
                                     "cannot extend expiration for expired sector {} at {}",
                                     sector.sector_number,
                                     sector.expiration
@@ -2121,7 +2108,7 @@ impl Actor {
 
                             if decl.new_expiration < sector.expiration {
                                 return Err(actor_error!(
-                                    ErrIllegalArgument,
+                                    illegal_argument,
                                     "cannot reduce sector {} expiration to {} from {}",
                                     sector.sector_number,
                                     decl.new_expiration,
@@ -2278,7 +2265,7 @@ impl Actor {
             let policy = rt.policy();
             if params.terminations.len() as u64 > policy.delcarations_max {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "too many declarations when terminating sectors: {} > {}",
                     params.terminations.len(),
                     policy.delcarations_max
@@ -2294,7 +2281,7 @@ impl Actor {
 
             to_process.add(rt.policy(), deadline, partition, term.sectors).map_err(|e| {
                 actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "failed to process deadline {}, partition {}: {}",
                     deadline,
                     partition,
@@ -2308,7 +2295,7 @@ impl Actor {
             to_process
                 .check(policy.addressed_partitions_max, policy.addressed_sectors_max)
                 .map_err(|e| {
-                    actor_error!(ErrIllegalArgument, "cannot process requested parameters: {}", e)
+                    actor_error!(illegal_argument, "cannot process requested parameters: {}", e)
                 })?;
         }
 
@@ -2344,7 +2331,7 @@ impl Actor {
                     curr_epoch,
                 ) {
                     return Err(actor_error!(
-                        ErrIllegalArgument,
+                        illegal_argument,
                         "cannot terminate sectors in immutable deadline {}",
                         deadline_idx
                     ));
@@ -2429,7 +2416,7 @@ impl Actor {
             let policy = rt.policy();
             if params.faults.len() as u64 > policy.delcarations_max {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "too many fault declarations for a single message: {} > {}",
                     params.faults.len(),
                     policy.delcarations_max
@@ -2445,7 +2432,7 @@ impl Actor {
 
             to_process.add(rt.policy(), deadline, partition, term.sectors).map_err(|e| {
                 actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "failed to process deadline {}, partition {}: {}",
                     deadline,
                     partition,
@@ -2459,7 +2446,7 @@ impl Actor {
             to_process
                 .check(policy.addressed_partitions_max, policy.addressed_sectors_max)
                 .map_err(|e| {
-                    actor_error!(ErrIllegalArgument, "cannot process requested parameters: {}", e)
+                    actor_error!(illegal_argument, "cannot process requested parameters: {}", e)
                 })?;
         }
 
@@ -2491,7 +2478,7 @@ impl Actor {
                 )
                 .map_err(|e| {
                     actor_error!(
-                        ErrIllegalArgument,
+                        illegal_argument,
                         "invalid fault declaration deadline {}: {}",
                         deadline_idx,
                         e
@@ -2500,7 +2487,7 @@ impl Actor {
 
                 validate_fr_declaration_deadline(&target_deadline).map_err(|e| {
                     actor_error!(
-                        ErrIllegalArgument,
+                        illegal_argument,
                         "failed fault declaration at deadline {}: {}",
                         deadline_idx,
                         e
@@ -2572,7 +2559,7 @@ impl Actor {
             let policy = rt.policy();
             if params.recoveries.len() as u64 > policy.delcarations_max {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "too many recovery declarations for a single message: {} > {}",
                     params.recoveries.len(),
                     policy.delcarations_max
@@ -2588,7 +2575,7 @@ impl Actor {
 
             to_process.add(rt.policy(), deadline, partition, term.sectors).map_err(|e| {
                 actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "failed to process deadline {}, partition {}: {}",
                     deadline,
                     partition,
@@ -2602,7 +2589,7 @@ impl Actor {
             to_process
                 .check(policy.addressed_partitions_max, policy.addressed_sectors_max)
                 .map_err(|e| {
-                    actor_error!(ErrIllegalArgument, "cannot process requested parameters: {}", e)
+                    actor_error!(illegal_argument, "cannot process requested parameters: {}", e)
                 })?;
         }
 
@@ -2619,7 +2606,7 @@ impl Actor {
 
             if consensus_fault_active(&info, rt.curr_epoch()) {
                 return Err(actor_error!(
-                    ErrForbidden,
+                    forbidden,
                     "recovery not allowed during active consensus fault"
                 ));
             }
@@ -2643,7 +2630,7 @@ impl Actor {
                 )
                 .map_err(|e| {
                     actor_error!(
-                        ErrIllegalArgument,
+                        illegal_argument,
                         "invalid recovery declaration deadline {}: {}",
                         deadline_idx,
                         e
@@ -2652,7 +2639,7 @@ impl Actor {
 
                 validate_fr_declaration_deadline(&target_deadline).map_err(|e| {
                     actor_error!(
-                        ErrIllegalArgument,
+                        illegal_argument,
                         "failed recovery declaration at deadline {}: {}",
                         deadline_idx,
                         e
@@ -2716,16 +2703,12 @@ impl Actor {
         {
             let policy = rt.policy();
             if params.deadline >= policy.wpost_period_deadlines {
-                return Err(actor_error!(
-                    ErrIllegalArgument,
-                    "invalid deadline {}",
-                    params.deadline
-                ));
+                return Err(actor_error!(illegal_argument, "invalid deadline {}", params.deadline));
             }
         }
 
         let partitions = params.partitions.validate().map_err(|e| {
-            actor_error!(ErrIllegalArgument, "failed to parse partitions bitfield: {}", e)
+            actor_error!(illegal_argument, "failed to parse partitions bitfield: {}", e)
         })?;
         let partition_count = partitions.len();
 
@@ -2748,7 +2731,7 @@ impl Actor {
                 rt.curr_epoch(),
             ) {
                 return Err(actor_error!(
-                    ErrForbidden,
+                    forbidden,
                     "cannot compact deadline {} during its challenge window, \
                     or the prior challenge window,
                     or before {} epochs have passed since its last challenge window ended",
@@ -2761,7 +2744,7 @@ impl Actor {
                 load_partitions_sectors_max(policy, info.window_post_partition_sectors);
             if partition_count > submission_partition_limit {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "too many partitions {}, limit {}",
                     partition_count,
                     submission_partition_limit
@@ -2814,7 +2797,7 @@ impl Actor {
 
             if removed_power != added_power {
                 return Err(actor_error!(
-                    ErrIllegalState,
+                    illegal_state,
                     "power changed when compacting partitions: was {:?}, is now {:?}",
                     removed_power,
                     added_power
@@ -2861,16 +2844,16 @@ impl Actor {
         let mask_sector_numbers = params
             .mask_sector_numbers
             .validate()
-            .map_err(|e| actor_error!(ErrIllegalArgument, "invalid mask bitfield: {}", e))?;
+            .map_err(|e| actor_error!(illegal_argument, "invalid mask bitfield: {}", e))?;
 
         let last_sector_number = mask_sector_numbers
             .last()
-            .ok_or_else(|| actor_error!(ErrIllegalArgument, "invalid mask bitfield"))?
+            .ok_or_else(|| actor_error!(illegal_argument, "invalid mask bitfield"))?
             as SectorNumber;
 
         if last_sector_number > MAX_SECTOR_NUMBER {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "masked sector number {} exceeded max sector number",
                 last_sector_number
             ));
@@ -2901,13 +2884,13 @@ impl Actor {
     {
         if params.reward.is_negative() {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "cannot lock up a negative amount of funds"
             ));
         }
         if params.penalty.is_negative() {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "cannot penalize a negative amount of funds"
             ));
         }
@@ -2923,12 +2906,12 @@ impl Actor {
             // This ensures the miner has sufficient funds to lock up amountToLock.
             // This should always be true if reward actor sends reward funds with the message.
             let unlocked_balance = st.get_unlocked_balance(&rt.current_balance()).map_err(|e| {
-                actor_error!(ErrIllegalState, "failed to calculate unlocked balance: {}", e)
+                actor_error!(illegal_state, "failed to calculate unlocked balance: {}", e)
             })?;
 
             if unlocked_balance < reward_to_lock {
                 return Err(actor_error!(
-                    ErrInsufficientFunds,
+                    insufficient_funds,
                     "insufficient funds to lock, available: {}, requested: {}",
                     unlocked_balance,
                     reward_to_lock
@@ -2943,13 +2926,13 @@ impl Actor {
                     locked_reward_vesting_spec,
                 )
                 .map_err(|e| {
-                    actor_error!(ErrIllegalState, "failed to lock funds in vesting table: {}", e)
+                    actor_error!(illegal_state, "failed to lock funds in vesting table: {}", e)
                 })?;
             pledge_delta_total -= &newly_vested;
             pledge_delta_total += &reward_to_lock;
 
             st.apply_penalty(&params.penalty)
-                .map_err(|e| actor_error!(ErrIllegalState, "failed to apply penalty: {}", e))?;
+                .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
 
             // Attempt to repay all fee debt in this call. In most cases the miner will have enough
             // funds in the *reward alone* to cover the penalty. In the rare case a miner incurs more
@@ -2992,10 +2975,10 @@ impl Actor {
         let fault = rt
             .verify_consensus_fault(&params.header1, &params.header2, &params.header_extra)
             .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "fault not verified"))?
-            .ok_or_else(|| actor_error!(ErrIllegalArgument, "No consensus fault found"))?;
+            .ok_or_else(|| actor_error!(illegal_argument, "No consensus fault found"))?;
         if fault.target != rt.message().receiver() {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "fault by {} reported to miner {}",
                 fault.target,
                 rt.message().receiver()
@@ -3006,7 +2989,7 @@ impl Actor {
         let fault_age = rt.curr_epoch() - fault.epoch;
         if fault_age <= 0 {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "invalid fault epoch {} ahead of current {}",
                 fault.epoch,
                 rt.curr_epoch()
@@ -3030,7 +3013,7 @@ impl Actor {
             // Verify miner hasn't already been faulted
             if fault.epoch < info.consensus_fault_elapsed {
                 return Err(actor_error!(
-                    ErrForbidden,
+                    forbidden,
                     "fault epoch {} is too old, last exclusion period ended at {}",
                     fault.epoch,
                     info.consensus_fault_elapsed
@@ -3038,7 +3021,7 @@ impl Actor {
             }
 
             st.apply_penalty(&fault_penalty).map_err(|e| {
-                actor_error!(ErrIllegalState, format!("failed to apply penalty: {}", e))
+                actor_error!(illegal_state, format!("failed to apply penalty: {}", e))
             })?;
 
             // Pay penalty
@@ -3048,7 +3031,9 @@ impl Actor {
                     rt.curr_epoch(),
                     &rt.current_balance(),
                 )
-                .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to pay fees"))?;
+                .map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to pay fees")
+                })?;
 
             let mut burn_amount = &penalty_from_vesting + &penalty_from_balance;
             pledge_delta -= penalty_from_vesting;
@@ -3089,7 +3074,7 @@ impl Actor {
     {
         if params.amount_requested.is_negative() {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "negative fund requested for withdrawal: {}",
                 params.amount_requested
             ));
@@ -3106,7 +3091,7 @@ impl Actor {
                 // Ensure we don't have any pending terminations.
                 if !state.early_terminations.is_empty() {
                     return Err(actor_error!(
-                        ErrForbidden,
+                        forbidden,
                         "cannot withdraw funds while {} deadlines have terminated sectors \
                         with outstanding fees",
                         state.early_terminations.len()
@@ -3125,7 +3110,7 @@ impl Actor {
                 let available_balance =
                     state.get_available_balance(&rt.current_balance()).map_err(|e| {
                         actor_error!(
-                            ErrIllegalState,
+                            illegal_state,
                             format!("failed to calculate available balance: {}", e)
                         )
                     })?;
@@ -3140,14 +3125,14 @@ impl Actor {
         let amount_withdrawn = std::cmp::min(&available_balance, &params.amount_requested);
         if amount_withdrawn.is_negative() {
             return Err(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "negative amount to withdraw: {}",
                 amount_withdrawn
             ));
         }
         if amount_withdrawn > &available_balance {
             return Err(actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "amount to withdraw {} < available {}",
                 amount_withdrawn,
                 available_balance
@@ -3210,7 +3195,7 @@ impl Actor {
 
         let payload: CronEventPayload = from_slice(&params.event_payload).map_err(|e| {
             actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 format!("failed to unmarshal miner cron payload into expected structure: {}", e)
             )
         })?;
@@ -3318,17 +3303,12 @@ where
             // Pay penalty
             state
                 .apply_penalty(&penalty)
-                .map_err(|e| actor_error!(ErrIllegalState, "failed to apply penalty: {}", e))?;
+                .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
 
             // Remove pledge requirement.
             let mut pledge_delta = -total_initial_pledge;
             state.add_initial_pledge(&pledge_delta).map_err(|e| {
-                actor_error!(
-                    ErrIllegalState,
-                    "failed to add initial pledge {}: {}",
-                    pledge_delta,
-                    e
-                )
+                actor_error!(illegal_state, "failed to add initial pledge {}: {}", pledge_delta, e)
             })?;
 
             // Use unlocked pledge to pay down outstanding fee debt
@@ -3419,7 +3399,7 @@ where
 
         state
             .apply_penalty(&deposit_to_burn)
-            .map_err(|e| actor_error!(ErrIllegalState, "failed to apply penalty: {}", e))?;
+            .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
 
         log::debug!(
             "storage provider {} penalized {} for expired pre commits",
@@ -3448,7 +3428,7 @@ where
 
         state
             .apply_penalty(&penalty_target)
-            .map_err(|e| actor_error!(ErrIllegalState, "failed to apply penalty: {}", e))?;
+            .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
 
         log::debug!(
             "storage provider {} penalized {} for continued fault",
@@ -3530,7 +3510,7 @@ where
     // Expiration must be after activation. Check this explicitly to avoid an underflow below.
     if expiration <= activation {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "sector expiration {} must be after activation {}",
             expiration,
             activation
@@ -3540,7 +3520,7 @@ where
     // expiration cannot be less than minimum after activation
     if expiration - activation < policy.min_sector_expiration {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "invalid expiration {}, total sector lifetime ({}) must exceed {} after activation {}",
             expiration,
             expiration - activation,
@@ -3552,7 +3532,7 @@ where
     // expiration cannot exceed MaxSectorExpirationExtension from now
     if expiration > rt.curr_epoch() + policy.max_sector_expiration_extension {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "invalid expiration {}, cannot be more than {} past current epoch {}",
             expiration,
             policy.max_sector_expiration_extension,
@@ -3562,11 +3542,11 @@ where
 
     // total sector lifetime cannot exceed SectorMaximumLifetime for the sector's seal proof
     let max_lifetime = seal_proof_sector_maximum_lifetime(seal_proof).ok_or_else(|| {
-        actor_error!(ErrIllegalArgument, "unrecognized seal proof type {:?}", seal_proof)
+        actor_error!(illegal_argument, "unrecognized seal proof type {:?}", seal_proof)
     })?;
     if expiration - activation > max_lifetime {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "invalid expiration {}, total sector lifetime ({}) cannot exceed {} after activation {}",
             expiration,
             expiration - activation,
@@ -3596,12 +3576,12 @@ where
             )
         })?
         .ok_or_else(|| {
-            actor_error!(ErrNotFound, "no such sector {} to replace", params.replace_sector_number)
+            actor_error!(not_found, "no such sector {} to replace", params.replace_sector_number)
         })?;
 
     if !replace_sector.deal_ids.is_empty() {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "cannot replace sector {} which has deals",
             params.replace_sector_number
         ));
@@ -3613,7 +3593,7 @@ where
     let replace_w_post_proof =
         replace_sector.seal_proof.registered_window_post_proof().map_err(|e| {
             actor_error!(
-                ErrIllegalState,
+                illegal_state,
                 "failed to lookup Window PoSt proof type for sector seal proof {:?}: {}",
                 replace_sector.seal_proof,
                 e
@@ -3621,7 +3601,7 @@ where
         })?;
     let new_w_post_proof = params.seal_proof.registered_window_post_proof().map_err(|e| {
         actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "failed to lookup Window PoSt proof type for new seal proof {:?}: {}",
             replace_sector.seal_proof,
             e
@@ -3630,7 +3610,7 @@ where
 
     if replace_w_post_proof != new_w_post_proof {
         return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "new sector window PoSt proof type {:?} must match replaced proof type {:?} (seal proof type {:?})",
                 replace_w_post_proof,
                 new_w_post_proof,
@@ -3640,7 +3620,7 @@ where
 
     if params.expiration < replace_sector.expiration {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "cannot replace sector {} expiration {} with sooner expiration {}",
             params.replace_sector_number,
             replace_sector.expiration,
@@ -3772,7 +3752,7 @@ where
         *i
     } else {
         return Err(actor_error!(
-            ErrIllegalState,
+            illegal_state,
             "runtime provided bad receiver address {}",
             rt.message().receiver()
         ));
@@ -3810,7 +3790,7 @@ where
     RT: Runtime<BS>,
 {
     if rt.curr_epoch() <= params.interactive_epoch {
-        return Err(actor_error!(ErrForbidden, "too early to prove sector"));
+        return Err(actor_error!(forbidden, "too early to prove sector"));
     }
 
     let commds = request_unsealed_sector_cids(
@@ -3825,7 +3805,7 @@ where
         *i
     } else {
         return Err(actor_error!(
-            ErrIllegalState,
+            illegal_state,
             "runtime provided non ID receiver address {}",
             rt.message().receiver()
         ));
@@ -3877,7 +3857,7 @@ where
         )?
         .deserialize()?;
     if data_commitment_inputs.len() != ret.commds.len() {
-        return Err(actor_error!(ErrIllegalState,
+        return Err(actor_error!(illegal_state,
             "number of data commitments computed {} does not match number of data commitment inputs {}",
             ret.commds.len(), data_commitment_inputs.len()
         ));
@@ -3973,11 +3953,11 @@ where
 {
     let resolved = rt
         .resolve_address(&raw)
-        .ok_or_else(|| actor_error!(ErrIllegalArgument, "unable to resolve address: {}", raw))?;
+        .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
 
     let owner_code = rt
         .get_actor_code_cid(&resolved)
-        .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address: {}", resolved))?;
+        .ok_or_else(|| actor_error!(illegal_argument, "no code for address: {}", resolved))?;
 
     let is_principal = rt
         .resolve_builtin_actor_type(&owner_code)
@@ -3987,7 +3967,7 @@ where
 
     if !is_principal {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "owner actor type must be a principal, was {}",
             owner_code
         ));
@@ -4005,14 +3985,14 @@ where
 {
     let resolved = rt
         .resolve_address(&raw)
-        .ok_or_else(|| actor_error!(ErrIllegalArgument, "unable to resolve address: {}", raw))?;
+        .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
 
     let worker_code = rt
         .get_actor_code_cid(&resolved)
-        .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address: {}", resolved))?;
+        .ok_or_else(|| actor_error!(illegal_argument, "no code for address: {}", resolved))?;
     if rt.resolve_builtin_actor_type(&worker_code) != Some(Type::Account) {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "worker actor type must be an account, was {}",
             worker_code
         ));
@@ -4028,7 +4008,7 @@ where
         let pub_key: Address = deserialize(&ret, "address response")?;
         if pub_key.protocol() != Protocol::BLS {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "worker account {} must have BLS pubkey, was {}",
                 resolved,
                 pub_key.protocol()
@@ -4264,7 +4244,7 @@ where
 fn check_control_addresses(policy: &Policy, control_addrs: &[Address]) -> Result<(), ActorError> {
     if control_addrs.len() > policy.max_control_addresses {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "control addresses length {} exceeds max control addresses length {}",
             control_addrs.len(),
             policy.max_control_addresses
@@ -4282,7 +4262,7 @@ fn check_valid_post_proof_type(
         Ok(())
     } else {
         Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "proof type {:?} not allowed for new miner actors",
             proof_type
         ))
@@ -4296,7 +4276,7 @@ fn check_peer_info(
 ) -> Result<(), ActorError> {
     if peer_id.len() > policy.max_peer_id_length {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "peer ID size of {} exceeds maximum size of {}",
             peer_id.len(),
             policy.max_peer_id_length
@@ -4306,14 +4286,14 @@ fn check_peer_info(
     let mut total_size = 0;
     for ma in multiaddrs {
         if ma.0.is_empty() {
-            return Err(actor_error!(ErrIllegalArgument, "invalid empty multiaddr"));
+            return Err(actor_error!(illegal_argument, "invalid empty multiaddr"));
         }
         total_size += ma.0.len();
     }
 
     if total_size > policy.max_multiaddr_data {
         return Err(actor_error!(
-            ErrIllegalArgument,
+            illegal_argument,
             "multiaddr size of {} exceeds maximum of {}",
             total_size,
             policy.max_multiaddr_data
@@ -4371,7 +4351,7 @@ where
 
     // When all prove commits have failed abort early
     if valid_pre_commits.is_empty() {
-        return Err(actor_error!(ErrIllegalArgument, "all prove commits failed to validate"));
+        return Err(actor_error!(illegal_argument, "all prove commits failed to validate"));
     }
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
@@ -4482,14 +4462,14 @@ where
         // Unlock deposit for successful proofs, make it available for lock-up as initial pledge.
         state
             .add_pre_commit_deposit(&(-deposit_to_unlock))
-            .map_err(|e| actor_error!(ErrIllegalState, "failed to add precommit deposit: {}", e))?;
+            .map_err(|e| actor_error!(illegal_state, "failed to add precommit deposit: {}", e))?;
 
         let unlocked_balance = state.get_unlocked_balance(&rt.current_balance()).map_err(|e| {
-            actor_error!(ErrIllegalState, "failed to calculate unlocked balance: {}", e)
+            actor_error!(illegal_state, "failed to calculate unlocked balance: {}", e)
         })?;
         if unlocked_balance < total_pledge {
             return Err(actor_error!(
-                ErrInsufficientFunds,
+                insufficient_funds,
                 "insufficient funds for aggregate initial pledge requirement {}, available: {}",
                 total_pledge,
                 unlocked_balance
@@ -4498,7 +4478,7 @@ where
 
         state
             .add_initial_pledge(&total_pledge)
-            .map_err(|e| actor_error!(ErrIllegalState, "failed to add initial pledge: {}", e))?;
+            .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
 
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
 
@@ -4513,7 +4493,10 @@ where
 
 // XXX: probably better to push this one level down into state
 fn balance_invariants_broken(e: Error) -> ActorError {
-    ActorError::new_unchecked(ERR_BALANCE_INVARIANTS_BROKEN, format!("balance invariants broken: {}", e))
+    ActorError::unchecked(
+        ERR_BALANCE_INVARIANTS_BROKEN,
+        format!("balance invariants broken: {}", e),
+    )
 }
 
 impl ActorCode for Actor {
@@ -4635,7 +4618,7 @@ impl ActorCode for Actor {
                 let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            None => Err(actor_error!(ErrUnhandledMessage, "Invalid method")),
+            None => Err(actor_error!(unhandled_message, "Invalid method")),
         }
     }
 }

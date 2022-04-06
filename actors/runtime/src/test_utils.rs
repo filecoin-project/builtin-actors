@@ -841,7 +841,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
         match expected_msg.exit_code {
             ExitCode::OK => Ok(expected_msg.send_return),
-            x => Err(ActorError::new_unchecked(x, "Expected message Fail".to_string())),
+            x => Err(ActorError::unchecked(x, "Expected message Fail".to_string())),
         }
     }
 
@@ -965,51 +965,64 @@ impl Syscalls for MockRuntime {
     ) -> anyhow::Result<Cid> {
         let exp =
             self.expectations.borrow_mut().expect_compute_unsealed_sector_cid.take().ok_or_else(
-                || actor_error!(ErrIllegalState; "Unexpected syscall to ComputeUnsealedSectorCID"),
+                || actor_error!(illegal_state; "Unexpected syscall to ComputeUnsealedSectorCID"),
             )?;
 
         if exp.reg != reg {
-            return Err(anyhow!(actor_error!(ErrIllegalState;
+            return Err(anyhow!(actor_error!(illegal_state;
                 "Unexpected compute_unsealed_sector_cid : reg mismatch"
             )));
         }
 
         if exp.pieces[..].eq(pieces) {
-            return Err(anyhow!(actor_error!(ErrIllegalState;
+            return Err(anyhow!(actor_error!(illegal_state;
                 "Unexpected compute_unsealed_sector_cid : pieces mismatch"
             )));
         }
 
         if exp.exit_code != ExitCode::OK {
-            return Err(anyhow!(ActorError::new_unchecked(exp.exit_code, "Expected Failure".to_string(),)));
+            return Err(anyhow!(ActorError::unchecked(
+                exp.exit_code,
+                "Expected Failure".to_string(),
+            )));
         }
         Ok(exp.cid)
     }
     fn verify_seal(&self, seal: &SealVerifyInfo) -> anyhow::Result<()> {
-        let exp =
-            self.expectations.borrow_mut().expect_verify_seal.take().ok_or_else(
-                || actor_error!(ErrIllegalState; "Unexpected syscall to verify seal"),
-            )?;
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_verify_seal
+            .take()
+            .ok_or_else(|| actor_error!(illegal_state; "Unexpected syscall to verify seal"))?;
 
         if exp.seal != *seal {
-            return Err(anyhow!(actor_error!(ErrIllegalState; "Unexpected seal verification"),));
+            return Err(anyhow!(actor_error!(illegal_state; "Unexpected seal verification"),));
         }
         if exp.exit_code != ExitCode::OK {
-            return Err(anyhow!(ActorError::new_unchecked(exp.exit_code, "Expected Failure".to_string(),)));
+            return Err(anyhow!(ActorError::unchecked(
+                exp.exit_code,
+                "Expected Failure".to_string(),
+            )));
         }
         Ok(())
     }
     fn verify_post(&self, post: &WindowPoStVerifyInfo) -> anyhow::Result<()> {
-        let exp =
-            self.expectations.borrow_mut().expect_verify_post.take().ok_or_else(
-                || actor_error!(ErrIllegalState; "Unexpected syscall to verify PoSt"),
-            )?;
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_verify_post
+            .take()
+            .ok_or_else(|| actor_error!(illegal_state; "Unexpected syscall to verify PoSt"))?;
 
         if exp.post != *post {
-            return Err(anyhow!(actor_error!(ErrIllegalState; "Unexpected PoSt verification"),));
+            return Err(anyhow!(actor_error!(illegal_state; "Unexpected PoSt verification"),));
         }
         if exp.exit_code != ExitCode::OK {
-            return Err(anyhow!(ActorError::new_unchecked(exp.exit_code, "Expected Failure".to_string(),)));
+            return Err(anyhow!(ActorError::unchecked(
+                exp.exit_code,
+                "Expected Failure".to_string(),
+            )));
         }
         Ok(())
     }
@@ -1020,21 +1033,24 @@ impl Syscalls for MockRuntime {
         extra: &[u8],
     ) -> anyhow::Result<Option<ConsensusFault>> {
         let exp = self.expectations.borrow_mut().expect_verify_consensus_fault.take().ok_or_else(
-            || actor_error!(ErrIllegalState; "Unexpected syscall to verify_consensus_fault"),
+            || actor_error!(illegal_state; "Unexpected syscall to verify_consensus_fault"),
         )?;
         if exp.require_correct_input {
             if exp.block_header_1 != h1 {
-                return Err(anyhow!(actor_error!(ErrIllegalState; "Header 1 mismatch")));
+                return Err(anyhow!(actor_error!(illegal_state; "Header 1 mismatch")));
             }
             if exp.block_header_2 != h2 {
-                return Err(anyhow!(actor_error!(ErrIllegalState; "Header 2 mismatch")));
+                return Err(anyhow!(actor_error!(illegal_state; "Header 2 mismatch")));
             }
             if exp.block_header_extra != extra {
-                return Err(anyhow!(actor_error!(ErrIllegalState; "Header extra mismatch"),));
+                return Err(anyhow!(actor_error!(illegal_state; "Header extra mismatch"),));
             }
         }
         if exp.exit_code != ExitCode::OK {
-            return Err(anyhow!(ActorError::new_unchecked(exp.exit_code, "Expected Failure".to_string(),)));
+            return Err(anyhow!(ActorError::unchecked(
+                exp.exit_code,
+                "Expected Failure".to_string(),
+            )));
         }
         Ok(exp.fault)
     }

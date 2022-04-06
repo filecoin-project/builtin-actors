@@ -101,7 +101,10 @@ mod verifiers {
     fn add_verifier_enforces_min_size() {
         let (h, mut rt) = new_harness();
         let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() - 1;
-        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.add_verifier(&mut rt, &VERIFIER, &allowance));
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            h.add_verifier(&mut rt, &VERIFIER, &allowance),
+        );
         h.check_state();
     }
 
@@ -699,7 +702,10 @@ mod datacap {
         let (h, mut rt) = new_harness();
         h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
         let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone();
-        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.restore_bytes(&mut rt, &VERIFIER, &deal_size));
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            h.restore_bytes(&mut rt, &VERIFIER, &deal_size),
+        );
         h.check_state()
     }
 }

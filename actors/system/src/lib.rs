@@ -84,7 +84,7 @@ impl ActorCode for Actor {
                 Self::constructor(rt)?;
                 Ok(RawBytes::default())
             }
-            None => Err(actor_error!(ErrUnhandledMessage; "Invalid method")),
+            None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
 }

@@ -180,7 +180,11 @@ fn invalid_submissions() {
             params,
             PoStConfig::empty(),
         );
-        expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "too many partitions", result);
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "too many partitions",
+            result,
+        );
         rt.reset();
     }
 
@@ -349,7 +353,11 @@ fn invalid_submissions() {
             params,
             PoStConfig::empty(),
         );
-        expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "bytes of randomness", result);
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "bytes of randomness",
+            result,
+        );
         rt.reset();
     }
 
@@ -549,7 +557,11 @@ fn duplicate_proof_rejected() {
         miner::Method::SubmitWindowedPoSt as u64,
         &RawBytes::serialize(params).unwrap(),
     );
-    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "partition already proven", result);
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "partition already proven",
+        result,
+    );
     rt.reset();
 
     // Advance to end-of-deadline cron to verify no penalties.

@@ -81,13 +81,13 @@ impl Actor {
 
         let code_cid = rt
             .get_actor_code_cid(&resolved)
-            .ok_or_else(|| actor_error!(ErrIllegalArgument, "no code for address {}", resolved))?;
+            .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", resolved))?;
 
         let typ = rt.resolve_builtin_actor_type(&code_cid);
 
         if typ != Some(Type::Account) {
             Err(actor_error!(
-                ErrForbidden,
+                forbidden,
                 "actor {} must be an account, was {} ({:?})",
                 raw,
                 code_cid,
@@ -116,22 +116,22 @@ impl Actor {
         let sig = sv
             .signature
             .as_ref()
-            .ok_or_else(|| actor_error!(ErrIllegalArgument, "voucher has no signature"))?;
+            .ok_or_else(|| actor_error!(illegal_argument, "voucher has no signature"))?;
 
         if st.settling_at != 0 && rt.curr_epoch() >= st.settling_at {
-            return Err(ActorError::new_unchecked(
+            return Err(ActorError::unchecked(
                 ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED,
                 "no vouchers can be processed after settling at epoch".to_string(),
             ));
         }
 
         if params.secret.len() > MAX_SECRET_SIZE {
-            return Err(actor_error!(ErrIllegalArgument, "secret must be at most 256 bytes long"));
+            return Err(actor_error!(illegal_argument, "secret must be at most 256 bytes long"));
         }
 
         // Generate unsigned bytes
         let sv_bz = sv.signing_bytes().map_err(|e| {
-            ActorError::ErrSerialization(format!("failed to serialized SignedVoucher: {}", e))
+            ActorError::serialization(format!("failed to serialized SignedVoucher: {}", e))
         })?;
 
         // Validate signature
@@ -142,34 +142,34 @@ impl Actor {
         let pch_addr = rt.message().receiver();
         let svpch_id_addr = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {
             actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "voucher payment channel address {} does not resolve to an ID address",
                 sv.channel_addr
             )
         })?;
         if pch_addr != svpch_id_addr {
-            return Err(actor_error!(ErrIllegalArgument;
+            return Err(actor_error!(illegal_argument;
                     "voucher payment channel address {} does not match receiver {}",
                     svpch_id_addr, pch_addr));
         }
 
         if rt.curr_epoch() < sv.time_lock_min {
-            return Err(actor_error!(ErrIllegalArgument; "cannot use this voucher yet"));
+            return Err(actor_error!(illegal_argument; "cannot use this voucher yet"));
         }
 
         if sv.time_lock_max != 0 && rt.curr_epoch() > sv.time_lock_max {
-            return Err(actor_error!(ErrIllegalArgument; "this voucher has expired"));
+            return Err(actor_error!(illegal_argument; "this voucher has expired"));
         }
 
         if sv.amount.sign() == Sign::Minus {
-            return Err(actor_error!(ErrIllegalArgument;
+            return Err(actor_error!(illegal_argument;
                     "voucher amount must be non-negative, was {}", sv.amount));
         }
 
         if !sv.secret_pre_image.is_empty() {
             let hashed_secret: &[u8] = &rt.hash_blake2b(&params.secret);
             if hashed_secret != sv.secret_pre_image.as_slice() {
-                return Err(actor_error!(ErrIllegalArgument; "incorrect secret"));
+                return Err(actor_error!(illegal_argument; "incorrect secret"));
             }
         }
 
@@ -194,7 +194,7 @@ impl Actor {
 
             let mut lane_state = if let Some(state) = lane_state {
                 if state.nonce >= sv.nonce {
-                    return Err(actor_error!(ErrIllegalArgument;
+                    return Err(actor_error!(illegal_argument;
                         "voucher has an outdated nonce, existing: {}, voucher: {}, cannot redeem",
                         state.nonce, sv.nonce));
                 }
@@ -209,18 +209,18 @@ impl Actor {
             let mut redeemed_from_others = BigInt::default();
             for merge in sv.merges {
                 if merge.lane == sv.lane {
-                    return Err(actor_error!(ErrIllegalArgument;
+                    return Err(actor_error!(illegal_argument;
                         "voucher cannot merge lanes into it's own lane"));
                 }
                 let mut other_ls = find_lane(&l_states, merge.lane)?
                     .ok_or_else(|| {
-                        actor_error!(ErrIllegalArgument;
+                        actor_error!(illegal_argument;
                         "voucher specifies invalid merge lane {}", merge.lane)
                     })?
                     .clone();
 
                 if other_ls.nonce >= merge.nonce {
-                    return Err(actor_error!(ErrIllegalArgument;
+                    return Err(actor_error!(illegal_argument;
                             "merged lane in voucher has outdated nonce, cannot redeem"));
                 }
 
@@ -246,12 +246,12 @@ impl Actor {
             let new_send_balance = balance_delta + &st.to_send;
 
             if new_send_balance < TokenAmount::from(0) {
-                return Err(actor_error!(ErrIllegalArgument;
+                return Err(actor_error!(illegal_argument;
                     "voucher would leave channel balance negative"));
             }
 
             if new_send_balance > rt.current_balance() {
-                return Err(actor_error!(ErrIllegalArgument;
+                return Err(actor_error!(illegal_argument;
                     "not enough funds in channel to cover voucher"));
             }
 
@@ -291,7 +291,7 @@ impl Actor {
             rt.validate_immediate_caller_is([st.from, st.to].iter())?;
 
             if st.settling_at != 0 {
-                return Err(actor_error!(ErrIllegalState; "channel already settling"));
+                return Err(actor_error!(illegal_state; "channel already settling"));
             }
 
             st.settling_at = rt.curr_epoch() + SETTLE_DELAY;
@@ -312,7 +312,7 @@ impl Actor {
         rt.validate_immediate_caller_is(&[st.from, st.to])?;
 
         if st.settling_at == 0 || rt.curr_epoch() < st.settling_at {
-            return Err(actor_error!(ErrForbidden; "payment channel not settling or settled"));
+            return Err(actor_error!(forbidden; "payment channel not settling or settled"));
         }
 
         // send ToSend to `to`
@@ -335,7 +335,7 @@ where
     BS: Blockstore,
 {
     if id > MAX_LANE {
-        return Err(actor_error!(ErrIllegalArgument; "maximum lane ID is 2^63-1"));
+        return Err(actor_error!(illegal_argument; "maximum lane ID is 2^63-1"));
     }
 
     ls.get(id).map_err(|e| {
@@ -370,7 +370,7 @@ impl ActorCode for Actor {
                 Self::collect(rt)?;
                 Ok(RawBytes::default())
             }
-            _ => Err(actor_error!(ErrUnhandledMessage; "Invalid method")),
+            _ => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
 }

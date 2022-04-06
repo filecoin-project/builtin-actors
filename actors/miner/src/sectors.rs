@@ -29,9 +29,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
     ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
         let sector_numbers = match sector_numbers.validate() {
             Ok(sector_numbers) => sector_numbers,
-            Err(e) => {
-                return Err(actor_error!(ErrIllegalArgument, "failed to load sectors: {}", e))
-            }
+            Err(e) => return Err(actor_error!(illegal_argument, "failed to load sectors: {}", e)),
         };
 
         let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
@@ -46,7 +44,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
                     )
                 })?
                 .cloned()
-                .ok_or_else(|| actor_error!(ErrNotFound; "sector not found: {}", sector_number))?;
+                .ok_or_else(|| actor_error!(not_found; "sector not found: {}", sector_number))?;
             sector_infos.push(sector_on_chain);
         }
         Ok(sector_infos)

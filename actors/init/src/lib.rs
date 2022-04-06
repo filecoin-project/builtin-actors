@@ -63,13 +63,13 @@ impl Actor {
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
 
         let caller_code = rt.get_actor_code_cid(&rt.message().caller()).ok_or_else(|| {
-            actor_error!(ErrIllegalState, "no code for caller as {}", rt.message().caller())
+            actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
         })?;
 
         log::trace!("caller code CID: {:?}", &caller_code);
 
         if !can_exec(rt, &caller_code, &params.code_cid) {
-            return Err(actor_error!(ErrForbidden;
+            return Err(actor_error!(forbidden;
                     "called type {} cannot exec actor type {}",
                     &caller_code, &params.code_cid
             ));
@@ -126,7 +126,7 @@ impl ActorCode for Actor {
                 let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            None => Err(actor_error!(ErrUnhandledMessage; "Invalid method")),
+            None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
 }
