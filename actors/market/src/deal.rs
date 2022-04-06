@@ -4,7 +4,7 @@
 use cid::{Cid, Version};
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
+use fvm_ipld_encoding::{BytesSer, Cbor};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -12,6 +12,9 @@ use fvm_shared::commcid::{FIL_COMMITMENT_UNSEALED, SHA2_256_TRUNC254_PADDED};
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
+use libipld_core::ipld::Ipld;
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use std::convert::{TryFrom, TryInto};
 
 /// Cid prefix for piece Cids
 pub fn is_piece_cid(c: &Cid) -> bool {
@@ -20,6 +23,47 @@ pub fn is_piece_cid(c: &Cid) -> bool {
         && c.codec() == FIL_COMMITMENT_UNSEALED
         && c.hash().code() == SHA2_256_TRUNC254_PADDED
         && c.hash().size() == 32
+}
+
+#[derive(Debug)]
+pub enum Label {
+    String(String),
+    Bytes(Vec<u8>),
+}
+
+/// Serialize the Label like an untagged enum.
+impl Serialize for Label {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Label::String(v) => v.serialize(serializer),
+            Label::Bytes(v) => BytesSer(v).serialize(serializer),
+        }
+    }
+}
+
+impl TryFrom<Ipld> for Label {
+    type Error = String;
+
+    fn try_from(ipld: Ipld) -> Result<Self, Self::Error> {
+        match ipld {
+            Ipld::String(s) => Ok(Label::String(s)),
+            Ipld::Bytes(b) => Ok(Label::Bytes(b)),
+            other => Err(format!("Expected `Ipld::String` or `Ipld::Bytes`, got {:#?}", other)),
+        }
+    }
+}
+
+/// Deserialize the Label like an untagged enum.
+impl<'de> Deserialize<'de> for Label {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ipld::deserialize(deserializer).and_then(|ipld| ipld.try_into().map_err(de::Error::custom))
+    }
 }
 
 /// Note: Deal Collateral is only released and returned to clients and miners

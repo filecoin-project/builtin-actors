@@ -5,16 +5,17 @@ use std::collections::HashMap;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::{
-    ext, Actor as MarketActor, Method, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
+    ext, Actor as MarketActor, Label, Method, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
     STATES_AMT_BITWIDTH,
 };
+use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, ActorError, SetMultimap, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::EPOCH_UNDEFINED;
@@ -94,6 +95,81 @@ fn simple_construction() {
     assert_eq!(0, state_data.next_id);
     assert_eq!(empty_multimap, state_data.deal_ops_by_epoch);
     assert_eq!(state_data.last_cron, EPOCH_UNDEFINED);
+}
+
+#[test]
+fn label_cbor() {
+    let label = Label::String("i_am_random_string____i_am_random_string____".parse().unwrap());
+    let _ = to_vec(&label)
+        .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
+        .unwrap();
+
+    let label2 = Label::Bytes(b"i_am_random_____i_am_random_____".to_vec());
+    println!("{:?}", (b"i_am_random_____i_am_random_____".to_vec()));
+    let _ = to_vec(&label2)
+        .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
+        .unwrap();
+
+    let empty_string_label = Label::String("".parse().unwrap());
+    let sv_bz = to_vec(&empty_string_label).unwrap();
+    assert_eq!(vec![0x60], sv_bz);
+
+    let empty_bytes_label = Label::Bytes(b"".to_vec());
+    let sv_bz = to_vec(&empty_bytes_label).unwrap();
+    assert_eq!(vec![0x40], sv_bz);
+}
+
+#[test]
+fn label_from_cbor() {
+    // empty string, b001_00000
+    let empty_cbor_text = vec![0x60];
+    let label1: Label = deserialize(&RawBytes::from(empty_cbor_text), "empty cbor string").unwrap();
+    if let Label::String(s) = label1 {
+        assert_eq!("", s)
+    } else {
+        panic!("expected string label not bytes")
+    }
+
+    // valid utf8 string b011_01000 "deadbeef"
+    let end_valid_cbor_text = b"deadbeef".to_vec();
+    let mut valid_cbor_text = vec![0x68];
+    for i in end_valid_cbor_text {
+        valid_cbor_text.push(i);
+    }
+    let label2: Label = deserialize(&RawBytes::from(valid_cbor_text), "valid cbor string").unwrap();
+    if let Label::String(s) = label2 {
+        assert_eq!("deadbeef", s)
+    } else {
+        panic!("expected string label not bytes")
+    }
+
+    // invalid utf8 string 0b011_00100 0xde 0xad 0xbe 0xeef
+    let invalid_cbor_text = vec![0x64, 0xde, 0xad, 0xbe, 0xef];
+    let out = deserialize::<Label>(&RawBytes::from(invalid_cbor_text), "invalid cbor string");
+    out.expect_err("invalid utf8 string in maj typ 3 should fail deser");
+
+    // empty bytes, b010_00000
+    let empty_cbor_bytes = vec![0x40];
+    let label3: Label = deserialize(&RawBytes::from(empty_cbor_bytes), "empty cbor bytes").unwrap();
+    if let Label::Bytes(b) = label3 {
+        assert_eq!(Vec::<u8>::new(), b)
+    } else {
+        panic!("expected bytes label not string")
+    }
+
+    // bytes b010_00100 0xde 0xad 0xbe 0xef
+    let cbor_bytes = vec![0x44, 0xde, 0xad, 0xbe, 0xef];
+    let label4: Label = deserialize(&RawBytes::from(cbor_bytes), "cbor bytes").unwrap();
+    if let Label::Bytes(b) = label4 {
+        assert_eq!(vec![0xde, 0xad, 0xbe, 0xef], b)
+    } else {
+        panic!("expected bytes label not string")
+    }
+
+    // bad major type, array of empty array b100_00001 b100_00000
+    let bad_bytes = vec![0x81, 0x80];
+    let out = deserialize::<Label>(&RawBytes::from(bad_bytes), "cbor array, unexpected major type");
+    out.expect_err("major type 4 should not be recognized by union type and deser should fail");
 }
 
 #[ignore]
