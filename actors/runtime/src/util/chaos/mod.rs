@@ -14,7 +14,7 @@ pub use state::*;
 pub use types::*;
 
 use crate::runtime::{ActorCode, Runtime};
-use crate::{actor_error, cbor, ActorError};
+use crate::{actor_error, cbor, Abort, ActorError};
 
 mod state;
 mod types;
@@ -197,7 +197,7 @@ impl ActorCode for Actor {
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
+    ) -> Result<RawBytes, Abort>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -246,7 +246,7 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(inspect)?)
             }
 
-            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method").into()),
         }
     }
 }

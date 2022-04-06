@@ -430,8 +430,9 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     // Construct a new runtime.
     let mut rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
-    let ret = C::invoke_method(&mut rt, method, &params)
-        .unwrap_or_else(|err| fvm::vm::abort(err.exit_code() as u32, Some(err.msg())));
+
+    // can unwrap because `Abort` will already have called rt::abort on an error.
+    let ret = C::invoke_method(&mut rt, method, &params).unwrap();
 
     // Abort with "illegal actor" if the actor failed to validate the caller somewhere.
     // We do this after handling the error, because the actor may have encountered an error before

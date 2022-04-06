@@ -1,6 +1,44 @@
 use fvm_shared::error::ExitCode;
 use thiserror::Error;
 
+mod abort {
+    use crate::ActorError;
+    use fvm_shared::error::ExitCode;
+
+    #[derive(thiserror::Error, Debug)]
+    #[error("abort error")]
+    pub struct Abort {
+        /// This ensures that this error can not be crated outside.
+        _private: (),
+    }
+
+    #[cfg(feature = "fil-actor")]
+    fn maybe_abort(exit_code: ExitCode, msg: Option<&str>) -> ! {
+        fvm_sdk::vm::abort(exit_code as u32, msg);
+    }
+    #[cfg(not(feature = "fil-actor"))]
+    fn maybe_abort(exit_code: ExitCode, msg: Option<&str>) -> ! {
+        // TODO: maybe not panic, needs discussion what we want here
+        panic!("Abort: {}: {:?}", exit_code, msg);
+    }
+
+    impl From<ActorError> for Abort {
+        fn from(err: ActorError) -> Self {
+            let ActorError { exit_code, msg } = err;
+            maybe_abort(exit_code, Some(&msg));
+        }
+    }
+
+    /// Converts a raw encoding error into an ErrSerialization.
+    impl From<fvm_ipld_encoding::Error> for Abort {
+        fn from(e: fvm_ipld_encoding::Error) -> Self {
+            maybe_abort(ExitCode::ErrSerialization, Some(&e.to_string()));
+        }
+    }
+}
+
+pub use abort::Abort;
+
 /// TODO fix error system; actor errors should be transparent to the VM.
 /// The error type that gets returned by actor method calls.
 #[derive(Error, Debug, Clone, PartialEq)]
@@ -114,17 +152,17 @@ macro_rules! actor_error {
 macro_rules! ensure {
     ($cond:expr, $code:ident, $msg:literal $(,)?) => {
         if !$cond {
-            return Err($crate::actor_error!($code, $msg));
+            return Err($crate::actor_error!($code, $msg).into());
         }
     };
     ($cond:expr, $code:ident, $err:expr $(,)?) => {
         if !$cond {
-            return Err($crate::actor_error!($code, $err));
+            return Err($crate::actor_error!($code, $err).into());
         }
     };
     ($cond:expr, $code:ident, $fmt:expr, $($arg:tt)*) => {
         if !$cond {
-            return Err($crate::actor_error!($code, $fmt, $($arg)*));
+            return Err($crate::actor_error!($code, $fmt, $($arg)*).into());
         }
     };
 }

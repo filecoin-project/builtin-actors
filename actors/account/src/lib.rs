@@ -9,9 +9,9 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
-use fil_actors_runtime::cbor;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, ensure_args, ActorError};
+use fil_actors_runtime::{actor_error, ensure_args};
+use fil_actors_runtime::{cbor, Abort};
 
 pub use self::state::State;
 
@@ -34,7 +34,7 @@ pub enum Method {
 pub struct Actor;
 impl Actor {
     /// Constructor for Account actor
-    pub fn constructor<BS, RT>(rt: &mut RT, address: Address) -> Result<(), ActorError>
+    pub fn constructor<BS, RT>(rt: &mut RT, address: Address) -> Result<(), Abort>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -50,7 +50,7 @@ impl Actor {
     }
 
     // Fetches the pubkey-type address from this actor.
-    pub fn pubkey_address<BS, RT>(rt: &mut RT) -> Result<Address, ActorError>
+    pub fn pubkey_address<BS, RT>(rt: &mut RT) -> Result<Address, Abort>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -66,7 +66,7 @@ impl ActorCode for Actor {
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
+    ) -> Result<RawBytes, Abort>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -80,7 +80,7 @@ impl ActorCode for Actor {
                 let addr = Self::pubkey_address(rt)?;
                 Ok(RawBytes::serialize(addr)?)
             }
-            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method").into()),
         }
     }
 }
