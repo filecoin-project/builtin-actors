@@ -41,7 +41,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
                 .get(sector_number)
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load sector {}", sector_number),
                     )
                 })?

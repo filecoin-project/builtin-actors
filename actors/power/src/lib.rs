@@ -61,6 +61,8 @@ pub enum Method {
     CurrentTotalPower = 9,
 }
 
+pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
+
 /// Storage Power Actor
 pub struct Actor;
 impl Actor {
@@ -73,7 +75,7 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
 
         let st = State::new(rt.store()).map_err(|e| {
-            e.downcast_default(ExitCode::ErrIllegalState, "Failed to create power actor state")
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create power actor state")
         })?;
         rt.create(&st)?;
         Ok(())
@@ -117,7 +119,7 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let mut claims =
                 make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).map_err(
-                    |e| e.downcast_default(ExitCode::ErrIllegalState, "failed to load claims"),
+                    |e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims"),
                 )?;
             set_claim(
                 &mut claims,
@@ -130,7 +132,7 @@ impl Actor {
             )
             .map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to put power in claimed table while creating miner",
                 )
             })?;
@@ -146,7 +148,7 @@ impl Actor {
             })?;
 
             st.claims = claims.flush().map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to flush claims")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims")
             })?;
             Ok(())
         })?;
@@ -169,7 +171,7 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let mut claims =
                 make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).map_err(
-                    |e| e.downcast_default(ExitCode::ErrIllegalState, "failed to load claims"),
+                    |e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims"),
                 )?;
 
             st.add_to_claim(
@@ -180,7 +182,7 @@ impl Actor {
             )
             .map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     format!(
                         "failed to update power raw {}, qa {}",
                         params.raw_byte_delta, params.quality_adjusted_delta,
@@ -189,7 +191,7 @@ impl Actor {
             })?;
 
             st.claims = claims.flush().map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to flush claims")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims")
             })?;
             Ok(())
         })
@@ -224,15 +226,15 @@ impl Actor {
                 CRON_QUEUE_AMT_BITWIDTH,
             )
             .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to load cron events")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load cron events")
             })?;
 
             st.append_cron_event(&mut events, params.event_epoch, miner_event).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to enroll cron event")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to enroll cron event")
             })?;
 
             st.cron_event_queue = events.root().map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to flush cron events")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush cron events")
             })?;
             Ok(())
         })?;
@@ -326,7 +328,7 @@ impl Actor {
                 )
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         "failed to load proof batching set",
                     )
                 })?
@@ -337,24 +339,28 @@ impl Actor {
             let miner_addr = rt.message().caller();
             let arr = mmap.get::<SealVerifyInfo>(&miner_addr.to_bytes()).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to get seal verify infos at addr {}", miner_addr),
                 )
             })?;
             if let Some(arr) = arr {
                 if arr.count() >= MAX_MINER_PROVE_COMMITS_PER_EPOCH {
-                    return Err(actor_error!(ErrTooManyProveCommits;
-                        "miner {} attempting to prove commit over {} sectors in epoch",
-                        miner_addr, MAX_MINER_PROVE_COMMITS_PER_EPOCH));
+                    return Err(ActorError::new_unchecked(
+                        ERR_TOO_MANY_PROVE_COMMITS,
+                        format!(
+                            "miner {} attempting to prove commit over {} sectors in epoch",
+                            miner_addr, MAX_MINER_PROVE_COMMITS_PER_EPOCH
+                        ),
+                    ));
                 }
             }
 
             mmap.add(miner_addr.to_bytes().into(), seal_info).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to insert proof into set")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to insert proof into set")
             })?;
 
             let mmrc = mmap.root().map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to flush proofs batch map")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush proofs batch map")
             })?;
 
             rt.charge_gas("OnSubmitVerifySeal", GAS_ON_SUBMIT_VERIFY_SEAL);
@@ -540,18 +546,18 @@ impl Actor {
                 CRON_QUEUE_AMT_BITWIDTH,
             )
             .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to load cron events")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load cron events")
             })?;
 
             let claims =
                 make_map_with_root_and_bitwidth::<_, Claim>(&st.claims, rt.store(), HAMT_BIT_WIDTH)
                     .map_err(|e| {
-                        e.downcast_default(ExitCode::ErrIllegalState, "failed to load claims")
+                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
                     })?;
             for epoch in st.first_cron_epoch..=rt_epoch {
                 let epoch_events = load_cron_events(&events, epoch).map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load cron events at {}", epoch),
                     )
                 })?;
@@ -563,7 +569,10 @@ impl Actor {
                 for evt in epoch_events.into_iter() {
                     let miner_has_claim =
                         claims.contains_key(&evt.miner_addr.to_bytes()).map_err(|e| {
-                            e.downcast_default(ExitCode::ErrIllegalState, "failed to look up claim")
+                            e.downcast_default(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "failed to look up claim",
+                            )
                         })?;
                     if !miner_has_claim {
                         debug!("skipping cron event for unknown miner: {}", evt.miner_addr);
@@ -574,7 +583,7 @@ impl Actor {
 
                 events.remove_all(&epoch_key(epoch)).map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to clear cron events at {}", epoch),
                     )
                 })?;
@@ -582,7 +591,7 @@ impl Actor {
 
             st.first_cron_epoch = rt_epoch + 1;
             st.cron_event_queue = events.root().map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to flush events")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush events")
             })?;
 
             Ok(())
@@ -616,7 +625,7 @@ impl Actor {
                 let mut claims =
                     make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH)
                         .map_err(|e| {
-                            e.downcast_default(ExitCode::ErrIllegalState, "failed to load claims")
+                            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
                         })?;
 
                 // Remove power and leave miner frozen
@@ -633,7 +642,7 @@ impl Actor {
                 }
 
                 st.claims = claims.flush().map_err(|e| {
-                    e.downcast_default(ExitCode::ErrIllegalState, "failed to flush claims")
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims")
                 })?;
                 Ok(())
             })?;
@@ -686,7 +695,7 @@ impl ActorCode for Actor {
                 let res = Self::current_total_power(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            None => Err(actor_error!(ErrUnhandledMessage; "Invalid method")),
         }
     }
 }

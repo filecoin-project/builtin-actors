@@ -258,7 +258,7 @@ impl ActorCode for Actor {
                 Self::update_network_kpi(rt, param.map(|v| v.0))?;
                 Ok(RawBytes::default())
             }
-            None => Err(actor_error!(SysErrInvalidMethod, "Invalid method")),
+            None => Err(actor_error!(ErrUnhandledMessage, "Invalid method")),
         }
     }
 }

@@ -132,7 +132,7 @@ impl State {
         let empty_precommit_map =
             make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to construct empty precommit map",
                 )
             })?;
@@ -141,7 +141,7 @@ impl State {
                 .flush()
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         "failed to construct empty precommits array",
                     )
                 })?;
@@ -150,27 +150,27 @@ impl State {
                 .flush()
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         "failed to construct sectors array",
                     )
                 })?;
         let empty_bitfield = store.put_cbor(&BitField::new(), Code::Blake2b256).map_err(|e| {
-            e.downcast_default(ExitCode::ErrIllegalState, "failed to construct empty bitfield")
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct empty bitfield")
         })?;
         let deadline = Deadline::new(store)?;
         let empty_deadline = store.put_cbor(&deadline, Code::Blake2b256).map_err(|e| {
-            e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
         })?;
 
         let empty_deadlines = store
             .put_cbor(&Deadlines::new(policy, empty_deadline), Code::Blake2b256)
             .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
             })?;
 
         let empty_vesting_funds_cid =
             store.put_cbor(&VestingFunds::new(), Code::Blake2b256).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
             })?;
 
         Ok(Self {
@@ -255,7 +255,7 @@ impl State {
             .get_cbor(&self.allocated_sectors)
             .map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to load allocated sectors bitfield",
                 )
             })?
@@ -277,7 +277,7 @@ impl State {
         self.allocated_sectors =
             store.put_cbor(&new_allocation, Code::Blake2b256).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalArgument,
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
                     format!(
                         "failed to store allocated sectors bitfield after adding {:?}",
                         sector_numbers,
@@ -723,7 +723,7 @@ impl State {
     pub fn load_deadlines<BS: Blockstore>(&self, store: &BS) -> Result<Deadlines, ActorError> {
         store
             .get_cbor::<Deadlines>(&self.deadlines)
-            .map_err(|e| e.downcast_default(ExitCode::ErrIllegalState, "failed to load deadlines"))?
+            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deadlines"))?
             .ok_or_else(
                 || actor_error!(ErrIllegalState; "failed to load deadlines {}", self.deadlines),
             )

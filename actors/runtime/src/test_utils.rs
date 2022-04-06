@@ -840,8 +840,8 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         }
 
         match expected_msg.exit_code {
-            ExitCode::Ok => Ok(expected_msg.send_return),
-            x => Err(ActorError::new(x, "Expected message Fail".to_string())),
+            ExitCode::OK => Ok(expected_msg.send_return),
+            x => Err(ActorError::new_unchecked(x, "Expected message Fail".to_string())),
         }
     }
 
@@ -980,8 +980,8 @@ impl Syscalls for MockRuntime {
             )));
         }
 
-        if exp.exit_code != ExitCode::Ok {
-            return Err(anyhow!(ActorError::new(exp.exit_code, "Expected Failure".to_string(),)));
+        if exp.exit_code != ExitCode::OK {
+            return Err(anyhow!(ActorError::new_unchecked(exp.exit_code, "Expected Failure".to_string(),)));
         }
         Ok(exp.cid)
     }
@@ -994,8 +994,8 @@ impl Syscalls for MockRuntime {
         if exp.seal != *seal {
             return Err(anyhow!(actor_error!(ErrIllegalState; "Unexpected seal verification"),));
         }
-        if exp.exit_code != ExitCode::Ok {
-            return Err(anyhow!(ActorError::new(exp.exit_code, "Expected Failure".to_string(),)));
+        if exp.exit_code != ExitCode::OK {
+            return Err(anyhow!(ActorError::new_unchecked(exp.exit_code, "Expected Failure".to_string(),)));
         }
         Ok(())
     }
@@ -1008,8 +1008,8 @@ impl Syscalls for MockRuntime {
         if exp.post != *post {
             return Err(anyhow!(actor_error!(ErrIllegalState; "Unexpected PoSt verification"),));
         }
-        if exp.exit_code != ExitCode::Ok {
-            return Err(anyhow!(ActorError::new(exp.exit_code, "Expected Failure".to_string(),)));
+        if exp.exit_code != ExitCode::OK {
+            return Err(anyhow!(ActorError::new_unchecked(exp.exit_code, "Expected Failure".to_string(),)));
         }
         Ok(())
     }
@@ -1033,8 +1033,8 @@ impl Syscalls for MockRuntime {
                 return Err(anyhow!(actor_error!(ErrIllegalState; "Header extra mismatch"),));
             }
         }
-        if exp.exit_code != ExitCode::Ok {
-            return Err(anyhow!(ActorError::new(exp.exit_code, "Expected Failure".to_string(),)));
+        if exp.exit_code != ExitCode::OK {
+            return Err(anyhow!(ActorError::new_unchecked(exp.exit_code, "Expected Failure".to_string(),)));
         }
         Ok(exp.fault)
     }

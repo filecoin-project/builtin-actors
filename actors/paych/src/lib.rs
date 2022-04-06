@@ -10,7 +10,6 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Sign};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::error::ExitCode::ErrTooManyProveCommits as ErrChannelStateUpdateAfterSettled;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -36,6 +35,8 @@ pub enum Method {
     Collect = 4,
 }
 
+pub const ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED: ExitCode = ExitCode::new(32);
+
 /// Payment Channel actor
 pub struct Actor;
 impl Actor {
@@ -58,7 +59,7 @@ impl Actor {
             Array::<(), _>::new_with_bit_width(rt.store(), LANE_STATES_AMT_BITWIDTH)
                 .flush()
                 .map_err(|e| {
-                    e.downcast_default(ExitCode::ErrIllegalState, "failed to create empty AMT")
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to create empty AMT")
                 })?;
 
         rt.create(&State::new(from, to, empty_arr_cid))?;
@@ -73,7 +74,7 @@ impl Actor {
     {
         let resolved = resolve_to_id_addr(rt, raw).map_err(|e| {
             e.downcast_default(
-                ExitCode::ErrIllegalState,
+                ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to resolve address {}", raw),
             )
         })?;
@@ -118,8 +119,8 @@ impl Actor {
             .ok_or_else(|| actor_error!(ErrIllegalArgument, "voucher has no signature"))?;
 
         if st.settling_at != 0 && rt.curr_epoch() >= st.settling_at {
-            return Err(ActorError::new(
-                ErrChannelStateUpdateAfterSettled,
+            return Err(ActorError::new_unchecked(
+                ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED,
                 "no vouchers can be processed after settling at epoch".to_string(),
             ));
         }
@@ -130,15 +131,12 @@ impl Actor {
 
         // Generate unsigned bytes
         let sv_bz = sv.signing_bytes().map_err(|e| {
-            ActorError::new(
-                ExitCode::ErrSerialization,
-                format!("failed to serialized SignedVoucher: {}", e),
-            )
+            ActorError::ErrSerialization(format!("failed to serialized SignedVoucher: {}", e))
         })?;
 
         // Validate signature
         rt.verify_signature(sig, &signer, &sv_bz).map_err(|e| {
-            e.downcast_default(ExitCode::ErrIllegalArgument, "voucher signature invalid")
+            e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "voucher signature invalid")
         })?;
 
         let pch_addr = rt.message().receiver();
@@ -187,7 +185,7 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let mut l_states = Array::load(&st.lane_states, rt.store()).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to load lane states")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load lane states")
             })?;
 
             // Find the voucher lane, create and insert it in sorted order if necessary.
@@ -230,7 +228,7 @@ impl Actor {
                 other_ls.nonce = merge.nonce;
                 l_states.set(merge.lane, other_ls).map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to store lane {}", merge.lane),
                     )
                 })?;
@@ -272,13 +270,13 @@ impl Actor {
 
             l_states.set(lane_id, lane_state).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to store lane {}", lane_id),
                 )
             })?;
 
             st.lane_states = l_states.flush().map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to save lanes")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save lanes")
             })?;
             Ok(())
         })
@@ -341,7 +339,7 @@ where
     }
 
     ls.get(id).map_err(|e| {
-        e.downcast_default(ExitCode::ErrIllegalState, format!("failed to load lane {}", id))
+        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, format!("failed to load lane {}", id))
     })
 }
 
@@ -372,7 +370,7 @@ impl ActorCode for Actor {
                 Self::collect(rt)?;
                 Ok(RawBytes::default())
             }
-            _ => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            _ => Err(actor_error!(ErrUnhandledMessage; "Invalid method")),
         }
     }
 }

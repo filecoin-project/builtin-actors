@@ -82,7 +82,7 @@ impl ActorCode for Actor {
                 let addr = Self::pubkey_address(rt)?;
                 Ok(RawBytes::serialize(addr)?)
             }
-            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            None => Err(actor_error!(ErrUnhandledMessage; "Invalid method")),
         }
     }
 }

@@ -75,7 +75,7 @@ impl Actor {
         for signer in &params.signers {
             let resolved = resolve_to_id_addr(rt, signer).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to resolve addr {} to ID addr", signer),
                 )
             })?;
@@ -103,7 +103,7 @@ impl Actor {
 
         let empty_root =
             make_empty_map::<_, ()>(rt.store(), HAMT_BIT_WIDTH).flush().map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "Failed to create empty map")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty map")
             })?;
 
         let mut st: State = State {
@@ -151,7 +151,7 @@ impl Actor {
             }
 
             let mut ptx = make_map_with_root(&st.pending_txs, rt.store()).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to load pending transactions")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")
             })?;
 
             let t_id = st.next_tx_id;
@@ -167,14 +167,14 @@ impl Actor {
 
             ptx.set(t_id.key(), txn.clone()).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to put transaction for propose",
                 )
             })?;
 
             st.pending_txs = ptx.flush().map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to flush pending transactions",
                 )
             })?;
@@ -203,7 +203,7 @@ impl Actor {
             }
 
             let ptx = make_map_with_root(&st.pending_txs, rt.store()).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to load pending transactions")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")
             })?;
 
             let txn = get_transaction(rt, &ptx, params.id, params.proposal_hash)?;
@@ -241,7 +241,7 @@ impl Actor {
             let mut ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, rt.store())
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         "failed to load pending transactions",
                     )
                 })?;
@@ -250,7 +250,7 @@ impl Actor {
                 .delete(&params.id.key())
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to pop transaction {:?} for cancel", params.id),
                     )
                 })?
@@ -267,7 +267,7 @@ impl Actor {
 
             let calculated_hash = compute_proposal_hash(&tx, rt).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to compute proposal hash for (tx: {:?})", params.id),
                 )
             })?;
@@ -278,7 +278,7 @@ impl Actor {
 
             st.pending_txs = ptx.flush().map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to flush pending transactions",
                 )
             })?;
@@ -297,7 +297,7 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
         let resolved_new_signer = resolve_to_id_addr(rt, &params.signer).map_err(|e| {
             e.downcast_default(
-                ExitCode::ErrIllegalState,
+                ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to resolve address {}", params.signer),
             )
         })?;
@@ -338,7 +338,7 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
         let resolved_old_signer = resolve_to_id_addr(rt, &params.signer).map_err(|e| {
             e.downcast_default(
-                ExitCode::ErrIllegalState,
+                ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to resolve address {}", params.signer),
             )
         })?;
@@ -376,7 +376,7 @@ impl Actor {
             // Remove approvals from removed signer
             st.purge_approvals(rt.store(), &resolved_old_signer).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to purge approvals of removed signer",
                 )
             })?;
@@ -398,13 +398,13 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
         let from_resolved = resolve_to_id_addr(rt, &params.from).map_err(|e| {
             e.downcast_default(
-                ExitCode::ErrIllegalState,
+                ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to resolve address {}", params.from),
             )
         })?;
         let to_resolved = resolve_to_id_addr(rt, &params.to).map_err(|e| {
             e.downcast_default(
-                ExitCode::ErrIllegalState,
+                ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to resolve address {}", params.to),
             )
         })?;
@@ -428,7 +428,7 @@ impl Actor {
 
             st.purge_approvals(rt.store(), &from_resolved).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to purge approvals of removed signer",
                 )
             })?;
@@ -513,7 +513,7 @@ impl Actor {
 
         let st = rt.transaction(|st: &mut State, rt| {
             let mut ptx = make_map_with_root(&st.pending_txs, rt.store()).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to load pending transactions")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")
             })?;
 
             // update approved on the transaction
@@ -521,14 +521,14 @@ impl Actor {
 
             ptx.set(tx_id.key(), txn.clone()).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to put transaction {} for approval", tx_id.0),
                 )
             })?;
 
             st.pending_txs = ptx.flush().map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to flush pending transactions",
                 )
             })?;
@@ -553,7 +553,7 @@ where
     RT: Runtime<BS>,
 {
     let mut out = RawBytes::default();
-    let mut code = ExitCode::Ok;
+    let mut code = ExitCode::OK;
     let mut applied = false;
     let threshold_met = txn.approved.len() as u64 >= st.num_approvals_threshold;
     if threshold_met {
@@ -575,21 +575,21 @@ where
             let mut ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, rt.store())
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         "failed to load pending transactions",
                     )
                 })?;
 
             ptx.delete(&txn_id.key()).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to delete transaction for cleanup",
                 )
             })?;
 
             st.pending_txs = ptx.flush().map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to flush pending transactions",
                 )
             })?;
@@ -614,7 +614,7 @@ where
         .get(&txn_id.key())
         .map_err(|e| {
             e.downcast_default(
-                ExitCode::ErrIllegalState,
+                ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to load transaction {:?} for approval", txn_id),
             )
         })?
@@ -625,7 +625,7 @@ where
     if !proposal_hash.is_empty() {
         let calculated_hash = compute_proposal_hash(txn, rt).map_err(|e| {
             e.downcast_default(
-                ExitCode::ErrIllegalState,
+                ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to compute proposal hash for (tx: {:?})", txn_id),
             )
         })?;
@@ -702,7 +702,7 @@ impl ActorCode for Actor {
                 Self::lock_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            None => Err(actor_error!(SysErrInvalidMethod, "Invalid method")),
+            None => Err(actor_error!(ErrUnhandledMessage, "Invalid method")),
         }
     }
 }

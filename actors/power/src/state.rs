@@ -82,7 +82,7 @@ impl State {
         let empty_mmap = Multimap::new(store, CRON_QUEUE_HAMT_BITWIDTH, CRON_QUEUE_AMT_BITWIDTH)
             .root()
             .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "Failed to get empty multimap cid")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to get empty multimap cid")
             })?;
         Ok(State {
             cron_event_queue: empty_mmap,
@@ -267,11 +267,11 @@ impl State {
         BS: Blockstore,
     {
         let claims = make_map_with_root::<_, Claim>(&self.claims, store)
-            .map_err(|e| e.downcast_default(ExitCode::ErrIllegalState, "failed to load claims"))?;
+            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims"))?;
 
         if !claims
             .contains_key(&miner_addr.to_bytes())
-            .map_err(|e| e.downcast_default(ExitCode::ErrIllegalState, "failed to look up claim"))?
+            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to look up claim"))?
         {
             return Err(actor_error!(
                 ErrForbidden,
@@ -290,7 +290,7 @@ impl State {
         let claims =
             make_map_with_root_and_bitwidth::<_, Claim>(&self.claims, store, HAMT_BIT_WIDTH)
                 .map_err(|e| {
-                    e.downcast_default(ExitCode::ErrIllegalState, "failed to load claims")
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
                 })?;
 
         let claim = get_claim(&claims, miner)?;

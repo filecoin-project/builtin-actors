@@ -1,8 +1,7 @@
 use fvm_ipld_encoding::{to_vec, RawBytes};
-use fvm_shared::error::ExitCode;
 use serde::{de, ser};
 
-use crate::ActorError;
+use crate::{ActorError};
 
 /// Serializes a structure as a CBOR vector of bytes, returning a serialization error on failure.
 /// `desc` is a noun phrase for the object being serialized, included in any error message.
@@ -11,7 +10,7 @@ where
     T: ser::Serialize + ?Sized,
 {
     to_vec(value).map_err(|e| {
-        ActorError::new(ExitCode::ErrSerialization, format!("failed to serialize {}: {}", desc, e))
+        ActorError::ErrSerialization(format!("failed to serialize {}: {}", desc, e))
     })
 }
 
@@ -28,10 +27,7 @@ where
 /// `desc` is a noun phrase for the object being deserialized, included in any error message.
 pub fn deserialize<O: de::DeserializeOwned>(v: &RawBytes, desc: &str) -> Result<O, ActorError> {
     v.deserialize().map_err(|e| {
-        ActorError::new(
-            ExitCode::ErrSerialization,
-            format!("failed to deserialize {}: {}", desc, e),
-        )
+        ActorError::ErrSerialization(format!("failed to deserialize {}: {}", desc, e))
     })
 }
 

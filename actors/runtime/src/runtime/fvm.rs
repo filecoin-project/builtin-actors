@@ -60,7 +60,7 @@ impl<B> FvmRuntime<B> {
     fn assert_not_validated(&mut self) -> Result<(), ActorError> {
         if self.caller_validated {
             return Err(actor_error!(
-                SysErrIllegalActor,
+                ErrUnspecified, // FIXME is this the right one?
                 "Method must validate caller identity exactly once"
             ));
         }
@@ -121,7 +121,7 @@ where
         if addresses.into_iter().any(|a| *a == caller_addr) {
             Ok(())
         } else {
-            return Err(actor_error!(SysErrForbidden;
+            return Err(actor_error!(ErrForbidden;
                 "caller {} is not one of supported", caller_addr
             ));
         }
@@ -140,7 +140,7 @@ where
 
         match self.resolve_builtin_actor_type(&caller_cid) {
             Some(typ) if types.into_iter().any(|t| *t == typ) => Ok(()),
-            _ => Err(actor_error!(SysErrForbidden;
+            _ => Err(actor_error!(ErrForbidden;
                     "caller cid type {} not one of supported", caller_cid)),
         }
     }
@@ -263,28 +263,40 @@ where
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         if self.in_transaction {
-            return Err(actor_error!(SysErrIllegalActor; "runtime.send() is not allowed"));
+            return Err(actor_error!(ErrUnspecified; "runtime.send() is not allowed"));
         }
-        // TODO: distinguish between "syscall" errors and actor exit codes.
         match fvm::send::send(&to, method, params, value) {
             Ok(ret) => {
                 if ret.exit_code.is_success() {
                     Ok(ret.return_data)
                 } else {
-                    Err(ActorError::from(ret.exit_code))
+                    // The returned code can't be simply propagated as it may be a system exit code.
+                    Err(ActorError::ErrInternalSendAborted(format!(
+                        "send to {} method {} aborted with code {}",
+                        to, method, ret.exit_code
+                    )))
                 }
             }
             Err(err) => Err(match err {
+                // Some of these errors are from operations in the Runtime or SDK layer
+                // before or after the underlying VM send syscall.
                 ErrorNumber::NotFound => {
-                    actor_error!(SysErrInvalidReceiver; "receiver not found")
+                    // How do we know the receiver is what triggered this?
+                    // An error number doesn't carry enough information at this level
+                    // above the raw syscall (and even then).
+                    actor_error!(ErrNotFound; "receiver not found")
                 }
                 ErrorNumber::InsufficientFunds => {
-                    actor_error!(SysErrInsufficientFunds; "not enough funds")
+                    // Actually this is more like an illegal argument where the caller attempted
+                    // to transfer an amount larger than that representable by the VM's
+                    // token amount type. Yes, the caller doesn't have that amount, but if they'd
+                    // attempted to transfer a representable amount it would fail with
+                    // SYS_INSUFFICIENT_FUNDS instead, so this difference is wierd.
+                    actor_error!(ErrInsufficientFunds; "not enough funds")
                 }
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(SysErrForbidden; "recursion limit exceeded")
+                err => {
+                    actor_error!(ErrUnspecified; "unexpected error: {}", err)
                 }
-                err => panic!("unexpected error: {}", err),
             }),
         }
     }
@@ -294,14 +306,11 @@ where
     }
 
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
-        fvm::actor::create_actor(actor_id, &code_id).map_err(|e| {
-            ActorError::new(
-                match e {
-                    ErrorNumber::IllegalArgument => ExitCode::SysErrIllegalArgument,
-                    _ => panic!("create failed with unknown error: {}", e),
-                },
-                "failed to create actor".into(),
-            )
+        fvm::actor::create_actor(actor_id, &code_id).map_err(|e| match e {
+            ErrorNumber::IllegalArgument => {
+                ActorError::ErrIllegalArgument("failed to create actor".into())
+            }
+            _ => panic!("create failed with unknown error: {}", e),
         })
     }
 
@@ -431,13 +440,13 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     let mut rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
     let ret = C::invoke_method(&mut rt, method, &params)
-        .unwrap_or_else(|err| fvm::vm::abort(err.exit_code() as u32, Some(err.msg())));
+        .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));
 
-    // Abort with "illegal actor" if the actor failed to validate the caller somewhere.
+    // Abort with "unspecified" if the actor failed to validate the caller somewhere.
     // We do this after handling the error, because the actor may have encountered an error before
     // it even could validate the caller.
     if !rt.caller_validated {
-        fvm::vm::abort(ExitCode::SysErrIllegalActor as u32, Some("failed to validate caller"))
+        fvm::vm::abort(ExitCode::USR_UNSPECIFIED.value(), Some("failed to validate caller"))
     }
 
     // Then handle the return value.

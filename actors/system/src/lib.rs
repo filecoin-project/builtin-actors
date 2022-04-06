@@ -61,7 +61,7 @@ impl Actor {
             .store()
             .put_cbor(&Vec::<(String, Cid)>::new(), multihash::Code::Blake2b256)
             .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to construct state")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
             })?;
 
         rt.create(&State { builtin_actors: c })?;
@@ -84,7 +84,7 @@ impl ActorCode for Actor {
                 Self::constructor(rt)?;
                 Ok(RawBytes::default())
             }
-            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            None => Err(actor_error!(ErrUnhandledMessage; "Invalid method")),
         }
     }
 }

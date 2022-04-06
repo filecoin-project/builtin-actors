@@ -7,7 +7,7 @@ use fvm_ipld_encoding::Error as EncodingError;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::error::ExitCode;
 
-use crate::ActorError;
+use crate::{ActorError};
 
 /// Trait to allow multiple error types to be able to be downcasted into an `ActorError`.
 pub trait ActorDowncast {
@@ -24,7 +24,7 @@ impl ActorDowncast for anyhow::Error {
         match downcast_util(self) {
             Ok(actor_error) => actor_error.wrap(msg),
             Err(other) => {
-                ActorError::new(default_exit_code, format!("{}: {}", msg.as_ref(), other))
+                ActorError::new_unchecked(default_exit_code, format!("{}: {}", msg.as_ref(), other))
             }
         }
     }
@@ -40,7 +40,7 @@ impl ActorDowncast for AmtError {
     fn downcast_default(self, default_exit_code: ExitCode, msg: impl AsRef<str>) -> ActorError {
         match self {
             AmtError::Dynamic(e) => e.downcast_default(default_exit_code, msg),
-            other => ActorError::new(default_exit_code, format!("{}: {}", msg.as_ref(), other)),
+            other => ActorError::new_unchecked(default_exit_code, format!("{}: {}", msg.as_ref(), other)),
         }
     }
     fn downcast_wrap(self, msg: impl AsRef<str>) -> anyhow::Error {
@@ -55,7 +55,7 @@ impl ActorDowncast for HamtError {
     fn downcast_default(self, default_exit_code: ExitCode, msg: impl AsRef<str>) -> ActorError {
         match self {
             HamtError::Dynamic(e) => e.downcast_default(default_exit_code, msg),
-            other => ActorError::new(default_exit_code, format!("{}: {}", msg.as_ref(), other)),
+            other => ActorError::new_unchecked(default_exit_code, format!("{}: {}", msg.as_ref(), other)),
         }
     }
     fn downcast_wrap(self, msg: impl AsRef<str>) -> anyhow::Error {
@@ -79,7 +79,7 @@ fn downcast_util(error: anyhow::Error) -> anyhow::Result<ActorError> {
     // Check if error is Encoding error, if so return `ErrSerialization`
     let error = match error.downcast::<EncodingError>() {
         Ok(enc_error) => {
-            return Ok(ActorError::new(ExitCode::ErrSerialization, enc_error.to_string()))
+            return Ok(ActorError::new_unchecked(ExitCode::USR_SERIALIZATION, enc_error.to_string()))
         }
         Err(other) => other,
     };

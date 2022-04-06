@@ -60,7 +60,7 @@ impl Actor {
         if let Err(e) = result {
             Ok(SendReturn { return_value: RawBytes::default(), code: e.exit_code() })
         } else {
-            Ok(SendReturn { return_value: result.unwrap(), code: ExitCode::Ok })
+            Ok(SendReturn { return_value: result.unwrap(), code: ExitCode::OK })
         }
     }
 
@@ -172,7 +172,7 @@ impl Actor {
         if arg.uncontrolled {
             panic!("Uncontrolled abort/error");
         }
-        Err(ActorError::new(arg.code, arg.message))
+        Err(ActorError::new_unchecked(arg.code, arg.message))
     }
 
     pub fn inspect_runtime<BS, RT>(rt: &mut RT) -> Result<InspectRuntimeReturn, ActorError>
@@ -246,7 +246,7 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(inspect)?)
             }
 
-            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            None => Err(actor_error!(ErrUnhandledMessage; "Invalid method")),
         }
     }
 }

@@ -761,7 +761,7 @@ impl Partition {
                 quant,
             )
             .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to add skipped faults")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add skipped faults")
             })?;
 
         // Remove faulty recoveries
