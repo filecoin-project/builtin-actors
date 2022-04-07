@@ -108,6 +108,7 @@ mod tests {
     use super::*;
     use num::BigRational;
     use num::ToPrimitive;
+    use std::fs;
     use std::ops::Shl;
 
     // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L18
@@ -157,40 +158,52 @@ mod tests {
     }
 
     // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L43
-    // func TestBaselineReward(t *testing.T) {
-    //     step := gbig.NewInt(5000)
-    //     step = step.Lsh(step, math.Precision128)
-    //     step = step.Sub(step, gbig.NewInt(77777777777)) // offset from full integers
-
-    //     delta := gbig.NewInt(1)
-    //     delta = delta.Lsh(delta, math.Precision128)
-    //     delta = delta.Sub(delta, gbig.NewInt(33333333333)) // offset from full integers
-
-    //     prevTheta := new(gbig.Int)
-    //     theta := new(gbig.Int).Set(delta)
-
-    //     b := &bytes.Buffer{}
-    //     b.WriteString("t0, t1, y\n")
-    //     simple := computeReward(0, big.Zero(), big.Zero(), DefaultSimpleTotal, DefaultBaselineTotal)
-
-    //     for i := 0; i < 512; i++ {
-    //         reward := computeReward(0, big.NewFromGo(prevTheta), big.NewFromGo(theta), DefaultSimpleTotal, DefaultBaselineTotal)
-    //         reward = big.Sub(reward, simple)
-    //         fmt.Fprintf(b, "%s,%s,%s\n", prevTheta, theta, reward.Int)
-    //         prevTheta = prevTheta.Add(prevTheta, step)
-    //         theta = theta.Add(theta, step)
-    //     }
-
-    //     golden.Assert(t, b.Bytes())
-    // }
     #[test]
-    #[ignore = "todo"]
     fn test_baseline_reward() {
-        let step = BigInt::from(5000).shl(u128::BITS) - BigInt::from(77_777_777_777_i64);
-        let delta = BigInt::from(1).shl(u128::BITS) - BigInt::from(33_333_333_333_i64);
+        let step = BigInt::from(5000_i64).shl(u128::BITS) - BigInt::from(77_777_777_777_i64);
+        let delta = BigInt::from(1_i64).shl(u128::BITS) - BigInt::from(33_333_333_333_i64);
 
-        let prev_theta = BigInt::from(0);
+        let mut prev_theta = BigInt::from(0i64);
+        let mut theta = delta;
 
-        todo!()
+        let mut b = String::from("t0, t1, y\n");
+        let simple = compute_reward(
+            0,
+            BigInt::from(0i64),
+            BigInt::from(0i64),
+            &SIMPLE_TOTAL,
+            &BASELINE_TOTAL,
+        );
+
+        for _ in 0..512 {
+            let mut reward = compute_reward(
+                0,
+                prev_theta.clone(),
+                theta.clone(),
+                &SIMPLE_TOTAL,
+                &BASELINE_TOTAL,
+            );
+            reward -= &simple;
+
+            let prev_theta_str = &prev_theta.to_string();
+            let theta_str = &theta.to_string();
+            let reward_str = &reward.to_string();
+            b.push_str(prev_theta_str);
+            b.push(',');
+            b.push_str(theta_str);
+            b.push(',');
+            b.push_str(reward_str);
+            b.push('\n');
+
+            prev_theta += &step;
+            theta += &step;
+        }
+
+        // compare test output to golden file used for golang tests; file originally located at filecoin-project/specs-actors/actors/builtin/reward/testdata/TestBaselineReward.golden (current link: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/testdata/TestBaselineReward.golden)
+        let filename = "testdata/TestBaselineReward.golden";
+        let golden_contents =
+            fs::read_to_string(filename).expect("Something went wrong reading the file");
+
+        assert_eq!(golden_contents, b);
     }
 }
