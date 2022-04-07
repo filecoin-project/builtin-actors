@@ -86,4 +86,6 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: bundle
-        path: output/*
+        path: |
+         output/builtin-actors.car
+         output/upload.json
