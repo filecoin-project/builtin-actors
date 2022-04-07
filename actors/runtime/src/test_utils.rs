@@ -29,7 +29,9 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
-use crate::runtime::{ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls};
+use crate::runtime::{
+    ActorCode, MessageInfo, Policy, Runtime, RuntimeError, RuntimePolicy, Syscalls,
+};
 use crate::{actor_error, ActorError};
 
 lazy_static! {
@@ -362,7 +364,7 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
-    pub fn get_state<T: Cbor>(&self) -> Result<T, ActorError> {
+    pub fn get_state<T: Cbor>(&self) -> Result<T, MockRuntimeError> {
         // TODO this doesn't handle errors exactly as go implementation
         self.state()
     }
@@ -584,7 +586,19 @@ impl MessageInfo for MockRuntime {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("mock runtime error: {0}")]
+pub struct MockRuntimeError(#[from] anyhow::Error);
+
+impl RuntimeError for MockRuntimeError {
+    fn exit_code(&self) -> ExitCode {
+        ExitCode::ErrIllegalArgument // TODO: what should this be?
+    }
+}
+
 impl Runtime<MemoryBlockstore> for MockRuntime {
+    type Error = MockRuntimeError;
+
     fn network_version(&self) -> NetworkVersion {
         self.network_version
     }
@@ -599,7 +613,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         self.epoch
     }
 
-    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
+    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), Self::Error> {
         self.require_in_call();
         assert!(
             self.expectations.borrow_mut().expect_validate_caller_any,
@@ -609,7 +623,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         Ok(())
     }
 
-    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = &'a Address>,
     {
@@ -637,12 +651,15 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             }
         }
         expectations.expect_validate_caller_addr = None;
-        return Err(actor_error!(SysErrForbidden;
-                "caller address {:?} forbidden, allowed: {:?}",
-                self.message().caller(), &addrs
-        ));
+        return Err(anyhow::anyhow!(
+            "caller address {:?} forbidden, allowed: {:?}",
+            self.message().caller(),
+            &addrs
+        )
+        .into());
     }
-    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
+
+    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = &'a Type>,
     {
@@ -677,8 +694,8 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
         self.expectations.borrow_mut().expect_validate_caller_type = None;
 
-        Err(actor_error!(SysErrForbidden; "caller type {:?} forbidden, allowed: {:?}",
-                self.caller_type, types))
+        Err(anyhow::anyhow!("caller type {:?} forbidden, allowed: {:?}", self.caller_type, types)
+            .into())
     }
 
     fn current_balance(&self) -> TokenAmount {
@@ -706,7 +723,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<Randomness, Self::Error> {
         let expected = self
             .expectations
             .borrow_mut()
@@ -739,7 +756,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<Randomness, Self::Error> {
         let expected = self
             .expectations
             .borrow_mut()
@@ -767,25 +784,25 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         Ok(expected.out)
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), Self::Error> {
         if self.state.is_some() {
-            return Err(actor_error!(SysErrIllegalActor; "state already constructed"));
+            return Err(anyhow::anyhow!("state already constructed").into());
         }
         self.state = Some(self.store.put_cbor(obj, Code::Blake2b256).unwrap());
         Ok(())
     }
 
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
+    fn state<C: Cbor>(&self) -> Result<C, Self::Error> {
         Ok(self.store.get_cbor(self.state.as_ref().unwrap()).unwrap().unwrap())
     }
 
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, Self::Error>
     where
         C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
+        F: FnOnce(&mut C, &mut Self) -> Result<RT, Self::Error>,
     {
         if self.in_transaction {
-            return Err(actor_error!(SysErrIllegalActor; "nested transaction"));
+            return Err(anyhow::anyhow!("nested transaction").into());
         }
         let mut read_only = self.state()?;
         self.in_transaction = true;
@@ -807,10 +824,10 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<RawBytes, Self::Error> {
         self.require_in_call();
         if self.in_transaction {
-            return Err(actor_error!(SysErrIllegalActor; "side-effect within transaction"));
+            return Err(anyhow::anyhow!("side-effect within transaction").into());
         }
 
         assert!(
@@ -831,31 +848,33 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         {
             let mut balance = self.balance.borrow_mut();
             if value > *balance {
-                return Err(actor_error!(SysErrSenderStateInvalid;
-                        "cannot send value: {:?} exceeds balance: {:?}",
-                        value, *balance
-                ));
+                return Err(anyhow::anyhow!(
+                    "cannot send value: {:?} exceeds balance: {:?}",
+                    value,
+                    *balance
+                )
+                .into());
             }
             *balance -= value;
         }
 
         match expected_msg.exit_code {
             ExitCode::Ok => Ok(expected_msg.send_return),
-            x => Err(ActorError::new(x, "Expected message Fail".to_string())),
+            x => Err(anyhow::anyhow!("Expected message Fail: {}", x).into()),
         }
     }
 
-    fn new_actor_address(&mut self) -> Result<Address, ActorError> {
+    fn new_actor_address(&mut self) -> Result<Address, Self::Error> {
         self.require_in_call();
         let ret = *self.new_actor_addr.as_ref().expect("unexpected call to new actor address");
         self.new_actor_addr = None;
         Ok(ret)
     }
 
-    fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
+    fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), Self::Error> {
         self.require_in_call();
         if self.in_transaction {
-            return Err(actor_error!(SysErrIllegalActor; "side-effect within transaction"));
+            return Err(anyhow::anyhow!("side-effect within transaction").into());
         }
         let expect_create_actor = self
             .expectations
@@ -868,10 +887,10 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         Ok(())
     }
 
-    fn delete_actor(&mut self, addr: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&mut self, addr: &Address) -> Result<(), Self::Error> {
         self.require_in_call();
         if self.in_transaction {
-            return Err(actor_error!(SysErrIllegalActor; "side-effect within transaction"));
+            return Err(anyhow::anyhow!("side-effect within transaction").into());
         }
         let exp_act = self.expectations.borrow_mut().expect_delete_actor.take();
         if exp_act.is_none() {
