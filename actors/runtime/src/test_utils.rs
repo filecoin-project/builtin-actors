@@ -450,7 +450,8 @@ impl MockRuntime {
             self.state = prev_state;
         }
         self.in_call = false;
-        res
+        // res
+        todo!()
     }
 
     pub fn verify(&mut self) {
