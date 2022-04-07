@@ -21,5 +21,6 @@ pub trait ActorCode {
         // hold onto state between transactions.
         // https://github.com/filecoin-project/builtin-actors/issues/133
         BS: Blockstore + Clone,
-        RT: Runtime<BS>;
+        RT: Runtime<BS>,
+        ActorError: From<RT::Error>;
 }

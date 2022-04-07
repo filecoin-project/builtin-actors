@@ -13,7 +13,7 @@ use num_traits::FromPrimitive;
 pub use state::*;
 pub use types::*;
 
-use crate::runtime::{ActorCode, Runtime};
+use crate::runtime::{ActorCode, Runtime, RuntimeError};
 use crate::{actor_error, cbor, ActorError};
 
 mod state;
@@ -49,7 +49,7 @@ pub enum Method {
 pub struct Actor;
 
 impl Actor {
-    pub fn send<BS, RT>(rt: &mut RT, arg: SendArgs) -> Result<SendReturn, ActorError>
+    pub fn send<BS, RT>(rt: &mut RT, arg: SendArgs) -> Result<SendReturn, RT::Error>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -83,7 +83,7 @@ impl Actor {
     pub fn caller_validation<BS, RT>(
         rt: &mut RT,
         args: CallerValidationArgs,
-    ) -> Result<(), ActorError>
+    ) -> Result<(), RT::Error>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -111,7 +111,7 @@ impl Actor {
     }
 
     // Creates an actor with the supplied CID and Address.
-    pub fn create_actor<BS, RT>(rt: &mut RT, arg: CreateActorArgs) -> Result<(), ActorError>
+    pub fn create_actor<BS, RT>(rt: &mut RT, arg: CreateActorArgs) -> Result<(), RT::Error>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -129,7 +129,7 @@ impl Actor {
     pub fn resolve_address<BS, RT>(
         rt: &mut RT,
         args: Address,
-    ) -> Result<ResolveAddressResponse, ActorError>
+    ) -> Result<ResolveAddressResponse, RT::Error>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -142,7 +142,7 @@ impl Actor {
         })
     }
 
-    pub fn delete_actor<BS, RT>(rt: &mut RT, beneficiary: Address) -> Result<(), ActorError>
+    pub fn delete_actor<BS, RT>(rt: &mut RT, beneficiary: Address) -> Result<(), RT::Error>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -151,7 +151,7 @@ impl Actor {
         rt.delete_actor(&beneficiary)
     }
 
-    pub fn mutate_state<BS, RT>(rt: &mut RT, arg: MutateStateArgs) -> Result<(), ActorError>
+    pub fn mutate_state<BS, RT>(rt: &mut RT, arg: MutateStateArgs) -> Result<(), RT::Error>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -164,7 +164,7 @@ impl Actor {
                 Ok(())
             }),
 
-            _ => Err(actor_error!(ErrIllegalArgument; "Invalid mutate state command given" )),
+            _ => panic!("Invalid mutate state command given"),
         }
     }
 
@@ -175,7 +175,7 @@ impl Actor {
         Err(ActorError::new(arg.code, arg.message))
     }
 
-    pub fn inspect_runtime<BS, RT>(rt: &mut RT) -> Result<InspectRuntimeReturn, ActorError>
+    pub fn inspect_runtime<BS, RT>(rt: &mut RT) -> Result<InspectRuntimeReturn, RT::Error>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -201,6 +201,7 @@ impl ActorCode for Actor {
     where
         BS: Blockstore,
         RT: Runtime<BS>,
+        ActorError: From<RT::Error>,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {

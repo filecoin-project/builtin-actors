@@ -11,6 +11,7 @@ use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
@@ -35,9 +36,21 @@ mod actor_blockstore;
 
 mod policy;
 
+pub trait RuntimeError: std::error::Error + Send + Sync + 'static {
+    fn exit_code(&self) -> ExitCode;
+}
+
+impl<E: RuntimeError> From<E> for ActorError {
+    fn from(e: E) -> Self {
+        ActorError::new(e.exit_code(), e.to_string())
+    }
+}
+
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
 pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
+    type Error: RuntimeError;
+
     /// The network protocol version number at the current epoch.
     fn network_version(&self) -> NetworkVersion;
 
@@ -49,11 +62,11 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
 
     /// Validates the caller against some predicate.
     /// Exported actor methods must invoke at least one caller validation before returning.
-    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError>;
-    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), Self::Error>;
+    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = &'a Address>;
-    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = &'a Type>;
 
@@ -76,7 +89,7 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError>;
+    ) -> Result<Randomness, Self::Error>;
 
     /// Randomness returns a (pseudo)random byte array drawing from the latest
     /// beacon from a given epoch and incorporating requisite entropy.
@@ -86,16 +99,16 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError>;
+    ) -> Result<Randomness, Self::Error>;
 
     /// Initializes the state object.
     /// This is only valid in a constructor function and when the state has not yet been initialized.
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError>;
+    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), Self::Error>;
 
     /// Loads a readonly copy of the state of the receiver into the argument.
     ///
     /// Any modification to the state is illegal and will result in an abort.
-    fn state<C: Cbor>(&self) -> Result<C, ActorError>;
+    fn state<C: Cbor>(&self) -> Result<C, Self::Error>;
 
     /// Loads a mutable version of the state into the `obj` argument and protects
     /// the execution from side effects (including message send).
@@ -106,10 +119,10 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
     /// If the state is modified after this function returns, execution will abort.
     ///
     /// The gas cost of this method is that of a Store.Put of the mutated state object.
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, Self::Error>
     where
         C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>;
+        F: FnOnce(&mut C, &mut Self) -> Result<RT, Self::Error>;
 
     /// Returns reference to blockstore
     fn store(&self) -> &BS;
@@ -123,22 +136,22 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError>;
+    ) -> Result<RawBytes, Self::Error>;
 
     /// Computes an address for a new actor. The returned address is intended to uniquely refer to
     /// the actor even in the event of a chain re-org (whereas an ID-address might refer to a
     /// different actor after messages are re-ordered).
     /// Always an ActorExec address.
-    fn new_actor_address(&mut self) -> Result<Address, ActorError>;
+    fn new_actor_address(&mut self) -> Result<Address, Self::Error>;
 
     /// Creates an actor with code `codeID` and address `address`, with empty state.
     /// May only be called by Init actor.
-    fn create_actor(&mut self, code_id: Cid, address: ActorID) -> Result<(), ActorError>;
+    fn create_actor(&mut self, code_id: Cid, address: ActorID) -> Result<(), Self::Error>;
 
     /// Deletes the executing actor from the state tree, transferring any balance to beneficiary.
     /// Aborts if the beneficiary does not exist.
     /// May only be called by the actor itself.
-    fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), ActorError>;
+    fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), Self::Error>;
 
     /// Returns whether the specified CodeCID belongs to a built-in actor.
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type>;

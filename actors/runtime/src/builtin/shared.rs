@@ -6,6 +6,7 @@ use fvm_shared::address::Address;
 use fvm_shared::METHOD_SEND;
 
 use crate::runtime::Runtime;
+use anyhow::Context;
 
 pub const HAMT_BIT_WIDTH: u32 = 5;
 
@@ -24,7 +25,7 @@ where
 
     // send 0 balance to the account so an ID address for it is created and then try to resolve
     rt.send(*address, METHOD_SEND, Default::default(), Default::default())
-        .map_err(|e| e.wrap(&format!("failed to send zero balance to address {}", address)))?;
+        .with_context(|| format!("failed to send zero balance to address {}", address))?;
 
     rt.resolve_address(address).ok_or_else(|| {
         anyhow::anyhow!(
