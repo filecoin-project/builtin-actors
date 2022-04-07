@@ -8,7 +8,7 @@ use bitfield::BitField;
 use cid::Cid;
 use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
 use fvm_ipld_amt::Error as AmtError;
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{SectorNumber, MAX_SECTOR_NUMBER};
 

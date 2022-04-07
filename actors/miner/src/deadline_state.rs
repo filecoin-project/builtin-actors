@@ -10,10 +10,11 @@ use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
-use fvm_shared::blockstore::{Blockstore, CborStore};
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
+use fvm_ipld_encoding::CborStore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{PoStProof, SectorSize};
 use num_traits::{Signed, Zero};
@@ -841,7 +842,7 @@ impl Deadline {
 
             partition
                 .declare_faults_recovered(sectors, sector_size, sector_numbers)
-                .map_err(|e| actor_error!(ErrIllegalState; "failed to add recoveries: {}", e));
+                .map_err(|e| actor_error!(ErrIllegalState; "failed to add recoveries: {}", e))?;
 
             partitions.set(partition_idx, partition).map_err(|e| {
                 e.downcast_default(

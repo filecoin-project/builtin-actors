@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_shared::encoding::Cbor;
+use fvm_ipld_encoding::Cbor;
 use serde::de::{self, Deserializer};
 use serde::ser::{self, Serializer};
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ impl Cbor for UnmarshallableCBOR {}
 
 #[cfg(test)]
 mod tests {
-    use fvm_shared::encoding::RawBytes;
+    use fvm_ipld_encoding::RawBytes;
 
     use super::*;
 

@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_shared::blockstore::Blockstore;
-use fvm_shared::encoding::RawBytes;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::MethodNum;
 
 use crate::{ActorError, Runtime};
