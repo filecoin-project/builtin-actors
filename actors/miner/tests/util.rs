@@ -7,11 +7,11 @@ use fil_actor_miner::{
     MinerConstructorParams as ConstructorParams, State,
 };
 
+use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{BytesDe, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{
     RegisteredPoStProof, RegisteredSealProof, SectorNumber, SectorSize, StoragePower,

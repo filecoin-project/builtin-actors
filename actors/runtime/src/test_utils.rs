@@ -4,20 +4,21 @@
 use core::fmt;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::convert::TryInto;
 
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash};
 use cid::Cid;
+use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::de::DeserializeOwned;
+use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
-use fvm_shared::blockstore::{CborStore, MemoryBlockstore};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::de::DeserializeOwned;
-use fvm_shared::encoding::{blake2b_256, Cbor, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
@@ -781,7 +782,14 @@ impl Syscalls for MockRuntime {
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
-        blake2b_256(data)
+        blake2b_simd::Params::new()
+            .hash_length(32)
+            .to_state()
+            .update(data)
+            .finalize()
+            .as_bytes()
+            .try_into()
+            .expect("fixed array size")
     }
     fn compute_unsealed_sector_cid(
         &self,

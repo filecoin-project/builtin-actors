@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 
@@ -6,10 +8,9 @@ use fil_actor_miner::{
     Actor, Deadline, Deadlines, Method, MinerConstructorParams as ConstructorParams, State,
 };
 
+use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
 use fvm_shared::address::Address;
-use fvm_shared::blockstore::CborStore;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{blake2b_256, BytesDe, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorSize};
 
@@ -27,6 +28,17 @@ struct TestEnv {
     peer_id: Vec<u8>,
     multiaddrs: Vec<BytesDe>,
     rt: MockRuntime,
+}
+
+fn blake2b_256(data: &[u8]) -> [u8; 32] {
+    blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(data)
+        .finalize()
+        .as_bytes()
+        .try_into()
+        .expect("fixed array size")
 }
 
 fn prepare_env() -> TestEnv {

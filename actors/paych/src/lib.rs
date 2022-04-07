@@ -5,12 +5,12 @@ use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_error, resolve_to_id_addr, wasm_trampoline, ActorDowncast, ActorError, Array,
 };
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Sign};
-use fvm_shared::blockstore::Blockstore;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::error::ExitCode::ErrTooManyProveCommits as ErrChannelStateUpdateAfterSettled;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};

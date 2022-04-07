@@ -3,10 +3,10 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, wasm_trampoline, ActorError, SYSTEM_ACTOR_ADDR};
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
-use fvm_shared::encoding::RawBytes;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;

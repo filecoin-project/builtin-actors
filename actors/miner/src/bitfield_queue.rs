@@ -7,7 +7,7 @@ use bitfield::BitField;
 use cid::Cid;
 use fil_actors_runtime::{ActorDowncast, Array};
 use fvm_ipld_amt::Error as AmtError;
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use itertools::Itertools;
 
@@ -51,7 +51,7 @@ impl<'db, BS: Blockstore> BitFieldQueue<'db, BS> {
         epoch: ChainEpoch,
         values: impl IntoIterator<Item = u64>,
     ) -> anyhow::Result<()> {
-        self.add_to_queue(epoch, &values.into_iter().collect())
+        self.add_to_queue(epoch, &BitField::try_from_bits(values)?)
     }
 
     /// Cut cuts the elements from the bits in the given bitfield out of the queue,

@@ -1,9 +1,9 @@
 #![deny(unused_must_use)] // Force unwrapping Result<_, Err>
 
+use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
-use fvm_shared::blockstore::MemoryBlockstore;
-use fvm_shared::encoding::RawBytes;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
 

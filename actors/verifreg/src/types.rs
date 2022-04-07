@@ -1,10 +1,10 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::crypto::signature::Signature;
-use fvm_shared::encoding::tuple::*;
 use fvm_shared::sector::StoragePower;
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
