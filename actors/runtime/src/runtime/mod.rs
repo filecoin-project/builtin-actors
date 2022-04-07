@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::{de, Cbor, RawBytes};
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
-use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{de, Cbor, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;

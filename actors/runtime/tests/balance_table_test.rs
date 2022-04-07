@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::BalanceTable;
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::address::Address;
-use fvm_shared::blockstore::MemoryBlockstore;
 use fvm_shared::econ::TokenAmount;
 
 // Ported test from specs-actors

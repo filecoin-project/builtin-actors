@@ -95,7 +95,7 @@ impl DeadlineSectorMap {
             policy,
             deadline_idx,
             partition_idx,
-            sector_numbers.iter().copied().collect::<BitField>().into(),
+            BitField::try_from_bits(sector_numbers.iter().copied())?.into(),
         )
     }
 
@@ -123,7 +123,7 @@ impl PartitionSectorMap {
     ) -> anyhow::Result<()> {
         self.add(
             partition_idx,
-            sector_numbers.into_iter().collect::<BitField>().into(),
+            BitField::try_from_bits(sector_numbers)?.into(),
         )
     }
     /// Records the given sector bitfield at the given partition index, merging

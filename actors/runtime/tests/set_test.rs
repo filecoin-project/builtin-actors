@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::Set;
+use fvm_ipld_blockstore::MemoryBlockstore;
 
 #[test]
 fn put() {
-    let store = fvm_shared::blockstore::MemoryBlockstore::new();
+    let store = MemoryBlockstore::new();
     let mut set = Set::new(&store);
 
     let key = "test".as_bytes();
@@ -17,7 +18,7 @@ fn put() {
 
 #[test]
 fn collect_keys() {
-    let store = fvm_shared::blockstore::MemoryBlockstore::new();
+    let store = MemoryBlockstore::new();
     let mut set = Set::new(&store);
 
     set.put("0".into()).unwrap();
@@ -33,7 +34,7 @@ fn collect_keys() {
 
 #[test]
 fn delete() {
-    let store = fvm_shared::blockstore::MemoryBlockstore::new();
+    let store = MemoryBlockstore::new();
     let mut set = Set::new(&store);
 
     let key = "0".as_bytes();

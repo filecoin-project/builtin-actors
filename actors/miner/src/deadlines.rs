@@ -4,7 +4,7 @@
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::Array;
 
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::sector::SectorNumber;
 

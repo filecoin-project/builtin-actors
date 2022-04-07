@@ -22,16 +22,16 @@ use fil_actors_runtime::{
     actor_error, wasm_trampoline, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::{BigInt, Integer};
-use fvm_shared::blockstore::{Blockstore, CborStore};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::randomness::DomainSeparationTag::WindowedPoStChallengeSeed;
 use fvm_shared::crypto::randomness::*;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::{from_slice, BytesDe, Cbor, RawBytes};
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
@@ -1166,19 +1166,19 @@ impl Actor {
                     precommit.sector_number
                 ));
             }
+            if precommit.sector_number > MAX_SECTOR_NUMBER {
+                return Err(actor_error!(
+                    ErrIllegalArgument,
+                    "sector number {} out of range 0..(2^63-1)",
+                    precommit.sector_number
+                ));
+            }
             sector_numbers.set(precommit.sector_number);
             if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof) {
                 return Err(actor_error!(
                     ErrIllegalArgument,
                     "unsupported seal proof type {}",
                     i64::from(precommit.seal_proof)
-                ));
-            }
-            if precommit.sector_number > MAX_SECTOR_NUMBER {
-                return Err(actor_error!(
-                    ErrIllegalArgument,
-                    "sector number {} out of range 0..(2^63-1)",
-                    precommit.sector_number
                 ));
             }
             // Skip checking if CID is defined because it cannot be so in Rust

@@ -3,14 +3,14 @@
 
 use cid::{Cid, Version};
 use fil_actors_runtime::DealWeight;
+use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
+use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_UNSEALED, SHA2_256_TRUNC254_PADDED};
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
-use fvm_shared::encoding::Cbor;
 use fvm_shared::piece::PaddedPieceSize;
 
 /// Cid prefix for piece Cids

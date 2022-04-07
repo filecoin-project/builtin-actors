@@ -4,16 +4,16 @@
 use std::convert::TryInto;
 use std::ops::{self, Neg};
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use bitfield::{BitField, UnvalidatedBitField, Validate};
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{actor_error, ActorDowncast, Array};
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
 use fvm_shared::bigint::bigint_ser;
-use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{SectorSize, StoragePower};
 use num_traits::{Signed, Zero};
@@ -682,7 +682,7 @@ impl Partition {
                 let to_process = if limit < count {
                     let to_process = sectors
                         .slice(0, limit)
-                        .map_err(|e| anyhow!("failed to slice early terminations: {}", e))?;
+                        .context("expected more sectors in bitfield")?;
                     let rest = sectors - &to_process;
                     remaining = Some((rest, epoch));
                     result.sectors_processed += limit;
