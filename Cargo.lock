@@ -927,6 +927,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.4.0"
+source = "git+https://github.com/filecoin-project/ref-fvm#78530c8156332a7ab44d21ffdf42dd407b0ed2c7"
 dependencies = [
  "ahash",
  "anyhow",
@@ -942,6 +943,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_bitfield"
 version = "0.5.0"
+source = "git+https://github.com/filecoin-project/ref-fvm#78530c8156332a7ab44d21ffdf42dd407b0ed2c7"
 dependencies = [
  "cs_serde_bytes",
  "fvm_ipld_encoding",
@@ -953,6 +955,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_blockstore"
 version = "0.1.0"
+source = "git+https://github.com/filecoin-project/ref-fvm#78530c8156332a7ab44d21ffdf42dd407b0ed2c7"
 dependencies = [
  "anyhow",
  "cid",
@@ -975,6 +978,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_encoding"
 version = "0.1.0"
+source = "git+https://github.com/filecoin-project/ref-fvm#78530c8156332a7ab44d21ffdf42dd407b0ed2c7"
 dependencies = [
  "anyhow",
  "cid",
@@ -990,6 +994,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_hamt"
 version = "0.4.0"
+source = "git+https://github.com/filecoin-project/ref-fvm#78530c8156332a7ab44d21ffdf42dd407b0ed2c7"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -1009,6 +1014,7 @@ dependencies = [
 [[package]]
 name = "fvm_sdk"
 version = "0.4.0"
+source = "git+https://github.com/filecoin-project/ref-fvm#78530c8156332a7ab44d21ffdf42dd407b0ed2c7"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -1052,6 +1058,7 @@ dependencies = [
 [[package]]
 name = "fvm_shared"
 version = "0.4.1"
+source = "git+https://github.com/filecoin-project/ref-fvm#78530c8156332a7ab44d21ffdf42dd407b0ed2c7"
 dependencies = [
  "anyhow",
  "bimap",
