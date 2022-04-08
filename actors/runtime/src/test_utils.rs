@@ -785,7 +785,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
     {
         if self.in_transaction {
-            return Err(actor_error!(unspecified; "nested transaction"));
+            return Err(actor_error!(user_assertion_failed; "nested transaction"));
         }
         let mut read_only = self.state()?;
         self.in_transaction = true;
@@ -810,7 +810,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     ) -> Result<RawBytes, ActorError> {
         self.require_in_call();
         if self.in_transaction {
-            return Err(actor_error!(unspecified; "side-effect within transaction"));
+            return Err(actor_error!(user_assertion_failed; "side-effect within transaction"));
         }
 
         assert!(
@@ -855,7 +855,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
         self.require_in_call();
         if self.in_transaction {
-            return Err(actor_error!(unspecified; "side-effect within transaction"));
+            return Err(actor_error!(user_assertion_failed; "side-effect within transaction"));
         }
         let expect_create_actor = self
             .expectations
@@ -871,7 +871,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     fn delete_actor(&mut self, addr: &Address) -> Result<(), ActorError> {
         self.require_in_call();
         if self.in_transaction {
-            return Err(actor_error!(unspecified; "side-effect within transaction"));
+            return Err(actor_error!(user_assertion_failed; "side-effect within transaction"));
         }
         let exp_act = self.expectations.borrow_mut().expect_delete_actor.take();
         if exp_act.is_none() {
