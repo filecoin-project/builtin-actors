@@ -172,7 +172,6 @@ fn label_from_cbor() {
     out.expect_err("major type 4 should not be recognized by union type and deser should fail");
 }
 
-#[ignore]
 #[test]
 fn adds_to_provider_escrow_funds() {
     struct TestCase {
