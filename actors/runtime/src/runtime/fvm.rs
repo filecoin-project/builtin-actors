@@ -60,7 +60,7 @@ impl<B> FvmRuntime<B> {
     fn assert_not_validated(&mut self) -> Result<(), ActorError> {
         if self.caller_validated {
             return Err(actor_error!(
-                unspecified, // FIXME is this the right one?
+                user_assertion_failed,
                 "Method must validate caller identity exactly once"
             ));
         }
@@ -261,7 +261,7 @@ where
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         if self.in_transaction {
-            return Err(actor_error!(unspecified; "runtime.send() is not allowed"));
+            return Err(actor_error!(user_assertion_failed; "runtime.send() is not allowed"));
         }
         match fvm::send::send(&to, method, params, value) {
             Ok(ret) => {
@@ -269,10 +269,14 @@ where
                     Ok(ret.return_data)
                 } else {
                     // The returned code can't be simply propagated as it may be a system exit code.
-                    Err(ActorError::internal_send_aborted(format!(
-                        "send to {} method {} aborted with code {}",
-                        to, method, ret.exit_code
-                    )))
+                    // TODO: improve propagation once we return a RuntimeError.
+                    Err(actor_error!(
+                        user_assertion_failed,
+                        format!(
+                            "send to {} method {} aborted with code {}",
+                            to, method, ret.exit_code
+                        )
+                    ))
                 }
             }
             Err(err) => Err(match err {

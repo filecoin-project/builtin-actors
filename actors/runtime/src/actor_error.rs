@@ -43,8 +43,8 @@ impl ActorError {
     pub fn unspecified(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_UNSPECIFIED, msg }
     }
-    pub fn internal_send_aborted(msg: String) -> Self {
-        // TODO use symbolic constant for USR_SEND_ABORTED when it's defined.
+    pub fn user_assertion_failed(msg: String) -> Self {
+        // TODO: use symbolic constant for ErrAssertionFailed when it's defined.
         Self { exit_code: ExitCode::from(24), msg }
     }
 
