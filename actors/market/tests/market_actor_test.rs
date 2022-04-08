@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::{
-    ext, Actor as MarketActor, Label, Method, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
+    ext, Actor as MarketActor, Label, Method, State, WithdrawBalanceParams, WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH,
     STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::deserialize;
@@ -105,7 +105,7 @@ fn label_cbor() {
         .unwrap();
 
     let label2 = Label::Bytes(b"i_am_random_____i_am_random_____".to_vec());
-    println!("{:?}", (b"i_am_random_____i_am_random_____".to_vec()));
+    //println!("{:?}", (b"i_am_random_____i_am_random_____".to_vec()));
     let _ = to_vec(&label2)
         .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
         .unwrap();
@@ -174,58 +174,60 @@ fn label_from_cbor() {
 
 #[ignore]
 #[test]
-fn add_provider_escrow_funds() {
-    // First element of tuple is the delta the second element is the total after the delta change
-    let test_cases = vec![(10, 10), (20, 30), (40, 70)];
+fn adds_to_provider_escrow_funds() {
+    struct TestCase {
+        delta: u64,
+        total: u64,
+    }
+    let test_cases = [
+        TestCase { delta: 10, total: 10 },
+        TestCase { delta: 20, total: 30 },
+        TestCase { delta: 40, total: 70 },
+    ];
 
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
+    let owner = Address::new_id(OWNER_ID);
+    let worker = Address::new_id(WORKER_ID);
+    let provider = Address::new_id(PROVIDER_ID);
 
-    for caller_addr in &[owner_addr, worker_addr] {
+    for caller_addr in &[owner, worker] {
         let mut rt = setup();
 
-        for test_case in test_cases.clone() {
+        for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
+            rt.set_value(TokenAmount::from(tc.delta));
+            rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+            expect_provider_control_address(&mut rt, provider, owner, worker);
 
-            let amount = TokenAmount::from(test_case.0 as u64);
-            rt.set_value(amount);
-
-            expect_provider_control_address(&mut rt, provider_addr, owner_addr, worker_addr);
-
-            assert!(rt
-                .call::<MarketActor>(
+            assert_eq!(
+                RawBytes::default(),
+                rt.call::<MarketActor>(
                     Method::AddBalance as u64,
-                    &RawBytes::serialize(provider_addr).unwrap(),
-                )
-                .is_ok());
+                    &RawBytes::serialize(provider).unwrap(),
+                ).unwrap()
+            );
+
             rt.verify();
 
             assert_eq!(
-                get_escrow_balance(&rt, &provider_addr).unwrap(),
-                TokenAmount::from(test_case.1 as u64)
+                get_escrow_balance(&rt, &provider).unwrap(),
+                TokenAmount::from(tc.total)
             );
+            // TODO: actor.checkState(rt)
         }
     }
 }
 
-#[ignore]
 #[test]
-fn account_actor_check() {
+fn fails_unless_called_by_an_account_actor() {
     let mut rt = setup();
 
-    let amount = TokenAmount::from(10u8);
-    rt.set_value(amount);
+    rt.set_value(TokenAmount::from(10));
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
     let provider_addr = Address::new_id(PROVIDER_ID);
-
-    expect_provider_control_address(&mut rt, provider_addr, owner_addr, worker_addr);
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
-
     assert_eq!(
-        ExitCode::ErrForbidden,
+        ExitCode::SysErrForbidden,
         rt.call::<MarketActor>(
             Method::AddBalance as u64,
             &RawBytes::serialize(provider_addr).unwrap(),
@@ -235,82 +237,78 @@ fn account_actor_check() {
     );
 
     rt.verify();
+    // TODO: actor.checkState(rt)
 }
 
-#[ignore]
 #[test]
-fn add_non_provider_funds() {
-    // First element of tuple is the delta the second element is the total after the delta change
-    let test_cases = vec![(10, 10), (20, 30), (40, 70)];
+fn adds_to_non_provider_funds() {
+    struct TestCase {
+        delta: u64,
+        total: u64,
+    }
+    let test_cases = [
+        TestCase { delta: 10, total: 10 },
+        TestCase { delta: 20, total: 30 },
+        TestCase { delta: 40, total: 70 },
+    ];
 
-    let client_addr = Address::new_id(CLIENT_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
+    let client = Address::new_id(CLIENT_ID);
+    let worker = Address::new_id(WORKER_ID);
 
-    for caller_addr in &[client_addr, worker_addr] {
+    for caller_addr in &[client, worker] {
         let mut rt = setup();
 
-        for test_case in test_cases.clone() {
+        for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
-
-            let amount = TokenAmount::from(test_case.0 as u64);
-            rt.set_value(amount);
+            rt.set_value(TokenAmount::from(tc.delta));
             rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-            assert!(rt
-                .call::<MarketActor>(
+            assert_eq!(
+                RawBytes::default(),
+                rt.call::<MarketActor>(
                     Method::AddBalance as u64,
-                    &RawBytes::serialize(*caller_addr).unwrap(),
-                )
-                .is_ok());
+                    &RawBytes::serialize(caller_addr).unwrap(),
+                ).unwrap()
+            );
 
             rt.verify();
 
             assert_eq!(
                 get_escrow_balance(&rt, caller_addr).unwrap(),
-                TokenAmount::from(test_case.1 as u8)
+                TokenAmount::from(tc.total)
             );
+            // TODO: actor.checkState(rt)
         }
     }
 }
 
+// WIP
 #[ignore]
 #[test]
-fn withdraw_provider_to_owner() {
+fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
     let mut rt = setup();
 
     let owner_addr = Address::new_id(OWNER_ID);
     let worker_addr = Address::new_id(WORKER_ID);
     let provider_addr = Address::new_id(PROVIDER_ID);
 
-    let amount = TokenAmount::from(20u8);
-    add_provider_funds(&mut rt, provider_addr, owner_addr, worker_addr, amount.clone());
+    let amount = TokenAmount::from(20);
+    add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
 
     assert_eq!(amount, get_escrow_balance(&rt, &provider_addr).unwrap());
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
     expect_provider_control_address(&mut rt, provider_addr, owner_addr, worker_addr);
 
-    let withdraw_amount = TokenAmount::from(1u8);
-
-    rt.expect_send(
-        owner_addr,
-        METHOD_SEND,
-        RawBytes::default(),
+    let withdraw_amount = TokenAmount::from(1);
+    withdraw_provider_balance(
+        &mut rt,
         withdraw_amount.clone(),
-        RawBytes::default(),
-        ExitCode::Ok,
+        withdraw_amount.clone(),
+        owner_addr,
+        provider_addr,
+        worker_addr,
     );
-
-    let params =
-        WithdrawBalanceParams { provider_or_client: provider_addr, amount: withdraw_amount };
-
-    assert!(rt
-        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap(),)
-        .is_ok());
-
-    rt.verify();
-
-    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), TokenAmount::from(19u8));
 }
 
 #[ignore]
@@ -396,7 +394,7 @@ fn worker_withdraw_more_than_available() {
     let provider_addr = Address::new_id(PROVIDER_ID);
 
     let amount = TokenAmount::from(20u8);
-    add_provider_funds(&mut rt, provider_addr, owner_addr, worker_addr, amount.clone());
+    add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
 
     assert_eq!(amount, get_escrow_balance(&rt, &provider_addr).unwrap());
 
@@ -432,8 +430,7 @@ fn expect_provider_control_address(
     owner: Address,
     worker: Address,
 ) {
-    rt.expect_validate_caller_addr(vec![owner, worker]);
-
+    //rt.expect_validate_caller_addr(vec![owner, worker]);
     let return_value = ext::miner::GetControlAddressesReturnParams {
         owner,
         worker,
@@ -452,22 +449,26 @@ fn expect_provider_control_address(
 
 fn add_provider_funds(
     rt: &mut MockRuntime,
+    amount: TokenAmount,
     provider: Address,
     owner: Address,
     worker: Address,
-    amount: TokenAmount,
 ) {
     rt.set_value(amount.clone());
-
+    // TODO: call rt.SetAddressActorType(minerAddrs.provider, builtin.StorageMinerActorCodeID)?
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, owner);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+
     expect_provider_control_address(rt, provider, owner, worker);
 
-    assert!(rt
-        .call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(provider).unwrap(),)
-        .is_ok());
-
+    assert_eq!(
+        RawBytes::default(),
+        rt.call::<MarketActor>(
+            Method::AddBalance as u64,
+            &RawBytes::serialize(provider).unwrap(),
+        ).unwrap()
+    );
     rt.verify();
-
     rt.add_balance(amount);
 }
 
@@ -494,4 +495,42 @@ fn construct_and_verify(rt: &mut MockRuntime) {
         rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default(),).unwrap()
     );
     rt.verify();
+}
+
+// WIP
+fn withdraw_provider_balance(
+    rt: &mut MockRuntime,
+    withdraw_amount: TokenAmount,
+    expected_send: TokenAmount,
+    owner: Address,
+    provider: Address,
+    worker: Address,
+) {
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
+    rt.expect_validate_caller_addr(vec![owner, worker]);
+    expect_provider_control_address(rt, provider, owner, worker);
+
+    let params =
+        WithdrawBalanceParams { provider_or_client: provider, amount: withdraw_amount.clone() };
+
+    rt.expect_send(
+        owner,
+        METHOD_SEND,
+        RawBytes::default(),
+        expected_send.clone(),
+        RawBytes::default(),
+        ExitCode::Ok,
+    );
+
+    let ret = rt
+        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap(),)
+        ;
+        // .unwrap()
+        // .deserialize()
+        // .unwrap();
+
+//     // TODO: add error msg
+//     assert_eq!(expected_send, ret.amount_withdrawn);
+
+//     rt.verify();
 }
