@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::{
-    ext, Actor as MarketActor, Label, Method, State, WithdrawBalanceParams, WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH,
-    STATES_AMT_BITWIDTH,
+    ext, Actor as MarketActor, Label, Method, State, WithdrawBalanceParams, WithdrawBalanceReturn,
+    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::Runtime;
@@ -202,15 +202,13 @@ fn adds_to_provider_escrow_funds() {
                 rt.call::<MarketActor>(
                     Method::AddBalance as u64,
                     &RawBytes::serialize(provider).unwrap(),
-                ).unwrap()
+                )
+                .unwrap()
             );
 
             rt.verify();
 
-            assert_eq!(
-                get_escrow_balance(&rt, &provider).unwrap(),
-                TokenAmount::from(tc.total)
-            );
+            assert_eq!(get_escrow_balance(&rt, &provider).unwrap(), TokenAmount::from(tc.total));
             // TODO: actor.checkState(rt)
         }
     }
@@ -267,22 +265,20 @@ fn adds_to_non_provider_funds() {
                 rt.call::<MarketActor>(
                     Method::AddBalance as u64,
                     &RawBytes::serialize(caller_addr).unwrap(),
-                ).unwrap()
+                )
+                .unwrap()
             );
 
             rt.verify();
 
-            assert_eq!(
-                get_escrow_balance(&rt, caller_addr).unwrap(),
-                TokenAmount::from(tc.total)
-            );
+            assert_eq!(get_escrow_balance(&rt, caller_addr).unwrap(), TokenAmount::from(tc.total));
             // TODO: actor.checkState(rt)
         }
     }
 }
 
 // WIP
-#[ignore]
+// #[ignore]
 #[test]
 fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
     let mut rt = setup();
@@ -297,7 +293,6 @@ fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
     assert_eq!(amount, get_escrow_balance(&rt, &provider_addr).unwrap());
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
-    expect_provider_control_address(&mut rt, provider_addr, owner_addr, worker_addr);
 
     let withdraw_amount = TokenAmount::from(1);
     withdraw_provider_balance(
@@ -462,10 +457,8 @@ fn add_provider_funds(
 
     assert_eq!(
         RawBytes::default(),
-        rt.call::<MarketActor>(
-            Method::AddBalance as u64,
-            &RawBytes::serialize(provider).unwrap(),
-        ).unwrap()
+        rt.call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(provider).unwrap(),)
+            .unwrap()
     );
     rt.verify();
     rt.add_balance(amount);
@@ -522,14 +515,13 @@ fn withdraw_provider_balance(
     );
 
     let ret = rt
-        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap(),)
-        ;
-        // .unwrap()
-        // .deserialize()
-        // .unwrap();
+        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap());
+    // .unwrap()
+    // .deserialize()
+    // .unwrap();
 
-//     // TODO: add error msg
-//     assert_eq!(expected_send, ret.amount_withdrawn);
+    //     // TODO: add error msg
+    //     assert_eq!(expected_send, ret.amount_withdrawn);
 
-//     rt.verify();
+    //     rt.verify();
 }
