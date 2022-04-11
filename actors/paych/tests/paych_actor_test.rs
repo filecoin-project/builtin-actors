@@ -214,6 +214,7 @@ mod create_lane_tests {
         let payer_addr = Address::new_id(PAYER_ADDR);
         let payee_addr = Address::new_id(PAYEE_ADDR);
         let paych_balance = TokenAmount::from(PAYCH_BALANCE);
+        let paych_non_id = Address::new_bls(&[201; fvm_shared::address::BLS_PUB_LEN]).unwrap();
         let sig = Option::Some(Signature::new_bls("doesn't matter".as_bytes().to_vec()));
 
         let test_cases: Vec<TestCase> = vec![
@@ -221,6 +222,34 @@ mod create_lane_tests {
                 .desc("succeeds".to_string())
                 .sig(sig.clone())
                 .exp_exit_code(ExitCode::Ok)
+                .build()
+                .unwrap(),
+            TestCase::builder()
+                .desc(
+                    "fails if channel address does not match address on the signed voucher"
+                        .to_string(),
+                )
+                .payment_channel(Address::new_id(210))
+                .sig(sig.clone())
+                .build()
+                .unwrap(),
+            TestCase::builder()
+                .desc(
+                    "fails if address on the signed voucher cannot be resolved to ID address"
+                        .to_string(),
+                )
+                .payment_channel(Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap())
+                .sig(sig.clone())
+                .build()
+                .unwrap(),
+            TestCase::builder()
+                .desc(
+                    "succeeds if address on the signed voucher can be resolved to channel ID address"
+                        .to_string(),
+                )
+                .payment_channel(paych_non_id)
+                .exp_exit_code(ExitCode::Ok)
+                .sig(sig.clone())
                 .build()
                 .unwrap(),
             TestCase::builder()
@@ -255,7 +284,7 @@ mod create_lane_tests {
                 .unwrap(),
             TestCase::builder()
                 .desc("fails if signature is not verified".to_string())
-                .sig(sig)
+                .sig(sig.clone())
                 .verify_sig(false)
                 .build()
                 .unwrap(),
@@ -284,6 +313,8 @@ mod create_lane_tests {
                 balance: RefCell::new(paych_balance.clone()),
                 ..Default::default()
             };
+
+            rt.id_addresses.insert(paych_non_id, paych_addr);
 
             construct_and_verify(&mut rt, payer_addr, payee_addr);
 
