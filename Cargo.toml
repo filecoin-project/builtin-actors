@@ -32,6 +32,8 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 default = []
 caterpillarnet = []
 devnet = []
+butterflynet = []
+calibrationnet = []
 
 [workspace]
 members = [
