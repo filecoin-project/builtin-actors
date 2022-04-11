@@ -38,12 +38,6 @@ jobs:
           - name: build
             command: build
             push: true
-    env:
-      SCCACHE_CACHE_SIZE: 2G
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
     name: ${{ matrix.name }}
     steps:
     - name: Checking out builtin-actors
@@ -55,3 +49,4 @@ jobs:
         command: ${{ matrix.command }}
         args: ${{ matrix.args }}
         components: ${{ matrix.components }}
+        push: ${{ matrix.push }}
