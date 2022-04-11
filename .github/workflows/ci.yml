@@ -63,7 +63,7 @@ jobs:
       with:
         command: generate-lockfile
     - name: Setting up cache
-      uses: ./.github/actions/rust-sccache
+      uses: pl-strflt/rust-sccache-action@v1
       with:
         version: v0.2.15
         # change this to invalidate sccache for this job
