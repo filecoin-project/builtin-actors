@@ -11,7 +11,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ErrorNumber;
+use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
@@ -23,7 +23,7 @@ use fvm_shared::{ActorID, MethodNum};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Policy, RuntimePolicy, Syscalls};
-use crate::{actor_error, ActorError, Runtime, EXIT_CODE_ERR_ASSERTION_FAILED};
+use crate::{actor_error, ActorError, Runtime};
 
 lazy_static! {
     /// Cid of the empty array Cbor bytes (`EMPTY_ARR_BYTES`).
@@ -449,7 +449,7 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     // We do this after handling the error, because the actor may have encountered an error before
     // it even could validate the caller.
     if !rt.caller_validated {
-        fvm::vm::abort(EXIT_CODE_ERR_ASSERTION_FAILED.value(), Some("failed to validate caller"))
+        fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some("failed to validate caller"))
     }
 
     // Then handle the return value.

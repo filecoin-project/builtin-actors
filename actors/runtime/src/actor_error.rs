@@ -12,9 +12,6 @@ pub struct ActorError {
     msg: String,
 }
 
-// TODO: use symbolic constant for ErrAssertionFailed when it's defined.
-pub const EXIT_CODE_ERR_ASSERTION_FAILED: ExitCode = ExitCode::new(24);
-
 impl ActorError {
     /// Creates a new ActorError. This method does not check that the code is in the
     /// range of valid actor abort codes.
@@ -47,7 +44,7 @@ impl ActorError {
         Self { exit_code: ExitCode::USR_UNSPECIFIED, msg }
     }
     pub fn user_assertion_failed(msg: String) -> Self {
-        Self { exit_code: EXIT_CODE_ERR_ASSERTION_FAILED, msg }
+        Self { exit_code: ExitCode::USR_ASSERTION_FAILED, msg }
     }
 
     /// Returns the exit code of the error.
