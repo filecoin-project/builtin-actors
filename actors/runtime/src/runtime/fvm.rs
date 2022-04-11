@@ -271,12 +271,23 @@ where
                     // The returned code can't be simply propagated as it may be a system exit code.
                     // TODO: improve propagation once we return a RuntimeError.
                     // Ref https://github.com/filecoin-project/builtin-actors/issues/144
-                    Err(actor_error!(
-                        user_assertion_failed,
+                    let exit_code = match ret.exit_code {
+                        // This means the called actor did something wrong. We can't "make up" a
+                        // reasonable exit code.
+                        ExitCode::SYS_MISSING_RETURN
+                        | ExitCode::SYS_ILLEGAL_INSTRUCTION
+                        | ExitCode::SYS_ILLEGAL_EXIT_CODE => ExitCode::USR_UNSPECIFIED,
+                        // We don't expect any other system errors.
+                        code if code.is_system_error() => ExitCode::USR_ASSERTION_FAILED,
+                        // Otherwise, pass it through.
+                        code => code,
+                    };
+                    Err(ActorError::unchecked(
+                        exit_code,
                         format!(
                             "send to {} method {} aborted with code {}",
                             to, method, ret.exit_code
-                        )
+                        ),
                     ))
                 }
             }
