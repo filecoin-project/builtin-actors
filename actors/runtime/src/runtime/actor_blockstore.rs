@@ -39,8 +39,8 @@ impl fvm_ipld_blockstore::Blockstore for ActorBlockstore {
     where
         D: AsRef<[u8]>,
     {
-        // TODO: Don't hard-code the size. Unfortunately, there's no good way to get it from the
-        //  codec at the moment.
+        // See https://github.com/filecoin-project/builtin-actors/issues/207.
+        assert_eq!(code, Code::Blake2b256);
         const SIZE: u32 = 32;
         let k = fvm::ipld::put(code.into(), SIZE, block.codec, block.data.as_ref())
             .map_err(|c| actor_error!(ErrIllegalState; "put failed with {:?}", c))?;
