@@ -1,5 +1,6 @@
 name: rust cargo run
 description: Rust Cargo Run
+
 inputs:
   command:
     description: The cargo command to execute
@@ -10,6 +11,10 @@ inputs:
   components:
     description: The components to include when installing Rust
     required: false
+  save_cache:
+    description: Whether to save the SSCACHE
+    required: false
+
 runs:
   using: composite
   steps:
@@ -20,21 +25,15 @@ runs:
       target: wasm32-unknown-unknown
       override: true
       components: ${{ inputs.components }}
-  # we don't check the lockfile in; this is needed for cache restoration/saving
-  - name: Generating Cargo.lock
-    uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-    with:
-      command: generate-lockfile
   - name: Setting up cache
     uses: pl-strflt/rust-sccache-action@v1
     env:
       SCCACHE_CACHE_SIZE: 2G
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
+      CACHE_SKIP_SAVE: ${{ inputs.save_cache == '' || inputs.save_cache == 'false' }}
     with:
       version: v0.2.15
-      # change this to invalidate sccache for this job
-      shared-key: v1
+      shared-key: v1  # change this to invalidate sccache for this job
   - name: Running ${{ inputs.command }}
     uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
     env:
@@ -42,19 +41,3 @@ runs:
     with:
       command: ${{ inputs.command }}
       args: ${{ inputs.args }}
-  - name: make bundle
-    if: ${{ inputs.command == 'build' }}
-    run: ./build-bundle.sh
-    shell: bash
-  - name: upload bundle
-    if: ${{ inputs.command == 'build' }}
-    run: ./upload-bundle.sh
-    shell: bash
-  - name: Publishing build artifacts to github
-    if: ${{ inputs.command == 'build' }}
-    uses: actions/upload-artifact@v2
-    with:
-      name: bundle
-      path: |
-        output/builtin-actors.car
-        output/upload.json

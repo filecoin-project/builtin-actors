@@ -10,46 +10,81 @@ jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-    - name: Checking out fvm
+    - name: Checking out
       uses: actions/checkout@v2
-    - name: Installing Rust
-      uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
-      with:
-        profile: minimal
-        override: true
-        components: rustfmt
-    - name: Running fmt
-      uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
+    - name: Running rustfmt
+      uses: ./.github/actions/rust-cargo-run
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         command: fmt
         args: -- --check
-  cargo:
+        components: rustfmt
+
+  check-clippy:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: check-clippy
-            command: clippy
-            args: --all --all-targets
-            components: clippy
-          - name: test
-            command: test
-            args: --all
-          - name: build
-            command: build
-            push: true
-    name: ${{ matrix.name }}
     steps:
-    - name: Checking out builtin-actors
+    - name: Checking out
       uses: actions/checkout@v2
-      with:
-        submodules: ${{ matrix.submodules }}
-    - uses: ./.github/actions/rust-cargo-run
+    - name: Running clippy
+      uses: ./.github/actions/rust-cargo-run
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        ESTUARY_TOKEN: ${{ secrets.ESTUARY_TOKEN }}
       with:
-        command: ${{ matrix.command }}
-        args: ${{ matrix.args }}
-        components: ${{ matrix.components }}
-        push: ${{ matrix.push }}
+        command: clippy
+        args: --all --all-targets
+        components: clippy
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v2
+    - name: Running tests
+      uses: ./.github/actions/rust-cargo-run
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        command: test
+        args: --all
+
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CARGO_INCREMENTAL: 0
+      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
+    strategy:
+      matrix:
+        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet' ]
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v2
+    - name: Install Rust toolchain
+      uses: ./.github/actions/rust-cargo-run
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        command: version
+    - name: Making bundle
+      env:
+        BUILD_FIL_NETWORK: ${{ matrix.network }}
+      run: ./build-bundle.sh
+    - name: Uploading bundle to Estuary
+      env:
+        ESTUARY_TOKEN: ${{ secrets.ESTUARY_TOKEN }}
+      run: |
+        BUNDLE_PATH="output/builtin-actors.car"
+        UPLOAD_AS="builtin-actors-${{ matrix.network }}.car"
+        curl -k -X POST -F "data=@${BUNDLE_PATH};type=application/octet-stream;filename=\"${UPLOAD_AS}\"" \
+          -H "Authorization: Bearer $ESTUARY_TOKEN" \
+          -H "Content-Type: multipart/form-data" \
+          https://shuttle-4.estuary.tech/content/add > output/upload.json
+        cat output/upload.json
+    - name: Publishing build artifacts to GitHub
+      uses: actions/upload-artifact@v2
+      with:
+        name: bundle-${{ matrix.network }}
+        path: |
+          output/builtin-actors.car
+          output/upload.json
