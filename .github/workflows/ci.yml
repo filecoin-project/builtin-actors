@@ -45,6 +45,9 @@ jobs:
       with:
         submodules: ${{ matrix.submodules }}
     - uses: ./.github/actions/rust-cargo-run
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ESTUARY_TOKEN: ${{ secrets.ESTUARY_TOKEN }}
       with:
         command: ${{ matrix.command }}
         args: ${{ matrix.args }}

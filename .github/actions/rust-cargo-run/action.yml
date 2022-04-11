@@ -30,7 +30,6 @@ runs:
     env:
       SCCACHE_CACHE_SIZE: 2G
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
     with:
       version: v0.2.15
@@ -49,8 +48,6 @@ runs:
     shell: bash
   - name: upload bundle
     if: ${{ inputs.command == 'build' }}
-    env:
-      ESTUARY_TOKEN: ${{ secrets.ESTUARY_TOKEN }}
     run: ./upload-bundle.sh
     shell: bash
   - name: Publishing build artifacts to github
