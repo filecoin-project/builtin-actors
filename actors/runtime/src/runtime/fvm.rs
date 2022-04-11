@@ -295,21 +295,24 @@ where
                 // Some of these errors are from operations in the Runtime or SDK layer
                 // before or after the underlying VM send syscall.
                 ErrorNumber::NotFound => {
-                    // How do we know the receiver is what triggered this?
-                    // An error number doesn't carry enough information at this level
-                    // above the raw syscall (and even then).
-                    actor_error!(not_found; "receiver not found")
+                    // This means that the receiving actor doesn't exist.
+                    // TODO: we can't reasonably determine the correct "exit code" here.
+                    actor_error!(unspecified; "receiver not found")
                 }
                 ErrorNumber::InsufficientFunds => {
-                    // Actually this is more like an illegal argument where the caller attempted
-                    // to transfer an amount larger than that representable by the VM's
-                    // token amount type. Yes, the caller doesn't have that amount, but if they'd
-                    // attempted to transfer a representable amount it would fail with
-                    // SYS_INSUFFICIENT_FUNDS instead, so this difference is wierd.
+                    // This means that the send failed because we have insufficient funds. We will
+                    // get a _syscall error_, not an exit code, because the target actor will not
+                    // run (and therefore will not exit).
                     actor_error!(insufficient_funds; "not enough funds")
                 }
+                ErrorNumber::LimitExceeded => {
+                    // This means we've exceeded the recursion limit.
+                    // TODO: Define a better exit code.
+                    actor_error!(user_assertion_failed; "recursion limit exceeded")
+                }
                 err => {
-                    actor_error!(unspecified; "unexpected error: {}", err)
+                    // We don't expect any other syscall exit codes.
+                    actor_error!(user_assertion_failed; "unexpected error: {}", err)
                 }
             }),
         }
@@ -456,7 +459,7 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     let ret = C::invoke_method(&mut rt, method, &params)
         .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));
 
-    // Abort with "unspecified" if the actor failed to validate the caller somewhere.
+    // Abort with "assertion failed" if the actor failed to validate the caller somewhere.
     // We do this after handling the error, because the actor may have encountered an error before
     // it even could validate the caller.
     if !rt.caller_validated {
