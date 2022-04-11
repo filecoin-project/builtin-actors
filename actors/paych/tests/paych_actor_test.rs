@@ -284,7 +284,7 @@ mod create_lane_tests {
                 .unwrap(),
             TestCase::builder()
                 .desc("fails if signature is not verified".to_string())
-                .sig(sig.clone())
+                .sig(sig)
                 .verify_sig(false)
                 .build()
                 .unwrap(),
