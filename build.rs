@@ -92,6 +92,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("cargo:rerun-if-changed={}", file);
     }
 
+    // Print `cargo tree` for easier debugging if dependencies change.
+    let cargo_tree = Command::new(&cargo)
+        .arg("tree")
+        .args(packages.iter().map(|pkg| "-p=".to_owned() + pkg))
+        .arg("--target=wasm32-unknown-unknown")
+        .arg("--locked")
+        .arg("--features=fil-actor")
+        .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
+        .output()
+        .expect("failed to execute process");
+    println!("cargo:warning=cargo tree:");
+    for line in String::from_utf8_lossy(&cargo_tree.stdout).split('\n') {
+        println!("cargo:warning={}", line)
+    }
+
     let rustflags =
         WASM_FEATURES.iter().flat_map(|flag| ["-Ctarget-feature=", *flag, " "]).collect::<String>()
             + "-Clink-arg=--export-table";
