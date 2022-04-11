@@ -38,6 +38,8 @@ lazy_static! {
     /// lambda = ln(2) / (6 * epochsInYear)
     /// for Q.128: int(lambda * 2^128)
     static ref LAMBDA: BigInt = BigInt::from(37396271439864487274534522888786u128);
+
+    static ref EPOCHS_IN_YEAR: i64 = 365 / 30;
 }
 
 /// Compute BaselinePower(t) from BaselinePower(t-1) with an additional multiplication
@@ -205,5 +207,100 @@ mod tests {
             fs::read_to_string(filename).expect("Something went wrong reading the file");
 
         assert_eq!(golden_contents, b);
+    }
+
+    // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L70
+    #[test]
+    fn test_simple_reward() {
+        let mut b = String::from("x, y\n");
+        for i in 0..512 {
+            let x: i64 = i * 5000;
+            let reward = compute_reward(
+                x,
+                BigInt::from(0i64),
+                BigInt::from(0i64),
+                &SIMPLE_TOTAL,
+                &BASELINE_TOTAL,
+            );
+
+            let x_str = &x.to_string();
+            let reward_str = &reward.to_string();
+            b.push_str(x_str);
+            b.push(',');
+            b.push_str(reward_str);
+            b.push('\n');
+        }
+
+        // compare test output to golden file used for golang tests; file originally located at filecoin-project/specs-actors/actors/builtin/reward/testdata/TestSimpleReward.golden (current link: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/testdata/TestSimpleReward.golden)
+        let filename = "testdata/TestSimpleReward.golden";
+        let golden_contents =
+            fs::read_to_string(filename).expect("Something went wrong reading the file");
+
+        assert_eq!(golden_contents, b);
+    }
+
+    // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L82
+    #[test]
+    #[ignore = "todo"]
+    fn test_baseline_reward_growth() {
+        fn baseline_in_years(start: StoragePower, x: ChainEpoch) -> StoragePower {
+            let mut baseline = start;
+            for i in 0..(x * *EPOCHS_IN_YEAR) {
+                //debugging TODO: remove println
+                println!("{}", i);
+                //debugging TODO: remove println
+                println!("baseline {}", &baseline);
+                baseline = baseline_power_from_prev(&baseline);
+                //debugging TODO: remove println
+                println!("baseline {}", &baseline);
+            }
+            baseline
+        }
+
+        struct GrowthTestCase {
+            start_val: StoragePower,
+            err_bound: f64,
+        }
+
+        let cases: [GrowthTestCase; 7] = [
+            // 1 byte
+            GrowthTestCase { start_val: StoragePower::from(1i64), err_bound: 1.0 },
+            // GiB
+            GrowthTestCase { start_val: StoragePower::from(1i64 << 30), err_bound: 1e-3 },
+            // TiB
+            GrowthTestCase { start_val: StoragePower::from(1i64 << 40), err_bound: 1e-6 },
+            // PiB
+            GrowthTestCase { start_val: StoragePower::from(1i64 << 50), err_bound: 1e-8 },
+            // EiB
+            GrowthTestCase { start_val: BASELINE_INITIAL_VALUE.clone(), err_bound: 1e-8 },
+            // ZiB
+            GrowthTestCase { start_val: StoragePower::from(1u128 << 70), err_bound: 1e-8 },
+            // non power of 2 ~ 1 EiB
+            GrowthTestCase {
+                start_val: StoragePower::from(513_633_559_722_596_517_u128),
+                err_bound: 1e-8,
+            },
+        ];
+
+        for case in cases {
+            let years = 1u32;
+            let end = baseline_in_years(case.start_val.clone(), 1);
+
+            // logic from golang test was preserved to enable future testing of more than one year
+            let multiplier = BigInt::pow(&BigInt::from(2u32), years);
+            let expected = case.start_val * multiplier;
+            //debugging TODO: remove println
+            println!("expect {}", expected);
+            let diff = &expected - end;
+            //debugging TODO: remove println
+            println!("diff {}", diff);
+
+            
+            let perr = BigRational::new(diff, expected).to_f64().expect("BigInt cannot be expressed as a 64bit float");
+            //debugging TODO: remove println
+            println!("perr {:?}", perr);
+
+            assert!(perr < case.err_bound);
+        }
     }
 }
