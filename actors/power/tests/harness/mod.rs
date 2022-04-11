@@ -137,7 +137,7 @@ impl Harness {
             RawBytes::serialize(expected_init_params).unwrap(),
             value.clone(),
             RawBytes::serialize(create_miner_ret).unwrap(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
         let params = CreateMinerParams {
             owner: *owner,

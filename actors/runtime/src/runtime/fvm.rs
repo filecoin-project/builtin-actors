@@ -60,7 +60,7 @@ impl<B> FvmRuntime<B> {
     fn assert_not_validated(&mut self) -> Result<(), ActorError> {
         if self.caller_validated {
             return Err(actor_error!(
-                SysErrIllegalActor,
+                user_assertion_failed,
                 "Method must validate caller identity exactly once"
             ));
         }
@@ -121,7 +121,7 @@ where
         if addresses.into_iter().any(|a| *a == caller_addr) {
             Ok(())
         } else {
-            return Err(actor_error!(SysErrForbidden;
+            return Err(actor_error!(forbidden;
                 "caller {} is not one of supported", caller_addr
             ));
         }
@@ -140,7 +140,7 @@ where
 
         match self.resolve_builtin_actor_type(&caller_cid) {
             Some(typ) if types.into_iter().any(|t| *t == typ) => Ok(()),
-            _ => Err(actor_error!(SysErrForbidden;
+            _ => Err(actor_error!(forbidden;
                     "caller cid type {} not one of supported", caller_cid)),
         }
     }
@@ -179,7 +179,7 @@ where
         // unexpected bad value to the syscall).
         fvm::rand::get_chain_randomness(personalization, rand_epoch, entropy).map_err(|e| match e {
             ErrorNumber::LimitExceeded => {
-                actor_error!(ErrIllegalArgument; "randomness lookback exceeded: {}", e)
+                actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
             }
             e => panic!("get chain randomness failed with an unexpected error: {}", e),
         })
@@ -195,7 +195,7 @@ where
         fvm::rand::get_beacon_randomness(personalization, rand_epoch, entropy).map_err(
             |e| match e {
                 ErrorNumber::LimitExceeded => {
-                    actor_error!(ErrIllegalArgument; "randomness lookback exceeded: {}", e)
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
                 e => panic!("get chain randomness failed with an unexpected error: {}", e),
             },
@@ -206,11 +206,11 @@ where
         let root = fvm::sself::root()?;
         if root != *EMPTY_ARR_CID {
             return Err(
-                actor_error!(ErrIllegalState; "failed to create state; expected empty array CID, got: {}", root),
+                actor_error!(illegal_state; "failed to create state; expected empty array CID, got: {}", root),
             );
         }
         let new_root = ActorBlockstore.put_cbor(obj, Code::Blake2b256)
-            .map_err(|e| actor_error!(ErrIllegalArgument; "failed to write actor state during creation: {}", e.to_string()))?;
+            .map_err(|e| actor_error!(illegal_argument; "failed to write actor state during creation: {}", e.to_string()))?;
         fvm::sself::set_root(&new_root)?;
         Ok(())
     }
@@ -219,9 +219,7 @@ where
         let root = fvm::sself::root()?;
         Ok(ActorBlockstore
             .get_cbor(&root)
-            .map_err(
-                |_| actor_error!(ErrIllegalArgument; "failed to get actor for Readonly state"),
-            )?
+            .map_err(|_| actor_error!(illegal_argument; "failed to get actor for Readonly state"))?
             .expect("State does not exist for actor state root"))
     }
 
@@ -231,13 +229,13 @@ where
         F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
     {
         let state_cid = fvm::sself::root()
-            .map_err(|_| actor_error!(ErrIllegalArgument; "failed to get actor root state CID"))?;
+            .map_err(|_| actor_error!(illegal_argument; "failed to get actor root state CID"))?;
 
         log::debug!("getting cid: {}", state_cid);
 
         let mut state = ActorBlockstore
             .get_cbor::<C>(&state_cid)
-            .map_err(|_| actor_error!(ErrIllegalArgument; "failed to get actor state"))?
+            .map_err(|_| actor_error!(illegal_argument; "failed to get actor state"))?
             .expect("State does not exist for actor state root");
 
         self.in_transaction = true;
@@ -246,7 +244,7 @@ where
 
         let ret = result?;
         let new_root = ActorBlockstore.put_cbor(&state, Code::Blake2b256)
-            .map_err(|e| actor_error!(ErrIllegalArgument; "failed to write actor state in transaction: {}", e.to_string()))?;
+            .map_err(|e| actor_error!(illegal_argument; "failed to write actor state in transaction: {}", e.to_string()))?;
         fvm::sself::set_root(&new_root)?;
         Ok(ret)
     }
@@ -263,28 +261,59 @@ where
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         if self.in_transaction {
-            return Err(actor_error!(SysErrIllegalActor; "runtime.send() is not allowed"));
+            return Err(actor_error!(user_assertion_failed; "runtime.send() is not allowed"));
         }
-        // TODO: distinguish between "syscall" errors and actor exit codes.
         match fvm::send::send(&to, method, params, value) {
             Ok(ret) => {
                 if ret.exit_code.is_success() {
                     Ok(ret.return_data)
                 } else {
-                    Err(ActorError::from(ret.exit_code))
+                    // The returned code can't be simply propagated as it may be a system exit code.
+                    // TODO: improve propagation once we return a RuntimeError.
+                    // Ref https://github.com/filecoin-project/builtin-actors/issues/144
+                    let exit_code = match ret.exit_code {
+                        // This means the called actor did something wrong. We can't "make up" a
+                        // reasonable exit code.
+                        ExitCode::SYS_MISSING_RETURN
+                        | ExitCode::SYS_ILLEGAL_INSTRUCTION
+                        | ExitCode::SYS_ILLEGAL_EXIT_CODE => ExitCode::USR_UNSPECIFIED,
+                        // We don't expect any other system errors.
+                        code if code.is_system_error() => ExitCode::USR_ASSERTION_FAILED,
+                        // Otherwise, pass it through.
+                        code => code,
+                    };
+                    Err(ActorError::unchecked(
+                        exit_code,
+                        format!(
+                            "send to {} method {} aborted with code {}",
+                            to, method, ret.exit_code
+                        ),
+                    ))
                 }
             }
             Err(err) => Err(match err {
+                // Some of these errors are from operations in the Runtime or SDK layer
+                // before or after the underlying VM send syscall.
                 ErrorNumber::NotFound => {
-                    actor_error!(SysErrInvalidReceiver; "receiver not found")
+                    // This means that the receiving actor doesn't exist.
+                    // TODO: we can't reasonably determine the correct "exit code" here.
+                    actor_error!(unspecified; "receiver not found")
                 }
                 ErrorNumber::InsufficientFunds => {
-                    actor_error!(SysErrInsufficientFunds; "not enough funds")
+                    // This means that the send failed because we have insufficient funds. We will
+                    // get a _syscall error_, not an exit code, because the target actor will not
+                    // run (and therefore will not exit).
+                    actor_error!(insufficient_funds; "not enough funds")
                 }
                 ErrorNumber::LimitExceeded => {
-                    actor_error!(SysErrForbidden; "recursion limit exceeded")
+                    // This means we've exceeded the recursion limit.
+                    // TODO: Define a better exit code.
+                    actor_error!(user_assertion_failed; "recursion limit exceeded")
                 }
-                err => panic!("unexpected error: {}", err),
+                err => {
+                    // We don't expect any other syscall exit codes.
+                    actor_error!(user_assertion_failed; "unexpected error: {}", err)
+                }
             }),
         }
     }
@@ -294,14 +323,11 @@ where
     }
 
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
-        fvm::actor::create_actor(actor_id, &code_id).map_err(|e| {
-            ActorError::new(
-                match e {
-                    ErrorNumber::IllegalArgument => ExitCode::SysErrIllegalArgument,
-                    _ => panic!("create failed with unknown error: {}", e),
-                },
-                "failed to create actor".into(),
-            )
+        fvm::actor::create_actor(actor_id, &code_id).map_err(|e| match e {
+            ErrorNumber::IllegalArgument => {
+                ActorError::illegal_argument("failed to create actor".into())
+            }
+            _ => panic!("create failed with unknown error: {}", e),
         })
     }
 
@@ -431,13 +457,13 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     let mut rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
     let ret = C::invoke_method(&mut rt, method, &params)
-        .unwrap_or_else(|err| fvm::vm::abort(err.exit_code() as u32, Some(err.msg())));
+        .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));
 
-    // Abort with "illegal actor" if the actor failed to validate the caller somewhere.
+    // Abort with "assertion failed" if the actor failed to validate the caller somewhere.
     // We do this after handling the error, because the actor may have encountered an error before
     // it even could validate the caller.
     if !rt.caller_validated {
-        fvm::vm::abort(ExitCode::SysErrIllegalActor as u32, Some("failed to validate caller"))
+        fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some("failed to validate caller"))
     }
 
     // Then handle the return value.
