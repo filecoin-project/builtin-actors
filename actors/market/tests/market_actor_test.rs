@@ -449,8 +449,7 @@ fn withdraw_provider_balance(
     rt.expect_validate_caller_addr(vec![owner, worker]);
     expect_provider_control_address(rt, provider, owner, worker);
 
-    let params =
-        WithdrawBalanceParams { provider_or_client: provider, amount: withdraw_amount };
+    let params = WithdrawBalanceParams { provider_or_client: provider, amount: withdraw_amount };
 
     rt.expect_send(
         owner,
@@ -491,8 +490,7 @@ fn withdraw_client_balance(
     );
     rt.expect_validate_caller_addr(vec![client]);
 
-    let params =
-        WithdrawBalanceParams { provider_or_client: client, amount: withdraw_amount };
+    let params = WithdrawBalanceParams { provider_or_client: client, amount: withdraw_amount };
 
     let ret: WithdrawBalanceReturn = rt
         .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap())
