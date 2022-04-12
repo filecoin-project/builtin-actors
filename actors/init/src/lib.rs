@@ -134,7 +134,8 @@ impl Actor {
             let code_cid =
                 rt.store().put(Code::Blake2b256, &Block::new(0x55, code)).map_err(|e| {
                     e.downcast_default(
-                        ExitCode::USR_SERIALIZATION,
+                        //ExitCode::USR_SERIALIZATION,
+                        ExitCode::USR_UNSPECIFIED,
                         "failed to put code into the bockstore",
                     )
                 })?;
