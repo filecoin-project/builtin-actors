@@ -30,3 +30,18 @@ pub struct ExecReturn {
 
 impl Cbor for ExecReturn {}
 impl Cbor for ExecParams {}
+
+/// Init actor Deploy Params
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct DeployParams {
+    pub code: RawBytes,
+}
+
+/// Init actor Deploy Return value
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct DeployReturn {
+    pub code_cid: Cid,
+}
+
+impl Cbor for DeplayParams {}
+impl Cbor for DeployReturn {}
