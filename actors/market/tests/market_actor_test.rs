@@ -277,145 +277,105 @@ fn adds_to_non_provider_funds() {
     }
 }
 
-// WIP
-// #[ignore]
 #[test]
 fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
     let mut rt = setup();
 
+    let provider_addr = Address::new_id(PROVIDER_ID);
     let owner_addr = Address::new_id(OWNER_ID);
     let worker_addr = Address::new_id(WORKER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
 
     let amount = TokenAmount::from(20);
     add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
 
     assert_eq!(amount, get_escrow_balance(&rt, &provider_addr).unwrap());
 
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
-
+    // worker calls WithdrawBalance, balance is transferred to owner
     let withdraw_amount = TokenAmount::from(1);
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount.clone(),
         withdraw_amount.clone(),
-        owner_addr,
         provider_addr,
+        owner_addr,
         worker_addr,
     );
+
+    assert_eq!(TokenAmount::from(19), get_escrow_balance(&rt, &provider_addr).unwrap());
+    // TODO: actor.checkState(rt)
 }
 
-#[ignore]
 #[test]
-fn withdraw_non_provider() {
-    // Test is currently failing because curr_epoch  is 0. When subtracted by 1, it goe snmegative causing a overflow error
+fn withdraws_from_non_provider_escrow_funds() {
     let mut rt = setup();
 
     let client_addr = Address::new_id(CLIENT_ID);
 
-    let amount = TokenAmount::from(20u8);
+    let amount = TokenAmount::from(20);
     add_participant_funds(&mut rt, client_addr, amount.clone());
 
-    assert_eq!(amount, get_escrow_balance(&rt, &client_addr).unwrap());
+    assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), amount);
 
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client_addr);
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
-
-    let withdraw_amount = TokenAmount::from(1u8);
-
-    rt.expect_send(
-        client_addr,
-        METHOD_SEND,
-        RawBytes::default(),
+    let withdraw_amount = TokenAmount::from(1);
+    withdraw_client_balance(
+        &mut rt,
         withdraw_amount.clone(),
-        RawBytes::default(),
-        ExitCode::Ok,
+        withdraw_amount.clone(),
+        client_addr,
     );
 
-    let params = WithdrawBalanceParams { provider_or_client: client_addr, amount: withdraw_amount };
-
-    assert!(rt
-        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap(),)
-        .is_ok());
-
-    rt.verify();
-
-    assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), TokenAmount::from(19u8));
+    add_participant_funds(&mut rt, client_addr, amount.clone());
+    // TODO: actor.checkState(rt)
 }
 
-#[ignore]
 #[test]
-fn client_withdraw_more_than_available() {
+fn client_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     let mut rt = setup();
 
     let client_addr = Address::new_id(CLIENT_ID);
-
-    let amount = TokenAmount::from(20u8);
-    add_participant_funds(&mut rt, client_addr, amount.clone());
-
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client_addr);
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
-
-    let withdraw_amount = TokenAmount::from(25u8);
-
-    rt.expect_send(
-        client_addr,
-        METHOD_SEND,
-        RawBytes::default(),
-        amount,
-        RawBytes::default(),
-        ExitCode::Ok,
-    );
-
-    let params = WithdrawBalanceParams { provider_or_client: client_addr, amount: withdraw_amount };
-
-    assert!(rt
-        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap(),)
-        .is_ok());
-
-    rt.verify();
-
-    assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), TokenAmount::from(0u8));
-}
-
-#[ignore]
-#[test]
-fn worker_withdraw_more_than_available() {
-    let mut rt = setup();
-
     let owner_addr = Address::new_id(OWNER_ID);
     let worker_addr = Address::new_id(WORKER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
 
-    let amount = TokenAmount::from(20u8);
-    add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
+    let amount = TokenAmount::from(20);
+    add_participant_funds(&mut rt, client_addr, amount.clone());
 
-    assert_eq!(amount, get_escrow_balance(&rt, &provider_addr).unwrap());
-
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
-    expect_provider_control_address(&mut rt, provider_addr, owner_addr, worker_addr);
-
-    let withdraw_amount = TokenAmount::from(25u8);
-
-    rt.expect_send(
-        owner_addr,
-        METHOD_SEND,
-        RawBytes::default(),
-        amount,
-        RawBytes::default(),
-        ExitCode::Ok,
+    // withdraw amount greater than escrow balance
+    let withdraw_amount = TokenAmount::from(25);
+    withdraw_client_balance(
+        &mut rt,
+        withdraw_amount.clone(),
+        amount.clone(),
+        client_addr,
     );
 
-    let params =
-        WithdrawBalanceParams { provider_or_client: provider_addr, amount: withdraw_amount };
+    assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), TokenAmount::from(0));
+}
 
-    assert!(rt
-        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap(),)
-        .is_ok());
+#[test]
+fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
+    let mut rt = setup();
 
-    rt.verify();
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let owner_addr = Address::new_id(OWNER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
 
-    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), TokenAmount::from(0u8));
+    let amount = TokenAmount::from(20);
+    add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
+
+    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), amount);
+
+    let withdraw_amount = TokenAmount::from(25);
+    withdraw_provider_balance(
+        &mut rt,
+        withdraw_amount.clone(),
+        amount.clone(),
+        provider_addr,
+        owner_addr,
+        worker_addr,
+    );
+
+    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), TokenAmount::from(0));
+    // TODO: actor.checkState(rt)
 }
 
 fn expect_provider_control_address(
@@ -489,13 +449,12 @@ fn construct_and_verify(rt: &mut MockRuntime) {
     rt.verify();
 }
 
-// WIP
 fn withdraw_provider_balance(
     rt: &mut MockRuntime,
     withdraw_amount: TokenAmount,
     expected_send: TokenAmount,
-    owner: Address,
     provider: Address,
+    owner: Address,
     worker: Address,
 ) {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
@@ -513,15 +472,54 @@ fn withdraw_provider_balance(
         RawBytes::default(),
         ExitCode::Ok,
     );
+    let ret: WithdrawBalanceReturn = rt
+        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap())
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
 
-    let ret = rt
-        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap());
-    // .unwrap()
-    // .deserialize()
-    // .unwrap();
+    assert_eq!(
+        expected_send,
+        ret.amount_withdrawn,
+        "return value indicates {} withdrawn but expected {}",
+        ret.amount_withdrawn,
+        expected_send
+    );
+}
 
-    //     // TODO: add error msg
-    //     assert_eq!(expected_send, ret.amount_withdrawn);
+fn withdraw_client_balance(
+    rt: &mut MockRuntime,
+    withdraw_amount: TokenAmount,
+    expected_send: TokenAmount,
+    client: Address,
+) {
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client);
+    rt.expect_send(
+        client,
+        METHOD_SEND,
+        RawBytes::default(),
+        expected_send.clone(),
+        RawBytes::default(),
+        ExitCode::Ok,
+    );
+    rt.expect_validate_caller_addr(vec![client]);
 
-    //     rt.verify();
+    let params =
+        WithdrawBalanceParams { provider_or_client: client, amount: withdraw_amount.clone() };
+
+    let ret: WithdrawBalanceReturn = rt
+        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap())
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+
+    assert_eq!(
+        expected_send,
+        ret.amount_withdrawn,
+        "return value indicates {} withdrawn but expected {}",
+        ret.amount_withdrawn,
+        expected_send
+    );
 }
