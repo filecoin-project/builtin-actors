@@ -135,8 +135,7 @@ impl Actor {
             let code_cid =
                 rt.store().put(Code::Blake2b256, &Block::new(0x55, code)).map_err(|e| {
                     e.downcast_default(
-                        //ExitCode::USR_SERIALIZATION,
-                        ExitCode::USR_UNSPECIFIED,
+                        ExitCode::USR_SERIALIZATION,
                         "failed to put code into the bockstore",
                     )
                 })?;
@@ -190,7 +189,7 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::Install) => {
-                let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::install(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
