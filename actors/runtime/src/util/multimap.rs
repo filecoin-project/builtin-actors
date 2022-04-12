@@ -90,13 +90,13 @@ where
     }
 
     /// Iterates through all values in the array at a given key.
-    pub fn for_each<F, V, U>(&self, key: &[u8], f: F) -> Result<(), EitherError<U, BS::Error>>
+    pub fn try_for_each<F, V, U>(&self, key: &[u8], f: F) -> Result<(), EitherError<U, BS::Error>>
     where
         V: Serialize + DeserializeOwned,
         F: FnMut(u64, &V) -> Result<(), U>,
     {
         if let Some(amt) = self.get::<V>(key)? {
-            amt.for_each(f).map_err(|err| match err {
+            amt.try_for_each(f).map_err(|err| match err {
                 fvm_ipld_amt::EitherError::User(e) => EitherError::User(e),
                 fvm_ipld_amt::EitherError::Amt(e) => EitherError::MultiMap(e.into()),
             })?;
@@ -105,14 +105,27 @@ where
         Ok(())
     }
 
+    /// Iterates through all values in the array at a given key.
+    pub fn for_each<F, V>(&self, key: &[u8], f: F) -> Result<(), Error<BS::Error>>
+    where
+        V: Serialize + DeserializeOwned,
+        F: FnMut(u64, &V),
+    {
+        if let Some(amt) = self.get::<V>(key)? {
+            amt.for_each(f)?;
+        }
+
+        Ok(())
+    }
+
     /// Iterates through all arrays in the multimap
-    pub fn for_all<F, V, U>(&self, mut f: F) -> Result<(), EitherError<U, BS::Error>>
+    pub fn try_for_all<F, V, U>(&self, mut f: F) -> Result<(), EitherError<U, BS::Error>>
     where
         V: Serialize + DeserializeOwned,
         F: FnMut(&BytesKey, &Array<V, BS>) -> Result<(), U>,
     {
         self.0
-            .for_each::<_, EitherError<U, BS::Error>>(|key, arr_root| {
+            .try_for_each::<_, EitherError<U, BS::Error>>(|key, arr_root| {
                 let arr = Array::load(arr_root, *self.0.store())
                     .map_err(|e| EitherError::MultiMap(e.into()))?;
                 f(key, &arr).map_err(EitherError::User)?;
@@ -122,6 +135,24 @@ where
                 fvm_ipld_hamt::EitherError::User(e) => e,
                 fvm_ipld_hamt::EitherError::Hamt(e) => EitherError::MultiMap(e.into()),
             })?;
+
+        Ok(())
+    }
+
+    /// Iterates through all arrays in the multimap
+    pub fn for_all<F, V>(&self, mut f: F) -> Result<(), Error<BS::Error>>
+    where
+        V: Serialize + DeserializeOwned,
+        F: FnMut(&BytesKey, &Array<V, BS>),
+    {
+        self.try_for_all(|key, root| {
+            f(key, root);
+            Ok(())
+        })
+        .map_err(|err| match err {
+            EitherError::User(()) => unreachable!(),
+            EitherError::MultiMap(e) => e,
+        })?;
 
         Ok(())
     }

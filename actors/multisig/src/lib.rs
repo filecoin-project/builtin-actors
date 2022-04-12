@@ -6,8 +6,8 @@ use std::collections::BTreeSet;
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorDowncast,
-    ActorError, Map, INIT_ACTOR_ADDR,
+    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorContext,
+    ActorDowncast, ActorError, Map, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -73,12 +73,8 @@ impl Actor {
         let mut resolved_signers = Vec::with_capacity(params.signers.len());
         let mut dedup_signers = BTreeSet::new();
         for signer in &params.signers {
-            let resolved = resolve_to_id_addr(rt, signer).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to resolve addr {} to ID addr", signer),
-                )
-            })?;
+            let resolved = resolve_to_id_addr(rt, signer)
+                .with_context(|| format!("failed to resolve addr {} to ID addr", signer))?;
             if !dedup_signers.insert(resolved.id().expect("address should be resolved")) {
                 return Err(
                     actor_error!(illegal_argument; "duplicate signer not allowed: {}", signer),
@@ -269,11 +265,8 @@ impl Actor {
                 return Err(actor_error!(forbidden; "Cannot cancel another signers transaction"));
             }
 
-            let calculated_hash = compute_proposal_hash(&tx, rt).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to compute proposal hash for (tx: {:?})", params.id),
-                )
+            let calculated_hash = compute_proposal_hash(&tx, rt).with_context(|| {
+                format!("failed to compute proposal hash for (tx: {:?})", params.id)
             })?;
 
             if !params.proposal_hash.is_empty() && params.proposal_hash != calculated_hash {
@@ -299,12 +292,8 @@ impl Actor {
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let resolved_new_signer = resolve_to_id_addr(rt, &params.signer).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.signer),
-            )
-        })?;
+        let resolved_new_signer = resolve_to_id_addr(rt, &params.signer)
+            .with_context(|| format!("failed to resolve address {}", params.signer))?;
 
         rt.transaction(|st: &mut State, _| {
             if st.signers.len() >= SIGNERS_MAX {
@@ -336,12 +325,8 @@ impl Actor {
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let resolved_old_signer = resolve_to_id_addr(rt, &params.signer).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.signer),
-            )
-        })?;
+        let resolved_old_signer = resolve_to_id_addr(rt, &params.signer)
+            .with_context(|| format!("failed to resolve address {}", params.signer))?;
 
         rt.transaction(|st: &mut State, rt| {
             if !st.is_signer(&resolved_old_signer) {
@@ -374,12 +359,9 @@ impl Actor {
             }
 
             // Remove approvals from removed signer
-            st.purge_approvals(rt.store(), &resolved_old_signer).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to purge approvals of removed signer",
-                )
-            })?;
+            st.purge_approvals(rt.store(), &resolved_old_signer)
+                .context("failed to purge approvals of removed signer")?;
+
             st.signers.retain(|s| s != &resolved_old_signer);
 
             Ok(())
@@ -396,18 +378,10 @@ impl Actor {
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let from_resolved = resolve_to_id_addr(rt, &params.from).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.from),
-            )
-        })?;
-        let to_resolved = resolve_to_id_addr(rt, &params.to).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.to),
-            )
-        })?;
+        let from_resolved = resolve_to_id_addr(rt, &params.from)
+            .with_context(|| format!("failed to resolve address {}", params.from))?;
+        let to_resolved = resolve_to_id_addr(rt, &params.to)
+            .with_context(|| format!("failed to resolve address {}", params.to))?;
 
         rt.transaction(|st: &mut State, rt| {
             if !st.is_signer(&from_resolved) {
@@ -424,12 +398,9 @@ impl Actor {
             // Add new signer
             st.signers.push(to_resolved);
 
-            st.purge_approvals(rt.store(), &from_resolved).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to purge approvals of removed signer",
-                )
-            })?;
+            st.purge_approvals(rt.store(), &from_resolved)
+                .context("failed to purge approvals of removed signer")?;
+
             Ok(())
         })?;
 
@@ -621,12 +592,8 @@ where
         .ok_or_else(|| actor_error!(not_found, "no such transaction {:?} for approval", txn_id))?;
 
     if !proposal_hash.is_empty() {
-        let calculated_hash = compute_proposal_hash(txn, rt).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to compute proposal hash for (tx: {:?})", txn_id),
-            )
-        })?;
+        let calculated_hash = compute_proposal_hash(txn, rt)
+            .with_context(|| format!("failed to compute proposal hash for (tx: {:?})", txn_id))?;
 
         if proposal_hash != calculated_hash {
             return Err(actor_error!(
@@ -641,7 +608,10 @@ where
 
 /// Computes a digest of a proposed transaction. This digest is used to confirm identity
 /// of the transaction associated with an ID, which might change under chain re-orgs.
-pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow::Result<[u8; 32]> {
+pub fn compute_proposal_hash(
+    txn: &Transaction,
+    sys: &dyn Primitives,
+) -> Result<[u8; 32], ActorError> {
     let proposal_hash = ProposalHashData {
         requester: txn.approved.get(0),
         to: &txn.to,

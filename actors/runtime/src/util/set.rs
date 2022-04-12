@@ -67,15 +67,24 @@ where
     }
 
     /// Iterates through all keys in the set.
-    pub fn for_each<F>(&self, mut f: F) -> Result<(), Error<BS::Error>>
+    pub fn try_for_each<F>(&self, mut f: F) -> Result<(), Error<BS::Error>>
     where
         F: FnMut(&BytesKey) -> Result<(), Error<BS::Error>>,
     {
         // Calls the for each function on the hamt with ignoring the value
-        self.0.for_each(|s, _: &()| f(s)).map_err(|err| match err {
+        self.0.try_for_each(|s, _: &()| f(s)).map_err(|err| match err {
             fvm_ipld_hamt::EitherError::User(e) => e,
             fvm_ipld_hamt::EitherError::Hamt(e) => e.into(),
         })
+    }
+
+    /// Iterates through all keys in the set.
+    pub fn for_each<F>(&self, mut f: F) -> Result<(), Error<BS::Error>>
+    where
+        F: FnMut(&BytesKey),
+    {
+        // Calls the for each function on the hamt with ignoring the value
+        self.0.for_each(|s, _: &()| f(s))
     }
 
     /// Collects all keys from the set into a vector.
@@ -84,7 +93,6 @@ where
 
         self.for_each(|k| {
             ret_keys.push(k.clone());
-            Ok(())
         })?;
 
         Ok(ret_keys)

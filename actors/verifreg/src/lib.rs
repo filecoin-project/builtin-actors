@@ -149,18 +149,15 @@ impl Actor {
                 rt.store(),
                 HAMT_BIT_WIDTH,
             )
-            .map_err(Into::into)
             .context("failed to load verified clients")?;
             verifiers
                 .delete(&verifier.to_bytes())
-                .map_err(Into::into)
                 .context("failed to remove verifier")?
                 .ok_or_else(|| {
                     actor_error!(illegal_argument, "failed to remove verifier: not found")
                 })?;
 
-            st.verifiers =
-                verifiers.flush().map_err(Into::into).context("failed to flush verifiers")?;
+            st.verifiers = verifiers.flush().context("failed to flush verifiers")?;
 
             Ok(())
         })?;
@@ -199,27 +196,22 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let mut verifiers =
                 make_map_with_root_and_bitwidth(&st.verifiers, rt.store(), HAMT_BIT_WIDTH)
-                    .map_err(Into::into)
                     .context("failed to load verified clients")?;
 
             let mut verified_clients =
                 make_map_with_root_and_bitwidth(&st.verified_clients, rt.store(), HAMT_BIT_WIDTH)
-                    .map_err(Into::into)
                     .context("failed to load verified clients")?;
 
             // Validate caller is one of the verifiers.
             let verifier = rt.message().caller();
             let BigIntDe(verifier_cap) = verifiers
                 .get(&verifier.to_bytes())
-                .map_err(Into::into)
                 .with_context(|| format!("failed to get Verifier {}", verifier))?
                 .ok_or_else(|| actor_error!(not_found, format!("no such Verifier {}", verifier)))?;
 
             // Validate client to be added isn't a verifier
-            let found = verifiers
-                .contains_key(&client.to_bytes())
-                .map_err(Into::into)
-                .context("failed to get verifier")?;
+            let found =
+                verifiers.contains_key(&client.to_bytes()).context("failed to get verifier")?;
 
             if found {
                 return Err(actor_error!(
@@ -242,12 +234,10 @@ impl Actor {
 
             verifiers
                 .set(verifier.to_bytes().into(), BigIntDe(new_verifier_cap))
-                .map_err(Into::into)
                 .with_context(|| format!("Failed to update new verifier cap for {}", verifier))?;
 
             let client_cap = verified_clients
                 .get(&client.to_bytes())
-                .map_err(Into::into)
                 .with_context(|| format!("Failed to get verified client {}", client))?;
 
             // if verified client exists, add allowance to existing cap
@@ -260,17 +250,13 @@ impl Actor {
 
             verified_clients
                 .set(client.to_bytes().into(), BigIntDe(client_cap.clone()))
-                .map_err(Into::into)
                 .with_context(|| {
                     format!("Failed to add verified client {} with cap {}", client, client_cap,)
                 })?;
 
-            st.verifiers =
-                verifiers.flush().map_err(Into::into).context("failed to flush verifiers")?;
-            st.verified_clients = verified_clients
-                .flush()
-                .map_err(Into::into)
-                .context("failed to flush verified clients")?;
+            st.verifiers = verifiers.flush().context("failed to flush verifiers")?;
+            st.verified_clients =
+                verified_clients.flush().context("failed to flush verified clients")?;
 
             Ok(())
         })?;

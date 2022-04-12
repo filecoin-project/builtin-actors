@@ -333,9 +333,8 @@ pub(super) fn load_cron_events<BS: Blockstore>(
 ) -> Result<Vec<CronEvent>, ActorError> {
     let mut events = Vec::new();
 
-    mmap.for_each::<_, _, ActorError>(&epoch_key(epoch), |_, v: &CronEvent| {
+    mmap.for_each(&epoch_key(epoch), |_, v: &CronEvent| {
         events.push(v.clone());
-        Ok(())
     })?;
 
     Ok(events)

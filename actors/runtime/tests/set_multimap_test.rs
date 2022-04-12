@@ -41,7 +41,6 @@ fn for_each() {
     let mut vals: Vec<u64> = Vec::new();
     smm.for_each(epoch, |i| {
         vals.push(i);
-        Ok(())
     })
     .unwrap();
 

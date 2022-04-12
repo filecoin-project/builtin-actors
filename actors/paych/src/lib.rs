@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, resolve_to_id_addr, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{
+    actor_error, cbor, resolve_to_id_addr, ActorContext, ActorDowncast, ActorError, Array,
+};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::actor::builtin::Type;
@@ -72,12 +74,8 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let resolved = resolve_to_id_addr(rt, raw).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", raw),
-            )
-        })?;
+        let resolved = resolve_to_id_addr(rt, raw)
+            .with_context(|| format!("failed to resolve address {}", raw))?;
 
         let code_cid = rt
             .get_actor_code_cid(&resolved)

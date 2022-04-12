@@ -104,9 +104,29 @@ where
     }
 
     /// Iterates through keys and converts them to a DealID to call a function on each.
-    pub fn for_each<F>(&self, key: ChainEpoch, mut f: F) -> Result<(), Error<BS::Error>>
+    pub fn try_for_each<F>(&self, key: ChainEpoch, mut f: F) -> Result<(), Error<BS::Error>>
     where
         F: FnMut(DealID) -> Result<(), Error<BS::Error>>,
+    {
+        // Get construct amt from retrieved cid and return if no set exists
+        let set = match self.get(key)? {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+
+        set.try_for_each(|k| {
+            let v = parse_uint_key(k).expect("TODO");
+
+            // Run function on all parsed keys
+            f(v)?;
+            Ok(())
+        })
+    }
+
+    /// Iterates through keys and converts them to a DealID to call a function on each.
+    pub fn for_each<F>(&self, key: ChainEpoch, mut f: F) -> Result<(), Error<BS::Error>>
+    where
+        F: FnMut(DealID),
     {
         // Get construct amt from retrieved cid and return if no set exists
         let set = match self.get(key)? {
@@ -118,8 +138,7 @@ where
             let v = parse_uint_key(k).expect("TODO");
 
             // Run function on all parsed keys
-            f(v)?;
-            Ok(())
+            f(v);
         })
     }
 }

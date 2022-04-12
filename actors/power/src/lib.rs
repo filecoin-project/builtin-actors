@@ -408,7 +408,7 @@ impl Actor {
                     }
                 };
 
-                if let Err(e) = mmap.for_all::<_, SealVerifyInfo, _>(|k, arr| {
+                if let Err(e) = mmap.try_for_all::<_, SealVerifyInfo, _>(|k, arr| {
                     let addr = match Address::from_bytes(&k.0) {
                         Ok(addr) => addr,
                         Err(e) => {
@@ -431,9 +431,8 @@ impl Actor {
                         .try_into()
                         .map_err(|_| "can not convert u64 to usize".to_string())?;
                     infos.reserve(num_proofs);
-                    arr.for_each::<_, ActorError>(|_, svi| {
+                    arr.for_each(|_, svi| {
                         infos.push(svi.clone());
-                        Ok(())
                     })
                     .map_err(|e| {
                         format!(
