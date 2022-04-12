@@ -1,11 +1,11 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::{
     make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
 };
+use fil_actors_runtime::{ActorContext, ActorError};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
@@ -22,10 +22,11 @@ pub struct State {
 }
 
 impl State {
-    pub fn new<BS: Blockstore>(store: &BS, network_name: String) -> anyhow::Result<Self> {
+    pub fn new<BS: Blockstore>(store: &BS, network_name: String) -> Result<Self, ActorError> {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
-            .map_err(|e| anyhow!("failed to create empty map: {}", e))?;
+            .context("failed to create empty map")?;
+
         Ok(Self { address_map: empty_map, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
     }
 
@@ -35,7 +36,7 @@ impl State {
         &mut self,
         store: &BS,
         addr: &Address,
-    ) -> Result<ActorID, HamtError> {
+    ) -> Result<ActorID, HamtError<BS::Error>> {
         let id = self.next_id;
         self.next_id += 1;
 
@@ -60,7 +61,7 @@ impl State {
         &self,
         store: &BS,
         addr: &Address,
-    ) -> anyhow::Result<Option<Address>> {
+    ) -> Result<Option<Address>, ActorError> {
         if addr.protocol() == Protocol::ID {
             return Ok(Some(*addr));
         }

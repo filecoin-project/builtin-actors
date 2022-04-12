@@ -7,7 +7,7 @@ use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root, make_map_with_root_and_bitwidth, ActorContext,
-    ActorDowncast, ActorError, Map, Multimap,
+    ActorError, Map, Multimap,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -17,7 +17,6 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use fvm_shared::smooth::{AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA};
 use fvm_shared::HAMT_BIT_WIDTH;
@@ -269,13 +268,10 @@ impl State {
     where
         BS: Blockstore,
     {
-        let claims = make_map_with_root::<_, Claim>(&self.claims, store).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
-        })?;
+        let claims =
+            make_map_with_root::<_, Claim>(&self.claims, store).context("failed to load claims")?;
 
-        if !claims.contains_key(&miner_addr.to_bytes()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to look up claim")
-        })? {
+        if !claims.contains_key(&miner_addr.to_bytes()).context("failed to look up claim")? {
             return Err(actor_error!(
                 forbidden,
                 "unknown miner {} forbidden to interact with power actor",
@@ -292,9 +288,7 @@ impl State {
     ) -> Result<Option<Claim>, ActorError> {
         let claims =
             make_map_with_root_and_bitwidth::<_, Claim>(&self.claims, store, HAMT_BIT_WIDTH)
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
-                })?;
+                .context("failed to load claims")?;
 
         let claim = get_claim(&claims, miner)?;
         Ok(claim.cloned())

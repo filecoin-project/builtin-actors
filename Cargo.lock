@@ -594,7 +594,6 @@ dependencies = [
 name = "fil_actor_init"
 version = "8.0.0-alpha.1"
 dependencies = [
- "anyhow",
  "cid",
  "fil_actors_runtime",
  "fvm_ipld_blockstore",

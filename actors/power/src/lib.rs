@@ -7,8 +7,8 @@ use std::convert::TryInto;
 use ext::init;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, ActorContext, ActorDowncast, ActorError,
-    Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, make_map_with_root_and_bitwidth, ActorContext, ActorError, Multimap,
+    CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -114,9 +114,8 @@ impl Actor {
         let window_post_proof_type = params.window_post_proof_type;
         rt.transaction(|st: &mut State, rt| {
             let mut claims =
-                make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).map_err(
-                    |e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims"),
-                )?;
+                make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH)
+                    .context("failed to load claims")?;
             set_claim(
                 &mut claims,
                 &id_address,
@@ -139,9 +138,7 @@ impl Actor {
                 )
             })?;
 
-            st.claims = claims.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims")
-            })?;
+            st.claims = claims.flush().context("failed to flush claims")?;
             Ok(())
         })?;
         Ok(CreateMinerReturn { id_address, robust_address })
@@ -162,9 +159,8 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let mut claims =
-                make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).map_err(
-                    |e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims"),
-                )?;
+                make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH)
+                    .context("failed to load claims")?;
 
             st.add_to_claim(
                 rt.policy(),
@@ -180,9 +176,7 @@ impl Actor {
                 )
             })?;
 
-            st.claims = claims.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims")
-            })?;
+            st.claims = claims.flush().context("failed to flush claims")?;
             Ok(())
         })
     }
@@ -524,9 +518,7 @@ impl Actor {
 
             let claims =
                 make_map_with_root_and_bitwidth::<_, Claim>(&st.claims, rt.store(), HAMT_BIT_WIDTH)
-                    .map_err(|e| {
-                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
-                    })?;
+                    .context("failed to load claims")?;
             for epoch in st.first_cron_epoch..=rt_epoch {
                 let epoch_events = load_cron_events(&events, epoch)
                     .with_context(|| format!("failed to load cron events at {}", epoch))?;
@@ -536,13 +528,9 @@ impl Actor {
                 }
 
                 for evt in epoch_events.into_iter() {
-                    let miner_has_claim =
-                        claims.contains_key(&evt.miner_addr.to_bytes()).map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                "failed to look up claim",
-                            )
-                        })?;
+                    let miner_has_claim = claims
+                        .contains_key(&evt.miner_addr.to_bytes())
+                        .context("failed to look up claim")?;
                     if !miner_has_claim {
                         debug!("skipping cron event for unknown miner: {}", evt.miner_addr);
                         continue;
@@ -588,9 +576,7 @@ impl Actor {
             rt.transaction(|st: &mut State, rt| {
                 let mut claims =
                     make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH)
-                        .map_err(|e| {
-                            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
-                        })?;
+                        .context("failed to load claims")?;
 
                 // Remove power and leave miner frozen
                 for miner_addr in failed_miner_crons {
@@ -605,9 +591,7 @@ impl Actor {
                     st.miner_count -= 1
                 }
 
-                st.claims = claims.flush().map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims")
-                })?;
+                st.claims = claims.flush().context("failed to flush claims")?;
                 Ok(())
             })?;
         }
