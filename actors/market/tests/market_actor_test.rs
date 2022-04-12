@@ -317,12 +317,7 @@ fn withdraws_from_non_provider_escrow_funds() {
     assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), amount);
 
     let withdraw_amount = TokenAmount::from(1);
-    withdraw_client_balance(
-        &mut rt,
-        withdraw_amount.clone(),
-        withdraw_amount.clone(),
-        client_addr,
-    );
+    withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount.clone(), client_addr);
 
     add_participant_funds(&mut rt, client_addr, amount.clone());
     // TODO: actor.checkState(rt)
@@ -333,20 +328,13 @@ fn client_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     let mut rt = setup();
 
     let client_addr = Address::new_id(CLIENT_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
 
     let amount = TokenAmount::from(20);
     add_participant_funds(&mut rt, client_addr, amount.clone());
 
     // withdraw amount greater than escrow balance
     let withdraw_amount = TokenAmount::from(25);
-    withdraw_client_balance(
-        &mut rt,
-        withdraw_amount.clone(),
-        amount.clone(),
-        client_addr,
-    );
+    withdraw_client_balance(&mut rt, withdraw_amount.clone(), amount.clone(), client_addr);
 
     assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), TokenAmount::from(0));
 }
@@ -480,11 +468,9 @@ fn withdraw_provider_balance(
     rt.verify();
 
     assert_eq!(
-        expected_send,
-        ret.amount_withdrawn,
+        expected_send, ret.amount_withdrawn,
         "return value indicates {} withdrawn but expected {}",
-        ret.amount_withdrawn,
-        expected_send
+        ret.amount_withdrawn, expected_send
     );
 }
 
@@ -516,10 +502,8 @@ fn withdraw_client_balance(
     rt.verify();
 
     assert_eq!(
-        expected_send,
-        ret.amount_withdrawn,
+        expected_send, ret.amount_withdrawn,
         "return value indicates {} withdrawn but expected {}",
-        ret.amount_withdrawn,
-        expected_send
+        ret.amount_withdrawn, expected_send
     );
 }
