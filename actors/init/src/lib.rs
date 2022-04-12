@@ -4,15 +4,15 @@
 //use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
-use fvm_ipld_blockstore::{Blockstore, Block};
+use fvm_ipld_blockstore::{Block, Blockstore};
 use fvm_ipld_encoding::RawBytes;
 //use fvm_shared::actor::builtin::Type;
+use cid::multihash::Code;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use cid::multihash::Code;
 
 pub use self::state::State;
 pub use self::types::*;
@@ -80,17 +80,15 @@ impl Actor {
 
         // Ensure the code is deployed/loaded
         rt.transaction(|st: &mut State, rt| {
-            if st.is_deployed_actor(rt.store(), &params.code_cid)
-                .map_err(|e| {
+            if st.is_deployed_actor(rt.store(), &params.code_cid).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to check state")
+            })? {
+                rt.deploy_actor(&params.code_cid).map_err(|e| {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to check state")
-                })? {
-                    rt.deploy_actor(&params.code_cid)
-                        .map_err(|e| {
-                            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to check state")
-                        })
-                } else {
-                    Ok(())
-                }
+                })
+            } else {
+                Ok(())
+            }
         })?;
 
         // Compute a re-org-stable address.
@@ -133,8 +131,8 @@ impl Actor {
 
         let code_cid = rt.transaction(|st: &mut State, rt| {
             let code = params.code.bytes();
-            let code_cid = rt.store().put(Code::Blake2b256, &Block::new(0x55, code))
-                .map_err(|e| {
+            let code_cid =
+                rt.store().put(Code::Blake2b256, &Block::new(0x55, code)).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_SERIALIZATION,
                         "failed to put code into the bockstore",
@@ -142,21 +140,20 @@ impl Actor {
                 })?;
 
             if st.is_deployed_actor(rt.store(), &code_cid).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to check state for deployed actor",
-                    )
-                })? {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to check state for deployed actor",
+                )
+            })? {
                 return Ok(code_cid);
             }
 
-            rt.deploy_actor(&code_cid)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_ARGUMENT,
-                        "failed to check state for deployed actor",
-                    )
-                })?;
+            rt.deploy_actor(&code_cid).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
+                    "failed to check state for deployed actor",
+                )
+            })?;
 
             st.add_deployed_actor(rt.store(), code_cid.clone()).map_err(|e| {
                 e.downcast_default(
@@ -167,9 +164,8 @@ impl Actor {
             Ok(code_cid)
         })?;
 
-        Ok(DeployReturn{ code_cid })
+        Ok(DeployReturn { code_cid })
     }
-
 }
 
 impl ActorCode for Actor {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
+use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::{
     make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
@@ -9,11 +10,10 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
+use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
-use fvm_ipld_encoding::CborStore;
-use cid::multihash::Code;
 
 /// State is reponsible for creating
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -89,7 +89,11 @@ impl State {
     }
 
     /// Adds a new code Cid to the list of deployed actors.
-    pub fn add_deployed_actor<BS: Blockstore>(&mut self, store: &BS, cid: Cid) -> anyhow::Result<()> {
+    pub fn add_deployed_actor<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        cid: Cid,
+    ) -> anyhow::Result<()> {
         let mut deployed: Vec<Cid> = match store.get_cbor(&self.deployed_actors)? {
             Some(v) => v,
             None => Vec::new(),
