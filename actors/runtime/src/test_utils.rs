@@ -1181,6 +1181,11 @@ impl Verifier for MockRuntime {
         );
         exp.result
     }
+
+    fn deploy_actor(&self, _code_cid: &Cid) -> Result<(), Error> {
+        Ok(())
+    }
+
 }
 
 impl RuntimePolicy for MockRuntime {
