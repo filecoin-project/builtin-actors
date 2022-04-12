@@ -20,10 +20,9 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
-use crate::ActorError;
-
 pub use self::actor_code::*;
 pub use self::policy::*;
+use crate::ActorError;
 
 mod actor_code;
 
