@@ -467,6 +467,11 @@ where
             Err(e) => Err(anyhow!("failed to verify replica: {}", e)),
         }
     }
+
+    fn deploy_actor(&self, _code_cid: &Cid) -> Result<(), Error> {
+        // TODO implementme
+        unimplemented!();
+    }
 }
 
 #[cfg(feature = "fake-proofs")]

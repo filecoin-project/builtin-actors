@@ -136,7 +136,13 @@ impl Actor {
                 return Ok(code_cid);
             }
 
-            // TODO Actually deploy via syscall
+            rt.deploy_actor(&code_cid)
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_ARGUMENT,
+                        "failed to check state for deployed actor",
+                    )
+                })?;
 
             st.add_deployed_actor(rt.store(), code_cid.clone()).map_err(|e| {
                 e.downcast_default(
