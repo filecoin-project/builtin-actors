@@ -21,7 +21,7 @@ pub struct State {
     pub address_map: Cid,
     pub next_id: ActorID,
     pub network_name: String,
-    pub deployed_actors: Cid,
+    pub installed_actors: Cid,
 }
 
 impl State {
@@ -29,12 +29,12 @@ impl State {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
             .map_err(|e| anyhow!("failed to create empty map: {}", e))?;
-        let deployed_actors = store.put_cbor(&Vec::<Cid>::new(), Code::Blake2b256)?;
+        let installed_actors = store.put_cbor(&Vec::<Cid>::new(), Code::Blake2b256)?;
         Ok(Self {
             address_map: empty_map,
             next_id: FIRST_NON_SINGLETON_ADDR,
             network_name,
-            deployed_actors,
+            installed_actors,
         })
     }
 
@@ -79,27 +79,27 @@ impl State {
         Ok(map.get(&addr.to_bytes())?.copied().map(Address::new_id))
     }
 
-    /// Check to see if an actor is already deployed
-    pub fn is_deployed_actor<BS: Blockstore>(&self, store: &BS, cid: &Cid) -> anyhow::Result<bool> {
-        let deployed: Vec<Cid> = match store.get_cbor(&self.deployed_actors)? {
+    /// Check to see if an actor is already installed
+    pub fn is_installed_actor<BS: Blockstore>(&self, store: &BS, cid: &Cid) -> anyhow::Result<bool> {
+        let installed: Vec<Cid> = match store.get_cbor(&self.installed_actors)? {
             Some(v) => v,
             None => Vec::new(),
         };
-        Ok(deployed.contains(cid))
+        Ok(installed.contains(cid))
     }
 
-    /// Adds a new code Cid to the list of deployed actors.
-    pub fn add_deployed_actor<BS: Blockstore>(
+    /// Adds a new code Cid to the list of installed actors.
+    pub fn add_installed_actor<BS: Blockstore>(
         &mut self,
         store: &BS,
         cid: Cid,
     ) -> anyhow::Result<()> {
-        let mut deployed: Vec<Cid> = match store.get_cbor(&self.deployed_actors)? {
+        let mut installed: Vec<Cid> = match store.get_cbor(&self.installed_actors)? {
             Some(v) => v,
             None => Vec::new(),
         };
-        deployed.push(cid);
-        self.deployed_actors = store.put_cbor(&deployed, Code::Blake2b256)?;
+        installed.push(cid);
+        self.installed_actors = store.put_cbor(&installed, Code::Blake2b256)?;
         Ok(())
     }
 }
