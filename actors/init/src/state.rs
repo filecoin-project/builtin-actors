@@ -80,7 +80,11 @@ impl State {
     }
 
     /// Check to see if an actor is already installed
-    pub fn is_installed_actor<BS: Blockstore>(&self, store: &BS, cid: &Cid) -> anyhow::Result<bool> {
+    pub fn is_installed_actor<BS: Blockstore>(
+        &self,
+        store: &BS,
+        cid: &Cid,
+    ) -> anyhow::Result<bool> {
         let installed: Vec<Cid> = match store.get_cbor(&self.installed_actors)? {
             Some(v) => v,
             None => Vec::new(),
