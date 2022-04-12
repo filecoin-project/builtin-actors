@@ -349,7 +349,7 @@ mod update_channel_state_redeem {
 
     #[test]
     fn redeem_voucher_one_lane() {
-        let (mut rt, mut sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, mut sv) = require_create_channel_with_lanes(1);
         let state: PState = rt.get_state().unwrap();
         let payee_addr = Address::new_id(PAYEE_ID);
 
@@ -388,7 +388,7 @@ mod update_channel_state_redeem {
 
     #[test]
     fn redeem_voucher_correct_lane() {
-        let (mut rt, mut sv) = require_create_cannel_with_lanes(3);
+        let (mut rt, mut sv) = require_create_channel_with_lanes(3);
         let state: PState = rt.get_state().unwrap();
         let payee_addr = Address::new_id(PAYEE_ID);
 
@@ -433,7 +433,7 @@ mod merge_tests {
     use super::*;
 
     fn construct_runtime(num_lanes: u64) -> (MockRuntime, SignedVoucher, PState) {
-        let (mut rt, sv) = require_create_cannel_with_lanes(num_lanes);
+        let (mut rt, sv) = require_create_channel_with_lanes(num_lanes);
         let state: PState = rt.get_state().unwrap();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
@@ -555,7 +555,7 @@ mod merge_tests {
     #[test]
     fn invalid_merge_lane_999() {
         let num_lanes = 2;
-        let (mut rt, mut sv) = require_create_cannel_with_lanes(num_lanes);
+        let (mut rt, mut sv) = require_create_channel_with_lanes(num_lanes);
         let state: PState = rt.get_state().unwrap();
 
         sv.lane = 0;
@@ -589,7 +589,7 @@ mod update_channel_state_extra {
     const OTHER_ADDR: u64 = 104;
 
     fn construct_runtime(exit_code: ExitCode) -> (MockRuntime, SignedVoucher) {
-        let (mut rt, mut sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, mut sv) = require_create_channel_with_lanes(1);
         let state: PState = rt.get_state().unwrap();
         let other_addr = Address::new_id(OTHER_ADDR);
         let fake_params = [1, 2, 3, 4];
@@ -650,7 +650,7 @@ mod update_channel_state_extra {
 
 #[test]
 fn update_channel_settling() {
-    let (mut rt, sv) = require_create_cannel_with_lanes(1);
+    let (mut rt, sv) = require_create_channel_with_lanes(1);
     rt.epoch = 10;
     let state: PState = rt.get_state().unwrap();
     rt.expect_validate_caller_addr(vec![state.from, state.to]);
@@ -705,7 +705,7 @@ mod secret_preimage {
 
     #[test]
     fn succeed_correct_secret() {
-        let (mut rt, sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, sv) = require_create_channel_with_lanes(1);
         let state: PState = rt.get_state().unwrap();
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
@@ -725,7 +725,7 @@ mod secret_preimage {
 
     #[test]
     fn incorrect_secret() {
-        let (mut rt, sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, sv) = require_create_channel_with_lanes(1);
 
         let state: PState = rt.get_state().unwrap();
 
@@ -758,7 +758,7 @@ mod actor_settle {
     const EP: i64 = 10;
     #[test]
     fn adjust_settling_at() {
-        let (mut rt, _sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, _sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
         let mut state: PState = rt.get_state().unwrap();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
@@ -774,7 +774,7 @@ mod actor_settle {
 
     #[test]
     fn call_twice() {
-        let (mut rt, _sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, _sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
         let state: PState = rt.get_state().unwrap();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
@@ -792,7 +792,7 @@ mod actor_settle {
 
     #[test]
     fn settle_if_height_less() {
-        let (mut rt, mut sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, mut sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
         let mut state: PState = rt.get_state().unwrap();
 
@@ -820,6 +820,33 @@ mod actor_settle {
         state = rt.get_state().unwrap();
         assert_eq!(state.settling_at, ucp.sv.min_settle_height);
     }
+
+    #[test]
+    fn voucher_invalid_after_settling() {
+        let (mut rt, sv) = require_create_channel_with_lanes(1);
+        rt.epoch = EP;
+        let mut state: PState = rt.get_state().unwrap();
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
+        rt.expect_validate_caller_addr(vec![state.from, state.to]);
+
+        call(&mut rt, Method::Settle as u64, &RawBytes::default());
+
+        state = rt.get_state().unwrap();
+        rt.epoch = state.settling_at + 40;
+        rt.expect_validate_caller_addr(vec![state.from, state.to]);
+        rt.expect_verify_signature(ExpectedVerifySig {
+            sig: sv.clone().signature.unwrap(),
+            signer: Address::new_id(PAYEE_ID),
+            plaintext: sv.signing_bytes().unwrap(),
+            result: Ok(()),
+        });
+        expect_error(
+            &mut rt,
+            Method::UpdateChannelState as u64,
+            &RawBytes::serialize(UpdateChannelStateParams::from(sv.clone())).unwrap(),
+            ExitCode::from(32),
+        );
+    }
 }
 
 mod actor_collect {
@@ -829,7 +856,7 @@ mod actor_collect {
 
     #[test]
     fn happy_path() {
-        let (mut rt, _sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, _sv) = require_create_channel_with_lanes(1);
         let curr_epoch: ChainEpoch = 10;
         rt.epoch = curr_epoch;
         let st: PState = rt.get_state().unwrap();
@@ -887,7 +914,7 @@ mod actor_collect {
         ];
 
         for tc in test_cases {
-            let (mut rt, _sv) = require_create_cannel_with_lanes(1);
+            let (mut rt, _sv) = require_create_channel_with_lanes(1);
             rt.epoch = 10;
             let mut state: PState = rt.get_state().unwrap();
 
@@ -923,7 +950,7 @@ mod actor_collect {
     }
 }
 
-fn require_create_cannel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVoucher) {
+fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVoucher) {
     let paych_addr = Address::new_id(100);
     let payer_addr = Address::new_id(PAYER_ID);
     let payee_addr = Address::new_id(PAYEE_ID);
