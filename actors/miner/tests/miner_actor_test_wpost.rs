@@ -10,7 +10,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
-use fvm_shared::sector::RegisteredPoStProof;
+//use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::sector::RegisteredSealProof;
 
 mod util;
