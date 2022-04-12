@@ -155,7 +155,7 @@ impl Actor {
                 )
             })?;
 
-            st.add_deployed_actor(rt.store(), code_cid.clone()).map_err(|e| {
+            st.add_deployed_actor(rt.store(), code_cid).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to add deployed actor to state",
