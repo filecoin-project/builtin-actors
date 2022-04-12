@@ -295,7 +295,7 @@ fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount.clone(),
-        withdraw_amount.clone(),
+        withdraw_amount,
         provider_addr,
         owner_addr,
         worker_addr,
@@ -317,9 +317,9 @@ fn withdraws_from_non_provider_escrow_funds() {
     assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), amount);
 
     let withdraw_amount = TokenAmount::from(1);
-    withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount.clone(), client_addr);
+    withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount, client_addr);
 
-    add_participant_funds(&mut rt, client_addr, amount.clone());
+    add_participant_funds(&mut rt, client_addr, amount);
     // TODO: actor.checkState(rt)
 }
 
@@ -334,7 +334,7 @@ fn client_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
 
     // withdraw amount greater than escrow balance
     let withdraw_amount = TokenAmount::from(25);
-    withdraw_client_balance(&mut rt, withdraw_amount.clone(), amount.clone(), client_addr);
+    withdraw_client_balance(&mut rt, withdraw_amount, amount, client_addr);
 
     assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), TokenAmount::from(0));
 }
@@ -355,8 +355,8 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     let withdraw_amount = TokenAmount::from(25);
     withdraw_provider_balance(
         &mut rt,
-        withdraw_amount.clone(),
-        amount.clone(),
+        withdraw_amount,
+        amount,
         provider_addr,
         owner_addr,
         worker_addr,
@@ -450,7 +450,7 @@ fn withdraw_provider_balance(
     expect_provider_control_address(rt, provider, owner, worker);
 
     let params =
-        WithdrawBalanceParams { provider_or_client: provider, amount: withdraw_amount.clone() };
+        WithdrawBalanceParams { provider_or_client: provider, amount: withdraw_amount };
 
     rt.expect_send(
         owner,
@@ -492,7 +492,7 @@ fn withdraw_client_balance(
     rt.expect_validate_caller_addr(vec![client]);
 
     let params =
-        WithdrawBalanceParams { provider_or_client: client, amount: withdraw_amount.clone() };
+        WithdrawBalanceParams { provider_or_client: client, amount: withdraw_amount };
 
     let ret: WithdrawBalanceReturn = rt
         .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap())
