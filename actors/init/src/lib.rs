@@ -31,7 +31,7 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     Exec = 2,
-    Deploy = 3,
+    Install = 3,
 }
 
 /// Init actor
@@ -78,12 +78,12 @@ impl Actor {
         //     ));
         // }
 
-        // Ensure the code is deployed/loaded
+        // Ensure the code is installed/loaded
         rt.transaction(|st: &mut State, rt| {
-            if st.is_deployed_actor(rt.store(), &params.code_cid).map_err(|e| {
+            if st.is_installed_actor(rt.store(), &params.code_cid).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to check state")
             })? {
-                rt.deploy_actor(&params.code_cid).map_err(|e| {
+                rt.install_actor(&params.code_cid).map_err(|e| {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to check state")
                 })
             } else {
@@ -122,14 +122,14 @@ impl Actor {
         Ok(ExecReturn { id_address: Address::new_id(id_address), robust_address })
     }
 
-    pub fn deploy<BS, RT>(rt: &mut RT, params: DeployParams) -> Result<DeployReturn, ActorError>
+    pub fn install<BS, RT>(rt: &mut RT, params: InstallParams) -> Result<InstallReturn, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_accept_any()?;
 
-        let code_cid = rt.transaction(|st: &mut State, rt| {
+        let (code_cid, installed) = rt.transaction(|st: &mut State, rt| {
             let code = params.code.bytes();
             let code_cid =
                 rt.store().put(Code::Blake2b256, &Block::new(0x55, code)).map_err(|e| {
@@ -139,32 +139,32 @@ impl Actor {
                     )
                 })?;
 
-            if st.is_deployed_actor(rt.store(), &code_cid).map_err(|e| {
+            if st.is_installed_actor(rt.store(), &code_cid).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
-                    "failed to check state for deployed actor",
+                    "failed to check state for installed actor",
                 )
             })? {
-                return Ok(code_cid);
+                return Ok((code_cid, false));
             }
 
-            rt.deploy_actor(&code_cid).map_err(|e| {
+            rt.install_actor(&code_cid).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_ARGUMENT,
-                    "failed to check state for deployed actor",
+                    "failed to check state for installed actor",
                 )
             })?;
 
-            st.add_deployed_actor(rt.store(), code_cid).map_err(|e| {
+            st.add_installed_actor(rt.store(), code_cid).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
-                    "failed to add deployed actor to state",
+                    "failed to add installed actor to state",
                 )
             })?;
-            Ok(code_cid)
+            Ok((code_cid, true))
         })?;
 
-        Ok(DeployReturn { code_cid })
+        Ok(InstallReturn { code_cid, installed })
     }
 }
 
@@ -187,7 +187,7 @@ impl ActorCode for Actor {
                 let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::Deploy) => {
+            Some(Method::Install) => {
                 let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }

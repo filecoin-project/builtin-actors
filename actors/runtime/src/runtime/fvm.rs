@@ -435,7 +435,7 @@ where
         }
     }
 
-    fn deploy_actor(&self, _code_cid: &Cid) -> Result<(), Error> {
+    fn install_actor(&self, _code_cid: &Cid) -> Result<(), Error> {
         // TODO implementme
         unimplemented!();
     }
