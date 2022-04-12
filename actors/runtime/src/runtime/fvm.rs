@@ -431,9 +431,8 @@ where
         }
     }
 
-    fn install_actor(&self, _code_cid: &Cid) -> Result<(), Error> {
-        // TODO implementme
-        unimplemented!();
+    fn install_actor(&self, code_id: &Cid) -> Result<(), Error> {
+        fvm::actor::install_actor(code_id).map_err(|_| Error::msg("failed to install actor"))
     }
 }
 
