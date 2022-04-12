@@ -484,7 +484,7 @@ impl Partition {
         })?;
 
         if !live_sectors.contains_all(sector_numbers) {
-            return Err(actor_error!(illegal_argument, "can only terminate live sectors").into());
+            return Err(actor_error!(illegal_argument, "can only terminate live sectors"));
         }
 
         let sector_infos = sectors.load_sector(sector_numbers)?;
@@ -733,8 +733,7 @@ impl Partition {
             return Err(actor_error!(
                 illegal_argument,
                 "skipped faults contains sectors outside partition"
-            )
-            .into());
+            ));
         }
 
         // Find all skipped faults that have been labeled recovered

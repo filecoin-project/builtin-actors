@@ -3,8 +3,6 @@ use std::{fmt::Display, num::TryFromIntError};
 use fvm_shared::error::ExitCode;
 use thiserror::Error;
 
-use crate::ActorDowncast;
-
 /// The error type returned by actor method calls.
 #[derive(Error, Debug, Clone, PartialEq)]
 #[error("ActorError(exit_code: {exit_code:?}, msg: {msg})")]
@@ -232,7 +230,12 @@ impl<T, E: Into<ActorError>> ActorContext<T> for Result<T, E> {
 // TODO: remove once the runtime doesn't use anyhow::Result anymore
 impl From<anyhow::Error> for ActorError {
     fn from(e: anyhow::Error) -> Self {
-        // THIS DEFAULT IS WRONG, it is just a placeholder
-        e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "runtime error")
+        match e.downcast::<ActorError>() {
+            Ok(actor_err) => actor_err,
+            Err(other) => ActorError::unchecked(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                format!("runtime error: {}", other),
+            ),
+        }
     }
 }

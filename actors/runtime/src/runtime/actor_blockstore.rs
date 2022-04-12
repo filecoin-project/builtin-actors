@@ -19,9 +19,9 @@ impl fvm_ipld_blockstore::Blockstore for ActorBlockstore {
 
     fn get(&self, cid: &Cid) -> Result<Option<Vec<u8>>, Self::Error> {
         // If this fails, the _CID_ is invalid. I.e., we have a bug.
-        fvm::ipld::get(cid).map(Some).map_err(|c| {
-            actor_error!(illegal_state; "get failed with {:?} on CID '{}'", c, cid).into()
-        })
+        fvm::ipld::get(cid)
+            .map(Some)
+            .map_err(|c| actor_error!(illegal_state; "get failed with {:?} on CID '{}'", c, cid))
     }
 
     fn put_keyed(&self, k: &Cid, block: &[u8]) -> Result<(), Self::Error> {
@@ -29,7 +29,7 @@ impl fvm_ipld_blockstore::Blockstore for ActorBlockstore {
             .map_err(|e| actor_error!(serialization, e.to_string()))?;
         let k2 = self.put(code, &Block::new(k.codec(), block))?;
         if k != &k2 {
-            Err(actor_error!(serialization; "put block with cid {} but has cid {}", k, k2).into())
+            Err(actor_error!(serialization; "put block with cid {} but has cid {}", k, k2))
         } else {
             Ok(())
         }

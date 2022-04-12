@@ -4,7 +4,7 @@
 use std::convert::TryInto;
 
 use cid::Cid;
-use fil_actors_runtime::{ActorContext, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{ActorContext, ActorError, Array};
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -39,13 +39,13 @@ impl<'db, BS: Blockstore> BitFieldQueue<'db, BS> {
         let bitfield = self
             .amt
             .get(epoch)
-            .map_err(|e| e.downcast_wrap(format!("failed to lookup queue epoch {}", epoch)))?
+            .with_context(|| format!("failed to lookup queue epoch {}", epoch))?
             .cloned()
             .unwrap_or_default();
 
         self.amt
             .set(epoch, &bitfield | values)
-            .map_err(|e| e.downcast_wrap(format!("failed to set queue epoch {}", epoch)))?;
+            .with_context(|| format!("failed to set queue epoch {}", epoch))?;
 
         Ok(())
     }

@@ -614,7 +614,7 @@ impl Deadline {
         if let Some(&max_partition) = to_remove_set.iter().max() {
             if max_partition > partition_count {
                 return Err(
-                    actor_error!(illegal_argument; "partition index {} out of range [0, {})", max_partition, partition_count).into()
+                    actor_error!(illegal_argument; "partition index {} out of range [0, {})", max_partition, partition_count),
                 );
             }
         } else {
@@ -625,7 +625,7 @@ impl Deadline {
         // Should already be checked earlier, but we might as well check again.
         if !self.early_terminations.is_empty() {
             return Err(
-                actor_error!(illegal_argument; "cannot remove partitions from deadline with early terminations").into(),
+                actor_error!(illegal_argument; "cannot remove partitions from deadline with early terminations"),
             );
         }
 
@@ -663,8 +663,7 @@ impl Deadline {
                         illegal_argument,
                         "cannot remove partition {}: has unproven sectors",
                         partition_idx
-                    )
-                    .into());
+                    ));
                 }
 
                 // Get the live sectors.

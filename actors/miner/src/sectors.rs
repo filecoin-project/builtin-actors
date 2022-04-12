@@ -4,11 +4,10 @@
 use std::collections::BTreeSet;
 
 use cid::Cid;
-use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{actor_error, ActorContext, ActorError, Array};
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{SectorNumber, MAX_SECTOR_NUMBER};
 
 use super::SectorOnChainInfo;
@@ -36,12 +35,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
             let sector_on_chain = self
                 .amt
                 .get(sector_number)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to load sector {}", sector_number),
-                    )
-                })?
+                .with_context(|| format!("failed to load sector {}", sector_number))?
                 .cloned()
                 .ok_or_else(|| actor_error!(not_found; "sector not found: {}", sector_number))?;
             sector_infos.push(sector_on_chain);
@@ -56,7 +50,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         Ok(self
             .amt
             .get(sector_number)
-            .map_err(|e| e.downcast_wrap(format!("failed to get sector {}", sector_number)))?
+            .with_context(|| format!("failed to get sector {}", sector_number))?
             .cloned())
     }
 
@@ -72,9 +66,9 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
                 ));
             }
 
-            self.amt.set(sector_number, info).map_err(|e| {
-                e.downcast_wrap(format!("failed to store sector {}", sector_number))
-            })?;
+            self.amt
+                .set(sector_number, info)
+                .with_context(|| format!("failed to store sector {}", sector_number))?;
         }
 
         Ok(())

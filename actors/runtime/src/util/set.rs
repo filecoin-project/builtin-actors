@@ -74,7 +74,7 @@ where
         // Calls the for each function on the hamt with ignoring the value
         self.0.try_for_each(|s, _: &()| f(s)).map_err(|err| match err {
             fvm_ipld_hamt::EitherError::User(e) => e,
-            fvm_ipld_hamt::EitherError::Hamt(e) => e.into(),
+            fvm_ipld_hamt::EitherError::Hamt(e) => e,
         })
     }
 

@@ -567,7 +567,7 @@ where
         lock_reason: Reason,
     ) -> Result<(), ActorError> {
         if amount.is_negative() {
-            return Err(actor_error!(illegal_state, "unlock negative amount: {}", amount).into());
+            return Err(actor_error!(illegal_state, "unlock negative amount: {}", amount));
         }
         self.locked_table.as_mut().unwrap().must_subtract(addr, amount)?;
 
@@ -620,7 +620,7 @@ where
         lock_reason: Reason,
     ) -> Result<(), ActorError> {
         if amount.is_negative() {
-            return Err(actor_error!(illegal_state, "negative amount to slash: {}", amount).into());
+            return Err(actor_error!(illegal_state, "negative amount to slash: {}", amount));
         }
 
         // Subtract from locked and escrow tables

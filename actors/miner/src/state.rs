@@ -620,8 +620,7 @@ impl State {
                 not_found;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
-            )
-            .into());
+            ));
         }
 
         let faulty = partition.faults.get(sector_number);
@@ -660,8 +659,7 @@ impl State {
                 not_found;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
-            )
-            .into());
+            ));
         }
 
         if partition.faults.get(sector_number) {
@@ -669,8 +667,7 @@ impl State {
                 forbidden;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
-            )
-            .into());
+            ));
         }
 
         if partition.terminated.get(sector_number) {
@@ -678,8 +675,7 @@ impl State {
                 not_found;
                 "sector {} not of partition {}, deadline {} is terminated",
                 sector_number, partition_idx, deadline_idx
-            )
-            .into());
+            ));
         }
 
         Ok(())
@@ -691,7 +687,7 @@ impl State {
         store: &BS,
         sectors: &BitField,
     ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
-        Ok(Sectors::load(store, &self.sectors)?.load_sector(sectors)?)
+        Sectors::load(store, &self.sectors)?.load_sector(sectors)
     }
 
     pub fn load_deadlines<BS: Blockstore>(&self, store: &BS) -> Result<Deadlines, ActorError> {
@@ -717,12 +713,12 @@ impl State {
         &self,
         store: &BS,
     ) -> Result<VestingFunds, ActorError> {
-        Ok(store
+        store
             .get_cbor(&self.vesting_funds)
             .with_context(|| format!("failed to load vesting funds {}", self.vesting_funds))?
             .ok_or_else(
                 || actor_error!(not_found; "failed to load vesting funds {:?}", self.vesting_funds),
-            )?)
+            )
     }
 
     /// Saves the vesting table to the store.
@@ -868,8 +864,7 @@ impl State {
                 "unlocked balance can not repay fee debt ({} < {})",
                 unlocked_balance,
                 self.fee_debt
-            )
-            .into());
+            ));
         }
 
         Ok(std::mem::take(&mut self.fee_debt))
@@ -1175,9 +1170,7 @@ impl State {
             make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
         for sector_no in sector_nos.iter() {
             if sector_no as u64 > MAX_SECTOR_NUMBER {
-                return Err(
-                    actor_error!(illegal_argument; "sector number greater than maximum").into()
-                );
+                return Err(actor_error!(illegal_argument; "sector number greater than maximum"));
             }
             let info: &SectorPreCommitOnChainInfo =
                 precommitted

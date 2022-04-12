@@ -953,8 +953,8 @@ impl Error for TestVMError {
     }
 }
 
-impl From<fvm_ipld_hamt::Error> for TestVMError {
-    fn from(h_err: fvm_ipld_hamt::Error) -> Self {
+impl<E: std::error::Error> From<fvm_ipld_hamt::Error<E>> for TestVMError {
+    fn from(h_err: fvm_ipld_hamt::Error<E>) -> Self {
         vm_err(h_err.to_string().as_str())
     }
 }
