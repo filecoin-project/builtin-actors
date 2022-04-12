@@ -249,14 +249,8 @@ mod tests {
     fn test_baseline_reward_growth() {
         fn baseline_in_years(start: StoragePower, x: ChainEpoch) -> StoragePower {
             let mut baseline = start;
-            for i in 0..(x * EPOCHS_IN_YEAR) {
-                //debugging TODO: remove println
-                println!("{}", i);
-                //debugging TODO: remove println
-                println!("baseline {}", &baseline);
+            for _ in 0..(x * EPOCHS_IN_YEAR) {
                 baseline = baseline_power_from_prev(&baseline);
-                //debugging TODO: remove println
-                println!("baseline {}", &baseline);
             }
             baseline
         }
@@ -293,17 +287,11 @@ mod tests {
             // logic from golang test was preserved to enable future testing of more than one year
             let multiplier = BigInt::pow(&BigInt::from(2u32), years);
             let expected = case.start_val * multiplier;
-            //debugging TODO: remove println
-            println!("expect {}", expected);
             let diff = &expected - end;
-            //debugging TODO: remove println
-            println!("diff {}", diff);
 
             let perr = BigRational::new(diff, expected)
                 .to_f64()
                 .expect("BigInt cannot be expressed as a 64bit float");
-            //debugging TODO: remove println
-            println!("perr {:?}", perr);
 
             assert!(perr < case.err_bound);
         }
