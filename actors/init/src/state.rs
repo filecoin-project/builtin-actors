@@ -12,6 +12,8 @@ use fvm_ipld_encoding::Cbor;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
+use fvm_ipld_encoding::CborStore;
+use cid::multihash::Code;
 
 /// State is reponsible for creating
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -19,6 +21,7 @@ pub struct State {
     pub address_map: Cid,
     pub next_id: ActorID,
     pub network_name: String,
+    pub deployed_actors: Cid,
 }
 
 impl State {
@@ -26,7 +29,13 @@ impl State {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
             .map_err(|e| anyhow!("failed to create empty map: {}", e))?;
-        Ok(Self { address_map: empty_map, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
+        let deployed_actors = store.put_cbor(&Vec::<Cid>::new(), Code::Blake2b256)?;
+        Ok(Self {
+            address_map: empty_map,
+            next_id: FIRST_NON_SINGLETON_ADDR,
+            network_name,
+            deployed_actors,
+        })
     }
 
     /// Allocates a new ID address and stores a mapping of the argument address to it.
@@ -68,6 +77,26 @@ impl State {
         let map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)?;
 
         Ok(map.get(&addr.to_bytes())?.copied().map(Address::new_id))
+    }
+
+    /// Check to see if an actor is already deployed
+    pub fn is_deployed_actor<BS: Blockstore>(&self, store: &BS, cid: &Cid) -> anyhow::Result<bool> {
+        let deployed: Vec<Cid> = match store.get_cbor(&self.deployed_actors)? {
+            Some(v) => v,
+            None => Vec::new(),
+        };
+        Ok(deployed.contains(cid))
+    }
+
+    /// Adds a new code Cid to the list of deployed actors.
+    pub fn add_deployed_actor<BS: Blockstore>(&mut self, store: &BS, cid: Cid) -> anyhow::Result<()> {
+        let mut deployed: Vec<Cid> = match store.get_cbor(&self.deployed_actors)? {
+            Some(v) => v,
+            None => Vec::new(),
+        };
+        deployed.push(cid);
+        self.deployed_actors = store.put_cbor(&deployed, Code::Blake2b256)?;
+        Ok(())
     }
 }
 
