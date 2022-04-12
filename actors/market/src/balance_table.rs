@@ -9,7 +9,9 @@ use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::econ::TokenAmount;
 use num_traits::{Signed, Zero};
 
-use fil_actors_runtime::{make_empty_map, make_map_with_root_and_bitwidth, Map};
+use fil_actors_runtime::{
+    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map,
+};
 
 pub const BALANCE_TABLE_BITWIDTH: u32 = 6;
 
@@ -25,17 +27,17 @@ where
     }
 
     /// Initializes a balance table from a root Cid
-    pub fn from_root(bs: &'a BS, cid: &Cid) -> Result<Self, HamtError> {
+    pub fn from_root(bs: &'a BS, cid: &Cid) -> Result<Self, HamtError<BS::Error>> {
         Ok(Self(make_map_with_root_and_bitwidth(cid, bs, BALANCE_TABLE_BITWIDTH)?))
     }
 
     /// Retrieve root from balance table
-    pub fn root(&mut self) -> Result<Cid, HamtError> {
+    pub fn root(&mut self) -> Result<Cid, HamtError<BS::Error>> {
         self.0.flush()
     }
 
     /// Gets token amount for given address in balance table
-    pub fn get(&self, key: &Address) -> Result<TokenAmount, HamtError> {
+    pub fn get(&self, key: &Address) -> Result<TokenAmount, HamtError<BS::Error>> {
         if let Some(v) = self.0.get(&key.to_bytes())? {
             Ok(v.0.clone())
         } else {
@@ -44,12 +46,17 @@ where
     }
 
     /// Adds token amount to previously initialized account.
-    pub fn add(&mut self, key: &Address, value: &TokenAmount) -> Result<(), HamtError> {
+    pub fn add(&mut self, key: &Address, value: &TokenAmount) -> Result<(), ActorError> {
         let prev = self.get(key)?;
         let sum = &prev + value;
         if sum.is_negative() {
-            Err(format!("New balance in table cannot be negative: {}", sum).into())
-        } else if sum.is_zero() && !prev.is_zero() {
+            return Err(actor_error!(
+                illegal_argument,
+                "new balance in table cannot be negative: {}",
+                sum
+            ));
+        }
+        if sum.is_zero() && !prev.is_zero() {
             self.0.delete(&key.to_bytes())?;
             Ok(())
         } else {
@@ -66,7 +73,7 @@ where
         key: &Address,
         req: &TokenAmount,
         floor: &TokenAmount,
-    ) -> Result<TokenAmount, HamtError> {
+    ) -> Result<TokenAmount, ActorError> {
         let prev = self.get(key)?;
         let available = std::cmp::max(TokenAmount::zero(), prev - floor);
         let sub: TokenAmount = std::cmp::min(&available, req).clone();
@@ -79,24 +86,24 @@ where
     }
 
     /// Subtracts value from a balance, and errors if full amount was not substracted.
-    pub fn must_subtract(&mut self, key: &Address, req: &TokenAmount) -> Result<(), HamtError> {
+    pub fn must_subtract(&mut self, key: &Address, req: &TokenAmount) -> Result<(), ActorError> {
         let prev = self.get(key)?;
 
         if req > &prev {
-            Err("couldn't subtract the requested amount".into())
-        } else {
-            self.add(key, &-req)
+            return Err(actor_error!(illegal_argument, "couldn't subtract the requested amount"));
         }
+        self.add(key, &-req)?;
+
+        Ok(())
     }
 
     /// Returns total balance held by this balance table
     #[allow(dead_code)]
-    pub fn total(&self) -> Result<TokenAmount, HamtError> {
+    pub fn total(&self) -> Result<TokenAmount, HamtError<BS::Error>> {
         let mut total = TokenAmount::default();
 
         self.0.for_each(|_, v: &BigIntDe| {
             total += &v.0;
-            Ok(())
         })?;
 
         Ok(total)
