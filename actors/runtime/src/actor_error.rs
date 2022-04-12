@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, num::TryFromIntError};
 
 use fvm_shared::error::ExitCode;
 use thiserror::Error;
@@ -93,6 +93,27 @@ impl<E: std::error::Error> From<fvm_ipld_encoding::CborStoreError<E>> for ActorE
     }
 }
 
+impl From<fvm_ipld_bitfield::Error> for ActorError {
+    fn from(e: fvm_ipld_bitfield::Error) -> Self {
+        // TODO: correct code?
+        Self { exit_code: ExitCode::USR_ILLEGAL_STATE, msg: e.to_string() }
+    }
+}
+
+impl From<TryFromIntError> for ActorError {
+    fn from(e: TryFromIntError) -> Self {
+        // TODO: correct code?
+        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
+    }
+}
+
+impl From<fvm_ipld_bitfield::OutOfRangeError> for ActorError {
+    fn from(e: fvm_ipld_bitfield::OutOfRangeError) -> Self {
+        // TODO: correct code?
+        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
+    }
+}
+
 impl<E: std::error::Error> From<crate::util::MultiMapError<E>> for ActorError {
     fn from(e: crate::util::MultiMapError<E>) -> Self {
         match e {
@@ -109,6 +130,28 @@ impl<U: Into<ActorError>, E: std::error::Error> From<crate::util::MultiMapEither
         match e {
             crate::util::MultiMapEitherError::User(e) => e.into(),
             crate::util::MultiMapEitherError::MultiMap(e) => e.into(),
+        }
+    }
+}
+
+impl<U: Into<ActorError>, E: std::error::Error> From<fvm_ipld_amt::EitherError<U, E>>
+    for ActorError
+{
+    fn from(e: fvm_ipld_amt::EitherError<U, E>) -> Self {
+        match e {
+            fvm_ipld_amt::EitherError::User(e) => e.into(),
+            fvm_ipld_amt::EitherError::Amt(e) => e.into(),
+        }
+    }
+}
+
+impl<U: Into<ActorError>, E: std::error::Error> From<fvm_ipld_hamt::EitherError<U, E>>
+    for ActorError
+{
+    fn from(e: fvm_ipld_hamt::EitherError<U, E>) -> Self {
+        match e {
+            fvm_ipld_hamt::EitherError::User(e) => e.into(),
+            fvm_ipld_hamt::EitherError::Hamt(e) => e.into(),
         }
     }
 }

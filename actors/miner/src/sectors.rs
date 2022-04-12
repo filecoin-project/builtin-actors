@@ -3,7 +3,6 @@
 
 use std::collections::BTreeSet;
 
-use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
 use fvm_ipld_amt::Error as AmtError;
@@ -19,7 +18,7 @@ pub struct Sectors<'db, BS> {
 }
 
 impl<'db, BS: Blockstore> Sectors<'db, BS> {
-    pub fn load(store: &'db BS, root: &Cid) -> Result<Self, AmtError> {
+    pub fn load(store: &'db BS, root: &Cid) -> Result<Self, AmtError<BS::Error>> {
         Ok(Self { amt: Array::load(root, store)? })
     }
 
@@ -50,7 +49,10 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         Ok(sector_infos)
     }
 
-    pub fn get(&self, sector_number: SectorNumber) -> anyhow::Result<Option<SectorOnChainInfo>> {
+    pub fn get(
+        &self,
+        sector_number: SectorNumber,
+    ) -> Result<Option<SectorOnChainInfo>, ActorError> {
         Ok(self
             .amt
             .get(sector_number)
@@ -58,12 +60,16 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
             .cloned())
     }
 
-    pub fn store(&mut self, infos: Vec<SectorOnChainInfo>) -> anyhow::Result<()> {
+    pub fn store(&mut self, infos: Vec<SectorOnChainInfo>) -> Result<(), ActorError> {
         for info in infos {
             let sector_number = info.sector_number;
 
             if sector_number > MAX_SECTOR_NUMBER {
-                return Err(anyhow!("sector number {} out of range", info.sector_number));
+                return Err(actor_error!(
+                    illegal_argument,
+                    "sector number {} out of range",
+                    info.sector_number
+                ));
             }
 
             self.amt.set(sector_number, info).map_err(|e| {
@@ -74,8 +80,9 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         Ok(())
     }
 
-    pub fn must_get(&self, sector_number: SectorNumber) -> anyhow::Result<SectorOnChainInfo> {
-        self.get(sector_number)?.ok_or_else(|| anyhow!("sector {} not found", sector_number))
+    pub fn must_get(&self, sector_number: SectorNumber) -> Result<SectorOnChainInfo, ActorError> {
+        self.get(sector_number)?
+            .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_number))
     }
 
     /// Loads info for a set of sectors to be proven.
@@ -85,7 +92,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         &self,
         proven_sectors: &BitField,
         expected_faults: &BitField,
-    ) -> anyhow::Result<Vec<SectorOnChainInfo>> {
+    ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
         let non_faults = proven_sectors - expected_faults;
 
         if non_faults.is_empty() {
@@ -108,7 +115,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         sectors: &BitField,
         faults: &BitField,
         fault_stand_in: SectorNumber,
-    ) -> anyhow::Result<Vec<SectorOnChainInfo>> {
+    ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
         let stand_in_info = self.must_get(fault_stand_in)?;
 
         // Expand faults into a map for quick lookups.
@@ -131,13 +138,17 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
 pub(crate) fn select_sectors(
     sectors: &[SectorOnChainInfo],
     field: &BitField,
-) -> anyhow::Result<Vec<SectorOnChainInfo>> {
+) -> Result<Vec<SectorOnChainInfo>, ActorError> {
     let mut to_include: BTreeSet<_> = field.iter().collect();
     let included =
         sectors.iter().filter(|si| to_include.remove(&si.sector_number)).cloned().collect();
 
     if !to_include.is_empty() {
-        return Err(anyhow!("failed to find {} expected sectors", to_include.len()));
+        return Err(actor_error!(
+            not_found,
+            "failed to find {} expected sectors",
+            to_include.len()
+        ));
     }
 
     Ok(included)

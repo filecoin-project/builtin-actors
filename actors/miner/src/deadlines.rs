@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::Array;
+use fil_actors_runtime::{actor_error, ActorError, Array};
 
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
@@ -36,7 +36,7 @@ impl Deadlines {
         policy: &Policy,
         store: &BS,
         sector_number: SectorNumber,
-    ) -> anyhow::Result<(u64, u64)> {
+    ) -> Result<(u64, u64), ActorError> {
         for i in 0..self.due.len() {
             let deadline_idx = i as u64;
             let deadline = self.load_deadline(policy, store, deadline_idx)?;
@@ -47,9 +47,9 @@ impl Deadlines {
             partitions.for_each_while(|i, partition| {
                 if partition.sectors.get(sector_number) {
                     partition_idx = Some(i);
-                    Ok(false)
+                    false
                 } else {
-                    Ok(true)
+                    true
                 }
             })?;
 
@@ -58,7 +58,7 @@ impl Deadlines {
             }
         }
 
-        Err(anyhow::anyhow!("sector {} not due at any deadline", sector_number))
+        Err(actor_error!(illegal_state, "sector {} not due at any deadline", sector_number))
     }
 }
 

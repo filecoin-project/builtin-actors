@@ -3,11 +3,10 @@
 
 use std::collections::BTreeMap;
 
-use anyhow::anyhow;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use serde::{Deserialize, Serialize};
 
-use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::{actor_error, runtime::Policy, ActorContext, ActorError};
 
 /// Maps deadlines to partition maps.
 #[derive(Default)]
@@ -21,34 +20,42 @@ impl DeadlineSectorMap {
     /// Check validates all bitfields and counts the number of partitions & sectors
     /// contained within the map, and returns an error if they exceed the given
     /// maximums.
-    pub fn check(&mut self, max_partitions: u64, max_sectors: u64) -> anyhow::Result<()> {
-        let (partition_count, sector_count) =
-            self.count().map_err(|e| anyhow!("failed to count sectors: {:?}", e))?;
+    pub fn check(&mut self, max_partitions: u64, max_sectors: u64) -> Result<(), ActorError> {
+        let (partition_count, sector_count) = self.count().context("failed to count sectors")?;
 
         if partition_count > max_partitions {
-            return Err(anyhow!("too many partitions {}, max {}", partition_count, max_partitions));
+            return Err(actor_error!(
+                illegal_argument,
+                "too many partitions {}, max {}",
+                partition_count,
+                max_partitions
+            ));
         }
 
         if sector_count > max_sectors {
-            return Err(anyhow!("too many sectors {}, max {}", sector_count, max_sectors));
+            return Err(actor_error!(
+                illegal_argument,
+                "too many sectors {}, max {}",
+                sector_count,
+                max_sectors
+            ));
         }
 
         Ok(())
     }
 
     /// Counts the number of partitions & sectors within the map.
-    pub fn count(&mut self) -> anyhow::Result<(/* partitions */ u64, /* sectors */ u64)> {
+    pub fn count(&mut self) -> Result<(/* partitions */ u64, /* sectors */ u64), ActorError> {
         self.0.iter_mut().try_fold((0_u64, 0_u64), |(partitions, sectors), (deadline_idx, pm)| {
-            let (partition_count, sector_count) = pm
-                .count()
-                .map_err(|e| anyhow!("when counting deadline {}: {:?}", deadline_idx, e))?;
+            let (partition_count, sector_count) =
+                pm.count().with_context(|| format!("when counting deadline {}", deadline_idx))?;
             Ok((
-                partitions
-                    .checked_add(partition_count)
-                    .ok_or_else(|| anyhow!("integer overflow when counting partitions"))?,
-                sectors
-                    .checked_add(sector_count)
-                    .ok_or_else(|| anyhow!("integer overflow when counting sectors"))?,
+                partitions.checked_add(partition_count).ok_or_else(|| {
+                    actor_error!(illegal_state, "integer overflow when counting partitions")
+                })?,
+                sectors.checked_add(sector_count).ok_or_else(|| {
+                    actor_error!(illegal_state, "integer overflow when counting sectors")
+                })?,
             ))
         })
     }
@@ -60,9 +67,9 @@ impl DeadlineSectorMap {
         deadline_idx: u64,
         partition_idx: u64,
         sector_numbers: UnvalidatedBitField,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         if deadline_idx >= policy.wpost_period_deadlines {
-            return Err(anyhow!("invalid deadline {}", deadline_idx));
+            return Err(actor_error!(illegal_argument, "invalid deadline {}", deadline_idx));
         }
 
         self.0.entry(deadline_idx).or_default().add(partition_idx, sector_numbers)
@@ -75,7 +82,7 @@ impl DeadlineSectorMap {
         deadline_idx: u64,
         partition_idx: u64,
         sector_numbers: &[u64],
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         self.add(
             policy,
             deadline_idx,
@@ -105,7 +112,7 @@ impl PartitionSectorMap {
         &mut self,
         partition_idx: u64,
         sector_numbers: Vec<u64>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         self.add(partition_idx, BitField::try_from_bits(sector_numbers)?.into())
     }
     /// Records the given sector bitfield at the given partition index, merging
@@ -114,15 +121,14 @@ impl PartitionSectorMap {
         &mut self,
         partition_idx: u64,
         mut sector_numbers: UnvalidatedBitField,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         match self.0.get_mut(&partition_idx) {
             Some(old_sector_numbers) => {
                 let old = old_sector_numbers
                     .validate_mut()
-                    .map_err(|e| anyhow!("failed to validate sector bitfield: {}", e))?;
-                let new = sector_numbers
-                    .validate()
-                    .map_err(|e| anyhow!("failed to validate new sector bitfield: {}", e))?;
+                    .context("failed to validate sector bitfield")?;
+                let new =
+                    sector_numbers.validate().context("failed to validate new sector bitfield")?;
                 *old |= new;
             }
             None => {
@@ -133,14 +139,14 @@ impl PartitionSectorMap {
     }
 
     /// Counts the number of partitions & sectors within the map.
-    pub fn count(&mut self) -> anyhow::Result<(/* partitions */ u64, /* sectors */ u64)> {
+    pub fn count(&mut self) -> Result<(/* partitions */ u64, /* sectors */ u64), ActorError> {
         let sectors = self.0.iter_mut().try_fold(0_u64, |sectors, (partition_idx, bf)| {
-            let validated = bf.validate().map_err(|e| {
-                anyhow!("failed to parse bitmap for partition {}: {}", partition_idx, e)
+            let validated = bf.validate().with_context(|| {
+                format!("failed to parse bitmap for partition {}", partition_idx)
             })?;
-            sectors
-                .checked_add(validated.len() as u64)
-                .ok_or_else(|| anyhow!("integer overflow when counting sectors"))
+            sectors.checked_add(validated.len() as u64).ok_or_else(|| {
+                actor_error!(illegal_state, "integer overflow when counting sectors")
+            })
         })?;
         Ok((self.0.len() as u64, sectors))
     }

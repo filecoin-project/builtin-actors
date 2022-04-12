@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 use std::iter;
 use std::ops::Neg;
 
-use anyhow::{anyhow, Error};
 pub use bitfield_queue::*;
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::multihash::Code;
@@ -18,7 +17,7 @@ pub use deadlines::*;
 pub use expiration_queue::*;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
+    actor_error, cbor, ActorContext, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -151,12 +150,7 @@ impl Actor {
         let blake2b = |b: &[u8]| rt.hash_blake2b(b);
         let offset =
             assign_proving_period_offset(policy, rt.message().receiver(), current_epoch, blake2b)
-                .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_SERIALIZATION,
-                    "failed to assign proving period offset",
-                )
-            })?;
+                .context("failed to assign proving period offset")?;
 
         let period_start = current_proving_period_start(policy, current_epoch, offset);
         if period_start > current_epoch {
@@ -185,14 +179,12 @@ impl Actor {
             params.multi_addresses,
             params.window_post_proof_type,
         )?;
-        let info_cid = rt.store().put_cbor(&info, Blake2b256).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
-        })?;
+        let info_cid =
+            rt.store().put_cbor(&info, Blake2b256).context("failed to construct illegal state")?;
 
-        let st =
-            State::new(policy, rt.store(), info_cid, period_start, deadline_idx).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
-            })?;
+        let st = State::new(policy, rt.store(), info_cid, period_start, deadline_idx)
+            .context("failed to construct state")?;
+
         rt.create(&st)?;
 
         Ok(())
@@ -250,9 +242,7 @@ impl Actor {
                 })
             }
 
-            state.save_info(rt.store(), &info).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "could not save miner info")
-            })?;
+            state.save_info(rt.store(), &info).context("could not save miner info")?;
 
             Ok(())
         })?;
@@ -321,9 +311,7 @@ impl Actor {
                 }
             }
 
-            state.save_info(rt.store(), &info).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
-            })?;
+            state.save_info(rt.store(), &info).context("failed to save miner info")?;
 
             Ok(())
         })
@@ -345,9 +333,7 @@ impl Actor {
             )?;
 
             info.peer_id = params.new_id;
-            state.save_info(rt.store(), &info).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "could not save miner info")
-            })?;
+            state.save_info(rt.store(), &info).context("could not save miner info")?;
 
             Ok(())
         })?;
@@ -373,9 +359,7 @@ impl Actor {
             )?;
 
             info.multi_address = params.new_multi_addrs;
-            state.save_info(rt.store(), &info).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "could not save miner info")
-            })?;
+            state.save_info(rt.store(), &info).context("could not save miner info")?;
 
             Ok(())
         })?;
@@ -538,20 +522,15 @@ impl Actor {
                 return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
             }
 
-            let sectors = Sectors::load(rt.store(), &state.sectors).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")
-            })?;
+            let sectors =
+                Sectors::load(rt.store(), &state.sectors).context("failed to load sectors")?;
 
             let mut deadlines =
-                state.load_deadlines(rt.store()).map_err(|e| e.wrap("failed to load deadlines"))?;
+                state.load_deadlines(rt.store()).context("failed to load deadlines")?;
 
-            let mut deadline =
-                deadlines.load_deadline(rt.policy(), rt.store(), params.deadline).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to load deadline {}", params.deadline),
-                    )
-                })?;
+            let mut deadline = deadlines
+                .load_deadline(rt.policy(), rt.store(), params.deadline)
+                .with_context(|| format!("failed to load deadline {}", params.deadline))?;
 
             // Record proven sectors/partitions, returning updates to power and the final set of sectors
             // proven/skipped.
@@ -573,14 +552,8 @@ impl Actor {
                     fault_expiration,
                     &mut params.partitions,
                 )
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!(
-                            "failed to process post submission for deadline {}",
-                            params.deadline
-                        ),
-                    )
+                .with_context(|| {
+                    format!("failed to process post submission for deadline {}", params.deadline)
                 })?;
 
             // Make sure we actually proved something.
@@ -600,41 +573,25 @@ impl Actor {
             if post_result.recovered_power.is_zero() {
                 deadline
                     .record_post_proofs(rt.store(), &post_result.partitions, &params.proofs)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to record proof for optimistic verification",
-                        )
-                    })?
+                    .context("failed to record proof for optimistic verification")?
             } else {
                 // Load sector infos for proof, substituting a known-good sector for known-faulty sectors.
                 // Note: this is slightly sub-optimal, loading info for the recovering sectors again after they were already
                 // loaded above.
                 let sector_infos = sectors
                     .load_for_proof(&post_result.sectors, &post_result.ignored_sectors)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to load sectors for post verification",
-                        )
-                    })?;
+                    .context("failed to load sectors for post verification")?;
+
                 verify_windowed_post(rt, current_deadline.challenge, &sector_infos, params.proofs)
-                    .map_err(|e| e.wrap("window post failed"))?;
+                    .context("window post failed")?;
             }
 
             let deadline_idx = params.deadline;
-            deadlines.update_deadline(policy, rt.store(), params.deadline, &deadline).map_err(
-                |e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to update deadline {}", deadline_idx),
-                    )
-                },
-            )?;
+            deadlines
+                .update_deadline(policy, rt.store(), params.deadline, &deadline)
+                .with_context(|| format!("failed to update deadline {}", deadline_idx))?;
 
-            state.save_deadlines(rt.store(), deadlines).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
-            })?;
+            state.save_deadlines(rt.store(), deadlines).context("failed to save deadlines")?;
 
             Ok(post_result)
         })?;
@@ -646,7 +603,7 @@ impl Actor {
         request_update_power(rt, post_result.power_delta)?;
 
         let state: State = rt.state()?;
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        state.check_balance_invariants(&rt.current_balance())?;
 
         Ok(())
     }
@@ -699,10 +656,9 @@ impl Actor {
             info.control_addresses.iter().chain(&[info.worker, info.owner]),
         )?;
         let store = rt.store();
-        let precommits =
-            state.get_all_precommitted_sectors(store, sector_numbers).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get precommits")
-            })?;
+        let precommits = state
+            .get_all_precommitted_sectors(store, sector_numbers)
+            .context("failed to get precommits")?;
 
         // compute data commitments and validate each precommit
         let mut compute_data_commitments_inputs = Vec::with_capacity(precommits.len());
@@ -804,9 +760,7 @@ impl Actor {
             proof: params.aggregate_proof,
             infos: svis,
         })
-        .map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")
-        })?;
+        .context("aggregate seal verify failed")?;
 
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
@@ -835,7 +789,7 @@ impl Actor {
             ));
         }
         burn_funds(rt, aggregate_fee)?;
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        state.check_balance_invariants(&rt.current_balance())?;
         Ok(())
     }
 
@@ -868,9 +822,8 @@ impl Actor {
         )?;
 
         let sector_store = rt.store().clone();
-        let mut sectors = Sectors::load(&sector_store, &state.sectors).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
-        })?;
+        let mut sectors =
+            Sectors::load(&sector_store, &state.sectors).context("failed to load sectors array")?;
 
         let mut power_delta = PowerPair::zero();
         let mut pledge_delta = TokenAmount::zero();
@@ -1072,21 +1025,11 @@ impl Actor {
             for &dl_idx in deadlines_to_load.iter() {
                 let mut deadline = deadlines
                     .load_deadline(rt.policy(),rt.store(), dl_idx)
-                    .map_err(|e|
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to load deadline {}", dl_idx),
-                        )
-                    )?;
+                    .with_context(|| format!("failed to load deadline {}", dl_idx))?;
 
                 let mut partitions = deadline
                     .partitions_amt(rt.store())
-                    .map_err(|e|
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to load partitions for deadline {}", dl_idx),
-                        )
-                    )?;
+                    .with_context(||format!("failed to load partitions for deadline {}", dl_idx))?;
 
                 let quant = state.quant_spec_for_deadline(rt.policy(),dl_idx);
 
@@ -1114,13 +1057,9 @@ impl Actor {
                             new_unsealed_cid: with_details.unsealed_cid,
                             proof: with_details.update.replica_proof.clone(),
                         }
-                    )
-                        .map_err(|e|
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_ARGUMENT,
-                                format!("failed to verify replica proof for sector {}", with_details.sector_info.sector_number),
-                            )
-                        )?;
+                    ).with_context(|| {
+                        format!("failed to verify replica proof for sector {}", with_details.sector_info.sector_number)
+                    })?;
 
                     let mut new_sector_info = with_details.sector_info.clone();
 
@@ -1201,12 +1140,7 @@ impl Actor {
 
                     let mut partition = partitions
                         .get(with_details.update.partition)
-                        .map_err(|e|
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to load deadline {} partition {}", with_details.update.deadline, with_details.update.partition),
-                            )
-                        )?
+                        .with_context(|| format!("failed to load deadline {} partition {}", with_details.update.deadline, with_details.update.partition))?
                         .cloned()
                         .ok_or_else(|| actor_error!(not_found, "no such deadline {} partition {}", dl_idx, with_details.update.partition))?;
 
@@ -1217,44 +1151,28 @@ impl Actor {
                                          info.sector_size,
                                          quant,
                         )
-                        .map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to replace sector at deadline {} partition {}", with_details.update.deadline, with_details.update.partition),
-                            )
-                        })?;
+                        .with_context(|| format!("failed to replace sector at deadline {} partition {}", with_details.update.deadline, with_details.update.partition))?;
 
                     power_delta += &partition_power_delta;
                     pledge_delta += &partition_pledge_delta;
 
                     partitions
                         .set(with_details.update.partition, partition)
-                        .map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to save deadline {} partition {}", with_details.update.deadline, with_details.update.partition),
-                            )
+                        .with_context(|| {
+                            format!("failed to save deadline {} partition {}", with_details.update.deadline, with_details.update.partition)
                         })?;
 
                     succeeded.push(new_sector_info.sector_number);
                     new_sectors.push(new_sector_info);
                 }
 
-                deadline.partitions = partitions.flush().map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to save partitions for deadline {}", dl_idx),
-                    )
+                deadline.partitions = partitions.flush().with_context(|| {
+                    format!("failed to save partitions for deadline {}", dl_idx)
                 })?;
 
                 deadlines
                     .update_deadline(rt.policy(), rt.store(), dl_idx, &deadline)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to save deadline {}", dl_idx),
-                        )
-                    })?;
+                    .with_context(|| format!("failed to save deadline {}", dl_idx))?;
             }
 
             let success_len = succeeded.len();
@@ -1276,19 +1194,10 @@ impl Actor {
             }
 
             // Overwrite sector infos.
-            sectors.store(new_sectors).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to update sector infos",
-                )
-            })?;
+            sectors.store(new_sectors).context("failed to update sector infos")?;
 
-            state.sectors = sectors.amt.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save sectors")
-            })?;
-            state.save_deadlines(rt.store(), deadlines).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
-            })?;
+            state.sectors = sectors.amt.flush().context("failed to save sectors")?;
+            state.save_deadlines(rt.store(), deadlines).context("failed to save deadlines")?;
 
             BitField::try_from_bits(succeeded).map_err(|_|{
                 actor_error!(illegal_argument; "invalid sector number")
@@ -1369,52 +1278,31 @@ impl Actor {
 
                 let mut dl_current = deadlines_current
                     .load_deadline(policy, rt.store(), params.deadline)
-                    .map_err(|e| {
-                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deadline")
-                    })?;
+                    .context("failed to load deadline")?;
 
                 // Take the post from the snapshot for dispute.
                 // This operation REMOVES the PoSt from the snapshot so
                 // it can't be disputed again. If this method fails,
                 // this operation must be rolled back.
-                let (partitions, proofs) =
-                    dl_current.take_post_proofs(rt.store(), params.post_index).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to load proof for dispute",
-                        )
-                    })?;
+                let (partitions, proofs) = dl_current
+                    .take_post_proofs(rt.store(), params.post_index)
+                    .context("failed to load proof for dispute")?;
 
                 // Load the partition info we need for the dispute.
                 let mut dispute_info = dl_current
                     .load_partitions_for_dispute(rt.store(), partitions)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to load partition for dispute",
-                        )
-                    })?;
+                    .context("failed to load partition for dispute")?;
 
                 // This includes power that is no longer active (e.g., due to sector terminations).
                 // It must only be used for penalty calculations, not power adjustments.
                 let penalised_power = dispute_info.disputed_power.clone();
 
                 // Load sectors for the dispute.
-                let sectors =
-                    Sectors::load(rt.store(), &dl_current.sectors_snapshot).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to load sectors array",
-                        )
-                    })?;
+                let sectors = Sectors::load(rt.store(), &dl_current.sectors_snapshot)
+                    .context("failed to load sectors array")?;
                 let sector_infos = sectors
                     .load_for_proof(&dispute_info.all_sector_nos, &dispute_info.ignored_sector_nos)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to load sectors to dispute window post",
-                        )
-                    })?;
+                    .context("failed to load sectors to dispute window post")?;
 
                 // Check proof, we fail if validation succeeds.
                 if verify_windowed_post(rt, target_deadline.challenge, &sector_infos, proofs)? {
@@ -1439,22 +1327,14 @@ impl Actor {
                         fault_expiration_epoch,
                         &mut dispute_info.disputed_sectors,
                     )
-                    .map_err(|e| {
-                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to declare faults")
-                    })?;
+                    .context("failed to declare faults")?;
 
                 deadlines_current
                     .update_deadline(policy, rt.store(), params.deadline, &dl_current)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to update deadline {}", params.deadline),
-                        )
-                    })?;
+                    .with_context(|| format!("failed to update deadline {}", params.deadline))?;
 
-                st.save_deadlines(rt.store(), deadlines_current).map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
-                })?;
+                st.save_deadlines(rt.store(), deadlines_current)
+                    .context("failed to save deadlines")?;
 
                 // --- penalties ---
 
@@ -1483,9 +1363,7 @@ impl Actor {
                         current_epoch,
                         &rt.current_balance(),
                     )
-                    .map_err(|e| {
-                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to pay debt")
-                    })?;
+                    .context("failed to pay debt")?;
 
                 let to_burn = &penalty_from_vesting + &penalty_from_balance;
 
@@ -1510,7 +1388,7 @@ impl Actor {
         notify_pledge_changed(rt, &pledge_delta)?;
 
         let st: State = rt.state()?;
-        st.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        st.check_balance_invariants(&rt.current_balance())?;
         Ok(())
     }
 
@@ -1752,13 +1630,9 @@ impl Actor {
                     e.wrap("failed to allocate sector numbers")
                 )?;
             state.put_precommitted_sectors(store, chain_infos)
-                .map_err(|e|
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to write pre-committed sectors")
-                )?;
+                .context("failed to write pre-committed sectors")?;
             state.add_pre_commit_clean_ups(rt.policy(), store, clean_up_events)
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add pre-commit expiry to queue")
-                })?;
+                .context("failed to add pre-commit expiry to queue")?;
             // Activate miner cron
             needs_cron = !state.deadline_cron_active;
             state.deadline_cron_active = true;
@@ -1766,7 +1640,7 @@ impl Actor {
         })?;
         burn_funds(rt, fee_to_burn)?;
         let state: State = rt.state()?;
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        state.check_balance_invariants(&rt.current_balance())?;
         if needs_cron {
             let new_dl_info = state.deadline_info(rt.policy(), curr_epoch);
             enroll_cron_event(
@@ -1800,12 +1674,7 @@ impl Actor {
         let st: State = rt.state()?;
         let precommit = st
             .get_precommitted_sector(rt.store(), sector_number)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to load pre-committed sector {}", sector_number),
-                )
-            })?
+            .with_context(|| format!("failed to load pre-committed sector {}", sector_number))?
             .ok_or_else(|| actor_error!(not_found, "no pre-commited sector {}", sector_number))?;
 
         let max_proof_size = precommit.info.seal_proof.proof_size().map_err(|e| {
@@ -1890,13 +1759,9 @@ impl Actor {
         let st: State = rt.state()?;
         let store = rt.store();
         // This skips missing pre-commits.
-        let precommited_sectors =
-            st.find_precommitted_sectors(store, &params.sectors).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to load pre-committed sectors",
-                )
-            })?;
+        let precommited_sectors = st
+            .find_precommitted_sectors(store, &params.sectors)
+            .context("failed to load pre-committed sectors")?;
         confirm_sector_proofs_valid_internal(
             rt,
             precommited_sectors,
@@ -2034,28 +1899,20 @@ impl Actor {
                 decls.push(decl);
             }
 
-            let mut sectors = Sectors::load(rt.store(), &state.sectors).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
-            })?;
+            let mut sectors = Sectors::load(rt.store(), &state.sectors)
+                .context("failed to load sectors array")?;
 
             let mut power_delta = PowerPair::zero();
             let mut pledge_delta = TokenAmount::zero();
 
             for deadline_idx in deadlines_to_load {
                 let policy = rt.policy();
-                let mut deadline =
-                    deadlines.load_deadline(policy, store, deadline_idx).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to load deadline {}", deadline_idx),
-                        )
-                    })?;
+                let mut deadline = deadlines
+                    .load_deadline(policy, store, deadline_idx)
+                    .with_context(|| format!("failed to load deadline {}", deadline_idx))?;
 
-                let mut partitions = deadline.partitions_amt(store).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to load partitions for deadline {}", deadline_idx),
-                    )
+                let mut partitions = deadline.partitions_amt(store).with_context(|| {
+                    format!("failed to load partitions for deadline {}", deadline_idx)
                 })?;
 
                 let quant = state.quant_spec_for_deadline(policy, deadline_idx);
@@ -2069,12 +1926,7 @@ impl Actor {
 
                     let mut partition = partitions
                         .get(decl.partition)
-                        .map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to load partition {:?}", key),
-                            )
-                        })?
+                        .with_context(|| format!("failed to load partition {:?}", key))?
                         .cloned()
                         .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
@@ -2143,32 +1995,23 @@ impl Actor {
                         .collect::<Result<_, _>>()?;
 
                     // Overwrite sector infos.
-                    sectors.store(new_sectors.clone()).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to update sectors {:?}", decl.sectors),
-                        )
-                    })?;
+                    sectors
+                        .store(new_sectors.clone())
+                        .with_context(|| format!("failed to update sectors {:?}", decl.sectors))?;
 
                     // Remove old sectors from partition and assign new sectors.
                     let (partition_power_delta, partition_pledge_delta) = partition
                         .replace_sectors(store, &old_sectors, &new_sectors, info.sector_size, quant)
-                        .map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to replace sector expirations at {:?}", key),
-                            )
+                        .with_context(|| {
+                            format!("failed to replace sector expirations at {:?}", key)
                         })?;
 
                     power_delta += &partition_power_delta;
                     pledge_delta += partition_pledge_delta; // expected to be zero, see note below.
 
-                    partitions.set(decl.partition, partition).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to save partition {:?}", key),
-                        )
-                    })?;
+                    partitions
+                        .set(decl.partition, partition)
+                        .with_context(|| format!("failed to save partition {:?}", key))?;
 
                     // Record the new partition expiration epoch for setting outside this loop
                     // over declarations.
@@ -2183,44 +2026,30 @@ impl Actor {
                     }
                 }
 
-                deadline.partitions = partitions.flush().map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to save partitions for deadline {}", deadline_idx),
-                    )
+                deadline.partitions = partitions.flush().with_context(|| {
+                    format!("failed to save partitions for deadline {}", deadline_idx)
                 })?;
 
                 // Record partitions in deadline expiration queue
                 for epoch in epochs_to_reschedule {
                     let p_idxs = partitions_by_new_epoch.get(&epoch).unwrap();
-                    deadline.add_expiration_partitions(store, epoch, p_idxs, quant).map_err(
-                        |e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                format!(
-                                    "failed to add expiration partitions to \
-                                        deadline {} epoch {}",
-                                    deadline_idx, epoch
-                                ),
+                    deadline.add_expiration_partitions(store, epoch, p_idxs, quant).with_context(
+                        || {
+                            format!(
+                                "failed to add expiration partitions to deadline {} epoch {}",
+                                deadline_idx, epoch
                             )
                         },
                     )?;
                 }
 
-                deadlines.update_deadline(policy, store, deadline_idx, &deadline).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to save deadline {}", deadline_idx),
-                    )
-                })?;
+                deadlines
+                    .update_deadline(policy, store, deadline_idx, &deadline)
+                    .with_context(|| format!("failed to save deadline {}", deadline_idx))?;
             }
 
-            state.sectors = sectors.amt.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save sectors")
-            })?;
-            state.save_deadlines(store, deadlines).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
-            })?;
+            state.sectors = sectors.amt.flush().context("failed to save sectors")?;
+            state.save_deadlines(store, deadlines).context("failed to save deadlines")?;
 
             Ok((power_delta, pledge_delta))
         })?;
@@ -2317,9 +2146,7 @@ impl Actor {
 
             // We're only reading the sectors, so there's no need to save this back.
             // However, we still want to avoid re-loading this array per-partition.
-            let sectors = Sectors::load(store, &state.sectors).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")
-            })?;
+            let sectors = Sectors::load(store, &state.sectors).context("failed to load sectors")?;
 
             for (deadline_idx, partition_sectors) in to_process.iter() {
                 // If the deadline is the current or next deadline to prove, don't allow terminating sectors.
@@ -2338,13 +2165,9 @@ impl Actor {
                 }
 
                 let quant = state.quant_spec_for_deadline(rt.policy(), deadline_idx);
-                let mut deadline =
-                    deadlines.load_deadline(rt.policy(), store, deadline_idx).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to load deadline {}", deadline_idx),
-                        )
-                    })?;
+                let mut deadline = deadlines
+                    .load_deadline(rt.policy(), store, deadline_idx)
+                    .with_context(|| format!("failed to load deadline {}", deadline_idx))?;
 
                 let removed_power = deadline
                     .terminate_sectors(
@@ -2356,29 +2179,19 @@ impl Actor {
                         info.sector_size,
                         quant,
                     )
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to terminate sectors in deadline {}", deadline_idx),
-                        )
+                    .with_context(|| {
+                        format!("failed to terminate sectors in deadline {}", deadline_idx)
                     })?;
 
                 state.early_terminations.set(deadline_idx);
                 power_delta -= &removed_power;
 
-                deadlines.update_deadline(rt.policy(), store, deadline_idx, &deadline).map_err(
-                    |e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to update deadline {}", deadline_idx),
-                        )
-                    },
-                )?;
+                deadlines
+                    .update_deadline(rt.policy(), store, deadline_idx, &deadline)
+                    .with_context(|| format!("failed to update deadline {}", deadline_idx))?;
             }
 
-            state.save_deadlines(store, deadlines).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
-            })?;
+            state.save_deadlines(store, deadlines).context("failed to save deadlines")?;
 
             Ok((had_early_terminations, power_delta))
         })?;
@@ -2401,7 +2214,7 @@ impl Actor {
             schedule_early_termination_work(rt)?;
         }
         let state: State = rt.state()?;
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        state.check_balance_invariants(&rt.current_balance())?;
 
         request_update_power(rt, power_delta)?;
         Ok(TerminateSectorsReturn { done: !more })
@@ -2462,9 +2275,8 @@ impl Actor {
             let mut deadlines =
                 state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
-            let sectors = Sectors::load(store, &state.sectors).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
-            })?;
+            let sectors =
+                Sectors::load(store, &state.sectors).context("failed to load sectors array")?;
 
             let mut new_fault_power_total = PowerPair::zero();
             let curr_epoch = rt.curr_epoch();
@@ -2494,13 +2306,9 @@ impl Actor {
                     )
                 })?;
 
-                let mut deadline =
-                    deadlines.load_deadline(policy, store, deadline_idx).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to load deadline {}", deadline_idx),
-                        )
-                    })?;
+                let mut deadline = deadlines
+                    .load_deadline(policy, store, deadline_idx)
+                    .with_context(|| format!("failed to load deadline {}", deadline_idx))?;
 
                 let fault_expiration_epoch = target_deadline.last() + policy.fault_max_age;
 
@@ -2513,26 +2321,18 @@ impl Actor {
                         fault_expiration_epoch,
                         partition_map,
                     )
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to declare faults for deadline {}", deadline_idx),
-                        )
+                    .with_context(|| {
+                        format!("failed to declare faults for deadline {}", deadline_idx)
                     })?;
 
-                deadlines.update_deadline(policy, store, deadline_idx, &deadline).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to store deadline {} partitions", deadline_idx),
-                    )
-                })?;
+                deadlines.update_deadline(policy, store, deadline_idx, &deadline).with_context(
+                    || format!("failed to store deadline {} partitions", deadline_idx),
+                )?;
 
                 new_fault_power_total += &deadline_power_delta;
             }
 
-            state.save_deadlines(store, deadlines).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
-            })?;
+            state.save_deadlines(store, deadlines).context("failed to save deadlines")?;
 
             Ok(new_fault_power_total)
         })?;
@@ -2616,9 +2416,8 @@ impl Actor {
             let mut deadlines =
                 state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
-            let sectors = Sectors::load(store, &state.sectors).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
-            })?;
+            let sectors =
+                Sectors::load(store, &state.sectors).context("failed to load sectors array")?;
             let curr_epoch = rt.curr_epoch();
             for (deadline_idx, partition_map) in to_process.iter() {
                 let policy = rt.policy();
@@ -2646,41 +2445,29 @@ impl Actor {
                     )
                 })?;
 
-                let mut deadline =
-                    deadlines.load_deadline(policy, store, deadline_idx).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to load deadline {}", deadline_idx),
-                        )
-                    })?;
+                let mut deadline = deadlines
+                    .load_deadline(policy, store, deadline_idx)
+                    .with_context(|| format!("failed to load deadline {}", deadline_idx))?;
 
                 deadline
                     .declare_faults_recovered(store, &sectors, info.sector_size, partition_map)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to declare recoveries for deadline {}", deadline_idx),
-                        )
+                    .with_context(|| {
+                        format!("failed to declare recoveries for deadline {}", deadline_idx)
                     })?;
 
-                deadlines.update_deadline(policy, store, deadline_idx, &deadline).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to store deadline {}", deadline_idx),
-                    )
-                })?;
+                deadlines
+                    .update_deadline(policy, store, deadline_idx, &deadline)
+                    .with_context(|| format!("failed to store deadline {}", deadline_idx))?;
             }
 
-            state.save_deadlines(store, deadlines).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
-            })?;
+            state.save_deadlines(store, deadlines).context("failed to save deadlines")?;
 
             Ok(fee_to_burn)
         })?;
 
         burn_funds(rt, fee_to_burn)?;
         let state: State = rt.state()?;
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        state.check_balance_invariants(&rt.current_balance())?;
 
         // Power is not restored yet, but when the recovered sectors are successfully PoSted.
         Ok(())
@@ -2755,29 +2542,19 @@ impl Actor {
             let mut deadlines =
                 state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
-            let mut deadline =
-                deadlines.load_deadline(policy, store, params_deadline).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to load deadline {}", params_deadline),
-                    )
-                })?;
+            let mut deadline = deadlines
+                .load_deadline(policy, store, params_deadline)
+                .with_context(|| format!("failed to load deadline {}", params_deadline))?;
 
             let (live, dead, removed_power) =
-                deadline.remove_partitions(store, partitions, quant).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to remove partitions from deadline {}", params_deadline),
-                    )
+                deadline.remove_partitions(store, partitions, quant).with_context(|| {
+                    format!("failed to remove partitions from deadline {}", params_deadline)
                 })?;
 
-            state.delete_sectors(store, &dead).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete dead sectors")
-            })?;
+            state.delete_sectors(store, &dead).context("failed to delete dead sectors")?;
 
-            let sectors = state.load_sector_infos(store, &live).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load moved sectors")
-            })?;
+            let sectors =
+                state.load_sector_infos(store, &live).context("failed to load moved sectors")?;
             let proven = true;
             let added_power = deadline
                 .add_sectors(
@@ -2788,12 +2565,7 @@ impl Actor {
                     info.sector_size,
                     quant,
                 )
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to add back moved sectors",
-                    )
-                })?;
+                .context("failed to add back moved sectors")?;
 
             if removed_power != added_power {
                 return Err(actor_error!(
@@ -2804,19 +2576,13 @@ impl Actor {
                 ));
             }
 
-            deadlines.update_deadline(policy, store, params_deadline, &deadline).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to update deadline {}", params_deadline),
-                )
-            })?;
+            deadlines
+                .update_deadline(policy, store, params_deadline, &deadline)
+                .with_context(|| format!("failed to update deadline {}", params_deadline))?;
 
-            state.save_deadlines(store, deadlines).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to save deadline {}", params_deadline),
-                )
-            })?;
+            state
+                .save_deadlines(store, deadlines)
+                .with_context(|| format!("failed to save deadline {}", params_deadline))?;
 
             Ok(())
         })?;
@@ -2943,9 +2709,7 @@ impl Actor {
                     rt.curr_epoch(),
                     &rt.current_balance(),
                 )
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to repay penalty")
-                })?;
+                .context("failed to repay penalty")?;
             pledge_delta_total -= &penalty_from_vesting;
             let to_burn = penalty_from_vesting + penalty_from_balance;
             Ok((pledge_delta_total, to_burn))
@@ -2954,7 +2718,7 @@ impl Actor {
         notify_pledge_changed(rt, &pledge_delta_total)?;
         burn_funds(rt, to_burn)?;
         let st: State = rt.state()?;
-        st.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        st.check_balance_invariants(&rt.current_balance())?;
         Ok(())
     }
 
@@ -2974,7 +2738,7 @@ impl Actor {
 
         let fault = rt
             .verify_consensus_fault(&params.header1, &params.header2, &params.header_extra)
-            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "fault not verified"))?
+            .context("fault not verified")?
             .ok_or_else(|| actor_error!(illegal_argument, "No consensus fault found"))?;
         if fault.target != rt.message().receiver() {
             return Err(actor_error!(
@@ -3031,9 +2795,7 @@ impl Actor {
                     rt.curr_epoch(),
                     &rt.current_balance(),
                 )
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to pay fees")
-                })?;
+                .context("failed to pay fees")?;
 
             let mut burn_amount = &penalty_from_vesting + &penalty_from_balance;
             pledge_delta -= penalty_from_vesting;
@@ -3045,9 +2807,7 @@ impl Actor {
             info.consensus_fault_elapsed =
                 rt.curr_epoch() + rt.policy().consensus_fault_ineligibility_duration;
 
-            st.save_info(rt.store(), &info).map_err(|e| {
-                e.downcast_default(ExitCode::USR_SERIALIZATION, "failed to save miner info")
-            })?;
+            st.save_info(rt.store(), &info).context("failed to save miner info")?;
 
             Ok((burn_amount, reward_amount))
         })?;
@@ -3060,7 +2820,7 @@ impl Actor {
         notify_pledge_changed(rt, &pledge_delta)?;
 
         let state: State = rt.state()?;
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        state.check_balance_invariants(&rt.current_balance())?;
         Ok(())
     }
 
@@ -3099,10 +2859,9 @@ impl Actor {
                 }
 
                 // Unlock vested funds so we can spend them.
-                let newly_vested =
-                    state.unlock_vested_funds(rt.store(), rt.curr_epoch()).map_err(|e| {
-                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to vest fund")
-                    })?;
+                let newly_vested = state
+                    .unlock_vested_funds(rt.store(), rt.curr_epoch())
+                    .context("Failed to vest fund")?;
 
                 // available balance already accounts for fee debt so it is correct to call
                 // this before RepayDebts. We would have to
@@ -3146,7 +2905,7 @@ impl Actor {
         burn_funds(rt, fee_to_burn)?;
         notify_pledge_changed(rt, &newly_vested.neg())?;
 
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        state.check_balance_invariants(&rt.current_balance())?;
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_withdrawn.clone() })
     }
 
@@ -3168,9 +2927,7 @@ impl Actor {
                     rt.curr_epoch(),
                     &rt.current_balance(),
                 )
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to unlock fee debt")
-                })?;
+                .context("failed to unlock fee debt")?;
 
             Ok((from_vesting, from_balance, state.clone()))
         })?;
@@ -3179,7 +2936,7 @@ impl Actor {
         notify_pledge_changed(rt, &from_vesting.neg())?;
         burn_funds(rt, burn_amount)?;
 
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        state.check_balance_invariants(&rt.current_balance())?;
         Ok(())
     }
 
@@ -3220,7 +2977,7 @@ impl Actor {
             }
         };
         let state: State = rt.state()?;
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        state.check_balance_invariants(&rt.current_balance())?;
         Ok(())
     }
 }
@@ -3249,12 +3006,7 @@ where
                     policy.addressed_partitions_max,
                     policy.addressed_sectors_max,
                 )
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to pop early terminations",
-                    )
-                })?;
+                .context("failed to pop early terminations")?;
 
             // Nothing to do, don't waste any time.
             // This can happen if we end up processing early terminations
@@ -3265,9 +3017,8 @@ where
             }
 
             let info = get_miner_info(rt.store(), state)?;
-            let sectors = Sectors::load(store, &state.sectors).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
-            })?;
+            let sectors =
+                Sectors::load(store, &state.sectors).context("failed to load sectors array")?;
 
             let mut total_initial_pledge = TokenAmount::zero();
             let mut deals_to_terminate =
@@ -3318,9 +3069,7 @@ where
                     rt.curr_epoch(),
                     &rt.current_balance(),
                 )
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to repay penalty")
-                })?;
+                .context("failed to repay penalty")?;
 
             penalty = &penalty_from_vesting + penalty_from_balance;
             pledge_delta -= penalty_from_vesting;
@@ -3380,7 +3129,7 @@ where
         // from locked vesting funds before funds free this epoch.
         let newly_vested = state
             .unlock_vested_funds(rt.store(), rt.curr_epoch())
-            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to vest funds"))?;
+            .context("failed to vest funds")?;
 
         pledge_delta_total -= newly_vested;
 
@@ -3390,12 +3139,7 @@ where
 
         let deposit_to_burn = state
             .cleanup_expired_pre_commits(policy, rt.store(), rt.curr_epoch())
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to expire pre-committed sectors",
-                )
-            })?;
+            .context("failed to expire pre-committed sectors")?;
 
         state
             .apply_penalty(&deposit_to_burn)
@@ -3411,9 +3155,9 @@ where
         // That way, don't re-schedule a cron callback if one is already scheduled.
         had_early_terminations = have_pending_early_terminations(state);
 
-        let result = state.advance_deadline(policy, rt.store(), rt.curr_epoch()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to advance deadline")
-        })?;
+        let result = state
+            .advance_deadline(policy, rt.store(), rt.curr_epoch())
+            .context("failed to advance deadline")?;
 
         // Faults detected by this missed PoSt pay no penalty, but sectors that were already faulty
         // and remain faulty through this deadline pay the fault fee.
@@ -3442,9 +3186,7 @@ where
                 rt.curr_epoch(),
                 &rt.current_balance(),
             )
-            .map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to unlock penalty")
-            })?;
+            .context("failed to unlock penalty")?;
 
         penalty_total = &penalty_from_vesting + penalty_from_balance;
         pledge_delta_total -= penalty_from_vesting;
@@ -3569,12 +3311,7 @@ where
 {
     let replace_sector = state
         .get_sector(store, params.replace_sector_number)
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to load sector {}", params.replace_sector_number),
-            )
-        })?
+        .with_context(|| format!("failed to load sector {}", params.replace_sector_number))?
         .ok_or_else(|| {
             actor_error!(not_found, "no such sector {} to replace", params.replace_sector_number)
         })?;
@@ -3636,12 +3373,7 @@ where
             params.replace_sector_partition,
             params.replace_sector_number,
         )
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to replace sector {}", params.replace_sector_number),
-            )
-        })?;
+        .with_context(|| format!("failed to replace sector {}", params.replace_sector_number))?;
 
     Ok(())
 }
@@ -4053,9 +3785,11 @@ fn assign_proving_period_offset(
     addr: Address,
     current_epoch: ChainEpoch,
     blake2b: impl FnOnce(&[u8]) -> [u8; 32],
-) -> anyhow::Result<ChainEpoch> {
+) -> Result<ChainEpoch, ActorError> {
     let mut my_addr = addr.marshal_cbor()?;
-    my_addr.write_i64::<BigEndian>(current_epoch)?;
+    my_addr
+        .write_i64::<BigEndian>(current_epoch)
+        .map_err(|err| actor_error!(serialization, "{}", err))?;
 
     let digest = blake2b(&my_addr);
 
@@ -4101,9 +3835,10 @@ fn declaration_deadline_info(
     period_start: ChainEpoch,
     deadline_idx: u64,
     current_epoch: ChainEpoch,
-) -> anyhow::Result<DeadlineInfo> {
+) -> Result<DeadlineInfo, ActorError> {
     if deadline_idx >= policy.wpost_period_deadlines {
-        return Err(anyhow!(
+        return Err(actor_error!(
+            illegal_argument,
             "invalid deadline {}, must be < {}",
             deadline_idx,
             policy.wpost_period_deadlines
@@ -4116,9 +3851,9 @@ fn declaration_deadline_info(
 }
 
 /// Checks that a fault or recovery declaration at a specific deadline is outside the exclusion window for the deadline.
-fn validate_fr_declaration_deadline(deadline: &DeadlineInfo) -> anyhow::Result<()> {
+fn validate_fr_declaration_deadline(deadline: &DeadlineInfo) -> Result<(), ActorError> {
     if deadline.fault_cutoff_passed() {
-        Err(anyhow!("late fault or recovery declaration"))
+        Err(actor_error!(illegal_argument, "late fault or recovery declaration"))
     } else {
         Ok(())
     }
@@ -4128,14 +3863,16 @@ fn validate_fr_declaration_deadline(deadline: &DeadlineInfo) -> anyhow::Result<(
 fn validate_partition_contains_sectors(
     partition: &Partition,
     sectors: &mut UnvalidatedBitField,
-) -> anyhow::Result<()> {
-    let sectors = sectors.validate().map_err(|e| anyhow!("failed to check sectors: {}", e))?;
+) -> Result<(), ActorError> {
+    let sectors = sectors
+        .validate()
+        .map_err(|e| actor_error!(illegal_argument, "failed to check sectors: {}", e))?;
 
     // Check that the declared sectors are actually assigned to the partition.
     if partition.sectors.contains_all(sectors) {
         Ok(())
     } else {
-        Err(anyhow!("not all sectors are assigned to the partition"))
+        Err(actor_error!(illegal_argument, "not all sectors are assigned to the partition"))
     }
 }
 
@@ -4190,9 +3927,7 @@ fn get_miner_info<BS>(store: &BS, state: &State) -> Result<MinerInfo, ActorError
 where
     BS: Blockstore,
 {
-    state
-        .get_info(store)
-        .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "could not read miner info"))
+    state.get_info(store).context("could not read miner info")
 }
 
 fn process_pending_worker<BS, RT>(
@@ -4217,9 +3952,7 @@ where
     info.worker = pending_worker_key.new_worker;
     info.pending_worker_key = None;
 
-    state
-        .save_info(rt.store(), info)
-        .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info"))
+    state.save_info(rt.store(), info).context("failed to save miner info")
 }
 
 /// Repays all fee debt and then verifies that the miner has amount needed to cover
@@ -4234,9 +3967,9 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    let res = state.repay_debts(&rt.current_balance()).map_err(|e| {
-        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "unlocked balance can not repay fee debt")
-    })?;
+    let res = state
+        .repay_debts(&rt.current_balance())
+        .context("unlocked balance can not repay fee debt")?;
     info!("RepayDebtsOrAbort was called and succeeded");
     Ok(res)
 }
@@ -4433,13 +4166,11 @@ where
             new_sectors.push(new_sector_info);
         }
 
-        state.put_sectors(store, new_sectors.clone()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to put new sectors")
-        })?;
+        state.put_sectors(store, new_sectors.clone()).context("failed to put new sectors")?;
 
-        state.delete_precommitted_sectors(store, &new_sector_numbers).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete precommited sectors")
-        })?;
+        state
+            .delete_precommitted_sectors(store, &new_sector_numbers)
+            .context("failed to delete precommited sectors")?;
 
         state
             .assign_sectors_to_deadlines(
@@ -4450,12 +4181,7 @@ where
                 info.window_post_partition_sectors,
                 info.sector_size,
             )
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to assign new sectors to deadlines",
-                )
-            })?;
+            .context("failed to assign new sectors to deadlines")?;
 
         let newly_vested = TokenAmount::zero();
 
@@ -4480,7 +4206,7 @@ where
             .add_initial_pledge(&total_pledge)
             .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
 
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        state.check_balance_invariants(&rt.current_balance())?;
 
         Ok((total_pledge, newly_vested))
     })?;
@@ -4489,14 +4215,6 @@ where
     notify_pledge_changed(rt, &(total_pledge - newly_vested))?;
 
     Ok(())
-}
-
-// XXX: probably better to push this one level down into state
-fn balance_invariants_broken(e: Error) -> ActorError {
-    ActorError::unchecked(
-        ERR_BALANCE_INVARIANTS_BROKEN,
-        format!("balance invariants broken: {}", e),
-    )
 }
 
 impl ActorCode for Actor {
