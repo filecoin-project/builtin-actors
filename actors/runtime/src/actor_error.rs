@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use fvm_shared::error::ExitCode;
 use thiserror::Error;
 
@@ -71,6 +73,44 @@ impl From<fvm_ipld_encoding::Error> for ActorError {
     }
 }
 
+impl<E: std::error::Error> From<fvm_ipld_amt::Error<E>> for ActorError {
+    fn from(e: fvm_ipld_amt::Error<E>) -> Self {
+        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
+    }
+}
+
+impl<E: std::error::Error> From<fvm_ipld_hamt::Error<E>> for ActorError {
+    fn from(e: fvm_ipld_hamt::Error<E>) -> Self {
+        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
+    }
+}
+
+impl<E: std::error::Error> From<fvm_ipld_encoding::CborStoreError<E>> for ActorError {
+    fn from(e: fvm_ipld_encoding::CborStoreError<E>) -> Self {
+        Self { exit_code: ExitCode::USR_ILLEGAL_STATE, msg: e.to_string() }
+    }
+}
+
+impl<E: std::error::Error> From<crate::util::MultiMapError<E>> for ActorError {
+    fn from(e: crate::util::MultiMapError<E>) -> Self {
+        match e {
+            crate::util::MultiMapError::Amt(e) => e.into(),
+            crate::util::MultiMapError::Hamt(e) => e.into(),
+        }
+    }
+}
+
+impl<U: Into<ActorError>, E: std::error::Error> From<crate::util::MultiMapEitherError<U, E>>
+    for ActorError
+{
+    fn from(e: crate::util::MultiMapEitherError<U, E>) -> Self {
+        match e {
+            crate::util::MultiMapEitherError::User(e) => e.into(),
+            crate::util::MultiMapEitherError::MultiMap(e) => e.into(),
+        }
+    }
+}
+
 /// Converts an actor deletion error into an actor error with the appropriate exit code. This
 /// facilitates propagation.
 #[cfg(feature = "fil-actor")]
@@ -107,4 +147,39 @@ macro_rules! actor_error {
     ( $code:ident, $msg:literal $(, $ex:expr)+ ) => {
         $crate::actor_error!($code; $msg $(, $ex)*)
     };
+}
+
+pub trait ActorContext<T> {
+    fn context<C>(self, context: C) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static;
+    fn with_context<C, F>(self, f: F) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C;
+}
+
+impl<T, E: Into<ActorError>> ActorContext<T> for Result<T, E> {
+    fn context<C>(self, context: C) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+    {
+        self.map_err(|err| {
+            let mut err: ActorError = err.into();
+            err.msg = format!("{}: {}", context, err.msg);
+            err
+        })
+    }
+
+    fn with_context<C, F>(self, f: F) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C,
+    {
+        self.map_err(|err| {
+            let mut err: ActorError = err.into();
+            err.msg = format!("{}: {}", f(), err.msg);
+            err
+        })
+    }
 }

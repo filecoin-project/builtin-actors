@@ -3,7 +3,6 @@
 
 use anyhow::anyhow;
 use fvm_ipld_amt::Error as AmtError;
-use fvm_ipld_encoding::Error as EncodingError;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::error::ExitCode;
 
@@ -36,10 +35,11 @@ impl ActorDowncast for anyhow::Error {
     }
 }
 
-impl ActorDowncast for AmtError {
+impl<E: std::error::Error> ActorDowncast for AmtError<E> {
     fn downcast_default(self, default_exit_code: ExitCode, msg: impl AsRef<str>) -> ActorError {
         match self {
-            AmtError::Dynamic(e) => e.downcast_default(default_exit_code, msg),
+            // AmtError::Dynamic(e) => e.downcast_default(default_exit_code, msg),
+            // todo: proper downcast
             other => {
                 ActorError::unchecked(default_exit_code, format!("{}: {}", msg.as_ref(), other))
             }
@@ -47,16 +47,18 @@ impl ActorDowncast for AmtError {
     }
     fn downcast_wrap(self, msg: impl AsRef<str>) -> anyhow::Error {
         match self {
-            AmtError::Dynamic(e) => e.downcast_wrap(msg),
+            // AmtError::Dynamic(e) => e.downcast_wrap(msg),
+            // todo: proper downcast
             other => anyhow!("{}: {}", msg.as_ref(), other),
         }
     }
 }
 
-impl ActorDowncast for HamtError {
+impl<E: std::error::Error> ActorDowncast for HamtError<E> {
     fn downcast_default(self, default_exit_code: ExitCode, msg: impl AsRef<str>) -> ActorError {
         match self {
-            HamtError::Dynamic(e) => e.downcast_default(default_exit_code, msg),
+            // HamtError::Dynamic(e) => e.downcast_default(default_exit_code, msg),
+            // todo: proper downcast
             other => {
                 ActorError::unchecked(default_exit_code, format!("{}: {}", msg.as_ref(), other))
             }
@@ -64,7 +66,8 @@ impl ActorDowncast for HamtError {
     }
     fn downcast_wrap(self, msg: impl AsRef<str>) -> anyhow::Error {
         match self {
-            HamtError::Dynamic(e) => e.downcast_wrap(msg),
+            // HamtError::Dynamic(e) => e.downcast_wrap(msg),
+            // todo: proper downcast
             other => anyhow!("{}: {}", msg.as_ref(), other),
         }
     }
@@ -77,36 +80,6 @@ fn downcast_util(error: anyhow::Error) -> anyhow::Result<ActorError> {
     // Check if error is ActorError, return as such
     let error = match error.downcast::<ActorError>() {
         Ok(actor_err) => return Ok(actor_err),
-        Err(other) => other,
-    };
-
-    // Check if error is Encoding error, if so return `ErrSerialization`
-    let error = match error.downcast::<EncodingError>() {
-        Ok(enc_error) => {
-            return Ok(ActorError::unchecked(ExitCode::USR_SERIALIZATION, enc_error.to_string()))
-        }
-        Err(other) => other,
-    };
-
-    // Dynamic errors can come from Array and Hamt through blockstore usages, check them.
-    let error = match error.downcast::<AmtError>() {
-        Ok(amt_err) => match amt_err {
-            AmtError::Dynamic(de) => match downcast_util(de) {
-                Ok(a) => return Ok(a),
-                Err(other) => other,
-            },
-            other => anyhow!(other),
-        },
-        Err(other) => other,
-    };
-    let error = match error.downcast::<HamtError>() {
-        Ok(amt_err) => match amt_err {
-            HamtError::Dynamic(de) => match downcast_util(de) {
-                Ok(a) => return Ok(a),
-                Err(other) => other,
-            },
-            other => anyhow!(other),
-        },
         Err(other) => other,
     };
 

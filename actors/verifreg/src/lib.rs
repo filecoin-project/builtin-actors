@@ -3,8 +3,8 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_id_addr, ActorDowncast,
-    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_id_addr, ActorContext,
+    ActorDowncast, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -77,12 +77,8 @@ impl Actor {
             ));
         }
 
-        let verifier = resolve_to_id_addr(rt, &params.address).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
-            )
-        })?;
+        let verifier = resolve_to_id_addr(rt, &params.address)
+            .with_context(|| format!("failed to resolve addr {} to ID addr", params.address))?;
 
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
@@ -141,12 +137,8 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let verifier = resolve_to_id_addr(rt, &verifier_addr).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", verifier_addr),
-            )
-        })?;
+        let verifier = resolve_to_id_addr(rt, &verifier_addr)
+            .with_context(|| format!("failed to resolve addr {} to ID addr", verifier_addr))?;
 
         let state: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&state.root_key))?;
@@ -157,21 +149,19 @@ impl Actor {
                 rt.store(),
                 HAMT_BIT_WIDTH,
             )
-            .map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load verified clients")
-            })?;
+            .map_err(Into::into)
+            .context("failed to load verified clients")?;
             verifiers
                 .delete(&verifier.to_bytes())
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to remove verifier")
-                })?
+                .map_err(Into::into)
+                .context("failed to remove verifier")?
                 .ok_or_else(|| {
                     actor_error!(illegal_argument, "failed to remove verifier: not found")
                 })?;
 
-            st.verifiers = verifiers.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verifiers")
-            })?;
+            st.verifiers =
+                verifiers.flush().map_err(Into::into).context("failed to flush verifiers")?;
+
             Ok(())
         })?;
 
@@ -198,12 +188,8 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_id_addr(rt, &params.address).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
-            )
-        })?;
+        let client = resolve_to_id_addr(rt, &params.address)
+            .with_context(|| format!("failed to resolve addr {} to ID addr", params.address))?;
 
         let st: State = rt.state()?;
         if client == st.root_key {
@@ -213,37 +199,28 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let mut verifiers =
                 make_map_with_root_and_bitwidth(&st.verifiers, rt.store(), HAMT_BIT_WIDTH)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to load verified clients",
-                        )
-                    })?;
+                    .map_err(Into::into)
+                    .context("failed to load verified clients")?;
+
             let mut verified_clients =
                 make_map_with_root_and_bitwidth(&st.verified_clients, rt.store(), HAMT_BIT_WIDTH)
-                    .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to load verified clients",
-                    )
-                })?;
+                    .map_err(Into::into)
+                    .context("failed to load verified clients")?;
 
             // Validate caller is one of the verifiers.
             let verifier = rt.message().caller();
             let BigIntDe(verifier_cap) = verifiers
                 .get(&verifier.to_bytes())
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to get Verifier {}", verifier),
-                    )
-                })?
+                .map_err(Into::into)
+                .with_context(|| format!("failed to get Verifier {}", verifier))?
                 .ok_or_else(|| actor_error!(not_found, format!("no such Verifier {}", verifier)))?;
 
             // Validate client to be added isn't a verifier
-            let found = verifiers.contains_key(&client.to_bytes()).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier")
-            })?;
+            let found = verifiers
+                .contains_key(&client.to_bytes())
+                .map_err(Into::into)
+                .context("failed to get verifier")?;
+
             if found {
                 return Err(actor_error!(
                     illegal_argument,
@@ -263,19 +240,16 @@ impl Actor {
             }
             let new_verifier_cap = verifier_cap - &params.allowance;
 
-            verifiers.set(verifier.to_bytes().into(), BigIntDe(new_verifier_cap)).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("Failed to update new verifier cap for {}", verifier),
-                )
-            })?;
+            verifiers
+                .set(verifier.to_bytes().into(), BigIntDe(new_verifier_cap))
+                .map_err(Into::into)
+                .with_context(|| format!("Failed to update new verifier cap for {}", verifier))?;
 
-            let client_cap = verified_clients.get(&client.to_bytes()).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("Failed to get verified client {}", client),
-                )
-            })?;
+            let client_cap = verified_clients
+                .get(&client.to_bytes())
+                .map_err(Into::into)
+                .with_context(|| format!("Failed to get verified client {}", client))?;
+
             // if verified client exists, add allowance to existing cap
             // otherwise, create new client with allownace
             let client_cap = if let Some(BigIntDe(client_cap)) = client_cap {
@@ -284,24 +258,19 @@ impl Actor {
                 params.allowance
             };
 
-            verified_clients.set(client.to_bytes().into(), BigIntDe(client_cap.clone())).map_err(
-                |e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!(
-                            "Failed to add verified client {} with cap {}",
-                            client, client_cap,
-                        ),
-                    )
-                },
-            )?;
+            verified_clients
+                .set(client.to_bytes().into(), BigIntDe(client_cap.clone()))
+                .map_err(Into::into)
+                .with_context(|| {
+                    format!("Failed to add verified client {} with cap {}", client, client_cap,)
+                })?;
 
-            st.verifiers = verifiers.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verifiers")
-            })?;
-            st.verified_clients = verified_clients.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verified clients")
-            })?;
+            st.verifiers =
+                verifiers.flush().map_err(Into::into).context("failed to flush verifiers")?;
+            st.verified_clients = verified_clients
+                .flush()
+                .map_err(Into::into)
+                .context("failed to flush verified clients")?;
 
             Ok(())
         })?;
@@ -319,12 +288,8 @@ impl Actor {
     {
         rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
 
-        let client = resolve_to_id_addr(rt, &params.address).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
-            )
-        })?;
+        let client = resolve_to_id_addr(rt, &params.address)
+            .with_context(|| format!("failed to resolve addr {} to ID addr", params.address))?;
 
         if params.deal_size < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
@@ -427,12 +392,8 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_id_addr(rt, &params.address).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
-            )
-        })?;
+        let client = resolve_to_id_addr(rt, &params.address)
+            .with_context(|| format!("failed to resolve addr {} to ID addr", params.address))?;
 
         let st: State = rt.state()?;
         if client == st.root_key {
@@ -508,35 +469,27 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let client = resolve_to_id_addr(rt, &params.verified_client_to_remove).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
+        let client =
+            resolve_to_id_addr(rt, &params.verified_client_to_remove).with_context(|| {
                 format!(
                     "failed to resolve client addr {} to ID addr",
                     params.verified_client_to_remove
-                ),
-            )
-        })?;
+                )
+            })?;
 
         let verifier_1 =
-            resolve_to_id_addr(rt, &params.verifier_request_1.verifier).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_ARGUMENT,
-                    format!(
-                        "failed to resolve verifier addr {} to ID addr",
-                        params.verifier_request_1.verifier
-                    ),
+            resolve_to_id_addr(rt, &params.verifier_request_1.verifier).with_context(|| {
+                format!(
+                    "failed to resolve verifier addr {} to ID addr",
+                    params.verifier_request_1.verifier
                 )
             })?;
 
         let verifier_2 =
-            resolve_to_id_addr(rt, &params.verifier_request_2.verifier).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_ARGUMENT,
-                    format!(
-                        "failed to resolve verifier addr {} to ID addr",
-                        params.verifier_request_2.verifier
-                    ),
+            resolve_to_id_addr(rt, &params.verifier_request_2.verifier).with_context(|| {
+                format!(
+                    "failed to resolve verifier addr {} to ID addr",
+                    params.verifier_request_2.verifier
                 )
             })?;
 

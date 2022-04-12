@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 pub use self::downcast::*;
-pub use self::multimap::*;
+pub use self::multimap::{EitherError as MultiMapEitherError, Error as MultiMapError, Multimap};
 pub use self::set::Set;
 pub use self::set_multimap::SetMultimap;
 

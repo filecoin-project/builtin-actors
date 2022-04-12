@@ -26,18 +26,18 @@ where
     }
 
     /// Initializes a SetMultimap from a root Cid.
-    pub fn from_root(bs: &'a BS, cid: &Cid) -> Result<Self, Error> {
+    pub fn from_root(bs: &'a BS, cid: &Cid) -> Result<Self, Error<BS::Error>> {
         Ok(Self(make_map_with_root(cid, bs)?))
     }
 
     /// Retrieve root from the SetMultimap.
     #[inline]
-    pub fn root(&mut self) -> Result<Cid, Error> {
+    pub fn root(&mut self) -> Result<Cid, Error<BS::Error>> {
         self.0.flush()
     }
 
     /// Puts the DealID in the hash set of the key.
-    pub fn put(&mut self, key: ChainEpoch, value: DealID) -> Result<(), Error> {
+    pub fn put(&mut self, key: ChainEpoch, value: DealID) -> Result<(), Error<BS::Error>> {
         // Get construct amt from retrieved cid or create new
         let mut set = self.get(key)?.unwrap_or_else(|| Set::new(self.0.store()));
 
@@ -52,7 +52,7 @@ where
     }
 
     /// Puts slice of DealIDs in the hash set of the key.
-    pub fn put_many(&mut self, key: ChainEpoch, values: &[DealID]) -> Result<(), Error> {
+    pub fn put_many(&mut self, key: ChainEpoch, values: &[DealID]) -> Result<(), Error<BS::Error>> {
         // Get construct amt from retrieved cid or create new
         let mut set = self.get(key)?.unwrap_or_else(|| Set::new(self.0.store()));
 
@@ -70,7 +70,7 @@ where
 
     /// Gets the set at the given index of the `SetMultimap`
     #[inline]
-    pub fn get(&self, key: ChainEpoch) -> Result<Option<Set<'a, BS>>, Error> {
+    pub fn get(&self, key: ChainEpoch) -> Result<Option<Set<'a, BS>>, Error<BS::Error>> {
         match self.0.get(&u64_key(key as u64))? {
             Some(cid) => Ok(Some(Set::from_root(*self.0.store(), cid)?)),
             None => Ok(None),
@@ -79,7 +79,7 @@ where
 
     /// Removes a DealID from a key hash set.
     #[inline]
-    pub fn remove(&mut self, key: ChainEpoch, v: DealID) -> Result<(), Error> {
+    pub fn remove(&mut self, key: ChainEpoch, v: DealID) -> Result<(), Error<BS::Error>> {
         // Get construct amt from retrieved cid and return if no set exists
         let mut set = match self.get(key)? {
             Some(s) => s,
@@ -96,7 +96,7 @@ where
 
     /// Removes set at index.
     #[inline]
-    pub fn remove_all(&mut self, key: ChainEpoch) -> Result<(), Error> {
+    pub fn remove_all(&mut self, key: ChainEpoch) -> Result<(), Error<BS::Error>> {
         // Remove entry from table
         self.0.delete(&u64_key(key as u64))?;
 
@@ -104,9 +104,9 @@ where
     }
 
     /// Iterates through keys and converts them to a DealID to call a function on each.
-    pub fn for_each<F>(&self, key: ChainEpoch, mut f: F) -> Result<(), Error>
+    pub fn for_each<F>(&self, key: ChainEpoch, mut f: F) -> Result<(), Error<BS::Error>>
     where
-        F: FnMut(DealID) -> Result<(), Error>,
+        F: FnMut(DealID) -> Result<(), Error<BS::Error>>,
     {
         // Get construct amt from retrieved cid and return if no set exists
         let set = match self.get(key)? {
@@ -115,11 +115,11 @@ where
         };
 
         set.for_each(|k| {
-            let v = parse_uint_key(k)
-                .map_err(|e| anyhow::anyhow!("Could not parse key: {:?}, ({})", &k.0, e))?;
+            let v = parse_uint_key(k).expect("TODO");
 
             // Run function on all parsed keys
-            Ok(f(v)?)
+            f(v)?;
+            Ok(())
         })
     }
 }

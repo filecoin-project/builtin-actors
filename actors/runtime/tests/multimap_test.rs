@@ -37,7 +37,7 @@ fn for_each() {
     mm.add("Some other string".into(), 7).unwrap();
 
     let mut vals: Vec<(u64, u64)> = Vec::new();
-    mm.for_each(&addr.to_bytes(), |i, v| {
+    mm.for_each::<_, _, ()>(&addr.to_bytes(), |i, v| {
         vals.push((i, *v));
         Ok(())
     })

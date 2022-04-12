@@ -8,6 +8,7 @@ use fil_actors_runtime::Multimap;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_ipld_hamt::BytesKey;
+use fvm_ipld_hamt::EitherError;
 use fvm_ipld_hamt::Error;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
@@ -347,15 +348,19 @@ impl Harness {
 }
 
 /// Collects all keys from a map into a vector.
-fn collect_keys<BS, V>(m: Map<BS, V>) -> Result<Vec<BytesKey>, Error>
+fn collect_keys<BS, V>(m: Map<BS, V>) -> Result<Vec<BytesKey>, Error<BS::Error>>
 where
     BS: Blockstore,
     V: DeserializeOwned + Serialize,
 {
     let mut ret_keys = Vec::new();
-    m.for_each(|k, _| {
+    m.for_each::<_, ()>(|k, _| {
         ret_keys.push(k.clone());
         Ok(())
+    })
+    .map_err(|err| match err {
+        EitherError::User(()) => unreachable!(),
+        EitherError::Hamt(e) => e,
     })?;
 
     Ok(ret_keys)
@@ -364,5 +369,5 @@ where
 pub fn verify_empty_map(rt: &MockRuntime, key: Cid) {
     let map =
         make_map_with_root_and_bitwidth::<_, BigIntDe>(&key, &rt.store, HAMT_BIT_WIDTH).unwrap();
-    map.for_each(|_key, _val| panic!("expected no keys")).unwrap();
+    map.for_each::<_, ()>(|_key, _val| panic!("expected no keys")).unwrap();
 }
