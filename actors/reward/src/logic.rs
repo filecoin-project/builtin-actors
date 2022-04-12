@@ -39,7 +39,6 @@ lazy_static! {
     /// for Q.128: int(lambda * 2^128)
     static ref LAMBDA: BigInt = BigInt::from(37396271439864487274534522888786u128);
 
-    static ref EPOCHS_IN_YEAR: i64 = 365 / 30;
 }
 
 /// Compute BaselinePower(t) from BaselinePower(t-1) with an additional multiplication
@@ -107,6 +106,12 @@ fn compute_baseline_supply(theta: BigInt, baseline_total: &BigInt) -> BigInt {
 
 #[cfg(test)]
 mod tests {
+    const SECONDS_IN_HOUR: i64 = 60 * 60;
+    const EPOCH_DURATION_IN_SECONDS: i64 = 30;
+    const EPOCHS_IN_HOUR: i64 = SECONDS_IN_HOUR / EPOCH_DURATION_IN_SECONDS;
+    const EPOCHS_IN_DAY: i64 = 24 * EPOCHS_IN_HOUR;
+    const EPOCHS_IN_YEAR: i64 = 365 * EPOCHS_IN_DAY;
+
     use super::*;
     use num::BigRational;
     use num::ToPrimitive;
@@ -241,11 +246,10 @@ mod tests {
 
     // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L82
     #[test]
-    #[ignore = "todo"]
     fn test_baseline_reward_growth() {
         fn baseline_in_years(start: StoragePower, x: ChainEpoch) -> StoragePower {
             let mut baseline = start;
-            for i in 0..(x * *EPOCHS_IN_YEAR) {
+            for i in 0..(x * EPOCHS_IN_YEAR) {
                 //debugging TODO: remove println
                 println!("{}", i);
                 //debugging TODO: remove println
@@ -295,8 +299,9 @@ mod tests {
             //debugging TODO: remove println
             println!("diff {}", diff);
 
-            
-            let perr = BigRational::new(diff, expected).to_f64().expect("BigInt cannot be expressed as a 64bit float");
+            let perr = BigRational::new(diff, expected)
+                .to_f64()
+                .expect("BigInt cannot be expressed as a 64bit float");
             //debugging TODO: remove println
             println!("perr {:?}", perr);
 
