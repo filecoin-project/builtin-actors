@@ -232,5 +232,5 @@ pub trait Verifier {
 
     fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error>;
 
-    fn deploy_actor(&self, code_cid: &Cid) -> Result<(), anyhow::Error>;
+    fn install_actor(&self, code_cid: &Cid) -> Result<(), anyhow::Error>;
 }
