@@ -88,4 +88,5 @@ jobs:
         name: bundle
         path: |
          output/builtin-actors.car
+         output/builtin-actors.car.sha256sum
          output/upload.json
