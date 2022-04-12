@@ -1,4 +1,4 @@
-use hierarchical_sca::{Actor as SCAActor, State};
+use hierarchical_sca::{Actor as SCAActor, /*State*/};
 
 use crate::harness::*;
 
