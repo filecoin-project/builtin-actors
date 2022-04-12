@@ -26,18 +26,18 @@ fn construct_runtime() -> MockRuntime {
 }
 
 // Test to make sure we abort actors that can not call the exec function
-#[test]
-fn abort_cant_call_exec() {
-    let mut rt = construct_runtime();
-    construct_and_verify(&mut rt);
-    let anne = Address::new_id(1001);
+// #[test]
+// fn abort_cant_call_exec() {
+//     let mut rt = construct_runtime();
+//     construct_and_verify(&mut rt);
+//     let anne = Address::new_id(1001);
 
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+//     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
 
-    let err =
-        exec_and_verify(&mut rt, *POWER_ACTOR_CODE_ID, &"").expect_err("Exec should have failed");
-    assert_eq!(err.exit_code(), ExitCode::USR_FORBIDDEN);
-}
+//     let err =
+//         exec_and_verify(&mut rt, *POWER_ACTOR_CODE_ID, &"").expect_err("Exec should have failed");
+//     assert_eq!(err.exit_code(), ExitCode::USR_FORBIDDEN);
+// }
 
 #[test]
 fn create_2_payment_channels() {
