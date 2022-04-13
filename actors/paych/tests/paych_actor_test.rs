@@ -244,7 +244,7 @@ mod create_lane_tests {
                         .to_string(),
                 )
                 .payment_channel(paych_non_id)
-                .exp_exit_code(ExitCode::Ok)
+                .exp_exit_code(ExitCode::OK)
                 .sig(sig.clone())
                 .build()
                 .unwrap(),
