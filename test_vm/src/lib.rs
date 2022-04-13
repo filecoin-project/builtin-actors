@@ -1,12 +1,17 @@
 use cid::Cid;
+use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
-use fvm_shared::address::Address;
+use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::MethodNum;
+use fvm_shared::error::ExitCode;
 use std::error::Error;
 use std::fmt;
+
+use fvm_ipld_encoding::{RawBytes};
 
 pub struct VM<'bs> {
     store: &'bs MemoryBlockstore,
@@ -42,11 +47,55 @@ impl<'bs> VM<'bs> {
         self.state_root = *root;
         self.actors_dirty = false;
     }
+
+    pub fn normalize_address(&self, addr: Address) -> Option<Address> {
+        match addr.protocol() {
+            Protocol::ID => return Some(addr),
+            _ => (),
+        }
+
+        let init_actor = self.get_actor(&INIT_ACTOR_ADDR).unwrap();
+        self.store.get();
+
+        Some(addr)
+    }
+
+    pub fn get_state(&self) Result<>{
+        Ok(self.store.get_cbor(self.state.as_ref().unwrap()).unwrap().unwrap())
+    }
+
+    pub fn apply_message(&mut self, from: &Address, to: &Address, value: &TokenAmount, method: MethodNum, params: &RawBytes) -> Result<MessageResult, TestVMError> {
+        // XXX normalize from address to id
+        let mut a = self.get_actor(from).unwrap().clone();
+        a.call_seq_num += 1; 
+        self.set_actor(from, a);
+
+        let prior_root = self.checkpoint();
+
+        // make top level context with internal context
+        // let ret, exitcode = ctx.invoke()
+        let ret = RawBytes::default();
+        let code = ExitCode::Ok;
+
+        if code != ExitCode::Ok { // if exitcode != ok
+            self.rollback(&prior_root);
+        } else {
+            self.checkpoint();
+        }
+
+        Ok(MessageResult{code: code, ret: ret})
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct MessageResult {
+    pub code: ExitCode,
+    pub ret: RawBytes,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Debug)]
 pub struct Actor {
-    pub code: Cid, // Might want to mock this out to avoid dealing with the annoying bundler
+    pub code: Cid,
     pub head: Cid,
     pub call_seq_num: u64,
     #[serde(with = "bigint_ser")]
