@@ -823,6 +823,8 @@ mod actor_settle {
 
     #[test]
     fn voucher_invalid_after_settling() {
+        const ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED: ExitCode = ExitCode::new(32);
+
         let (mut rt, sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
         let mut state: PState = rt.get_state().unwrap();
@@ -844,7 +846,7 @@ mod actor_settle {
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
-            ExitCode::from(32),
+            ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED,
         );
     }
 }
