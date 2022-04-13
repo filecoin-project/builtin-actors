@@ -110,6 +110,26 @@ mod paych_constructor {
     }
 
     #[test]
+    #[ignore = "todo"]
+    fn create_paych_actor_after_resolving_to_id_address() {
+        let payer_addr = Address::new_id(TEST_PAYER_ADDR);
+        let payer_non_id = Address::new_bls(&[102; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+
+        let payee_addr = Address::new_id(103_u64);
+        let payee_non_id = Address::new_bls(&[104; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+
+        let mut rt = construct_runtime();
+
+        rt.actor_code_cids.insert(payer_addr, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.insert(payee_addr, *ACCOUNT_ACTOR_CODE_ID);
+
+        rt.id_addresses.insert(payer_non_id, payer_addr);
+        rt.id_addresses.insert(payee_non_id, payee_addr);
+
+        construct_and_verify(&mut rt, payer_non_id, payee_non_id);
+    }
+
+    #[test]
     fn actor_constructor_fails() {
         let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
         let payer_addr = Address::new_id(TEST_PAYER_ADDR);
