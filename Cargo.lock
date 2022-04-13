@@ -1001,6 +1001,8 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_hamt"
 version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a03c6ae361a882360bc0c0f47265b294429f096baa8d9467247bbd62c6a6683c"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -1020,8 +1022,6 @@ dependencies = [
 [[package]]
 name = "fvm_sdk"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cd152ce62acadd75bdb461dcb8009389a3a7583c0832a122537da8fc17d73e7"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -1035,6 +1035,8 @@ dependencies = [
 [[package]]
 name = "fvm_shared"
 version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "295109128cf0ae81063f1e033e56e3aab858b93eeabe446f80beb34709955de2"
 dependencies = [
  "anyhow",
  "bimap",
@@ -1064,8 +1066,6 @@ dependencies = [
 [[package]]
 name = "fvm_shared"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "857cf6a95b35d583e8db25d38a939af335cb2eba2f8a5e1f1c0be58f77d52f5b"
 dependencies = [
  "anyhow",
  "bimap",
@@ -1985,3 +1985,7 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[patch.unused]]
+name = "fvm_ipld_hamt"
+version = "0.5.0"
