@@ -479,7 +479,7 @@ mod update_channel_state_redeem {
         expect_error(
             &mut rt,
             Method::UpdateChannelState as u64,
-            &RawBytes::serialize(UpdateChannelStateParams::from(sv.clone())).unwrap(),
+            &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
         );
 
