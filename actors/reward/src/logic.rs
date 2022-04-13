@@ -102,3 +102,108 @@ fn compute_baseline_supply(theta: BigInt, baseline_total: &BigInt) -> BigInt {
 
     one_sub * baseline_total
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use num::BigRational;
+    use num::ToPrimitive;
+    use std::fs;
+    use std::ops::Shl;
+
+    // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L18
+    // x => x/(2^128)
+    fn q128_to_f64(x: BigInt) -> f64 {
+        let denom = BigInt::from(1u64).shl(u128::BITS);
+        BigRational::new(x, denom).to_f64().expect("BigInt cannot be expressed as a 64bit float")
+    }
+
+    // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L25
+    #[test]
+    fn test_compute_r_theta() {
+        fn baseline_power_at(epoch: ChainEpoch) -> BigInt {
+            (BigInt::from(epoch) + BigInt::from(1i64)) * BigInt::from(2048)
+        }
+
+        assert_eq!(
+            q128_to_f64(compute_r_theta(
+                1,
+                &baseline_power_at(1),
+                &BigInt::from(2048 + 2 * 2048 / 2),
+                &BigInt::from(2048 + 2 * 2048),
+            )),
+            0.5
+        );
+
+        assert_eq!(
+            q128_to_f64(compute_r_theta(
+                1,
+                &baseline_power_at(1),
+                &BigInt::from(2048 + 2 * 2048 / 4),
+                &BigInt::from(2048 + 2 * 2048),
+            )),
+            0.25
+        );
+
+        let cumsum15 = (0..16).map(baseline_power_at).sum::<BigInt>();
+        assert_eq!(
+            q128_to_f64(compute_r_theta(
+                16,
+                &baseline_power_at(16),
+                &(&cumsum15 + baseline_power_at(16) / BigInt::from(4)),
+                &(&cumsum15 + baseline_power_at(16)),
+            )),
+            15.25
+        );
+    }
+
+    // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L43
+    #[test]
+    fn test_baseline_reward() {
+        let step = BigInt::from(5000_i64).shl(u128::BITS) - BigInt::from(77_777_777_777_i64); // offset from full integers
+        let delta = BigInt::from(1_i64).shl(u128::BITS) - BigInt::from(33_333_333_333_i64); // offset from full integers
+
+        let mut prev_theta = BigInt::from(0i64);
+        let mut theta = delta;
+
+        let mut b = String::from("t0, t1, y\n");
+        let simple = compute_reward(
+            0,
+            BigInt::from(0i64),
+            BigInt::from(0i64),
+            &SIMPLE_TOTAL,
+            &BASELINE_TOTAL,
+        );
+
+        for _ in 0..512 {
+            let mut reward = compute_reward(
+                0,
+                prev_theta.clone(),
+                theta.clone(),
+                &SIMPLE_TOTAL,
+                &BASELINE_TOTAL,
+            );
+            reward -= &simple;
+
+            let prev_theta_str = &prev_theta.to_string();
+            let theta_str = &theta.to_string();
+            let reward_str = &reward.to_string();
+            b.push_str(prev_theta_str);
+            b.push(',');
+            b.push_str(theta_str);
+            b.push(',');
+            b.push_str(reward_str);
+            b.push('\n');
+
+            prev_theta += &step;
+            theta += &step;
+        }
+
+        // compare test output to golden file used for golang tests; file originally located at filecoin-project/specs-actors/actors/builtin/reward/testdata/TestBaselineReward.golden (current link: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/testdata/TestBaselineReward.golden)
+        let filename = "testdata/TestBaselineReward.golden";
+        let golden_contents =
+            fs::read_to_string(filename).expect("Something went wrong reading the file");
+
+        assert_eq!(golden_contents, b);
+    }
+}
