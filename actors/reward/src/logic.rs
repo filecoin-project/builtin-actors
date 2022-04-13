@@ -160,8 +160,8 @@ mod tests {
     // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/reward/reward_logic_test.go#L43
     #[test]
     fn test_baseline_reward() {
-        let step = BigInt::from(5000_i64).shl(u128::BITS) - BigInt::from(77_777_777_777_i64);
-        let delta = BigInt::from(1_i64).shl(u128::BITS) - BigInt::from(33_333_333_333_i64);
+        let step = BigInt::from(5000_i64).shl(u128::BITS) - BigInt::from(77_777_777_777_i64); // offset from full integers
+        let delta = BigInt::from(1_i64).shl(u128::BITS) - BigInt::from(33_333_333_333_i64); // offset from full integers
 
         let mut prev_theta = BigInt::from(0i64);
         let mut theta = delta;

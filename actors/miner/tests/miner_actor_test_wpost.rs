@@ -131,7 +131,7 @@ fn invalid_submissions() {
             params,
             PoStConfig::empty(),
         );
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "invalid deadline", result);
+        expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "invalid deadline", result);
         rt.reset();
     }
 
@@ -153,7 +153,7 @@ fn invalid_submissions() {
             PoStConfig::empty(),
         );
         expect_abort_contains_message(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             "expected proof to be smaller",
             result,
         );
@@ -180,7 +180,11 @@ fn invalid_submissions() {
             params,
             PoStConfig::empty(),
         );
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "too many partitions", result);
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "too many partitions",
+            result,
+        );
         rt.reset();
     }
 
@@ -201,7 +205,7 @@ fn invalid_submissions() {
             params,
             PoStConfig::empty(),
         );
-        expect_abort_contains_message(ExitCode::ErrNotFound, "no such partition", result);
+        expect_abort_contains_message(ExitCode::USR_NOT_FOUND, "no such partition", result);
         rt.reset();
     }
 
@@ -223,7 +227,7 @@ fn invalid_submissions() {
             PoStConfig::empty(),
         );
         expect_abort_contains_message(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             "skipped faults contains sectors outside partition",
             result,
         );
@@ -248,7 +252,7 @@ fn invalid_submissions() {
             PoStConfig::empty(),
         );
         expect_abort_contains_message(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             "expected exactly one proof",
             result,
         );
@@ -273,7 +277,7 @@ fn invalid_submissions() {
             PoStConfig::empty(),
         );
         expect_abort_contains_message(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             "proof type StackedDRGWindow8MiBV1 not allowed",
             result,
         );
@@ -298,7 +302,7 @@ fn invalid_submissions() {
             PoStConfig::empty(),
         );
         expect_abort_contains_message(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             "expected proof of type",
             result,
         );
@@ -325,7 +329,7 @@ fn invalid_submissions() {
             PoStConfig::empty(),
         );
         expect_abort_contains_message(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             "expected proof to be smaller",
             result,
         );
@@ -349,7 +353,11 @@ fn invalid_submissions() {
             params,
             PoStConfig::empty(),
         );
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "bytes of randomness", result);
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "bytes of randomness",
+            result,
+        );
         rt.reset();
     }
 
@@ -377,7 +385,7 @@ fn invalid_submissions() {
         //      giving a starting deadline of 20.  Because committing a sector takes 2 deadlines the
         //      specs-actors test does sector assignment in an immutable deadline 0 forcing assignment to
         //      deadline 2.
-        expect_abort_contains_message(ExitCode::ErrIllegalArgument, "invalid deadline", result);
+        expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "invalid deadline", result);
         rt.epoch = dlinfo.current_epoch;
         rt.reset();
     }
@@ -400,7 +408,7 @@ fn invalid_submissions() {
             PoStConfig::empty(),
         );
         expect_abort_contains_message(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             "expected chain commit epoch",
             result,
         );
@@ -425,7 +433,7 @@ fn invalid_submissions() {
             PoStConfig::empty(),
         );
         expect_abort_contains_message(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             "must be less than the current epoch",
             result,
         );
@@ -450,7 +458,7 @@ fn invalid_submissions() {
             PoStConfig::with_randomness(Randomness(b"far".to_vec())),
         );
         expect_abort_contains_message(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             "randomness mismatched",
             result,
         );
@@ -549,7 +557,11 @@ fn duplicate_proof_rejected() {
         miner::Method::SubmitWindowedPoSt as u64,
         &RawBytes::serialize(params).unwrap(),
     );
-    expect_abort_contains_message(ExitCode::ErrIllegalArgument, "partition already proven", result);
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "partition already proven",
+        result,
+    );
     rt.reset();
 
     // Advance to end-of-deadline cron to verify no penalties.
@@ -632,7 +644,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
             PoStConfig::with_expected_power_delta(&pwr),
         );
         expect_abort_contains_message(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             "partition already proven",
             result,
         );

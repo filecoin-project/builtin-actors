@@ -44,7 +44,7 @@ impl Actor {
         let sys_ref: &Address = &SYSTEM_ACTOR_ADDR;
         rt.validate_immediate_caller_is(std::iter::once(sys_ref))?;
         let state = State::new(rt.store(), params.network_name).map_err(|e| {
-            e.downcast_default(ExitCode::ErrIllegalState, "failed to construct init actor state")
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct init actor state")
         })?;
 
         rt.create(&state)?;
@@ -63,13 +63,13 @@ impl Actor {
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
 
         let caller_code = rt.get_actor_code_cid(&rt.message().caller()).ok_or_else(|| {
-            actor_error!(ErrIllegalState, "no code for caller as {}", rt.message().caller())
+            actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
         })?;
 
         log::trace!("caller code CID: {:?}", &caller_code);
 
         if !can_exec(rt, &caller_code, &params.code_cid) {
-            return Err(actor_error!(ErrForbidden;
+            return Err(actor_error!(forbidden;
                     "called type {} cannot exec actor type {}",
                     &caller_code, &params.code_cid
             ));
@@ -87,7 +87,7 @@ impl Actor {
         // Store mapping of pubkey or actor address to actor ID
         let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
             s.map_address_to_new_id(rt.store(), &robust_address).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to allocate ID address")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to allocate ID address")
             })
         })?;
 
@@ -126,7 +126,7 @@ impl ActorCode for Actor {
                 let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
 }
