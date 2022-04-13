@@ -76,7 +76,8 @@ members = [
 
 [profile.wasm]
 inherits = "release"
-panic = "abort"
+# This needs to be unwind, not abort, so that we can handle panics within our panic hook.
+panic = "unwind"
 overflow-checks = true
 lto = "thin"
 opt-level = "z"
