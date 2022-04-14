@@ -475,14 +475,14 @@ fn invalid_submissions() {
             chain_commit_epoch: dlinfo.challenge,
             chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
         };
-        let result = h.submit_window_post_raw(
+        h.submit_window_post_raw(
             &mut rt,
             &dlinfo,
             vec![sector],
             params,
             PoStConfig::with_expected_power_delta(&pwr),
-        );
-        expect_ok(result);
+        )
+        .unwrap();
         rt.verify();
     }
 }
