@@ -110,17 +110,14 @@ mod paych_constructor {
     }
 
     #[test]
-    #[ignore = "todo"]
     fn create_paych_actor_after_resolving_to_id_address() {
         let payer_addr = Address::new_id(TEST_PAYER_ADDR);
         let payer_non_id = Address::new_bls(&[102; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-
         let payee_addr = Address::new_id(103_u64);
         let payee_non_id = Address::new_bls(&[104; fvm_shared::address::BLS_PUB_LEN]).unwrap();
 
         let mut rt = construct_runtime();
 
-        rt.actor_code_cids.insert(payer_addr, *ACCOUNT_ACTOR_CODE_ID);
         rt.actor_code_cids.insert(payee_addr, *ACCOUNT_ACTOR_CODE_ID);
 
         rt.id_addresses.insert(payer_non_id, payer_addr);
@@ -384,7 +381,7 @@ mod create_lane_tests {
                     &RawBytes::serialize(ucp).unwrap(),
                     test_case.exp_exit_code,
                 );
-                verify_initial_state(&mut rt, payer_addr, payee_addr);
+                verify_initial_state(&rt, payer_addr, payee_addr);
             }
             rt.verify();
         }
@@ -430,7 +427,7 @@ mod update_channel_state_redeem {
             min_settle_height: state.min_settle_height,
             lane_states: construct_lane_state_amt(&rt, vec![exp_ls]),
         };
-        verify_state(&mut rt, Some(1), exp_state);
+        verify_state(&rt, Some(1), exp_state);
     }
 
     #[test]
@@ -542,7 +539,7 @@ mod merge_tests {
             vec![exp_merge_to, exp_merge_from, get_lane_state(&rt, &state.lane_states, 2)],
         );
 
-        verify_state(&mut rt, Some(num_lanes), state);
+        verify_state(&rt, Some(num_lanes), state);
     }
 
     #[test]
@@ -1080,17 +1077,19 @@ fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address
     rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
     call(rt, METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap());
     rt.verify();
-    verify_initial_state(rt, sender, receiver);
+    let sender_id = rt.id_addresses.get(&sender).unwrap_or(&sender);
+    let receiver_id = rt.id_addresses.get(&receiver).unwrap_or(&receiver);
+    verify_initial_state(rt, *sender_id, *receiver_id);
 }
 
-fn verify_initial_state(rt: &mut MockRuntime, sender: Address, receiver: Address) {
+fn verify_initial_state(rt: &MockRuntime, sender: Address, receiver: Address) {
     let _state: PState = rt.get_state().unwrap();
     let empt_arr_cid = Amt::<(), _>::new(&rt.store).flush().unwrap();
     let expected_state = PState::new(sender, receiver, empt_arr_cid);
     verify_state(rt, None, expected_state)
 }
 
-fn verify_state(rt: &mut MockRuntime, exp_lanes: Option<u64>, expected_state: PState) {
+fn verify_state(rt: &MockRuntime, exp_lanes: Option<u64>, expected_state: PState) {
     let state: PState = rt.get_state().unwrap();
     assert_eq!(expected_state.to, state.to);
     assert_eq!(expected_state.from, state.from);
