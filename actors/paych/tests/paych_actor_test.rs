@@ -590,12 +590,6 @@ mod merge_tests {
         sv.merges = vec![Merge { lane: 999, nonce: sv.nonce }];
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            plaintext: sv.signing_bytes().unwrap(),
-            sig: sv.signature.clone().unwrap(),
-            signer: Address::new_id(PAYEE_ID),
-            result: Ok(()),
-        });
         failure_end(&mut rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
     }
 

@@ -97,7 +97,6 @@ pub struct MockRuntime {
 
     // Expectations
     pub expectations: RefCell<Expectations>,
-    // FIXME add stateUsedObjs
 
     // policy
     pub policy: Policy,
@@ -124,10 +123,6 @@ pub struct Expectations {
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
-    // FIXME batch verify seals
-    // FIXME aggregate verify seals
-    // FIXME replica verify
-    // FIXME gas charged
 }
 
 impl Expectations {
@@ -158,9 +153,24 @@ impl Expectations {
             self.expect_create_actor
         );
         assert!(
+            self.expect_delete_actor.is_none(),
+            "expected actor to be deleted: {:?}",
+            self.expect_delete_actor
+        );
+        assert!(
+            self.expect_verify_sigs.is_empty(),
+            "expect_verify_sigs: {:?}, not received",
+            self.expect_verify_sigs
+        );
+        assert!(
             self.expect_verify_seal.is_none(),
             "expect_verify_seal {:?}, not received",
-            self.expect_verify_seal.as_ref().unwrap()
+            self.expect_verify_seal
+        );
+        assert!(
+            self.expect_verify_post.is_none(),
+            "expect_verify_post {:?}, not received",
+            self.expect_verify_post
         );
         assert!(
             self.expect_compute_unsealed_sector_cid.is_none(),
@@ -279,7 +289,7 @@ pub struct ExpectVerifyConsensusFault {
     exit_code: ExitCode,
 }
 
-#[derive(Clone)] // TODO: derive Debug when PieceInfo does.
+#[derive(Clone, Debug)]
 pub struct ExpectComputeUnsealedSectorCid {
     reg: RegisteredSealProof,
     pieces: Vec<PieceInfo>,
@@ -314,10 +324,6 @@ pub struct ExpectReplicaVerify {
     result: anyhow::Result<()>,
 }
 
-pub fn expect_ok<T: fmt::Debug>(res: Result<T, ActorError>) -> T {
-    res.unwrap()
-}
-
 pub fn expect_empty(res: RawBytes) {
     assert_eq!(res, RawBytes::default());
 }
@@ -342,7 +348,7 @@ pub fn expect_abort_contains_message<T: fmt::Debug>(
     let err_msg = err.msg();
     assert!(
         err.msg().contains(expect_msg),
-        "expected err message  '{}' to contain '{}'",
+        "expected err message '{}' to contain '{}'",
         err_msg,
         expect_msg,
     );
