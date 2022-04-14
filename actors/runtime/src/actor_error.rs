@@ -12,6 +12,11 @@ pub struct ActorError {
     msg: String,
 }
 
+pub const SYS_FORBIDDEN: ExitCode = ExitCode::new(8);
+pub const SYS_ILLEGAL_ACTOR: ExitCode = ExitCode::new(9);
+pub const SYS_ILLEGAL_ARGUMENT: ExitCode = ExitCode::new(10);
+pub const USR_PLACEHOLDER: ExitCode = ExitCode::new(1000);
+
 impl ActorError {
     pub fn new(exit_code: ExitCode, msg: String) -> Self {
         Self { exit_code, msg }
@@ -24,7 +29,7 @@ impl ActorError {
 
     /// Returns true when the exit code is `Ok`.
     pub fn is_ok(&self) -> bool {
-        self.exit_code == ExitCode::Ok
+        self.exit_code == ExitCode::OK
     }
 
     /// Error message of the actor error.
@@ -43,7 +48,7 @@ impl ActorError {
 impl From<fvm_ipld_encoding::Error> for ActorError {
     fn from(e: fvm_ipld_encoding::Error) -> Self {
         Self {
-            exit_code: ExitCode::ErrSerialization,
+            exit_code: ExitCode::USR_SERIALIZATION,
             msg: e.to_string(),
         }
     }
@@ -59,8 +64,8 @@ impl From<fvm_sdk::error::ActorDeleteError> for ActorError {
             // FIXME: These shouldn't be "system" errors, but we're trying to match existing
             // behavior here.
             exit_code: match e {
-                BeneficiaryIsSelf => ExitCode::SysErrIllegalActor,
-                BeneficiaryDoesNotExist => ExitCode::SysErrIllegalArgument,
+                BeneficiaryIsSelf => SYS_ILLEGAL_ACTOR,
+                BeneficiaryDoesNotExist => SYS_ILLEGAL_ARGUMENT,
             },
             msg: e.to_string(),
         }
@@ -75,7 +80,7 @@ impl From<fvm_sdk::error::NoStateError> for ActorError {
         Self {
             // FIXME: These shouldn't be "system" errors, but we're trying to match existing
             // behavior here.
-            exit_code: ExitCode::SysErrIllegalActor,
+            exit_code: SYS_ILLEGAL_ACTOR,
             msg: e.to_string(),
         }
     }

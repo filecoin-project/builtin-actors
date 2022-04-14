@@ -104,7 +104,7 @@ fn epoch_tick_with_entries() {
         RawBytes::default(),
         0u8.into(),
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
     rt.expect_send(
         entry2.receiver,
@@ -112,7 +112,7 @@ fn epoch_tick_with_entries() {
         RawBytes::default(),
         0u8.into(),
         RawBytes::default(),
-        ExitCode::ErrIllegalArgument,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     rt.expect_send(
         entry3.receiver,
@@ -120,7 +120,7 @@ fn epoch_tick_with_entries() {
         RawBytes::default(),
         0u8.into(),
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
     rt.expect_send(
         entry4.receiver,
@@ -128,7 +128,7 @@ fn epoch_tick_with_entries() {
         RawBytes::default(),
         0u8.into(),
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     epoch_tick_and_verify(&mut rt);

@@ -40,7 +40,7 @@ impl Actor {
         match address.protocol() {
             Protocol::Secp256k1 | Protocol::BLS => {}
             protocol => {
-                return Err(actor_error!(ErrIllegalArgument;
+                return Err(actor_error!(USR_ILLEGAL_ARGUMENT;
                     "address must use BLS or SECP protocol, got {}", protocol));
             }
         }
@@ -79,7 +79,7 @@ impl ActorCode for Actor {
                 let addr = Self::pubkey_address(rt)?;
                 Ok(RawBytes::serialize(addr)?)
             }
-            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            None => Err(actor_error!(SYS_INVALID_METHOD; "Invalid method")),
         }
     }
 }

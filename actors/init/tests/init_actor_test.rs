@@ -36,7 +36,7 @@ fn abort_cant_call_exec() {
 
     let err =
         exec_and_verify(&mut rt, *POWER_ACTOR_CODE_ID, &"").expect_err("Exec should have failed");
-    assert_eq!(err.exit_code(), ExitCode::ErrForbidden);
+    assert_eq!(err.exit_code(), ExitCode::USR_FORBIDDEN);
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn create_2_payment_channels() {
             RawBytes::serialize(&fake_params).unwrap(),
             balance,
             RawBytes::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
         let exec_ret = exec_and_verify(&mut rt, *PAYCH_ACTOR_CODE_ID, &fake_params).unwrap();
@@ -123,7 +123,7 @@ fn create_storage_miner() {
         RawBytes::serialize(&fake_params).unwrap(),
         0u8.into(),
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     let exec_ret = exec_and_verify(&mut rt, *MINER_ACTOR_CODE_ID, &fake_params).unwrap();
@@ -178,7 +178,7 @@ fn create_multisig_actor() {
         RawBytes::serialize(&fake_params).unwrap(),
         0u8.into(),
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     // Return should have been successful. Check the returned addresses
@@ -220,7 +220,7 @@ fn sending_constructor_failure() {
         RawBytes::serialize(&fake_params).unwrap(),
         0u8.into(),
         RawBytes::default(),
-        ExitCode::ErrIllegalState,
+        ExitCode::USR_ILLEGAL_STATE,
     );
 
     let error = exec_and_verify(&mut rt, *MINER_ACTOR_CODE_ID, &fake_params)
@@ -230,8 +230,8 @@ fn sending_constructor_failure() {
 
     assert_eq!(
         error_exit_code,
-        ExitCode::ErrIllegalState,
-        "Exit Code that is returned is not ErrIllegalState"
+        ExitCode::USR_ILLEGAL_STATE,
+        "Exit Code that is returned is not USR_ILLEGAL_STATE"
     );
 
     let state: State = rt.get_state().unwrap();

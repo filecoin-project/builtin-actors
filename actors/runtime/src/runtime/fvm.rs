@@ -10,7 +10,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::{ErrorNumber, ExitCode};
+use fvm_shared::error::ErrorNumber;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
@@ -21,7 +21,9 @@ use fvm_shared::{ActorID, MethodNum};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Policy, RuntimePolicy, Syscalls};
-use crate::{actor_error, ActorError, Runtime};
+use crate::{
+    actor_error, ActorError, Runtime, SYS_FORBIDDEN, SYS_ILLEGAL_ACTOR, SYS_ILLEGAL_ARGUMENT,
+};
 
 lazy_static! {
     /// Cid of the empty array Cbor bytes (`EMPTY_ARR_BYTES`).
@@ -57,11 +59,10 @@ impl Default for FvmRuntime {
 impl<B> FvmRuntime<B> {
     fn assert_not_validated(&mut self) -> Result<(), ActorError> {
         if self.caller_validated {
-            return Err(actor_error!(
-                SysErrIllegalActor,
-                "Method must validate caller identity exactly once"
-            )
-            .into());
+            return Err(ActorError::new(
+                SYS_ILLEGAL_ACTOR,
+                "Method must validate caller identity exactly once".into(),
+            ));
         }
         self.caller_validated = true;
         Ok(())
@@ -120,10 +121,10 @@ where
         if addresses.into_iter().any(|a| *a == caller_addr) {
             Ok(())
         } else {
-            return Err(actor_error!(SysErrForbidden;
-                "caller {} is not one of supported", caller_addr
-            )
-            .into());
+            return Err(ActorError::new(
+                SYS_FORBIDDEN,
+                format!("caller {} is not one of supported", caller_addr),
+            ));
         }
     }
 
@@ -141,9 +142,10 @@ where
 
         match self.resolve_builtin_actor_type(&caller_cid) {
             Some(typ) if types.into_iter().any(|t| *t == typ) => Ok(()),
-            _ => Err(actor_error!(SysErrForbidden;
-                    "caller cid type {} not one of supported", caller_cid)
-            .into()),
+            _ => Err(ActorError::new(
+                SYS_FORBIDDEN,
+                format!("caller cid type {} not one of supported", caller_cid),
+            )),
         }
     }
 
@@ -181,7 +183,7 @@ where
         // unexpected bad value to the syscall).
         fvm::rand::get_chain_randomness(personalization, rand_epoch, entropy).map_err(|e| match e {
             ErrorNumber::LimitExceeded => {
-                actor_error!(ErrIllegalArgument; "randomness lookback exceeded: {}", e)
+                actor_error!(USR_ILLEGAL_ARGUMENT; "randomness lookback exceeded: {}", e)
             }
             e => panic!(
                 "get chain randomness failed with an unexpected error: {}",
@@ -200,7 +202,7 @@ where
         fvm::rand::get_beacon_randomness(personalization, rand_epoch, entropy).map_err(
             |e| match e {
                 ErrorNumber::LimitExceeded => {
-                    actor_error!(ErrIllegalArgument; "randomness lookback exceeded: {}", e)
+                    actor_error!(USR_ILLEGAL_ARGUMENT; "randomness lookback exceeded: {}", e)
                 }
                 e => panic!(
                     "get chain randomness failed with an unexpected error: {}",
@@ -214,11 +216,11 @@ where
         let root = fvm::sself::root()?;
         if root != *EMPTY_ARR_CID {
             return Err(
-                actor_error!(ErrIllegalState; "failed to create state; expected empty array CID, got: {}", root),
+                actor_error!(USR_ILLEGAL_STATE; "failed to create state; expected empty array CID, got: {}", root),
             );
         }
         let new_root = ActorBlockstore.put_cbor(obj, Code::Blake2b256)
-            .map_err(|e| actor_error!(ErrIllegalArgument; "failed to write actor state during creation: {}", e.to_string()))?;
+            .map_err(|e| actor_error!(USR_ILLEGAL_ARGUMENT; "failed to write actor state during creation: {}", e.to_string()))?;
         fvm::sself::set_root(&new_root)?;
         Ok(())
     }
@@ -228,7 +230,7 @@ where
         Ok(ActorBlockstore
             .get_cbor(&root)
             .map_err(
-                |_| actor_error!(ErrIllegalArgument; "failed to get actor for Readonly state"),
+                |_| actor_error!(USR_ILLEGAL_ARGUMENT; "failed to get actor for Readonly state"),
             )?
             .expect("State does not exist for actor state root"))
     }
@@ -238,14 +240,15 @@ where
         C: Cbor,
         F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
     {
-        let state_cid = fvm::sself::root()
-            .map_err(|_| actor_error!(ErrIllegalArgument; "failed to get actor root state CID"))?;
+        let state_cid = fvm::sself::root().map_err(
+            |_| actor_error!(USR_ILLEGAL_ARGUMENT; "failed to get actor root state CID"),
+        )?;
 
         log::debug!("getting cid: {}", state_cid);
 
         let mut state = ActorBlockstore
             .get_cbor::<C>(&state_cid)
-            .map_err(|_| actor_error!(ErrIllegalArgument; "failed to get actor state"))?
+            .map_err(|_| actor_error!(USR_ILLEGAL_ARGUMENT; "failed to get actor state"))?
             .expect("State does not exist for actor state root");
 
         self.in_transaction = true;
@@ -254,7 +257,7 @@ where
 
         let ret = result?;
         let new_root = ActorBlockstore.put_cbor(&state, Code::Blake2b256)
-            .map_err(|e| actor_error!(ErrIllegalArgument; "failed to write actor state in transaction: {}", e.to_string()))?;
+            .map_err(|e| actor_error!(USR_ILLEGAL_ARGUMENT; "failed to write actor state in transaction: {}", e.to_string()))?;
         fvm::sself::set_root(&new_root)?;
         Ok(ret)
     }
@@ -271,7 +274,10 @@ where
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         if self.in_transaction {
-            return Err(actor_error!(SysErrIllegalActor; "runtime.send() is not allowed"));
+            return Err(ActorError::new(
+                SYS_ILLEGAL_ACTOR,
+                "runtime.send() is not allowed".into(),
+            ));
         }
         // TODO: distinguish between "syscall" errors and actor exit codes.
         match fvm::send::send(&to, method, params, value) {
@@ -284,13 +290,13 @@ where
             }
             Err(err) => Err(match err {
                 ErrorNumber::NotFound => {
-                    actor_error!(SysErrInvalidReceiver; "receiver not found")
+                    actor_error!(SYS_INVALID_RECEIVER; "receiver not found")
                 }
                 ErrorNumber::InsufficientFunds => {
-                    actor_error!(SysErrInsufficientFunds; "not enough funds")
+                    actor_error!(SYS_INSUFFICIENT_FUNDS; "not enough funds")
                 }
                 ErrorNumber::LimitExceeded => {
-                    actor_error!(SysErrForbidden; "recursion limit exceeded")
+                    ActorError::new(SYS_FORBIDDEN, "recursion limit exceeded".into())
                 }
                 err => panic!("unexpected error: {}", err),
             }),
@@ -305,7 +311,7 @@ where
         fvm::actor::create_actor(actor_id, &code_id).map_err(|e| {
             ActorError::new(
                 match e {
-                    ErrorNumber::IllegalArgument => ExitCode::SysErrIllegalArgument,
+                    ErrorNumber::IllegalArgument => SYS_ILLEGAL_ARGUMENT,
                     _ => panic!("create failed with unknown error: {}", e),
                 },
                 "failed to create actor".into(),
@@ -356,7 +362,7 @@ where
         pieces: &[PieceInfo],
     ) -> Result<Cid, Error> {
         // The only actor that invokes this (market actor) is generating the
-        // exit code ErrIllegalArgument. We should probably move that here, or to the syscall itself.
+        // exit code USR_ILLEGAL_ARGUMENT. We should probably move that here, or to the syscall itself.
         fvm::crypto::compute_unsealed_sector_cid(proof_type, pieces)
             .map_err(|e| anyhow!("failed to compute unsealed sector CID; exit code: {}", e))
     }
@@ -439,16 +445,13 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     let mut rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
     let ret = C::invoke_method(&mut rt, method, &params)
-        .unwrap_or_else(|err| fvm::vm::abort(err.exit_code() as u32, Some(err.msg())));
+        .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));
 
     // Abort with "illegal actor" if the actor failed to validate the caller somewhere.
     // We do this after handling the error, because the actor may have encountered an error before
     // it even could validate the caller.
     if !rt.caller_validated {
-        fvm::vm::abort(
-            ExitCode::SysErrIllegalActor as u32,
-            Some("failed to validate caller"),
-        )
+        fvm::vm::abort(SYS_ILLEGAL_ACTOR.value(), Some("failed to validate caller"))
     }
 
     // Then handle the return value.
