@@ -29,7 +29,7 @@ fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
     rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
 
     expect_abort(
-        ExitCode::ErrIllegalArgument,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MultisigActor>(
             Method::Constructor as u64,
             &RawBytes::serialize(&zero_signer_params).unwrap(),
@@ -56,7 +56,7 @@ fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
     rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
     rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
     expect_abort(
-        ExitCode::ErrIllegalArgument,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MultisigActor>(
             Method::Constructor as u64,
             &RawBytes::serialize(&over_max_signers_params).unwrap(),
