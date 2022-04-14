@@ -113,7 +113,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         };
 
         let cid = bundler
-            .add_from_file((*id).try_into().unwrap(), Some(&forced_cid), &bytecode_path)
+            .add_from_file(id, Some(&forced_cid), &bytecode_path)
             .unwrap_or_else(|err| {
                 panic!(
                     "failed to add file {:?} to bundle for actor {}: {}",
