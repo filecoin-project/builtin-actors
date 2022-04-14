@@ -152,11 +152,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         // content-addressed CIDs.
         let forced_cid = None;
 
-        let cid = bundler
-            .add_from_file((*id).try_into().unwrap(), forced_cid, &bytecode_path)
-            .unwrap_or_else(|err| {
-                panic!("failed to add file {:?} to bundle for actor {}: {}", bytecode_path, id, err)
-            });
+        let cid = bundler.add_from_file(id, forced_cid, &bytecode_path).unwrap_or_else(|err| {
+            panic!("failed to add file {:?} to bundle for actor {}: {}", bytecode_path, id, err)
+        });
         println!("cargo:warning=added actor {} to bundle with CID {}", id, cid);
     }
     bundler.finish().expect("failed to finish bundle");
