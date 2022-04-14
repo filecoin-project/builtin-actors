@@ -19,16 +19,16 @@ impl fvm_ipld_blockstore::Blockstore for ActorBlockstore {
     fn get(&self, cid: &Cid) -> Result<Option<Vec<u8>>> {
         // If this fails, the _CID_ is invalid. I.e., we have a bug.
         fvm::ipld::get(cid).map(Some).map_err(|c| {
-            actor_error!(ErrIllegalState; "get failed with {:?} on CID '{}'", c, cid).into()
+            actor_error!(USR_ILLEGAL_STATE; "get failed with {:?} on CID '{}'", c, cid).into()
         })
     }
 
     fn put_keyed(&self, k: &Cid, block: &[u8]) -> Result<()> {
         let code = Code::try_from(k.hash().code())
-            .map_err(|e| actor_error!(ErrSerialization, e.to_string()))?;
+            .map_err(|e| actor_error!(USR_SERIALIZATION, e.to_string()))?;
         let k2 = self.put(code, &Block::new(k.codec(), block))?;
         if k != &k2 {
-            Err(actor_error!(ErrSerialization; "put block with cid {} but has cid {}", k, k2)
+            Err(actor_error!(USR_SERIALIZATION; "put block with cid {} but has cid {}", k, k2)
                 .into())
         } else {
             Ok(())
@@ -43,7 +43,7 @@ impl fvm_ipld_blockstore::Blockstore for ActorBlockstore {
         //  codec at the moment.
         const SIZE: u32 = 32;
         let k = fvm::ipld::put(code.into(), SIZE, block.codec, block.data.as_ref())
-            .map_err(|c| actor_error!(ErrIllegalState; "put failed with {:?}", c))?;
+            .map_err(|c| actor_error!(USR_ILLEGAL_STATE; "put failed with {:?}", c))?;
         Ok(k)
     }
 }

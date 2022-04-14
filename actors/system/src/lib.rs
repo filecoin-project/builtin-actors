@@ -58,7 +58,7 @@ impl ActorCode for Actor {
                 Self::constructor(rt)?;
                 Ok(RawBytes::default())
             }
-            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            None => Err(actor_error!(SYS_INVALID_METHOD; "Invalid method")),
         }
     }
 }

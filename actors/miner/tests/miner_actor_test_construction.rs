@@ -87,7 +87,7 @@ fn simple_construction() {
         RawBytes::default(),
         TokenAmount::from(0),
         RawBytes::serialize(env.worker_key).unwrap(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     let result = env
@@ -160,7 +160,7 @@ fn control_addresses_are_resolved_during_construction() {
         RawBytes::default(),
         TokenAmount::from(0),
         RawBytes::serialize(env.worker_key).unwrap(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     let result = env
@@ -194,14 +194,14 @@ fn fails_if_control_address_is_not_an_account_actor() {
         RawBytes::default(),
         TokenAmount::from(0),
         RawBytes::serialize(env.worker_key).unwrap(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     let result = env
         .rt
         .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap_err();
-    assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+    assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
 }
 
@@ -217,7 +217,7 @@ fn test_construct_with_invalid_peer_id() {
         .rt
         .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap_err();
-    assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+    assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
 }
 
@@ -236,7 +236,7 @@ fn fails_if_control_addresses_exceeds_maximum_length() {
         .rt
         .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap_err();
-    assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+    assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
 }
 
@@ -255,7 +255,7 @@ fn test_construct_with_large_multiaddr() {
         .rt
         .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap_err();
-    assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+    assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
 }
 
@@ -273,6 +273,6 @@ fn test_construct_with_empty_multiaddr() {
         .rt
         .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
         .unwrap_err();
-    assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+    assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
 }

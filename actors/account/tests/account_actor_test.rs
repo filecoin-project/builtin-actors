@@ -51,18 +51,18 @@ macro_rules! account_tests {
 account_tests! {
     happy_construct_secp256k1_address: (
         Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap(),
-        ExitCode::Ok
+        ExitCode::OK
     ),
     happy_construct_bls_address: (
         Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap(),
-        ExitCode::Ok
+        ExitCode::OK
     ),
     fail_construct_id_address: (
         Address::new_id(1),
-        ExitCode::ErrIllegalArgument
+        ExitCode::USR_ILLEGAL_ARGUMENT
     ),
     fail_construct_actor_address: (
         Address::new_actor(&[1, 2, 3]),
-        ExitCode::ErrIllegalArgument
+        ExitCode::USR_ILLEGAL_ARGUMENT
     ),
 }

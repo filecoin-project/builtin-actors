@@ -91,7 +91,7 @@ impl ActorHarness {
     ) -> RawBytes {
         let ret = self.approve(rt, txn_id, proposal_hash).unwrap();
         let approve_ret = ret.deserialize::<ApproveReturn>().unwrap();
-        assert_eq!(ExitCode::Ok, approve_ret.code);
+        assert_eq!(ExitCode::OK, approve_ret.code);
         approve_ret.ret
     }
 

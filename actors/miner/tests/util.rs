@@ -113,7 +113,7 @@ impl ActorHarness {
             RawBytes::default(),
             TokenAmount::from(0),
             RawBytes::serialize(self.worker_key).unwrap(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
         let result = rt
@@ -153,7 +153,7 @@ impl ActorHarness {
         let result = rt
             .call::<Actor>(Method::ChangePeerID as u64, &RawBytes::serialize(params).unwrap())
             .unwrap_err();
-        assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+        assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
         rt.verify();
     }
 
@@ -187,7 +187,7 @@ impl ActorHarness {
         let result = rt
             .call::<Actor>(Method::ChangeMultiaddrs as u64, &RawBytes::serialize(params).unwrap())
             .unwrap_err();
-        assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+        assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
         rt.verify();
     }
 

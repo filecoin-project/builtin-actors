@@ -36,7 +36,7 @@ fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
     rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
 
     expect_abort(
-        ExitCode::ErrIllegalArgument,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MultisigActor>(
             Method::Constructor as u64,
             &RawBytes::serialize(&zero_signer_params).unwrap(),
@@ -64,7 +64,7 @@ fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
     rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
     rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
     expect_abort(
-        ExitCode::ErrIllegalArgument,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MultisigActor>(
             Method::Constructor as u64,
             &RawBytes::serialize(&over_max_signers_params).unwrap(),
@@ -169,7 +169,7 @@ fn test_approve_simple_propose_and_approval() {
     // approval
     rt.set_balance(send_value.clone());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-    rt.expect_send(chuck, fake_method, fake_params, send_value, fake_ret, ExitCode::Ok);
+    rt.expect_send(chuck, fake_method, fake_params, send_value, fake_ret, ExitCode::OK);
     h.approve_ok(&mut rt, TxnID(0), proposal_hash);
     h.assert_transactions(&rt, vec![]);
 }

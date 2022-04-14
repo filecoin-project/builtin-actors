@@ -49,7 +49,7 @@ mod construction {
 
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
         expect_abort(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<VerifregActor>(
                 Method::Constructor as MethodNum,
                 &RawBytes::serialize(root_pubkey).unwrap(),
@@ -68,7 +68,7 @@ mod verifiers {
     use fil_actor_verifreg::{
         Actor as VerifregActor, AddVerifierParams, DataCap, Method, MINIMUM_VERIFIED_DEAL_SIZE,
     };
-    use fil_actors_runtime::test_utils::*;
+    use fil_actors_runtime::{test_utils::*, SYS_FORBIDDEN};
 
     use crate::{harness, VERIFIER_ALLOWANCE};
     use harness::*;
@@ -83,7 +83,7 @@ mod verifiers {
             allowance: VERIFIER_ALLOWANCE.clone(),
         };
         expect_abort(
-            ExitCode::SysErrForbidden,
+            SYS_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::AddVerifier as MethodNum,
                 &RawBytes::serialize(params).unwrap(),
@@ -97,7 +97,7 @@ mod verifiers {
         let (h, mut rt) = new_harness();
         let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() - DataCap::from(1);
         expect_abort(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_verifier(&mut rt, &Address::new_id(201), &allowance),
         );
         h.check_state();
@@ -107,7 +107,7 @@ mod verifiers {
     fn add_verifier_rejects_root() {
         let (h, mut rt) = new_harness();
         expect_abort(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_verifier(&mut rt, &ROOT_ADDR, &VERIFIER_ALLOWANCE),
         );
         h.check_state();
@@ -125,7 +125,7 @@ mod verifiers {
             &VERIFIER_ALLOWANCE,
         );
         expect_abort(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_verifier(&mut rt, &client, &VERIFIER_ALLOWANCE),
         );
         h.check_state();
@@ -143,10 +143,10 @@ mod verifiers {
             RawBytes::default(),
             TokenAmount::default(),
             RawBytes::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
         expect_abort(
-            ExitCode::ErrIllegalState,
+            ExitCode::USR_ILLEGAL_STATE,
             h.add_verifier(&mut rt, &verifier_key_address, &VERIFIER_ALLOWANCE),
         );
         h.check_state();
@@ -180,7 +180,7 @@ mod verifiers {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
         assert_ne!(h.root, caller);
         expect_abort(
-            ExitCode::SysErrForbidden,
+            SYS_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::RemoveVerifier as MethodNum,
                 &RawBytes::serialize(verifier).unwrap(),
@@ -193,7 +193,7 @@ mod verifiers {
     fn remove_requires_verifier_exists() {
         let (h, mut rt) = new_harness();
         let verifier = Address::new_id(501);
-        expect_abort(ExitCode::ErrIllegalArgument, h.remove_verifier(&mut rt, &verifier));
+        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.remove_verifier(&mut rt, &verifier));
         h.check_state();
     }
 
@@ -278,7 +278,7 @@ mod clients {
         h.add_client(&mut rt, &verifier, &client1, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE).unwrap();
         let client2 = Address::new_id(302);
         expect_abort(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &verifier, &client2, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE),
         );
 
@@ -337,11 +337,11 @@ mod clients {
             RawBytes::default(),
             TokenAmount::default(),
             RawBytes::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
         expect_abort(
-            ExitCode::ErrIllegalState,
+            ExitCode::USR_ILLEGAL_STATE,
             h.add_client(&mut rt, &verifier, &client, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE),
         );
         h.check_state();
@@ -356,7 +356,7 @@ mod clients {
         let client = Address::new_id(301);
         let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() - DataCap::from(1);
         expect_abort(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &verifier, &client, &allowance, &allowance),
         );
         h.check_state();
@@ -375,7 +375,7 @@ mod clients {
         let params =
             AddVerifierClientParams { address: client, allowance: CLIENT_ALLOWANCE.clone() };
         expect_abort(
-            ExitCode::ErrNotFound,
+            ExitCode::USR_NOT_FOUND,
             rt.call::<VerifregActor>(
                 Method::AddVerifiedClient as MethodNum,
                 &RawBytes::serialize(params).unwrap(),
@@ -392,7 +392,7 @@ mod clients {
 
         let allowance = VERIFIER_ALLOWANCE.clone() + DataCap::from(1);
         expect_abort(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &verifier, &h.root, &allowance, &allowance),
         );
         h.check_state();
@@ -404,7 +404,7 @@ mod clients {
         let verifier = Address::new_id(201);
         h.add_verifier(&mut rt, &verifier, &VERIFIER_ALLOWANCE).unwrap();
         expect_abort(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &verifier, &h.root, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE),
         );
         h.check_state();
@@ -416,14 +416,14 @@ mod clients {
         let verifier = Address::new_id(201);
         h.add_verifier(&mut rt, &verifier, &VERIFIER_ALLOWANCE).unwrap();
         expect_abort(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &verifier, &verifier, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE),
         );
 
         let another_verifier = Address::new_id(202);
         h.add_verifier(&mut rt, &another_verifier, &VERIFIER_ALLOWANCE).unwrap();
         expect_abort(
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(
                 &mut rt,
                 &verifier,
