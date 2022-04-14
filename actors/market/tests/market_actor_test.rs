@@ -15,11 +15,11 @@ use fil_actors_runtime::{
     SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::EPOCH_UNDEFINED;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 

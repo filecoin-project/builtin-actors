@@ -3,8 +3,8 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, wasm_trampoline, ActorError, SYSTEM_ACTOR_ADDR};
-use fvm_shared::blockstore::Blockstore;
-use fvm_shared::encoding::{Cbor, RawBytes};
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;

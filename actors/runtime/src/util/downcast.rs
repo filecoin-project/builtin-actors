@@ -3,9 +3,8 @@
 
 use anyhow::anyhow;
 use fvm_ipld_amt::Error as AmtError;
+use fvm_ipld_encoding::Error as EncodingError;
 use fvm_ipld_hamt::Error as HamtError;
-use fvm_shared::encoding::error::Error as CborError;
-use fvm_shared::encoding::Error as EncodingError;
 use fvm_shared::error::ExitCode;
 
 use crate::ActorError;
@@ -79,18 +78,6 @@ fn downcast_util(error: anyhow::Error) -> anyhow::Result<ActorError> {
 
     // Check if error is Encoding error, if so return `ErrSerialization`
     let error = match error.downcast::<EncodingError>() {
-        Ok(enc_error) => {
-            return Ok(ActorError::new(
-                ExitCode::ErrSerialization,
-                enc_error.to_string(),
-            ))
-        }
-        Err(other) => other,
-    };
-
-    // Check also for Cbor error to be safe. All should be converted to EncodingError, but to
-    // future proof.
-    let error = match error.downcast::<CborError>() {
         Ok(enc_error) => {
             return Ok(ActorError::new(
                 ExitCode::ErrSerialization,

@@ -4,12 +4,12 @@
 use bitfield::BitField;
 use cid::Cid;
 use fil_actors_runtime::{Array, DealWeight};
+use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
 use fvm_shared::sector::RegisteredSealProof;
 
 use super::deal::{ClientDealProposal, DealProposal, DealState};

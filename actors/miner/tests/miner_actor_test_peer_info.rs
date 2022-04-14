@@ -1,6 +1,6 @@
 use fil_actors_runtime::test_utils::*;
 
-use fvm_shared::encoding::BytesDe;
+use fvm_ipld_encoding::BytesDe;
 
 mod util;
 
