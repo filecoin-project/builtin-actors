@@ -147,9 +147,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             Cid::new_v1(IPLD_RAW, Multihash::wrap(0, identity.as_bytes())?)
         };
 
-        let cid = bundler
-            .add_from_file((*id).try_into().unwrap(), Some(&forced_cid), &bytecode_path)
-            .unwrap_or_else(|err| {
+        let cid =
+            bundler.add_from_file(id, Some(&forced_cid), &bytecode_path).unwrap_or_else(|err| {
                 panic!("failed to add file {:?} to bundle for actor {}: {}", bytecode_path, id, err)
             });
         println!("cargo:warning=added actor {} to bundle with CID {}", id, cid);
