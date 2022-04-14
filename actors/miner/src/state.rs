@@ -132,7 +132,7 @@ impl State {
         let empty_precommit_map =
             make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to construct empty precommit map",
                 )
             })?;
@@ -141,7 +141,7 @@ impl State {
                 .flush()
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         "failed to construct empty precommits array",
                     )
                 })?;
@@ -150,27 +150,27 @@ impl State {
                 .flush()
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         "failed to construct sectors array",
                     )
                 })?;
         let empty_bitfield = store.put_cbor(&BitField::new(), Code::Blake2b256).map_err(|e| {
-            e.downcast_default(ExitCode::ErrIllegalState, "failed to construct empty bitfield")
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct empty bitfield")
         })?;
         let deadline = Deadline::new(store)?;
         let empty_deadline = store.put_cbor(&deadline, Code::Blake2b256).map_err(|e| {
-            e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
         })?;
 
         let empty_deadlines = store
             .put_cbor(&Deadlines::new(policy, empty_deadline), Code::Blake2b256)
             .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
             })?;
 
         let empty_vesting_funds_cid =
             store.put_cbor(&VestingFunds::new(), Code::Blake2b256).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
             })?;
 
         Ok(Self {
@@ -199,7 +199,7 @@ impl State {
     pub fn get_info<BS: Blockstore>(&self, store: &BS) -> anyhow::Result<MinerInfo> {
         match store.get_cbor(&self.info) {
             Ok(Some(info)) => Ok(info),
-            Ok(None) => Err(actor_error!(ErrNotFound, "failed to get miner info").into()),
+            Ok(None) => Err(actor_error!(USR_NOT_FOUND, "failed to get miner info").into()),
             Err(e) => Err(e.downcast_wrap("failed to get miner info")),
         }
     }
@@ -255,11 +255,13 @@ impl State {
             .get_cbor(&self.allocated_sectors)
             .map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to load allocated sectors bitfield",
                 )
             })?
-            .ok_or_else(|| actor_error!(ErrIllegalState, "allocated sectors bitfield not found"))?;
+            .ok_or_else(|| {
+                actor_error!(USR_ILLEGAL_STATE, "allocated sectors bitfield not found")
+            })?;
 
         if policy != CollisionPolicy::AllowCollisions {
             // NOTE: A fancy merge algorithm could extract this intersection while merging, below, saving
@@ -267,7 +269,7 @@ impl State {
             let collisions = &prior_allocation & sector_numbers;
             if !collisions.is_empty() {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    USR_ILLEGAL_ARGUMENT,
                     "sector numbers {:?} already allocated",
                     collisions
                 ));
@@ -277,7 +279,7 @@ impl State {
         self.allocated_sectors =
             store.put_cbor(&new_allocation, Code::Blake2b256).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalArgument,
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
                     format!(
                         "failed to store allocated sectors bitfield after adding {:?}",
                         sector_numbers,
@@ -643,7 +645,7 @@ impl State {
         let exists = partition.sectors.get(sector_number);
         if !exists {
             return Err(actor_error!(
-                ErrNotFound;
+                USR_NOT_FOUND;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
             )
@@ -683,7 +685,7 @@ impl State {
 
         if !partition.sectors.get(sector_number) {
             return Err(actor_error!(
-                ErrNotFound;
+                USR_NOT_FOUND;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
             )
@@ -692,7 +694,7 @@ impl State {
 
         if partition.faults.get(sector_number) {
             return Err(actor_error!(
-                ErrForbidden;
+                USR_FORBIDDEN;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
             )
@@ -701,7 +703,7 @@ impl State {
 
         if partition.terminated.get(sector_number) {
             return Err(actor_error!(
-                ErrNotFound;
+                USR_NOT_FOUND;
                 "sector {} not of partition {}, deadline {} is terminated",
                 sector_number, partition_idx, deadline_idx
             )
@@ -723,9 +725,11 @@ impl State {
     pub fn load_deadlines<BS: Blockstore>(&self, store: &BS) -> Result<Deadlines, ActorError> {
         store
             .get_cbor::<Deadlines>(&self.deadlines)
-            .map_err(|e| e.downcast_default(ExitCode::ErrIllegalState, "failed to load deadlines"))?
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deadlines")
+            })?
             .ok_or_else(
-                || actor_error!(ErrIllegalState; "failed to load deadlines {}", self.deadlines),
+                || actor_error!(USR_ILLEGAL_STATE; "failed to load deadlines {}", self.deadlines),
             )
     }
 
@@ -747,7 +751,7 @@ impl State {
                     format!("failed to load vesting funds {}", self.vesting_funds),
                 )
             })?
-            .ok_or_else(|| actor_error!(ErrNotFound; "failed to load vesting funds {:?}", self.vesting_funds))?)
+            .ok_or_else(|| actor_error!(USR_NOT_FOUND; "failed to load vesting funds {:?}", self.vesting_funds))?)
     }
 
     /// Saves the vesting table to the store.
@@ -883,7 +887,7 @@ impl State {
         let unlocked_balance = self.get_unlocked_balance(curr_balance)?;
         if unlocked_balance < self.fee_debt {
             return Err(actor_error!(
-                ErrInsufficientFunds,
+                USR_INSUFFICIENT_FUNDS,
                 "unlocked balance can not repay fee debt ({} < {})",
                 unlocked_balance,
                 self.fee_debt
@@ -1174,13 +1178,13 @@ impl State {
         for sector_no in sector_nos.iter() {
             if sector_no as u64 > MAX_SECTOR_NUMBER {
                 return Err(
-                    actor_error!(ErrIllegalArgument; "sector number greater than maximum").into()
+                    actor_error!(USR_ILLEGAL_ARGUMENT; "sector number greater than maximum").into(),
                 );
             }
             let info: &SectorPreCommitOnChainInfo =
                 precommitted
                     .get(&u64_key(sector_no as u64))?
-                    .ok_or_else(|| actor_error!(ErrNotFound, "sector {} not found", sector_no))?;
+                    .ok_or_else(|| actor_error!(USR_NOT_FOUND, "sector {} not found", sector_no))?;
             precommits.push(info.clone());
         }
         Ok(precommits)
@@ -1257,11 +1261,11 @@ impl MinerInfo {
     ) -> Result<Self, ActorError> {
         let sector_size = window_post_proof_type
             .sector_size()
-            .map_err(|e| actor_error!(ErrIllegalArgument, "invalid sector size: {}", e))?;
+            .map_err(|e| actor_error!(USR_ILLEGAL_ARGUMENT, "invalid sector size: {}", e))?;
 
         let window_post_partition_sectors = window_post_proof_type
             .window_post_partitions_sector()
-            .map_err(|e| actor_error!(ErrIllegalArgument, "invalid partition sectors: {}", e))?;
+            .map_err(|e| actor_error!(USR_ILLEGAL_ARGUMENT, "invalid partition sectors: {}", e))?;
 
         Ok(Self {
             owner,

@@ -60,7 +60,7 @@ impl Actor {
         if let Err(e) = result {
             Ok(SendReturn { return_value: RawBytes::default(), code: e.exit_code() })
         } else {
-            Ok(SendReturn { return_value: result.unwrap(), code: ExitCode::Ok })
+            Ok(SendReturn { return_value: result.unwrap(), code: ExitCode::OK })
         }
     }
 
@@ -164,7 +164,7 @@ impl Actor {
                 Ok(())
             }),
 
-            _ => Err(actor_error!(ErrIllegalArgument; "Invalid mutate state command given" )),
+            _ => Err(actor_error!(USR_ILLEGAL_ARGUMENT; "Invalid mutate state command given" )),
         }
     }
 
@@ -246,7 +246,7 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(inspect)?)
             }
 
-            None => Err(actor_error!(SysErrInvalidMethod; "Invalid method")),
+            None => Err(actor_error!(SYS_INVALID_METHOD; "Invalid method")),
         }
     }
 }

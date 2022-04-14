@@ -149,7 +149,7 @@ fn account_actor_check() {
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
 
     assert_eq!(
-        ExitCode::ErrForbidden,
+        ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
             Method::AddBalance as u64,
             &RawBytes::serialize(provider_addr).unwrap(),
@@ -222,7 +222,7 @@ fn withdraw_provider_to_owner() {
         RawBytes::default(),
         withdraw_amount.clone(),
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     let params =
@@ -261,7 +261,7 @@ fn withdraw_non_provider() {
         RawBytes::default(),
         withdraw_amount.clone(),
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     let params = WithdrawBalanceParams { provider_or_client: client_addr, amount: withdraw_amount };
@@ -296,7 +296,7 @@ fn client_withdraw_more_than_available() {
         RawBytes::default(),
         amount,
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     let params = WithdrawBalanceParams { provider_or_client: client_addr, amount: withdraw_amount };
@@ -335,7 +335,7 @@ fn worker_withdraw_more_than_available() {
         RawBytes::default(),
         amount,
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     let params =
@@ -370,7 +370,7 @@ fn expect_provider_control_address(
         RawBytes::default(),
         TokenAmount::from(0u8),
         RawBytes::serialize(return_value).unwrap(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 }
 

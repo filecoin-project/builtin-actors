@@ -13,7 +13,7 @@ use fil_actor_paych::{
     SETTLE_DELAY,
 };
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime::{INIT_ACTOR_ADDR, USR_PLACEHOLDER};
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -105,7 +105,7 @@ mod paych_constructor {
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(params).unwrap(),
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
         );
     }
 
@@ -128,7 +128,7 @@ mod paych_constructor {
             caller_code: *INIT_ACTOR_CODE_ID,
             new_actor_code: *MULTISIG_ACTOR_CODE_ID,
             payer_code: *ACCOUNT_ACTOR_CODE_ID,
-            expected_exit_code: ExitCode::ErrForbidden,
+            expected_exit_code: ExitCode::USR_FORBIDDEN,
         }];
 
         for test_case in test_cases {
@@ -198,7 +198,7 @@ mod create_lane_tests {
         sig: Option<Signature>,
         #[builder(default = "true")]
         verify_sig: bool,
-        #[builder(default = "ExitCode::ErrIllegalArgument")]
+        #[builder(default = "ExitCode::USR_ILLEGAL_ARGUMENT")]
         exp_exit_code: ExitCode,
     }
     impl TestCase {
@@ -220,7 +220,7 @@ mod create_lane_tests {
             TestCase::builder()
                 .desc("succeeds".to_string())
                 .sig(sig.clone())
-                .exp_exit_code(ExitCode::Ok)
+                .exp_exit_code(ExitCode::OK)
                 .build()
                 .unwrap(),
             TestCase::builder()
@@ -316,7 +316,7 @@ mod create_lane_tests {
                 });
             }
 
-            if test_case.exp_exit_code == ExitCode::Ok {
+            if test_case.exp_exit_code == ExitCode::OK {
                 call(
                     &mut rt,
                     Method::UpdateChannelState as u64,
@@ -513,28 +513,28 @@ mod merge_tests {
                 voucher: 10,
                 balance: 0,
                 merge: 1,
-                exit: ExitCode::ErrIllegalArgument,
+                exit: ExitCode::USR_ILLEGAL_ARGUMENT,
             },
             TestCase {
                 lane: 1,
                 voucher: 0,
                 balance: 0,
                 merge: 10,
-                exit: ExitCode::ErrIllegalArgument,
+                exit: ExitCode::USR_ILLEGAL_ARGUMENT,
             },
             TestCase {
                 lane: 1,
                 voucher: 10,
                 balance: 1,
                 merge: 10,
-                exit: ExitCode::ErrIllegalArgument,
+                exit: ExitCode::USR_ILLEGAL_ARGUMENT,
             },
             TestCase {
                 lane: 0,
                 voucher: 10,
                 balance: 0,
                 merge: 10,
-                exit: ExitCode::ErrIllegalArgument,
+                exit: ExitCode::USR_ILLEGAL_ARGUMENT,
             },
         ];
 
@@ -569,7 +569,7 @@ mod merge_tests {
             signer: Address::new_id(PAYEE_ID),
             result: Ok(()),
         });
-        failure_end(&mut rt, sv, ExitCode::ErrIllegalArgument);
+        failure_end(&mut rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
     }
 
     #[test]
@@ -579,11 +579,12 @@ mod merge_tests {
         sv.lane = MAX_LANE + 1;
         sv.nonce += 1;
         sv.amount = BigInt::from(100);
-        failure_end(&mut rt, sv, ExitCode::ErrIllegalArgument);
+        failure_end(&mut rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
     }
 }
 
 mod update_channel_state_extra {
+
     use super::*;
 
     const OTHER_ADDR: u64 = 104;
@@ -625,7 +626,7 @@ mod update_channel_state_extra {
     #[test]
     #[ignore = "old functionality -- test framework needs to be updated"]
     fn extra_call_succeed() {
-        let (mut rt, sv) = construct_runtime(ExitCode::Ok);
+        let (mut rt, sv) = construct_runtime(ExitCode::OK);
         call(
             &mut rt,
             Method::UpdateChannelState as u64,
@@ -637,12 +638,12 @@ mod update_channel_state_extra {
     #[test]
     #[ignore = "old functionality -- test framework needs to be updated"]
     fn extra_call_fail() {
-        let (mut rt, sv) = construct_runtime(ExitCode::ErrPlaceholder);
+        let (mut rt, sv) = construct_runtime(USR_PLACEHOLDER);
         expect_error(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
-            ExitCode::ErrPlaceholder,
+            USR_PLACEHOLDER,
         );
         rt.verify();
     }
@@ -745,7 +746,7 @@ mod secret_preimage {
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(ucp).unwrap(),
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
         );
 
         rt.verify();
@@ -786,7 +787,7 @@ mod actor_settle {
             &mut rt,
             Method::Settle as u64,
             &RawBytes::default(),
-            ExitCode::ErrIllegalState,
+            ExitCode::USR_ILLEGAL_STATE,
         );
     }
 
@@ -852,7 +853,7 @@ mod actor_collect {
             Default::default(),
             st.to_send.clone(),
             Default::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
         // Collect.
@@ -875,14 +876,14 @@ mod actor_collect {
             // fails if not settling with: payment channel not settling or settled
             TestCase {
                 dont_settle: true,
-                exp_send_to: ExitCode::Ok,
-                exp_collect_exit: ExitCode::ErrForbidden,
+                exp_send_to: ExitCode::OK,
+                exp_collect_exit: ExitCode::USR_FORBIDDEN,
             },
             // fails if Failed to send funds to `To`
             TestCase {
                 dont_settle: false,
-                exp_send_to: ExitCode::ErrPlaceholder,
-                exp_collect_exit: ExitCode::ErrPlaceholder,
+                exp_send_to: USR_PLACEHOLDER,
+                exp_collect_exit: USR_PLACEHOLDER,
             },
         ];
 
