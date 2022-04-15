@@ -187,7 +187,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         mut expect_txns: Vec<(TxnID, Transaction)>,
     ) {
-        let st = rt.get_state::<State>().unwrap();
+        let st: State = rt.get_state();
         let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &rt.store).unwrap();
         let mut actual_txns = Vec::new();
         ptx.for_each(|k, txn: &Transaction| {

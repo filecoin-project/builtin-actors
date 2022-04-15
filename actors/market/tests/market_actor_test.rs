@@ -48,7 +48,7 @@ fn setup() -> MockRuntime {
 }
 
 fn get_escrow_balance(rt: &MockRuntime, addr: &Address) -> Result<TokenAmount, ActorError> {
-    let st: State = rt.get_state()?;
+    let st: State = rt.get_state();
 
     let et = BalanceTable::from_root(rt.store(), &st.escrow_table).unwrap();
 
@@ -85,7 +85,7 @@ fn simple_construction() {
         Amt::<(), _>::new_with_bit_width(store, STATES_AMT_BITWIDTH).flush().unwrap();
     let empty_multimap = SetMultimap::new(store).root().unwrap();
 
-    let state_data: State = rt.get_state().unwrap();
+    let state_data: State = rt.get_state();
 
     assert_eq!(empty_proposals_array, state_data.proposals);
     assert_eq!(empty_states_array, state_data.states);

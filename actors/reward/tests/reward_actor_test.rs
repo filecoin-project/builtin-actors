@@ -35,7 +35,7 @@ mod construction_tests {
         let start_realized_power = StoragePower::from(0);
         let rt = construct_and_verify(&start_realized_power);
 
-        let state: State = rt.get_state().unwrap();
+        let state: State = rt.get_state();
 
         assert_eq!(ChainEpoch::from(0), state.epoch);
         assert_eq!(start_realized_power, state.cumsum_realized);
@@ -49,7 +49,7 @@ mod construction_tests {
         let start_realized_power = StoragePower::from(1_i64 << 39);
         let rt = construct_and_verify(&start_realized_power);
 
-        let state: State = rt.get_state().unwrap();
+        let state: State = rt.get_state();
         assert_eq!(ChainEpoch::from(0), state.epoch);
         assert_eq!(start_realized_power, state.cumsum_realized);
         assert_ne!(TokenAmount::from(0), state.this_epoch_reward);
@@ -60,14 +60,14 @@ mod construction_tests {
         let mut start_realized_power = BASELINE_INITIAL_VALUE.clone();
         let rt = construct_and_verify(&start_realized_power);
 
-        let state: State = rt.get_state().unwrap();
+        let state: State = rt.get_state();
         let reward = state.this_epoch_reward;
 
         // start with 2x power
         start_realized_power *= 2;
         let rt = construct_and_verify(&start_realized_power);
 
-        let state: State = rt.get_state().unwrap();
+        let state: State = rt.get_state();
         assert_eq!(reward, state.this_epoch_reward);
     }
 }
@@ -208,7 +208,7 @@ mod test_award_block_reward {
     #[test]
     fn total_mined_tracks_correctly() {
         let mut rt = construct_and_verify(&StoragePower::from(1));
-        let mut state: State = rt.get_state().unwrap();
+        let mut state: State = rt.get_state();
 
         assert_eq!(TokenAmount::from(0), state.total_storage_power_reward);
         state.this_epoch_reward = TokenAmount::from(5000);
@@ -230,7 +230,7 @@ mod test_award_block_reward {
             .is_ok());
         }
 
-        let new_state: State = rt.get_state().unwrap();
+        let new_state: State = rt.get_state();
         assert_eq!(total_payout, new_state.total_storage_power_reward);
     }
 
@@ -239,7 +239,7 @@ mod test_award_block_reward {
     #[ignore = "invalidated -- update"]
     fn funds_are_sent_to_burnt_funds_actor_if_sending_locked_funds_to_miner_fails() {
         let mut rt = construct_and_verify(&StoragePower::from(1));
-        let mut state: State = rt.get_state().unwrap();
+        let mut state: State = rt.get_state();
 
         assert_eq!(TokenAmount::from(0), state.total_storage_power_reward);
         state.this_epoch_reward = TokenAmount::from(5000);
@@ -290,7 +290,7 @@ mod test_this_epoch_reward {
     fn successfully_fetch_reward_for_this_epoch() {
         let mut rt = construct_and_verify(&StoragePower::from(1));
 
-        let state: State = rt.get_state().unwrap();
+        let state: State = rt.get_state();
 
         let resp: ThisEpochRewardReturn = this_epoch_reward(&mut rt);
 

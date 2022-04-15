@@ -83,7 +83,7 @@ impl Harness {
 
     pub fn construct_and_verify(&self, rt: &mut MockRuntime) {
         self.construct(rt);
-        let st: State = rt.get_state().unwrap();
+        let st: State = rt.get_state();
         assert_eq!(StoragePower::zero(), st.total_raw_byte_power);
         assert_eq!(StoragePower::zero(), st.total_bytes_committed);
         assert_eq!(StoragePower::zero(), st.total_quality_adj_power);
@@ -154,7 +154,7 @@ impl Harness {
     }
 
     pub fn list_miners(&self, rt: &MockRuntime) -> Vec<Address> {
-        let st: State = rt.get_state().unwrap();
+        let st: State = rt.get_state();
         let claims: Map<_, Claim> =
             make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).unwrap();
         let keys = collect_keys(claims).unwrap();
@@ -162,7 +162,7 @@ impl Harness {
     }
 
     pub fn get_claim(&self, rt: &MockRuntime, miner: &Address) -> Option<Claim> {
-        let st: State = rt.get_state().unwrap();
+        let st: State = rt.get_state();
         let claims =
             make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).unwrap();
         claims.get(&miner.to_bytes()).unwrap().cloned()

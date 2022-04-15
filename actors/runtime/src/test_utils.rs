@@ -357,29 +357,72 @@ pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorErro
 }
 
 impl MockRuntime {
-    fn require_in_call(&self) {
-        assert!(self.in_call, "invalid runtime invocation outside of method call",)
-    }
-    fn put<C: Cbor>(&self, o: &C) -> Result<Cid, ActorError> {
-        Ok(self.store.put_cbor(&o, Code::Blake2b256).unwrap())
-    }
-    fn _get<T: DeserializeOwned>(&self, cid: Cid) -> Result<T, ActorError> {
-        Ok(self.store.get_cbor(&cid).unwrap().unwrap())
+    ///// Runtime access for tests /////
+
+    pub fn get_state<T: Cbor>(&self) -> T {
+        self.store_get(self.state.as_ref().unwrap())
     }
 
-    #[allow(dead_code)]
-    pub fn get_state<T: Cbor>(&self) -> Result<T, ActorError> {
-        // TODO this doesn't handle errors exactly as go implementation
-        self.state()
+    pub fn replace_state<C: Cbor>(&mut self, obj: &C) {
+        self.state = Some(self.store.put_cbor(obj, Code::Blake2b256).unwrap());
     }
 
-    #[allow(dead_code)]
+    pub fn set_balance(&mut self, amount: TokenAmount) {
+        *self.balance.get_mut() = amount;
+    }
+
+    pub fn add_balance(&mut self, amount: TokenAmount) {
+        *self.balance.get_mut() += amount;
+    }
+
+    pub fn set_value(&mut self, value: TokenAmount) {
+        self.value_received = value;
+    }
+
+    pub fn set_caller(&mut self, code_id: Cid, address: Address) {
+        self.caller = address;
+        self.caller_type = code_id;
+        self.actor_code_cids.insert(address, code_id);
+    }
+
+    pub fn set_address_actor_type(&mut self, address: Address, actor_type: Cid) {
+        self.actor_code_cids.insert(address, actor_type);
+    }
+
     pub fn get_id_address(&self, address: &Address) -> Option<Address> {
         if address.protocol() == Protocol::ID {
             return Some(*address);
         }
         self.id_addresses.get(address).cloned()
     }
+
+    pub fn call<A: ActorCode>(
+        &mut self,
+        method_num: MethodNum,
+        params: &RawBytes,
+    ) -> Result<RawBytes, ActorError> {
+        self.in_call = true;
+        let prev_state = self.state;
+        let res = A::invoke_method(self, method_num, params);
+
+        if res.is_err() {
+            self.state = prev_state;
+        }
+        self.in_call = false;
+        res
+    }
+
+    /// Verifies that all mock expectations have been met.
+    pub fn verify(&mut self) {
+        self.expectations.borrow_mut().verify()
+    }
+
+    /// Clears all mock expectations.
+    pub fn reset(&mut self) {
+        self.expectations.borrow_mut().reset();
+    }
+
+    ///// Mock expectations /////
 
     #[allow(dead_code)]
     pub fn expect_validate_caller_addr(&mut self, addr: Vec<Address>) {
@@ -390,16 +433,6 @@ impl MockRuntime {
     #[allow(dead_code)]
     pub fn expect_verify_signature(&self, exp: ExpectedVerifySig) {
         self.expectations.borrow_mut().expect_verify_sigs.push_back(exp);
-    }
-
-    #[allow(dead_code)]
-    pub fn set_balance(&mut self, amount: TokenAmount) {
-        *self.balance.get_mut() = amount;
-    }
-
-    #[allow(dead_code)]
-    pub fn add_balance(&mut self, amount: TokenAmount) {
-        *self.balance.get_mut() += amount;
     }
 
     #[allow(dead_code)]
@@ -443,29 +476,6 @@ impl MockRuntime {
         self.expectations.borrow_mut().expect_delete_actor = Some(beneficiary);
     }
 
-    pub fn call<A: ActorCode>(
-        &mut self,
-        method_num: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError> {
-        self.in_call = true;
-        let prev_state = self.state;
-        let res = A::invoke_method(self, method_num, params);
-
-        if res.is_err() {
-            self.state = prev_state;
-        }
-        self.in_call = false;
-        res
-    }
-
-    pub fn verify(&mut self) {
-        self.expectations.borrow_mut().verify()
-    }
-    pub fn reset(&mut self) {
-        self.expectations.borrow_mut().reset();
-    }
-
     #[allow(dead_code)]
     pub fn expect_send(
         &mut self,
@@ -502,28 +512,6 @@ impl MockRuntime {
     pub fn expect_verify_post(&mut self, post: WindowPoStVerifyInfo, exit_code: ExitCode) {
         let a = ExpectVerifyPoSt { post, exit_code };
         self.expectations.borrow_mut().expect_verify_post = Some(a);
-    }
-
-    #[allow(dead_code)]
-    pub fn set_address_actor_type(&mut self, address: Address, actor_type: Cid) {
-        self.actor_code_cids.insert(address, actor_type);
-    }
-
-    #[allow(dead_code)]
-    pub fn set_caller(&mut self, code_id: Cid, address: Address) {
-        self.caller = address;
-        self.caller_type = code_id;
-        self.actor_code_cids.insert(address, code_id);
-    }
-
-    #[allow(dead_code)]
-    pub fn set_value(&mut self, value: TokenAmount) {
-        self.value_received = value;
-    }
-
-    #[allow(dead_code)]
-    pub fn replace_state<C: Cbor>(&mut self, obj: &C) {
-        self.state = Some(self.store.put_cbor(obj, Code::Blake2b256).unwrap());
     }
 
     #[allow(dead_code)]
@@ -580,6 +568,20 @@ impl MockRuntime {
     #[allow(dead_code)]
     pub fn expect_gas_charge(&mut self, value: i64) {
         self.expectations.borrow_mut().expect_gas_charge.push_back(value);
+    }
+
+    ///// Private helpers /////
+
+    fn require_in_call(&self) {
+        assert!(self.in_call, "invalid runtime invocation outside of method call",)
+    }
+
+    fn store_put<C: Cbor>(&self, o: &C) -> Cid {
+        self.store.put_cbor(&o, Code::Blake2b256).unwrap()
+    }
+
+    fn store_get<T: DeserializeOwned>(&self, cid: &Cid) -> T {
+        self.store.get_cbor(cid).unwrap().unwrap()
     }
 }
 
@@ -802,7 +804,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         self.in_transaction = true;
         let ret = f(&mut read_only, self);
         if ret.is_ok() {
-            self.state = Some(self.put(&read_only).unwrap());
+            self.state = Some(self.store_put(&read_only));
         }
         self.in_transaction = false;
         ret

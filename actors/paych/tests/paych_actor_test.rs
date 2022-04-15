@@ -350,7 +350,7 @@ mod create_lane_tests {
                     &RawBytes::serialize(ucp).unwrap(),
                 );
 
-                let st: PState = rt.get_state().unwrap();
+                let st: PState = rt.get_state();
                 let l_states = Amt::<LaneState, _>::load(&st.lane_states, &rt.store).unwrap();
                 assert_eq!(l_states.count(), 1);
 
@@ -377,7 +377,7 @@ mod update_channel_state_redeem {
     #[test]
     fn redeem_voucher_one_lane() {
         let (mut rt, mut sv) = require_create_channel_with_lanes(1);
-        let state: PState = rt.get_state().unwrap();
+        let state: PState = rt.get_state();
         let payee_addr = Address::new_id(PAYEE_ID);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, payee_addr);
@@ -416,7 +416,7 @@ mod update_channel_state_redeem {
     #[test]
     fn redeem_voucher_correct_lane() {
         let (mut rt, mut sv) = require_create_channel_with_lanes(3);
-        let state: PState = rt.get_state().unwrap();
+        let state: PState = rt.get_state();
         let payee_addr = Address::new_id(PAYEE_ID);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, payee_addr);
@@ -445,7 +445,7 @@ mod update_channel_state_redeem {
 
         rt.verify();
 
-        let state: PState = rt.get_state().unwrap();
+        let state: PState = rt.get_state();
         let ls_updated: LaneState = get_lane_state(&rt, &state.lane_states, sv.lane);
         let big_delta = &sv.amount - &ls_to_update.redeemed;
 
@@ -458,7 +458,7 @@ mod update_channel_state_redeem {
     #[test]
     fn redeem_voucher_nonce_reuse() {
         let (mut rt, mut sv) = require_create_channel_with_lanes(3);
-        let state: PState = rt.get_state().unwrap();
+        let state: PState = rt.get_state();
         let payee_addr = Address::new_id(PAYEE_ID);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, payee_addr);
@@ -492,7 +492,7 @@ mod merge_tests {
 
     fn construct_runtime(num_lanes: u64) -> (MockRuntime, SignedVoucher, PState) {
         let (mut rt, sv) = require_create_channel_with_lanes(num_lanes);
-        let state: PState = rt.get_state().unwrap();
+        let state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
         (rt, sv, state)
@@ -614,7 +614,7 @@ mod merge_tests {
     fn invalid_merge_lane_999() {
         let num_lanes = 2;
         let (mut rt, mut sv) = require_create_channel_with_lanes(num_lanes);
-        let state: PState = rt.get_state().unwrap();
+        let state: PState = rt.get_state();
 
         sv.lane = 0;
         sv.nonce = 10;
@@ -642,7 +642,7 @@ mod update_channel_state_extra {
 
     fn construct_runtime(exit_code: ExitCode) -> (MockRuntime, SignedVoucher) {
         let (mut rt, mut sv) = require_create_channel_with_lanes(1);
-        let state: PState = rt.get_state().unwrap();
+        let state: PState = rt.get_state();
         let other_addr = Address::new_id(OTHER_ADDR);
         let fake_params = [1, 2, 3, 4];
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
@@ -704,13 +704,13 @@ mod update_channel_state_extra {
 fn update_channel_settling() {
     let (mut rt, sv) = require_create_channel_with_lanes(1);
     rt.epoch = 10;
-    let state: PState = rt.get_state().unwrap();
+    let state: PState = rt.get_state();
     rt.expect_validate_caller_addr(vec![state.from, state.to]);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
     call(&mut rt, Method::Settle as u64, &RawBytes::default());
 
     let exp_settling_at = SETTLE_DELAY + 10;
-    let state: PState = rt.get_state().unwrap();
+    let state: PState = rt.get_state();
     assert_eq!(exp_settling_at, state.settling_at);
     assert_eq!(state.min_settle_height, 0);
 
@@ -745,7 +745,7 @@ fn update_channel_settling() {
             result: Ok(()),
         });
         call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(&ucp).unwrap());
-        let new_state: PState = rt.get_state().unwrap();
+        let new_state: PState = rt.get_state();
         assert_eq!(tc.exp_settling_at, new_state.settling_at);
         assert_eq!(tc.exp_min_settle_height, new_state.min_settle_height);
         ucp.sv.nonce += 1;
@@ -758,7 +758,7 @@ mod secret_preimage {
     #[test]
     fn succeed_correct_secret() {
         let (mut rt, sv) = require_create_channel_with_lanes(1);
-        let state: PState = rt.get_state().unwrap();
+        let state: PState = rt.get_state();
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
         let ucp = UpdateChannelStateParams::from(sv.clone());
@@ -779,7 +779,7 @@ mod secret_preimage {
     fn incorrect_secret() {
         let (mut rt, sv) = require_create_channel_with_lanes(1);
 
-        let state: PState = rt.get_state().unwrap();
+        let state: PState = rt.get_state();
 
         let mut ucp = UpdateChannelStateParams { secret: b"Profesr".to_vec(), sv: sv.clone() };
         let mut mag = b"Magneto".to_vec();
@@ -812,14 +812,14 @@ mod actor_settle {
     fn adjust_settling_at() {
         let (mut rt, _sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
-        let mut state: PState = rt.get_state().unwrap();
+        let mut state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
         call(&mut rt, Method::Settle as u64, &RawBytes::default());
 
         let exp_settling_at = EP + SETTLE_DELAY;
-        state = rt.get_state().unwrap();
+        state = rt.get_state();
         assert_eq!(state.settling_at, exp_settling_at);
         assert_eq!(state.min_settle_height, 0);
     }
@@ -828,7 +828,7 @@ mod actor_settle {
     fn call_twice() {
         let (mut rt, _sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
-        let state: PState = rt.get_state().unwrap();
+        let state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
         call(&mut rt, Method::Settle as u64, &RawBytes::default());
@@ -846,7 +846,7 @@ mod actor_settle {
     fn settle_if_height_less() {
         let (mut rt, mut sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
-        let mut state: PState = rt.get_state().unwrap();
+        let mut state: PState = rt.get_state();
 
         sv.min_settle_height = (EP + SETTLE_DELAY) + 1;
         let ucp = UpdateChannelStateParams::from(sv.clone());
@@ -860,7 +860,7 @@ mod actor_settle {
         });
         call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(&ucp).unwrap());
 
-        state = rt.get_state().unwrap();
+        state = rt.get_state();
         assert_eq!(state.settling_at, 0);
         assert_eq!(state.min_settle_height, ucp.sv.min_settle_height);
 
@@ -869,7 +869,7 @@ mod actor_settle {
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
         call(&mut rt, Method::Settle as u64, &RawBytes::default());
 
-        state = rt.get_state().unwrap();
+        state = rt.get_state();
         assert_eq!(state.settling_at, ucp.sv.min_settle_height);
     }
 
@@ -879,13 +879,13 @@ mod actor_settle {
 
         let (mut rt, sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
-        let mut state: PState = rt.get_state().unwrap();
+        let mut state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
         call(&mut rt, Method::Settle as u64, &RawBytes::default());
 
-        state = rt.get_state().unwrap();
+        state = rt.get_state();
         rt.epoch = state.settling_at + 40;
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
         rt.expect_verify_signature(ExpectedVerifySig {
@@ -913,14 +913,14 @@ mod actor_collect {
         let (mut rt, _sv) = require_create_channel_with_lanes(1);
         let curr_epoch: ChainEpoch = 10;
         rt.epoch = curr_epoch;
-        let st: PState = rt.get_state().unwrap();
+        let st: PState = rt.get_state();
 
         // Settle.
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, st.from);
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
         call(&mut rt, Method::Settle as u64, &Default::default());
 
-        let st: PState = rt.get_state().unwrap();
+        let st: PState = rt.get_state();
         assert_eq!(st.settling_at, SETTLE_DELAY + curr_epoch);
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
 
@@ -970,13 +970,13 @@ mod actor_collect {
         for tc in test_cases {
             let (mut rt, _sv) = require_create_channel_with_lanes(1);
             rt.epoch = 10;
-            let mut state: PState = rt.get_state().unwrap();
+            let mut state: PState = rt.get_state();
 
             if !tc.dont_settle {
                 rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
                 rt.expect_validate_caller_addr(vec![state.from, state.to]);
                 call(&mut rt, Method::Settle as u64, &RawBytes::default());
-                state = rt.get_state().unwrap();
+                state = rt.get_state();
                 assert_eq!(state.settling_at, SETTLE_DELAY + rt.epoch);
             }
 
@@ -1089,14 +1089,14 @@ fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address
 }
 
 fn verify_initial_state(rt: &mut MockRuntime, sender: Address, receiver: Address) {
-    let _state: PState = rt.get_state().unwrap();
+    let _state: PState = rt.get_state();
     let empt_arr_cid = Amt::<(), _>::new(&rt.store).flush().unwrap();
     let expected_state = PState::new(sender, receiver, empt_arr_cid);
     verify_state(rt, None, expected_state)
 }
 
 fn verify_state(rt: &mut MockRuntime, exp_lanes: Option<u64>, expected_state: PState) {
-    let state: PState = rt.get_state().unwrap();
+    let state: PState = rt.get_state();
     assert_eq!(expected_state.to, state.to);
     assert_eq!(expected_state.from, state.from);
     assert_eq!(expected_state.min_settle_height, state.min_settle_height);
