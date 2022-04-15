@@ -27,10 +27,12 @@ fil_actors_runtime = { version = "8.0.0-alpha.1", path = "./actors/runtime", fea
 fil_actor_bundler = "3.0.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
-
 [features]
-default = []
+default = [] ## translates to mainnet
+mainnet = []
 caterpillarnet = []
+butterflynet = []
+calibrationnet = []
 devnet = []
 
 [workspace]
