@@ -481,6 +481,9 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn expect_abort(&mut self) {}
+
+    #[allow(dead_code)]
     pub fn expect_create_actor(&mut self, code_id: Cid, actor_id: ActorID) {
         let a = ExpectCreateActor { code_id, actor_id };
         self.expectations.borrow_mut().expect_create_actor = Some(a);
@@ -503,6 +506,11 @@ impl MockRuntime {
         self.caller = address;
         self.caller_type = code_id;
         self.actor_code_cids.insert(address, code_id);
+    }
+
+    #[allow(dead_code)]
+    pub fn set_received(&mut self, amount: TokenAmount) {
+        self.value_received = amount;
     }
 
     #[allow(dead_code)]

@@ -18,6 +18,7 @@ use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::EPOCH_UNDEFINED;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -424,6 +425,43 @@ fn worker_withdraw_more_than_available() {
     rt.verify();
 
     assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), TokenAmount::from(0u8));
+}
+
+#[test]
+fn fail_when_balance_is_zero() {
+    let mut rt = setup();
+
+    let provider = Address::new_id(PROVIDER_ID);
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(OWNER_ID));
+    rt.set_received(BigInt::from(0_i32));
+
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(&provider).unwrap()),
+    );
+
+    rt.verify();
+}
+
+#[test]
+fn fails_with_a_negative_withdraw_amount() {
+    let mut rt = setup();
+
+    let params = WithdrawBalanceParams {
+        provider_or_client: Address::new_id(PROVIDER_ID),
+        amount: TokenAmount::from(-1_i32),
+    };
+
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<MarketActor>(
+            Method::WithdrawBalance as u64,
+            &RawBytes::serialize(&params).unwrap(),
+        ),
+    );
+
+    rt.verify();
 }
 
 fn expect_provider_control_address(
