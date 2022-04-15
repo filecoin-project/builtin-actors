@@ -10,82 +10,82 @@ jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-    - name: Checking out fvm
+    - name: Checking out
       uses: actions/checkout@v2
-    - name: Installing Rust
-      uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
-      with:
-        profile: minimal
-        override: true
-        components: rustfmt
-    - name: Running fmt
-      uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
+    - name: Running rustfmt
+      uses: ./.github/actions/rust-cargo-run
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         command: fmt
         args: -- --check
-  cargo:
+        components: rustfmt
+
+  check-clippy:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: check-clippy
-            command: clippy
-            args: --all --all-targets
-            components: clippy
-          - name: test
-            command: test
-            args: --all
-          - name: build
-            command: build
-            push: true
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v2
+    - name: Running clippy
+      uses: ./.github/actions/rust-cargo-run
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        command: clippy
+        args: --all --all-targets
+        components: clippy
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v2
+    - name: Running tests
+      uses: ./.github/actions/rust-cargo-run
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        command: test
+        args: --all
+
+  build:
+    runs-on: ubuntu-latest
     env:
-      SCCACHE_CACHE_SIZE: 2G
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CARGO_INCREMENTAL: 0
       CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
-    name: ${{ matrix.name }}
+    strategy:
+      matrix:
+        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet' ]
     steps:
-    - name: Checking out builtin-actors
+    - name: Checking out
       uses: actions/checkout@v2
+    - name: Install Rust toolchain
+      uses: ./.github/actions/rust-cargo-run
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        submodules: ${{ matrix.submodules }}
-    - name: Installing Rust
-      uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
-      with:
-        profile: minimal
-        target: wasm32-unknown-unknown
-        override: true
-        components: ${{ matrix.components }}
-    # we don't check the lockfile in; this is needed for cache restoration/saving
-    - name: Generating Cargo.lock
-      uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-      with:
-        command: generate-lockfile
-    - name: Setting up cache
-      uses: ./.github/actions/rust-sccache
-      with:
-        version: v0.2.15
-        # change this to invalidate sccache for this job
-        shared-key: v1
-    - name: Running ${{ matrix.command }}
-      uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-      with:
-        command: ${{ matrix.command }}
-        args: ${{ matrix.args }}
-    - name: make bundle
-      if: ${{ matrix.command == 'build' }}
+        command: version
+    - name: Making bundle
+      env:
+        BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: ./build-bundle.sh
-    - name: upload bundle
-      if: ${{ matrix.command == 'build' }}
+    - name: Uploading bundle to Estuary
       env:
         ESTUARY_TOKEN: ${{ secrets.ESTUARY_TOKEN }}
-      run: ./upload-bundle.sh
-    - name: Publishing build artifacts to github
-      if: ${{ matrix.command == 'build' }}
+      run: |
+        BUNDLE_PATH="output/builtin-actors.car"
+        UPLOAD_AS="builtin-actors-${{ matrix.network }}.car"
+        curl -k -X POST -F "data=@${BUNDLE_PATH};type=application/octet-stream;filename=\"${UPLOAD_AS}\"" \
+          -H "Authorization: Bearer $ESTUARY_TOKEN" \
+          -H "Content-Type: multipart/form-data" \
+          https://shuttle-4.estuary.tech/content/add > output/upload.json
+        cat output/upload.json
+        shasum -a 256 "$BUNDLE_PATH" > "$BUNDLE_PATH".sha256sum
+    - name: Publishing build artifacts to GitHub
       uses: actions/upload-artifact@v2
       with:
-        name: bundle
+        name: bundle-${{ matrix.network }}
         path: |
          output/builtin-actors.car
          output/builtin-actors.car.sha256sum
