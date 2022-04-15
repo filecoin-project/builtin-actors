@@ -10,6 +10,9 @@ use fil_actor_market::{
     PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
     WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
+use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
+use fil_actor_reward::Method as RewardMethod;
+use fil_actor_verifreg::UseBytesParams;
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Runtime;
@@ -22,9 +25,9 @@ use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
-use fvm_shared::bigint::{BigInt, Integer};
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
-use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::commcid::FIL_COMMITMENT_UNSEALED;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -32,19 +35,13 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::smooth::{AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA};
+use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
-use num_traits::FromPrimitive;
-
-use fil_actor_power::{
-    CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
-};
-use fil_actor_reward::Method as RewardMethod;
-use fil_actor_verifreg::UseBytesParams;
 
 use cid::Cid;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
+use num_traits::FromPrimitive;
 
 const OWNER_ID: u64 = 101;
 const PROVIDER_ID: u64 = 102;
@@ -407,8 +404,8 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
 
 #[test]
 fn deal_starts_on_day_boundary() {
-    let start_epoch = ChainEpoch::from(DEAL_UPDATES_INTERVAL); // 2880
-    let end_epoch = ChainEpoch::from(start_epoch + 200 * EPOCHS_IN_DAY);
+    let start_epoch = DEAL_UPDATES_INTERVAL; // 2880
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
     let mut rt = setup();
@@ -431,7 +428,7 @@ fn deal_starts_on_day_boundary() {
             start_epoch,
             end_epoch,
             piece_cid,
-            PaddedPieceSize { 0: 2048u64 },
+            PaddedPieceSize(2048u64),
         );
         assert_eq!(i as DealID, deal_id);
     }
@@ -455,8 +452,8 @@ fn deal_starts_on_day_boundary() {
 
 #[test]
 fn deal_starts_partway_through_day() {
-    let start_epoch = ChainEpoch::from(1000);
-    let end_epoch = ChainEpoch::from(start_epoch + 200 * EPOCHS_IN_DAY);
+    let start_epoch = 1000;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
     let mut rt = setup();
@@ -480,7 +477,7 @@ fn deal_starts_partway_through_day() {
             start_epoch,
             end_epoch,
             piece_cid,
-            PaddedPieceSize { 0: 2048u64 },
+            PaddedPieceSize(2048u64),
         );
         assert_eq!(i as DealID, deal_id);
     }
@@ -508,7 +505,7 @@ fn deal_starts_partway_through_day() {
             start_epoch,
             end_epoch,
             piece_cid,
-            PaddedPieceSize { 0: 2048u64 },
+            PaddedPieceSize(2048u64),
         );
         assert_eq!(i as DealID, deal_id);
     }
@@ -660,6 +657,7 @@ fn withdraw_client_balance(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_and_publish_deal_for_piece(
     rt: &mut MockRuntime,
     client: Address,
@@ -820,7 +818,7 @@ fn expect_query_network_info(rt: &mut MockRuntime) {
     );
 }
 
-fn assert_n_good_deals<'a, BS>(dobe: &SetMultimap<'a, BS>, epoch: ChainEpoch, n: isize)
+fn assert_n_good_deals<BS>(dobe: &SetMultimap<BS>, epoch: ChainEpoch, n: isize)
 where
     BS: fvm_ipld_blockstore::Blockstore,
 {
