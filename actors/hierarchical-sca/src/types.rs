@@ -12,7 +12,7 @@ pub struct ConstructorParams {
     pub checkpoint_period: ChainEpoch,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct SubnetIDParam {
     pub id: String,
 }

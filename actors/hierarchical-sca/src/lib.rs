@@ -16,15 +16,17 @@ use num_traits::FromPrimitive;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 pub use self::state::*;
+pub use self::subnet::*;
 pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+mod checkpoint;
 #[doc(hidden)]
 pub mod ext;
 mod state;
-mod subnet;
+pub mod subnet;
 mod types;
 
 /// Storage power actor methods available
@@ -60,8 +62,29 @@ impl Actor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Subnet))?;
-        // let subnet_addr = rt.message().caller();
-        // rt.transaction(|st: &mut State, rt| Ok(()))?;
+        let subnet_addr = rt.message().caller();
+        rt.transaction(|st: &mut State, rt| {
+            let shid = subnet::new_id(&st.network_name, subnet_addr);
+            let sub = st.get_subnet(rt.store(), &shid).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnet")
+            })?;
+            match sub {
+                Some(_) => {
+                    return Err(actor_error!(
+                        illegal_state,
+                        "subnet with id {} already registered",
+                        shid
+                    ))
+                }
+                None => {
+                    st.register_subnet(rt, &shid).map_err(|e| {
+                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to rgister subnet")
+                    })?;
+                }
+            }
+
+            Ok(())
+        })?;
 
         Ok(SubnetIDParam { id: String::default() })
     }

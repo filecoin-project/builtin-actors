@@ -14,6 +14,8 @@ use std::path::Path;
 use std::str::FromStr;
 use thiserror::Error;
 
+use super::checkpoint::*;
+
 #[derive(PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct SubnetID {
     parent: String,
@@ -22,7 +24,7 @@ pub struct SubnetID {
 impl Cbor for SubnetID {}
 
 lazy_static! {
-    static ref ROOTNET_ID: SubnetID =
+    pub static ref ROOTNET_ID: SubnetID =
         SubnetID { parent: String::from("/root"), sub_act: Address::new_id(0) };
 }
 
@@ -33,6 +35,10 @@ pub enum Error {
 }
 
 impl SubnetID {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let str_id = self.to_string();
+        str_id.into_bytes()
+    }
     // pub fn common_parent(other: &SubnetID) -> Result<SubnetID, Error> {
     //     panic!("not implemented")
     // }
@@ -44,7 +50,7 @@ impl SubnetID {
     // }
 }
 
-pub fn new_id(parent: SubnetID, subnet_act: Address) -> SubnetID {
+pub fn new_id(parent: &SubnetID, subnet_act: Address) -> SubnetID {
     let parent_str = parent.to_string();
 
     return SubnetID { parent: parent_str, sub_act: subnet_act };
@@ -63,9 +69,19 @@ impl fmt::Display for SubnetID {
     }
 }
 
+impl Default for SubnetID {
+    fn default() -> Self {
+        Self { parent: String::from(""), sub_act: Address::new_id(0) }
+    }
+}
+
 impl FromStr for SubnetID {
     type Err = Error;
     fn from_str(addr: &str) -> Result<Self, Error> {
+        if addr == ROOTNET_ID.to_string() {
+            return Ok(ROOTNET_ID.clone());
+        }
+
         let id = Path::new(addr);
         let act = match Path::file_name(id) {
             Some(act_str) => Address::from_str(act_str.to_str().unwrap_or("")),
@@ -99,7 +115,7 @@ pub enum Status {
     Killed,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple, PartialEq)]
 pub struct Subnet {
     pub id: SubnetID,
     #[serde(with = "bigint_ser")]
@@ -109,6 +125,7 @@ pub struct Subnet {
     #[serde(with = "bigint_ser")]
     pub circ_supply: TokenAmount,
     pub status: Status,
+    pub prev_checkpoint: Checkpoint,
 }
 
 #[cfg(test)]
@@ -119,7 +136,7 @@ mod tests {
     #[test]
     fn test_subnet_id() {
         let act = Address::new_id(1001);
-        let sub_id = new_id(ROOTNET_ID.clone(), act);
+        let sub_id = new_id(&ROOTNET_ID.clone(), act);
         let sub_id_str = sub_id.to_string();
         assert_eq!(sub_id_str, "/root/f01001");
 
@@ -128,5 +145,7 @@ mod tests {
 
         let rootnet = ROOTNET_ID.clone();
         assert_eq!(rootnet.to_string(), "/root");
+        let root_sub = SubnetID::from_str(&rootnet.to_string()).unwrap();
+        assert_eq!(root_sub, rootnet);
     }
 }
