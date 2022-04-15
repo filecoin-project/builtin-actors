@@ -511,6 +511,11 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn set_epoch(&mut self, epoch: ChainEpoch) {
+        self.epoch = epoch;
+    }
+
+    #[allow(dead_code)]
     pub fn replace_state<C: Cbor>(&mut self, obj: &C) {
         self.state = Some(self.store.put_cbor(obj, Code::Blake2b256).unwrap());
     }
