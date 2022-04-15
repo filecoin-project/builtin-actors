@@ -8,13 +8,16 @@ use fvm_shared::MethodNum;
 use lazy_static::lazy_static;
 
 use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
-use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
+use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::test_utils::{
+    MockRuntime, ACCOUNT_ACTOR_CODE_ID, SUBNET_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
+};
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    make_map_with_root_and_bitwidth, ActorError, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use hierarchical_sca::{
-    ConstructorParams, Method, State, CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE,
-    MIN_COLLATERAL_AMOUNT,
+    new_id, ConstructorParams, Method, State, Subnet, SubnetID, SubnetIDParam,
+    CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT, ROOTNET_ID,
 };
 
 use crate::SCAActor;
@@ -35,7 +38,7 @@ pub fn new_runtime() -> MockRuntime {
 }
 
 pub fn new_harness() -> Harness {
-    Harness { net_name: String::from("/root") }
+    Harness { net_name: ROOTNET_ID.clone() }
 }
 
 pub fn setup() -> (Harness, MockRuntime) {
@@ -47,14 +50,14 @@ pub fn setup() -> (Harness, MockRuntime) {
 
 #[allow(dead_code)]
 pub struct Harness {
-    net_name: String,
+    pub net_name: SubnetID,
 }
 
 impl Harness {
     pub fn construct(&self, rt: &mut MockRuntime) {
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
         let params =
-            ConstructorParams { network_name: self.net_name.clone(), checkpoint_period: 10 };
+            ConstructorParams { network_name: self.net_name.to_string(), checkpoint_period: 10 };
         rt.call::<SCAActor>(
             Method::Constructor as MethodNum,
             &RawBytes::serialize(params).unwrap(),
@@ -82,8 +85,33 @@ impl Harness {
         verify_empty_map(rt, st.atomic_exec_registry);
     }
 
+    pub fn register(
+        &self,
+        rt: &mut MockRuntime,
+        subnet_addr: &Address,
+        value: &TokenAmount,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*SUBNET_ACTOR_CODE_ID, *subnet_addr);
+        rt.set_value(value.clone());
+        rt.set_balance(value.clone());
+        rt.expect_validate_caller_type(vec![*SUBNET_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_addr(vec![*subnet_addr]);
+
+        // let register_ret = SubnetIDParam { id: new_id(&ROOTNET_ID, *subnet_addr).to_string() };
+        let ret = rt.call::<SCAActor>(Method::Register as MethodNum, &RawBytes::default()).unwrap();
+        // assert_eq!(ret.deserialize().unwrap(), register_ret);
+        Ok(())
+    }
+
     pub fn check_state(&self) {
         // TODO: https://github.com/filecoin-project/builtin-actors/issues/44
+    }
+
+    pub fn get_subnet(&self, rt: &MockRuntime, id: &SubnetID) -> Option<Subnet> {
+        let st: State = rt.get_state().unwrap();
+        let subnets =
+            make_map_with_root_and_bitwidth(&st.subnets, rt.store(), HAMT_BIT_WIDTH).unwrap();
+        subnets.get(&id.to_bytes()).unwrap().cloned()
     }
 }
 
