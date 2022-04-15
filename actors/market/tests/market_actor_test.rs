@@ -6,16 +6,17 @@ use std::collections::HashMap;
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::policy::DEAL_UPDATES_INTERVAL;
 use fil_actor_market::{
-    ext, Actor as MarketActor, PublishStorageDealsParams, PublishStorageDealsReturn, ClientDealProposal, DealArray, DealProposal, Label, Method, State, WithdrawBalanceParams, WithdrawBalanceReturn,
-    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    ext, Actor as MarketActor, ClientDealProposal, DealArray, DealProposal, Label, Method,
+    PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
+    WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, SetMultimap, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    make_empty_map, ActorError, SetMultimap, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::{to_vec, RawBytes};
@@ -23,27 +24,23 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
-use fvm_shared::crypto::signature::Signature;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::smooth::{AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA};
 use fvm_shared::sector::StoragePower;
+use fvm_shared::smooth::{AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA};
+use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_traits::FromPrimitive;
 
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
-use fil_actor_reward::{
-    Method as RewardMethod
-};
-use fil_actor_verifreg::{
-    UseBytesParams,
-};
+use fil_actor_reward::Method as RewardMethod;
+use fil_actor_verifreg::UseBytesParams;
 
 use cid::Cid;
 use multihash::derive::Multihash;
@@ -442,10 +439,7 @@ fn deal_starts_on_day_boundary() {
     // Check that DOBE has exactly 3 deals scheduled every epoch in the day following the start time
     let st: State = rt.get_state().unwrap();
     let store = &rt.store;
-    let dobe = SetMultimap::from_root(
-        store,
-        &st.deal_ops_by_epoch,
-    ).unwrap();
+    let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in DEAL_UPDATES_INTERVAL..(2 * DEAL_UPDATES_INTERVAL) {
         assert_n_good_deals(&dobe, e, 3);
     }
@@ -492,10 +486,7 @@ fn deal_starts_partway_through_day() {
     }
     let st: State = rt.get_state().unwrap();
     let store = &rt.store;
-    let dobe = SetMultimap::from_root(
-        store,
-        &st.deal_ops_by_epoch,
-    ).unwrap();
+    let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in 2880..(2880 + start_epoch) {
         assert_n_good_deals(&dobe, e, 1);
     }
@@ -523,10 +514,7 @@ fn deal_starts_partway_through_day() {
     }
     let st: State = rt.get_state().unwrap();
     let store = &rt.store;
-    let dobe = SetMultimap::from_root(
-        store,
-        &st.deal_ops_by_epoch,
-    ).unwrap();
+    let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in start_epoch..(start_epoch + 500) {
         assert_n_good_deals(&dobe, e, 1);
     }
@@ -726,11 +714,8 @@ fn publish_deals(
 ) -> Vec<DealID> {
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-    let return_value = ext::miner::GetControlAddressesReturnParams {
-        owner,
-        worker,
-        control_addresses: vec![],
-    };
+    let return_value =
+        ext::miner::GetControlAddressesReturnParams { owner, worker, control_addresses: vec![] };
     rt.expect_send(
         provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
@@ -742,18 +727,14 @@ fn publish_deals(
 
     expect_query_network_info(rt);
 
-    let mut params: PublishStorageDealsParams = PublishStorageDealsParams {
-        deals: vec![],
-    };
+    let mut params: PublishStorageDealsParams = PublishStorageDealsParams { deals: vec![] };
 
     for pdr in publish_deal_reqs {
         // create a client proposal with a valid signature
         let buf = RawBytes::serialize(pdr.deal.clone()).expect("failed to marshal deal proposal");
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
-        let client_proposal = ClientDealProposal {
-            proposal: pdr.deal.clone(),
-            client_signature: sig.clone(),
-        };
+        let client_proposal =
+            ClientDealProposal { proposal: pdr.deal.clone(), client_signature: sig.clone() };
         params.deals.push(client_proposal);
 
         // expect a call to verify the above signature
@@ -766,8 +747,9 @@ fn publish_deals(
         if pdr.deal.verified_deal {
             let param = RawBytes::serialize(UseBytesParams {
                 address: pdr.deal.client,
-                deal_size: BigInt::from(pdr.deal.piece_size.0)
-            }).unwrap();
+                deal_size: BigInt::from(pdr.deal.piece_size.0),
+            })
+            .unwrap();
 
             rt.expect_send(
                 *VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -781,7 +763,10 @@ fn publish_deals(
     }
 
     let ret: PublishStorageDealsReturn = rt
-        .call::<MarketActor>(Method::PublishStorageDeals as u64, &RawBytes::serialize(params).unwrap())
+        .call::<MarketActor>(
+            Method::PublishStorageDeals as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
         .unwrap()
         .deserialize()
         .unwrap();
@@ -836,7 +821,8 @@ fn expect_query_network_info(rt: &mut MockRuntime) {
 }
 
 fn assert_n_good_deals<'a, BS>(dobe: &SetMultimap<'a, BS>, epoch: ChainEpoch, n: isize)
-where BS: fvm_ipld_blockstore::Blockstore
+where
+    BS: fvm_ipld_blockstore::Blockstore,
 {
     let mut count = 0;
     dobe.for_each(epoch, |id| {
