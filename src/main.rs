@@ -6,7 +6,7 @@ use fil_builtin_actors_bundle::BUNDLE_CAR;
 #[derive(Parser)]
 #[clap(name = env!("CARGO_PKG_NAME"))]
 #[clap(version = env!("CARGO_PKG_VERSION"))]
-#[clap(about = "Generate a CAR file containing Wasm bytecode for Filecoin actors.", long_about = None)]
+#[clap(about = "Writes a CAR file containing Wasm bytecode for Filecoin actors.", long_about = None)]
 struct Cli {
     /// The output car path. Defaults to STDOUT.
     #[clap(short, long, required = false)]
