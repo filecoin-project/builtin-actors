@@ -149,7 +149,9 @@ Instructions to build from source (option 1):
 
 1. Clone the repo.
 2. Check out the relevant branch or tag (see Versioning section below).
-3. `cargo run -- -o my_bundle.car` from the workspace root.
+3. `make bundle` from the workspace root.
+
+The bundle be written to `output/builtin-actors.car`.
 
 Both options are compatible with automation via scripts or CI pipelines.
 
