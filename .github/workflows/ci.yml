@@ -66,3 +66,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         command: version
+    - name: Building bundle
+      env:
+        BUILD_FIL_NETWORK: ${{ matrix.network }}
+      run: |
+        cargo run -- -o output/builtin-actors.car
