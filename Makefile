@@ -52,7 +52,7 @@ publish:
 
 # Create a bundle in a deterministic location
 bundle: deps-build
-	./build-bundle.sh
+	cargo run -- -o output/builtin-actors.car
 
 # Check if the working tree is clean.
 check-clean:

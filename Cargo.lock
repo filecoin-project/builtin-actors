@@ -792,6 +792,7 @@ name = "fil_builtin_actors_bundle"
 version = "8.0.0-alpha.1"
 dependencies = [
  "cid",
+ "clap",
  "fil_actor_account",
  "fil_actor_bundler",
  "fil_actor_cron",
