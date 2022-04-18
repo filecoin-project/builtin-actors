@@ -66,28 +66,3 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         command: version
-    - name: Writing bundle
-      env:
-        BUILD_FIL_NETWORK: ${{ matrix.network }}
-      run: |
-        cargo run -- -o output/builtin-actors.car
-    - name: Uploading bundle to Estuary
-      env:
-        ESTUARY_TOKEN: ${{ secrets.ESTUARY_TOKEN }}
-      run: |
-        BUNDLE_PATH="output/builtin-actors.car"
-        UPLOAD_AS="builtin-actors-${{ matrix.network }}.car"
-        curl -k -X POST -F "data=@${BUNDLE_PATH};type=application/octet-stream;filename=\"${UPLOAD_AS}\"" \
-          -H "Authorization: Bearer $ESTUARY_TOKEN" \
-          -H "Content-Type: multipart/form-data" \
-          https://shuttle-4.estuary.tech/content/add > output/upload.json
-        cat output/upload.json
-        shasum -a 256 "$BUNDLE_PATH" > "$BUNDLE_PATH".sha256sum
-    - name: Publishing build artifacts to GitHub
-      uses: actions/upload-artifact@v2
-      with:
-        name: bundle-${{ matrix.network }}
-        path: |
-         output/builtin-actors.car
-         output/builtin-actors.car.sha256sum
-         output/upload.json
