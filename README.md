@@ -149,13 +149,9 @@ Instructions to build from source (option 1):
 
 1. Clone the repo.
 2. Check out the relevant branch or tag (see Versioning section below).
-3. `cargo build` from the workspace root.
-4. Copy the CARv1 file generated the location printed in this log line:
-    ```
-   warning: bundle=/path/to/repo/target/debug/build/filecoin_canonical_actors_bundle-aef13b28a60e195b/out/bundle/bundle.car
-   ```
-   All output is printed as a warning only due to limitations in the Cargo build
-   script mechanisms.
+3. `make bundle` from the workspace root.
+
+The bundle be written to `output/builtin-actors.car`.
 
 Both options are compatible with automation via scripts or CI pipelines.
 

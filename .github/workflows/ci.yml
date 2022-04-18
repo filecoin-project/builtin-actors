@@ -66,10 +66,11 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         command: version
-    - name: Making bundle
+    - name: Writing bundle
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
-      run: ./build-bundle.sh
+      run: |
+        cargo run -- -o output/builtin-actors.car
     - name: Uploading bundle to Estuary
       env:
         ESTUARY_TOKEN: ${{ secrets.ESTUARY_TOKEN }}
