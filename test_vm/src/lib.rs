@@ -110,7 +110,7 @@ impl<'bs> VM<'bs> {
         Ok(MessageResult{code: code, ret: ret})
     }
 }
-
+#[derive(Clone)]
 pub struct TopCtx {
     originator_stable_addr: Address,
     originator_call_seq: u64,
@@ -118,6 +118,7 @@ pub struct TopCtx {
     circ_supply: BigInt,
 }
 
+#[derive(Clone)]
 pub struct InternalMessage {
     from: Address,
     to: Address,
@@ -126,16 +127,16 @@ pub struct InternalMessage {
     params: RawBytes,
 }
 
-pub struct InvocationCtx<'bs> {
-    v: &'bs mut VM::<'bs>,
-    top: &'bs TopCtx,
-    msg: &'bs InternalMessage,
+pub struct InvocationCtx<'invocation, 'bs> {
+    v: &'invocation mut VM<'bs>,
+    top: TopCtx,
+    msg: InternalMessage,
     allow_side_effects: bool,
     caller_validated: bool,
 }
 
-impl<'bs> InvocationCtx<'bs> {
-    fn resolve_target(&mut self, target: &Address) -> Result<(&Actor, Address), ActorError> {
+impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
+    fn resolve_target(&'invocation mut self, target: &Address) -> Result<(&Actor, Address), ActorError> {
         match self.v.normalize_address(target) {
             Some(a) => return Ok((self.v.get_actor(&a).unwrap(), a)),
             None => (),
@@ -148,11 +149,11 @@ impl<'bs> InvocationCtx<'bs> {
         let mut st = self.v.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
         let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
         let target_id_addr = Address::new_id(target_id);
-        let init_actor = self.v.get_actor(&INIT_ACTOR_ADDR).unwrap().clone();
+        let mut init_actor = self.v.get_actor(&INIT_ACTOR_ADDR).unwrap().clone();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
         self.v.set_actor(&INIT_ACTOR_ADDR, init_actor);
 
-        self.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id);
+        self.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id).unwrap();
         let new_actor_msg = InternalMessage{
             from: *SYSTEM_ACTOR_ADDR, 
             to: target_id_addr, 
@@ -160,14 +161,18 @@ impl<'bs> InvocationCtx<'bs> {
             method: METHOD_CONSTRUCTOR,
             params: serialize::<Address>(target, "address").unwrap(),
         };
-        let new_ctx = &InvocationCtx{
-            v: self.v,
-            top: self.top,
-            msg: &new_actor_msg,
-            allow_side_effects: false,
-            caller_validated: false,
-        };
-        _ = new_ctx.invoke()?;
+       {
+            let mut new_ctx = InvocationCtx{
+                v: self.v,
+                top: self.top.clone(),
+                msg: new_actor_msg,
+                allow_side_effects: false,
+                caller_validated: false,
+ 
+            };
+            _ = new_ctx.invoke();
+        }
+
         Ok((self.v.get_actor(&target_id_addr).unwrap(), target_id_addr))
     }
 
