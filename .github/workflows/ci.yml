@@ -66,7 +66,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         command: version
-    - name: Building bundle
+    - name: Writing bundle
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |

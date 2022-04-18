@@ -29,12 +29,12 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         command: version
-    - name: Building bundle
+    - name: Writing bundle
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
         cargo run -- -o output/builtin-actors.car
-    - name: Uploading release bundle to GitHub
+    - name: Publishing release and uploading bundle to GitHub
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_SHA: ${{ github.sha }}
