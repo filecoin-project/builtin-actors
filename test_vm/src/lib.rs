@@ -1,9 +1,8 @@
 use cid::Cid;
-use fil_actors_runtime::runtime::fvm::FvmRuntime;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, ActorError};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::{ActorCode}; 
+use fil_actors_runtime::runtime::{ActorCode, MessageInfo, Syscalls, Runtime, Policy, RuntimePolicy}; 
 use fil_actor_init::{State as InitState, Actor as InitActor};
 use fil_actor_cron::{Actor as CronActor};
 use fil_actor_system::{Actor as SystemActor};
@@ -16,23 +15,31 @@ use fil_actor_market::{Actor as MarketActor};
 use fil_actor_miner::{Actor as MinerActor};
 use fil_actor_verifreg::{Actor as VerifregActor};
 use fvm_shared::actor::builtin::Type;
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_shared::randomness::Randomness;
+use fvm_shared::sector::{
+    AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
+    WindowPoStVerifyInfo,
+};
+use fvm_shared::piece::PieceInfo;
+use fvm_shared::consensus::ConsensusFault;
+use fvm_shared::crypto::signature::Signature;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, RawBytes, CborStore};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::{ActorID, MethodNum, METHOD_SEND, METHOD_CONSTRUCTOR};
 use fvm_shared::error::ExitCode;
+use fvm_shared::version::NetworkVersion;
 use std::error::Error;
-use std::thread::AccessError;
 use cid::multihash::Code;
 use std::fmt;
 use num_traits::Signed;
 use std::ops::Add;
-use serde::{Serialize};
-
+use fvm_shared::clock::ChainEpoch;
 
 
 pub struct VM<'bs> {
@@ -45,7 +52,7 @@ pub struct VM<'bs> {
 }
 
 impl<'bs> VM<'bs> {
-    pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
+    pub fn new(store: &'bs MemoryBlockstore)-> VM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
         let empty = store.put_cbor(&(), Code::Blake2b256).unwrap();
         VM { store, state_root: actors.flush().unwrap(), actors_dirty: false, actors, empty_obj_cid: empty}
@@ -127,12 +134,19 @@ pub struct InternalMessage {
     params: RawBytes,
 }
 
+impl MessageInfo for InternalMessage {
+    fn caller(&self) -> Address {self.from}
+    fn receiver(&self) -> Address {self.to}
+    fn value_received(&self) -> TokenAmount {self.value.clone()}
+}
+
 pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation mut VM<'bs>,
     top: TopCtx,
     msg: InternalMessage,
     allow_side_effects: bool,
     caller_validated: bool,
+    policy: &'invocation Policy,
 }
 
 impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
@@ -168,6 +182,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 msg: new_actor_msg,
                 allow_side_effects: false,
                 caller_validated: false,
+                policy: self.policy,
  
             };
             _ = new_ctx.invoke();
@@ -178,8 +193,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
         let prior_root = self.v.checkpoint();
-        // TODO resolve target for id ification + creation of new account actors
-        let mut to_actor: Actor = self.v.get_actor(&self.msg.to).unwrap().clone(); // XXX resolve target
+        let mut to_actor: Actor = self.v.get_actor(&self.msg.to).unwrap().clone(); 
 
         // Transfer funds
         let mut from_actor = self.v.get_actor(&self.msg.from).unwrap().clone();
@@ -203,25 +217,27 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
         // call target actor
         let to_actor = self.v.get_actor(&self.msg.to).unwrap();
-        let mut rt = FvmRuntime::default(); // XXX todo use invocation context instead        
+        let params = self.msg.params.clone();      
         match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin") {
             // XXX Review: is there a way to do one call on an object implementing ActorCode trait?
             // I tried using `dyn` keyword couldn't get the compiler on board.
-            Type::Account => AccountActor::invoke_method(&mut rt, self.msg.method, &self.msg.params),
-            Type::Cron => CronActor::invoke_method(&mut rt, self.msg.method, &self.msg.params),
-            Type::Init => InitActor::invoke_method(&mut rt, self.msg.method, &self.msg.params),
-            Type::Market => MarketActor::invoke_method(&mut rt, self.msg.method, &self.msg.params),
-            Type::Miner => MinerActor::invoke_method(&mut rt, self.msg.method, &self.msg.params),
-            Type::Multisig => MultisigActor::invoke_method(&mut rt, self.msg.method, &self.msg.params),
-            Type::System => SystemActor::invoke_method(&mut rt, self.msg.method, &self.msg.params),
-            Type::Reward => RewardActor::invoke_method(&mut rt, self.msg.method, &self.msg.params),
-            Type::Power => PowerActor::invoke_method(&mut rt, self.msg.method, &self.msg.params),
-            Type::PaymentChannel => PaychActor::invoke_method(&mut rt, self.msg.method, &self.msg.params),
-            Type::VerifiedRegistry => VerifregActor::invoke_method(& mut rt, self.msg.method, &self.msg.params),
+            Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
+            Type::Cron => CronActor::invoke_method(self, self.msg.method, &params),
+            Type::Init => InitActor::invoke_method(self, self.msg.method, &params),
+            Type::Market => MarketActor::invoke_method(self, self.msg.method, &params),
+            Type::Miner => MinerActor::invoke_method(self, self.msg.method, &params),
+            Type::Multisig => MultisigActor::invoke_method(self, self.msg.method, &params),
+            Type::System => SystemActor::invoke_method(self, self.msg.method, &params),
+            Type::Reward => RewardActor::invoke_method(self, self.msg.method, &params),
+            Type::Power => PowerActor::invoke_method(self, self.msg.method, &params),
+            Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
+            Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
             _=> Err(ActorError::unchecked(ExitCode::SYS_INVALID_METHOD, "actor code type unhanlded by test vm".to_string())),
         }
     }
+}
 
+impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
         match NON_SINGLETON_CODES.get(&code_id) {
             Some(_) => (),
@@ -235,6 +251,167 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let a = actor(code_id, self.v.empty_obj_cid, 0, BigInt::zero());
         self.v.set_actor(&addr, a);
         Ok(())
+    }
+
+    fn store(&self) -> &MemoryBlockstore {
+        self.v.store
+    }
+
+    fn network_version(&self) -> NetworkVersion {
+        panic!("TODO implement me")
+    }
+
+    fn message(&self) -> &dyn MessageInfo {
+        &self.msg
+    }
+
+    fn curr_epoch(&self) -> ChainEpoch {
+        panic!("TODO implement me")
+    }
+
+    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
+        panic!("TODO implement me")
+    }
+
+    fn validate_immediate_caller_is<'a, I> (&mut self, addresses: I) -> Result<(), ActorError> 
+    where
+    I: IntoIterator<Item = &'a Address>
+    {
+        panic!("TODO implement me")
+    }
+
+    fn validate_immediate_caller_type<'a, I>(&mut self, types:I) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = &'a Type> {
+        panic!("TODO implement me")
+    }
+
+    fn current_balance(&self) -> TokenAmount {
+        panic!("TODO implement me")
+    }
+
+    fn resolve_address(&self, addr: &Address) -> Option<Address> {
+        self.v.normalize_address(addr)
+    }
+
+    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
+        let maybe_act = self.v.get_actor(addr);
+        match maybe_act {
+            None => None,
+            Some(act) => Some(act.code),
+        }
+    }
+
+    fn send(&mut self, to: Address, method: MethodNum, params: RawBytes, value:TokenAmount) -> Result<RawBytes,ActorError> {
+        if !self.allow_side_effects {
+            return Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "Calling send is not allowed during side-effect lock".to_string()))
+        }
+
+        let new_actor_msg = InternalMessage{
+            from: self.msg.to, 
+            to: to, 
+            value: value, 
+            method: method,
+            params: params,
+        };
+        let mut new_ctx = InvocationCtx{
+            v: self.v,
+            top: self.top.clone(),
+            msg: new_actor_msg,
+            allow_side_effects: false,
+            caller_validated: false,
+            policy: self.policy,
+        };
+        new_ctx.invoke()
+    }
+
+    fn get_randomness_from_tickets(&self, personalization: DomainSeparationTag, rand_epoch: ChainEpoch, entropy: &[u8]) -> Result<Randomness, ActorError> {
+        panic!("TODO implement me")
+    }
+
+    fn get_randomness_from_beacon(&self, personalization: DomainSeparationTag, rand_epoch: ChainEpoch, entropy: &[u8]) -> Result<Randomness, ActorError> {
+        panic!("TODO implement me")
+    }
+
+    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+        panic!("TODO implement me")
+    }
+
+    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
+        panic!("TODO implement me")
+    }
+
+    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError> 
+    where C: Cbor, F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError> {
+        panic!("TODO implement me")
+    }
+
+    fn new_actor_address(&mut self) -> Result<Address, ActorError> {
+        panic!("TODO implement me")
+    }
+
+    fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), ActorError> {
+        panic!("TODO implement me")
+    }
+
+    fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
+        panic!("TODO implement me")
+    }
+
+    fn get_code_cid_for_type(&self, typ: Type) -> Cid {
+        panic!("TODO implement me")
+    }
+
+    fn total_fil_circ_supply(&self) -> TokenAmount {
+        panic!("TODO implement me")
+    }
+
+    fn charge_gas(&mut self, name: &'static str, compute: i64) {}
+
+    fn base_fee(&self) -> TokenAmount{TokenAmount::zero()}
+}
+
+impl Syscalls for InvocationCtx<'_, '_> {
+    fn verify_signature(&self, signature: &Signature, signer: &Address, plaintext: &[u8]) -> Result<(), anyhow::Error> {
+        panic!("TODO implement me")
+    }
+
+    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
+        panic!("TODO implement me")
+    }
+
+    fn compute_unsealed_sector_cid(&self, proof_type: RegisteredSealProof, pieces: &[PieceInfo]) -> Result<Cid, anyhow::Error> {
+        panic!("TODO implement me")
+    }
+
+    fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), anyhow::Error> {
+        panic!("TODO implement me")
+    }
+
+    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
+        panic!("TODO implement me")
+    }
+
+    fn verify_consensus_fault(&self, h1: &[u8], h2: &[u8], extra: &[u8]) -> Result<Option<ConsensusFault>, anyhow::Error> {
+        panic!("TODO implement me")
+    }
+
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
+        panic!("TODO implement me")
+    }
+
+    fn verify_aggregate_seals(&self, aggregate: &AggregateSealVerifyProofAndInfos) -> Result<(), anyhow::Error> {
+        panic!("TODO implement me")
+    }
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
+        panic!("TODO implement me")
+    }
+}
+
+impl RuntimePolicy for InvocationCtx<'_, '_> {
+    fn policy(&self) -> &Policy {
+        self.policy
     }
 }
 

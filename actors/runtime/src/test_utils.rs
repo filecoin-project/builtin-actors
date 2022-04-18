@@ -833,7 +833,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     }
 
     fn send(
-        &self,
+        &mut self,
         to: Address,
         method: MethodNum,
         params: RawBytes,

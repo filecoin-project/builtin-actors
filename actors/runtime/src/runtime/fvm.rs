@@ -254,7 +254,7 @@ where
     }
 
     fn send(
-        &self,
+        &mut self,
         to: Address,
         method: MethodNum,
         params: RawBytes,
