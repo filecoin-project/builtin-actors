@@ -1,9 +1,7 @@
-name: Continuous Integration Release
+name: Release
 
 on:
-  workflow_run:
-    workflows: ["release"]
-    types: [requested]
+  push:
     branches:
       - 'master'
       - 'release/**'
