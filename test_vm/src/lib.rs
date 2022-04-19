@@ -129,32 +129,56 @@ impl<'bs> VM<'bs> {
 
     pub fn apply_message<C: Cbor>(
         &mut self,
-        from: &Address,
-        to: &Address,
-        value: &TokenAmount,
+        from: Address,
+        to: Address,
+        value: TokenAmount,
         method: MethodNum,
         params: C,
     ) -> Result<MessageResult, TestVMError> {
         let from_id = self.normalize_address(&from).unwrap();
         let mut a = self.get_actor(from_id).unwrap().clone();
         a.call_seq_num += 1;
+        let call_seq_num = a.call_seq_num.clone();
         self.set_actor(from_id, a);
 
         let prior_root = self.checkpoint();
 
         // make top level context with internal context
+        let top = TopCtx{
+            originator_stable_addr: to,
+            originator_call_seq: call_seq_num,
+            new_actor_addr_count: 0,
+            circ_supply: BigInt::zero(),
+        };
+        let msg = InternalMessage {
+            from: from,
+            to: to,
+            value: value,
+            method: method,
+            params: serialize(&params, "params for apply message").unwrap(),
+        };
+        let mut new_ctx = InvocationCtx {
+            v: self,
+            top: top,
+            msg: msg,
+            allow_side_effects: false,
+            caller_validated: false,
+            policy: &Policy::default(),
+        };
+        let res = new_ctx.invoke();
         // let ret, exitcode = ctx.invoke()
-        let ret = RawBytes::default();
-        let code = ExitCode::OK;
-
-        if code != ExitCode::OK {
-            // if exitcode != ok
-            self.rollback(prior_root);
-        } else {
-            self.checkpoint();
-        }
-
-        Ok(MessageResult { code: code, ret: ret })
+        //let ret = RawBytes::default();
+//        let code = ExitCode::OK;
+        match res {
+            Err(ae) => {
+                self.rollback(prior_root);
+                Ok(MessageResult{code: ae.exit_code(), ret: RawBytes::default()})
+            },
+            Ok(ret) => {
+                self.checkpoint();
+                Ok(MessageResult{code: ExitCode::OK, ret})
+            },
+        } 
     }
 }
 #[derive(Clone)]
@@ -288,10 +312,10 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Power => PowerActor::invoke_method(self, self.msg.method, &params),
             Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
             Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
-            _ => Err(ActorError::unchecked(
-                ExitCode::SYS_INVALID_METHOD,
-                "actor code type unhanlded by test vm".to_string(),
-            )),
+            // _ => Err(ActorError::unchecked(
+            //     ExitCode::SYS_INVALID_METHOD,
+            //     "actor code type unhanlded by test vm".to_string(),
+            // )),
         };
         match res {
             Err(_) => self.v.rollback(prior_root),
