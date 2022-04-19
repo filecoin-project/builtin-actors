@@ -145,10 +145,10 @@ impl<'bs> VM<'bs> {
 
         // make top level context with internal context
         let top = TopCtx {
-            originator_stable_addr: to,
-            originator_call_seq: call_seq_num,
-            new_actor_addr_count: 0,
-            circ_supply: BigInt::zero(),
+            _originator_stable_addr: to,
+            _originator_call_seq: call_seq_num,
+            _new_actor_addr_count: 0,
+            _circ_supply: BigInt::zero(),
         };
         let msg = InternalMessage {
             from: from,
@@ -162,7 +162,7 @@ impl<'bs> VM<'bs> {
             top: top,
             msg: msg,
             allow_side_effects: false,
-            caller_validated: false,
+            _caller_validated: false,
             policy: &Policy::default(),
         };
         let res = new_ctx.invoke();
@@ -180,10 +180,10 @@ impl<'bs> VM<'bs> {
 }
 #[derive(Clone)]
 pub struct TopCtx {
-    originator_stable_addr: Address,
-    originator_call_seq: u64,
-    new_actor_addr_count: u64,
-    circ_supply: BigInt,
+    _originator_stable_addr: Address,
+    _originator_call_seq: u64,
+    _new_actor_addr_count: u64,
+    _circ_supply: BigInt,
 }
 
 #[derive(Clone)]
@@ -212,7 +212,7 @@ pub struct InvocationCtx<'invocation, 'bs> {
     top: TopCtx,
     msg: InternalMessage,
     allow_side_effects: bool,
-    caller_validated: bool,
+    _caller_validated: bool,
     policy: &'invocation Policy,
 }
 
@@ -252,7 +252,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 top: self.top.clone(),
                 msg: new_actor_msg,
                 allow_side_effects: false,
-                caller_validated: false,
+                _caller_validated: false,
                 policy: self.policy,
             };
             new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id).unwrap();
@@ -368,14 +368,14 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         panic!("TODO implement me")
     }
 
-    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_is<'a, I>(&mut self, _addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>,
     {
         panic!("TODO implement me")
     }
 
-    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_type<'a, I>(&mut self, _types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,
     {
@@ -424,7 +424,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             top: self.top.clone(),
             msg: new_actor_msg,
             allow_side_effects: false,
-            caller_validated: false,
+            _caller_validated: false,
             policy: self.policy,
         };
         new_ctx.invoke()
@@ -432,23 +432,23 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
 
     fn get_randomness_from_tickets(
         &self,
-        personalization: DomainSeparationTag,
-        rand_epoch: ChainEpoch,
-        entropy: &[u8],
+        _personalization: DomainSeparationTag,
+        _rand_epoch: ChainEpoch,
+        _entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
         panic!("TODO implement me")
     }
 
     fn get_randomness_from_beacon(
         &self,
-        personalization: DomainSeparationTag,
-        rand_epoch: ChainEpoch,
-        entropy: &[u8],
+        _personalization: DomainSeparationTag,
+        _rand_epoch: ChainEpoch,
+        _entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
         panic!("TODO implement me")
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+    fn create<C: Cbor>(&mut self, _obj: &C) -> Result<(), ActorError> {
         panic!("TODO implement me")
     }
 
@@ -456,7 +456,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         panic!("TODO implement me")
     }
 
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<C, RT, F>(&mut self, _f: F) -> Result<RT, ActorError>
     where
         C: Cbor,
         F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
@@ -468,15 +468,15 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         panic!("TODO implement me")
     }
 
-    fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&mut self, _beneficiary: &Address) -> Result<(), ActorError> {
         panic!("TODO implement me")
     }
 
-    fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
+    fn resolve_builtin_actor_type(&self, _code_id: &Cid) -> Option<Type> {
         panic!("TODO implement me")
     }
 
-    fn get_code_cid_for_type(&self, typ: Type) -> Cid {
+    fn get_code_cid_for_type(&self, _typ: Type) -> Cid {
         panic!("TODO implement me")
     }
 
@@ -484,7 +484,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         panic!("TODO implement me")
     }
 
-    fn charge_gas(&mut self, name: &'static str, compute: i64) {}
+    fn charge_gas(&mut self, _name: &'static str, _compute: i64) {}
 
     fn base_fee(&self) -> TokenAmount {
         TokenAmount::zero()
@@ -494,9 +494,9 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
 impl Syscalls for InvocationCtx<'_, '_> {
     fn verify_signature(
         &self,
-        signature: &Signature,
-        signer: &Address,
-        plaintext: &[u8],
+        _signature: &Signature,
+        _signer: &Address,
+        _plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
         panic!("TODO implement me")
     }
@@ -507,41 +507,41 @@ impl Syscalls for InvocationCtx<'_, '_> {
 
     fn compute_unsealed_sector_cid(
         &self,
-        proof_type: RegisteredSealProof,
-        pieces: &[PieceInfo],
+        _proof_type: RegisteredSealProof,
+        _pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
         panic!("TODO implement me")
     }
 
-    fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), anyhow::Error> {
+    fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), anyhow::Error> {
         panic!("TODO implement me")
     }
 
-    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
+    fn verify_post(&self, _verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         panic!("TODO implement me")
     }
 
     fn verify_consensus_fault(
         &self,
-        h1: &[u8],
-        h2: &[u8],
-        extra: &[u8],
+        _h1: &[u8],
+        _h2: &[u8],
+        _extra: &[u8],
     ) -> Result<Option<ConsensusFault>, anyhow::Error> {
         panic!("TODO implement me")
     }
 
-    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
+    fn batch_verify_seals(&self, _batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
         panic!("TODO implement me")
     }
 
     fn verify_aggregate_seals(
         &self,
-        aggregate: &AggregateSealVerifyProofAndInfos,
+        _aggregate: &AggregateSealVerifyProofAndInfos,
     ) -> Result<(), anyhow::Error> {
         panic!("TODO implement me")
     }
 
-    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
+    fn verify_replica_update(&self, _replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
         panic!("TODO implement me")
     }
 }
