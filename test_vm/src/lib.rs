@@ -67,6 +67,11 @@ impl<'bs> VM<'bs> {
         }
     }
 
+    // pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
+    //     let system_st = SystemActor::create
+
+    // }
+
     pub fn get_actor(&self, addr: Address) -> Option<Actor> {
         // check for inclusion in cache of changed actors
         match self.actors_cache.borrow().get(&addr) {
@@ -501,7 +506,7 @@ impl Syscalls for InvocationCtx<'_, '_> {
         panic!("TODO implement me")
     }
 
-    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
+    fn hash_blake2b(&self, _data: &[u8]) -> [u8; 32] {
         panic!("TODO implement me")
     }
 
