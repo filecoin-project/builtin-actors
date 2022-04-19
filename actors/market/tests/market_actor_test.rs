@@ -6,10 +6,10 @@ use std::collections::HashMap;
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::policy::DEAL_UPDATES_INTERVAL;
 use fil_actor_market::{
-    ext, Actor as MarketActor, ActivateDealsParams,
-    ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState, Label, Method,
-    PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
-    WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray,
+    DealProposal, DealState, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn,
+    State, WithdrawBalanceParams, WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH,
+    STATES_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -550,7 +550,14 @@ fn simple_deal() {
         end_epoch,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
-    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[PublishDealReq { deal: deal1 }]);
+    publish_deals(
+        &mut rt,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        &[PublishDealReq { deal: deal1 }],
+    );
 
     // Publish from miner control address.
     let deal2 = generate_deal_and_add_funds(
@@ -563,7 +570,14 @@ fn simple_deal() {
         end_epoch + 1,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, control_addr);
-    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[PublishDealReq { deal: deal2 }]);
+    publish_deals(
+        &mut rt,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        &[PublishDealReq { deal: deal2 }],
+    );
     // TODO: actor.checkState(rt)
 }
 
@@ -764,16 +778,10 @@ fn activate_deals(
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
 
-    let params = ActivateDealsParams {
-        deal_ids: deal_ids.to_vec(),
-        sector_expiry,
-    };
+    let params = ActivateDealsParams { deal_ids: deal_ids.to_vec(), sector_expiry };
 
     let ret = rt
-        .call::<MarketActor>(
-            Method::ActivateDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
+        .call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap())
         .unwrap();
     assert_eq!(ret, RawBytes::default());
     rt.verify();
@@ -812,15 +820,8 @@ fn generate_and_publish_deal(
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
 ) -> DealID {
-    let deal = generate_deal_and_add_funds(
-        rt,
-        client,
-        provider,
-        owner,
-        worker,
-        start_epoch,
-        end_epoch,
-    );
+    let deal =
+        generate_deal_and_add_funds(rt, client, provider, owner, worker, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
     let deal_ids = publish_deals(rt, provider, owner, worker, control, &[PublishDealReq { deal }]);
     deal_ids[0]
@@ -941,8 +942,11 @@ fn publish_deals(
 ) -> Vec<DealID> {
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-    let return_value =
-        ext::miner::GetControlAddressesReturnParams { owner, worker, control_addresses: vec![control] };
+    let return_value = ext::miner::GetControlAddressesReturnParams {
+        owner,
+        worker,
+        control_addresses: vec![control],
+    };
     rt.expect_send(
         provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
