@@ -417,6 +417,8 @@ pub fn consensus_miner_min_power(p: RegisteredPoStProof) -> anyhow::Result<Stora
                 2 << 10
             } else if cfg!(feature = "min-power-2g") {
                 2 << 30
+            } else if cfg!(feature = "min-power-32g") {
+                32 << 30
             } else {
                 10 << 40
             };
