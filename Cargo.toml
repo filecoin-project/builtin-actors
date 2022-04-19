@@ -37,6 +37,7 @@ caterpillarnet = []
 butterflynet = []
 calibrationnet = []
 devnet = []
+testing = []
 
 [workspace]
 members = [
