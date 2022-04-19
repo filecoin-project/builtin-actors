@@ -87,7 +87,7 @@ mod test_award_block_reward {
         rt.set_balance(TokenAmount::from(9));
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
         assert_eq!(
-            ExitCode::ErrIllegalState,
+            ExitCode::USR_ILLEGAL_STATE,
             award_block_reward(
                 &mut rt,
                 *WINNER,
@@ -111,7 +111,7 @@ mod test_award_block_reward {
 
         for (reward, penalty) in &reward_penalty_pairs {
             assert_eq!(
-                ExitCode::ErrIllegalArgument,
+                ExitCode::USR_ILLEGAL_ARGUMENT,
                 award_block_reward(
                     &mut rt,
                     *WINNER,
@@ -179,7 +179,7 @@ mod test_award_block_reward {
             RawBytes::serialize(BigIntSer(&expected_reward)).unwrap(),
             expected_reward,
             RawBytes::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
         rt.expect_send(
             *BURNT_FUNDS_ACTOR_ADDR,
@@ -187,7 +187,7 @@ mod test_award_block_reward {
             RawBytes::default(),
             penalty.clone(),
             RawBytes::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
         let params = AwardBlockRewardParams {
@@ -254,7 +254,7 @@ mod test_award_block_reward {
             RawBytes::serialize(BigIntSer(&expected_reward)).unwrap(),
             expected_reward.clone(),
             RawBytes::default(),
-            ExitCode::ErrForbidden,
+            ExitCode::USR_FORBIDDEN,
         );
         rt.expect_send(
             *BURNT_FUNDS_ACTOR_ADDR,
@@ -262,7 +262,7 @@ mod test_award_block_reward {
             RawBytes::default(),
             expected_reward,
             RawBytes::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
         let params = AwardBlockRewardParams {
@@ -350,7 +350,7 @@ fn award_block_reward(
         .unwrap(),
         expected_payment.clone(),
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     if penalty > TokenAmount::from(0) {
@@ -360,7 +360,7 @@ fn award_block_reward(
             RawBytes::default(),
             expected_payment,
             RawBytes::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
     }
 

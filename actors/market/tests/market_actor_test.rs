@@ -260,7 +260,7 @@ fn fails_unless_called_by_an_account_actor() {
     let provider_addr = Address::new_id(PROVIDER_ID);
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
     assert_eq!(
-        ExitCode::SysErrForbidden,
+        ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
             Method::AddBalance as u64,
             &RawBytes::serialize(provider_addr).unwrap(),
@@ -536,7 +536,7 @@ fn expect_provider_control_address(
         RawBytes::default(),
         TokenAmount::from(0u8),
         RawBytes::serialize(return_value).unwrap(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 }
 
@@ -608,7 +608,7 @@ fn withdraw_provider_balance(
         RawBytes::default(),
         expected_send.clone(),
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
     let ret: WithdrawBalanceReturn = rt
         .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap())
@@ -637,7 +637,7 @@ fn withdraw_client_balance(
         RawBytes::default(),
         expected_send.clone(),
         RawBytes::default(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
     rt.expect_validate_caller_addr(vec![client]);
 
@@ -720,7 +720,7 @@ fn publish_deals(
         RawBytes::default(),
         TokenAmount::from(0u8),
         RawBytes::serialize(return_value).unwrap(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     expect_query_network_info(rt);
@@ -755,7 +755,7 @@ fn publish_deals(
                 param,
                 TokenAmount::from(0u8),
                 RawBytes::default(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
         }
     }
@@ -806,7 +806,7 @@ fn expect_query_network_info(rt: &mut MockRuntime) {
         RawBytes::default(),
         TokenAmount::from(0u8),
         RawBytes::serialize(current_reward).unwrap(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
     rt.expect_send(
         *STORAGE_POWER_ACTOR_ADDR,
@@ -814,7 +814,7 @@ fn expect_query_network_info(rt: &mut MockRuntime) {
         RawBytes::default(),
         TokenAmount::from(0u8),
         RawBytes::serialize(current_power).unwrap(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 }
 
