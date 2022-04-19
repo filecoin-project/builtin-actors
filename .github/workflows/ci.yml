@@ -56,7 +56,7 @@ jobs:
       CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
     strategy:
       matrix:
-        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet' ]
+        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing' ]
     steps:
     - name: Checking out
       uses: actions/checkout@v2
