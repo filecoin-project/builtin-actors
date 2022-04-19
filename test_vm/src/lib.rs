@@ -144,7 +144,7 @@ impl<'bs> VM<'bs> {
         let prior_root = self.checkpoint();
 
         // make top level context with internal context
-        let top = TopCtx{
+        let top = TopCtx {
             originator_stable_addr: to,
             originator_call_seq: call_seq_num,
             new_actor_addr_count: 0,
@@ -166,19 +166,16 @@ impl<'bs> VM<'bs> {
             policy: &Policy::default(),
         };
         let res = new_ctx.invoke();
-        // let ret, exitcode = ctx.invoke()
-        //let ret = RawBytes::default();
-//        let code = ExitCode::OK;
         match res {
             Err(ae) => {
                 self.rollback(prior_root);
-                Ok(MessageResult{code: ae.exit_code(), ret: RawBytes::default()})
-            },
+                Ok(MessageResult { code: ae.exit_code(), ret: RawBytes::default() })
+            }
             Ok(ret) => {
                 self.checkpoint();
-                Ok(MessageResult{code: ExitCode::OK, ret})
-            },
-        } 
+                Ok(MessageResult { code: ExitCode::OK, ret })
+            }
+        }
     }
 }
 #[derive(Clone)]
