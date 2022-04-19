@@ -323,7 +323,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             //     "actor code type unhanlded by test vm".to_string(),
             // )),
         };
-        if let Err(_) = res {
+        if res.is_err() {
             self.v.rollback(prior_root)
         };
         res
@@ -342,7 +342,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             }
         }
         let addr = Address::new_id(actor_id);
-        if let Some(_) = self.v.get_actor(addr) {
+        if self.v.get_actor(addr).is_some() {
             return Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
                 "attempt to create new actor at existing address".to_string(),
