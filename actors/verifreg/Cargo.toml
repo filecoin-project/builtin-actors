@@ -21,7 +21,7 @@ num-traits = "0.2.14"
 num-derive = "0.3.3"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 lazy_static = "1.4.0"
-fvm_ipld_hamt = "0.4.0"
+fvm_ipld_hamt = "0.5.0"
 fvm_ipld_blockstore = { version = "0.1" }
 fvm_ipld_encoding = "0.1.0"
 
