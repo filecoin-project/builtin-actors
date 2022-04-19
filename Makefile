@@ -47,12 +47,11 @@ set-version: check-clean deps-release check test
 
 # Publish the current version to crates.io
 publish:
-	echo "$(ORDERED_PACKAGES)" | xargs -n1 cargo publish -p "$$pkg"
-	done
+	for pkg in "$(ORDERED_PACKAGES)"; do cargo publish -p "$$pkg" && sleep 5; done
 
 # Create a bundle in a deterministic location
 bundle: deps-build
-	./build-bundle.sh
+	cargo run -- -o output/builtin-actors.car
 
 # Check if the working tree is clean.
 check-clean:

@@ -105,7 +105,7 @@ mod paych_constructor {
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(params).unwrap(),
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
         );
     }
 
@@ -128,7 +128,7 @@ mod paych_constructor {
             caller_code: *INIT_ACTOR_CODE_ID,
             new_actor_code: *MULTISIG_ACTOR_CODE_ID,
             payer_code: *ACCOUNT_ACTOR_CODE_ID,
-            expected_exit_code: ExitCode::ErrForbidden,
+            expected_exit_code: ExitCode::USR_FORBIDDEN,
         }];
 
         for test_case in test_cases {
@@ -176,10 +176,6 @@ mod create_lane_tests {
         desc: String,
         #[builder(default = "ACCOUNT_ACTOR_CODE_ID.clone()")]
         target_code: Cid,
-        // #[builder(default)]
-        // _balance: u64,
-        // #[builder(default)]
-        // _recieved: u64,
         #[builder(default = "1")]
         epoch: ChainEpoch,
         #[builder(default = "1")]
@@ -198,7 +194,7 @@ mod create_lane_tests {
         sig: Option<Signature>,
         #[builder(default = "true")]
         verify_sig: bool,
-        #[builder(default = "ExitCode::ErrIllegalArgument")]
+        #[builder(default = "ExitCode::USR_ILLEGAL_ARGUMENT")]
         exp_exit_code: ExitCode,
     }
     impl TestCase {
@@ -214,13 +210,42 @@ mod create_lane_tests {
         let payer_addr = Address::new_id(PAYER_ADDR);
         let payee_addr = Address::new_id(PAYEE_ADDR);
         let paych_balance = TokenAmount::from(PAYCH_BALANCE);
+        let paych_non_id = Address::new_bls(&[201; fvm_shared::address::BLS_PUB_LEN]).unwrap();
         let sig = Option::Some(Signature::new_bls("doesn't matter".as_bytes().to_vec()));
 
         let test_cases: Vec<TestCase> = vec![
             TestCase::builder()
                 .desc("succeeds".to_string())
                 .sig(sig.clone())
-                .exp_exit_code(ExitCode::Ok)
+                .exp_exit_code(ExitCode::OK)
+                .build()
+                .unwrap(),
+            TestCase::builder()
+                .desc(
+                    "fails if channel address does not match address on the signed voucher"
+                        .to_string(),
+                )
+                .payment_channel(Address::new_id(210))
+                .sig(sig.clone())
+                .build()
+                .unwrap(),
+            TestCase::builder()
+                .desc(
+                    "fails if address on the signed voucher cannot be resolved to ID address"
+                        .to_string(),
+                )
+                .payment_channel(Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap())
+                .sig(sig.clone())
+                .build()
+                .unwrap(),
+            TestCase::builder()
+                .desc(
+                    "succeeds if address on the signed voucher can be resolved to channel ID address"
+                        .to_string(),
+                )
+                .payment_channel(paych_non_id)
+                .exp_exit_code(ExitCode::OK)
+                .sig(sig.clone())
                 .build()
                 .unwrap(),
             TestCase::builder()
@@ -285,6 +310,8 @@ mod create_lane_tests {
                 ..Default::default()
             };
 
+            rt.id_addresses.insert(paych_non_id, paych_addr);
+
             construct_and_verify(&mut rt, payer_addr, payee_addr);
 
             let sv = SignedVoucher {
@@ -316,7 +343,7 @@ mod create_lane_tests {
                 });
             }
 
-            if test_case.exp_exit_code == ExitCode::Ok {
+            if test_case.exp_exit_code == ExitCode::OK {
                 call(
                     &mut rt,
                     Method::UpdateChannelState as u64,
@@ -349,7 +376,7 @@ mod update_channel_state_redeem {
 
     #[test]
     fn redeem_voucher_one_lane() {
-        let (mut rt, mut sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, mut sv) = require_create_channel_with_lanes(1);
         let state: PState = rt.get_state().unwrap();
         let payee_addr = Address::new_id(PAYEE_ID);
 
@@ -388,7 +415,7 @@ mod update_channel_state_redeem {
 
     #[test]
     fn redeem_voucher_correct_lane() {
-        let (mut rt, mut sv) = require_create_cannel_with_lanes(3);
+        let (mut rt, mut sv) = require_create_channel_with_lanes(3);
         let state: PState = rt.get_state().unwrap();
         let payee_addr = Address::new_id(PAYEE_ID);
 
@@ -427,13 +454,44 @@ mod update_channel_state_redeem {
         assert_eq!(sv.amount, ls_updated.redeemed);
         assert_eq!(sv.nonce, ls_updated.nonce);
     }
+
+    #[test]
+    fn redeem_voucher_nonce_reuse() {
+        let (mut rt, mut sv) = require_create_channel_with_lanes(3);
+        let state: PState = rt.get_state().unwrap();
+        let payee_addr = Address::new_id(PAYEE_ID);
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, payee_addr);
+        rt.expect_validate_caller_addr(vec![state.from, state.to]);
+
+        sv.amount = BigInt::from(9);
+        sv.nonce = 1;
+
+        let payer_addr = Address::new_id(PAYER_ID);
+
+        rt.expect_verify_signature(ExpectedVerifySig {
+            sig: sv.clone().signature.unwrap(),
+            signer: payer_addr,
+            plaintext: sv.signing_bytes().unwrap(),
+            result: Ok(()),
+        });
+
+        expect_error(
+            &mut rt,
+            Method::UpdateChannelState as u64,
+            &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+        );
+
+        rt.verify();
+    }
 }
 
 mod merge_tests {
     use super::*;
 
     fn construct_runtime(num_lanes: u64) -> (MockRuntime, SignedVoucher, PState) {
-        let (mut rt, sv) = require_create_cannel_with_lanes(num_lanes);
+        let (mut rt, sv) = require_create_channel_with_lanes(num_lanes);
         let state: PState = rt.get_state().unwrap();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
@@ -513,28 +571,28 @@ mod merge_tests {
                 voucher: 10,
                 balance: 0,
                 merge: 1,
-                exit: ExitCode::ErrIllegalArgument,
+                exit: ExitCode::USR_ILLEGAL_ARGUMENT,
             },
             TestCase {
                 lane: 1,
                 voucher: 0,
                 balance: 0,
                 merge: 10,
-                exit: ExitCode::ErrIllegalArgument,
+                exit: ExitCode::USR_ILLEGAL_ARGUMENT,
             },
             TestCase {
                 lane: 1,
                 voucher: 10,
                 balance: 1,
                 merge: 10,
-                exit: ExitCode::ErrIllegalArgument,
+                exit: ExitCode::USR_ILLEGAL_ARGUMENT,
             },
             TestCase {
                 lane: 0,
                 voucher: 10,
                 balance: 0,
                 merge: 10,
-                exit: ExitCode::ErrIllegalArgument,
+                exit: ExitCode::USR_ILLEGAL_ARGUMENT,
             },
         ];
 
@@ -555,7 +613,7 @@ mod merge_tests {
     #[test]
     fn invalid_merge_lane_999() {
         let num_lanes = 2;
-        let (mut rt, mut sv) = require_create_cannel_with_lanes(num_lanes);
+        let (mut rt, mut sv) = require_create_channel_with_lanes(num_lanes);
         let state: PState = rt.get_state().unwrap();
 
         sv.lane = 0;
@@ -563,13 +621,7 @@ mod merge_tests {
         sv.merges = vec![Merge { lane: 999, nonce: sv.nonce }];
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            plaintext: sv.signing_bytes().unwrap(),
-            sig: sv.signature.clone().unwrap(),
-            signer: Address::new_id(PAYEE_ID),
-            result: Ok(()),
-        });
-        failure_end(&mut rt, sv, ExitCode::ErrIllegalArgument);
+        failure_end(&mut rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
     }
 
     #[test]
@@ -579,7 +631,7 @@ mod merge_tests {
         sv.lane = MAX_LANE + 1;
         sv.nonce += 1;
         sv.amount = BigInt::from(100);
-        failure_end(&mut rt, sv, ExitCode::ErrIllegalArgument);
+        failure_end(&mut rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
     }
 }
 
@@ -589,7 +641,7 @@ mod update_channel_state_extra {
     const OTHER_ADDR: u64 = 104;
 
     fn construct_runtime(exit_code: ExitCode) -> (MockRuntime, SignedVoucher) {
-        let (mut rt, mut sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, mut sv) = require_create_channel_with_lanes(1);
         let state: PState = rt.get_state().unwrap();
         let other_addr = Address::new_id(OTHER_ADDR);
         let fake_params = [1, 2, 3, 4];
@@ -625,7 +677,7 @@ mod update_channel_state_extra {
     #[test]
     #[ignore = "old functionality -- test framework needs to be updated"]
     fn extra_call_succeed() {
-        let (mut rt, sv) = construct_runtime(ExitCode::Ok);
+        let (mut rt, sv) = construct_runtime(ExitCode::OK);
         call(
             &mut rt,
             Method::UpdateChannelState as u64,
@@ -637,12 +689,12 @@ mod update_channel_state_extra {
     #[test]
     #[ignore = "old functionality -- test framework needs to be updated"]
     fn extra_call_fail() {
-        let (mut rt, sv) = construct_runtime(ExitCode::ErrPlaceholder);
+        let (mut rt, sv) = construct_runtime(ExitCode::USR_UNSPECIFIED);
         expect_error(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
-            ExitCode::ErrPlaceholder,
+            ExitCode::USR_UNSPECIFIED,
         );
         rt.verify();
     }
@@ -650,7 +702,7 @@ mod update_channel_state_extra {
 
 #[test]
 fn update_channel_settling() {
-    let (mut rt, sv) = require_create_cannel_with_lanes(1);
+    let (mut rt, sv) = require_create_channel_with_lanes(1);
     rt.epoch = 10;
     let state: PState = rt.get_state().unwrap();
     rt.expect_validate_caller_addr(vec![state.from, state.to]);
@@ -705,7 +757,7 @@ mod secret_preimage {
 
     #[test]
     fn succeed_correct_secret() {
-        let (mut rt, sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, sv) = require_create_channel_with_lanes(1);
         let state: PState = rt.get_state().unwrap();
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
@@ -725,7 +777,7 @@ mod secret_preimage {
 
     #[test]
     fn incorrect_secret() {
-        let (mut rt, sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, sv) = require_create_channel_with_lanes(1);
 
         let state: PState = rt.get_state().unwrap();
 
@@ -745,7 +797,7 @@ mod secret_preimage {
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(ucp).unwrap(),
-            ExitCode::ErrIllegalArgument,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
         );
 
         rt.verify();
@@ -758,7 +810,7 @@ mod actor_settle {
     const EP: i64 = 10;
     #[test]
     fn adjust_settling_at() {
-        let (mut rt, _sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, _sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
         let mut state: PState = rt.get_state().unwrap();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
@@ -774,7 +826,7 @@ mod actor_settle {
 
     #[test]
     fn call_twice() {
-        let (mut rt, _sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, _sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
         let state: PState = rt.get_state().unwrap();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
@@ -786,13 +838,13 @@ mod actor_settle {
             &mut rt,
             Method::Settle as u64,
             &RawBytes::default(),
-            ExitCode::ErrIllegalState,
+            ExitCode::USR_ILLEGAL_STATE,
         );
     }
 
     #[test]
     fn settle_if_height_less() {
-        let (mut rt, mut sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, mut sv) = require_create_channel_with_lanes(1);
         rt.epoch = EP;
         let mut state: PState = rt.get_state().unwrap();
 
@@ -820,6 +872,35 @@ mod actor_settle {
         state = rt.get_state().unwrap();
         assert_eq!(state.settling_at, ucp.sv.min_settle_height);
     }
+
+    #[test]
+    fn voucher_invalid_after_settling() {
+        const ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED: ExitCode = ExitCode::new(32);
+
+        let (mut rt, sv) = require_create_channel_with_lanes(1);
+        rt.epoch = EP;
+        let mut state: PState = rt.get_state().unwrap();
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
+        rt.expect_validate_caller_addr(vec![state.from, state.to]);
+
+        call(&mut rt, Method::Settle as u64, &RawBytes::default());
+
+        state = rt.get_state().unwrap();
+        rt.epoch = state.settling_at + 40;
+        rt.expect_validate_caller_addr(vec![state.from, state.to]);
+        rt.expect_verify_signature(ExpectedVerifySig {
+            sig: sv.clone().signature.unwrap(),
+            signer: Address::new_id(PAYEE_ID),
+            plaintext: sv.signing_bytes().unwrap(),
+            result: Ok(()),
+        });
+        expect_error(
+            &mut rt,
+            Method::UpdateChannelState as u64,
+            &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
+            ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED,
+        );
+    }
 }
 
 mod actor_collect {
@@ -829,7 +910,7 @@ mod actor_collect {
 
     #[test]
     fn happy_path() {
-        let (mut rt, _sv) = require_create_cannel_with_lanes(1);
+        let (mut rt, _sv) = require_create_channel_with_lanes(1);
         let curr_epoch: ChainEpoch = 10;
         rt.epoch = curr_epoch;
         let st: PState = rt.get_state().unwrap();
@@ -852,7 +933,7 @@ mod actor_collect {
             Default::default(),
             st.to_send.clone(),
             Default::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
         // Collect.
@@ -875,19 +956,19 @@ mod actor_collect {
             // fails if not settling with: payment channel not settling or settled
             TestCase {
                 dont_settle: true,
-                exp_send_to: ExitCode::Ok,
-                exp_collect_exit: ExitCode::ErrForbidden,
+                exp_send_to: ExitCode::OK,
+                exp_collect_exit: ExitCode::USR_FORBIDDEN,
             },
             // fails if Failed to send funds to `To`
             TestCase {
                 dont_settle: false,
-                exp_send_to: ExitCode::ErrPlaceholder,
-                exp_collect_exit: ExitCode::ErrPlaceholder,
+                exp_send_to: ExitCode::USR_UNSPECIFIED,
+                exp_collect_exit: ExitCode::USR_UNSPECIFIED,
             },
         ];
 
         for tc in test_cases {
-            let (mut rt, _sv) = require_create_cannel_with_lanes(1);
+            let (mut rt, _sv) = require_create_channel_with_lanes(1);
             rt.epoch = 10;
             let mut state: PState = rt.get_state().unwrap();
 
@@ -923,7 +1004,7 @@ mod actor_collect {
     }
 }
 
-fn require_create_cannel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVoucher) {
+fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVoucher) {
     let paych_addr = Address::new_id(100);
     let payer_addr = Address::new_id(PAYER_ID);
     let payee_addr = Address::new_id(PAYEE_ID);

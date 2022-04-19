@@ -177,7 +177,7 @@ impl ActorHarness {
             RawBytes::default(),
             TokenAmount::from(0),
             RawBytes::serialize(self.worker_key).unwrap(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
         let result = rt
@@ -217,7 +217,7 @@ impl ActorHarness {
         let result = rt
             .call::<Actor>(Method::ChangePeerID as u64, &RawBytes::serialize(params).unwrap())
             .unwrap_err();
-        assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+        assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
         rt.verify();
     }
 
@@ -247,7 +247,7 @@ impl ActorHarness {
         let result = rt
             .call::<Actor>(Method::ChangeMultiaddrs as u64, &RawBytes::serialize(params).unwrap())
             .unwrap_err();
-        assert_eq!(result.exit_code(), ExitCode::ErrIllegalArgument);
+        assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
         rt.verify();
     }
 
@@ -376,7 +376,7 @@ impl ActorHarness {
                 RawBytes::serialize(vdparams).unwrap(),
                 TokenAmount::from(0),
                 RawBytes::serialize(vdreturn).unwrap(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
         }
         // in the original test the else branch does some redundant checks which we can omit.
@@ -389,7 +389,7 @@ impl ActorHarness {
                 RawBytes::default(),
                 state.fee_debt.clone(),
                 RawBytes::default(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
         }
 
@@ -406,7 +406,7 @@ impl ActorHarness {
                 RawBytes::serialize(cron_params).unwrap(),
                 TokenAmount::from(0),
                 RawBytes::default(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
         }
 
@@ -448,7 +448,7 @@ impl ActorHarness {
             RawBytes::default(),
             TokenAmount::from(0),
             RawBytes::serialize(current_reward).unwrap(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
         rt.expect_send(
             *STORAGE_POWER_ACTOR_ADDR,
@@ -456,7 +456,7 @@ impl ActorHarness {
             RawBytes::default(),
             TokenAmount::from(0),
             RawBytes::serialize(current_power).unwrap(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
     }
 
@@ -496,7 +496,7 @@ impl ActorHarness {
             RawBytes::serialize(cdc_params).unwrap(),
             TokenAmount::from(0),
             RawBytes::serialize(cdc_ret).unwrap(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
         let entropy = RawBytes::serialize(self.receiver).unwrap();
@@ -530,7 +530,7 @@ impl ActorHarness {
             RawBytes::serialize(seal).unwrap(),
             TokenAmount::from(0),
             RawBytes::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
         rt.expect_validate_caller_any();
         let result = rt
@@ -584,7 +584,7 @@ impl ActorHarness {
                     sector_expiry: pc.info.expiration,
                 };
 
-                let mut exit = ExitCode::Ok;
+                let mut exit = ExitCode::OK;
                 match cfg.verify_deals_exit.get(&pc.info.sector_number) {
                     Some(exit_code) => {
                         exit = *exit_code;
@@ -654,7 +654,7 @@ impl ActorHarness {
                     RawBytes::serialize(BigIntSer(&expected_pledge)).unwrap(),
                     TokenAmount::from(0),
                     RawBytes::default(),
-                    ExitCode::Ok,
+                    ExitCode::OK,
                 );
             }
         }
@@ -726,7 +726,7 @@ impl ActorHarness {
                 RawBytes::serialize(params).unwrap(),
                 TokenAmount::from(0),
                 RawBytes::default(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
         }
 
@@ -744,7 +744,7 @@ impl ActorHarness {
                 RawBytes::default(),
                 penalty_total.clone(),
                 RawBytes::default(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
 
             let mut penalty_from_vesting = penalty_total.clone();
@@ -768,7 +768,7 @@ impl ActorHarness {
                 RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
                 TokenAmount::from(0),
                 RawBytes::default(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
         }
 
@@ -781,7 +781,7 @@ impl ActorHarness {
                 RawBytes::serialize(params).unwrap(),
                 TokenAmount::from(0),
                 RawBytes::default(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
         }
 
@@ -881,7 +881,7 @@ impl ActorHarness {
                 );
                 let exit_code = match cfg.verification_exit {
                     Some(exit_code) => exit_code,
-                    None => ExitCode::Ok,
+                    None => ExitCode::OK,
                 };
                 rt.expect_verify_post(vi, exit_code);
             }
@@ -899,7 +899,7 @@ impl ActorHarness {
                 RawBytes::serialize(claim).unwrap(),
                 TokenAmount::from(0),
                 RawBytes::default(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
         }
 
@@ -986,8 +986,8 @@ impl ActorHarness {
             post.proofs,
         );
         let verify_result = match expect_success {
-            Some(_) => ExitCode::ErrIllegalArgument,
-            None => ExitCode::Ok,
+            Some(_) => ExitCode::USR_ILLEGAL_ARGUMENT,
+            None => ExitCode::OK,
         };
         rt.expect_verify_post(vi, verify_result);
 
@@ -1006,7 +1006,7 @@ impl ActorHarness {
                     RawBytes::serialize(claim).unwrap(),
                     TokenAmount::from(0),
                     RawBytes::default(),
-                    ExitCode::Ok,
+                    ExitCode::OK,
                 );
             }
 
@@ -1018,7 +1018,7 @@ impl ActorHarness {
                     RawBytes::default(),
                     expected_reward,
                     RawBytes::default(),
-                    ExitCode::Ok,
+                    ExitCode::OK,
                 );
             }
 
@@ -1030,7 +1030,7 @@ impl ActorHarness {
                     RawBytes::default(),
                     expected_penalty,
                     RawBytes::default(),
-                    ExitCode::Ok,
+                    ExitCode::OK,
                 );
             }
 
@@ -1042,7 +1042,7 @@ impl ActorHarness {
                     RawBytes::serialize(BigIntSer(&expected_pledge_delta)).unwrap(),
                     TokenAmount::from(0),
                     RawBytes::default(),
-                    ExitCode::Ok,
+                    ExitCode::OK,
                 );
             }
         }
@@ -1058,7 +1058,7 @@ impl ActorHarness {
             result.unwrap();
         } else {
             expect_abort_contains_message(
-                ExitCode::ErrIllegalArgument,
+                ExitCode::USR_ILLEGAL_ARGUMENT,
                 "failed to dispute valid post",
                 result,
             );

@@ -36,7 +36,7 @@ fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
     rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
 
     expect_abort(
-        ExitCode::ErrIllegalArgument,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MultisigActor>(
             Method::Constructor as u64,
             &RawBytes::serialize(&zero_signer_params).unwrap(),
@@ -64,7 +64,7 @@ fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
     rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
     rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
     expect_abort(
-        ExitCode::ErrIllegalArgument,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MultisigActor>(
             Method::Constructor as u64,
             &RawBytes::serialize(&over_max_signers_params).unwrap(),
@@ -138,7 +138,7 @@ fn test_add_signer() {
             increase: false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 2,
-            code: ExitCode::Ok,
+            code: ExitCode::OK,
         },
         TestCase{
             desc: "add signer and increase threshold",
@@ -149,7 +149,7 @@ fn test_add_signer() {
             increase: true,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
-            code: ExitCode::Ok,
+            code: ExitCode::OK,
         },
         TestCase{
             desc: "fail to add signer that already exists",
@@ -160,7 +160,7 @@ fn test_add_signer() {
             increase: false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
-            code: ExitCode::ErrForbidden,
+            code: ExitCode::USR_FORBIDDEN,
         },
         TestCase{
             desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
@@ -171,7 +171,7 @@ fn test_add_signer() {
             increase:false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
-            code: ExitCode::ErrForbidden,
+            code: ExitCode::USR_FORBIDDEN,
         },
         TestCase{
             desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
@@ -182,7 +182,7 @@ fn test_add_signer() {
             increase:false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
-            code: ExitCode::ErrForbidden,
+            code: ExitCode::USR_FORBIDDEN,
         }
     ];
 
@@ -197,7 +197,7 @@ fn test_add_signer() {
 
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
         match tc.code {
-            ExitCode::Ok => {
+            ExitCode::OK => {
                 let ret = h.add_signer(&mut rt, tc.add_signer, tc.increase).unwrap();
                 assert_eq!(RawBytes::default(), ret);
                 let st = rt.get_state::<State>().unwrap();
@@ -302,7 +302,7 @@ fn test_approve_simple_propose_and_approval() {
     // approval
     rt.set_balance(send_value.clone());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-    rt.expect_send(chuck, fake_method, fake_params, send_value, fake_ret, ExitCode::Ok);
+    rt.expect_send(chuck, fake_method, fake_params, send_value, fake_ret, ExitCode::OK);
     h.approve_ok(&mut rt, TxnID(0), proposal_hash);
     h.assert_transactions(&rt, vec![]);
 }
@@ -354,13 +354,13 @@ fn test_lock_balance_checks_preconditions() {
     // Disallow negative duration but allow negative start epoch
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
     expect_abort(
-        ExitCode::ErrIllegalArgument,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
         h.lock_balance(&mut rt, vest_start, -1_i64, lock_amount),
     );
 
     // Disallow negative amount
     expect_abort(
-        ExitCode::ErrIllegalArgument,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
         h.lock_balance(&mut rt, vest_start, vest_duration, TokenAmount::from(-1i32)),
     );
 }

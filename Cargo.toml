@@ -24,20 +24,35 @@ fil_actor_init = { version = "8.0.0-alpha.1", path = "./actors/init", features =
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "./actors/runtime", features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = { version = "2.0.0" }
+fil_actor_bundler = "3.0.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
+[dependencies]
+clap = { version = "3.1.8", features = ["derive"] }
 
 [features]
-default = []
+default = [] ## translates to mainnet
+mainnet = []
 caterpillarnet = []
+butterflynet = []
+calibrationnet = []
 devnet = []
+testing = []
 
 [workspace]
 members = [
      "actors/*",
      "test_vm",
 ]
+
+#[patch.crates-io]
+#fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
@@ -54,18 +69,19 @@ members = [
 ## Uncomment entries below when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
 ## (Valid once FVM modules are published to crates.io)
-#[patch.crates-io]
-#fvm_shared = { path = "../ref-fvm/shared" }
-#fvm_sdk = { path = "../ref-fvm/sdk" }
-#fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
-#fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
-#fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
-#fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
-#fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
+# [patch.crates-io]
+# fvm_shared = { path = "../ref-fvm/shared" }
+# fvm_sdk = { path = "../ref-fvm/sdk" }
+# fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
+# fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
+# fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
+# fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
+# fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
 
 [profile.wasm]
 inherits = "release"
-panic = "abort"
+# This needs to be unwind, not abort, so that we can handle panics within our panic hook.
+panic = "unwind"
 overflow-checks = true
 lto = "thin"
 opt-level = "z"

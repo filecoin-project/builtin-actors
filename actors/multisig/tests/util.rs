@@ -97,9 +97,8 @@ impl ActorHarness {
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
         let propose_params =
             ProposeParams { to, value: value.clone(), method, params: params.clone() };
-        expect_ok(
-            rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap()),
-        );
+        rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap())
+            .unwrap();
         rt.verify();
         // compute proposal hash
         let txn = Transaction { to, value, method, params, approved: vec![rt.caller] };
@@ -116,7 +115,7 @@ impl ActorHarness {
     ) -> RawBytes {
         let ret = self.approve(rt, txn_id, proposal_hash).unwrap();
         let approve_ret = ret.deserialize::<ApproveReturn>().unwrap();
-        assert_eq!(ExitCode::Ok, approve_ret.code);
+        assert_eq!(ExitCode::OK, approve_ret.code);
         approve_ret.ret
     }
 
