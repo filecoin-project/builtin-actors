@@ -68,16 +68,22 @@ impl<'bs> VM<'bs> {
     }
 
     // pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
-    //     let system_st = SystemActor::create
+    //     // craft init state directly
+    //     let v = VM::new(store);
+    //     let init_st = InitState::new(store, "integration-test".to_string());
+    //     store.put_cbor(init_st, )
+    //     v.set_actor(*INIT_ACTOR_ADDR, actor())
+
+    //     // use vm to add other singletons
+    //     v
 
     // }
 
     pub fn get_actor(&self, addr: Address) -> Option<Actor> {
         // check for inclusion in cache of changed actors
-        match self.actors_cache.borrow().get(&addr) {
-            Some(act) => return Some(act.clone()),
-            None => (),
-        };
+        if let Some(act) = self.actors_cache.borrow().get(&addr) {
+            return Some(act.clone());
+        }
 
         // go to persisted map
         let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
@@ -85,7 +91,7 @@ impl<'bs> VM<'bs> {
             self.store,
         )
         .unwrap();
-        actors.get(&addr.to_bytes()).unwrap().map(|a| a.clone())
+        actors.get(&addr.to_bytes()).unwrap().cloned()
     }
 
     // blindly overwrite the actor at this address whether it previously existed or not
@@ -108,7 +114,7 @@ impl<'bs> VM<'bs> {
         // roll "back" to latest head, flushing cache
         self.rollback(actors.flush().unwrap());
 
-        self.state_root.borrow().clone()
+        *self.state_root.borrow()
     }
 
     pub fn rollback(&self, root: Cid) {
@@ -119,15 +125,14 @@ impl<'bs> VM<'bs> {
 
     pub fn normalize_address(&self, addr: &Address) -> Option<Address> {
         let st = self.get_state::<InitState>(*INIT_ACTOR_ADDR).unwrap();
-        st.resolve_address::<MemoryBlockstore>(self.store, &addr).unwrap()
+        st.resolve_address::<MemoryBlockstore>(self.store, addr).unwrap()
     }
 
     pub fn get_state<C: Cbor>(&self, addr: Address) -> Option<C> {
         let a_opt = self.get_actor(addr);
-        match a_opt {
-            None => return None,
-            _ => (),
-        }
+        if a_opt == None {
+            return None;
+        };
         let a = a_opt.unwrap();
         self.store.get_cbor::<C>(&a.head).unwrap()
     }
@@ -141,9 +146,9 @@ impl<'bs> VM<'bs> {
         params: C,
     ) -> Result<MessageResult, TestVMError> {
         let from_id = self.normalize_address(&from).unwrap();
-        let mut a = self.get_actor(from_id).unwrap().clone();
+        let mut a = self.get_actor(from_id).unwrap();
         a.call_seq_num += 1;
-        let call_seq_num = a.call_seq_num.clone();
+        let call_seq_num = a.call_seq_num;
         self.set_actor(from_id, a);
 
         let prior_root = self.checkpoint();
@@ -156,16 +161,16 @@ impl<'bs> VM<'bs> {
             _circ_supply: BigInt::zero(),
         };
         let msg = InternalMessage {
-            from: from,
-            to: to,
-            value: value,
-            method: method,
+            from,
+            to,
+            value,
+            method,
             params: serialize(&params, "params for apply message").unwrap(),
         };
         let mut new_ctx = InvocationCtx {
             v: self,
-            top: top,
-            msg: msg,
+            top,
+            msg,
             allow_side_effects: false,
             _caller_validated: false,
             policy: &Policy::default(),
@@ -223,9 +228,8 @@ pub struct InvocationCtx<'invocation, 'bs> {
 
 impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     fn resolve_target(&'invocation self, target: &Address) -> Result<(Actor, Address), ActorError> {
-        match self.v.normalize_address(target) {
-            Some(a) => return Ok((self.v.get_actor(a).unwrap().clone(), a)),
-            None => (),
+        if let Some(a) = self.v.normalize_address(target) {
+            return Ok((self.v.get_actor(a).unwrap(), a));
         };
         // Address does not yet exist, create it
         match target.protocol() {
@@ -264,7 +268,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             _ = new_ctx.invoke();
         }
 
-        Ok((self.v.get_actor(target_id_addr).unwrap().clone(), target_id_addr))
+        Ok((self.v.get_actor(target_id_addr).unwrap(), target_id_addr))
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
@@ -272,7 +276,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
 
         // Transfer funds
-        let mut from_actor = self.v.get_actor(self.msg.from).unwrap().clone();
+        let mut from_actor = self.v.get_actor(self.msg.from).unwrap();
         if !self.msg.value.is_zero() {
             if self.msg.value.lt(&BigInt::zero()) {
                 return Err(ActorError::unchecked(
@@ -319,9 +323,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             //     "actor code type unhanlded by test vm".to_string(),
             // )),
         };
-        match res {
-            Err(_) => self.v.rollback(prior_root),
-            _ => (),
+        if let Err(_) = res {
+            self.v.rollback(prior_root)
         };
         res
     }
@@ -339,14 +342,11 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             }
         }
         let addr = Address::new_id(actor_id);
-        match self.v.get_actor(addr) {
-            Some(_) => {
-                return Err(ActorError::unchecked(
-                    ExitCode::SYS_ASSERTION_FAILED,
-                    "attempt to create new actor at existing address".to_string(),
-                ))
-            }
-            None => (),
+        if let Some(_) = self.v.get_actor(addr) {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "attempt to create new actor at existing address".to_string(),
+            ));
         }
         let a = actor(code_id, self.v.empty_obj_cid, 0, BigInt::zero());
         self.v.set_actor(addr, a);
@@ -396,7 +396,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
-        let maybe_act = self.v.get_actor(addr.clone());
+        let maybe_act = self.v.get_actor(*addr);
         match maybe_act {
             None => None,
             Some(act) => Some(act.code),
@@ -417,13 +417,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             ));
         }
 
-        let new_actor_msg = InternalMessage {
-            from: self.msg.to,
-            to: to,
-            value: value,
-            method: method,
-            params: params,
-        };
+        let new_actor_msg = InternalMessage { from: self.msg.to, to, value, method, params };
         let mut new_ctx = InvocationCtx {
             v: self.v,
             top: self.top.clone(),
