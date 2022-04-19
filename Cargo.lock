@@ -664,6 +664,7 @@ dependencies = [
  "num-traits",
  "rand",
  "serde",
+ "thiserror",
 ]
 
 [[package]]

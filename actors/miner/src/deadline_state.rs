@@ -279,11 +279,11 @@ impl Deadline {
             return Ok(());
         }
 
-        let mut queue = BitFieldQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load expiration queue")?;
+        let mut queue = BitFieldQueue::new(store, &self.expirations_epochs, quant)?;
+
         queue
-            .add_to_queue_values(expiration_epoch, partitions.iter().copied())
-            .context("failed to mutate expiration queue")?;
+            .add_to_queue_values(expiration_epoch, partitions.iter().copied())?;
+
         self.expirations_epochs = queue.amt.flush().context("failed to save expiration queue")?;
 
         Ok(())
