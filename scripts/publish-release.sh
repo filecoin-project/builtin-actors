@@ -23,10 +23,20 @@ if [ -z "$BUILD_FIL_NETWORK" ]; then
 fi
 
 
-release_file=output/builtin-actors.car
+release_input=builtin-actors.car
 release_target=builtin-actors-${BUILD_FIL_NETWORK}.car
+release_target_hash=builtin-actors-${BUILD_FIL_NETWORK}.sha256
+release_file=output/$release_target
+release_file_hash=output/$relesae_target_hash
 release_tag="${GITHUB_SHA:0:16}"
 
+# prepare artifacts
+pushd output
+mv $release_input $release_target
+shasum -a 256 $release_target > $release_target_hash
+popd
+
+# prepare release
 ORG="filecoin-project"
 REPO="builtin-actors"
 
@@ -58,11 +68,20 @@ else
     echo "release $release_tag already exists"
 fi
 
-echo "uploading $release_target"
 __release_upload_url=`echo $__release_response | jq -r '.upload_url' | cut -d'{' -f1`
+
+echo "uploading $release_target"
 curl \
  --request POST \
  --header "Authorization: token $GITHUB_TOKEN" \
  --header "Content-Type: application/octet-stream" \
  --data-binary "@$release_file" \
  "$__release_upload_url?name=$release_target"
+
+echo "uploading $release_target_hash"
+curl \
+ --request POST \
+ --header "Authorization: token $GITHUB_TOKEN" \
+ --header "Content-Type: application/octet-stream" \
+ --data-binary "@$release_file_hash" \
+ "$__release_upload_url?name=$release_target_hash"
