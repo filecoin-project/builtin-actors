@@ -807,9 +807,10 @@ fn get_deal_state(rt: &mut MockRuntime, deal_id: DealID) -> DealState {
     let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
 
     let s = states.get(deal_id).unwrap();
-    s.unwrap().clone()
+    *s.unwrap()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_and_publish_deal(
     rt: &mut MockRuntime,
     client: Address,
