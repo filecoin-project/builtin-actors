@@ -40,13 +40,16 @@ use std::fmt;
 use num_traits::Signed;
 use std::ops::Add;
 use fvm_shared::clock::ChainEpoch;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 
 pub struct VM<'bs> {
     store: &'bs MemoryBlockstore,
-    state_root: Cid,
-    actors_dirty: bool,
+    state_root: RefCell<Cid>,
+    actors_dirty: RefCell<bool>,
     actors: Hamt<&'bs MemoryBlockstore, Actor, BytesKey>,
+    actors_cache: RefCell<HashMap<Address, Actor>>,
     empty_obj_cid: Cid,
     // invocationStack
 }
@@ -55,37 +58,52 @@ impl<'bs> VM<'bs> {
     pub fn new(store: &'bs MemoryBlockstore)-> VM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
         let empty = store.put_cbor(&(), Code::Blake2b256).unwrap();
-        VM { store, state_root: actors.flush().unwrap(), actors_dirty: false, actors, empty_obj_cid: empty}
+        VM { store, state_root: RefCell::new(actors.flush().unwrap()), actors_dirty: RefCell::new(false), actors, actors_cache: RefCell::new(HashMap::new()),  empty_obj_cid: empty}
     }
 
-    pub fn get_actor(&self, addr: &Address) -> Option<&Actor> {
-        self.actors.get(&addr.to_bytes()).unwrap()
+    pub fn get_actor(&self, addr: Address) -> Option<Actor> {
+        // check for inclusion in cache of changed actors 
+        match self.actors_cache.borrow().get(&addr) {
+            Some(act) => return Some(act.clone()), 
+            None => (),
+        };
+
+        // go to persisted map
+        let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store).unwrap();
+        actors.get(&addr.to_bytes()).unwrap().map(|a| a.clone())
     }
 
     // blindly overwrite the actor at this address whether it previously existed or not
-    pub fn set_actor(&mut self, key: &Address, a: Actor) {
-        let _ = self.actors.set(key.to_bytes().into(), a).unwrap();
+    pub fn set_actor(&self, key: Address, a: Actor) {
+        self.actors_cache.borrow_mut().insert(key, a);
+        self.actors_dirty.replace(true);
     }
 
-    pub fn checkpoint(&mut self) -> Cid {
-        self.state_root = self.actors.flush().unwrap();
-        self.actors_dirty = false;
-        self.state_root
+    pub fn checkpoint(&self) -> Cid {
+        // persist cache on top of latest checkpoint and clear
+        let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store).unwrap();
+        for (addr, act) in self.actors_cache.borrow().iter() {
+            actors.set(addr.to_bytes().into(), act.clone()).unwrap();
+        }
+
+        // roll "back" to latest head, flushing cache
+        self.rollback(actors.flush().unwrap());
+
+        self.state_root.borrow().clone()
     }
 
-    pub fn rollback(&mut self, root: &Cid) {
-        self.actors =
-            Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(root, self.store).unwrap();
-        self.state_root = *root;
-        self.actors_dirty = false;
+    pub fn rollback(&self, root: Cid) {
+        self.actors_cache.replace(HashMap::new());
+        self.state_root.replace(root);
+        self.actors_dirty.replace(false);
     }
 
     pub fn normalize_address(&self, addr: &Address) -> Option<Address> {
-        let st = self.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
+        let st = self.get_state::<InitState>(*INIT_ACTOR_ADDR).unwrap();
         st.resolve_address::<MemoryBlockstore>(self.store, &addr).unwrap()
     }
 
-    pub fn get_state<C: Cbor>(&self, addr: &Address) -> Option<C>{
+    pub fn get_state<C: Cbor>(&self, addr: Address) -> Option<C>{
         let a_opt = self.get_actor(addr);
         match a_opt {
             None => return None,
@@ -97,9 +115,9 @@ impl<'bs> VM<'bs> {
 
     pub fn apply_message<C: Cbor>(&mut self, from: &Address, to: &Address, value: &TokenAmount, method: MethodNum, params: C) -> Result<MessageResult, TestVMError> {
         let from_id = self.normalize_address(&from).unwrap();
-        let mut a = self.get_actor(&from_id).unwrap().clone();
+        let mut a = self.get_actor(from_id).unwrap().clone();
         a.call_seq_num += 1; 
-        self.set_actor(&from_id, a);
+        self.set_actor(from_id, a);
 
         let prior_root = self.checkpoint();
 
@@ -109,7 +127,7 @@ impl<'bs> VM<'bs> {
         let code = ExitCode::OK;
 
         if code != ExitCode::OK { // if exitcode != ok
-            self.rollback(&prior_root);
+            self.rollback(prior_root);
         } else {
             self.checkpoint();
         }
@@ -141,7 +159,7 @@ impl MessageInfo for InternalMessage {
 }
 
 pub struct InvocationCtx<'invocation, 'bs> {
-    v: &'invocation mut VM<'bs>,
+    v: &'invocation VM<'bs>,
     top: TopCtx,
     msg: InternalMessage,
     allow_side_effects: bool,
@@ -150,9 +168,9 @@ pub struct InvocationCtx<'invocation, 'bs> {
 }
 
 impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
-    fn resolve_target(&'invocation mut self, target: &Address) -> Result<(&Actor, Address), ActorError> {
+    fn resolve_target(&'invocation self, target: &Address) -> Result<(Actor, Address), ActorError> {
         match self.v.normalize_address(target) {
-            Some(a) => return Ok((self.v.get_actor(&a).unwrap(), a)),
+            Some(a) => return Ok((self.v.get_actor(a).unwrap().clone(), a)),
             None => (),
         };
         // Address does not yet exist, create it
@@ -160,14 +178,14 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Protocol::Actor | Protocol::ID => return Err(ActorError::unchecked(ExitCode::SYS_INVALID_RECEIVER, "cannot create account for address type".to_string())),
             _ => (),
         }
-        let mut st = self.v.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
+        let mut st = self.v.get_state::<InitState>(*INIT_ACTOR_ADDR).unwrap();
         let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
         let target_id_addr = Address::new_id(target_id);
-        let mut init_actor = self.v.get_actor(&INIT_ACTOR_ADDR).unwrap().clone();
+        let mut init_actor = self.v.get_actor(*INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.v.set_actor(&INIT_ACTOR_ADDR, init_actor);
+        self.v.set_actor(*INIT_ACTOR_ADDR, init_actor);
 
-        self.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id).unwrap();
+        
         let new_actor_msg = InternalMessage{
             from: *SYSTEM_ACTOR_ADDR, 
             to: target_id_addr, 
@@ -175,7 +193,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             method: METHOD_CONSTRUCTOR,
             params: serialize::<Address>(target, "address").unwrap(),
         };
-       {
+        {
             let mut new_ctx = InvocationCtx{
                 v: self.v,
                 top: self.top.clone(),
@@ -185,18 +203,19 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 policy: self.policy,
  
             };
+            new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id).unwrap();
             _ = new_ctx.invoke();
         }
 
-        Ok((self.v.get_actor(&target_id_addr).unwrap(), target_id_addr))
+        Ok((self.v.get_actor(target_id_addr).unwrap().clone(), target_id_addr))
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
         let prior_root = self.v.checkpoint();
-        let mut to_actor: Actor = self.v.get_actor(&self.msg.to).unwrap().clone(); 
+        let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
 
         // Transfer funds
-        let mut from_actor = self.v.get_actor(&self.msg.from).unwrap().clone();
+        let mut from_actor = self.v.get_actor(self.msg.from).unwrap().clone();
         if !self.msg.value.is_zero() {
             if self.msg.value.lt(&BigInt::zero()) {
                 return Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "attempt to transfer negative value".to_string()))
@@ -207,8 +226,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         }
         to_actor.balance = to_actor.balance.add(&self.msg.value);
         from_actor.balance = from_actor.balance.abs_sub(&self.msg.value);
-        self.v.set_actor(&self.msg.from, from_actor);
-        self.v.set_actor(&self.msg.to, to_actor);
+        self.v.set_actor(self.msg.from, from_actor);
+        self.v.set_actor(to_addr, to_actor);
 
         // Exit early on send
         if self.msg.method == METHOD_SEND {
@@ -216,9 +235,9 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         }
 
         // call target actor
-        let to_actor = self.v.get_actor(&self.msg.to).unwrap();
+        let to_actor = self.v.get_actor(to_addr).unwrap();
         let params = self.msg.params.clone();      
-        match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin") {
+        let res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin") {
             // XXX Review: is there a way to do one call on an object implementing ActorCode trait?
             // I tried using `dyn` keyword couldn't get the compiler on board.
             Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
@@ -233,7 +252,12 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
             Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
             _=> Err(ActorError::unchecked(ExitCode::SYS_INVALID_METHOD, "actor code type unhanlded by test vm".to_string())),
-        }
+        };
+        match res {
+            Err(_) => self.v.rollback(prior_root),
+            _ => (),
+        };
+        res
     }
 }
 
@@ -244,12 +268,12 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             None => return Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "create_actor called with singleton builtin actor code cid".to_string())),
         }
         let addr = Address::new_id(actor_id);
-        match self.v.get_actor(&addr) {
+        match self.v.get_actor(addr) {
             Some(_) => return Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "attempt to create new actor at existing address".to_string())),
             None => (),
         }
         let a = actor(code_id, self.v.empty_obj_cid, 0, BigInt::zero());
-        self.v.set_actor(&addr, a);
+        self.v.set_actor(addr, a);
         Ok(())
     }
 
@@ -295,14 +319,14 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
-        let maybe_act = self.v.get_actor(addr);
+        let maybe_act = self.v.get_actor(addr.clone());
         match maybe_act {
             None => None,
             Some(act) => Some(act.code),
         }
     }
 
-    fn send(&mut self, to: Address, method: MethodNum, params: RawBytes, value:TokenAmount) -> Result<RawBytes,ActorError> {
+    fn send(&self, to: Address, method: MethodNum, params: RawBytes, value:TokenAmount) -> Result<RawBytes,ActorError> {
         if !self.allow_side_effects {
             return Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "Calling send is not allowed during side-effect lock".to_string()))
         }

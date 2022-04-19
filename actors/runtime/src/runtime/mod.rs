@@ -117,7 +117,7 @@ pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
     /// If the invoked method does not return successfully, its state changes
     /// (and that of any messages it sent in turn) will be rolled back.
     fn send(
-        &mut self,
+        &self,
         to: Address,
         method: MethodNum,
         params: RawBytes,
