@@ -12,7 +12,6 @@ use fil_actor_reward::Actor as RewardActor;
 use fil_actor_system::{Actor as SystemActor, State as SystemState};
 use fil_actor_verifreg::Actor as VerifregActor;
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::{actor_error};
 use fil_actors_runtime::runtime::{
     ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls,
 };
@@ -73,7 +72,10 @@ impl<'bs> VM<'bs> {
         let v = VM::new(store);
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = store.put_cbor(&init_st, Code::Blake2b256).unwrap();
-        v.set_actor(*INIT_ACTOR_ADDR, actor(*INIT_ACTOR_CODE_ID, init_head, 0, BigInt::from(200_000_000)));
+        v.set_actor(
+            *INIT_ACTOR_ADDR,
+            actor(*INIT_ACTOR_CODE_ID, init_head, 0, BigInt::from(200_000_000)),
+        );
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = store.put_cbor(&sys_st, Code::Blake2b256).unwrap();
         v.set_actor(*SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, BigInt::zero()));
@@ -233,7 +235,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     fn resolve_target(&'invocation self, target: &Address) -> Result<(Actor, Address), ActorError> {
         if let Some(a) = self.v.normalize_address(target) {
             if let Some(act) = self.v.get_actor(a) {
-                return Ok((act, a))
+                return Ok((act, a));
             }
         };
         // Address does not yet exist, create it
@@ -385,10 +387,13 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     {
         for addr in addresses {
             if *addr == self.msg.from {
-                return Ok(())
+                return Ok(());
             }
         }
-        Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "immediate caller address forbidden".to_string()))
+        Err(ActorError::unchecked(
+            ExitCode::SYS_ASSERTION_FAILED,
+            "immediate caller address forbidden".to_string(),
+        ))
     }
 
     fn validate_immediate_caller_type<'a, I>(&mut self, _types: I) -> Result<(), ActorError>
@@ -461,16 +466,22 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
         let maybe_act = self.v.get_actor(self.msg.to);
         match maybe_act {
-            None => Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "failed to create state".to_string())),
+            None => Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "failed to create state".to_string(),
+            )),
             Some(mut act) => {
                 if act.head != self.v.empty_obj_cid {
-                    Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "failed to construct state: already initialized".to_string()))
+                    Err(ActorError::unchecked(
+                        ExitCode::SYS_ASSERTION_FAILED,
+                        "failed to construct state: already initialized".to_string(),
+                    ))
                 } else {
                     act.head = self.v.store.put_cbor(obj, Code::Blake2b256).unwrap();
                     self.v.set_actor(self.msg.to, act);
                     Ok(())
                 }
-            },
+            }
         }
     }
 

@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
-use cid::{multihash, Cid};
 use anyhow::anyhow;
+use cid::{multihash, Cid};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
@@ -36,10 +36,10 @@ impl Cbor for State {}
 
 impl State {
     pub fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<Self> {
-        let c =
-            store.put_cbor(&Vec::<(String, Cid)>::new(), multihash::Code::Blake2b256)
+        let c = store
+            .put_cbor(&Vec::<(String, Cid)>::new(), multihash::Code::Blake2b256)
             .map_err(|e| anyhow!("failed to put system state to store: {}", e))?;
-        Ok(Self { builtin_actors: c})
+        Ok(Self { builtin_actors: c })
     }
 
     pub fn get_builtin_actors<B: Blockstore>(
@@ -65,10 +65,9 @@ impl Actor {
     {
         rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
 
-        let state = State::new(rt.store())
-            .map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
-            })?;
+        let state = State::new(rt.store()).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
+        })?;
         rt.create(&state)?;
         Ok(())
     }
