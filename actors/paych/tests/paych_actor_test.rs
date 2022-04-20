@@ -454,6 +454,37 @@ mod update_channel_state_redeem {
         assert_eq!(sv.amount, ls_updated.redeemed);
         assert_eq!(sv.nonce, ls_updated.nonce);
     }
+
+    #[test]
+    fn redeem_voucher_nonce_reuse() {
+        let (mut rt, mut sv) = require_create_channel_with_lanes(3);
+        let state: PState = rt.get_state().unwrap();
+        let payee_addr = Address::new_id(PAYEE_ID);
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, payee_addr);
+        rt.expect_validate_caller_addr(vec![state.from, state.to]);
+
+        sv.amount = BigInt::from(9);
+        sv.nonce = 1;
+
+        let payer_addr = Address::new_id(PAYER_ID);
+
+        rt.expect_verify_signature(ExpectedVerifySig {
+            sig: sv.clone().signature.unwrap(),
+            signer: payer_addr,
+            plaintext: sv.signing_bytes().unwrap(),
+            result: Ok(()),
+        });
+
+        expect_error(
+            &mut rt,
+            Method::UpdateChannelState as u64,
+            &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+        );
+
+        rt.verify();
+    }
 }
 
 mod merge_tests {
@@ -590,12 +621,6 @@ mod merge_tests {
         sv.merges = vec![Merge { lane: 999, nonce: sv.nonce }];
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            plaintext: sv.signing_bytes().unwrap(),
-            sig: sv.signature.clone().unwrap(),
-            signer: Address::new_id(PAYEE_ID),
-            result: Ok(()),
-        });
         failure_end(&mut rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
     }
 

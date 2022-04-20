@@ -12,4 +12,3 @@ mod downcast;
 mod multimap;
 mod set;
 mod set_multimap;
-mod unmarshallable;
