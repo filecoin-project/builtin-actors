@@ -25,6 +25,7 @@ static NETWORKS: &[(&str, &[&str])] = &[
             "small-deals",
             "short-precommit",
             "min-power-2k",
+            "no-collateral",
         ],
     ),
 ];

@@ -361,7 +361,10 @@ mod policy_constants {
 
     /// Numerator of the percentage of normalized cirulating
     /// supply that must be covered by provider collateral
+    #[cfg(not(feature = "no-collateral"))]
     pub const PROV_COLLATERAL_PERCENT_SUPPLY_NUM: i64 = 1;
+    #[cfg(feature = "no-collateral")]
+    pub const PROV_COLLATERAL_PERCENT_SUPPLY_NUM: i64 = 0;
 
     /// Denominator of the percentage of normalized cirulating
     /// supply that must be covered by provider collateral
