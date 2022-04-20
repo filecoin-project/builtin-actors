@@ -134,6 +134,17 @@ pub struct Policy {
 
     /// Minimum verified deal size
     pub minimum_verified_deal_size: StoragePower,
+
+    /// the number of blocks between payouts for deals
+    pub deal_updates_interval: i64,
+
+    /// Numerator of the percentage of normalized cirulating
+    /// supply that must be covered by provider collateral
+    pub prov_collateral_percent_supply_num: i64,
+
+    /// Denominator of the percentage of normalized cirulating
+    /// supply that must be covered by provider collateral
+    pub prov_collateral_percent_supply_denom: i64,
 }
 
 impl Default for Policy {
@@ -200,6 +211,10 @@ impl Default for Policy {
             ]),
 
             minimum_verified_deal_size: StoragePower::from_i32(policy_constants::MINIMUM_VERIFIED_DEAL_SIZE).unwrap(),
+
+            deal_updates_interval: policy_constants::DEAL_UPDATES_INTERVAL,
+            prov_collateral_percent_supply_num: policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
+            prov_collateral_percent_supply_denom: policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_DENOM,
         }
     }
 }
@@ -333,4 +348,15 @@ mod policy_constants {
     pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 1<<20;
     #[cfg(feature = "small-deals")]
     pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 256;
+
+    /// DealUpdatesInterval is the number of blocks between payouts for deals
+    pub const DEAL_UPDATES_INTERVAL: i64 = EPOCHS_IN_DAY;
+
+    /// Numerator of the percentage of normalized cirulating
+    /// supply that must be covered by provider collateral
+    pub const PROV_COLLATERAL_PERCENT_SUPPLY_NUM: i64 = 1;
+
+    /// Denominator of the percentage of normalized cirulating
+    /// supply that must be covered by provider collateral
+    pub const PROV_COLLATERAL_PERCENT_SUPPLY_DENOM: i64 = 100;
 }

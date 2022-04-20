@@ -7,6 +7,7 @@ use cid::Cid;
 use fil_actors_runtime::{
     actor_error, make_empty_map, ActorDowncast, ActorError, Array, Set, SetMultimap,
 };
+use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
@@ -21,7 +22,7 @@ use num_traits::{Signed, Zero};
 
 use super::policy::*;
 use super::types::*;
-use super::{DealProposal, DealState, DEAL_UPDATES_INTERVAL};
+use super::{DealProposal, DealState};
 
 /// Market actor state
 #[derive(Clone, Default, Serialize_tuple, Deserialize_tuple)]
@@ -344,6 +345,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub(super) fn update_pending_deal_state(
         &mut self,
+        policy: &Policy,
         state: &DealState,
         deal: &DealProposal,
         epoch: ChainEpoch,
@@ -438,7 +440,7 @@ where
         // We're explicitly not inspecting the end epoch and may process a deal's expiration late,
         // in order to prevent an outsider from loading a cron tick by activating too many deals
         // with the same end epoch.
-        let next = epoch + DEAL_UPDATES_INTERVAL;
+        let next = epoch + policy.deal_updates_interval;
 
         Ok((TokenAmount::zero(), next, false))
     }
