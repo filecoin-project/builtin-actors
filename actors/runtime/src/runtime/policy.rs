@@ -210,11 +210,16 @@ impl Default for Policy {
                 RegisteredSealProof::StackedDRG64GiBV1P1,
             ]),
 
-            minimum_verified_deal_size: StoragePower::from_i32(policy_constants::MINIMUM_VERIFIED_DEAL_SIZE).unwrap(),
+            minimum_verified_deal_size: StoragePower::from_i32(
+                policy_constants::MINIMUM_VERIFIED_DEAL_SIZE,
+            )
+            .unwrap(),
 
             deal_updates_interval: policy_constants::DEAL_UPDATES_INTERVAL,
-            prov_collateral_percent_supply_num: policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
-            prov_collateral_percent_supply_denom: policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_DENOM,
+            prov_collateral_percent_supply_num:
+                policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
+            prov_collateral_percent_supply_denom:
+                policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_DENOM,
         }
     }
 }
@@ -345,7 +350,7 @@ mod policy_constants {
     pub const CHAIN_FINALITY: ChainEpoch = 900;
 
     #[cfg(not(feature = "small-deals"))]
-    pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 1<<20;
+    pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 1 << 20;
     #[cfg(feature = "small-deals")]
     pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 256;
 

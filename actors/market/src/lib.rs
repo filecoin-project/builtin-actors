@@ -22,7 +22,7 @@ use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
 use fil_actors_runtime::cbor::serialize_vec;
-use fil_actors_runtime::runtime::{ActorCode, Runtime, Policy};
+use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -431,7 +431,8 @@ impl Actor {
 
                 // We randomize the first epoch for when the deal will be processed so an attacker isn't able to
                 // schedule too many deals for the same tick.
-                let process_epoch = gen_rand_next_epoch(rt.policy(), valid_deal.proposal.start_epoch, id);
+                let process_epoch =
+                    gen_rand_next_epoch(rt.policy(), valid_deal.proposal.start_epoch, id);
 
                 msm.deals_by_epoch.as_mut().unwrap().put(process_epoch, id).map_err(|e| {
                     e.downcast_default(
