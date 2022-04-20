@@ -326,10 +326,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Power => PowerActor::invoke_method(self, self.msg.method, &params),
             Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
             Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
-            // _ => Err(ActorError::unchecked(
-            //     ExitCode::SYS_INVALID_METHOD,
-            //     "actor code type unhanlded by test vm".to_string(),
-            // )),
         };
         if res.is_err() {
             self.v.rollback(prior_root)
