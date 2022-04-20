@@ -135,7 +135,7 @@ pub struct Policy {
     /// Minimum verified deal size
     pub minimum_verified_deal_size: StoragePower,
 
-    /// the number of blocks between payouts for deals
+    /// The number of blocks between payouts for deals
     pub deal_updates_interval: i64,
 
     /// Numerator of the percentage of normalized cirulating
