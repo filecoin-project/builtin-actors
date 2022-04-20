@@ -68,7 +68,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        if &params.allowance < &MINIMUM_VERIFIED_DEAL_SIZE {
+        if &params.allowance < &rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
                 illegal_argument,
                 "Allowance {} below minimum deal size for add verifier {}",
@@ -189,7 +189,7 @@ impl Actor {
         // The caller will be verified by checking table below
         rt.validate_immediate_caller_accept_any()?;
 
-        if params.allowance < *MINIMUM_VERIFIED_DEAL_SIZE {
+        if params.allowance < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
                 illegal_argument,
                 "Allowance {} below MinVerifiedDealSize for add verified client {}",
@@ -326,7 +326,7 @@ impl Actor {
             )
         })?;
 
-        if params.deal_size < *MINIMUM_VERIFIED_DEAL_SIZE {
+        if params.deal_size < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
                 illegal_argument,
                 "Verified Dealsize {} is below minimum in usedbytes",
@@ -373,7 +373,7 @@ impl Actor {
             };
 
             let new_vc_cap = vc_cap - &params.deal_size;
-            if new_vc_cap < *MINIMUM_VERIFIED_DEAL_SIZE {
+            if new_vc_cap < rt.policy().minimum_verified_deal_size {
                 // Delete entry if remaining DataCap is less than MinVerifiedDealSize.
                 // Will be restored later if the deal did not get activated with a ProvenSector.
                 verified_clients
@@ -419,7 +419,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
-        if params.deal_size < *MINIMUM_VERIFIED_DEAL_SIZE {
+        if params.deal_size < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
                 illegal_argument,
                 "Below minimum VerifiedDealSize requested in RestoreBytes: {}",

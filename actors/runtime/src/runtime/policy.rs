@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
+use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
+use num_traits::FromPrimitive;
 
 // A trait for runtime policy configuration
 pub trait RuntimePolicy {
@@ -130,6 +131,9 @@ pub struct Policy {
 
     /// Allowed pre commit proof types for new miners
     pub valid_pre_commit_proof_type: HashSet<RegisteredSealProof>,
+
+    /// Minimum verified deal size
+    pub minimum_verified_deal_size: StoragePower,
 }
 
 impl Default for Policy {
@@ -195,6 +199,8 @@ impl Default for Policy {
                 #[cfg(feature = "sector-64g")]
                 RegisteredSealProof::StackedDRG64GiBV1P1,
             ]),
+
+            minimum_verified_deal_size: StoragePower::from_i32(policy_constants::MINIMUM_VERIFIED_DEAL_SIZE).unwrap(),
         };
 
         policy
@@ -325,4 +331,9 @@ mod policy_constants {
     /// Epochs after which chain state is final with overwhelming probability (hence the likelihood of two fork of this size is negligible)
     /// This is a conservative value that is chosen via simulations of all known attacks.
     pub const CHAIN_FINALITY: ChainEpoch = 900;
+
+    #[cfg(not(feature = "small-deals"))]
+    pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 1<<20;
+    #[cfg(feature = "small-deals")]
+    pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 256;
 }
