@@ -633,6 +633,7 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
 fn ignore_deal_proposal_that_does_not_exist() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
     let owner_addr = Address::new_id(OWNER_ID);
     let provider_addr = Address::new_id(PROVIDER_ID);
@@ -653,7 +654,7 @@ fn ignore_deal_proposal_that_does_not_exist() {
         start_epoch,
         end_epoch,
     );
-    activate_deals(&mut rt, end_epoch, provider_addr, current_epoch, &[deal1]);
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
 
     terminate_deals(&mut rt, provider_addr, &[deal1, 42]);
 
