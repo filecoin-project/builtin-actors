@@ -507,6 +507,11 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn set_address_actor_type(&mut self, address: Address, actor_type: Cid) {
+        self.actor_code_cids.insert(address, actor_type);
+    }
+
+    #[allow(dead_code)]
     pub fn set_caller(&mut self, code_id: Cid, address: Address) {
         self.caller = address;
         self.caller_type = code_id;
