@@ -464,6 +464,28 @@ fn fails_with_a_negative_withdraw_amount() {
     rt.verify();
 }
 
+#[test]
+fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker() {
+    let mut rt = setup();
+
+    let owner_addr = Address::new_id(OWNER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+
+    let amount = TokenAmount::from(20u8);
+
+    add_provider_funds(&mut rt, provider_addr, owner_addr, worker_addr, amount.clone());
+
+    assert_eq!(get_escrow_balance(&rt, &provider_addr), Ok(amount));
+
+    rt.expect_validate_caller_addr(vec![owner_addr, worker_addr]);
+
+    let params =
+        WithdrawBalanceParams { provider_or_client: provider_addr, amount: TokenAmount::from(1u8) };
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
