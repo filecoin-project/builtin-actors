@@ -93,7 +93,7 @@ mod verifiers {
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, Address::new_id(501));
         let params = AddVerifierParams {
             address: Address::new_id(201),
-            allowance: verifier_allowance(&rt).clone(),
+            allowance: verifier_allowance(&rt),
         };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
@@ -368,7 +368,7 @@ mod clients {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
         rt.expect_validate_caller_any();
         let params =
-            AddVerifierClientParams { address: *CLIENT, allowance: allowance_client.clone() };
+            AddVerifierClientParams { address: *CLIENT, allowance: allowance_client };
         expect_abort(
             ExitCode::USR_NOT_FOUND,
             rt.call::<VerifregActor>(
