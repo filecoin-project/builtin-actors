@@ -138,8 +138,7 @@ pub struct Policy {
 
 impl Default for Policy {
     fn default() -> Policy {
-        #[allow(unused_mut)] // for devnet mutation below
-        let mut policy = Policy {
+        Policy {
             max_aggregated_sectors: policy_constants::MAX_AGGREGATED_SECTORS,
             min_aggregated_sectors: policy_constants::MIN_AGGREGATED_SECTORS,
             max_aggregated_proof_size: policy_constants::MAX_AGGREGATED_PROOF_SIZE,
@@ -201,9 +200,7 @@ impl Default for Policy {
             ]),
 
             minimum_verified_deal_size: StoragePower::from_i32(policy_constants::MINIMUM_VERIFIED_DEAL_SIZE).unwrap(),
-        };
-
-        policy
+        }
     }
 }
 
