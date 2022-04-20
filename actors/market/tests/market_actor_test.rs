@@ -105,7 +105,6 @@ fn label_cbor() {
         .unwrap();
 
     let label2 = Label::Bytes(b"i_am_random_____i_am_random_____".to_vec());
-    //println!("{:?}", (b"i_am_random_____i_am_random_____".to_vec()));
     let _ = to_vec(&label2)
         .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
         .unwrap();
@@ -319,7 +318,7 @@ fn withdraws_from_non_provider_escrow_funds() {
     let withdraw_amount = TokenAmount::from(1);
     withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount, client_addr);
 
-    add_participant_funds(&mut rt, client_addr, amount);
+    assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), TokenAmount::from(19));
     // TODO: actor.checkState(rt)
 }
 
@@ -397,7 +396,7 @@ fn add_provider_funds(
     worker: Address,
 ) {
     rt.set_value(amount.clone());
-    // TODO: call rt.SetAddressActorType(minerAddrs.provider, builtin.StorageMinerActorCodeID)?
+    rt.set_address_actor_type(provider, *MINER_ACTOR_CODE_ID);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, owner);
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
