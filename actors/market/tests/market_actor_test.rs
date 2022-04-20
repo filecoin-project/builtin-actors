@@ -7,9 +7,9 @@ use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::policy::DEAL_UPDATES_INTERVAL;
 use fil_actor_market::{
     ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray,
-    DealProposal, DealState, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn,
-    State, WithdrawBalanceParams, WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH,
-    STATES_AMT_BITWIDTH,
+    DealProposal, DealState, Label, Method, OnMinerSectorsTerminateParams,
+    PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
+    WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -628,6 +628,39 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
     // TODO: actor.checkState(rt)
 }
 
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1312
+#[test]
+fn ignore_deal_proposal_that_does_not_exist() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    let deal1 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    activate_deals(&mut rt, end_epoch, provider_addr, current_epoch, &[deal1]);
+
+    terminate_deals(&mut rt, provider_addr, &[deal1, 42]);
+
+    let s = get_deal_state(&mut rt, deal1);
+    assert_eq!(s.slash_epoch, current_epoch);
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
@@ -790,6 +823,22 @@ fn activate_deals(
         let s = get_deal_state(rt, *d);
         assert_eq!(current_epoch, s.sector_start_epoch);
     }
+}
+
+fn terminate_deals(rt: &mut MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
+    rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+
+    let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: deal_ids.to_vec() };
+
+    let ret = rt
+        .call::<MarketActor>(
+            Method::OnMinerSectorsTerminate as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(ret, RawBytes::default());
+    rt.verify();
 }
 
 fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
