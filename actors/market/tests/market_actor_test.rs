@@ -485,6 +485,20 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
         WithdrawBalanceParams { provider_or_client: provider_addr, amount: TokenAmount::from(1u8) };
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
+
+    expect_get_control_addresses(&mut rt, provider_addr, owner_addr, worker_addr, vec![]);
+
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        rt.call::<MarketActor>(
+            Method::WithdrawBalance as u64,
+            &RawBytes::serialize(&params).unwrap(),
+        ),
+    );
+
+    rt.verify();
+
+    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &provider_addr).unwrap());
 }
 
 fn expect_get_control_addresses(
