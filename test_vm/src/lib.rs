@@ -9,9 +9,10 @@ use fil_actor_multisig::Actor as MultisigActor;
 use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::Actor as PowerActor;
 use fil_actor_reward::Actor as RewardActor;
-use fil_actor_system::Actor as SystemActor;
+use fil_actor_system::{Actor as SystemActor, State as SystemState};
 use fil_actor_verifreg::Actor as VerifregActor;
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::{actor_error};
 use fil_actors_runtime::runtime::{
     ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls,
 };
@@ -67,17 +68,19 @@ impl<'bs> VM<'bs> {
         }
     }
 
-    // pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
-    //     // craft init state directly
-    //     let v = VM::new(store);
-    //     let init_st = InitState::new(store, "integration-test".to_string());
-    //     store.put_cbor(init_st, )
-    //     v.set_actor(*INIT_ACTOR_ADDR, actor())
-
-    //     // use vm to add other singletons
-    //     v
-
-    // }
+    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
+        // craft init state directly
+        let v = VM::new(store);
+        let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
+        let init_head = store.put_cbor(&init_st, Code::Blake2b256).unwrap();
+        v.set_actor(*INIT_ACTOR_ADDR, actor(*INIT_ACTOR_CODE_ID, init_head, 0, BigInt::from(200_000_000)));
+        let sys_st = SystemState::new(store).unwrap();
+        let sys_head = store.put_cbor(&sys_st, Code::Blake2b256).unwrap();
+        v.set_actor(*SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, BigInt::zero()));
+        v.checkpoint();
+        // TODO: actually add remaining singletons for testing
+        v
+    }
 
     pub fn get_actor(&self, addr: Address) -> Option<Actor> {
         // check for inclusion in cache of changed actors
@@ -138,7 +141,7 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn apply_message<C: Cbor>(
-        &mut self,
+        &self,
         from: Address,
         to: Address,
         value: TokenAmount,
@@ -161,7 +164,7 @@ impl<'bs> VM<'bs> {
             _circ_supply: BigInt::zero(),
         };
         let msg = InternalMessage {
-            from,
+            from: from_id,
             to,
             value,
             method,
@@ -229,7 +232,9 @@ pub struct InvocationCtx<'invocation, 'bs> {
 impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     fn resolve_target(&'invocation self, target: &Address) -> Result<(Actor, Address), ActorError> {
         if let Some(a) = self.v.normalize_address(target) {
-            return Ok((self.v.get_actor(a).unwrap(), a));
+            if let Some(act) = self.v.get_actor(a) {
+                return Ok((act, a))
+            }
         };
         // Address does not yet exist, create it
         match target.protocol() {
@@ -276,6 +281,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
 
         // Transfer funds
+        println!("to: {}, from: {}\n", to_addr, self.msg.from);
         let mut from_actor = self.v.get_actor(self.msg.from).unwrap();
         if !self.msg.value.is_zero() {
             if self.msg.value.lt(&BigInt::zero()) {
@@ -373,11 +379,16 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         panic!("TODO implement me")
     }
 
-    fn validate_immediate_caller_is<'a, I>(&mut self, _addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>,
     {
-        panic!("TODO implement me")
+        for addr in addresses {
+            if *addr == self.msg.from {
+                return Ok(())
+            }
+        }
+        Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "immediate caller address forbidden".to_string()))
     }
 
     fn validate_immediate_caller_type<'a, I>(&mut self, _types: I) -> Result<(), ActorError>
@@ -447,8 +458,20 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         panic!("TODO implement me")
     }
 
-    fn create<C: Cbor>(&mut self, _obj: &C) -> Result<(), ActorError> {
-        panic!("TODO implement me")
+    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+        let maybe_act = self.v.get_actor(self.msg.to);
+        match maybe_act {
+            None => Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "failed to create state".to_string())),
+            Some(mut act) => {
+                if act.head != self.v.empty_obj_cid {
+                    Err(ActorError::unchecked(ExitCode::SYS_ASSERTION_FAILED, "failed to construct state: already initialized".to_string()))
+                } else {
+                    act.head = self.v.store.put_cbor(obj, Code::Blake2b256).unwrap();
+                    self.v.set_actor(self.msg.to, act);
+                    Ok(())
+                }
+            },
+        }
     }
 
     fn state<C: Cbor>(&self) -> Result<C, ActorError> {
