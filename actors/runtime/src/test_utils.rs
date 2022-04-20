@@ -522,6 +522,11 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn set_circulating_supply(&mut self, circ_supply: TokenAmount) {
+        self.circulating_supply = circ_supply;
+    }
+
+    #[allow(dead_code)]
     pub fn replace_state<C: Cbor>(&mut self, obj: &C) {
         self.state = Some(self.store.put_cbor(obj, Code::Blake2b256).unwrap());
     }

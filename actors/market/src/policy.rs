@@ -20,11 +20,11 @@ pub const DEAL_UPDATES_INTERVAL: i64 = EPOCHS_IN_DAY;
 
 /// Numerator of the percentage of normalized cirulating
 /// supply that must be covered by provider collateral
-const PROV_COLLATERAL_PERCENT_SUPPLY_NUM: i64 = 1;
+pub const PROV_COLLATERAL_PERCENT_SUPPLY_NUM: i64 = 1;
 
 /// Denominator of the percentage of normalized cirulating
 /// supply that must be covered by provider collateral
-const PROV_COLLATERAL_PERCENT_SUPPLY_DENOM: i64 = 100;
+pub const PROV_COLLATERAL_PERCENT_SUPPLY_DENOM: i64 = 100;
 
 /// Maximum length of a deal label.
 pub(super) const DEAL_MAX_LABEL_SIZE: usize = 256;
