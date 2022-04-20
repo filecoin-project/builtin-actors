@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
+use fil_actor_market::ext::miner::GetControlAddressesReturnParams;
 use fil_actor_market::{
     ext, Actor as MarketActor, Label, Method, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
     STATES_AMT_BITWIDTH,
@@ -484,6 +485,25 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
         WithdrawBalanceParams { provider_or_client: provider_addr, amount: TokenAmount::from(1u8) };
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
+}
+
+fn expect_get_control_addresses(
+    rt: &mut MockRuntime,
+    provider: Address,
+    owner: Address,
+    worker: Address,
+    controls: Vec<Address>,
+) {
+    let result = GetControlAddressesReturnParams { owner, worker, control_addresses: controls };
+
+    rt.expect_send(
+        provider,
+        ext::miner::CONTROL_ADDRESSES_METHOD,
+        RawBytes::default(),
+        BigInt::from(0u8),
+        RawBytes::serialize(result).unwrap(),
+        ExitCode::OK,
+    )
 }
 
 fn expect_provider_control_address(
