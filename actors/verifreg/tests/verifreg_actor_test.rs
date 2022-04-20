@@ -79,9 +79,7 @@ mod verifiers {
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
 
-    use fil_actor_verifreg::{
-        Actor as VerifregActor, AddVerifierParams, Method,
-    };
+    use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierParams, Method};
     use fil_actors_runtime::test_utils::*;
 
     use crate::*;
@@ -133,17 +131,8 @@ mod verifiers {
     fn add_verifier_rejects_client() {
         let (h, mut rt) = new_harness();
         let allowance = verifier_allowance(&rt);
-        h.add_verifier_and_client(
-            &mut rt,
-            &VERIFIER,
-            &CLIENT,
-            &allowance,
-            &allowance,
-        );
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_verifier(&mut rt, &CLIENT, &allowance),
-        );
+        h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance);
+        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.add_verifier(&mut rt, &CLIENT, &allowance));
         h.check_state();
     }
 
@@ -245,9 +234,7 @@ mod clients {
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
 
-    use fil_actor_verifreg::{
-        Actor as VerifregActor, AddVerifierClientParams, DataCap, Method,
-    };
+    use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierClientParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
 
     use crate::*;
@@ -446,9 +433,7 @@ mod datacap {
     use fvm_shared::error::ExitCode;
     use fvm_shared::MethodNum;
 
-    use fil_actor_verifreg::{
-        Actor as VerifregActor, Method, RestoreBytesParams, UseBytesParams,
-    };
+    use fil_actor_verifreg::{Actor as VerifregActor, Method, RestoreBytesParams, UseBytesParams};
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 
@@ -537,8 +522,10 @@ mod datacap {
         let (h, mut rt) = new_harness();
         rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
         rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
-        let params =
-            UseBytesParams { address: *CLIENT, deal_size: rt.policy.minimum_verified_deal_size.clone() };
+        let params = UseBytesParams {
+            address: *CLIENT,
+            deal_size: rt.policy.minimum_verified_deal_size.clone(),
+        };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
@@ -571,10 +558,7 @@ mod datacap {
     fn consume_requires_client_exists() {
         let (h, mut rt) = new_harness();
         let min_deal_size = rt.policy.minimum_verified_deal_size.clone();
-        expect_abort(
-            ExitCode::USR_NOT_FOUND,
-            h.use_bytes(&mut rt, &CLIENT, &min_deal_size),
-        );
+        expect_abort(ExitCode::USR_NOT_FOUND, h.use_bytes(&mut rt, &CLIENT, &min_deal_size));
         h.check_state()
     }
 
@@ -696,8 +680,10 @@ mod datacap {
         let (h, mut rt) = new_harness();
         rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
         rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
-        let params =
-            RestoreBytesParams { address: *CLIENT, deal_size: rt.policy.minimum_verified_deal_size.clone() };
+        let params = RestoreBytesParams {
+            address: *CLIENT,
+            deal_size: rt.policy.minimum_verified_deal_size.clone(),
+        };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
