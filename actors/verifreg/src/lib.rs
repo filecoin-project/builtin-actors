@@ -68,7 +68,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        if &params.allowance < &rt.policy().minimum_verified_deal_size {
+        if params.allowance < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
                 illegal_argument,
                 "Allowance {} below minimum deal size for add verifier {}",
