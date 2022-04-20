@@ -132,9 +132,11 @@ pub struct Policy {
     /// Allowed pre commit proof types for new miners
     pub valid_pre_commit_proof_type: HashSet<RegisteredSealProof>,
 
+    // --- verifreg policy
     /// Minimum verified deal size
     pub minimum_verified_deal_size: StoragePower,
 
+    //  --- market policy ---
     /// The number of blocks between payouts for deals
     pub deal_updates_interval: i64,
 
