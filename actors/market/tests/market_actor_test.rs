@@ -72,6 +72,7 @@ fn setup() -> MockRuntime {
     actor_code_cids.insert(Address::new_id(WORKER_ID), *ACCOUNT_ACTOR_CODE_ID);
     actor_code_cids.insert(Address::new_id(PROVIDER_ID), *MINER_ACTOR_CODE_ID);
     actor_code_cids.insert(Address::new_id(CLIENT_ID), *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(Address::new_id(501), *MINER_ACTOR_CODE_ID); // XXX: How does the go code deal with new actor codes?
 
     let mut rt = MockRuntime {
         receiver: *STORAGE_MARKET_ACTOR_ADDR,
@@ -628,6 +629,81 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
     // TODO: actor.checkState(rt)
 }
 
+// Converted from https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1274
+#[test]
+fn terminate_multiple_deals_from_multiple_providers() {
+    use std::convert::TryInto;
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let provider2 = Address::new_id(501);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    let [deal1, deal2, deal3]: [DealID; 3] = (end_epoch..end_epoch + 3)
+        .map(|epoch| {
+            generate_and_publish_deal(
+                &mut rt,
+                client_addr,
+                provider_addr,
+                owner_addr,
+                worker_addr,
+                control_addr,
+                start_epoch,
+                epoch,
+            )
+        })
+        .collect::<Vec<DealID>>()
+        .try_into()
+        .unwrap();
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1, deal2, deal3]);
+
+    let deal4 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider2,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    let deal5 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider2,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch + 1,
+    );
+    activate_deals(&mut rt, sector_expiry, provider2, current_epoch, &[deal4, deal5]);
+
+    terminate_deals(&mut rt, provider_addr, &[deal1]);
+    assert_deals_terminated(&mut rt, current_epoch, &[deal1]);
+    assert_deals_not_terminated(&mut rt, &[deal2, deal3, deal4, deal5]);
+
+    terminate_deals(&mut rt, provider2, &[deal5]);
+    assert_deals_terminated(&mut rt, current_epoch, &[deal5]);
+    assert_deals_not_terminated(&mut rt, &[deal2, deal3, deal4]);
+
+    terminate_deals(&mut rt, provider_addr, &[deal2, deal3]);
+    assert_deals_terminated(&mut rt, current_epoch, &[deal2, deal3]);
+    assert_deals_not_terminated(&mut rt, &[deal4]);
+
+    terminate_deals(&mut rt, provider2, &[deal4]);
+    assert_deals_terminated(&mut rt, current_epoch, &[deal4]);
+}
+
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1312
 #[test]
 fn ignore_deal_proposal_that_does_not_exist() {
@@ -1114,4 +1190,18 @@ where
     })
     .unwrap();
     assert_eq!(n, count, "unexpected deal count at epoch {}", epoch);
+}
+
+fn assert_deals_terminated(rt: &mut MockRuntime, epoch: ChainEpoch, deal_ids: &[DealID]) {
+    for &deal_id in deal_ids {
+        let s = get_deal_state(rt, deal_id);
+        assert_eq!(s.slash_epoch, epoch);
+    }
+}
+
+fn assert_deals_not_terminated(rt: &mut MockRuntime, deal_ids: &[DealID]) {
+    for &deal_id in deal_ids {
+        let s = get_deal_state(rt, deal_id);
+        assert_eq!(s.slash_epoch, -1);
+    }
 }
