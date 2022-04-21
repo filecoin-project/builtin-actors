@@ -743,8 +743,8 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         &deal1.provider_collateral +
         &deal2.provider_collateral +
         &deal3.provider_collateral;
-    assert_eq!(total_client_collateral_locked, st.total_client_locked_colateral);
-    assert_eq!(provider_locked, st.total_provider_locked_colateral);
+    assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
+    assert_eq!(provider_locked, st.total_provider_locked_collateral);
     let total_storage_fee =
         &deal1.total_storage_fee() +
         &deal2.total_storage_fee() +
@@ -797,8 +797,8 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         &total_client_collateral_locked +
         &deal4.client_collateral +
         &deal5.client_collateral;
-    assert_eq!(total_client_collateral_locked, st.total_client_locked_colateral);
-    assert_eq!(provider_locked, st.total_client_locked_colateral);
+    assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
+    assert_eq!(provider_locked, st.total_client_locked_collateral);
 
     let total_storage_fee =
         &total_storage_fee +
@@ -852,8 +852,8 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         &total_client_collateral_locked +
         &deal6.client_collateral +
         &deal7.client_collateral;
-    assert_eq!(total_client_collateral_locked, st.total_client_locked_colateral);
-    assert_eq!(provider_locked + provider2_locked, st.total_provider_locked_colateral);
+    assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
+    assert_eq!(provider_locked + provider2_locked, st.total_provider_locked_collateral);
     let total_storage_fee =
         &total_storage_fee +
         &deal6.total_storage_fee() +

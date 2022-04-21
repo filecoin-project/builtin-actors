@@ -58,10 +58,10 @@ pub struct State {
 
     /// Total Client Collateral that is locked -> unlocked when deal is terminated
     #[serde(with = "bigint_ser")]
-    pub total_client_locked_colateral: TokenAmount,
+    pub total_client_locked_collateral: TokenAmount,
     /// Total Provider Collateral that is locked -> unlocked when deal is terminated
     #[serde(with = "bigint_ser")]
-    pub total_provider_locked_colateral: TokenAmount,
+    pub total_provider_locked_collateral: TokenAmount,
     /// Total storage fee that is locked in escrow -> unlocked when payments are made
     #[serde(with = "bigint_ser")]
     pub total_client_storage_fee: TokenAmount,
@@ -97,15 +97,15 @@ impl State {
             deal_ops_by_epoch: empty_deal_ops_hamt,
             last_cron: EPOCH_UNDEFINED,
 
-            total_client_locked_colateral: TokenAmount::default(),
-            total_provider_locked_colateral: TokenAmount::default(),
+            total_client_locked_collateral: TokenAmount::default(),
+            total_provider_locked_collateral: TokenAmount::default(),
             total_client_storage_fee: TokenAmount::default(),
         })
     }
 
     pub fn total_locked(&self) -> TokenAmount {
-        &self.total_client_locked_colateral
-            + &self.total_provider_locked_colateral
+        &self.total_client_locked_collateral
+            + &self.total_provider_locked_collateral
             + &self.total_client_storage_fee
     }
 
@@ -181,8 +181,8 @@ pub(super) struct MarketStateMutation<'bs, 's, BS> {
 
     pub(super) locked_permit: Permission,
     pub(super) locked_table: Option<BalanceTable<'bs, BS>>,
-    pub(super) total_client_locked_colateral: Option<TokenAmount>,
-    pub(super) total_provider_locked_colateral: Option<TokenAmount>,
+    pub(super) total_client_locked_collateral: Option<TokenAmount>,
+    pub(super) total_provider_locked_collateral: Option<TokenAmount>,
     pub(super) total_client_storage_fee: Option<TokenAmount>,
 
     pub(super) next_deal_id: DealID,
@@ -209,8 +209,8 @@ where
             deals_by_epoch: None,
             locked_permit: Permission::Invalid,
             locked_table: None,
-            total_client_locked_colateral: None,
-            total_provider_locked_colateral: None,
+            total_client_locked_collateral: None,
+            total_provider_locked_collateral: None,
             total_client_storage_fee: None,
         }
     }
@@ -226,11 +226,11 @@ where
 
         if self.locked_permit != Permission::Invalid {
             self.locked_table = Some(BalanceTable::from_root(self.store, &self.st.locked_table)?);
-            self.total_client_locked_colateral =
-                Some(self.st.total_client_locked_colateral.clone());
+            self.total_client_locked_collateral =
+                Some(self.st.total_client_locked_collateral.clone());
             self.total_client_storage_fee = Some(self.st.total_client_storage_fee.clone());
-            self.total_provider_locked_colateral =
-                Some(self.st.total_provider_locked_colateral.clone());
+            self.total_provider_locked_collateral =
+                Some(self.st.total_provider_locked_collateral.clone());
         }
 
         if self.escrow_permit != Permission::Invalid {
@@ -301,11 +301,11 @@ where
                 self.st.locked_table =
                     s.root().map_err(|e| e.downcast_wrap("failed to flush locked table"))?;
             }
-            if let Some(s) = &mut self.total_client_locked_colateral {
-                self.st.total_client_locked_colateral = s.clone();
+            if let Some(s) = &mut self.total_client_locked_collateral {
+                self.st.total_client_locked_collateral = s.clone();
             }
-            if let Some(s) = &mut self.total_provider_locked_colateral {
-                self.st.total_provider_locked_colateral = s.clone();
+            if let Some(s) = &mut self.total_provider_locked_collateral {
+                self.st.total_provider_locked_collateral = s.clone();
             }
             if let Some(s) = &mut self.total_client_storage_fee {
                 self.st.total_client_storage_fee = s.clone();
@@ -578,13 +578,13 @@ where
         self.maybe_lock_balance(&proposal.provider, &proposal.provider_collateral)
             .map_err(|e| e.wrap("failed to lock provider funds"))?;
 
-        if let Some(v) = self.total_client_locked_colateral.as_mut() {
+        if let Some(v) = self.total_client_locked_collateral.as_mut() {
             *v += &proposal.client_collateral;
         }
         if let Some(v) = self.total_client_storage_fee.as_mut() {
             *v += proposal.total_storage_fee();
         }
-        if let Some(v) = self.total_provider_locked_colateral.as_mut() {
+        if let Some(v) = self.total_provider_locked_collateral.as_mut() {
             *v += &proposal.provider_collateral;
         }
         Ok(())
@@ -602,13 +602,13 @@ where
         self.locked_table.as_mut().unwrap().must_subtract(addr, amount)?;
 
         match lock_reason {
-            Reason::ClientCollateral => self.total_client_locked_colateral.as_mut().map(|v| {
+            Reason::ClientCollateral => self.total_client_locked_collateral.as_mut().map(|v| {
                 *v -= amount;
             }),
             Reason::ClientStorageFee => self.total_client_storage_fee.as_mut().map(|v| {
                 *v -= amount;
             }),
-            Reason::ProviderCollateral => self.total_provider_locked_colateral.as_mut().map(|v| {
+            Reason::ProviderCollateral => self.total_provider_locked_collateral.as_mut().map(|v| {
                 *v -= amount;
             }),
         };
