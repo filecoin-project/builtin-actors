@@ -357,29 +357,72 @@ pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorErro
 }
 
 impl MockRuntime {
-    fn require_in_call(&self) {
-        assert!(self.in_call, "invalid runtime invocation outside of method call",)
-    }
-    fn put<C: Cbor>(&self, o: &C) -> Result<Cid, ActorError> {
-        Ok(self.store.put_cbor(&o, Code::Blake2b256).unwrap())
-    }
-    fn _get<T: DeserializeOwned>(&self, cid: Cid) -> Result<T, ActorError> {
-        Ok(self.store.get_cbor(&cid).unwrap().unwrap())
+    ///// Runtime access for tests /////
+
+    pub fn get_state<T: Cbor>(&self) -> T {
+        self.store_get(self.state.as_ref().unwrap())
     }
 
-    #[allow(dead_code)]
-    pub fn get_state<T: Cbor>(&self) -> Result<T, ActorError> {
-        // TODO this doesn't handle errors exactly as go implementation
-        self.state()
+    pub fn replace_state<C: Cbor>(&mut self, obj: &C) {
+        self.state = Some(self.store_put(obj));
     }
 
-    #[allow(dead_code)]
+    pub fn set_balance(&mut self, amount: TokenAmount) {
+        *self.balance.get_mut() = amount;
+    }
+
+    pub fn add_balance(&mut self, amount: TokenAmount) {
+        *self.balance.get_mut() += amount;
+    }
+
+    pub fn set_value(&mut self, value: TokenAmount) {
+        self.value_received = value;
+    }
+
+    pub fn set_caller(&mut self, code_id: Cid, address: Address) {
+        self.caller = address;
+        self.caller_type = code_id;
+        self.actor_code_cids.insert(address, code_id);
+    }
+
+    pub fn set_address_actor_type(&mut self, address: Address, actor_type: Cid) {
+        self.actor_code_cids.insert(address, actor_type);
+    }
+
     pub fn get_id_address(&self, address: &Address) -> Option<Address> {
         if address.protocol() == Protocol::ID {
             return Some(*address);
         }
         self.id_addresses.get(address).cloned()
     }
+
+    pub fn call<A: ActorCode>(
+        &mut self,
+        method_num: MethodNum,
+        params: &RawBytes,
+    ) -> Result<RawBytes, ActorError> {
+        self.in_call = true;
+        let prev_state = self.state;
+        let res = A::invoke_method(self, method_num, params);
+
+        if res.is_err() {
+            self.state = prev_state;
+        }
+        self.in_call = false;
+        res
+    }
+
+    /// Verifies that all mock expectations have been met.
+    pub fn verify(&mut self) {
+        self.expectations.borrow_mut().verify()
+    }
+
+    /// Clears all mock expectations.
+    pub fn reset(&mut self) {
+        self.expectations.borrow_mut().reset();
+    }
+
+    ///// Mock expectations /////
 
     #[allow(dead_code)]
     pub fn expect_validate_caller_addr(&mut self, addr: Vec<Address>) {
@@ -390,16 +433,6 @@ impl MockRuntime {
     #[allow(dead_code)]
     pub fn expect_verify_signature(&self, exp: ExpectedVerifySig) {
         self.expectations.borrow_mut().expect_verify_sigs.push_back(exp);
-    }
-
-    #[allow(dead_code)]
-    pub fn set_balance(&mut self, amount: TokenAmount) {
-        *self.balance.get_mut() = amount;
-    }
-
-    #[allow(dead_code)]
-    pub fn add_balance(&mut self, amount: TokenAmount) {
-        *self.balance.get_mut() += amount;
     }
 
     #[allow(dead_code)]
@@ -443,29 +476,6 @@ impl MockRuntime {
         self.expectations.borrow_mut().expect_delete_actor = Some(beneficiary);
     }
 
-    pub fn call<A: ActorCode>(
-        &mut self,
-        method_num: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError> {
-        self.in_call = true;
-        let prev_state = self.state;
-        let res = A::invoke_method(self, method_num, params);
-
-        if res.is_err() {
-            self.state = prev_state;
-        }
-        self.in_call = false;
-        res
-    }
-
-    pub fn verify(&mut self) {
-        self.expectations.borrow_mut().verify()
-    }
-    pub fn reset(&mut self) {
-        self.expectations.borrow_mut().reset();
-    }
-
     #[allow(dead_code)]
     pub fn expect_send(
         &mut self,
@@ -505,28 +515,10 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
-    pub fn set_caller(&mut self, code_id: Cid, address: Address) {
-        self.caller = address;
-        self.caller_type = code_id;
-        self.actor_code_cids.insert(address, code_id);
-    }
-
-    #[allow(dead_code)]
-    pub fn set_value(&mut self, value: TokenAmount) {
-        self.value_received = value;
-    }
-
-    #[allow(dead_code)]
     pub fn set_epoch(&mut self, epoch: ChainEpoch) {
         self.epoch = epoch;
     }
 
-    #[allow(dead_code)]
-    pub fn replace_state<C: Cbor>(&mut self, obj: &C) {
-        self.state = Some(self.store.put_cbor(obj, Code::Blake2b256).unwrap());
-    }
-
-    #[allow(dead_code)]
     pub fn expect_get_randomness_from_tickets(
         &mut self,
         tag: DomainSeparationTag,
@@ -580,6 +572,20 @@ impl MockRuntime {
     #[allow(dead_code)]
     pub fn expect_gas_charge(&mut self, value: i64) {
         self.expectations.borrow_mut().expect_gas_charge.push_back(value);
+    }
+
+    ///// Private helpers /////
+
+    fn require_in_call(&self) {
+        assert!(self.in_call, "invalid runtime invocation outside of method call")
+    }
+
+    fn store_put<C: Cbor>(&self, o: &C) -> Cid {
+        self.store.put_cbor(&o, Code::Blake2b256).unwrap()
+    }
+
+    fn store_get<T: DeserializeOwned>(&self, cid: &Cid) -> T {
+        self.store.get_cbor(cid).unwrap().unwrap()
     }
 }
 
@@ -648,10 +654,10 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             }
         }
         expectations.expect_validate_caller_addr = None;
-        return Err(actor_error!(forbidden;
+        Err(actor_error!(forbidden;
                 "caller address {:?} forbidden, allowed: {:?}",
                 self.message().caller(), &addrs
-        ));
+        ))
     }
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
@@ -687,7 +693,6 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         }
 
         self.expectations.borrow_mut().expect_validate_caller_type = None;
-
         Err(actor_error!(forbidden; "caller type {:?} forbidden, allowed: {:?}",
                 self.caller_type, types))
     }
@@ -702,13 +707,11 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         if address.protocol() == Protocol::ID {
             return Some(*address);
         }
-
         self.id_addresses.get(address).cloned()
     }
 
     fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
         self.require_in_call();
-
         self.actor_code_cids.get(addr).cloned()
     }
 
@@ -782,12 +785,12 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         if self.state.is_some() {
             return Err(actor_error!(illegal_state; "state already constructed"));
         }
-        self.state = Some(self.store.put_cbor(obj, Code::Blake2b256).unwrap());
+        self.state = Some(self.store_put(obj));
         Ok(())
     }
 
     fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        Ok(self.store.get_cbor(self.state.as_ref().unwrap()).unwrap().unwrap())
+        Ok(self.store_get(self.state.as_ref().unwrap()))
     }
 
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
@@ -802,7 +805,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         self.in_transaction = true;
         let ret = f(&mut read_only, self);
         if ret.is_ok() {
-            self.state = Some(self.put(&read_only).unwrap());
+            self.state = Some(self.store_put(&read_only));
         }
         self.in_transaction = false;
         ret
@@ -974,22 +977,18 @@ impl Syscalls for MockRuntime {
         reg: RegisteredSealProof,
         pieces: &[PieceInfo],
     ) -> anyhow::Result<Cid> {
-        let exp =
-            self.expectations.borrow_mut().expect_compute_unsealed_sector_cid.take().ok_or_else(
-                || actor_error!(illegal_state; "Unexpected syscall to ComputeUnsealedSectorCID"),
-            )?;
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_compute_unsealed_sector_cid
+            .take()
+            .expect("Unexpected syscall to ComputeUnsealedSectorCID");
 
-        if exp.reg != reg {
-            return Err(anyhow!(actor_error!(illegal_state;
-                "Unexpected compute_unsealed_sector_cid : reg mismatch"
-            )));
-        }
-
-        if exp.pieces[..].eq(pieces) {
-            return Err(anyhow!(actor_error!(illegal_state;
-                "Unexpected compute_unsealed_sector_cid : pieces mismatch"
-            )));
-        }
+        assert_eq!(exp.reg, reg, "Unexpected compute_unsealed_sector_cid : reg mismatch");
+        assert!(
+            exp.pieces[..].eq(pieces),
+            "Unexpected compute_unsealed_sector_cid : pieces mismatch"
+        );
 
         if exp.exit_code != ExitCode::OK {
             return Err(anyhow!(ActorError::unchecked(
@@ -999,17 +998,16 @@ impl Syscalls for MockRuntime {
         }
         Ok(exp.cid)
     }
+
     fn verify_seal(&self, seal: &SealVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
             .borrow_mut()
             .expect_verify_seal
             .take()
-            .ok_or_else(|| actor_error!(illegal_state; "Unexpected syscall to verify seal"))?;
+            .expect("Unexpected syscall to verify seal");
 
-        if exp.seal != *seal {
-            return Err(anyhow!(actor_error!(illegal_state; "Unexpected seal verification"),));
-        }
+        assert_eq!(exp.seal, *seal, "Unexpected seal verification");
         if exp.exit_code != ExitCode::OK {
             return Err(anyhow!(ActorError::unchecked(
                 exp.exit_code,
@@ -1018,17 +1016,16 @@ impl Syscalls for MockRuntime {
         }
         Ok(())
     }
+
     fn verify_post(&self, post: &WindowPoStVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
             .borrow_mut()
             .expect_verify_post
             .take()
-            .ok_or_else(|| actor_error!(illegal_state; "Unexpected syscall to verify PoSt"))?;
+            .expect("Unexpected syscall to verify PoSt");
 
-        if exp.post != *post {
-            return Err(anyhow!(actor_error!(illegal_state; "Unexpected PoSt verification"),));
-        }
+        assert_eq!(exp.post, *post, "Unexpected PoSt verification");
         if exp.exit_code != ExitCode::OK {
             return Err(anyhow!(ActorError::unchecked(
                 exp.exit_code,
@@ -1037,25 +1034,24 @@ impl Syscalls for MockRuntime {
         }
         Ok(())
     }
+
     fn verify_consensus_fault(
         &self,
         h1: &[u8],
         h2: &[u8],
         extra: &[u8],
     ) -> anyhow::Result<Option<ConsensusFault>> {
-        let exp = self.expectations.borrow_mut().expect_verify_consensus_fault.take().ok_or_else(
-            || actor_error!(illegal_state; "Unexpected syscall to verify_consensus_fault"),
-        )?;
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_verify_consensus_fault
+            .take()
+            .expect("Unexpected syscall to verify_consensus_fault");
+
         if exp.require_correct_input {
-            if exp.block_header_1 != h1 {
-                return Err(anyhow!(actor_error!(illegal_state; "Header 1 mismatch")));
-            }
-            if exp.block_header_2 != h2 {
-                return Err(anyhow!(actor_error!(illegal_state; "Header 2 mismatch")));
-            }
-            if exp.block_header_extra != extra {
-                return Err(anyhow!(actor_error!(illegal_state; "Header extra mismatch"),));
-            }
+            assert_eq!(exp.block_header_1, h1, "Header 1 mismatch");
+            assert_eq!(exp.block_header_2, h2, "Header 2 mismatch");
+            assert_eq!(exp.block_header_extra, extra, "Header extra mismatch");
         }
         if exp.exit_code != ExitCode::OK {
             return Err(anyhow!(ActorError::unchecked(
@@ -1111,6 +1107,7 @@ impl Syscalls for MockRuntime {
         assert_eq!(exp.in_proof, aggregate.proof, "proof mismatch");
         exp.result
     }
+
     fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations

@@ -125,7 +125,7 @@ impl ActorHarness {
     }
 
     pub fn get_state(&self, rt: &MockRuntime) -> State {
-        rt.get_state::<State>().unwrap()
+        rt.get_state::<State>()
     }
 
     pub fn new_runtime(&self) -> MockRuntime {

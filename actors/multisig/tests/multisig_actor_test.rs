@@ -200,7 +200,7 @@ fn test_add_signer() {
             ExitCode::OK => {
                 let ret = h.add_signer(&mut rt, tc.add_signer, tc.increase).unwrap();
                 assert_eq!(RawBytes::default(), ret);
-                let st = rt.get_state::<State>().unwrap();
+                let st: State = rt.get_state();
                 assert_eq!(tc.expect_signers, st.signers);
                 assert_eq!(tc.expect_approvals, st.num_approvals_threshold);
             }
@@ -234,7 +234,7 @@ fn test_happy_path_remove_signer() {
     let expected_signers = vec![anne, bob];
     let expected_approvals = initial_approvals;
 
-    let st = rt.get_state::<State>().unwrap();
+    let st: State = rt.get_state();
     assert_eq!(expected_signers, st.signers);
     assert_eq!(expected_approvals, st.num_approvals_threshold);
 }
@@ -260,7 +260,7 @@ fn test_happy_path_signer_swap() {
     assert_eq!(RawBytes::default(), ret);
 
     let expected_signers = vec![anne, chuck];
-    let st = rt.get_state::<State>().unwrap();
+    let st: State = rt.get_state();
     assert_eq!(expected_signers, st.signers);
 }
 
@@ -383,6 +383,6 @@ fn test_change_threshold_happy_path_decrease_threshold() {
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
     let ret = h.change_num_approvals_threshold(&mut rt, 1).unwrap();
     assert_eq!(RawBytes::default(), ret);
-    let st = rt.get_state::<State>().unwrap();
+    let st: State = rt.get_state();
     assert_eq!(1, st.num_approvals_threshold);
 }

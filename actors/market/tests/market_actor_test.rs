@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
-use fil_actor_market::policy::DEAL_UPDATES_INTERVAL;
 use fil_actor_market::{
     ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray,
     DealProposal, DealState, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn,
@@ -16,7 +15,7 @@ use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::UseBytesParams;
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, ActorError, SetMultimap, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
@@ -86,7 +85,7 @@ fn setup() -> MockRuntime {
 }
 
 fn get_escrow_balance(rt: &MockRuntime, addr: &Address) -> Result<TokenAmount, ActorError> {
-    let st: State = rt.get_state()?;
+    let st: State = rt.get_state();
 
     let et = BalanceTable::from_root(rt.store(), &st.escrow_table).unwrap();
 
@@ -123,7 +122,7 @@ fn simple_construction() {
         Amt::<(), _>::new_with_bit_width(store, STATES_AMT_BITWIDTH).flush().unwrap();
     let empty_multimap = SetMultimap::new(store).root().unwrap();
 
-    let state_data: State = rt.get_state().unwrap();
+    let state_data: State = rt.get_state();
 
     assert_eq!(empty_proposals_array, state_data.proposals);
     assert_eq!(empty_states_array, state_data.states);
@@ -143,7 +142,6 @@ fn label_cbor() {
         .unwrap();
 
     let label2 = Label::Bytes(b"i_am_random_____i_am_random_____".to_vec());
-    //println!("{:?}", (b"i_am_random_____i_am_random_____".to_vec()));
     let _ = to_vec(&label2)
         .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
         .unwrap();
@@ -357,7 +355,7 @@ fn withdraws_from_non_provider_escrow_funds() {
     let withdraw_amount = TokenAmount::from(1);
     withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount, client_addr);
 
-    add_participant_funds(&mut rt, client_addr, amount);
+    assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), TokenAmount::from(19));
     // TODO: actor.checkState(rt)
 }
 
@@ -406,7 +404,8 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
 
 #[test]
 fn deal_starts_on_day_boundary() {
-    let start_epoch = DEAL_UPDATES_INTERVAL; // 2880
+    let deal_updates_interval = Policy::default().deal_updates_interval;
+    let start_epoch = deal_updates_interval; // 2880
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
@@ -419,7 +418,7 @@ fn deal_starts_on_day_boundary() {
     let worker_addr = Address::new_id(WORKER_ID);
     let control_addr = Address::new_id(CONTROL_ID);
 
-    for i in 0..(3 * DEAL_UPDATES_INTERVAL) {
+    for i in 0..(3 * deal_updates_interval) {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
         //println!("{i}: {}", piece_cid);
         let deal_id = generate_and_publish_deal_for_piece(
@@ -438,18 +437,18 @@ fn deal_starts_on_day_boundary() {
     }
 
     // Check that DOBE has exactly 3 deals scheduled every epoch in the day following the start time
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
-    for e in DEAL_UPDATES_INTERVAL..(2 * DEAL_UPDATES_INTERVAL) {
+    for e in deal_updates_interval..(2 * deal_updates_interval) {
         assert_n_good_deals(&dobe, e, 3);
     }
 
     // DOBE has no deals scheduled in the previous or next day
-    for e in 0..DEAL_UPDATES_INTERVAL {
+    for e in 0..deal_updates_interval {
         assert_n_good_deals(&dobe, e, 0);
     }
-    for e in (2 * DEAL_UPDATES_INTERVAL)..(3 * DEAL_UPDATES_INTERVAL) {
+    for e in (2 * deal_updates_interval)..(3 * deal_updates_interval) {
         assert_n_good_deals(&dobe, e, 0);
     }
 }
@@ -487,7 +486,7 @@ fn deal_starts_partway_through_day() {
         );
         assert_eq!(i as DealID, deal_id);
     }
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in 2880..(2880 + start_epoch) {
@@ -516,7 +515,7 @@ fn deal_starts_partway_through_day() {
         );
         assert_eq!(i as DealID, deal_id);
     }
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in start_epoch..(start_epoch + 500) {
@@ -659,7 +658,7 @@ fn add_provider_funds(
     worker: Address,
 ) {
     rt.set_value(amount.clone());
-    // TODO: call rt.SetAddressActorType(minerAddrs.provider, builtin.StorageMinerActorCodeID)?
+    rt.set_address_actor_type(provider, *MINER_ACTOR_CODE_ID);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, owner);
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
@@ -793,7 +792,7 @@ fn activate_deals(
 }
 
 fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
 
     let deals = DealArray::load(&st.proposals, &rt.store).unwrap();
 
@@ -802,7 +801,7 @@ fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
 }
 
 fn get_deal_state(rt: &mut MockRuntime, deal_id: DealID) -> DealState {
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
 
     let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
 
@@ -1056,9 +1055,10 @@ fn assert_n_good_deals<BS>(dobe: &SetMultimap<BS>, epoch: ChainEpoch, n: isize)
 where
     BS: fvm_ipld_blockstore::Blockstore,
 {
+    let deal_updates_interval = Policy::default().deal_updates_interval;
     let mut count = 0;
     dobe.for_each(epoch, |id| {
-        assert_eq!(epoch % DEAL_UPDATES_INTERVAL, (id as i64) % DEAL_UPDATES_INTERVAL);
+        assert_eq!(epoch % deal_updates_interval, (id as i64) % deal_updates_interval);
         count += 1;
         Ok(())
     })
