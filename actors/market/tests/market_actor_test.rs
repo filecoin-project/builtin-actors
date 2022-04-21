@@ -4,7 +4,9 @@
 use std::collections::HashMap;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
-use fil_actor_market::policy::{DEAL_UPDATES_INTERVAL, PROV_COLLATERAL_PERCENT_SUPPLY_NUM, PROV_COLLATERAL_PERCENT_SUPPLY_DENOM};
+use fil_actor_market::policy::{
+    DEAL_UPDATES_INTERVAL, PROV_COLLATERAL_PERCENT_SUPPLY_DENOM, PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
+};
 use fil_actor_market::{
     ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray,
     DealProposal, DealState, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn,
@@ -648,11 +650,10 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
 
     // given power and circ supply cancel this should be 1*dealqapower / 100
     let deal_size = PaddedPieceSize(2048u64); // generateDealProposal's deal size
-    let provider_collateral =
-        TokenAmount::from(
-            (deal_size.0 * (PROV_COLLATERAL_PERCENT_SUPPLY_NUM as u64)) /
-            PROV_COLLATERAL_PERCENT_SUPPLY_DENOM as u64
-        );
+    let provider_collateral = TokenAmount::from(
+        (deal_size.0 * (PROV_COLLATERAL_PERCENT_SUPPLY_NUM as u64))
+            / PROV_COLLATERAL_PERCENT_SUPPLY_DENOM as u64,
+    );
     let deal = generate_deal_with_collateral_and_add_funds(
         &mut rt,
         client_addr,
@@ -662,7 +663,7 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
         provider_collateral,
         client_collateral,
         start_epoch,
-        end_epoch
+        end_epoch,
     );
     let qa_power = StoragePower::from_i128(1 << 50).unwrap();
     rt.set_circulating_supply(qa_power); // convenient for these two numbers to cancel out
@@ -676,7 +677,7 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
         owner_addr,
         worker_addr,
         control_addr,
-        &[PublishDealReq { deal }]
+        &[PublishDealReq { deal }],
     );
     // TODO: actor.checkState(rt)
 }
@@ -699,17 +700,35 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
 
     // generate first deal for
     let deal1 = generate_deal_and_add_funds(
-        &mut rt, client1_addr, provider_addr, owner_addr, worker_addr, start_epoch, end_epoch
+        &mut rt,
+        client1_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        start_epoch,
+        end_epoch,
     );
 
     // generate second deal
     let deal2 = generate_deal_and_add_funds(
-        &mut rt, client2_addr, provider_addr, owner_addr, worker_addr, start_epoch, end_epoch
+        &mut rt,
+        client2_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        start_epoch,
+        end_epoch,
     );
 
     // generate third deal
     let deal3 = generate_deal_and_add_funds(
-        &mut rt, client3_addr, provider_addr, owner_addr, worker_addr, start_epoch, end_epoch
+        &mut rt,
+        client3_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        start_epoch,
+        end_epoch,
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
@@ -719,16 +738,16 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         owner_addr,
         worker_addr,
         control_addr,
-        &[PublishDealReq { deal: deal1.clone() },
-          PublishDealReq { deal: deal2.clone() },
-          PublishDealReq { deal: deal3.clone() }]
+        &[
+            PublishDealReq { deal: deal1.clone() },
+            PublishDealReq { deal: deal2.clone() },
+            PublishDealReq { deal: deal3.clone() },
+        ],
     );
 
     // assert locked balance for all clients and provider
     let provider_locked =
-        &deal1.provider_collateral +
-        &deal2.provider_collateral +
-        &deal3.provider_collateral;
+        &deal1.provider_collateral + &deal2.provider_collateral + &deal3.provider_collateral;
     let client1_locked = get_locked_balance(&mut rt, client1_addr);
     let client2_locked = get_locked_balance(&mut rt, client2_addr);
     let client3_locked = get_locked_balance(&mut rt, client3_addr);
@@ -740,25 +759,31 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     // assert locked funds dealStates
     let st: State = rt.get_state().unwrap();
     let total_client_collateral_locked =
-        &deal1.provider_collateral +
-        &deal2.provider_collateral +
-        &deal3.provider_collateral;
+        &deal1.provider_collateral + &deal2.provider_collateral + &deal3.provider_collateral;
     assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
     assert_eq!(provider_locked, st.total_provider_locked_collateral);
     let total_storage_fee =
-        &deal1.total_storage_fee() +
-        &deal2.total_storage_fee() +
-        &deal3.total_storage_fee();
+        &deal1.total_storage_fee() + &deal2.total_storage_fee() + &deal3.total_storage_fee();
     assert_eq!(total_storage_fee, st.total_client_storage_fee);
 
     // publish two more deals for same clients with same provider
     let deal4 = generate_deal_and_add_funds(
-        &mut rt, client3_addr, provider_addr, owner_addr, worker_addr,
-        1000, 1000 + 200 * EPOCHS_IN_DAY
+        &mut rt,
+        client3_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        1000,
+        1000 + 200 * EPOCHS_IN_DAY,
     );
     let deal5 = generate_deal_and_add_funds(
-        &mut rt, client3_addr, provider_addr, owner_addr, worker_addr,
-        100, 100 + 200 * EPOCHS_IN_DAY
+        &mut rt,
+        client3_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        100,
+        100 + 200 * EPOCHS_IN_DAY,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
     publish_deals(
@@ -767,22 +792,18 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         owner_addr,
         worker_addr,
         control_addr,
-        &[PublishDealReq { deal: deal4.clone() }, PublishDealReq { deal: deal5.clone() }]
+        &[PublishDealReq { deal: deal4.clone() }, PublishDealReq { deal: deal5.clone() }],
     );
 
     // assert locked balances for clients and provider
     //let st: State = rt.get_state().unwrap();
     let provider_locked =
-        &provider_locked +
-        &deal4.provider_collateral +
-        &deal5.provider_collateral;
+        &provider_locked + &deal4.provider_collateral + &deal5.provider_collateral;
     assert_eq!(provider_locked, get_locked_balance(&mut rt, provider_addr));
 
     let client3_locked_updated = get_locked_balance(&mut rt, client3_addr);
     assert_eq!(
-        &client3_locked +
-        &deal4.client_balance_requirement() +
-        &deal5.client_balance_requirement(),
+        &client3_locked + &deal4.client_balance_requirement() + &deal5.client_balance_requirement(),
         client3_locked_updated
     );
 
@@ -794,16 +815,12 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     // assert locked funds dealStates
     let st: State = rt.get_state().unwrap();
     let total_client_collateral_locked =
-        &total_client_collateral_locked +
-        &deal4.client_collateral +
-        &deal5.client_collateral;
+        &total_client_collateral_locked + &deal4.client_collateral + &deal5.client_collateral;
     assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
     assert_eq!(provider_locked, st.total_client_locked_collateral);
 
     let total_storage_fee =
-        &total_storage_fee +
-        &deal4.total_storage_fee() +
-        &deal5.total_storage_fee();
+        &total_storage_fee + &deal4.total_storage_fee() + &deal5.total_storage_fee();
     assert_eq!(total_storage_fee, st.total_client_storage_fee);
 
     // PUBLISH DEALS with a different provider
@@ -811,14 +828,24 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
 
     // generate first deal for second provider
     let deal6 = generate_deal_and_add_funds(
-        &mut rt, client1_addr, provider2_addr, owner_addr, worker_addr,
-        20, 20 + 200 * EPOCHS_IN_DAY
+        &mut rt,
+        client1_addr,
+        provider2_addr,
+        owner_addr,
+        worker_addr,
+        20,
+        20 + 200 * EPOCHS_IN_DAY,
     );
 
     // generate second deal for second provider
     let deal7 = generate_deal_and_add_funds(
-        &mut rt, client1_addr, provider2_addr, owner_addr, worker_addr,
-        25, 60 + 200 * EPOCHS_IN_DAY
+        &mut rt,
+        client1_addr,
+        provider2_addr,
+        owner_addr,
+        worker_addr,
+        25,
+        60 + 200 * EPOCHS_IN_DAY,
     );
 
     // publish both the deals for the second provider
@@ -829,8 +856,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         owner_addr,
         worker_addr,
         control_addr,
-        &[PublishDealReq { deal: deal6.clone() },
-          PublishDealReq { deal: deal7.clone() }]
+        &[PublishDealReq { deal: deal6.clone() }, PublishDealReq { deal: deal7.clone() }],
     );
 
     // assertions
@@ -839,9 +865,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     assert_eq!(provider2_locked, get_locked_balance(&mut rt, provider2_addr));
     let client1_locked_updated = get_locked_balance(&mut rt, client1_addr);
     assert_eq!(
-        &deal7.client_balance_requirement() +
-        &client1_locked +
-        &deal6.client_balance_requirement(),
+        &deal7.client_balance_requirement() + &client1_locked + &deal6.client_balance_requirement(),
         client1_locked_updated
     );
 
@@ -849,15 +873,11 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     assert_eq!(provider_locked, get_locked_balance(&mut rt, provider_addr));
 
     let total_client_collateral_locked =
-        &total_client_collateral_locked +
-        &deal6.client_collateral +
-        &deal7.client_collateral;
+        &total_client_collateral_locked + &deal6.client_collateral + &deal7.client_collateral;
     assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
     assert_eq!(provider_locked + provider2_locked, st.total_provider_locked_collateral);
     let total_storage_fee =
-        &total_storage_fee +
-        &deal6.total_storage_fee() +
-        &deal7.total_storage_fee();
+        &total_storage_fee + &deal6.total_storage_fee() + &deal7.total_storage_fee();
     assert_eq!(total_storage_fee, st.total_client_storage_fee);
     // TODO: actor.checkState(rt)
 }
