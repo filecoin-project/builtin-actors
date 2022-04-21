@@ -386,11 +386,17 @@ where
         }
     }
 
+    #[cfg(not(feature = "fake-post-validation"))]
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_post(verify_info) {
             Ok(true) => Ok(()),
             Ok(false) | Err(_) => Err(Error::msg("invalid post")),
         }
+    }
+
+    #[cfg(feature = "fake-post-validation")]
+    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
+        Ok(())
     }
 
     fn verify_consensus_fault(

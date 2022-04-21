@@ -66,4 +66,7 @@ min-power-2g = []
 # no collateral for deals (for testing)
 no-provider-deal-collateral = []
 
+# fake PoSt validation (for testing)
+fake-post-validation = []
+
 test_utils = ["hex"]
