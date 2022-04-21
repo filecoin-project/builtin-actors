@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use anyhow::anyhow;
-use cid::multihash::{Code, Multihash};
+use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::de::DeserializeOwned;
@@ -15,6 +15,7 @@ use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
 
+use fvm_shared::commcid::FIL_COMMITMENT_UNSEALED;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
@@ -28,6 +29,9 @@ use fvm_shared::sector::{
 };
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
+
+use multihash::derive::Multihash;
+use multihash::MultihashDigest;
 
 use crate::runtime::{ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls};
 use crate::{actor_error, ActorError};
@@ -67,7 +71,7 @@ const IPLD_RAW: u64 = 0x55;
 
 /// Returns an identity CID for bz.
 pub fn make_builtin(bz: &[u8]) -> Cid {
-    Cid::new_v1(IPLD_RAW, Multihash::wrap(0, bz).expect("name too long"))
+    Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
 }
 
 pub struct MockRuntime {
@@ -1145,4 +1149,19 @@ pub fn blake2b_256(data: &[u8]) -> [u8; 32] {
         .as_bytes()
         .try_into()
         .unwrap()
+}
+
+// multihash library doesn't support poseidon hashing, so we fake it
+#[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
+#[mh(alloc_size = 64)]
+enum MhCode {
+    #[mh(code = 0xb401, hasher = multihash::Sha2_256)]
+    PoseidonFake,
+    #[mh(code = 0x1012, hasher = multihash::Sha2_256)]
+    Sha256TruncPaddedFake,
+}
+
+pub fn make_piece_cid(input: &[u8]) -> Cid {
+    let h = MhCode::Sha256TruncPaddedFake.digest(input);
+    Cid::new_v1(FIL_COMMITMENT_UNSEALED, h)
 }

@@ -27,7 +27,6 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
-use fvm_shared::commcid::FIL_COMMITMENT_UNSEALED;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -39,30 +38,12 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 
 use cid::Cid;
-use multihash::derive::Multihash;
-use multihash::MultihashDigest;
 use num_traits::FromPrimitive;
 
 const OWNER_ID: u64 = 101;
 const PROVIDER_ID: u64 = 102;
 const WORKER_ID: u64 = 103;
 const CLIENT_ID: u64 = 104;
-
-// TODO: move this out in some utils? (MhCode and make_piece_cid come from miner/tests)
-// multihash library doesn't support poseidon hashing, so we fake it
-#[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
-#[mh(alloc_size = 64)]
-enum MhCode {
-    #[mh(code = 0xb401, hasher = multihash::Sha2_256)]
-    PoseidonFake,
-    #[mh(code = 0x1012, hasher = multihash::Sha2_256)]
-    Sha256TruncPaddedFake,
-}
-
-fn make_piece_cid(input: &[u8]) -> Cid {
-    let h = MhCode::Sha256TruncPaddedFake.digest(input);
-    Cid::new_v1(FIL_COMMITMENT_UNSEALED, h)
-}
 
 fn setup() -> MockRuntime {
     let mut actor_code_cids = HashMap::default();
