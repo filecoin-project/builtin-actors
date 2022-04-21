@@ -1060,8 +1060,7 @@ fn get_locked_balance(rt: &mut MockRuntime, addr: Address) -> TokenAmount {
 
     let lt = BalanceTable::from_root(&rt.store, &st.locked_table).unwrap();
 
-    let bal = lt.get(&addr).unwrap();
-    bal
+    lt.get(&addr).unwrap()
 }
 
 fn get_deal_state(rt: &mut MockRuntime, deal_id: DealID) -> DealState {
@@ -1148,6 +1147,7 @@ fn generate_deal_and_add_funds(
     deal
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_deal_with_collateral_and_add_funds(
     rt: &mut MockRuntime,
     client: Address,
