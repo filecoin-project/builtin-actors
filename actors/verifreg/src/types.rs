@@ -6,19 +6,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::sector::StoragePower;
-use lazy_static::lazy_static;
-use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
-
-#[cfg(not(feature = "small-deals"))]
-lazy_static! {
-    pub static ref MINIMUM_VERIFIED_DEAL_SIZE: StoragePower = StoragePower::from_i32(1 << 20).unwrap(); // placeholder
-}
-
-#[cfg(feature = "small-deals")]
-lazy_static! {
-    pub static ref MINIMUM_VERIFIED_DEAL_SIZE: StoragePower = StoragePower::from_i32(256).unwrap(); // placeholder
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifierParams {

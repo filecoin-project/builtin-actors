@@ -63,4 +63,7 @@ min-power-2k = []
 # Lower the minimum power requirement to 2g
 min-power-2g = []
 
+# no collateral for deals (for testing)
+no-provider-deal-collateral = []
+
 test_utils = ["hex"]
