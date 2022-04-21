@@ -3,7 +3,7 @@
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, wasm_trampoline, ActorError};
+use fil_actors_runtime::{actor_error, ActorError};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, Protocol};

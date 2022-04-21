@@ -3,9 +3,7 @@
 
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{
-    actor_error, wasm_trampoline, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR,
-};
+use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::actor::builtin::Type;
