@@ -141,7 +141,6 @@ fn label_cbor() {
         .unwrap();
 
     let label2 = Label::Bytes(b"i_am_random_____i_am_random_____".to_vec());
-    //println!("{:?}", (b"i_am_random_____i_am_random_____".to_vec()));
     let _ = to_vec(&label2)
         .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
         .unwrap();
@@ -418,7 +417,6 @@ fn deal_starts_on_day_boundary() {
 
     for i in 0..(3 * DEAL_UPDATES_INTERVAL) {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
-        //println!("{i}: {}", piece_cid);
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
             client_addr,
@@ -467,7 +465,6 @@ fn deal_starts_partway_through_day() {
     // First 1000 deals (start_epoch % update interval) scheduled starting in the next day
     for i in 0..1000 {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
-        //println!("{i}: {}", piece_cid);
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
             client_addr,
@@ -495,7 +492,6 @@ fn deal_starts_partway_through_day() {
     // Now add another 500 deals
     for i in 1000..1500 {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
-        //println!("{i}: {}", piece_cid);
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
             client_addr,
