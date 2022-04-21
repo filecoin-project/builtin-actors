@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "7.2.0", path = "../runtime" }
+fil_actors_runtime = { version = "7.2.0", path = "../runtime", features = ["fil-actor"] }
 fvm_shared = { version = "0.6.0", default-features = false }
 bitfield = { version = "0.5.0", package = "fvm_ipld_bitfield" }
 fvm_ipld_amt = { version = "0.4.0", features = ["go-interop"] }
@@ -38,3 +38,5 @@ fil_actor_account = { version = "7.2.0", path = "../account" }
 rand = "0.8.5"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 blake2b_simd = "1.0.0"
+[features]
+fil-actor = []

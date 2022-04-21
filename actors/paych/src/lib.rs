@@ -19,7 +19,8 @@ use num_traits::FromPrimitive;
 pub use self::state::{LaneState, Merge, State};
 pub use self::types::*;
 
-wasm_trampoline!(Actor);
+#[cfg(feature = "fil-actor")]
+fil_actors_runtime::wasm_trampoline!(Actor);
 
 mod state;
 mod types;
