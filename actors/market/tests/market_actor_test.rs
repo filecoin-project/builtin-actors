@@ -702,7 +702,6 @@ struct PublishDealReq {
     deal: DealProposal,
 }
 
-// WIP
 fn publish_deals(
     rt: &mut MockRuntime,
     provider: Address,
