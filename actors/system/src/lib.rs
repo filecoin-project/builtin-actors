@@ -115,7 +115,7 @@ mod tests {
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, *SYSTEM_ACTOR_ADDR);
         rt.call::<Actor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
 
-        let state: State = rt.get_state().unwrap();
+        let state: State = rt.get_state();
         let builtin_actors = state.get_builtin_actors(&rt.store).unwrap();
         assert!(builtin_actors.is_empty());
     }
