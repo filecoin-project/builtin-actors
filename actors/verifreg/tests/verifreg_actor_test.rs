@@ -1,19 +1,28 @@
 use fvm_shared::address::Address;
 use lazy_static::lazy_static;
 
-use fil_actor_verifreg::{DataCap, MINIMUM_VERIFIED_DEAL_SIZE};
-
 mod harness;
 
 lazy_static! {
-    static ref VERIFIER_ALLOWANCE: DataCap = MINIMUM_VERIFIED_DEAL_SIZE.clone() + 42;
-    static ref CLIENT_ALLOWANCE: DataCap = VERIFIER_ALLOWANCE.clone() - 1;
     static ref VERIFIER: Address = Address::new_id(201);
     static ref VERIFIER2: Address = Address::new_id(202);
     static ref CLIENT: Address = Address::new_id(301);
     static ref CLIENT2: Address = Address::new_id(302);
     static ref CLIENT3: Address = Address::new_id(303);
     static ref CLIENT4: Address = Address::new_id(304);
+}
+
+mod util {
+    use fil_actors_runtime::test_utils::MockRuntime;
+    use fvm_shared::sector::StoragePower;
+
+    pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
+        rt.policy.minimum_verified_deal_size.clone() + 42
+    }
+
+    pub fn client_allowance(rt: &MockRuntime) -> StoragePower {
+        verifier_allowance(rt) - 1
+    }
 }
 
 mod construction {
@@ -70,23 +79,20 @@ mod verifiers {
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
 
-    use fil_actor_verifreg::{
-        Actor as VerifregActor, AddVerifierParams, Method, MINIMUM_VERIFIED_DEAL_SIZE,
-    };
+    use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierParams, Method};
     use fil_actors_runtime::test_utils::*;
 
     use crate::*;
     use harness::*;
+    use util::*;
 
     #[test]
     fn add_verifier_requires_root_caller() {
         let (h, mut rt) = new_harness();
         rt.expect_validate_caller_addr(vec![h.root]);
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, Address::new_id(501));
-        let params = AddVerifierParams {
-            address: Address::new_id(201),
-            allowance: VERIFIER_ALLOWANCE.clone(),
-        };
+        let params =
+            AddVerifierParams { address: Address::new_id(201), allowance: verifier_allowance(&rt) };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
@@ -100,7 +106,7 @@ mod verifiers {
     #[test]
     fn add_verifier_enforces_min_size() {
         let (h, mut rt) = new_harness();
-        let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() - 1;
+        let allowance = rt.policy.minimum_verified_deal_size.clone() - 1;
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_verifier(&mut rt, &VERIFIER, &allowance),
@@ -111,9 +117,10 @@ mod verifiers {
     #[test]
     fn add_verifier_rejects_root() {
         let (h, mut rt) = new_harness();
+        let allowance = verifier_allowance(&rt);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_verifier(&mut rt, &ROOT_ADDR, &VERIFIER_ALLOWANCE),
+            h.add_verifier(&mut rt, &ROOT_ADDR, &allowance),
         );
         h.check_state();
     }
@@ -121,17 +128,9 @@ mod verifiers {
     #[test]
     fn add_verifier_rejects_client() {
         let (h, mut rt) = new_harness();
-        h.add_verifier_and_client(
-            &mut rt,
-            &VERIFIER,
-            &CLIENT,
-            &VERIFIER_ALLOWANCE,
-            &VERIFIER_ALLOWANCE,
-        );
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_verifier(&mut rt, &CLIENT, &VERIFIER_ALLOWANCE),
-        );
+        let allowance = verifier_allowance(&rt);
+        h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance);
+        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.add_verifier(&mut rt, &CLIENT, &allowance));
         h.check_state();
     }
 
@@ -139,6 +138,7 @@ mod verifiers {
     fn add_verifier_rejects_unresolved_address() {
         let (h, mut rt) = new_harness();
         let verifier_key_address = Address::new_secp256k1(&[3u8; 65]).unwrap();
+        let allowance = verifier_allowance(&rt);
         // Expect runtime to attempt to create the actor, but don't add it to the mock's
         // address resolution table.
         rt.expect_send(
@@ -151,7 +151,7 @@ mod verifiers {
         );
         expect_abort(
             ExitCode::USR_ILLEGAL_STATE,
-            h.add_verifier(&mut rt, &verifier_key_address, &VERIFIER_ALLOWANCE),
+            h.add_verifier(&mut rt, &verifier_key_address, &allowance),
         );
         h.check_state();
     }
@@ -159,24 +159,27 @@ mod verifiers {
     #[test]
     fn add_verifier_id_address() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        let allowance = verifier_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
         h.check_state();
     }
 
     #[test]
     fn add_verifier_resolves_address() {
         let (h, mut rt) = new_harness();
+        let allowance = verifier_allowance(&rt);
         let pubkey_addr = Address::new_secp256k1(&[0u8; 65]).unwrap();
         rt.id_addresses.insert(pubkey_addr, *VERIFIER);
 
-        h.add_verifier(&mut rt, &pubkey_addr, &VERIFIER_ALLOWANCE).unwrap();
+        h.add_verifier(&mut rt, &pubkey_addr, &allowance).unwrap();
         h.check_state();
     }
 
     #[test]
     fn remove_requires_root() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        let allowance = verifier_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
 
         let caller = Address::new_id(501);
         rt.expect_validate_caller_addr(vec![h.root]);
@@ -202,7 +205,8 @@ mod verifiers {
     #[test]
     fn remove_verifier() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        let allowance = verifier_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
         h.remove_verifier(&mut rt, &VERIFIER).unwrap();
         h.check_state();
     }
@@ -210,10 +214,11 @@ mod verifiers {
     #[test]
     fn remove_verifier_id_address() {
         let (h, mut rt) = new_harness();
+        let allowance = verifier_allowance(&rt);
         let verifier_pubkey = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
         rt.id_addresses.insert(verifier_pubkey, *VERIFIER);
         // Add using pubkey address.
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
         // Remove using ID address.
         h.remove_verifier(&mut rt, &VERIFIER).unwrap();
         h.check_state();
@@ -227,34 +232,33 @@ mod clients {
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
 
-    use fil_actor_verifreg::{
-        Actor as VerifregActor, AddVerifierClientParams, DataCap, Method,
-        MINIMUM_VERIFIED_DEAL_SIZE,
-    };
+    use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierClientParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
 
     use crate::*;
     use harness::*;
+    use util::*;
 
     #[test]
     fn many_verifiers_and_clients() {
         let (h, mut rt) = new_harness();
         // Each verifier has enough allowance for two clients.
-        let verifier_allowance = CLIENT_ALLOWANCE.clone() + CLIENT_ALLOWANCE.clone();
-        h.add_verifier(&mut rt, &VERIFIER, &verifier_allowance).unwrap();
-        h.add_verifier(&mut rt, &VERIFIER2, &verifier_allowance).unwrap();
+        let allowance_client = client_allowance(&rt);
+        let allowance_verifier = allowance_client.clone() + allowance_client.clone();
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
+        h.add_verifier(&mut rt, &VERIFIER2, &allowance_verifier).unwrap();
 
-        h.add_client(&mut rt, &VERIFIER, &CLIENT, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE).unwrap();
-        h.add_client(&mut rt, &VERIFIER, &CLIENT2, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE).unwrap();
+        h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance_client, &allowance_client).unwrap();
+        h.add_client(&mut rt, &VERIFIER, &CLIENT2, &allowance_client, &allowance_client).unwrap();
 
-        h.add_client(&mut rt, &VERIFIER2, &CLIENT3, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE).unwrap();
-        h.add_client(&mut rt, &VERIFIER2, &CLIENT4, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE).unwrap();
+        h.add_client(&mut rt, &VERIFIER2, &CLIENT3, &allowance_client, &allowance_client).unwrap();
+        h.add_client(&mut rt, &VERIFIER2, &CLIENT4, &allowance_client, &allowance_client).unwrap();
 
         // all clients should exist and verifiers should have no more allowance left
-        h.assert_client_allowance(&rt, &CLIENT, &CLIENT_ALLOWANCE);
-        h.assert_client_allowance(&rt, &CLIENT2, &CLIENT_ALLOWANCE);
-        h.assert_client_allowance(&rt, &CLIENT3, &CLIENT_ALLOWANCE);
-        h.assert_client_allowance(&rt, &CLIENT4, &CLIENT_ALLOWANCE);
+        h.assert_client_allowance(&rt, &CLIENT, &allowance_client);
+        h.assert_client_allowance(&rt, &CLIENT2, &allowance_client);
+        h.assert_client_allowance(&rt, &CLIENT3, &allowance_client);
+        h.assert_client_allowance(&rt, &CLIENT4, &allowance_client);
         h.assert_verifier_allowance(&rt, &VERIFIER, &DataCap::from(0));
         h.assert_verifier_allowance(&rt, &VERIFIER2, &DataCap::from(0));
         h.check_state();
@@ -263,17 +267,18 @@ mod clients {
     #[test]
     fn verifier_allowance_exhausted() {
         let (h, mut rt) = new_harness();
+        let allowance = client_allowance(&rt);
         // Verifier only has allowance for one client.
-        h.add_verifier(&mut rt, &VERIFIER, &CLIENT_ALLOWANCE).unwrap();
+        h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
 
-        h.add_client(&mut rt, &VERIFIER, &CLIENT, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE).unwrap();
+        h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&mut rt, &VERIFIER, &CLIENT2, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE),
+            h.add_client(&mut rt, &VERIFIER, &CLIENT2, &allowance, &allowance),
         );
 
         // One client should exist and verifier should have no more allowance left.
-        h.assert_client_allowance(&rt, &CLIENT, &CLIENT_ALLOWANCE);
+        h.assert_client_allowance(&rt, &CLIENT, &allowance);
         h.assert_verifier_allowance(&rt, &VERIFIER, &DataCap::from(0));
         h.check_state();
     }
@@ -281,28 +286,31 @@ mod clients {
     #[test]
     fn resolves_client_address() {
         let (h, mut rt) = new_harness();
+        let allowance_verifier = verifier_allowance(&rt);
+        let allowance_client = client_allowance(&rt);
 
         let client_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         rt.id_addresses.insert(client_pubkey, *CLIENT);
 
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
-        h.add_client(&mut rt, &VERIFIER, &client_pubkey, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE)
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
+        h.add_client(&mut rt, &VERIFIER, &client_pubkey, &allowance_client, &allowance_client)
             .unwrap();
 
         // Adding another verified client with the same ID address increments
         // the data cap which has already been granted.
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
-        let expected_allowance = CLIENT_ALLOWANCE.clone() + CLIENT_ALLOWANCE.clone();
-        h.add_client(&mut rt, &VERIFIER, &CLIENT, &CLIENT_ALLOWANCE, &expected_allowance).unwrap();
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
+        let expected_allowance = allowance_client.clone() + allowance_client.clone();
+        h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance_client, &expected_allowance).unwrap();
         h.check_state();
     }
 
     #[test]
     fn minimum_allowance_ok() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        let allowance_verifier = verifier_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
 
-        let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let allowance = rt.policy.minimum_verified_deal_size.clone();
         h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance).unwrap();
         h.check_state();
     }
@@ -310,7 +318,9 @@ mod clients {
     #[test]
     fn rejects_unresolved_address() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        let allowance_verifier = verifier_allowance(&rt);
+        let allowance_client = client_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
 
         let client = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         // Expect runtime to attempt to create the actor, but don't add it to the mock's
@@ -326,7 +336,7 @@ mod clients {
 
         expect_abort(
             ExitCode::USR_ILLEGAL_STATE,
-            h.add_client(&mut rt, &VERIFIER, &client, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE),
+            h.add_client(&mut rt, &VERIFIER, &client, &allowance_client, &allowance_client),
         );
         h.check_state();
     }
@@ -334,9 +344,10 @@ mod clients {
     #[test]
     fn rejects_allowance_below_minimum() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        let allowance_verifier = verifier_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
 
-        let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() - 1;
+        let allowance = rt.policy.minimum_verified_deal_size.clone() - 1;
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance),
@@ -347,13 +358,14 @@ mod clients {
     #[test]
     fn rejects_non_verifier_caller() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        let allowance_verifier = verifier_allowance(&rt);
+        let allowance_client = client_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
 
         let caller = Address::new_id(209);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
         rt.expect_validate_caller_any();
-        let params =
-            AddVerifierClientParams { address: *CLIENT, allowance: CLIENT_ALLOWANCE.clone() };
+        let params = AddVerifierClientParams { address: *CLIENT, allowance: allowance_client };
         expect_abort(
             ExitCode::USR_NOT_FOUND,
             rt.call::<VerifregActor>(
@@ -367,9 +379,10 @@ mod clients {
     #[test]
     fn rejects_allowance_greater_than_verifier_cap() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        let allowance_verifier = verifier_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
 
-        let allowance = VERIFIER_ALLOWANCE.clone() + 1;
+        let allowance = allowance_verifier.clone() + 1;
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &h.root, &allowance, &allowance),
@@ -380,10 +393,12 @@ mod clients {
     #[test]
     fn rejects_root_as_client() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        let allowance_verifier = verifier_allowance(&rt);
+        let allowance_client = client_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&mut rt, &VERIFIER, &h.root, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE),
+            h.add_client(&mut rt, &VERIFIER, &h.root, &allowance_client, &allowance_client),
         );
         h.check_state();
     }
@@ -391,16 +406,18 @@ mod clients {
     #[test]
     fn rejects_verifier_as_client() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
+        let allowance_verifier = verifier_allowance(&rt);
+        let allowance_client = client_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&mut rt, &VERIFIER, &VERIFIER, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE),
+            h.add_client(&mut rt, &VERIFIER, &VERIFIER, &allowance_client, &allowance_client),
         );
 
-        h.add_verifier(&mut rt, &VERIFIER2, &VERIFIER_ALLOWANCE).unwrap();
+        h.add_verifier(&mut rt, &VERIFIER2, &allowance_verifier).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&mut rt, &VERIFIER, &VERIFIER2, &CLIENT_ALLOWANCE, &CLIENT_ALLOWANCE),
+            h.add_client(&mut rt, &VERIFIER, &VERIFIER2, &allowance_client, &allowance_client),
         );
 
         h.check_state();
@@ -413,29 +430,27 @@ mod datacap {
     use fvm_shared::error::ExitCode;
     use fvm_shared::MethodNum;
 
-    use fil_actor_verifreg::{
-        Actor as VerifregActor, Method, RestoreBytesParams, UseBytesParams,
-        MINIMUM_VERIFIED_DEAL_SIZE,
-    };
+    use fil_actor_verifreg::{Actor as VerifregActor, Method, RestoreBytesParams, UseBytesParams};
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 
     use crate::*;
     use harness::*;
+    use util::*;
 
     #[test]
     fn consume_multiple_clients() {
         let (h, mut rt) = new_harness();
-        let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() * 10;
+        let allowance = rt.policy.minimum_verified_deal_size.clone() * 10;
 
-        let ca1 = MINIMUM_VERIFIED_DEAL_SIZE.clone() * 3;
+        let ca1 = rt.policy.minimum_verified_deal_size.clone() * 3;
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &ca1);
-        let ca2 = MINIMUM_VERIFIED_DEAL_SIZE.clone() * 2;
+        let ca2 = rt.policy.minimum_verified_deal_size.clone() * 2;
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT2, &allowance, &ca2); // FIXME redundant verifier
-        let ca3 = MINIMUM_VERIFIED_DEAL_SIZE.clone() + 1;
+        let ca3 = rt.policy.minimum_verified_deal_size.clone() + 1;
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT3, &allowance, &ca3);
 
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
         h.use_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
         h.assert_client_allowance(&rt, &CLIENT, &(ca1.clone() - &deal_size));
 
@@ -459,16 +474,16 @@ mod datacap {
     #[test]
     fn consume_then_fail_exhausted() {
         let (h, mut rt) = new_harness();
-        let ve_allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() * 10;
-        let cl_allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() * 2;
+        let ve_allowance = rt.policy.minimum_verified_deal_size.clone() * 10;
+        let cl_allowance = rt.policy.minimum_verified_deal_size.clone() * 2;
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &ve_allowance, &cl_allowance);
 
         // Use some allowance.
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
         h.use_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
 
         // Attempt to use more than remaining.
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone() + 2;
+        let deal_size = rt.policy.minimum_verified_deal_size.clone() + 2;
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.use_bytes(&mut rt, &CLIENT, &deal_size));
         h.check_state()
     }
@@ -476,7 +491,7 @@ mod datacap {
     #[test]
     fn consume_resolves_client_address() {
         let (h, mut rt) = new_harness();
-        let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let allowance = rt.policy.minimum_verified_deal_size.clone();
 
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance);
 
@@ -489,7 +504,7 @@ mod datacap {
     #[test]
     fn consume_then_fail_removed() {
         let (h, mut rt) = new_harness();
-        let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let allowance = rt.policy.minimum_verified_deal_size.clone();
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance);
 
         // Use full allowance.
@@ -504,8 +519,10 @@ mod datacap {
         let (h, mut rt) = new_harness();
         rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
         rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
-        let params =
-            UseBytesParams { address: *CLIENT, deal_size: MINIMUM_VERIFIED_DEAL_SIZE.clone() };
+        let params = UseBytesParams {
+            address: *CLIENT,
+            deal_size: rt.policy.minimum_verified_deal_size.clone(),
+        };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
@@ -519,15 +536,17 @@ mod datacap {
     #[test]
     fn consume_requires_minimum_deal_size() {
         let (h, mut rt) = new_harness();
+        let allowance_verifier = verifier_allowance(&rt);
+        let allowance_client = client_allowance(&rt);
         h.add_verifier_and_client(
             &mut rt,
             &VERIFIER,
             &CLIENT,
-            &VERIFIER_ALLOWANCE,
-            &CLIENT_ALLOWANCE,
+            &allowance_verifier,
+            &allowance_client,
         );
 
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone() - 1;
+        let deal_size = rt.policy.minimum_verified_deal_size.clone() - 1;
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.use_bytes(&mut rt, &CLIENT, &deal_size));
         h.check_state()
     }
@@ -535,25 +554,25 @@ mod datacap {
     #[test]
     fn consume_requires_client_exists() {
         let (h, mut rt) = new_harness();
-        expect_abort(
-            ExitCode::USR_NOT_FOUND,
-            h.use_bytes(&mut rt, &CLIENT, &MINIMUM_VERIFIED_DEAL_SIZE),
-        );
+        let min_deal_size = rt.policy.minimum_verified_deal_size.clone();
+        expect_abort(ExitCode::USR_NOT_FOUND, h.use_bytes(&mut rt, &CLIENT, &min_deal_size));
         h.check_state()
     }
 
     #[test]
     fn consume_requires_deal_size_below_allowance() {
         let (h, mut rt) = new_harness();
+        let allowance_verifier = verifier_allowance(&rt);
+        let allowance_client = client_allowance(&rt);
         h.add_verifier_and_client(
             &mut rt,
             &VERIFIER,
             &CLIENT,
-            &VERIFIER_ALLOWANCE,
-            &CLIENT_ALLOWANCE,
+            &allowance_verifier,
+            &allowance_client,
         );
 
-        let deal_size = CLIENT_ALLOWANCE.clone() + 1;
+        let deal_size = allowance_client.clone() + 1;
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.use_bytes(&mut rt, &CLIENT, &deal_size));
         h.check_state()
     }
@@ -561,16 +580,16 @@ mod datacap {
     #[test]
     fn restore_multiple_clients() {
         let (h, mut rt) = new_harness();
-        let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() * 10;
+        let allowance = rt.policy.minimum_verified_deal_size.clone() * 10;
 
-        let ca1 = MINIMUM_VERIFIED_DEAL_SIZE.clone() * 3;
+        let ca1 = rt.policy.minimum_verified_deal_size.clone() * 3;
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &ca1);
-        let ca2 = MINIMUM_VERIFIED_DEAL_SIZE.clone() * 2;
+        let ca2 = rt.policy.minimum_verified_deal_size.clone() * 2;
         h.add_client(&mut rt, &VERIFIER, &CLIENT2, &ca2, &ca2).unwrap();
-        let ca3 = MINIMUM_VERIFIED_DEAL_SIZE.clone() + 1;
+        let ca3 = rt.policy.minimum_verified_deal_size.clone() + 1;
         h.add_client(&mut rt, &VERIFIER, &CLIENT3, &ca3, &ca3).unwrap();
 
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
         h.restore_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
         h.assert_client_allowance(&rt, &CLIENT, &(ca1.clone() + &deal_size));
 
@@ -602,13 +621,13 @@ mod datacap {
     #[test]
     fn restore_after_reducing_client_cap() {
         let (h, mut rt) = new_harness();
-        let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() * 2;
+        let allowance = rt.policy.minimum_verified_deal_size.clone() * 2;
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance);
 
         // Use half allowance.
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
         h.use_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
-        h.assert_client_allowance(&rt, &CLIENT, &MINIMUM_VERIFIED_DEAL_SIZE);
+        h.assert_client_allowance(&rt, &CLIENT, &rt.policy.minimum_verified_deal_size);
 
         // Restore it.
         h.restore_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
@@ -619,13 +638,13 @@ mod datacap {
     #[test]
     fn restore_resolves_client_address() {
         let (h, mut rt) = new_harness();
-        let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() * 2;
+        let allowance = rt.policy.minimum_verified_deal_size.clone() * 2;
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance);
 
         // Use half allowance.
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
         h.use_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
-        h.assert_client_allowance(&rt, &CLIENT, &MINIMUM_VERIFIED_DEAL_SIZE);
+        h.assert_client_allowance(&rt, &CLIENT, &rt.policy.minimum_verified_deal_size);
 
         let client_pubkey = Address::new_secp256k1(&[3u8; 65]).unwrap();
         rt.id_addresses.insert(client_pubkey, *CLIENT);
@@ -639,11 +658,11 @@ mod datacap {
     #[test]
     fn restore_after_removing_client() {
         let (h, mut rt) = new_harness();
-        let allowance = MINIMUM_VERIFIED_DEAL_SIZE.clone() + 1;
+        let allowance = rt.policy.minimum_verified_deal_size.clone() + 1;
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance);
 
         // Use allowance.
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
         h.use_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
         h.assert_client_removed(&rt, &CLIENT);
 
@@ -658,8 +677,10 @@ mod datacap {
         let (h, mut rt) = new_harness();
         rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
         rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
-        let params =
-            RestoreBytesParams { address: *CLIENT, deal_size: MINIMUM_VERIFIED_DEAL_SIZE.clone() };
+        let params = RestoreBytesParams {
+            address: *CLIENT,
+            deal_size: rt.policy.minimum_verified_deal_size.clone(),
+        };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
@@ -673,15 +694,17 @@ mod datacap {
     #[test]
     fn restore_requires_minimum_deal_size() {
         let (h, mut rt) = new_harness();
+        let allowance_verifier = verifier_allowance(&rt);
+        let allowance_client = client_allowance(&rt);
         h.add_verifier_and_client(
             &mut rt,
             &VERIFIER,
             &CLIENT,
-            &VERIFIER_ALLOWANCE,
-            &CLIENT_ALLOWANCE,
+            &allowance_verifier,
+            &allowance_client,
         );
 
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone() - 1;
+        let deal_size = rt.policy.minimum_verified_deal_size.clone() - 1;
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.restore_bytes(&mut rt, &CLIENT, &deal_size));
         h.check_state()
     }
@@ -689,7 +712,7 @@ mod datacap {
     #[test]
     fn restore_rejects_root() {
         let (h, mut rt) = new_harness();
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.restore_bytes(&mut rt, &ROOT_ADDR, &deal_size),
@@ -700,8 +723,9 @@ mod datacap {
     #[test]
     fn restore_rejects_verifier() {
         let (h, mut rt) = new_harness();
-        h.add_verifier(&mut rt, &VERIFIER, &VERIFIER_ALLOWANCE).unwrap();
-        let deal_size = MINIMUM_VERIFIED_DEAL_SIZE.clone();
+        let allowance = verifier_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.restore_bytes(&mut rt, &VERIFIER, &deal_size),
