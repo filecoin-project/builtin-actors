@@ -690,12 +690,8 @@ fn generate_and_publish_deal_for_piece(
 
     // publish
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
-    let deal_ids = publish_deals(rt, provider, owner, worker, &[PublishDealReq { deal }]);
+    let deal_ids = publish_deals(rt, provider, owner, worker, &[deal]);
     deal_ids[0]
-}
-
-struct PublishDealReq {
-    deal: DealProposal,
 }
 
 fn publish_deals(
@@ -703,7 +699,7 @@ fn publish_deals(
     provider: Address,
     owner: Address,
     worker: Address,
-    publish_deal_reqs: &[PublishDealReq],
+    publish_deals: &[DealProposal],
 ) -> Vec<DealID> {
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
@@ -722,25 +718,25 @@ fn publish_deals(
 
     let mut params: PublishStorageDealsParams = PublishStorageDealsParams { deals: vec![] };
 
-    for pdr in publish_deal_reqs {
+    for deal in publish_deals {
         // create a client proposal with a valid signature
-        let buf = RawBytes::serialize(pdr.deal.clone()).expect("failed to marshal deal proposal");
+        let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let client_proposal =
-            ClientDealProposal { proposal: pdr.deal.clone(), client_signature: sig.clone() };
+            ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() };
         params.deals.push(client_proposal);
 
         // expect a call to verify the above signature
         rt.expect_verify_signature(ExpectedVerifySig {
             sig,
-            signer: pdr.deal.client,
+            signer: deal.client,
             plaintext: buf.to_vec(),
             result: Ok(()),
         });
-        if pdr.deal.verified_deal {
+        if deal.verified_deal {
             let param = RawBytes::serialize(UseBytesParams {
-                address: pdr.deal.client,
-                deal_size: BigInt::from(pdr.deal.piece_size.0),
+                address: deal.client,
+                deal_size: BigInt::from(deal.piece_size.0),
             })
             .unwrap();
 
@@ -765,11 +761,11 @@ fn publish_deals(
         .unwrap();
     rt.verify();
 
-    assert_eq!(ret.ids.len(), publish_deal_reqs.len());
+    assert_eq!(ret.ids.len(), publish_deals.len());
 
     // assert state after publishing the deals
     for (i, deal_id) in ret.ids.iter().enumerate() {
-        let expected = &publish_deal_reqs[i].deal;
+        let expected = &publish_deals[i];
         let p = get_deal_proposal(rt, *deal_id);
 
         assert_eq!(expected, &p);
