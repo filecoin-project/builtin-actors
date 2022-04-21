@@ -834,9 +834,32 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     );
 
     // assertions
+    let st: State = rt.get_state().unwrap();
+    let provider2_locked = &deal6.provider_collateral + &deal7.provider_collateral;
+    assert_eq!(provider2_locked, get_locked_balance(&mut rt, provider2_addr));
+    let client1_locked_updated = get_locked_balance(&mut rt, client1_addr);
+    assert_eq!(
+        &deal7.client_balance_requirement() +
+        &client1_locked +
+        &deal6.client_balance_requirement(),
+        client1_locked_updated
+    );
 
     // assert first provider's balance as well
-    ()
+    assert_eq!(provider_locked, get_locked_balance(&mut rt, provider_addr));
+
+    let total_client_collateral_locked =
+        &total_client_collateral_locked +
+        &deal6.client_collateral +
+        &deal7.client_collateral;
+    assert_eq!(total_client_collateral_locked, st.total_client_locked_colateral);
+    assert_eq!(provider_locked + provider2_locked, st.total_provider_locked_colateral);
+    let total_storage_fee =
+        &total_storage_fee +
+        &deal6.total_storage_fee() +
+        &deal7.total_storage_fee();
+    assert_eq!(total_storage_fee, st.total_client_storage_fee);
+    // TODO: actor.checkState(rt)
 }
 
 fn expect_provider_control_address(
