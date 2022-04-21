@@ -811,17 +811,27 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
 
     // generate first deal for second provider
     let deal6 = generate_deal_and_add_funds(
-        &mut rt, client1_addr, provider_addr, owner_addr, worker_addr,
+        &mut rt, client1_addr, provider2_addr, owner_addr, worker_addr,
         20, 20 + 200 * EPOCHS_IN_DAY
     );
 
-    // // generate second deal for second provider
-    // let deal7 = generate_deal_and_add_funds(
-    //     &mut rt, client1_addr, provider2_addr, owner_addr, worker_addr,
-    //     25, 60 + 200 * EPOCHS_IN_DAY
-    // );
+    // generate second deal for second provider
+    let deal7 = generate_deal_and_add_funds(
+        &mut rt, client1_addr, provider2_addr, owner_addr, worker_addr,
+        25, 60 + 200 * EPOCHS_IN_DAY
+    );
 
     // publish both the deals for the second provider
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    publish_deals(
+        &mut rt,
+        provider2_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        &[PublishDealReq { deal: deal6.clone() },
+          PublishDealReq { deal: deal7.clone() }]
+    );
 
     // assertions
 
@@ -860,7 +870,7 @@ fn add_provider_funds(
     worker: Address,
 ) {
     rt.set_value(amount.clone());
-    // TODO: call rt.SetAddressActorType(minerAddrs.provider, builtin.StorageMinerActorCodeID)?
+    rt.set_address_actor_type(provider, *MINER_ACTOR_CODE_ID);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, owner);
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
