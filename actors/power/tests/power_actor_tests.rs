@@ -37,7 +37,7 @@ fn create_miner() {
     )
     .unwrap();
 
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
     // Verify the miner's claim.
     let claim = h.get_claim(&rt, &MINER).unwrap();
     assert_eq!(RegisteredPoStProof::StackedDRGWindow32GiBV1, claim.window_post_proof_type);

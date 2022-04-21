@@ -53,7 +53,7 @@ impl Harness {
         rt.verify();
 
         let empty_map = make_empty_map::<_, ()>(&rt.store, HAMT_BIT_WIDTH).flush().unwrap();
-        let state: State = rt.get_state().unwrap();
+        let state: State = rt.get_state();
         assert_eq!(self.root, state.root_key);
         assert_eq!(empty_map, state.verified_clients);
         assert_eq!(empty_map, state.verifiers);
@@ -213,13 +213,13 @@ impl Harness {
 }
 
 fn load_verifiers(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
-    let state: State = rt.get_state().unwrap();
+    let state: State = rt.get_state();
     make_map_with_root_and_bitwidth::<_, BigIntDe>(&state.verifiers, &rt.store, HAMT_BIT_WIDTH)
         .unwrap()
 }
 
 fn load_clients(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
-    let state: State = rt.get_state().unwrap();
+    let state: State = rt.get_state();
     make_map_with_root_and_bitwidth::<_, BigIntDe>(
         &state.verified_clients,
         &rt.store,
