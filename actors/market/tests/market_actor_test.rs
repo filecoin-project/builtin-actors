@@ -1817,7 +1817,7 @@ fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposal) {
 
     let mh_code = Code::Blake2b256;
     let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&p).unwrap()));
-    // Check that the deal_id is not in st.proposals.
+    // Check that the deal_id is not in st.pending_proposals.
     let pending_deals: Hamt<&fvm_ipld_blockstore::MemoryBlockstore, DealProposal> =
         fil_actors_runtime::make_map_with_root_and_bitwidth(
             &st.pending_proposals,
