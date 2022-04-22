@@ -1046,6 +1046,53 @@ fn fail_when_deal_has_been_published_but_not_activated() {
     rt.verify();
 }
 
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1485
+#[test]
+fn termination_of_all_deals_should_fail_when_one_deal_fails() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    // deal1 would terminate but deal2 will fail because deal2 has not been activated
+    let deal1 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
+    let deal2 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch + 1,
+    );
+
+    let ret = terminate_deals_raw(&mut rt, provider_addr, &[deal1, deal2]);
+    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no state for deal", ret);
+    rt.verify();
+
+    // verify deal1 has not been terminated
+    assert_deals_not_terminated(&mut rt, &[deal1]);
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
