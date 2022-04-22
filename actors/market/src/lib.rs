@@ -39,7 +39,7 @@ pub mod balance_table; // export for testing
 mod deal;
 #[doc(hidden)]
 pub mod ext; // export for testing
-mod policy;
+pub mod policy; // export for testing
 mod state;
 mod types;
 
