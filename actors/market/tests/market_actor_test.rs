@@ -1571,7 +1571,7 @@ fn assert_deals_terminated(rt: &mut MockRuntime, epoch: ChainEpoch, deal_ids: &[
 fn assert_deals_not_terminated(rt: &mut MockRuntime, deal_ids: &[DealID]) {
     for &deal_id in deal_ids {
         let s = get_deal_state(rt, deal_id);
-        assert_eq!(s.slash_epoch, -1);
+        assert_eq!(s.slash_epoch, EPOCH_UNDEFINED);
     }
 }
 
