@@ -746,7 +746,6 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     );
 
     // assert locked balances for clients and provider
-    //let st: State = rt.get_state().unwrap();
     let provider_locked =
         &provider_locked + &deal4.provider_collateral + &deal5.provider_collateral;
     assert_eq!(provider_locked, get_locked_balance(&mut rt, provider_addr));
