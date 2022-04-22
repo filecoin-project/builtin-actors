@@ -413,18 +413,17 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
     let provider_addr = Address::new_id(PROVIDER_ID);
 
     let amount = TokenAmount::from(20u8);
-
     add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
 
-    assert_eq!(get_escrow_balance(&rt, &provider_addr), Ok(amount));
+    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), amount);
 
+    // only signing parties can add balance for client AND provider.
     rt.expect_validate_caller_addr(vec![owner_addr, worker_addr]);
-
     let params =
         WithdrawBalanceParams { provider_or_client: provider_addr, amount: TokenAmount::from(1u8) };
 
+    // caller is not owner or worker
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
-
     expect_get_control_addresses(&mut rt, provider_addr, owner_addr, worker_addr, vec![]);
 
     expect_abort(
@@ -434,10 +433,11 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
             &RawBytes::serialize(&params).unwrap(),
         ),
     );
-
     rt.verify();
 
-    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &provider_addr).unwrap());
+    // verify there was no withdrawal
+    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), amount);
+    // TODO: actor.checkState(rt)
 }
 
 fn expect_get_control_addresses(
