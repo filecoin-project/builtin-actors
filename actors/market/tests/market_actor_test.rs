@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::collections::HashMap;
+use std::convert::TryInto;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::ext::miner::GetControlAddressesReturnParams;
@@ -19,8 +20,9 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, SetMultimap, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    make_empty_map, ActorError, SetMultimap, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::{to_vec, RawBytes};
@@ -687,7 +689,6 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
 // Converted from https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1274
 #[test]
 fn terminate_multiple_deals_from_multiple_providers() {
-    use std::convert::TryInto;
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
@@ -847,6 +848,202 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     terminate_deals(&mut rt, provider_addr, &[deal1, deal2, deal3]);
     assert_deals_terminated(&mut rt, new_epoch, &[deal1, deal2]);
     assert_deals_not_terminated(&mut rt, &[deal3]);
+}
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1346
+#[test]
+fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
+    let deal_updates_interval = Policy::default().deal_updates_interval;
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    let deal1 = generate_deal_and_add_funds(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        start_epoch,
+        end_epoch,
+    );
+    let deal2 = generate_deal_and_add_funds(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        start_epoch,
+        end_epoch - deal_updates_interval,
+    );
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    let deal_ids = publish_deals(
+        &mut rt,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        &[deal1, deal2.clone()],
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &deal_ids);
+
+    let new_epoch = end_epoch - 1;
+    rt.set_epoch(new_epoch);
+    cron_tick(&mut rt);
+
+    terminate_deals(&mut rt, provider_addr, &deal_ids);
+    assert_deals_terminated(&mut rt, new_epoch, &deal_ids[0..0]);
+    assert_deal_deleted(&mut rt, deal_ids[1], deal2);
+}
+
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1369
+#[test]
+fn terminating_a_deal_the_second_time_does_not_change_its_slash_epoch() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    let deal1 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
+
+    // terminating the deal so slash epoch is the current epoch
+    terminate_deals(&mut rt, provider_addr, &[deal1]);
+
+    // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
+    rt.set_epoch(current_epoch + 1);
+    terminate_deals(&mut rt, provider_addr, &[deal1]);
+    let s = get_deal_state(&mut rt, deal1);
+    assert_eq!(s.slash_epoch, current_epoch);
+}
+
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1387
+#[test]
+fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_deals() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    // provider1 publishes deal1 and 2 and deal3 -> deal3 has the lowest endepoch
+    let deals: Vec<DealID> = [end_epoch, end_epoch + 1, end_epoch - 1]
+        .iter()
+        .map(|&epoch| {
+            generate_and_publish_deal(
+                &mut rt,
+                client_addr,
+                provider_addr,
+                owner_addr,
+                worker_addr,
+                control_addr,
+                start_epoch,
+                epoch,
+            )
+        })
+        .collect();
+    let [deal1, deal2, deal3]: [DealID; 3] = deals.as_slice().try_into().unwrap();
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &deals);
+
+    // terminating the deal so slash epoch is the current epoch
+    terminate_deals(&mut rt, provider_addr, &[deal1]);
+
+    // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
+    let new_epoch = current_epoch + 1;
+    rt.set_epoch(new_epoch);
+    terminate_deals(&mut rt, provider_addr, &deals);
+
+    let s1 = get_deal_state(&mut rt, deal1);
+    assert_eq!(s1.slash_epoch, current_epoch);
+
+    let s2 = get_deal_state(&mut rt, deal2);
+    assert_eq!(s2.slash_epoch, new_epoch);
+
+    let s3 = get_deal_state(&mut rt, deal3);
+    assert_eq!(s3.slash_epoch, new_epoch);
+}
+
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1415
+#[test]
+fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    // deal1 has endepoch equal to current epoch when terminate is called
+    let deal1 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
+    rt.set_epoch(end_epoch);
+    terminate_deals(&mut rt, provider_addr, &[deal1]);
+    assert_deals_not_terminated(&mut rt, &[deal1]);
+
+    // deal2 has end epoch less than current epoch when terminate is called
+    rt.set_epoch(current_epoch);
+    let deal2 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch + 1,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal2]);
+    rt.set_epoch(end_epoch + 1);
+    terminate_deals(&mut rt, provider_addr, &[deal2]);
+    assert_deals_not_terminated(&mut rt, &[deal2]);
 }
 
 #[test]
@@ -1619,6 +1816,17 @@ fn assert_deals_not_activated(rt: &mut MockRuntime, _epoch: ChainEpoch, deal_ids
     }
 }
 
+fn cron_tick(rt: &mut MockRuntime) {
+    rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+    rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+
+    assert_eq!(
+        RawBytes::default(),
+        rt.call::<MarketActor>(Method::CronTick as u64, &RawBytes::default()).unwrap()
+    );
+    rt.verify()
+}
+
 fn expect_query_network_info(rt: &mut MockRuntime) {
     //networkQAPower
     //networkBaselinePower
@@ -1681,4 +1889,34 @@ fn assert_deals_not_terminated(rt: &mut MockRuntime, deal_ids: &[DealID]) {
         let s = get_deal_state(rt, deal_id);
         assert_eq!(s.slash_epoch, EPOCH_UNDEFINED);
     }
+}
+
+fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposal) {
+    use cid::multihash::Code;
+    use cid::multihash::MultihashDigest;
+    use fvm_ipld_hamt::{BytesKey, Hamt};
+
+    let st: State = rt.get_state();
+
+    // Check that the deal_id is not in st.proposals.
+    let deals = DealArray::load(&st.proposals, &rt.store).unwrap();
+    let d = deals.get(deal_id).unwrap();
+    assert!(d.is_none());
+
+    // Check that the deal_id is not in st.states
+    let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+    let s = states.get(deal_id).unwrap();
+    assert!(s.is_none());
+
+    let mh_code = Code::Blake2b256;
+    let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&p).unwrap()));
+    // Check that the deal_id is not in st.pending_proposals.
+    let pending_deals: Hamt<&fvm_ipld_blockstore::MemoryBlockstore, DealProposal> =
+        fil_actors_runtime::make_map_with_root_and_bitwidth(
+            &st.pending_proposals,
+            &rt.store,
+            PROPOSALS_AMT_BITWIDTH,
+        )
+        .unwrap();
+    assert!(!pending_deals.contains_key(&BytesKey(p_cid.to_bytes())).unwrap());
 }
