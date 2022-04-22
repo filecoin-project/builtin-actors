@@ -4,9 +4,6 @@
 use std::collections::HashMap;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
-use fil_actor_market::policy::{
-    DEAL_UPDATES_INTERVAL, PROV_COLLATERAL_PERCENT_SUPPLY_DENOM, PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
-};
 use fil_actor_market::{
     ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray,
     DealProposal, DealState, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn,
@@ -18,7 +15,7 @@ use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::UseBytesParams;
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, ActorError, SetMultimap, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
@@ -30,7 +27,6 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
-use fvm_shared::commcid::FIL_COMMITMENT_UNSEALED;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -42,8 +38,6 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 
 use cid::Cid;
-use multihash::derive::Multihash;
-use multihash::MultihashDigest;
 use num_traits::FromPrimitive;
 
 const OWNER_ID: u64 = 101;
@@ -51,22 +45,6 @@ const PROVIDER_ID: u64 = 102;
 const WORKER_ID: u64 = 103;
 const CLIENT_ID: u64 = 104;
 const CONTROL_ID: u64 = 200;
-
-// TODO: move this out in some utils? (MhCode and make_piece_cid come from miner/tests)
-// multihash library doesn't support poseidon hashing, so we fake it
-#[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
-#[mh(alloc_size = 64)]
-enum MhCode {
-    #[mh(code = 0xb401, hasher = multihash::Sha2_256)]
-    PoseidonFake,
-    #[mh(code = 0x1012, hasher = multihash::Sha2_256)]
-    Sha256TruncPaddedFake,
-}
-
-fn make_piece_cid(input: &[u8]) -> Cid {
-    let h = MhCode::Sha256TruncPaddedFake.digest(input);
-    Cid::new_v1(FIL_COMMITMENT_UNSEALED, h)
-}
 
 fn setup() -> MockRuntime {
     let mut actor_code_cids = HashMap::default();
@@ -88,7 +66,7 @@ fn setup() -> MockRuntime {
 }
 
 fn get_escrow_balance(rt: &MockRuntime, addr: &Address) -> Result<TokenAmount, ActorError> {
-    let st: State = rt.get_state()?;
+    let st: State = rt.get_state();
 
     let et = BalanceTable::from_root(rt.store(), &st.escrow_table).unwrap();
 
@@ -125,7 +103,7 @@ fn simple_construction() {
         Amt::<(), _>::new_with_bit_width(store, STATES_AMT_BITWIDTH).flush().unwrap();
     let empty_multimap = SetMultimap::new(store).root().unwrap();
 
-    let state_data: State = rt.get_state().unwrap();
+    let state_data: State = rt.get_state();
 
     assert_eq!(empty_proposals_array, state_data.proposals);
     assert_eq!(empty_states_array, state_data.states);
@@ -145,7 +123,6 @@ fn label_cbor() {
         .unwrap();
 
     let label2 = Label::Bytes(b"i_am_random_____i_am_random_____".to_vec());
-    //println!("{:?}", (b"i_am_random_____i_am_random_____".to_vec()));
     let _ = to_vec(&label2)
         .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
         .unwrap();
@@ -359,7 +336,7 @@ fn withdraws_from_non_provider_escrow_funds() {
     let withdraw_amount = TokenAmount::from(1);
     withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount, client_addr);
 
-    add_participant_funds(&mut rt, client_addr, amount);
+    assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), TokenAmount::from(19));
     // TODO: actor.checkState(rt)
 }
 
@@ -408,7 +385,8 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
 
 #[test]
 fn deal_starts_on_day_boundary() {
-    let start_epoch = DEAL_UPDATES_INTERVAL; // 2880
+    let deal_updates_interval = Policy::default().deal_updates_interval;
+    let start_epoch = deal_updates_interval; // 2880
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
@@ -421,9 +399,8 @@ fn deal_starts_on_day_boundary() {
     let worker_addr = Address::new_id(WORKER_ID);
     let control_addr = Address::new_id(CONTROL_ID);
 
-    for i in 0..(3 * DEAL_UPDATES_INTERVAL) {
+    for i in 0..(3 * deal_updates_interval) {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
-        //println!("{i}: {}", piece_cid);
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
             client_addr,
@@ -440,18 +417,18 @@ fn deal_starts_on_day_boundary() {
     }
 
     // Check that DOBE has exactly 3 deals scheduled every epoch in the day following the start time
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
-    for e in DEAL_UPDATES_INTERVAL..(2 * DEAL_UPDATES_INTERVAL) {
+    for e in deal_updates_interval..(2 * deal_updates_interval) {
         assert_n_good_deals(&dobe, e, 3);
     }
 
     // DOBE has no deals scheduled in the previous or next day
-    for e in 0..DEAL_UPDATES_INTERVAL {
+    for e in 0..deal_updates_interval {
         assert_n_good_deals(&dobe, e, 0);
     }
-    for e in (2 * DEAL_UPDATES_INTERVAL)..(3 * DEAL_UPDATES_INTERVAL) {
+    for e in (2 * deal_updates_interval)..(3 * deal_updates_interval) {
         assert_n_good_deals(&dobe, e, 0);
     }
 }
@@ -474,7 +451,6 @@ fn deal_starts_partway_through_day() {
     // First 1000 deals (start_epoch % update interval) scheduled starting in the next day
     for i in 0..1000 {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
-        //println!("{i}: {}", piece_cid);
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
             client_addr,
@@ -489,7 +465,7 @@ fn deal_starts_partway_through_day() {
         );
         assert_eq!(i as DealID, deal_id);
     }
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in 2880..(2880 + start_epoch) {
@@ -503,7 +479,6 @@ fn deal_starts_partway_through_day() {
     // Now add another 500 deals
     for i in 1000..1500 {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
-        //println!("{i}: {}", piece_cid);
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
             client_addr,
@@ -518,7 +493,7 @@ fn deal_starts_partway_through_day() {
         );
         assert_eq!(i as DealID, deal_id);
     }
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in start_epoch..(start_epoch + 500) {
@@ -552,14 +527,7 @@ fn simple_deal() {
         end_epoch,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
-    publish_deals(
-        &mut rt,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
-        &[PublishDealReq { deal: deal1 }],
-    );
+    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal1]);
 
     // Publish from miner control address.
     let deal2 = generate_deal_and_add_funds(
@@ -572,14 +540,7 @@ fn simple_deal() {
         end_epoch + 1,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, control_addr);
-    publish_deals(
-        &mut rt,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
-        &[PublishDealReq { deal: deal2 }],
-    );
+    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal2]);
     // TODO: actor.checkState(rt)
 }
 
@@ -632,6 +593,8 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
 
 #[test]
 fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_zero() {
+    let policy = Policy::default();
+
     let start_epoch = 1000;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
@@ -649,8 +612,8 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
     // given power and circ supply cancel this should be 1*dealqapower / 100
     let deal_size = PaddedPieceSize(2048u64); // generateDealProposal's deal size
     let provider_collateral = TokenAmount::from(
-        (deal_size.0 * (PROV_COLLATERAL_PERCENT_SUPPLY_NUM as u64))
-            / PROV_COLLATERAL_PERCENT_SUPPLY_DENOM as u64,
+        (deal_size.0 * (policy.prov_collateral_percent_supply_num as u64))
+            / policy.prov_collateral_percent_supply_denom as u64,
     );
     let deal = generate_deal_with_collateral_and_add_funds(
         &mut rt,
@@ -675,7 +638,7 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
         owner_addr,
         worker_addr,
         control_addr,
-        &[PublishDealReq { deal }],
+        &[deal],
     );
     // TODO: actor.checkState(rt)
 }
@@ -737,9 +700,9 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         worker_addr,
         control_addr,
         &[
-            PublishDealReq { deal: deal1.clone() },
-            PublishDealReq { deal: deal2.clone() },
-            PublishDealReq { deal: deal3.clone() },
+            deal1.clone(),
+            deal2.clone(),
+            deal3.clone(),
         ],
     );
 
@@ -755,7 +718,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     assert_eq!(provider_locked, get_locked_balance(&mut rt, provider_addr));
 
     // assert locked funds dealStates
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
     let total_client_collateral_locked =
         &deal1.provider_collateral + &deal2.provider_collateral + &deal3.provider_collateral;
     assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
@@ -790,7 +753,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         owner_addr,
         worker_addr,
         control_addr,
-        &[PublishDealReq { deal: deal4.clone() }, PublishDealReq { deal: deal5.clone() }],
+        &[deal4.clone(), deal5.clone()],
     );
 
     // assert locked balances for clients and provider
@@ -811,7 +774,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     assert_eq!(deal2.client_balance_requirement(), client2_locked);
 
     // assert locked funds dealStates
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
     let total_client_collateral_locked =
         &total_client_collateral_locked + &deal4.client_collateral + &deal5.client_collateral;
     assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
@@ -854,11 +817,11 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         owner_addr,
         worker_addr,
         control_addr,
-        &[PublishDealReq { deal: deal6.clone() }, PublishDealReq { deal: deal7.clone() }],
+        &[deal6.clone(), deal7.clone()],
     );
 
     // assertions
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
     let provider2_locked = &deal6.provider_collateral + &deal7.provider_collateral;
     assert_eq!(provider2_locked, get_locked_balance(&mut rt, provider2_addr));
     let client1_locked_updated = get_locked_balance(&mut rt, client1_addr);
@@ -1130,7 +1093,7 @@ fn activate_deals(
 }
 
 fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
 
     let deals = DealArray::load(&st.proposals, &rt.store).unwrap();
 
@@ -1139,7 +1102,7 @@ fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
 }
 
 fn get_locked_balance(rt: &mut MockRuntime, addr: Address) -> TokenAmount {
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
 
     let lt = BalanceTable::from_root(&rt.store, &st.locked_table).unwrap();
 
@@ -1147,7 +1110,7 @@ fn get_locked_balance(rt: &mut MockRuntime, addr: Address) -> TokenAmount {
 }
 
 fn get_deal_state(rt: &mut MockRuntime, deal_id: DealID) -> DealState {
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
 
     let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
 
@@ -1169,7 +1132,7 @@ fn generate_and_publish_deal(
     let deal =
         generate_deal_and_add_funds(rt, client, provider, owner, worker, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
-    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[PublishDealReq { deal }]);
+    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[deal]);
     deal_ids[0]
 }
 
@@ -1211,7 +1174,7 @@ fn generate_and_publish_deal_for_piece(
 
     // publish
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
-    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[PublishDealReq { deal }]);
+    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[deal]);
     deal_ids[0]
 }
 
@@ -1299,17 +1262,13 @@ fn generate_deal_proposal(
     )
 }
 
-struct PublishDealReq {
-    deal: DealProposal,
-}
-
 fn publish_deals(
     rt: &mut MockRuntime,
     provider: Address,
     owner: Address,
     worker: Address,
     control: Address,
-    publish_deal_reqs: &[PublishDealReq],
+    publish_deals: &[DealProposal],
 ) -> Vec<DealID> {
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
@@ -1331,25 +1290,25 @@ fn publish_deals(
 
     let mut params: PublishStorageDealsParams = PublishStorageDealsParams { deals: vec![] };
 
-    for pdr in publish_deal_reqs {
+    for deal in publish_deals {
         // create a client proposal with a valid signature
-        let buf = RawBytes::serialize(pdr.deal.clone()).expect("failed to marshal deal proposal");
+        let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let client_proposal =
-            ClientDealProposal { proposal: pdr.deal.clone(), client_signature: sig.clone() };
+            ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() };
         params.deals.push(client_proposal);
 
         // expect a call to verify the above signature
         rt.expect_verify_signature(ExpectedVerifySig {
             sig,
-            signer: pdr.deal.client,
+            signer: deal.client,
             plaintext: buf.to_vec(),
             result: Ok(()),
         });
-        if pdr.deal.verified_deal {
+        if deal.verified_deal {
             let param = RawBytes::serialize(UseBytesParams {
-                address: pdr.deal.client,
-                deal_size: BigInt::from(pdr.deal.piece_size.0),
+                address: deal.client,
+                deal_size: BigInt::from(deal.piece_size.0),
             })
             .unwrap();
 
@@ -1374,11 +1333,11 @@ fn publish_deals(
         .unwrap();
     rt.verify();
 
-    assert_eq!(ret.ids.len(), publish_deal_reqs.len());
+    assert_eq!(ret.ids.len(), publish_deals.len());
 
     // assert state after publishing the deals
     for (i, deal_id) in ret.ids.iter().enumerate() {
-        let expected = &publish_deal_reqs[i].deal;
+        let expected = &publish_deals[i];
         let p = get_deal_proposal(rt, *deal_id);
 
         assert_eq!(expected, &p);
@@ -1388,7 +1347,7 @@ fn publish_deals(
 }
 
 fn assert_deals_not_activated(rt: &mut MockRuntime, _epoch: ChainEpoch, deal_ids: &[DealID]) {
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
 
     let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
 
@@ -1437,9 +1396,10 @@ fn assert_n_good_deals<BS>(dobe: &SetMultimap<BS>, epoch: ChainEpoch, n: isize)
 where
     BS: fvm_ipld_blockstore::Blockstore,
 {
+    let deal_updates_interval = Policy::default().deal_updates_interval;
     let mut count = 0;
     dobe.for_each(epoch, |id| {
-        assert_eq!(epoch % DEAL_UPDATES_INTERVAL, (id as i64) % DEAL_UPDATES_INTERVAL);
+        assert_eq!(epoch % deal_updates_interval, (id as i64) % deal_updates_interval);
         count += 1;
         Ok(())
     })

@@ -4,6 +4,7 @@
 use std::cmp::max;
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::DealWeight;
 use fvm_shared::bigint::Integer;
 use fvm_shared::clock::ChainEpoch;
@@ -14,17 +15,6 @@ use fvm_shared::TOTAL_FILECOIN;
 use num_traits::Zero;
 
 use super::deal::DealProposal;
-
-/// DealUpdatesInterval is the number of blocks between payouts for deals
-pub const DEAL_UPDATES_INTERVAL: i64 = EPOCHS_IN_DAY;
-
-/// Numerator of the percentage of normalized cirulating
-/// supply that must be covered by provider collateral
-pub const PROV_COLLATERAL_PERCENT_SUPPLY_NUM: i64 = 1;
-
-/// Denominator of the percentage of normalized cirulating
-/// supply that must be covered by provider collateral
-pub const PROV_COLLATERAL_PERCENT_SUPPLY_DENOM: i64 = 100;
 
 /// Maximum length of a deal label.
 pub(super) const DEAL_MAX_LABEL_SIZE: usize = 256;
@@ -42,6 +32,7 @@ pub(super) fn deal_price_per_epoch_bounds(
 }
 
 pub(super) fn deal_provider_collateral_bounds(
+    policy: &Policy,
     size: PaddedPieceSize,
     network_raw_power: &StoragePower,
     baseline_power: &StoragePower,
@@ -51,12 +42,12 @@ pub(super) fn deal_provider_collateral_bounds(
     // normalizedCirculatingSupply = networkCirculatingSupply * dealPowerShare
     // dealPowerShare = dealRawPower / max(BaselinePower(t), NetworkRawPower(t), dealRawPower)
 
-    let lock_target_num = network_circulating_supply * PROV_COLLATERAL_PERCENT_SUPPLY_NUM;
+    let lock_target_num = network_circulating_supply * policy.prov_collateral_percent_supply_num;
     let power_share_num = TokenAmount::from(size.0);
     let power_share_denom = max(max(network_raw_power, baseline_power), &power_share_num).clone();
 
     let num: TokenAmount = power_share_num * lock_target_num;
-    let denom: TokenAmount = power_share_denom * PROV_COLLATERAL_PERCENT_SUPPLY_DENOM;
+    let denom: TokenAmount = power_share_denom * policy.prov_collateral_percent_supply_denom;
     ((num.div_floor(&denom)), TOTAL_FILECOIN.clone())
 }
 
