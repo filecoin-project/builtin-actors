@@ -234,6 +234,35 @@ fn adds_to_provider_escrow_funds() {
 }
 
 #[test]
+fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient() {
+    let mut rt = setup();
+    let client = Address::new_id(CLIENT_ID);
+
+    add_participant_funds(&mut rt, client, TokenAmount::from(20u8));
+
+    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &client).unwrap());
+
+    rt.expect_validate_caller_addr(vec![client]);
+
+    let params =
+        WithdrawBalanceParams { provider_or_client: client, amount: TokenAmount::from(1u8) };
+
+    // caller is not the recipient
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        rt.call::<MarketActor>(
+            Method::WithdrawBalance as u64,
+            &RawBytes::serialize(params).unwrap(),
+        ),
+    );
+    rt.verify();
+
+    // verify there was no withdrawal
+    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &client).unwrap());
+}
+
+#[test]
 fn fails_unless_called_by_an_account_actor() {
     let mut rt = setup();
 
