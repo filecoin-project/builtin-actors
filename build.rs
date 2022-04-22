@@ -45,6 +45,8 @@ fn network_name() -> String {
         Some("devnet")
     } else if cfg!(feature = "testing") {
         Some("testing")
+    } else if cfg!(feature = "testing-fwp") {
+        Some("testing-fwp")
     } else {
         None
     };
