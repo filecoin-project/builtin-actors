@@ -65,6 +65,21 @@ lazy_static! {
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
         map
     };
+    pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = {
+        let mut map = BTreeMap::new();
+        map.insert(Type::System, *SYSTEM_ACTOR_CODE_ID);
+        map.insert(Type::Init, *INIT_ACTOR_CODE_ID);
+        map.insert(Type::Cron, *CRON_ACTOR_CODE_ID);
+        map.insert(Type::Account, *ACCOUNT_ACTOR_CODE_ID);
+        map.insert(Type::Power, *POWER_ACTOR_CODE_ID);
+        map.insert(Type::Miner, *MINER_ACTOR_CODE_ID);
+        map.insert(Type::Market, *MARKET_ACTOR_CODE_ID);
+        map.insert(Type::PaymentChannel, *PAYCH_ACTOR_CODE_ID);
+        map.insert(Type::Multisig, *MULTISIG_ACTOR_CODE_ID);
+        map.insert(Type::Reward, *REWARD_ACTOR_CODE_ID);
+        map.insert(Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID);
+        map
+    };
     pub static ref CALLER_TYPES_SIGNABLE: Vec<Cid> =
         vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID];
     pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {

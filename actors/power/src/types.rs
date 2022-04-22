@@ -23,7 +23,7 @@ pub const CRON_QUEUE_HAMT_BITWIDTH: u32 = 6;
 pub const CRON_QUEUE_AMT_BITWIDTH: u32 = 6;
 pub const PROOF_VALIDATION_BATCH_AMT_BITWIDTH: u32 = 4;
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct CreateMinerParams {
     pub owner: Address,
     pub worker: Address,
