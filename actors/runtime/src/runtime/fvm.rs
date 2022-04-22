@@ -386,7 +386,7 @@ where
         }
     }
 
-    #[cfg(not(feature = "fake-post-validation"))]
+    #[cfg(not(feature = "fake-proofs"))]
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_post(verify_info) {
             Ok(true) => Ok(()),
@@ -394,7 +394,7 @@ where
         }
     }
 
-    #[cfg(feature = "fake-post-validation")]
+    #[cfg(feature = "fake-proofs")]
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         Ok(())
     }

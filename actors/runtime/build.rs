@@ -40,7 +40,7 @@ static NETWORKS: &[(&str, &[&str])] = &[
             "short-precommit",
             "min-power-2k",
             "no-provider-deal-collateral",
-            "fake-post-validation",
+            "fake-proofs",
         ],
     ),
 ];
