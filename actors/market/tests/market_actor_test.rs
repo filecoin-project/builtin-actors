@@ -527,14 +527,7 @@ fn simple_deal() {
         end_epoch,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
-    publish_deals(
-        &mut rt,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
-        &[deal1],
-    );
+    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal1]);
 
     // Publish from miner control address.
     let deal2 = generate_deal_and_add_funds(
@@ -547,14 +540,7 @@ fn simple_deal() {
         end_epoch + 1,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, control_addr);
-    publish_deals(
-        &mut rt,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
-        &[deal2],
-    );
+    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal2]);
     // TODO: actor.checkState(rt)
 }
 
