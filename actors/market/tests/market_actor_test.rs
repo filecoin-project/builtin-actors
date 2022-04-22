@@ -406,7 +406,6 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     // TODO: actor.checkState(rt)
 }
 
-//#[ignore]
 #[test]
 fn deal_starts_on_day_boundary() {
     let start_epoch = DEAL_UPDATES_INTERVAL; // 2880
@@ -457,7 +456,6 @@ fn deal_starts_on_day_boundary() {
     }
 }
 
-//#[ignore]
 #[test]
 fn deal_starts_partway_through_day() {
     let start_epoch = 1000;
@@ -882,6 +880,91 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     // TODO: actor.checkState(rt)
 }
 
+#[test]
+fn active_deals_multiple_times_with_different_providers() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let current_epoch = ChainEpoch::from(5);
+    let sector_expiry = end_epoch + 100;
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    // provider 1 publishes deals1 and deals2 and deal3
+    let deal1 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    let deal2 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch + 1,
+    );
+    let deal3 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch + 2,
+    );
+
+    // provider2 publishes deal4 and deal5
+    let provider2_addr = Address::new_id(401);
+    let deal4 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider2_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    let deal5 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider2_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch + 1,
+    );
+
+    // provider1 activates deal1 and deal2 but that does not activate deal3 to deal5
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1, deal2]);
+    assert_deals_not_activated(&mut rt, current_epoch, &[deal3, deal4, deal5]);
+
+    // provider3 activates deal5 but that does not activate deal3 or deal4
+    activate_deals(&mut rt, sector_expiry, provider2_addr, current_epoch, &[deal5]);
+    assert_deals_not_activated(&mut rt, current_epoch, &[deal3, deal4]);
+
+    // provider1 activates deal3
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal3]);
+    assert_deals_not_activated(&mut rt, current_epoch, &[deal4]);
+    // TODO: actor.checkState(rt)
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
@@ -1302,6 +1385,17 @@ fn publish_deals(
     }
 
     ret.ids
+}
+
+fn assert_deals_not_activated(rt: &mut MockRuntime, _epoch: ChainEpoch, deal_ids: &[DealID]) {
+    let st: State = rt.get_state().unwrap();
+
+    let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+
+    for d in deal_ids {
+        let opt = states.get(*d).unwrap();
+        assert!(opt.is_none());
+    }
 }
 
 fn expect_query_network_info(rt: &mut MockRuntime) {
