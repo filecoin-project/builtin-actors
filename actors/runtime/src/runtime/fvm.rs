@@ -403,11 +403,11 @@ where
     #[cfg(feature = "fake-proofs")]
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         if verify_info.proofs.len() == 0 {
-            return Err(Error::msg("[fake-post-validation] No winning post proof given"))
+            return Err(Error::msg("[fake-post-validation] No winning post proof given"));
         }
 
         if &verify_info.proofs[0].proof_bytes == b"valid proof" {
-            return Ok(())
+            return Ok(());
         }
 
         Err(Error::msg("[fake-post-validation] winning post was invalid"))
