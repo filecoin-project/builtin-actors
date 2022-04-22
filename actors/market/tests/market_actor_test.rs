@@ -27,7 +27,6 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
-use fvm_shared::commcid::FIL_COMMITMENT_UNSEALED;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -39,8 +38,6 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 
 use cid::Cid;
-use multihash::derive::Multihash;
-use multihash::MultihashDigest;
 use num_traits::FromPrimitive;
 
 const OWNER_ID: u64 = 101;
@@ -48,22 +45,6 @@ const PROVIDER_ID: u64 = 102;
 const WORKER_ID: u64 = 103;
 const CLIENT_ID: u64 = 104;
 const CONTROL_ID: u64 = 200;
-
-// TODO: move this out in some utils? (MhCode and make_piece_cid come from miner/tests)
-// multihash library doesn't support poseidon hashing, so we fake it
-#[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
-#[mh(alloc_size = 64)]
-enum MhCode {
-    #[mh(code = 0xb401, hasher = multihash::Sha2_256)]
-    PoseidonFake,
-    #[mh(code = 0x1012, hasher = multihash::Sha2_256)]
-    Sha256TruncPaddedFake,
-}
-
-fn make_piece_cid(input: &[u8]) -> Cid {
-    let h = MhCode::Sha256TruncPaddedFake.digest(input);
-    Cid::new_v1(FIL_COMMITMENT_UNSEALED, h)
-}
 
 fn setup() -> MockRuntime {
     let mut actor_code_cids = HashMap::default();
@@ -546,14 +527,7 @@ fn simple_deal() {
         end_epoch,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
-    publish_deals(
-        &mut rt,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
-        &[PublishDealReq { deal: deal1 }],
-    );
+    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal1]);
 
     // Publish from miner control address.
     let deal2 = generate_deal_and_add_funds(
@@ -566,14 +540,7 @@ fn simple_deal() {
         end_epoch + 1,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, control_addr);
-    publish_deals(
-        &mut rt,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
-        &[PublishDealReq { deal: deal2 }],
-    );
+    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal2]);
     // TODO: actor.checkState(rt)
 }
 
@@ -820,7 +787,7 @@ fn generate_and_publish_deal(
     let deal =
         generate_deal_and_add_funds(rt, client, provider, owner, worker, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
-    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[PublishDealReq { deal }]);
+    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[deal]);
     deal_ids[0]
 }
 
@@ -862,7 +829,7 @@ fn generate_and_publish_deal_for_piece(
 
     // publish
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
-    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[PublishDealReq { deal }]);
+    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[deal]);
     deal_ids[0]
 }
 
@@ -925,17 +892,13 @@ fn generate_deal_proposal(
     )
 }
 
-struct PublishDealReq {
-    deal: DealProposal,
-}
-
 fn publish_deals(
     rt: &mut MockRuntime,
     provider: Address,
     owner: Address,
     worker: Address,
     control: Address,
-    publish_deal_reqs: &[PublishDealReq],
+    publish_deals: &[DealProposal],
 ) -> Vec<DealID> {
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
@@ -957,25 +920,25 @@ fn publish_deals(
 
     let mut params: PublishStorageDealsParams = PublishStorageDealsParams { deals: vec![] };
 
-    for pdr in publish_deal_reqs {
+    for deal in publish_deals {
         // create a client proposal with a valid signature
-        let buf = RawBytes::serialize(pdr.deal.clone()).expect("failed to marshal deal proposal");
+        let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let client_proposal =
-            ClientDealProposal { proposal: pdr.deal.clone(), client_signature: sig.clone() };
+            ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() };
         params.deals.push(client_proposal);
 
         // expect a call to verify the above signature
         rt.expect_verify_signature(ExpectedVerifySig {
             sig,
-            signer: pdr.deal.client,
+            signer: deal.client,
             plaintext: buf.to_vec(),
             result: Ok(()),
         });
-        if pdr.deal.verified_deal {
+        if deal.verified_deal {
             let param = RawBytes::serialize(UseBytesParams {
-                address: pdr.deal.client,
-                deal_size: BigInt::from(pdr.deal.piece_size.0),
+                address: deal.client,
+                deal_size: BigInt::from(deal.piece_size.0),
             })
             .unwrap();
 
@@ -1000,11 +963,11 @@ fn publish_deals(
         .unwrap();
     rt.verify();
 
-    assert_eq!(ret.ids.len(), publish_deal_reqs.len());
+    assert_eq!(ret.ids.len(), publish_deals.len());
 
     // assert state after publishing the deals
     for (i, deal_id) in ret.ids.iter().enumerate() {
-        let expected = &publish_deal_reqs[i].deal;
+        let expected = &publish_deals[i];
         let p = get_deal_proposal(rt, *deal_id);
 
         assert_eq!(expected, &p);

@@ -784,6 +784,7 @@ dependencies = [
  "integer-encoding",
  "lazy_static",
  "log",
+ "multihash",
  "num-derive",
  "num-traits",
  "serde",
