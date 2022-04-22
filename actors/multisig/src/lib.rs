@@ -22,8 +22,7 @@ use num_traits::{FromPrimitive, Signed};
 pub use self::state::*;
 pub use self::types::*;
 
-#[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+wasm_trampoline!(Actor);
 
 mod state;
 mod types;

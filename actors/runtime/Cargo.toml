@@ -41,7 +41,6 @@ hex = "0.4.3"
 
 [features]
 default = []
-fil-actor = ["fvm_sdk"]
 
 # Enable 2k sectors
 sector-2k = []

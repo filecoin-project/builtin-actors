@@ -15,8 +15,7 @@ pub use self::state::State;
 
 mod state;
 
-#[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+wasm_trampoline!(Actor);
 
 // * Updated to specs-actors commit: 845089a6d2580e46055c24415a6c32ee688e5186 (v3.0.0)
 

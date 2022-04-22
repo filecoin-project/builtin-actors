@@ -41,8 +41,7 @@ mod policy;
 mod state;
 mod types;
 
-#[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+wasm_trampoline!(Actor);
 
 fn request_miner_control_addrs<BS, RT>(
     rt: &mut RT,

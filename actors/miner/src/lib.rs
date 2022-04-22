@@ -58,8 +58,7 @@ pub use vesting_state::*;
 
 use crate::Code::Blake2b256;
 
-#[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+wasm_trampoline!(Actor);
 
 mod bitfield_queue;
 mod deadline_assignment;
