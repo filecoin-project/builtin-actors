@@ -432,7 +432,7 @@ where
 
     #[cfg(feature = "fake-proofs")]
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
-        Ok(batch.map(|_| true))
+        Ok(batch.iter().map(|_| true).collect())
     }
 
     #[cfg(not(feature = "fake-proofs"))]
