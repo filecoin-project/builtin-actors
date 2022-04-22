@@ -2475,7 +2475,6 @@ where
     dobe.for_each(epoch, |id| {
         assert_eq!(epoch % deal_updates_interval, (id as i64) % deal_updates_interval);
         count += 1;
-        Ok(())
     })
     .unwrap();
     assert_eq!(n, count, "unexpected deal count at epoch {}", epoch);
