@@ -952,25 +952,28 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     rt.set_epoch(end_epoch + 1);
     terminate_deals(&mut rt, provider_addr, &[deal2]);
     assert_deals_not_terminated(&mut rt, &[deal2]);
-    /*
-    rt, actor := basicMarketSetup(t, owner, provider, worker, client)
-        rt.SetEpoch(currentEpoch)
+}
 
-        // deal1 has endepoch equal to current epoch when terminate is called
-        dealId1 := actor.generateAndPublishDeal(rt, client, mAddrs, startEpoch, endEpoch)
-        actor.activateDeals(rt, sectorExpiry, provider, currentEpoch, dealId1)
-        rt.SetEpoch(endEpoch)
-        actor.terminateDeals(rt, provider, dealId1)
-        actor.assertDeaslNotTerminated(rt, dealId1)
+// Converted from:
+#[test]
+fn fail_when_caller_is_not_a_storage_miner_actor() {
+    let provider_addr = Address::new_id(PROVIDER_ID);
 
-        // deal2 has end epoch less than current epoch when terminate is called
-        rt.SetEpoch(currentEpoch)
-        dealId2 := actor.generateAndPublishDeal(rt, client, mAddrs, startEpoch+1, endEpoch)
-        actor.activateDeals(rt, sectorExpiry, provider, currentEpoch, dealId2)
-        rt.SetEpoch(endEpoch + 1)
-        actor.terminateDeals(rt, provider, dealId2)
-        actor.assertDeaslNotTerminated(rt, dealId2)
-        actor.checkState(rt) */
+    let mut rt = setup();
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, provider_addr);
+    let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: vec![] };
+
+    // XXX: Which exit code is correct: SYS_FORBIDDEN(8) or USR_FORBIDDEN(18)?
+    assert_eq!(
+        ExitCode::USR_FORBIDDEN,
+        rt.call::<MarketActor>(
+            Method::OnMinerSectorsTerminate as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap_err()
+        .exit_code()
+    );
 }
 
 fn expect_provider_control_address(
