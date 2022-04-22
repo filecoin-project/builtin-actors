@@ -3,7 +3,7 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
+    actor_error, wasm_trampoline, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, resolve_to_id_addr, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{
+    actor_error, resolve_to_id_addr, wasm_trampoline, ActorDowncast, ActorError, Array,
+};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::actor::builtin::Type;

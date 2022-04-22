@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime, Syscalls};
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorDowncast, ActorError,
-    Map, INIT_ACTOR_ADDR,
+    actor_error, make_empty_map, make_map_with_root, resolve_to_id_addr, wasm_trampoline,
+    ActorDowncast, ActorError, Map, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{to_vec, RawBytes};
