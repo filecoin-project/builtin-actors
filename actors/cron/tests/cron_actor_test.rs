@@ -21,7 +21,7 @@ fn construct_with_empty_entries() {
     let mut rt = construct_runtime();
 
     construct_and_verify(&mut rt, &ConstructorParams { entries: vec![] });
-    let state: State = rt.get_state().unwrap();
+    let state: State = rt.get_state();
 
     assert_eq!(state.entries, vec![]);
 }
@@ -39,7 +39,7 @@ fn construct_with_entries() {
 
     construct_and_verify(&mut rt, &params);
 
-    let state: State = rt.get_state().unwrap();
+    let state: State = rt.get_state();
 
     assert_eq!(state.entries, params.entries);
 }

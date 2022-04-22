@@ -84,7 +84,7 @@ fn simple_construction() {
     assert_eq!(result.bytes().len(), 0);
     env.rt.verify();
 
-    let state = env.rt.get_state::<State>().unwrap();
+    let state = env.rt.get_state::<State>();
 
     let info = state.get_info(&env.rt.store).unwrap();
     assert_eq!(env.owner, info.owner);
@@ -157,7 +157,7 @@ fn control_addresses_are_resolved_during_construction() {
     assert_eq!(result.bytes().len(), 0);
     env.rt.verify();
 
-    let state = env.rt.get_state::<State>().unwrap();
+    let state: State = env.rt.get_state();
     let info = state.get_info(&env.rt.store).unwrap();
 
     assert_eq!(2, info.control_addresses.len());
