@@ -954,7 +954,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     assert_deals_not_terminated(&mut rt, &[deal2]);
 }
 
-// Converted from:
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1436
 #[test]
 fn fail_when_caller_is_not_a_storage_miner_actor() {
     let provider_addr = Address::new_id(PROVIDER_ID);
@@ -973,6 +973,45 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
         )
         .unwrap_err()
         .exit_code()
+    );
+}
+
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1448
+#[test]
+fn fail_when_caller_is_not_the_provider_of_the_deal() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let provider2 = Address::new_id(501);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    let deal = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal]);
+
+    // XXX: Difference between go messages: 't0501' has turned into 'f0501'.
+    let ret = terminate_deals_raw(&mut rt, provider2, &[deal]);
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_STATE,
+        "caller f0501 is not the provider f0102 of deal 0",
+        ret,
     );
 }
 
@@ -1141,19 +1180,25 @@ fn activate_deals(
 }
 
 fn terminate_deals(rt: &mut MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
+    let ret = terminate_deals_raw(rt, miner_addr, deal_ids).unwrap();
+    assert_eq!(ret, RawBytes::default());
+    rt.verify();
+}
+
+fn terminate_deals_raw(
+    rt: &mut MockRuntime,
+    miner_addr: Address,
+    deal_ids: &[DealID],
+) -> Result<RawBytes, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
 
     let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: deal_ids.to_vec() };
 
-    let ret = rt
-        .call::<MarketActor>(
-            Method::OnMinerSectorsTerminate as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-    assert_eq!(ret, RawBytes::default());
-    rt.verify();
+    rt.call::<MarketActor>(
+        Method::OnMinerSectorsTerminate as u64,
+        &RawBytes::serialize(params).unwrap(),
+    )
 }
 
 fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
