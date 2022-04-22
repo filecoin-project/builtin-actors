@@ -632,14 +632,7 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
     // publish the deal successfully
     rt.set_epoch(publish_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
-    publish_deals(
-        &mut rt,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
-        &[deal],
-    );
+    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal]);
     // TODO: actor.checkState(rt)
 }
 
@@ -699,11 +692,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         owner_addr,
         worker_addr,
         control_addr,
-        &[
-            deal1.clone(),
-            deal2.clone(),
-            deal3.clone(),
-        ],
+        &[deal1.clone(), deal2.clone(), deal3.clone()],
     );
 
     // assert locked balance for all clients and provider
