@@ -696,7 +696,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     );
 
     // assert locked balance for all clients and provider
-    let provider_locked =
+    let provider_locked_expected =
         &deal1.provider_collateral + &deal2.provider_collateral + &deal3.provider_collateral;
     let client1_locked = get_locked_balance(&mut rt, client1_addr);
     let client2_locked = get_locked_balance(&mut rt, client2_addr);
@@ -704,14 +704,14 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     assert_eq!(deal1.client_balance_requirement(), client1_locked);
     assert_eq!(deal2.client_balance_requirement(), client2_locked);
     assert_eq!(deal3.client_balance_requirement(), client3_locked);
-    assert_eq!(provider_locked, get_locked_balance(&mut rt, provider_addr));
+    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, provider_addr));
 
     // assert locked funds dealStates
     let st: State = rt.get_state();
     let total_client_collateral_locked =
-        &deal1.provider_collateral + &deal2.provider_collateral + &deal3.provider_collateral;
+        &deal3.client_collateral + &deal2.client_collateral + &deal2.client_collateral;
     assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
-    assert_eq!(provider_locked, st.total_provider_locked_collateral);
+    assert_eq!(provider_locked_expected, st.total_provider_locked_collateral);
     let total_storage_fee =
         &deal1.total_storage_fee() + &deal2.total_storage_fee() + &deal3.total_storage_fee();
     assert_eq!(total_storage_fee, st.total_client_storage_fee);
@@ -746,9 +746,9 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     );
 
     // assert locked balances for clients and provider
-    let provider_locked =
-        &provider_locked + &deal4.provider_collateral + &deal5.provider_collateral;
-    assert_eq!(provider_locked, get_locked_balance(&mut rt, provider_addr));
+    let provider_locked_expected =
+        &provider_locked_expected + &deal4.provider_collateral + &deal5.provider_collateral;
+    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, provider_addr));
 
     let client3_locked_updated = get_locked_balance(&mut rt, client3_addr);
     assert_eq!(
@@ -766,7 +766,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let total_client_collateral_locked =
         &total_client_collateral_locked + &deal4.client_collateral + &deal5.client_collateral;
     assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
-    assert_eq!(provider_locked, st.total_client_locked_collateral);
+    assert_eq!(provider_locked_expected, st.total_client_locked_collateral);
 
     let total_storage_fee =
         &total_storage_fee + &deal4.total_storage_fee() + &deal5.total_storage_fee();
@@ -819,12 +819,12 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     );
 
     // assert first provider's balance as well
-    assert_eq!(provider_locked, get_locked_balance(&mut rt, provider_addr));
+    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, provider_addr));
 
     let total_client_collateral_locked =
         &total_client_collateral_locked + &deal6.client_collateral + &deal7.client_collateral;
     assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
-    assert_eq!(provider_locked + provider2_locked, st.total_provider_locked_collateral);
+    assert_eq!(provider_locked_expected + provider2_locked, st.total_provider_locked_collateral);
     let total_storage_fee =
         &total_storage_fee + &deal6.total_storage_fee() + &deal7.total_storage_fee();
     assert_eq!(total_storage_fee, st.total_client_storage_fee);
@@ -906,7 +906,7 @@ fn active_deals_multiple_times_with_different_providers() {
     activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1, deal2]);
     assert_deals_not_activated(&mut rt, current_epoch, &[deal3, deal4, deal5]);
 
-    // provider3 activates deal5 but that does not activate deal3 or deal4
+    // provider2 activates deal5 but that does not activate deal3 or deal4
     activate_deals(&mut rt, sector_expiry, provider2_addr, current_epoch, &[deal5]);
     assert_deals_not_activated(&mut rt, current_epoch, &[deal3, deal4]);
 
