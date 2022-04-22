@@ -6,15 +6,9 @@ use std::collections::HashMap;
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::{
     ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray,
-<<<<<<< HEAD
-    DealProposal, DealState, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn,
-    State, WithdrawBalanceParams, WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH,
-    STATES_AMT_BITWIDTH,
-=======
     DealProposal, DealState, Label, Method as MarketMethod, Method, OnMinerSectorsTerminateParams,
     PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
     WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
->>>>>>> 6eb6a68 (Implement terminate_valid_deals_along_with_expired_and_cleaned_up_deal)
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -799,6 +793,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1346
 #[test]
 fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
+    let deal_updates_interval = Policy::default().deal_updates_interval;
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
@@ -828,7 +823,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
         owner_addr,
         worker_addr,
         start_epoch,
-        end_epoch - DEAL_UPDATES_INTERVAL,
+        end_epoch - deal_updates_interval,
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
@@ -1013,6 +1008,22 @@ fn activate_deals(
         let s = get_deal_state(rt, *d);
         assert_eq!(current_epoch, s.sector_start_epoch);
     }
+}
+
+fn terminate_deals(rt: &mut MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
+    rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+
+    let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: deal_ids.to_vec() };
+
+    let ret = rt
+        .call::<MarketActor>(
+            Method::OnMinerSectorsTerminate as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(ret, RawBytes::default());
+    rt.verify();
 }
 
 fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
@@ -1319,7 +1330,7 @@ fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposal) {
     use cid::multihash::Code;
     use fvm_ipld_hamt::{BytesKey, Hamt};
 
-    let st: State = rt.get_state().unwrap();
+    let st: State = rt.get_state();
 
     // Check that the deal_id is not in st.proposals.
     let deals = DealArray::load(&st.proposals, &rt.store).unwrap();
