@@ -904,6 +904,75 @@ fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_
     assert_eq!(s3.slash_epoch, new_epoch);
 }
 
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1415
+#[test]
+fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    // deal1 has endepoch equal to current epoch when terminate is called
+    let deal1 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
+    rt.set_epoch(end_epoch);
+    terminate_deals(&mut rt, provider_addr, &[deal1]);
+    assert_deals_not_terminated(&mut rt, &[deal1]);
+
+    // deal2 has end epoch less than current epoch when terminate is called
+    rt.set_epoch(current_epoch);
+    let deal2 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch + 1,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal2]);
+    rt.set_epoch(end_epoch + 1);
+    terminate_deals(&mut rt, provider_addr, &[deal2]);
+    assert_deals_not_terminated(&mut rt, &[deal2]);
+    /*
+    rt, actor := basicMarketSetup(t, owner, provider, worker, client)
+        rt.SetEpoch(currentEpoch)
+
+        // deal1 has endepoch equal to current epoch when terminate is called
+        dealId1 := actor.generateAndPublishDeal(rt, client, mAddrs, startEpoch, endEpoch)
+        actor.activateDeals(rt, sectorExpiry, provider, currentEpoch, dealId1)
+        rt.SetEpoch(endEpoch)
+        actor.terminateDeals(rt, provider, dealId1)
+        actor.assertDeaslNotTerminated(rt, dealId1)
+
+        // deal2 has end epoch less than current epoch when terminate is called
+        rt.SetEpoch(currentEpoch)
+        dealId2 := actor.generateAndPublishDeal(rt, client, mAddrs, startEpoch+1, endEpoch)
+        actor.activateDeals(rt, sectorExpiry, provider, currentEpoch, dealId2)
+        rt.SetEpoch(endEpoch + 1)
+        actor.terminateDeals(rt, provider, dealId2)
+        actor.assertDeaslNotTerminated(rt, dealId2)
+        actor.checkState(rt) */
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
