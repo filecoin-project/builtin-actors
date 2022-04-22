@@ -26,7 +26,7 @@ macro_rules! account_tests {
                 if exit_code.is_success() {
                     rt.call::<AccountActor>(1, &RawBytes::serialize(addr).unwrap()).unwrap();
 
-                    let state: State = rt.get_state().unwrap();
+                    let state: State = rt.get_state();
                     assert_eq!(state.address, addr);
                     rt.expect_validate_caller_any();
 
