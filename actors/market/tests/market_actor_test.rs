@@ -800,7 +800,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
         owner_addr,
         worker_addr,
         control_addr,
-        &[PublishDealReq { deal: deal1 }, PublishDealReq { deal: deal2.clone() }],
+        &[deal1, deal2.clone()],
     );
     activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &deal_ids);
 
@@ -1291,6 +1291,7 @@ fn assert_deals_not_terminated(rt: &mut MockRuntime, deal_ids: &[DealID]) {
 
 fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposal) {
     use cid::multihash::Code;
+    use cid::multihash::MultihashDigest;
     use fvm_ipld_hamt::{BytesKey, Hamt};
 
     let st: State = rt.get_state();
