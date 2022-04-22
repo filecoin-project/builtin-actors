@@ -519,6 +519,11 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn set_circulating_supply(&mut self, circ_supply: TokenAmount) {
+        self.circulating_supply = circ_supply;
+    }
+
+    #[allow(dead_code)]
     pub fn set_epoch(&mut self, epoch: ChainEpoch) {
         self.epoch = epoch;
     }
