@@ -596,7 +596,6 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
 // Converted from https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1274
 #[test]
 fn terminate_multiple_deals_from_multiple_providers() {
-    use std::convert::TryInto;
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
