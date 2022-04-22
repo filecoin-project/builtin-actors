@@ -813,6 +813,44 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     assert_deal_deleted(&mut rt, deal_ids[1], deal2);
 }
 
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1369
+#[test]
+fn terminating_a_deal_the_second_time_does_not_change_its_slash_epoch() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    let deal1 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
+
+    // terminating the deal so slash epoch is the current epoch
+    terminate_deals(&mut rt, provider_addr, &[deal1]);
+
+    // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
+    rt.set_epoch(current_epoch + 1);
+    terminate_deals(&mut rt, provider_addr, &[deal1]);
+    let s = get_deal_state(&mut rt, deal1);
+    assert_eq!(s.slash_epoch, current_epoch);
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
