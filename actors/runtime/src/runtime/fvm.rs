@@ -379,11 +379,17 @@ where
             .map_err(|e| anyhow!("failed to compute unsealed sector CID; exit code: {}", e))
     }
 
+    #[cfg(not(feature = "fake-proofs"))]
     fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_seal(vi) {
             Ok(true) => Ok(()),
             Ok(false) | Err(_) => Err(Error::msg("invalid seal")),
         }
+    }
+
+    #[cfg(feature = "fake-proofs")]
+    fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), Error> {
+        Ok(())
     }
 
     #[cfg(not(feature = "fake-proofs"))]
@@ -395,10 +401,11 @@ where
     }
 
     #[cfg(feature = "fake-proofs")]
-    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
+    fn verify_post(&self, _verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         Ok(())
     }
 
+    #[cfg(not(feature = "fake-proofs"))]
     fn verify_consensus_fault(
         &self,
         h1: &[u8],
@@ -408,10 +415,27 @@ where
         fvm::crypto::verify_consensus_fault(h1, h2, extra).map_err(|_| Error::msg("no fault"))
     }
 
+    #[cfg(feature = "fake-proofs")]
+    fn verify_consensus_fault(
+        &self,
+        _h1: &[u8],
+        _h2: &[u8],
+        _extra: &[u8],
+    ) -> Result<Option<ConsensusFault>, Error> {
+        Ok(None)
+    }
+
+    #[cfg(not(feature = "fake-proofs"))]
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
         fvm::crypto::batch_verify_seals(batch).map_err(|_| Error::msg("failed to verify batch"))
     }
 
+    #[cfg(feature = "fake-proofs")]
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
+        Ok(batch.map(|_| true))
+    }
+
+    #[cfg(not(feature = "fake-proofs"))]
     fn verify_aggregate_seals(
         &self,
         aggregate: &AggregateSealVerifyProofAndInfos,
@@ -422,11 +446,25 @@ where
         }
     }
 
+    #[cfg(feature = "fake-proofs")]
+    fn verify_aggregate_seals(
+        &self,
+        _aggregate: &AggregateSealVerifyProofAndInfos,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+
+    #[cfg(not(feature = "fake-proofs"))]
     fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error> {
         match fvm::crypto::verify_replica_update(replica) {
             Ok(true) => Ok(()),
             Ok(false) | Err(_) => Err(Error::msg("invalid replica")),
         }
+    }
+
+    #[cfg(feature = "fake-proofs")]
+    fn verify_replica_update(&self, _replica: &ReplicaUpdateInfo) -> Result<(), Error> {
+        Ok(())
     }
 }
 
