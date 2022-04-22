@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::collections::HashMap;
+use std::convert::TryInto;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::{
@@ -849,6 +850,59 @@ fn terminating_a_deal_the_second_time_does_not_change_its_slash_epoch() {
     terminate_deals(&mut rt, provider_addr, &[deal1]);
     let s = get_deal_state(&mut rt, deal1);
     assert_eq!(s.slash_epoch, current_epoch);
+}
+
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1387
+#[test]
+fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_deals() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    // provider1 publishes deal1 and 2 and deal3 -> deal3 has the lowest endepoch
+    let deals: Vec<DealID> = [end_epoch, end_epoch + 1, end_epoch - 1]
+        .iter()
+        .map(|&epoch| {
+            generate_and_publish_deal(
+                &mut rt,
+                client_addr,
+                provider_addr,
+                owner_addr,
+                worker_addr,
+                control_addr,
+                start_epoch,
+                epoch,
+            )
+        })
+        .collect();
+    let [deal1, deal2, deal3]: [DealID; 3] = deals.as_slice().try_into().unwrap();
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &deals);
+
+    // terminating the deal so slash epoch is the current epoch
+    terminate_deals(&mut rt, provider_addr, &[deal1]);
+
+    // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
+    let new_epoch = current_epoch + 1;
+    rt.set_epoch(new_epoch);
+    terminate_deals(&mut rt, provider_addr, &deals);
+
+    let s1 = get_deal_state(&mut rt, deal1);
+    assert_eq!(s1.slash_epoch, current_epoch);
+
+    let s2 = get_deal_state(&mut rt, deal2);
+    assert_eq!(s2.slash_epoch, new_epoch);
+
+    let s3 = get_deal_state(&mut rt, deal3);
+    assert_eq!(s3.slash_epoch, new_epoch);
 }
 
 fn expect_provider_control_address(
