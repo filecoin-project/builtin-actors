@@ -515,6 +515,10 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn set_epoch(&mut self, epoch: ChainEpoch) {
+        self.epoch = epoch;
+    }
+
     pub fn expect_get_randomness_from_tickets(
         &mut self,
         tag: DomainSeparationTag,
