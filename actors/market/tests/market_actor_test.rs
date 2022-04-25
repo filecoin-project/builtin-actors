@@ -1676,6 +1676,7 @@ fn terminate_deals(rt: &mut MockRuntime, miner_addr: Address, deal_ids: &[DealID
     rt.verify();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn publish_and_activate_deal(
     rt: &mut MockRuntime,
     client: Address,
