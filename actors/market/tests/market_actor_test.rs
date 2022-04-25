@@ -1280,7 +1280,7 @@ fn active_deals_multiple_times_with_different_providers() {
 
 fn assert_deal_failure<F>(post_setup: F, exit_code: ExitCode, sig_result: Result<(), anyhow::Error>)
 where
-    F: FnOnce(&mut MockRuntime, &mut DealProposal) -> (),
+    F: FnOnce(&mut MockRuntime, &mut DealProposal),
 {
     let owner_addr = Address::new_id(OWNER_ID);
     let provider_addr = Address::new_id(PROVIDER_ID);
