@@ -1315,6 +1315,50 @@ fn fail_when_deal_is_activated_but_proposal_is_not_found() {
     // TODO: actor.checkState
 }
 
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1540
+#[test]
+fn fail_when_deal_update_epoch_is_in_the_future() {
+    let start_epoch = 50;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+
+    let mut rt = setup();
+
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let deal_id = publish_and_activate_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+        0,
+        sector_expiry,
+    );
+
+    // move the current epoch such that the deal's last updated field is set to the start epoch of the deal
+    // and the next tick for it is scheduled at the endepoch.
+    rt.set_epoch(process_epoch(start_epoch, deal_id));
+    cron_tick(&mut rt);
+
+    // update last updated to some time in the future (breaks state invariants)
+    update_last_updated(&mut rt, deal_id, end_epoch + 1000);
+
+    // set current epoch of the deal to the end epoch so it's picked up for "processing" in the next cron tick.
+    rt.set_epoch(end_epoch);
+
+    expect_abort(ExitCode::USR_ILLEGAL_STATE, cron_tick_raw(&mut rt));
+
+    // TODO: actor.checkState
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
@@ -1503,6 +1547,17 @@ fn get_deal_state(rt: &mut MockRuntime, deal_id: DealID) -> DealState {
 
     let s = states.get(deal_id).unwrap();
     *s.unwrap()
+}
+
+fn update_last_updated(rt: &mut MockRuntime, deal_id: DealID, new_last_updated: ChainEpoch) {
+    let st: State = rt.get_state();
+
+    let mut states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+    let s = *states.get(deal_id).unwrap().unwrap();
+
+    states.set(deal_id, DealState { last_updated_epoch: new_last_updated, ..s }).unwrap();
+    let root = states.flush().unwrap();
+    rt.replace_state(&State { states: root, ..st })
 }
 
 fn delete_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) {
