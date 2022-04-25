@@ -84,7 +84,8 @@ fn test_sent() {
     assert_account_actor(1, TokenAmount::from(0u8), addr2, &v, expect_id_addr2);
 
     // self send is noop
-    v.apply_message(addr1, addr1, TokenAmount::from(1u8), METHOD_SEND, RawBytes::default()).unwrap();
+    v.apply_message(addr1, addr1, TokenAmount::from(1u8), METHOD_SEND, RawBytes::default())
+        .unwrap();
     assert_account_actor(2, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
 
     // fail with insufficient funds
