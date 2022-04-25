@@ -7,7 +7,7 @@ use std::convert::TryInto;
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::{
     ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray,
-    DealProposal, DealState, Label, Method as MarketMethod, Method, OnMinerSectorsTerminateParams,
+    DealProposal, DealState, Label, Method, OnMinerSectorsTerminateParams,
     PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
     WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
@@ -756,7 +756,6 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     assert_deals_terminated(&mut rt, new_epoch, &[deal1, deal2]);
     assert_deals_not_terminated(&mut rt, &[deal3]);
 }
-
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1346
 #[test]
 fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
@@ -1093,6 +1092,331 @@ fn termination_of_all_deals_should_fail_when_one_deal_fails() {
     assert_deals_not_terminated(&mut rt, &[deal1]);
 }
 
+#[test]
+fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_zero() {
+    let policy = Policy::default();
+
+    let start_epoch = 1000;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let publish_epoch = ChainEpoch::from(1);
+
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+
+    let client_collateral = TokenAmount::from(10u8); // min is zero so this is placeholder
+
+    // given power and circ supply cancel this should be 1*dealqapower / 100
+    let deal_size = PaddedPieceSize(2048u64); // generateDealProposal's deal size
+    let provider_collateral = TokenAmount::from(
+        (deal_size.0 * (policy.prov_collateral_percent_supply_num as u64))
+            / policy.prov_collateral_percent_supply_denom as u64,
+    );
+    let deal = generate_deal_with_collateral_and_add_funds(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        provider_collateral,
+        client_collateral,
+        start_epoch,
+        end_epoch,
+    );
+    let qa_power = StoragePower::from_i128(1 << 50).unwrap();
+    rt.set_circulating_supply(qa_power); // convenient for these two numbers to cancel out
+
+    // publish the deal successfully
+    rt.set_epoch(publish_epoch);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal]);
+    // TODO: actor.checkState(rt)
+}
+
+#[test]
+fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct() {
+    let start_epoch = 42;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    let mut rt = setup();
+
+    let client1_addr = Address::new_id(900);
+    let client2_addr = Address::new_id(901);
+    let client3_addr = Address::new_id(902);
+
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    // generate first deal for
+    let deal1 = generate_deal_and_add_funds(
+        &mut rt,
+        client1_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        start_epoch,
+        end_epoch,
+    );
+
+    // generate second deal
+    let deal2 = generate_deal_and_add_funds(
+        &mut rt,
+        client2_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        start_epoch,
+        end_epoch,
+    );
+
+    // generate third deal
+    let deal3 = generate_deal_and_add_funds(
+        &mut rt,
+        client3_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        start_epoch,
+        end_epoch,
+    );
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    publish_deals(
+        &mut rt,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        &[deal1.clone(), deal2.clone(), deal3.clone()],
+    );
+
+    // assert locked balance for all clients and provider
+    let provider_locked_expected =
+        &deal1.provider_collateral + &deal2.provider_collateral + &deal3.provider_collateral;
+    let client1_locked = get_locked_balance(&mut rt, client1_addr);
+    let client2_locked = get_locked_balance(&mut rt, client2_addr);
+    let client3_locked = get_locked_balance(&mut rt, client3_addr);
+    assert_eq!(deal1.client_balance_requirement(), client1_locked);
+    assert_eq!(deal2.client_balance_requirement(), client2_locked);
+    assert_eq!(deal3.client_balance_requirement(), client3_locked);
+    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, provider_addr));
+
+    // assert locked funds dealStates
+    let st: State = rt.get_state();
+    let total_client_collateral_locked =
+        &deal3.client_collateral + &deal2.client_collateral + &deal2.client_collateral;
+    assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
+    assert_eq!(provider_locked_expected, st.total_provider_locked_collateral);
+    let total_storage_fee =
+        &deal1.total_storage_fee() + &deal2.total_storage_fee() + &deal3.total_storage_fee();
+    assert_eq!(total_storage_fee, st.total_client_storage_fee);
+
+    // publish two more deals for same clients with same provider
+    let deal4 = generate_deal_and_add_funds(
+        &mut rt,
+        client3_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        1000,
+        1000 + 200 * EPOCHS_IN_DAY,
+    );
+    let deal5 = generate_deal_and_add_funds(
+        &mut rt,
+        client3_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        100,
+        100 + 200 * EPOCHS_IN_DAY,
+    );
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    publish_deals(
+        &mut rt,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        &[deal4.clone(), deal5.clone()],
+    );
+
+    // assert locked balances for clients and provider
+    let provider_locked_expected =
+        &provider_locked_expected + &deal4.provider_collateral + &deal5.provider_collateral;
+    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, provider_addr));
+
+    let client3_locked_updated = get_locked_balance(&mut rt, client3_addr);
+    assert_eq!(
+        &client3_locked + &deal4.client_balance_requirement() + &deal5.client_balance_requirement(),
+        client3_locked_updated
+    );
+
+    let client1_locked = get_locked_balance(&mut rt, client1_addr);
+    let client2_locked = get_locked_balance(&mut rt, client2_addr);
+    assert_eq!(deal1.client_balance_requirement(), client1_locked);
+    assert_eq!(deal2.client_balance_requirement(), client2_locked);
+
+    // assert locked funds dealStates
+    let st: State = rt.get_state();
+    let total_client_collateral_locked =
+        &total_client_collateral_locked + &deal4.client_collateral + &deal5.client_collateral;
+    assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
+    assert_eq!(provider_locked_expected, st.total_client_locked_collateral);
+
+    let total_storage_fee =
+        &total_storage_fee + &deal4.total_storage_fee() + &deal5.total_storage_fee();
+    assert_eq!(total_storage_fee, st.total_client_storage_fee);
+
+    // PUBLISH DEALS with a different provider
+    let provider2_addr = Address::new_id(109);
+
+    // generate first deal for second provider
+    let deal6 = generate_deal_and_add_funds(
+        &mut rt,
+        client1_addr,
+        provider2_addr,
+        owner_addr,
+        worker_addr,
+        20,
+        20 + 200 * EPOCHS_IN_DAY,
+    );
+
+    // generate second deal for second provider
+    let deal7 = generate_deal_and_add_funds(
+        &mut rt,
+        client1_addr,
+        provider2_addr,
+        owner_addr,
+        worker_addr,
+        25,
+        60 + 200 * EPOCHS_IN_DAY,
+    );
+
+    // publish both the deals for the second provider
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    publish_deals(
+        &mut rt,
+        provider2_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        &[deal6.clone(), deal7.clone()],
+    );
+
+    // assertions
+    let st: State = rt.get_state();
+    let provider2_locked = &deal6.provider_collateral + &deal7.provider_collateral;
+    assert_eq!(provider2_locked, get_locked_balance(&mut rt, provider2_addr));
+    let client1_locked_updated = get_locked_balance(&mut rt, client1_addr);
+    assert_eq!(
+        &deal7.client_balance_requirement() + &client1_locked + &deal6.client_balance_requirement(),
+        client1_locked_updated
+    );
+
+    // assert first provider's balance as well
+    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, provider_addr));
+
+    let total_client_collateral_locked =
+        &total_client_collateral_locked + &deal6.client_collateral + &deal7.client_collateral;
+    assert_eq!(total_client_collateral_locked, st.total_client_locked_collateral);
+    assert_eq!(provider_locked_expected + provider2_locked, st.total_provider_locked_collateral);
+    let total_storage_fee =
+        &total_storage_fee + &deal6.total_storage_fee() + &deal7.total_storage_fee();
+    assert_eq!(total_storage_fee, st.total_client_storage_fee);
+    // TODO: actor.checkState(rt)
+}
+
+#[test]
+fn active_deals_multiple_times_with_different_providers() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let current_epoch = ChainEpoch::from(5);
+    let sector_expiry = end_epoch + 100;
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    // provider 1 publishes deals1 and deals2 and deal3
+    let deal1 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    let deal2 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch + 1,
+    );
+    let deal3 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch + 2,
+    );
+
+    // provider2 publishes deal4 and deal5
+    let provider2_addr = Address::new_id(401);
+    let deal4 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider2_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    let deal5 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider2_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch + 1,
+    );
+
+    // provider1 activates deal1 and deal2 but that does not activate deal3 to deal5
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1, deal2]);
+    assert_deals_not_activated(&mut rt, current_epoch, &[deal3, deal4, deal5]);
+
+    // provider2 activates deal5 but that does not activate deal3 or deal4
+    activate_deals(&mut rt, sector_expiry, provider2_addr, current_epoch, &[deal5]);
+    assert_deals_not_activated(&mut rt, current_epoch, &[deal3, deal4]);
+
+    // provider1 activates deal3
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal3]);
+    assert_deals_not_activated(&mut rt, current_epoch, &[deal4]);
+    // TODO: actor.checkState(rt)
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
@@ -1257,28 +1581,6 @@ fn activate_deals(
     }
 }
 
-fn terminate_deals(rt: &mut MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
-    let ret = terminate_deals_raw(rt, miner_addr, deal_ids).unwrap();
-    assert_eq!(ret, RawBytes::default());
-    rt.verify();
-}
-
-fn terminate_deals_raw(
-    rt: &mut MockRuntime,
-    miner_addr: Address,
-    deal_ids: &[DealID],
-) -> Result<RawBytes, ActorError> {
-    rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
-
-    let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: deal_ids.to_vec() };
-
-    rt.call::<MarketActor>(
-        Method::OnMinerSectorsTerminate as u64,
-        &RawBytes::serialize(params).unwrap(),
-    )
-}
-
 fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
     let st: State = rt.get_state();
 
@@ -1286,6 +1588,14 @@ fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
 
     let d = deals.get(deal_id).unwrap();
     d.unwrap().clone()
+}
+
+fn get_locked_balance(rt: &mut MockRuntime, addr: Address) -> TokenAmount {
+    let st: State = rt.get_state();
+
+    let lt = BalanceTable::from_root(&rt.store, &st.locked_table).unwrap();
+
+    lt.get(&addr).unwrap()
 }
 
 fn get_deal_state(rt: &mut MockRuntime, deal_id: DealID) -> DealState {
@@ -1372,6 +1682,31 @@ fn generate_deal_and_add_funds(
     deal
 }
 
+#[allow(clippy::too_many_arguments)]
+fn generate_deal_with_collateral_and_add_funds(
+    rt: &mut MockRuntime,
+    client: Address,
+    provider: Address,
+    owner: Address,
+    worker: Address,
+    provider_collateral: BigInt,
+    client_collateral: BigInt,
+    start_epoch: ChainEpoch,
+    end_epoch: ChainEpoch,
+) -> DealProposal {
+    let deal = generate_deal_proposal_with_collateral(
+        client,
+        provider,
+        client_collateral,
+        provider_collateral,
+        start_epoch,
+        end_epoch,
+    );
+    add_provider_funds(rt, deal.provider_collateral.clone(), provider, owner, worker);
+    add_participant_funds(rt, client, deal.client_balance_requirement());
+    deal
+}
+
 fn generate_deal_proposal_with_collateral(
     client: Address,
     provider: Address,
@@ -1413,6 +1748,28 @@ fn generate_deal_proposal(
         provider_collateral,
         start_epoch,
         end_epoch,
+    )
+}
+
+fn terminate_deals(rt: &mut MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
+    let ret = terminate_deals_raw(rt, miner_addr, deal_ids).unwrap();
+    assert_eq!(ret, RawBytes::default());
+    rt.verify();
+}
+
+fn terminate_deals_raw(
+    rt: &mut MockRuntime,
+    miner_addr: Address,
+    deal_ids: &[DealID],
+) -> Result<RawBytes, ActorError> {
+    rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+
+    let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: deal_ids.to_vec() };
+
+    rt.call::<MarketActor>(
+        Method::OnMinerSectorsTerminate as u64,
+        &RawBytes::serialize(params).unwrap(),
     )
 }
 
@@ -1500,13 +1857,24 @@ fn publish_deals(
     ret.ids
 }
 
+fn assert_deals_not_activated(rt: &mut MockRuntime, _epoch: ChainEpoch, deal_ids: &[DealID]) {
+    let st: State = rt.get_state();
+
+    let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+
+    for d in deal_ids {
+        let opt = states.get(*d).unwrap();
+        assert!(opt.is_none());
+    }
+}
+
 fn cron_tick(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
     rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
 
     assert_eq!(
         RawBytes::default(),
-        rt.call::<MarketActor>(MarketMethod::CronTick as u64, &RawBytes::default()).unwrap()
+        rt.call::<MarketActor>(Method::CronTick as u64, &RawBytes::default()).unwrap()
     );
     rt.verify()
 }
@@ -1594,7 +1962,7 @@ fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposal) {
 
     let mh_code = Code::Blake2b256;
     let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&p).unwrap()));
-    // Check that the deal_id is not in st.proposals.
+    // Check that the deal_id is not in st.pending_proposals.
     let pending_deals: Hamt<&fvm_ipld_blockstore::MemoryBlockstore, DealProposal> =
         fil_actors_runtime::make_map_with_root_and_bitwidth(
             &st.pending_proposals,
