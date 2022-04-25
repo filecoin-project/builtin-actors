@@ -1324,7 +1324,7 @@ where
     });
 
     let params: PublishStorageDealsParams = PublishStorageDealsParams {
-        deals: vec![ClientDealProposal { proposal: deal_proposal, client_signature: sig }]
+        deals: vec![ClientDealProposal { proposal: deal_proposal, client_signature: sig }],
     };
 
     assert_eq!(
