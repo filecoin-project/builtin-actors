@@ -280,10 +280,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
         let prior_root = self.v.checkpoint();
-        let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
 
         // Transfer funds
-        println!("to: {}, from: {}\n", to_addr, self.msg.from);
         let mut from_actor = self.v.get_actor(self.msg.from).unwrap();
         if !self.msg.value.is_zero() {
             if self.msg.value.lt(&BigInt::zero()) {
@@ -299,10 +297,16 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 ));
             }
         }
-        to_actor.balance = to_actor.balance.add(&self.msg.value);
+
+        // Load, deduct, store from actor before loading to actor to handle self-send case
         from_actor.balance = from_actor.balance.abs_sub(&self.msg.value);
         self.v.set_actor(self.msg.from, from_actor);
+
+        let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
+        to_actor.balance = to_actor.balance.add(&self.msg.value);
         self.v.set_actor(to_addr, to_actor);
+
+        println!("to: {}, from: {}\n", to_addr, self.msg.from);
 
         // Exit early on send
         if self.msg.method == METHOD_SEND {

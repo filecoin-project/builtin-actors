@@ -83,12 +83,16 @@ fn test_sent() {
     assert_account_actor(1, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(1, TokenAmount::from(0u8), addr2, &v, expect_id_addr2);
 
+    // self send is noop
+    v.apply_message(addr1, addr1, TokenAmount::from(1u8), METHOD_SEND, RawBytes::default()).unwrap();
+    assert_account_actor(2, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
+
     // fail with insufficient funds
     let mres = v
         .apply_message(addr2, addr1, TokenAmount::from(1u8), METHOD_SEND, RawBytes::default())
         .unwrap();
     assert_eq!(ExitCode::SYS_INSUFFICIENT_FUNDS, mres.code);
-    assert_account_actor(1, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
+    assert_account_actor(2, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::from(0u8), addr2, &v, expect_id_addr2);
 
     // fail to send to non existent id actor (vm doesn't create those on send)
@@ -102,6 +106,6 @@ fn test_sent() {
         )
         .unwrap();
     assert_eq!(ExitCode::SYS_INVALID_RECEIVER, mres.code);
-    assert_account_actor(2, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
+    assert_account_actor(3, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::from(0u8), addr2, &v, expect_id_addr2);
 }
