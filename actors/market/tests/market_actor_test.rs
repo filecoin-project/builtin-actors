@@ -263,6 +263,50 @@ fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient()
 }
 
 #[test]
+fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amount() {
+    let mut rt = setup();
+    let publish_epoch = ChainEpoch::from(1);
+    rt.set_epoch(publish_epoch);
+
+    let client = Address::new_id(CLIENT_ID);
+    let worker = Address::new_id(WORKER_ID);
+    let provider = Address::new_id(PROVIDER_ID);
+    let owner = Address::new_id(OWNER_ID);
+    let control = Address::new_id(CONTROL_ID);
+    let start_epoch = ChainEpoch::from(10);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    let deal_id = generate_and_publish_deal(
+        &mut rt,
+        client,
+        provider,
+        owner,
+        worker,
+        control,
+        start_epoch,
+        end_epoch,
+    );
+
+    let deal = get_deal_proposal(&mut rt, deal_id);
+
+    assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &provider).unwrap());
+    assert_eq!(deal.client_balance_requirement(), get_escrow_balance(&rt, &client).unwrap());
+
+    let withdraw_amount = TokenAmount::from(1u8);
+    let withdrawable_amount = TokenAmount::from(0u8);
+
+    withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdrawable_amount.clone(), client);
+    withdraw_provider_balance(
+        &mut rt,
+        withdraw_amount,
+        withdrawable_amount,
+        provider,
+        owner,
+        worker,
+    );
+}
+
+#[test]
 fn fails_unless_called_by_an_account_actor() {
     let mut rt = setup();
 
