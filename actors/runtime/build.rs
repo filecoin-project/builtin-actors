@@ -29,7 +29,7 @@ static NETWORKS: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "testing-fwp",
+        "testing-fake-proofs",
         &[
             "sector-2k",
             "sector-8m",

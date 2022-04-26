@@ -38,7 +38,7 @@ butterflynet = []
 calibrationnet = []
 devnet = []
 testing = []
-testing-fwp = []
+testing-fake-proofs = []
 
 [workspace]
 members = [
