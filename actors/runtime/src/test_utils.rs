@@ -509,9 +509,6 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
-    pub fn expect_abort(&mut self) {}
-
-    #[allow(dead_code)]
     pub fn expect_create_actor(&mut self, code_id: Cid, actor_id: ActorID) {
         let a = ExpectCreateActor { code_id, actor_id };
         self.expectations.borrow_mut().expect_create_actor = Some(a);
