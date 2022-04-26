@@ -33,7 +33,9 @@ use fvm_shared::{ActorID, MethodNum};
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
-use crate::runtime::{ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Primitives, Verifier};
+use crate::runtime::{
+    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier,
+};
 use crate::{actor_error, ActorError};
 
 lazy_static! {
