@@ -346,7 +346,7 @@ impl MessageInfo for InternalMessage {
     }
 }
 
-pub const TEST_VM_RAND_STRING: &'static str = "i_am_random_____i_am_random_____";
+pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
 
 pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation VM<'bs>,
@@ -401,7 +401,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             };
             new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id).unwrap();
             let res = new_ctx.invoke();
-            let invoc = new_ctx.gather_trace(res.clone());
+            let invoc = new_ctx.gather_trace(res);
             RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
                 subinvocs.push(invoc);
                 subinvocs
@@ -738,11 +738,10 @@ impl Primitives for InvocationCtx<'_, '_> {
 
     fn hash_blake2b(&self, _data: &[u8]) -> [u8; 32] {
         // TODO: actual blake 2b
-        let x = [
+        [
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
-        ];
-        x
+        ]
     }
 
     fn compute_unsealed_sector_cid(
@@ -891,7 +890,7 @@ impl ExpectInvocation {
         }
     }
 
-    pub fn fmt_invocs(&self, invocs: &Vec<InvocationTrace>) -> String {
+    pub fn fmt_invocs(&self, invocs: &[InvocationTrace]) -> String {
         let mut out = "".to_string();
         for (i, invoc) in invocs.iter().enumerate() {
             out = format!("{}{}: [{}:{}],\n", out, i, invoc.msg.to, invoc.msg.method);
@@ -899,7 +898,7 @@ impl ExpectInvocation {
         out
     }
 
-    pub fn fmt_expect_invocs(&self, invocs: &Vec<ExpectInvocation>) -> String {
+    pub fn fmt_expect_invocs(&self, invocs: &[ExpectInvocation]) -> String {
         let mut out = "".to_string();
         for (i, invoc) in invocs.iter().enumerate() {
             out = format!("{}{}: [{}:{}],\n", out, i, invoc.to, invoc.method);
