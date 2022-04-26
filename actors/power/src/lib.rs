@@ -102,7 +102,6 @@ impl Actor {
         })?;
 
         let miner_actor_code_cid = rt.get_code_cid_for_type(Type::Miner);
-        println!("gonna call exec");
         let ext::init::ExecReturn { id_address, robust_address } = rt
             .send(
                 *INIT_ACTOR_ADDR,
