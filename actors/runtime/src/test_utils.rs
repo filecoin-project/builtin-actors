@@ -65,6 +65,14 @@ lazy_static! {
     };
     pub static ref CALLER_TYPES_SIGNABLE: Vec<Cid> =
         vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID];
+    pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {
+        let mut map = BTreeMap::new();
+        map.insert(*ACCOUNT_ACTOR_CODE_ID, ());
+        map.insert(*PAYCH_ACTOR_CODE_ID, ());
+        map.insert(*MULTISIG_ACTOR_CODE_ID, ());
+        map.insert(*MINER_ACTOR_CODE_ID, ());
+        map
+    };
 }
 
 const IPLD_RAW: u64 = 0x55;
