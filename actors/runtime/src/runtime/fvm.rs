@@ -22,7 +22,9 @@ use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
-use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Policy, RuntimePolicy, Syscalls};
+use crate::runtime::{
+    ActorCode, ConsensusFault, MessageInfo, Policy, Primitives, RuntimePolicy, Verifier,
+};
 use crate::{actor_error, ActorError, Runtime};
 
 lazy_static! {
@@ -348,7 +350,7 @@ where
     }
 }
 
-impl<B> Syscalls for FvmRuntime<B>
+impl<B> Primitives for FvmRuntime<B>
 where
     B: Blockstore,
 {
@@ -378,8 +380,13 @@ where
         fvm::crypto::compute_unsealed_sector_cid(proof_type, pieces)
             .map_err(|e| anyhow!("failed to compute unsealed sector CID; exit code: {}", e))
     }
+}
 
-    #[cfg(not(feature = "fake-proofs"))]
+#[cfg(not(feature = "fake-proofs"))]
+impl<B> Verifier for FvmRuntime<B>
+where
+    B: Blockstore,
+{
     fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_seal(vi) {
             Ok(true) => Ok(()),
@@ -387,12 +394,6 @@ where
         }
     }
 
-    #[cfg(feature = "fake-proofs")]
-    fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), Error> {
-        Ok(())
-    }
-
-    #[cfg(not(feature = "fake-proofs"))]
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_post(verify_info) {
             Ok(true) => Ok(()),
@@ -400,7 +401,46 @@ where
         }
     }
 
-    #[cfg(feature = "fake-proofs")]
+    fn verify_consensus_fault(
+        &self,
+        h1: &[u8],
+        h2: &[u8],
+        extra: &[u8],
+    ) -> Result<Option<ConsensusFault>, Error> {
+        fvm::crypto::verify_consensus_fault(h1, h2, extra).map_err(|_| Error::msg("no fault"))
+    }
+
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
+        fvm::crypto::batch_verify_seals(batch).map_err(|_| Error::msg("failed to verify batch"))
+    }
+
+    fn verify_aggregate_seals(
+        &self,
+        aggregate: &AggregateSealVerifyProofAndInfos,
+    ) -> Result<(), Error> {
+        match fvm::crypto::verify_aggregate_seals(aggregate) {
+            Ok(true) => Ok(()),
+            Ok(false) | Err(_) => Err(Error::msg("invalid aggregate")),
+        }
+    }
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error> {
+        match fvm::crypto::verify_replica_update(replica) {
+            Ok(true) => Ok(()),
+            Ok(false) | Err(_) => Err(Error::msg("invalid replica")),
+        }
+    }
+}
+
+#[cfg(feature = "fake-proofs")]
+impl<B> Verifier for FvmRuntime<B>
+where
+    B: Blockstore,
+{
+    fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), Error> {
+        Ok(())
+    }
+
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         if verify_info.proofs.len() == 0 {
             return Err(Error::msg("[fake-post-validation] No winning post proof given"));
@@ -413,17 +453,6 @@ where
         Err(Error::msg("[fake-post-validation] winning post was invalid"))
     }
 
-    #[cfg(not(feature = "fake-proofs"))]
-    fn verify_consensus_fault(
-        &self,
-        h1: &[u8],
-        h2: &[u8],
-        extra: &[u8],
-    ) -> Result<Option<ConsensusFault>, Error> {
-        fvm::crypto::verify_consensus_fault(h1, h2, extra).map_err(|_| Error::msg("no fault"))
-    }
-
-    #[cfg(feature = "fake-proofs")]
     fn verify_consensus_fault(
         &self,
         _h1: &[u8],
@@ -433,28 +462,10 @@ where
         Ok(None)
     }
 
-    #[cfg(not(feature = "fake-proofs"))]
-    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
-        fvm::crypto::batch_verify_seals(batch).map_err(|_| Error::msg("failed to verify batch"))
-    }
-
-    #[cfg(feature = "fake-proofs")]
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
         Ok(batch.iter().map(|_| true).collect())
     }
 
-    #[cfg(not(feature = "fake-proofs"))]
-    fn verify_aggregate_seals(
-        &self,
-        aggregate: &AggregateSealVerifyProofAndInfos,
-    ) -> Result<(), Error> {
-        match fvm::crypto::verify_aggregate_seals(aggregate) {
-            Ok(true) => Ok(()),
-            Ok(false) | Err(_) => Err(Error::msg("invalid aggregate")),
-        }
-    }
-
-    #[cfg(feature = "fake-proofs")]
     fn verify_aggregate_seals(
         &self,
         _aggregate: &AggregateSealVerifyProofAndInfos,
@@ -462,15 +473,6 @@ where
         Ok(())
     }
 
-    #[cfg(not(feature = "fake-proofs"))]
-    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error> {
-        match fvm::crypto::verify_replica_update(replica) {
-            Ok(true) => Ok(()),
-            Ok(false) | Err(_) => Err(Error::msg("invalid replica")),
-        }
-    }
-
-    #[cfg(feature = "fake-proofs")]
     fn verify_replica_update(&self, _replica: &ReplicaUpdateInfo) -> Result<(), Error> {
         Ok(())
     }

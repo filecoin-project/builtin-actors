@@ -936,7 +936,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     }
 }
 
-impl Syscalls for MockRuntime {
+impl Primitives for MockRuntime {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1007,7 +1007,9 @@ impl Syscalls for MockRuntime {
         }
         Ok(exp.cid)
     }
+}
 
+impl Verifier for MockRuntime {
     fn verify_seal(&self, seal: &SealVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
