@@ -26,7 +26,7 @@ fn create_miner() {
         RawBytes::default(),
     )
     .unwrap();
-    let multiaddrs  = vec![BytesDe("multiaddr".as_bytes().to_vec())];
+    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
     let peer_id = "miner".as_bytes().to_vec();
     let params = CreateMinerParams {
         owner,
@@ -53,7 +53,7 @@ fn create_miner() {
         params: Some(serialize(&params, "power create miner params").unwrap()),
         code: None,
         from: None,
-        ret: Some(res.ret), 
+        ret: Some(res.ret),
         subinvocs: Some(vec![
             // request init actor construct miner
             ExpectInvocation {
@@ -67,14 +67,21 @@ fn create_miner() {
                     // init then calls miner constructor
                     to: Address::new_id(FIRST_TEST_USER_ADDR + 1),
                     method: MinerMethod::Constructor as u64,
-                    params: Some(serialize(&MinerConstructorParams{
-                        owner,
-                        worker: owner,
-                        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-                        peer_id: peer_id,
-                        control_addresses: vec![],
-                        multi_addresses: multiaddrs,
-                    }, "miner constructor params").unwrap()),
+                    params: Some(
+                        serialize(
+                            &MinerConstructorParams {
+                                owner,
+                                worker: owner,
+                                window_post_proof_type:
+                                    RegisteredPoStProof::StackedDRGWindow32GiBV1,
+                                peer_id: peer_id,
+                                control_addresses: vec![],
+                                multi_addresses: multiaddrs,
+                            },
+                            "miner constructor params",
+                        )
+                        .unwrap(),
+                    ),
                     code: None,
                     from: None,
                     ret: None,
