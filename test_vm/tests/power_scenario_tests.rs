@@ -74,7 +74,7 @@ fn create_miner() {
                                 worker: owner,
                                 window_post_proof_type:
                                     RegisteredPoStProof::StackedDRGWindow32GiBV1,
-                                peer_id: peer_id,
+                                peer_id,
                                 control_addresses: vec![],
                                 multi_addresses: multiaddrs,
                             },
