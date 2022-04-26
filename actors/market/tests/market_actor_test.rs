@@ -304,6 +304,23 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
         owner,
         worker,
     );
+
+    let withdraw_amount = TokenAmount::from(30u8);
+    let withdrawable_amount = TokenAmount::from(25u8);
+
+    add_provider_funds(&mut rt, withdrawable_amount.clone(), provider, owner, worker);
+    withdraw_provider_balance(
+        &mut rt,
+        withdraw_amount.clone(),
+        withdrawable_amount.clone(),
+        provider,
+        owner,
+        worker,
+    );
+
+    add_participant_funds(&mut rt, client, withdrawable_amount.clone());
+    withdraw_client_balance(&mut rt, withdraw_amount, withdrawable_amount, client);
+    check_state(&rt);
 }
 
 #[test]
