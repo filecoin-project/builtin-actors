@@ -22,7 +22,9 @@ use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
-use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Policy, RuntimePolicy, Syscalls};
+use crate::runtime::{
+    ActorCode, ConsensusFault, MessageInfo, Policy, Primitives, RuntimePolicy, Verifier,
+};
 use crate::{actor_error, ActorError, Runtime};
 
 lazy_static! {
@@ -348,7 +350,7 @@ where
     }
 }
 
-impl<B> Syscalls for FvmRuntime<B>
+impl<B> Primitives for FvmRuntime<B>
 where
     B: Blockstore,
 {
@@ -378,7 +380,13 @@ where
         fvm::crypto::compute_unsealed_sector_cid(proof_type, pieces)
             .map_err(|e| anyhow!("failed to compute unsealed sector CID; exit code: {}", e))
     }
+}
 
+#[cfg(not(feature = "fake-proofs"))]
+impl<B> Verifier for FvmRuntime<B>
+where
+    B: Blockstore,
+{
     fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_seal(vi) {
             Ok(true) => Ok(()),
@@ -421,6 +429,52 @@ where
             Ok(true) => Ok(()),
             Ok(false) | Err(_) => Err(Error::msg("invalid replica")),
         }
+    }
+}
+
+#[cfg(feature = "fake-proofs")]
+impl<B> Verifier for FvmRuntime<B>
+where
+    B: Blockstore,
+{
+    fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
+        if verify_info.proofs.len() == 0 {
+            return Err(Error::msg("[fake-post-validation] No winning post proof given"));
+        }
+
+        if &verify_info.proofs[0].proof_bytes == b"valid proof" {
+            return Ok(());
+        }
+
+        Err(Error::msg("[fake-post-validation] winning post was invalid"))
+    }
+
+    fn verify_consensus_fault(
+        &self,
+        _h1: &[u8],
+        _h2: &[u8],
+        _extra: &[u8],
+    ) -> Result<Option<ConsensusFault>, Error> {
+        Ok(None)
+    }
+
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
+        Ok(batch.iter().map(|_| true).collect())
+    }
+
+    fn verify_aggregate_seals(
+        &self,
+        _aggregate: &AggregateSealVerifyProofAndInfos,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn verify_replica_update(&self, _replica: &ReplicaUpdateInfo) -> Result<(), Error> {
+        Ok(())
     }
 }
 

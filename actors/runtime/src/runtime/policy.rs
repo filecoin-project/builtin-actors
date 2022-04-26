@@ -147,6 +147,10 @@ pub struct Policy {
     /// Denominator of the percentage of normalized cirulating
     /// supply that must be covered by provider collateral
     pub prov_collateral_percent_supply_denom: i64,
+
+    // --- power ---
+    /// Minimum miner consensus power
+    pub minimum_consensus_power: StoragePower,
 }
 
 impl Default for Policy {
@@ -222,6 +226,8 @@ impl Default for Policy {
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
             prov_collateral_percent_supply_denom:
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_DENOM,
+
+            minimum_consensus_power: StoragePower::from(policy_constants::MINIMUM_CONSENSUS_POWER),
         }
     }
 }
@@ -369,4 +375,17 @@ mod policy_constants {
     /// Denominator of the percentage of normalized cirulating
     /// supply that must be covered by provider collateral
     pub const PROV_COLLATERAL_PERCENT_SUPPLY_DENOM: i64 = 100;
+
+    #[cfg(feature = "min-power-2k")]
+    pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 10;
+    #[cfg(feature = "min-power-2g")]
+    pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 30;
+    #[cfg(feature = "min-power-32g")]
+    pub const MINIMUM_CONSENSUS_POWER: i64 = 32 << 30;
+    #[cfg(not(any(
+        feature = "min-power-2k",
+        feature = "min-power-2g",
+        feature = "min-power-32g"
+    )))]
+    pub const MINIMUM_CONSENSUS_POWER: i64 = 10 << 40;
 }

@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use fil_actors_runtime::cbor::serialize_vec;
-use fil_actors_runtime::runtime::{ActorCode, Runtime, Syscalls};
+use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorDowncast,
     ActorError, Map, INIT_ACTOR_ADDR,
@@ -641,7 +641,7 @@ where
 
 /// Computes a digest of a proposed transaction. This digest is used to confirm identity
 /// of the transaction associated with an ID, which might change under chain re-orgs.
-pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Syscalls) -> anyhow::Result<[u8; 32]> {
+pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow::Result<[u8; 32]> {
     let proposal_hash = ProposalHashData {
         requester: txn.approved.get(0),
         to: &txn.to,
