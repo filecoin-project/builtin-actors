@@ -26,10 +26,10 @@ use crate::ActorError;
 
 mod actor_code;
 
-#[cfg(feature = "fil-actor")]
+#[cfg(target_arch = "wasm32")]
 pub mod fvm;
 
-#[cfg(feature = "fil-actor")]
+#[cfg(target_arch = "wasm32")]
 mod actor_blockstore;
 
 mod policy;

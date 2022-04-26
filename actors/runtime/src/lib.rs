@@ -37,6 +37,7 @@ pub mod test_utils;
 macro_rules! wasm_trampoline {
     ($target:ty) => {
         #[no_mangle]
+        #[cfg(target_arch = "wasm32")]
         pub extern "C" fn invoke(param: u32) -> u32 {
             $crate::runtime::fvm::trampoline::<$target>(param)
         }

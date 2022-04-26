@@ -8,8 +8,8 @@ use anyhow::anyhow;
 use ext::init;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Multimap,
-    CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, make_map_with_root_and_bitwidth, wasm_trampoline, ActorDowncast, ActorError,
+    Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -29,8 +29,7 @@ pub use self::policy::*;
 pub use self::state::*;
 pub use self::types::*;
 
-#[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+wasm_trampoline!(Actor);
 
 #[doc(hidden)]
 pub mod ext;

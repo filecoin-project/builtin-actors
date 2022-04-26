@@ -3,8 +3,8 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, make_map_with_root_and_bitwidth, resolve_to_id_addr, ActorDowncast, ActorError,
-    Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, make_map_with_root_and_bitwidth, resolve_to_id_addr, wasm_trampoline,
+    ActorDowncast, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -19,8 +19,7 @@ use num_traits::{FromPrimitive, Signed, Zero};
 pub use self::state::State;
 pub use self::types::*;
 
-#[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+wasm_trampoline!(Actor);
 
 mod state;
 mod types;

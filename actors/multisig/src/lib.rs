@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime, Syscalls};
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorDowncast, ActorError,
-    Map, INIT_ACTOR_ADDR,
+    actor_error, make_empty_map, make_map_with_root, resolve_to_id_addr, wasm_trampoline,
+    ActorDowncast, ActorError, Map, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{to_vec, RawBytes};
@@ -22,8 +22,7 @@ use num_traits::{FromPrimitive, Signed};
 pub use self::state::*;
 pub use self::types::*;
 
-#[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+wasm_trampoline!(Actor);
 
 mod state;
 mod types;
