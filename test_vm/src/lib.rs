@@ -13,7 +13,7 @@ use fil_actor_system::{Actor as SystemActor, State as SystemState};
 use fil_actor_verifreg::Actor as VerifregActor;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{
-    ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls,
+    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{ActorError, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
@@ -524,7 +524,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 }
 
-impl Syscalls for InvocationCtx<'_, '_> {
+impl Primitives for InvocationCtx<'_, '_> {
     fn verify_signature(
         &self,
         _signature: &Signature,
@@ -545,7 +545,9 @@ impl Syscalls for InvocationCtx<'_, '_> {
     ) -> Result<Cid, anyhow::Error> {
         panic!("TODO implement me")
     }
+}
 
+impl Verifier for InvocationCtx<'_, '_> {
     fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), anyhow::Error> {
         panic!("TODO implement me")
     }
