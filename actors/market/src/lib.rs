@@ -1102,7 +1102,11 @@ where
     Ok((total_deal_space_time, total_verified_space_time, total_deal_space))
 }
 
-fn gen_rand_next_epoch(policy: &Policy, start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
+pub fn gen_rand_next_epoch(
+    policy: &Policy,
+    start_epoch: ChainEpoch,
+    deal_id: DealID,
+) -> ChainEpoch {
     let offset = deal_id as i64 % policy.deal_updates_interval;
     let q = QuantSpec { unit: policy.deal_updates_interval, offset: 0 };
     let prev_day = q.quantize_down(start_epoch);

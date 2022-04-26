@@ -6,10 +6,10 @@ use std::convert::TryInto;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::{
-    ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray,
-    DealProposal, DealState, Label, Method, OnMinerSectorsTerminateParams,
-    PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
-    WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    ext, gen_rand_next_epoch, ActivateDealsParams, Actor as MarketActor, ClientDealProposal,
+    DealArray, DealMetaArray, DealProposal, DealState, Label, Method,
+    OnMinerSectorsTerminateParams, PublishStorageDealsParams, PublishStorageDealsReturn, State,
+    WithdrawBalanceParams, WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -1417,6 +1417,87 @@ fn active_deals_multiple_times_with_different_providers() {
     // TODO: actor.checkState(rt)
 }
 
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1519
+#[test]
+fn fail_when_deal_is_activated_but_proposal_is_not_found() {
+    let start_epoch = 50;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+
+    let mut rt = setup();
+
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let deal_id = publish_and_activate_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+        0,
+        sector_expiry,
+    );
+
+    // delete the deal proposal (this breaks state invariants)
+    delete_deal_proposal(&mut rt, deal_id);
+
+    rt.set_epoch(process_epoch(start_epoch, deal_id));
+    expect_abort(ExitCode::USR_NOT_FOUND, cron_tick_raw(&mut rt));
+
+    // TODO: actor.checkState
+}
+
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1540
+#[test]
+fn fail_when_deal_update_epoch_is_in_the_future() {
+    let start_epoch = 50;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+
+    let mut rt = setup();
+
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let deal_id = publish_and_activate_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+        0,
+        sector_expiry,
+    );
+
+    // move the current epoch such that the deal's last updated field is set to the start epoch of the deal
+    // and the next tick for it is scheduled at the endepoch.
+    rt.set_epoch(process_epoch(start_epoch, deal_id));
+    cron_tick(&mut rt);
+
+    // update last updated to some time in the future (breaks state invariants)
+    update_last_updated(&mut rt, deal_id, end_epoch + 1000);
+
+    // set current epoch of the deal to the end epoch so it's picked up for "processing" in the next cron tick.
+    rt.set_epoch(end_epoch);
+
+    expect_abort(ExitCode::USR_ILLEGAL_STATE, cron_tick_raw(&mut rt));
+
+    // TODO: actor.checkState
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
@@ -1607,6 +1688,28 @@ fn get_deal_state(rt: &mut MockRuntime, deal_id: DealID) -> DealState {
     *s.unwrap()
 }
 
+fn update_last_updated(rt: &mut MockRuntime, deal_id: DealID, new_last_updated: ChainEpoch) {
+    let st: State = rt.get_state();
+
+    let mut states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+    let s = *states.get(deal_id).unwrap().unwrap();
+
+    states.set(deal_id, DealState { last_updated_epoch: new_last_updated, ..s }).unwrap();
+    let root = states.flush().unwrap();
+    rt.replace_state(&State { states: root, ..st })
+}
+
+fn delete_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) {
+    let mut st: State = rt.get_state();
+
+    let mut deals = DealArray::load(&st.proposals, &rt.store).unwrap();
+    deals.delete(deal_id).unwrap();
+
+    let root = deals.flush().unwrap();
+    st.proposals = root;
+    rt.replace_state(&st)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn generate_and_publish_deal(
     rt: &mut MockRuntime,
@@ -1773,6 +1876,27 @@ fn terminate_deals_raw(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
+fn publish_and_activate_deal(
+    rt: &mut MockRuntime,
+    client: Address,
+    provider: Address,
+    owner: Address,
+    worker: Address,
+    control: Address,
+    start_epoch: ChainEpoch,
+    end_epoch: ChainEpoch,
+    current_epoch: ChainEpoch,
+    sector_expiry: ChainEpoch,
+) -> DealID {
+    let deal =
+        generate_deal_and_add_funds(rt, client, provider, owner, worker, start_epoch, end_epoch);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
+    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[deal]);
+    activate_deals(rt, sector_expiry, provider, current_epoch, &deal_ids);
+    deal_ids[0]
+}
+
 fn publish_deals(
     rt: &mut MockRuntime,
     provider: Address,
@@ -1869,14 +1993,15 @@ fn assert_deals_not_activated(rt: &mut MockRuntime, _epoch: ChainEpoch, deal_ids
 }
 
 fn cron_tick(rt: &mut MockRuntime) {
+    assert_eq!(RawBytes::default(), cron_tick_raw(rt).unwrap());
+    rt.verify()
+}
+
+fn cron_tick_raw(rt: &mut MockRuntime) -> Result<RawBytes, ActorError> {
     rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
     rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
 
-    assert_eq!(
-        RawBytes::default(),
-        rt.call::<MarketActor>(Method::CronTick as u64, &RawBytes::default()).unwrap()
-    );
-    rt.verify()
+    rt.call::<MarketActor>(Method::CronTick as u64, &RawBytes::default())
 }
 
 fn expect_query_network_info(rt: &mut MockRuntime) {
@@ -1971,4 +2096,9 @@ fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposal) {
         )
         .unwrap();
     assert!(!pending_deals.contains_key(&BytesKey(p_cid.to_bytes())).unwrap());
+}
+
+fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
+    let policy = Policy::default();
+    gen_rand_next_epoch(&policy, start_epoch, deal_id)
 }
