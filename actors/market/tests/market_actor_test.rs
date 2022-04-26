@@ -953,6 +953,145 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     assert_deals_not_terminated(&mut rt, &[deal2]);
 }
 
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1436
+#[test]
+fn fail_when_caller_is_not_a_storage_miner_actor() {
+    let provider_addr = Address::new_id(PROVIDER_ID);
+
+    let mut rt = setup();
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, provider_addr);
+    let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: vec![] };
+
+    // XXX: Which exit code is correct: SYS_FORBIDDEN(8) or USR_FORBIDDEN(18)?
+    assert_eq!(
+        ExitCode::USR_FORBIDDEN,
+        rt.call::<MarketActor>(
+            Method::OnMinerSectorsTerminate as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap_err()
+        .exit_code()
+    );
+}
+
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1448
+#[test]
+fn fail_when_caller_is_not_the_provider_of_the_deal() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let provider2 = Address::new_id(501);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    let deal = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal]);
+
+    // XXX: Difference between go messages: 't0501' has turned into 'f0501'.
+    let ret = terminate_deals_raw(&mut rt, provider2, &[deal]);
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_STATE,
+        "caller f0501 is not the provider f0102 of deal 0",
+        ret,
+    );
+}
+
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1468
+#[test]
+fn fail_when_deal_has_been_published_but_not_activated() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    let deal = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+
+    let ret = terminate_deals_raw(&mut rt, provider_addr, &[deal]);
+    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no state for deal", ret);
+    rt.verify();
+}
+
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1485
+#[test]
+fn termination_of_all_deals_should_fail_when_one_deal_fails() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+    rt.set_epoch(current_epoch);
+
+    // deal1 would terminate but deal2 will fail because deal2 has not been activated
+    let deal1 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
+    let deal2 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch + 1,
+    );
+
+    let ret = terminate_deals_raw(&mut rt, provider_addr, &[deal1, deal2]);
+    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no state for deal", ret);
+    rt.verify();
+
+    // verify deal1 has not been terminated
+    assert_deals_not_terminated(&mut rt, &[deal1]);
+}
+
 #[test]
 fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_zero() {
     let policy = Policy::default();
@@ -1613,19 +1752,25 @@ fn generate_deal_proposal(
 }
 
 fn terminate_deals(rt: &mut MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
+    let ret = terminate_deals_raw(rt, miner_addr, deal_ids).unwrap();
+    assert_eq!(ret, RawBytes::default());
+    rt.verify();
+}
+
+fn terminate_deals_raw(
+    rt: &mut MockRuntime,
+    miner_addr: Address,
+    deal_ids: &[DealID],
+) -> Result<RawBytes, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
 
     let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: deal_ids.to_vec() };
 
-    let ret = rt
-        .call::<MarketActor>(
-            Method::OnMinerSectorsTerminate as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-    assert_eq!(ret, RawBytes::default());
-    rt.verify();
+    rt.call::<MarketActor>(
+        Method::OnMinerSectorsTerminate as u64,
+        &RawBytes::serialize(params).unwrap(),
+    )
 }
 
 fn publish_deals(
