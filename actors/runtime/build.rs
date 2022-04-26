@@ -28,6 +28,21 @@ static NETWORKS: &[(&str, &[&str])] = &[
             "no-provider-deal-collateral",
         ],
     ),
+    (
+        "testing-fake-proofs",
+        &[
+            "sector-2k",
+            "sector-8m",
+            "sector-512m",
+            "sector-32g",
+            "sector-64g",
+            "small-deals",
+            "short-precommit",
+            "min-power-2k",
+            "no-provider-deal-collateral",
+            "fake-proofs",
+        ],
+    ),
 ];
 const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";
 

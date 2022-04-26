@@ -5,6 +5,7 @@ use std::ops::Neg;
 
 use anyhow::{anyhow, Context};
 use cid::Cid;
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root, make_map_with_root_and_bitwidth,
     ActorDowncast, ActorError, Map, Multimap,
@@ -102,6 +103,7 @@ impl State {
     /// Checks power actor state for if miner meets minimum consensus power.
     pub fn miner_nominal_power_meets_consensus_minimum<BS: Blockstore>(
         &self,
+        policy: &Policy,
         s: &BS,
         miner: &Address,
     ) -> anyhow::Result<bool> {
@@ -111,7 +113,7 @@ impl State {
             get_claim(&claims, miner)?.ok_or_else(|| anyhow!("no claim for actor: {}", miner))?;
 
         let miner_nominal_power = &claim.raw_byte_power;
-        let miner_min_power = consensus_miner_min_power(claim.window_post_proof_type)
+        let miner_min_power = consensus_miner_min_power(policy, claim.window_post_proof_type)
             .context("could not get miner min power from proof type: {}")?;
 
         if miner_nominal_power >= &miner_min_power {
@@ -137,6 +139,7 @@ impl State {
 
     pub(super) fn add_to_claim<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         claims: &mut Map<BS, Claim>,
         miner: &Address,
         power: &StoragePower,
@@ -154,7 +157,8 @@ impl State {
             window_post_proof_type: old_claim.window_post_proof_type,
         };
 
-        let min_power: StoragePower = consensus_miner_min_power(old_claim.window_post_proof_type)?;
+        let min_power: StoragePower =
+            consensus_miner_min_power(policy, old_claim.window_post_proof_type)?;
         let prev_below: bool = old_claim.raw_byte_power < min_power;
         let still_below: bool = new_claim.raw_byte_power < min_power;
 
@@ -247,9 +251,10 @@ impl State {
     /// when new added miner starts above the minimum.
     pub(super) fn update_stats_for_new_miner(
         &mut self,
+        policy: &Policy,
         window_post_proof: RegisteredPoStProof,
     ) -> anyhow::Result<()> {
-        let min_power = consensus_miner_min_power(window_post_proof)?;
+        let min_power = consensus_miner_min_power(policy, window_post_proof)?;
 
         if !min_power.is_positive() {
             self.miner_above_min_power_count += 1;
@@ -299,6 +304,7 @@ impl State {
 
     pub(super) fn delete_claim<BS: Blockstore>(
         &mut self,
+        policy: &Policy,
         claims: &mut Map<BS, Claim>,
         miner: &Address,
     ) -> anyhow::Result<()> {
@@ -311,7 +317,7 @@ impl State {
             };
 
         // Subtract from stats to remove power
-        self.add_to_claim(claims, miner, &rbp.neg(), &qap.neg())
+        self.add_to_claim(policy, claims, miner, &rbp.neg(), &qap.neg())
             .map_err(|e| e.downcast_wrap("failed to subtract miner power before deleting claim"))?;
 
         claims
@@ -400,7 +406,10 @@ pub struct CronEvent {
 impl Cbor for CronEvent {}
 
 /// Returns the minimum storage power required for each seal proof types.
-pub fn consensus_miner_min_power(p: RegisteredPoStProof) -> anyhow::Result<StoragePower> {
+pub fn consensus_miner_min_power(
+    policy: &Policy,
+    p: RegisteredPoStProof,
+) -> anyhow::Result<StoragePower> {
     use RegisteredPoStProof::*;
     match p {
         StackedDRGWinning2KiBV1
@@ -412,18 +421,7 @@ pub fn consensus_miner_min_power(p: RegisteredPoStProof) -> anyhow::Result<Stora
         | StackedDRGWindow8MiBV1
         | StackedDRGWindow512MiBV1
         | StackedDRGWindow32GiBV1
-        | StackedDRGWindow64GiBV1 => {
-            let power: u64 = if cfg!(feature = "min-power-2k") {
-                2 << 10
-            } else if cfg!(feature = "min-power-2g") {
-                2 << 30
-            } else if cfg!(feature = "min-power-32g") {
-                32 << 30
-            } else {
-                10 << 40
-            };
-            Ok(StoragePower::from(power))
-        }
+        | StackedDRGWindow64GiBV1 => Ok(policy.minimum_consensus_power.clone()),
         Invalid(i) => Err(anyhow::anyhow!("unsupported proof type: {}", i)),
     }
 }
