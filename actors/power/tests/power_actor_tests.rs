@@ -336,6 +336,8 @@ fn all_of_one_miners_power_disappears_when_that_miner_dips_below_min_power_thres
     )
     .unwrap();
 
+    assert!(small_power_unit < power_unit);
+
     let (mut h, mut rt) = setup();
 
     h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
