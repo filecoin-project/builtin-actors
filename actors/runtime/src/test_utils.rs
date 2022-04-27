@@ -1174,7 +1174,6 @@ impl RuntimePolicy for MockRuntime {
 }
 
 pub fn blake2b_256(data: &[u8]) -> [u8; 32] {
-    use std::convert::TryInto;
     blake2b_simd::Params::new()
         .hash_length(32)
         .to_state()
