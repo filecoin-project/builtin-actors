@@ -599,7 +599,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.4.0",
  "fvm_shared 0.6.0",
  "log",
  "num-derive",
@@ -622,7 +622,7 @@ dependencies = [
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.4.0",
  "fvm_shared 0.6.0",
  "libipld-core",
  "log",
@@ -648,7 +648,7 @@ dependencies = [
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.4.0",
  "fvm_shared 0.6.0",
  "itertools",
  "lazy_static",
@@ -669,7 +669,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.4.0",
  "fvm_shared 0.6.0",
  "indexmap",
  "integer-encoding",
@@ -704,7 +704,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.4.0",
  "fvm_shared 0.6.0",
  "indexmap",
  "integer-encoding",
@@ -755,7 +755,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.4.0",
  "fvm_shared 0.6.0",
  "lazy_static",
  "num-derive",
@@ -776,7 +776,7 @@ dependencies = [
  "fvm_ipld_amt",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.4.0",
  "fvm_sdk",
  "fvm_shared 0.6.0",
  "getrandom",
@@ -1020,6 +1020,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "fvm_ipld_hamt"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "cid",
+ "cs_serde_bytes",
+ "forest_hash_utils",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "libipld-core",
+ "multihash",
+ "once_cell",
+ "serde",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "fvm_sdk"
 version = "0.6.0"
 dependencies = [
@@ -1169,8 +1188,8 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_ipld_hamt",
- "fvm_shared 0.5.1",
+ "fvm_ipld_hamt 0.5.0",
+ "fvm_shared 0.6.0",
  "indexmap",
  "integer-encoding",
  "lazy_static",
@@ -1768,7 +1787,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_ipld_hamt",
+ "fvm_ipld_hamt 0.4.0",
  "fvm_shared 0.6.0",
  "indexmap",
  "lazy_static",
@@ -1985,7 +2004,3 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[patch.unused]]
-name = "fvm_ipld_hamt"
-version = "0.5.0"
