@@ -6,10 +6,12 @@ use fil_actors_runtime::test_utils::{
 };
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
+use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use num_traits::Zero;
+use std::ops::Neg;
 
 use fil_actor_power::{
     Actor as PowerActor, CreateMinerParams, Method, State, UpdateClaimedPowerParams,
@@ -196,5 +198,61 @@ fn claimed_power_given_claim_does_not_exist_should_fail() {
     );
 
     rt.verify();
+    h.check_state();
+}
+
+#[test]
+fn power_and_ledge_accounted_below_threshold() {
+    let small_power_unit = &StoragePower::from(1_000_000);
+    let small_power_unit_x2 = &(small_power_unit * 2);
+    let small_power_unit_x3 = &(small_power_unit * 3);
+
+    let (mut h, mut rt) = setup();
+
+    const MINER1: Address = Address::new_id(111);
+    const MINER2: Address = Address::new_id(112);
+    // const miner3: Address = Address::new_id(113);
+    // const miner4: Address = Address::new_id(114);
+    // const miner5: Address = Address::new_id(115);
+
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER2).unwrap();
+
+    let ret = h.current_power_total(&mut rt);
+    assert_eq!(StoragePower::zero(), ret.raw_byte_power);
+    assert_eq!(StoragePower::zero(), ret.quality_adj_power);
+    assert_eq!(TokenAmount::zero(), ret.pledge_collateral);
+
+    // Add power for miner1
+    h.update_claimed_power(&mut rt, MINER1, small_power_unit, small_power_unit_x2);
+    h.expect_total_power_eager(&mut rt, small_power_unit, small_power_unit_x2);
+    assert!(ret.pledge_collateral.is_zero());
+
+    // Add power and pledge for miner2
+    h.update_claimed_power(&mut rt, MINER2, small_power_unit, small_power_unit);
+    h.update_pledge_total(&mut rt, MINER1, &TokenAmount::from(1_000_000));
+    h.expect_total_power_eager(&mut rt, small_power_unit_x2, small_power_unit_x3);
+    h.expect_total_pledge_eager(&mut rt, &TokenAmount::from(1_000_000));
+
+    rt.verify();
+
+    // Verify claims in state.
+    let claim1 = h.get_claim(&rt, &MINER1).unwrap();
+    assert_eq!(small_power_unit, &claim1.raw_byte_power);
+    assert_eq!(small_power_unit_x2, &claim1.quality_adj_power);
+
+    let claim2 = h.get_claim(&rt, &MINER2).unwrap();
+    assert_eq!(small_power_unit, &claim2.raw_byte_power);
+    assert_eq!(small_power_unit, &claim2.quality_adj_power);
+
+    // Subtract power and some pledge for miner2
+    h.update_claimed_power(&mut rt, MINER2, &small_power_unit.neg(), &small_power_unit.neg());
+    h.update_pledge_total(&mut rt, MINER2, &TokenAmount::from(100_000).neg());
+    h.expect_total_power_eager(&mut rt, small_power_unit, small_power_unit_x2);
+    h.expect_total_pledge_eager(&mut rt, &TokenAmount::from(900_000));
+
+    let claim2 = h.get_claim(&rt, &MINER2).unwrap();
+    assert!(claim2.raw_byte_power.is_zero());
+    assert!(claim2.quality_adj_power.is_zero());
     h.check_state();
 }
