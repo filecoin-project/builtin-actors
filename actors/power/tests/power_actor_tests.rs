@@ -326,3 +326,37 @@ fn power_accounting_crossing_threshold() {
     h.expect_total_power_eager(&mut rt, &expected_total_below, &(&expected_total_below * 10));
     h.check_state();
 }
+
+#[test]
+fn all_of_one_miners_power_disappears_when_that_miner_dips_below_min_power_threshold() {
+    let small_power_unit = &StoragePower::from(1_000_000);
+    let power_unit = &consensus_miner_min_power(
+        &Policy::default(),
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+    )
+    .unwrap();
+
+    let (mut h, mut rt) = setup();
+
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER2).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER3).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER4).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER5).unwrap();
+
+    h.update_claimed_power(&mut rt, MINER1, power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER2, power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER3, power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER4, power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER5, power_unit, power_unit);
+
+    let expected_total = &(power_unit * 5);
+    h.expect_total_power_eager(&mut rt, expected_total, expected_total);
+
+    // miner4 dips just below threshold
+    h.update_claimed_power(&mut rt, MINER4, &small_power_unit.neg(), &small_power_unit.neg());
+
+    let expected_total = &(power_unit * 4);
+    h.expect_total_power_eager(&mut rt, expected_total, expected_total);
+    h.check_state();
+}
