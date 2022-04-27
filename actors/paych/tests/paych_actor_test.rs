@@ -62,6 +62,7 @@ fn get_lane_state(rt: &MockRuntime, cid: &Cid, lane: u64) -> LaneState {
 
 mod paych_constructor {
     use fvm_shared::METHOD_CONSTRUCTOR;
+    use fvm_shared::METHOD_SEND;
 
     use super::*;
 
@@ -171,6 +172,45 @@ mod paych_constructor {
                 test_case.expected_exit_code,
             );
         }
+    }
+
+    #[test]
+    fn sendr_addr_not_resolvable_to_id_addr() {
+        const TO_ADDR: u64 = 101;
+        let to_addr = Address::new_id(TO_ADDR);
+        let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
+        let caller_addr = Address::new_id(TEST_CALLER_ADDR);
+        #[allow(overflowing_literals)]
+        let non_id_addr = Address::new_bls(&[501; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+
+        let mut actor_code_cids = HashMap::default();
+        actor_code_cids.insert(to_addr, *ACCOUNT_ACTOR_CODE_ID);
+
+        let mut rt = MockRuntime {
+            receiver: paych_addr,
+            caller: caller_addr,
+            caller_type: *INIT_ACTOR_CODE_ID,
+            actor_code_cids,
+            ..Default::default()
+        };
+
+        rt.expect_send(
+            non_id_addr,
+            METHOD_SEND,
+            Default::default(),
+            TokenAmount::from(0u8),
+            Default::default(),
+            ExitCode::OK,
+        );
+        
+        rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+        let params = ConstructorParams { from: non_id_addr, to: to_addr };
+        expect_error(
+            &mut rt,
+            METHOD_CONSTRUCTOR,
+            &RawBytes::serialize(&params).unwrap(),
+            ExitCode::USR_ILLEGAL_STATE,
+        );
     }
 }
 
