@@ -174,6 +174,18 @@ impl Harness {
         claims.get(&miner.to_bytes()).unwrap().cloned()
     }
 
+    pub fn delete_claim(&mut self, rt: &mut MockRuntime, miner: &Address) {
+        let mut state: State = rt.get_state();
+
+        let mut claims =
+            make_map_with_root_and_bitwidth::<_, Claim>(&state.claims, rt.store(), HAMT_BIT_WIDTH)
+                .unwrap();
+        claims.delete(&miner.to_bytes()).expect("Failed to delete claim");
+        state.claims = claims.flush().unwrap();
+
+        rt.replace_state(&state);
+    }
+
     pub fn enroll_cron_event(
         &self,
         rt: &mut MockRuntime,
