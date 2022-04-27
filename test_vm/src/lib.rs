@@ -58,7 +58,7 @@ pub struct VM<'bs> {
     empty_obj_cid: Cid,
     network_version: NetworkVersion,
     curr_epoch: ChainEpoch,
-    pub invocations: RefCell<Vec<InvocationTrace>>,
+    invocations: RefCell<Vec<InvocationTrace>>,
 }
 
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
@@ -309,7 +309,7 @@ impl<'bs> VM<'bs> {
             top,
             msg,
             allow_side_effects: true,
-            _caller_validated: false,
+            caller_validated: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
         };
@@ -329,6 +329,10 @@ impl<'bs> VM<'bs> {
                 Ok(MessageResult { code: ExitCode::OK, ret })
             }
         }
+    }
+
+    pub fn take_invocations(&self) -> Vec<InvocationTrace> {
+        self.invocations.take()
     }
 }
 #[derive(Clone)]
@@ -367,7 +371,7 @@ pub struct InvocationCtx<'invocation, 'bs> {
     top: TopCtx,
     msg: InternalMessage,
     allow_side_effects: bool,
-    _caller_validated: bool,
+    caller_validated: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
 }
@@ -409,7 +413,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 top: self.top.clone(),
                 msg: new_actor_msg,
                 allow_side_effects: true,
-                _caller_validated: false,
+                caller_validated: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
             };
@@ -538,13 +542,13 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
-        if self._caller_validated {
+        if self.caller_validated {
             Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
                 "caller double validated".to_string(),
             ))
         } else {
-            self._caller_validated = true;
+            self.caller_validated = true;
             Ok(())
         }
     }
@@ -553,9 +557,9 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     where
         I: IntoIterator<Item = &'a Address>,
     {
-        if self._caller_validated {
+        if self.caller_validated {
             return Err(ActorError::unchecked(
-                ExitCode::SYS_ASSERTION_FAILED,
+                ExitCode::USR_ASSERTION_FAILED,
                 "caller double validated".to_string(),
             ));
         }
@@ -565,7 +569,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             }
         }
         Err(ActorError::unchecked(
-            ExitCode::SYS_ASSERTION_FAILED,
+            ExitCode::USR_FORBIDDEN,
             "immediate caller address forbidden".to_string(),
         ))
     }
@@ -574,17 +578,15 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     where
         I: IntoIterator<Item = &'a Type>,
     {
-        if self._caller_validated {
+        if self.caller_validated {
             return Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
                 "caller double validated".to_string(),
             ));
         }
         let to_match = ACTOR_TYPES.get(&self.v.get_actor(self.msg.from).unwrap().code).unwrap();
-        for t in types {
-            if *t == *to_match {
-                return Ok(());
-            }
+        if types.into_iter().any(|t| *t == *to_match) {
+            return Ok(());
         }
         Err(ActorError::unchecked(
             ExitCode::SYS_ASSERTION_FAILED,
@@ -628,7 +630,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             top: self.top.clone(),
             msg: new_actor_msg,
             allow_side_effects: true,
-            _caller_validated: false,
+            caller_validated: false,
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
         };
@@ -638,7 +640,6 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
 
         let invoc = new_ctx.gather_trace(res.clone());
         RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
-            println!("pushing: [{}:{}]", &invoc.msg.to, &invoc.msg.method);
             subinvocs.push(invoc);
             subinvocs
         });
@@ -847,7 +848,7 @@ impl ExpectInvocation {
     // testing method that panics on no match
     pub fn matches(&self, invoc: &InvocationTrace) {
         let id = format!("[{}:{}]", invoc.msg.to, invoc.msg.method);
-        self.quick_match(invoc, "".to_string());
+        self.quick_match(invoc, String::new());
         if let Some(c) = self.code {
             assert_ne!(
                 None,
@@ -905,19 +906,19 @@ impl ExpectInvocation {
     }
 
     pub fn fmt_invocs(&self, invocs: &[InvocationTrace]) -> String {
-        let mut out = "".to_string();
-        for (i, invoc) in invocs.iter().enumerate() {
-            out = format!("{}{}: [{}:{}],\n", out, i, invoc.msg.to, invoc.msg.method);
-        }
-        out
+        invocs
+            .iter()
+            .enumerate()
+            .map(|(i, invoc)| format!("{}: [{}:{}],\n", i, invoc.msg.to, invoc.msg.method))
+            .collect()
     }
 
     pub fn fmt_expect_invocs(&self, invocs: &[ExpectInvocation]) -> String {
-        let mut out = "".to_string();
-        for (i, invoc) in invocs.iter().enumerate() {
-            out = format!("{}{}: [{}:{}],\n", out, i, invoc.to, invoc.method);
-        }
-        out
+        invocs
+            .iter()
+            .enumerate()
+            .map(|(i, invoc)| format!("{}: [{}:{}],\n", i, invoc.to, invoc.method))
+            .collect()
     }
 
     pub fn quick_match(&self, invoc: &InvocationTrace, extra_msg: String) {

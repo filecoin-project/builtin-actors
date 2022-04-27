@@ -90,5 +90,5 @@ fn create_miner() {
             },
         ]),
     };
-    expect.matches(v.invocations.take().last().unwrap())
+    expect.matches(v.take_invocations().last().unwrap())
 }
