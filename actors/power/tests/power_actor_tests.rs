@@ -292,6 +292,8 @@ fn power_accounting_crossing_threshold() {
     .unwrap();
     let power_unit_x10 = &(power_unit * 10);
 
+    assert!(small_power_unit < power_unit);
+
     let (mut h, mut rt) = setup();
 
     h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
