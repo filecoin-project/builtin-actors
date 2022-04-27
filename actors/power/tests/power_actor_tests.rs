@@ -201,6 +201,9 @@ fn claimed_power_given_claim_does_not_exist_should_fail() {
     h.check_state();
 }
 
+const MINER1: Address = Address::new_id(111);
+const MINER2: Address = Address::new_id(112);
+
 #[test]
 fn power_and_ledge_accounted_below_threshold() {
     let small_power_unit = &StoragePower::from(1_000_000);
@@ -208,9 +211,6 @@ fn power_and_ledge_accounted_below_threshold() {
     let small_power_unit_x3 = &(small_power_unit * 3);
 
     let (mut h, mut rt) = setup();
-
-    const MINER1: Address = Address::new_id(111);
-    const MINER2: Address = Address::new_id(112);
 
     h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
     h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER2).unwrap();
@@ -252,4 +252,26 @@ fn power_and_ledge_accounted_below_threshold() {
     assert!(claim2.raw_byte_power.is_zero());
     assert!(claim2.quality_adj_power.is_zero());
     h.check_state();
+}
+
+#[test]
+fn new_miner_updates_miner_above_min_power_count() {
+    struct TestCase {
+        proof: RegisteredPoStProof,
+        expected_miners: i64,
+    }
+
+    let test_cases = [
+        TestCase { proof: RegisteredPoStProof::StackedDRGWindow2KiBV1, expected_miners: 0 },
+        TestCase { proof: RegisteredPoStProof::StackedDRGWindow32GiBV1, expected_miners: 0 },
+    ];
+
+    for test in test_cases {
+        let (mut h, mut rt) = setup();
+        h.window_post_proof = test.proof;
+        h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
+
+        let st: State = rt.get_state();
+        assert_eq!(test.expected_miners, st.miner_above_min_power_count);
+    }
 }

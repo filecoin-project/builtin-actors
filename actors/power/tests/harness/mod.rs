@@ -72,7 +72,7 @@ pub fn setup() -> (Harness, MockRuntime) {
 pub struct Harness {
     miner_seq: i64,
     seal_proof: RegisteredSealProof,
-    window_post_proof: RegisteredPoStProof,
+    pub window_post_proof: RegisteredPoStProof,
     this_epoch_baseline_power: StoragePower,
     this_epoch_reward_smoothed: FilterEstimate,
 }
