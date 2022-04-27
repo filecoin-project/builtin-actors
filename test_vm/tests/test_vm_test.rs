@@ -1,15 +1,12 @@
 use fil_actor_account::State as AccountState;
-use fil_actors_runtime::{
-    test_utils::{make_builtin, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID},
-    INIT_ACTOR_ADDR,
-};
+use fil_actors_runtime::test_utils::{make_builtin, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
-use test_vm::{actor, FIRST_TEST_USER_ADDR, VM};
+use test_vm::{actor, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 #[test]
 fn state_control() {
@@ -59,7 +56,7 @@ fn test_sent() {
     // send to uninitialized account actor
     let addr1 = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     v.apply_message(
-        *INIT_ACTOR_ADDR,
+        TEST_FAUCET_ADDR,
         addr1,
         TokenAmount::from(42u8),
         METHOD_SEND,

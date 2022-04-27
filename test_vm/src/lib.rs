@@ -62,7 +62,10 @@ pub struct VM<'bs> {
 }
 
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
-pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 2; // accounts for verifreg root signer and msig
+// Account actor seeding funds created by new_with_singletons
+pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
+pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
+pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3; // accounts for verifreg root signer and msig
 impl<'bs> VM<'bs> {
     pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
@@ -80,31 +83,33 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
-        // craft init state directly
+        // funding
+        let fil = TokenAmount::from(1_000_000_000i32)
+            .checked_mul(&TokenAmount::from(1_000_000_000i32))
+            .unwrap();
+        let reward_total = TokenAmount::from(1_100_000_000i32).checked_mul(&fil).unwrap();
+        let faucet_total = TokenAmount::from(1_000_000_000u32).checked_mul(&fil).unwrap();
+
         let v = VM::new(store);
 
         // system
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = v.put_store(&sys_st);
-        v.set_actor(
-            *SYSTEM_ACTOR_ADDR,
-            actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, TokenAmount::from(1_000_000u32)),
-        );
+        let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
+        v.set_actor(*SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value));
 
         // init
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
         v.set_actor(
             *INIT_ACTOR_ADDR,
-            actor(*INIT_ACTOR_CODE_ID, init_head, 0, BigInt::from(1_000u32)),
+            actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero()),
         );
 
         // reward
+
         let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
-        v.set_actor(
-            *REWARD_ACTOR_ADDR,
-            actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, TokenAmount::zero()),
-        );
+        v.set_actor(*REWARD_ACTOR_ADDR, actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total));
 
         // cron
         let builtin_entries = vec![
@@ -189,6 +194,16 @@ impl<'bs> VM<'bs> {
             *BURNT_FUNDS_ACTOR_ADDR,
             actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero()),
         );
+
+        // create a faucet with 1 billion FIL for setting up test accounts
+        v.apply_message(
+            *SYSTEM_ACTOR_ADDR,
+            Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
+            faucet_total,
+            METHOD_SEND,
+            RawBytes::default(),
+        )
+        .unwrap();
 
         v.checkpoint();
         v

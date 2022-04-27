@@ -10,7 +10,7 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::METHOD_SEND;
-use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, VM};
+use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 #[test]
 fn create_miner() {
@@ -19,7 +19,7 @@ fn create_miner() {
 
     let owner = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     v.apply_message(
-        *SYSTEM_ACTOR_ADDR,
+        TEST_FAUCET_ADDR,
         owner,
         TokenAmount::from(10_000u32),
         METHOD_SEND,
