@@ -68,7 +68,7 @@ impl Harness {
 
     pub fn construct_and_verify(&self, rt: &mut MockRuntime) {
         self.construct(rt);
-        let st: State = rt.get_state().unwrap();
+        let st: State = rt.get_state();
         let store = &rt.store;
 
         let empty_bottomup_array =
