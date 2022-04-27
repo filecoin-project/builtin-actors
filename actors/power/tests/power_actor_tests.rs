@@ -211,9 +211,6 @@ fn power_and_ledge_accounted_below_threshold() {
 
     const MINER1: Address = Address::new_id(111);
     const MINER2: Address = Address::new_id(112);
-    // const miner3: Address = Address::new_id(113);
-    // const miner4: Address = Address::new_id(114);
-    // const miner5: Address = Address::new_id(115);
 
     h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
     h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER2).unwrap();
