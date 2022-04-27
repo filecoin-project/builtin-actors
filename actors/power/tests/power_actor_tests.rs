@@ -357,7 +357,7 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
     )
     .unwrap();
 
-    // explicitly delete miner clain
+    // explicitly delete miner claim
     h.delete_claim(&mut rt, &*MINER);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
