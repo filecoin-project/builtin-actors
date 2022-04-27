@@ -33,7 +33,9 @@ use fvm_shared::{ActorID, MethodNum};
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
-use crate::runtime::{ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls};
+use crate::runtime::{
+    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier,
+};
 use crate::{actor_error, ActorError};
 
 lazy_static! {
@@ -949,7 +951,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     }
 }
 
-impl Syscalls for MockRuntime {
+impl Primitives for MockRuntime {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1020,7 +1022,9 @@ impl Syscalls for MockRuntime {
         }
         Ok(exp.cid)
     }
+}
 
+impl Verifier for MockRuntime {
     fn verify_seal(&self, seal: &SealVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations

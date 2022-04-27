@@ -38,6 +38,7 @@ butterflynet = []
 calibrationnet = []
 devnet = []
 testing = []
+testing-fake-proofs = []
 
 [workspace]
 members = [
