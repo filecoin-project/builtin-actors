@@ -209,7 +209,7 @@ const MINER4: Address = Address::new_id(114);
 const MINER5: Address = Address::new_id(115);
 
 #[test]
-fn power_and_ledge_accounted_below_threshold() {
+fn power_and_pledge_accounted_below_threshold() {
     let small_power_unit = &StoragePower::from(1_000_000);
     let small_power_unit_x2 = &(small_power_unit * 2);
     let small_power_unit_x3 = &(small_power_unit * 3);
