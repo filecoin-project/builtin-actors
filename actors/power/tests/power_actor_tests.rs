@@ -4,7 +4,7 @@ use fil_actors_runtime::test_utils::{
     expect_abort, ACCOUNT_ACTOR_CODE_ID, CALLER_TYPES_SIGNABLE, MINER_ACTOR_CODE_ID,
     SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -14,7 +14,8 @@ use num_traits::Zero;
 use std::ops::Neg;
 
 use fil_actor_power::{
-    Actor as PowerActor, CreateMinerParams, Method, State, UpdateClaimedPowerParams,
+    consensus_miner_min_power, Actor as PowerActor, CreateMinerParams, Method, State,
+    UpdateClaimedPowerParams,
 };
 
 use crate::harness::*;
@@ -203,6 +204,9 @@ fn claimed_power_given_claim_does_not_exist_should_fail() {
 
 const MINER1: Address = Address::new_id(111);
 const MINER2: Address = Address::new_id(112);
+const MINER3: Address = Address::new_id(113);
+const MINER4: Address = Address::new_id(114);
+const MINER5: Address = Address::new_id(115);
 
 #[test]
 fn power_and_ledge_accounted_below_threshold() {
@@ -274,4 +278,51 @@ fn new_miner_updates_miner_above_min_power_count() {
         let st: State = rt.get_state();
         assert_eq!(test.expected_miners, st.miner_above_min_power_count);
     }
+}
+
+#[test]
+fn power_accounting_crossing_threshold() {
+    let small_power_unit = &StoragePower::from(1_000_000);
+    let small_power_unit_x10 = &(small_power_unit * 10);
+
+    let power_unit = &consensus_miner_min_power(
+        &Policy::default(),
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+    )
+    .unwrap();
+    let power_unit_x10 = &(power_unit * 10);
+
+    let (mut h, mut rt) = setup();
+
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER2).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER3).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER4).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER5).unwrap();
+
+    // Use qa power 10x raw power to show it's not being used for threshold calculations.
+    h.update_claimed_power(&mut rt, MINER1, small_power_unit, small_power_unit_x10);
+    h.update_claimed_power(&mut rt, MINER2, small_power_unit, small_power_unit_x10);
+
+    h.update_claimed_power(&mut rt, MINER3, power_unit, power_unit_x10);
+    h.update_claimed_power(&mut rt, MINER4, power_unit, power_unit_x10);
+    h.update_claimed_power(&mut rt, MINER5, power_unit, power_unit_x10);
+
+    // Below threshold small miner power is counted
+    let expected_total_below = small_power_unit * 2 + power_unit * 3;
+    h.expect_total_power_eager(&mut rt, &expected_total_below, &(&expected_total_below * 10));
+
+    // Above threshold (power.ConsensusMinerMinMiners = 4) small miner power is ignored
+    let delta = &(power_unit - small_power_unit);
+    h.update_claimed_power(&mut rt, MINER2, delta, &(delta * 10));
+    let expected_total_above = &(power_unit * 4);
+    h.expect_total_power_eager(&mut rt, expected_total_above, &(expected_total_above * 10));
+
+    let st: State = rt.get_state();
+    assert_eq!(4, st.miner_above_min_power_count);
+
+    // Less than 4 miners above threshold again small miner power is counted again
+    h.update_claimed_power(&mut rt, MINER4, &delta.neg(), &(delta.neg() * 10));
+    h.expect_total_power_eager(&mut rt, &expected_total_below, &(&expected_total_below * 10));
+    h.check_state();
 }
