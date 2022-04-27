@@ -1,12 +1,13 @@
 use fil_actor_power::ext::init::{ExecParams, EXEC_METHOD};
 use fil_actor_power::ext::miner::MinerConstructorParams;
 use fil_actors_runtime::test_utils::{
-    expect_abort, ACCOUNT_ACTOR_CODE_ID, CALLER_TYPES_SIGNABLE, MINER_ACTOR_CODE_ID,
-    SYSTEM_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, CALLER_TYPES_SIGNABLE,
+    MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -330,6 +331,43 @@ fn enroll_cron_epoch_given_negative_epoch_should_fail() {
         rt.call::<PowerActor>(
             Method::EnrollCronEvent as u64,
             &RawBytes::serialize(&params).unwrap(),
+        ),
+    );
+
+    rt.verify();
+    h.check_state();
+}
+
+#[test]
+fn given_no_miner_claim_update_pledge_total_should_abort() {
+    let (mut h, mut rt) = setup();
+
+    let peer = "miner".as_bytes().to_vec();
+    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
+    h.create_miner(
+        &mut rt,
+        &OWNER,
+        &OWNER,
+        &MINER,
+        &ACTOR,
+        peer,
+        multiaddrs,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        &TokenAmount::zero(),
+    )
+    .unwrap();
+
+    // explicitly delete miner claim
+    h.delete_claim(&mut rt, &*MINER);
+
+    rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "unknown miner",
+        rt.call::<PowerActor>(
+            Method::UpdatePledgeTotal as u64,
+            &RawBytes::serialize(BigIntSer(&TokenAmount::from(1_000_000))).unwrap(),
         ),
     );
 
