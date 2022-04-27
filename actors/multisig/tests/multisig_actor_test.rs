@@ -355,27 +355,113 @@ fn test_remove_signer() {
 
 // SwapSigner
 #[test]
-fn test_happy_path_signer_swap() {
+fn test_signer_swap() {
     let msig = Address::new_id(100);
     let anne = Address::new_id(101);
     let bob = Address::new_id(102);
+    let bob_non_id = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
     let chuck = Address::new_id(103);
-    let mut rt = construct_runtime(msig);
-    let initial_signers = vec![anne, bob];
+    let darlene = Address::new_id(104);
     let num_approvals: u64 = 1;
 
-    // construct
-    let h = util::ActorHarness::new();
-    h.construct_and_verify(&mut rt, num_approvals, 0, 0, initial_signers);
+    struct TestCase<'a> {
+        #[allow(dead_code)]
+        desc: &'a str,
 
-    // swap bob for chuck
-    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-    let ret = h.swap_signers(&mut rt, bob, chuck).unwrap();
-    assert_eq!(RawBytes::default(), ret);
+        initial_signers: Vec<Address>,
+        swap_to: Address,
+        swap_from: Address,
+        expect_signers: Vec<Address>,
+        code: ExitCode,
+    }
 
-    let expected_signers = vec![anne, chuck];
-    let st: State = rt.get_state();
-    assert_eq!(expected_signers, st.signers);
+    let test_cases = vec![
+        TestCase {
+            desc: "happy path remove signer",
+            initial_signers: vec![anne, bob],
+            swap_to: chuck,
+            swap_from: bob,
+            expect_signers: vec![anne, chuck],
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "swap signer when multi-sig is created with it's ID address but we ask for a swap with it's non-ID address",
+            initial_signers: vec![anne, bob],
+            swap_to: chuck,
+            swap_from: bob_non_id,
+            expect_signers: vec![anne, chuck],
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "swap signer when multi-sig is created with it's non-ID address but we ask for a swap with it's ID address",
+            initial_signers: vec![anne, bob_non_id],
+            swap_to: chuck,
+            swap_from: bob,
+            expect_signers: vec![anne, chuck],
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "swap signer when multi-sig is created with it's non-ID address and we ask for a swap with it's non-ID address",
+            initial_signers: vec![anne, bob_non_id],
+            swap_to: chuck,
+            swap_from: bob_non_id,
+            expect_signers: vec![anne, chuck],
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "fail to swap when from signer not found",
+            initial_signers: vec![anne, bob],
+            swap_to: chuck,
+            swap_from: darlene,
+            expect_signers: vec![],
+            code: ExitCode::USR_FORBIDDEN,
+        },
+        TestCase {
+            desc: "fail to swap when to signer already present",
+            initial_signers: vec![anne, bob],
+            swap_to: bob,
+            swap_from: anne,
+            expect_signers: vec![],
+            code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        },
+        TestCase {
+            desc: "fail to swap when to signer ID address already present(even though we have the non-ID address)",
+            initial_signers: vec![anne, bob_non_id],
+            swap_to: bob,
+            swap_from: anne,
+            expect_signers: vec![],
+            code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        },
+        TestCase {
+            desc: "fail to swap when to signer non-ID address already present(even though we have the ID address)",
+            initial_signers: vec![anne, bob],
+            swap_to: bob_non_id,
+            swap_from: anne,
+            expect_signers: vec![],
+            code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        }
+    ];
+
+    for tc in test_cases {
+        let mut rt = construct_runtime(msig);
+        rt.id_addresses.insert(bob_non_id, bob);
+        let h = util::ActorHarness::new();
+        h.construct_and_verify(&mut rt, num_approvals, 0, 0, tc.initial_signers);
+
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        let ret = h.swap_signers(&mut rt, tc.swap_from, tc.swap_to);
+        match tc.code {
+            ExitCode::OK => {
+                assert_eq!(RawBytes::default(), ret.unwrap());
+                let st: State = rt.get_state();
+                assert_eq!(tc.expect_signers, st.signers);
+            }
+            _ => assert_eq!(
+                tc.code,
+                ret.expect_err("swap signer return expected to be actor error").exit_code()
+            ),
+        };
+    }
 }
 
 // Approve
