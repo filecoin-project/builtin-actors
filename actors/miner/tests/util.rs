@@ -1336,13 +1336,8 @@ impl ActorHarness {
 
     pub fn find_sector(&self, rt: &MockRuntime, sno: SectorNumber) -> (Deadline, Partition) {
         let state = self.get_state(rt);
-        let deadlines = state.load_deadlines(&rt.store).unwrap();
         let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sno).unwrap();
-
-        let deadline = deadlines.load_deadline(&rt.policy, &rt.store, dlidx).unwrap();
-        let partition = deadline.load_partition(&rt.store, pidx).unwrap();
-
-        (deadline, partition)
+        self.get_deadline_and_partition(rt, dlidx, pidx)
     }
 
     fn current_deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
