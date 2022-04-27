@@ -360,3 +360,51 @@ fn all_of_one_miners_power_disappears_when_that_miner_dips_below_min_power_thres
     h.expect_total_power_eager(&mut rt, expected_total, expected_total);
     h.check_state();
 }
+
+#[test]
+fn power_gets_added_when_miner_crosses_min_power_but_not_before() {
+    let power_unit = &consensus_miner_min_power(
+        &Policy::default(),
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+    )
+    .unwrap();
+
+    // Setup four miners above threshold
+    let (mut h, mut rt) = setup();
+
+    // create 4 miners that meet minimum
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER2).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER3).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER4).unwrap();
+
+    h.update_claimed_power(&mut rt, MINER1, power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER2, power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER3, power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER4, power_unit, power_unit);
+
+    h.expect_miners_above_min_power(&mut rt, 4);
+    let expected_total = &(power_unit * 4);
+    h.expect_total_power_eager(&mut rt, expected_total, expected_total);
+
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER5).unwrap();
+    let below_limit_unit = power_unit / 2;
+
+    // below limit actors power is not added
+    h.update_claimed_power(&mut rt, MINER5, &below_limit_unit, &below_limit_unit);
+    h.expect_miners_above_min_power(&mut rt, 4);
+    h.expect_total_power_eager(&mut rt, expected_total, expected_total);
+
+    // just below limit
+    let delta = power_unit - below_limit_unit - 1;
+    h.update_claimed_power(&mut rt, MINER5, &delta, &delta);
+    h.expect_miners_above_min_power(&mut rt, 4);
+    h.expect_total_power_eager(&mut rt, expected_total, expected_total);
+
+    // at limit power is added
+    h.update_claimed_power(&mut rt, MINER5, &StoragePower::from(1), &StoragePower::from(1));
+    h.expect_miners_above_min_power(&mut rt, 5);
+    let new_expected_total = expected_total + power_unit;
+    h.expect_total_power_eager(&mut rt, &new_expected_total, &new_expected_total);
+    h.check_state();
+}
