@@ -529,6 +529,11 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn set_received(&mut self, amount: TokenAmount) {
+        self.value_received = amount;
+    }
+
+    #[allow(dead_code)]
     pub fn set_circulating_supply(&mut self, circ_supply: TokenAmount) {
         self.circulating_supply = circ_supply;
     }
