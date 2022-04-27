@@ -229,7 +229,6 @@ fn power_and_pledge_accounted_below_threshold() {
     // Add power for miner1
     h.update_claimed_power(&mut rt, MINER1, small_power_unit, small_power_unit_x2);
     h.expect_total_power_eager(&mut rt, small_power_unit, small_power_unit_x2);
-    assert!(ret.pledge_collateral.is_zero());
 
     // Add power and pledge for miner2
     h.update_claimed_power(&mut rt, MINER2, small_power_unit, small_power_unit);
