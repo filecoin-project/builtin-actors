@@ -202,9 +202,47 @@ mod paych_constructor {
             Default::default(),
             ExitCode::OK,
         );
-        
+
         rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
         let params = ConstructorParams { from: non_id_addr, to: to_addr };
+        expect_error(
+            &mut rt,
+            METHOD_CONSTRUCTOR,
+            &RawBytes::serialize(&params).unwrap(),
+            ExitCode::USR_ILLEGAL_STATE,
+        );
+    }
+
+    #[test]
+    fn target_addr_not_resolvable_to_id_addr() {
+        let from_addr = Address::new_id(5555_u64);
+        let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
+        let caller_addr = Address::new_id(TEST_CALLER_ADDR);
+        #[allow(overflowing_literals)]
+        let non_id_addr = Address::new_bls(&[501; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+
+        let mut actor_code_cids = HashMap::default();
+        actor_code_cids.insert(from_addr, *ACCOUNT_ACTOR_CODE_ID);
+
+        let mut rt = MockRuntime {
+            receiver: paych_addr,
+            caller: caller_addr,
+            caller_type: *INIT_ACTOR_CODE_ID,
+            actor_code_cids,
+            ..Default::default()
+        };
+
+        rt.expect_send(
+            non_id_addr,
+            METHOD_SEND,
+            Default::default(),
+            TokenAmount::from(0u8),
+            Default::default(),
+            ExitCode::OK,
+        );
+
+        rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+        let params = ConstructorParams { from: from_addr, to: non_id_addr };
         expect_error(
             &mut rt,
             METHOD_CONSTRUCTOR,
