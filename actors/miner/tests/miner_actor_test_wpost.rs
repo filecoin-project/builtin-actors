@@ -699,7 +699,7 @@ fn successful_recoveries_recover_power() {
     let infos = h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let pwr = miner::power_for_sectors(h.sector_size, &infos);
 
-    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0));
+    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
     //let initial_locked = h.get_locked_funds(&rt);
 
     // Submit first PoSt to ensure we are sufficiently early to add a fault
@@ -718,7 +718,7 @@ fn successful_recoveries_recover_power() {
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
-    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0));
+    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8));
 
     // advance to epoch when submitPoSt is due
     let mut dlinfo = h.deadline(&rt);
@@ -773,7 +773,7 @@ fn skipped_faults_adjust_power() {
 
     let infos = h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0));
+    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
@@ -828,7 +828,7 @@ fn skipped_faults_adjust_power() {
         params,
         PoStConfig::with_expected_power_delta(&pwr_delta),
     );
-    expect_abort_contains_message(ExitCode::ErrIllegalArgument, "no active sectors", result);
+    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no active sectors", result);
     rt.reset();
 
     // The second sector is detected faulty but pays nothing yet.
@@ -885,11 +885,11 @@ fn skipping_all_sectors_in_a_partition_rejected() {
     };
     let result =
         h.submit_window_post_raw(&mut rt, &dlinfo, infos.clone(), params, PoStConfig::empty());
-    expect_abort(ExitCode::ErrIllegalArgument, result);
+    expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
     rt.reset();
 
     // These sectors are detected faulty and pay no penalty this time.
-    h.advance_deadline(&mut rt, CronConfig::with_continued_faults_penalty(TokenAmount::from(0)));
+    h.advance_deadline(&mut rt, CronConfig::with_continued_faults_penalty(TokenAmount::from(0u8)));
     check_state_invariants(&rt);
 }
 
@@ -909,7 +909,7 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
 
     let infos = h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0));
+    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
 
     // Submit first PoSt to ensure we are sufficiently early to add a fault
     // advance to next proving period
@@ -928,7 +928,7 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
-    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0));
+    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8));
 
     // Skip to the due deadline.
     let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
@@ -990,7 +990,7 @@ fn skipping_a_fault_from_the_wrong_partition_is_an_error() {
     };
     let result = h.submit_window_post_raw(&mut rt, &dlinfo, infos, params, PoStConfig::empty());
     expect_abort_contains_message(
-        ExitCode::ErrIllegalArgument,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
         "skipped faults contains sectors outside partition",
         result,
     );
@@ -1043,7 +1043,7 @@ fn cannot_dispute_posts_when_the_challenge_window_is_open() {
         &RawBytes::serialize(params).unwrap(),
     );
     expect_abort_contains_message(
-        ExitCode::ErrForbidden,
+        ExitCode::USR_FORBIDDEN,
         "can only dispute window posts during the dispute window",
         result,
     );
@@ -1106,9 +1106,9 @@ fn can_dispute_up_till_window_end_but_not_after() {
         *REWARD_ACTOR_ADDR,
         reward::Method::ThisEpochReward as u64,
         RawBytes::default(),
-        TokenAmount::from(0),
+        TokenAmount::from(0u8),
         RawBytes::serialize(current_reward).unwrap(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     let network_power = BigInt::from(1i64 << 50);
@@ -1122,9 +1122,9 @@ fn can_dispute_up_till_window_end_but_not_after() {
         *STORAGE_POWER_ACTOR_ADDR,
         power::Method::CurrentTotalPower as u64,
         RawBytes::default(),
-        TokenAmount::from(0),
+        TokenAmount::from(0u8),
         RawBytes::serialize(current_power).unwrap(),
-        ExitCode::Ok,
+        ExitCode::OK,
     );
 
     let result = rt.call::<miner::Actor>(
@@ -1132,7 +1132,7 @@ fn can_dispute_up_till_window_end_but_not_after() {
         &RawBytes::serialize(params).unwrap(),
     );
     expect_abort_contains_message(
-        ExitCode::ErrForbidden,
+        ExitCode::USR_FORBIDDEN,
         "can only dispute window posts during the dispute window",
         result,
     );
@@ -1162,7 +1162,7 @@ fn cant_dispute_up_with_an_invalid_deadline() {
         miner::Method::DisputeWindowedPoSt as u64,
         &RawBytes::serialize(params).unwrap(),
     );
-    expect_abort_contains_message(ExitCode::ErrIllegalArgument, "invalid deadline", result);
+    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "invalid deadline", result);
     rt.verify();
 }
 

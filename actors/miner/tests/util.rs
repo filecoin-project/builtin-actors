@@ -180,7 +180,7 @@ impl ActorHarness {
             self.worker,
             AccountMethod::PubkeyAddress as u64,
             RawBytes::default(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::serialize(self.worker_key).unwrap(),
             ExitCode::OK,
         );
@@ -379,7 +379,7 @@ impl ActorHarness {
                 *STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
                 RawBytes::serialize(vdparams).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::serialize(vdreturn).unwrap(),
                 ExitCode::OK,
             );
@@ -387,7 +387,7 @@ impl ActorHarness {
         // in the original test the else branch does some redundant checks which we can omit.
 
         let state = self.get_state(rt);
-        if state.fee_debt > TokenAmount::from(0) {
+        if state.fee_debt > TokenAmount::from(0u8) {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -409,7 +409,7 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 RawBytes::serialize(cron_params).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -451,7 +451,7 @@ impl ActorHarness {
             *REWARD_ACTOR_ADDR,
             RewardMethod::ThisEpochReward as u64,
             RawBytes::default(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::serialize(current_reward).unwrap(),
             ExitCode::OK,
         );
@@ -459,7 +459,7 @@ impl ActorHarness {
             *STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::CurrentTotalPower as u64,
             RawBytes::default(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::serialize(current_power).unwrap(),
             ExitCode::OK,
         );
@@ -499,7 +499,7 @@ impl ActorHarness {
             *STORAGE_MARKET_ACTOR_ADDR,
             MarketMethod::ComputeDataCommitment as u64,
             RawBytes::serialize(cdc_params).unwrap(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::serialize(cdc_ret).unwrap(),
             ExitCode::OK,
         );
@@ -533,7 +533,7 @@ impl ActorHarness {
             *STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::SubmitPoRepForBulkVerify as u64,
             RawBytes::serialize(seal).unwrap(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -603,7 +603,7 @@ impl ActorHarness {
                     *STORAGE_MARKET_ACTOR_ADDR,
                     MarketMethod::ActivateDeals as u64,
                     RawBytes::serialize(params).unwrap(),
-                    TokenAmount::from(0),
+                    TokenAmount::from(0u8),
                     RawBytes::default(),
                     exit,
                 );
@@ -613,7 +613,7 @@ impl ActorHarness {
         }
 
         if !valid_pcs.is_empty() {
-            let mut expected_pledge = TokenAmount::from(0);
+            let mut expected_pledge = TokenAmount::from(0u8);
             let mut expected_qa_power = BigInt::from(0);
             let mut expected_raw_power = BigInt::from(0);
 
@@ -652,12 +652,12 @@ impl ActorHarness {
                 }
             }
 
-            if expected_pledge != TokenAmount::from(0) {
+            if expected_pledge != TokenAmount::from(0u8) {
                 rt.expect_send(
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
                     RawBytes::serialize(BigIntSer(&expected_pledge)).unwrap(),
-                    TokenAmount::from(0),
+                    TokenAmount::from(0u8),
                     RawBytes::default(),
                     ExitCode::OK,
                 );
@@ -729,20 +729,20 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdateClaimedPower as u64,
                 RawBytes::serialize(params).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::default(),
                 ExitCode::OK,
             );
         }
 
-        let mut penalty_total = TokenAmount::from(0);
-        let mut pledge_delta = TokenAmount::from(0);
+        let mut penalty_total = TokenAmount::from(0u8);
+        let mut pledge_delta = TokenAmount::from(0u8);
 
         penalty_total += cfg.continued_faults_penalty.clone();
         penalty_total += cfg.repaid_fee_debt.clone();
         penalty_total += cfg.expired_precommit_penalty.clone();
 
-        if penalty_total != TokenAmount::from(0) {
+        if penalty_total != TokenAmount::from(0u8) {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -766,12 +766,12 @@ impl ActorHarness {
         pledge_delta += cfg.expired_sectors_pledge_delta;
         pledge_delta -= immediately_vesting_funds(rt, &state);
 
-        if pledge_delta != TokenAmount::from(0) {
+        if pledge_delta != TokenAmount::from(0u8) {
             rt.expect_send(
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdatePledgeTotal as u64,
                 RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -784,7 +784,7 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 RawBytes::serialize(params).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -902,7 +902,7 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdateClaimedPower as u64,
                 RawBytes::serialize(claim).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -1009,7 +1009,7 @@ impl ActorHarness {
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdateClaimedPower as u64,
                     RawBytes::serialize(claim).unwrap(),
-                    TokenAmount::from(0),
+                    TokenAmount::from(0u8),
                     RawBytes::default(),
                     ExitCode::OK,
                 );
@@ -1045,7 +1045,7 @@ impl ActorHarness {
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
                     RawBytes::serialize(BigIntSer(&expected_pledge_delta)).unwrap(),
-                    TokenAmount::from(0),
+                    TokenAmount::from(0u8),
                     RawBytes::default(),
                     ExitCode::OK,
                 );
@@ -1114,19 +1114,19 @@ impl ActorHarness {
             *STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::UpdatePledgeTotal as u64,
             RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
-        if penalty > TokenAmount::from(0) {
+        if penalty > TokenAmount::from(0u8) {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 RawBytes::default(),
                 penalty.clone(),
                 RawBytes::default(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
         }
 
@@ -1273,9 +1273,9 @@ impl ActorHarness {
             *STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::UpdateClaimedPower as u64,
             RawBytes::serialize(claim).unwrap(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::default(),
-            ExitCode::Ok,
+            ExitCode::OK,
         );
 
         // Calculate params from faulted sector infos
@@ -1299,14 +1299,14 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        if expected_debt_repaid > TokenAmount::from(0) {
+        if expected_debt_repaid > TokenAmount::from(0u8) {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 RawBytes::default(),
                 expected_debt_repaid,
                 RawBytes::default(),
-                ExitCode::Ok,
+                ExitCode::OK,
             );
         }
 
@@ -1448,11 +1448,11 @@ impl CronConfig {
             expected_enrollment: 0,
             detected_faults_power_delta: None,
             expired_sectors_power_delta: None,
-            expired_sectors_pledge_delta: TokenAmount::from(0),
-            continued_faults_penalty: TokenAmount::from(0),
-            expired_precommit_penalty: TokenAmount::from(0),
-            repaid_fee_debt: TokenAmount::from(0),
-            penalty_from_unlocked: TokenAmount::from(0),
+            expired_sectors_pledge_delta: TokenAmount::from(0u8),
+            continued_faults_penalty: TokenAmount::from(0u8),
+            expired_precommit_penalty: TokenAmount::from(0u8),
+            repaid_fee_debt: TokenAmount::from(0u8),
+            penalty_from_unlocked: TokenAmount::from(0u8),
         }
     }
 
@@ -1521,7 +1521,7 @@ enum MhCode {
 
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
-    let mut sum = TokenAmount::from(0);
+    let mut sum = TokenAmount::from(0u8);
     for vf in vesting.funds {
         if vf.epoch < rt.epoch {
             sum += vf.amount;
