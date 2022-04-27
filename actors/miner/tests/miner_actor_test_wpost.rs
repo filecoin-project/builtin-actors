@@ -754,6 +754,8 @@ fn successful_recoveries_recover_power() {
     //      We thought it was the hasher, which was buggy, but it is still there and needs
     //      to be investigated as it will keep coming up.
     // assert_eq!(initial_locked, h.get_locked_funds(&rt));
+
+//   This needs to be investigated and resolved before merging. We know for sure the problem is that the rust code vests when the go code does not. The rust code running for enough epochs to vest because it is assigned to a different deadline still seems like a good hypothesis.
     check_state_invariants(&rt);
 }
 
