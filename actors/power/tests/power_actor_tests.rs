@@ -408,3 +408,31 @@ fn power_gets_added_when_miner_crosses_min_power_but_not_before() {
     h.expect_total_power_eager(&mut rt, &new_expected_total, &new_expected_total);
     h.check_state();
 }
+
+#[test]
+fn threshold_only_depends_on_raw_power_not_qa_power() {
+    let power_unit = &consensus_miner_min_power(
+        &Policy::default(),
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+    )
+    .unwrap();
+    let half_power_unit = &(power_unit / 2);
+
+    let (mut h, mut rt) = setup();
+
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER2).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER3).unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER4).unwrap();
+
+    h.update_claimed_power(&mut rt, MINER1, half_power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER2, half_power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER3, half_power_unit, power_unit);
+    h.expect_miners_above_min_power(&mut rt, 0);
+
+    h.update_claimed_power(&mut rt, MINER1, half_power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER2, half_power_unit, power_unit);
+    h.update_claimed_power(&mut rt, MINER3, half_power_unit, power_unit);
+    h.expect_miners_above_min_power(&mut rt, 3);
+    h.check_state();
+}
