@@ -15,7 +15,7 @@ use std::ops::Neg;
 
 use fil_actor_power::{
     consensus_miner_min_power, Actor as PowerActor, CreateMinerParams, Method, State,
-    UpdateClaimedPowerParams,
+    UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
 };
 
 use crate::harness::*;
@@ -209,7 +209,9 @@ const MINER4: Address = Address::new_id(114);
 const MINER5: Address = Address::new_id(115);
 
 #[test]
-fn power_and_ledge_accounted_below_threshold() {
+fn power_and_pledge_accounted_below_threshold() {
+    assert_eq!(CONSENSUS_MINER_MIN_MINERS, 4);
+
     let small_power_unit = &StoragePower::from(1_000_000);
     let small_power_unit_x2 = &(small_power_unit * 2);
     let small_power_unit_x3 = &(small_power_unit * 3);
@@ -227,7 +229,6 @@ fn power_and_ledge_accounted_below_threshold() {
     // Add power for miner1
     h.update_claimed_power(&mut rt, MINER1, small_power_unit, small_power_unit_x2);
     h.expect_total_power_eager(&mut rt, small_power_unit, small_power_unit_x2);
-    assert!(ret.pledge_collateral.is_zero());
 
     // Add power and pledge for miner2
     h.update_claimed_power(&mut rt, MINER2, small_power_unit, small_power_unit);
@@ -291,6 +292,8 @@ fn power_accounting_crossing_threshold() {
     )
     .unwrap();
     let power_unit_x10 = &(power_unit * 10);
+
+    assert!(small_power_unit < power_unit);
 
     let (mut h, mut rt) = setup();
 
