@@ -3,7 +3,7 @@ use fil_actor_miner::{Method as MinerMethod, MinerConstructorParams};
 use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actors_runtime::cbor::serialize;
 
-use fil_actors_runtime::{INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
