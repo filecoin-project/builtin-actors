@@ -200,7 +200,7 @@ fn test_add_signer() {
             ExitCode::OK => {
                 let ret = h.add_signer(&mut rt, tc.add_signer, tc.increase).unwrap();
                 assert_eq!(RawBytes::default(), ret);
-                let st = rt.get_state::<State>().unwrap();
+                let st: State = rt.get_state();
                 assert_eq!(tc.expect_signers, st.signers);
                 assert_eq!(tc.expect_approvals, st.num_approvals_threshold);
             }
@@ -212,56 +212,256 @@ fn test_add_signer() {
 // RemoveSigner
 
 #[test]
-fn test_happy_path_remove_signer() {
+fn test_remove_signer() {
     let msig = Address::new_id(100);
     let anne = Address::new_id(101);
+    let anne_non_id = Address::new_bls(&[3u8; BLS_PUB_LEN]).unwrap();
     let bob = Address::new_id(102);
     let chuck = Address::new_id(103);
-    let mut rt = construct_runtime(msig);
-    let initial_signers = vec![anne, bob, chuck];
-    let initial_approvals: u64 = 2;
+    let richard = Address::new_id(104);
 
-    // construct
-    let h = util::ActorHarness::new();
-    h.construct_and_verify(&mut rt, initial_approvals, 0, 0, initial_signers);
+    struct TestCase<'a> {
+        #[allow(dead_code)]
+        desc: &'a str,
 
-    // remove chuck
-    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-    let ret = h.remove_signer(&mut rt, chuck, false).unwrap();
-    assert_eq!(RawBytes::default(), ret);
+        initial_signers: Vec<Address>,
+        initial_approvals: u64,
 
-    // check that the state matches what we expect
-    let expected_signers = vec![anne, bob];
-    let expected_approvals = initial_approvals;
+        remove_signer: Address,
+        decrease: bool,
 
-    let st = rt.get_state::<State>().unwrap();
-    assert_eq!(expected_signers, st.signers);
-    assert_eq!(expected_approvals, st.num_approvals_threshold);
+        expect_signers: Vec<Address>,
+        expect_approvals: u64,
+        code: ExitCode,
+    }
+
+    let test_cases = vec![
+        TestCase {
+            desc: "happy path remove signer",
+            initial_signers: vec![anne, bob, chuck],
+            initial_approvals: 2,
+            remove_signer: chuck,
+            decrease: false,
+            expect_signers: vec![anne, bob],
+            expect_approvals: 2,
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "remove signer and decrease threshold",
+            initial_signers: vec![anne, bob, chuck],
+            initial_approvals: 2,
+            remove_signer: chuck,
+            decrease: true,
+            expect_signers: vec![anne, bob],
+            expect_approvals: 1,
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "remove signer when msig is created with an id addr and removed with pk addr",
+            initial_signers: vec![anne, bob, chuck],
+            initial_approvals: 2,
+            remove_signer: anne_non_id,
+            decrease: true,
+            expect_signers: vec![bob, chuck],
+            expect_approvals: 1,
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "remove signer when msig created with pk addr and removed with id addr",
+            initial_signers: vec![anne_non_id, bob, chuck],
+            initial_approvals: 2,
+            remove_signer: anne,
+            decrease: true,
+            expect_signers: vec![bob, chuck],
+            expect_approvals: 1,
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "remove signer when msig is created and removed with pk addr",
+            initial_signers: vec![anne_non_id, bob, chuck],
+            initial_approvals: 2,
+            remove_signer: anne_non_id,
+            decrease: true,
+            expect_signers: vec![bob, chuck],
+            expect_approvals: 1,
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "fail signer if decrease is set to false and number of signers below threshold",
+            initial_signers: vec![anne, bob, chuck],
+            initial_approvals: 3,
+            remove_signer: chuck,
+            decrease: false,
+            expect_signers: vec![],
+            expect_approvals: 0,
+            code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        },
+        TestCase {
+            desc: "remove signer from single signer list",
+            initial_signers: vec![anne],
+            initial_approvals: 1,
+            remove_signer: anne,
+            decrease: false,
+            expect_signers: vec![],
+            expect_approvals: 0,
+            code: ExitCode::USR_FORBIDDEN,
+        },
+        TestCase {
+            desc: "fail to remove non-signer",
+            initial_signers: vec![anne, bob, chuck],
+            initial_approvals: 2,
+            remove_signer: richard,
+            decrease: false,
+            expect_signers: vec![],
+            expect_approvals: 0,
+            code: ExitCode::USR_FORBIDDEN,
+        },
+        TestCase {
+            desc: "fail to remove a signer and decrease approvals below 1",
+            initial_signers: vec![anne, bob, chuck],
+            initial_approvals: 1,
+            remove_signer: anne,
+            decrease: true,
+            expect_signers: vec![anne, bob, chuck],
+            expect_approvals: 1,
+            code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        },
+    ];
+
+    for tc in test_cases {
+        let mut rt = construct_runtime(msig);
+        rt.id_addresses.insert(anne_non_id, anne);
+        let h = util::ActorHarness::new();
+        h.construct_and_verify(&mut rt, tc.initial_approvals, 0, 0, tc.initial_signers);
+
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        let ret = h.remove_signer(&mut rt, tc.remove_signer, tc.decrease);
+
+        match tc.code {
+            ExitCode::OK => {
+                assert_eq!(RawBytes::default(), ret.unwrap());
+                let st: State = rt.get_state();
+                assert_eq!(tc.expect_signers, st.signers);
+                assert_eq!(tc.expect_approvals, st.num_approvals_threshold);
+            }
+            _ => assert_eq!(
+                tc.code,
+                ret.expect_err("remove signer return expected to be actor error").exit_code()
+            ),
+        }
+        rt.verify();
+    }
 }
 
 // SwapSigner
 #[test]
-fn test_happy_path_signer_swap() {
+fn test_signer_swap() {
     let msig = Address::new_id(100);
     let anne = Address::new_id(101);
     let bob = Address::new_id(102);
+    let bob_non_id = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
     let chuck = Address::new_id(103);
-    let mut rt = construct_runtime(msig);
-    let initial_signers = vec![anne, bob];
+    let darlene = Address::new_id(104);
     let num_approvals: u64 = 1;
 
-    // construct
-    let h = util::ActorHarness::new();
-    h.construct_and_verify(&mut rt, num_approvals, 0, 0, initial_signers);
+    struct TestCase<'a> {
+        #[allow(dead_code)]
+        desc: &'a str,
 
-    // swap bob for chuck
-    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-    let ret = h.swap_signers(&mut rt, bob, chuck).unwrap();
-    assert_eq!(RawBytes::default(), ret);
+        initial_signers: Vec<Address>,
+        swap_to: Address,
+        swap_from: Address,
+        expect_signers: Vec<Address>,
+        code: ExitCode,
+    }
 
-    let expected_signers = vec![anne, chuck];
-    let st = rt.get_state::<State>().unwrap();
-    assert_eq!(expected_signers, st.signers);
+    let test_cases = vec![
+        TestCase {
+            desc: "happy path remove signer",
+            initial_signers: vec![anne, bob],
+            swap_to: chuck,
+            swap_from: bob,
+            expect_signers: vec![anne, chuck],
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "swap signer when multi-sig is created with it's ID address but we ask for a swap with it's non-ID address",
+            initial_signers: vec![anne, bob],
+            swap_to: chuck,
+            swap_from: bob_non_id,
+            expect_signers: vec![anne, chuck],
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "swap signer when multi-sig is created with it's non-ID address but we ask for a swap with it's ID address",
+            initial_signers: vec![anne, bob_non_id],
+            swap_to: chuck,
+            swap_from: bob,
+            expect_signers: vec![anne, chuck],
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "swap signer when multi-sig is created with it's non-ID address and we ask for a swap with it's non-ID address",
+            initial_signers: vec![anne, bob_non_id],
+            swap_to: chuck,
+            swap_from: bob_non_id,
+            expect_signers: vec![anne, chuck],
+            code: ExitCode::OK,
+        },
+        TestCase {
+            desc: "fail to swap when from signer not found",
+            initial_signers: vec![anne, bob],
+            swap_to: chuck,
+            swap_from: darlene,
+            expect_signers: vec![],
+            code: ExitCode::USR_FORBIDDEN,
+        },
+        TestCase {
+            desc: "fail to swap when to signer already present",
+            initial_signers: vec![anne, bob],
+            swap_to: bob,
+            swap_from: anne,
+            expect_signers: vec![],
+            code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        },
+        TestCase {
+            desc: "fail to swap when to signer ID address already present(even though we have the non-ID address)",
+            initial_signers: vec![anne, bob_non_id],
+            swap_to: bob,
+            swap_from: anne,
+            expect_signers: vec![],
+            code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        },
+        TestCase {
+            desc: "fail to swap when to signer non-ID address already present(even though we have the ID address)",
+            initial_signers: vec![anne, bob],
+            swap_to: bob_non_id,
+            swap_from: anne,
+            expect_signers: vec![],
+            code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        }
+    ];
+
+    for tc in test_cases {
+        let mut rt = construct_runtime(msig);
+        rt.id_addresses.insert(bob_non_id, bob);
+        let h = util::ActorHarness::new();
+        h.construct_and_verify(&mut rt, num_approvals, 0, 0, tc.initial_signers);
+
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        let ret = h.swap_signers(&mut rt, tc.swap_from, tc.swap_to);
+        match tc.code {
+            ExitCode::OK => {
+                assert_eq!(RawBytes::default(), ret.unwrap());
+                let st: State = rt.get_state();
+                assert_eq!(tc.expect_signers, st.signers);
+            }
+            _ => assert_eq!(
+                tc.code,
+                ret.expect_err("swap signer return expected to be actor error").exit_code()
+            ),
+        };
+    }
 }
 
 // Approve
@@ -383,6 +583,6 @@ fn test_change_threshold_happy_path_decrease_threshold() {
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
     let ret = h.change_num_approvals_threshold(&mut rt, 1).unwrap();
     assert_eq!(RawBytes::default(), ret);
-    let st = rt.get_state::<State>().unwrap();
+    let st: State = rt.get_state();
     assert_eq!(1, st.num_approvals_threshold);
 }

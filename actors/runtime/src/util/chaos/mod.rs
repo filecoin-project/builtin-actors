@@ -18,6 +18,7 @@ use crate::{actor_error, cbor, ActorError};
 
 mod state;
 mod types;
+mod unmarshallable;
 
 // * Updated to test-vectors commit: 907892394dd83fe1f4bf1a82146bbbcc58963148
 

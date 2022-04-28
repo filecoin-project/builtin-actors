@@ -22,7 +22,7 @@ use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
 use fil_actors_runtime::cbor::serialize_vec;
-use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -39,7 +39,7 @@ pub mod balance_table; // export for testing
 mod deal;
 #[doc(hidden)]
 pub mod ext; // export for testing
-mod policy;
+pub mod policy; // export for testing
 mod state;
 mod types;
 
@@ -431,7 +431,8 @@ impl Actor {
 
                 // We randomize the first epoch for when the deal will be processed so an attacker isn't able to
                 // schedule too many deals for the same tick.
-                let process_epoch = gen_rand_next_epoch(valid_deal.proposal.start_epoch, id);
+                let process_epoch =
+                    gen_rand_next_epoch(rt.policy(), valid_deal.proposal.start_epoch, id);
 
                 msm.deals_by_epoch.as_mut().unwrap().put(process_epoch, id).map_err(|e| {
                     e.downcast_default(
@@ -901,7 +902,7 @@ impl Actor {
                     }
 
                     let (slash_amount, next_epoch, remove_deal) =
-                        msm.update_pending_deal_state(&state, &deal, curr_epoch)?;
+                        msm.update_pending_deal_state(rt.policy(), &state, &deal, curr_epoch)?;
                     if slash_amount.is_negative() {
                         return Err(actor_error!(
                             illegal_state,
@@ -1101,9 +1102,13 @@ where
     Ok((total_deal_space_time, total_verified_space_time, total_deal_space))
 }
 
-fn gen_rand_next_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
-    let offset = deal_id as i64 % DEAL_UPDATES_INTERVAL;
-    let q = QuantSpec { unit: DEAL_UPDATES_INTERVAL, offset: 0 };
+pub fn gen_rand_next_epoch(
+    policy: &Policy,
+    start_epoch: ChainEpoch,
+    deal_id: DealID,
+) -> ChainEpoch {
+    let offset = deal_id as i64 % policy.deal_updates_interval;
+    let q = QuantSpec { unit: policy.deal_updates_interval, offset: 0 };
     let prev_day = q.quantize_down(start_epoch);
     if prev_day + offset >= start_epoch {
         return prev_day + offset;
@@ -1205,6 +1210,7 @@ where
     };
 
     let (min_provider_collateral, max_provider_collateral) = deal_provider_collateral_bounds(
+        rt.policy(),
         proposal.piece_size,
         network_raw_power,
         baseline_power,

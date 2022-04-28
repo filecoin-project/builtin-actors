@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - 'master'
+      - 'release/**'
+      - 'experimental/**'
+
+env:
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CARGO_INCREMENTAL: 0
+      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
+    strategy:
+      matrix:
+        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v2
+    - name: Install Rust toolchain
+      uses: ./.github/actions/rust-cargo-run
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        command: version
+    - name: Writing bundle
+      env:
+        BUILD_FIL_NETWORK: ${{ matrix.network }}
+      run: |
+        cargo run -- -o output/builtin-actors.car
+    - name: Publishing release and uploading bundle to GitHub
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_SHA: ${{ github.sha }}
+        BUILD_FIL_NETWORK: ${{ matrix.network }}
+      run: |
+        ./scripts/publish-release.sh

@@ -1,4 +1,10 @@
 use cid::Cid;
+use fil_actor_power::epoch_key;
+use fil_actor_power::CronEvent;
+use fil_actor_power::EnrollCronEventParams;
+use fil_actor_power::CRON_QUEUE_AMT_BITWIDTH;
+use fil_actor_power::CRON_QUEUE_HAMT_BITWIDTH;
+use fil_actors_runtime::Multimap;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_ipld_hamt::BytesKey;
@@ -18,7 +24,10 @@ use serde::Serialize;
 
 use fil_actor_power::ext::init::ExecParams;
 use fil_actor_power::ext::miner::MinerConstructorParams;
-use fil_actor_power::{ext, Claim, CreateMinerParams, CreateMinerReturn, Method, State};
+use fil_actor_power::{
+    ext, Claim, CreateMinerParams, CreateMinerReturn, CurrentTotalPowerReturn, Method, State,
+    UpdateClaimedPowerParams,
+};
 use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::{
@@ -69,7 +78,7 @@ pub fn setup() -> (Harness, MockRuntime) {
 pub struct Harness {
     miner_seq: i64,
     seal_proof: RegisteredSealProof,
-    window_post_proof: RegisteredPoStProof,
+    pub window_post_proof: RegisteredPoStProof,
     this_epoch_baseline_power: StoragePower,
     this_epoch_reward_smoothed: FilterEstimate,
 }
@@ -83,7 +92,7 @@ impl Harness {
 
     pub fn construct_and_verify(&self, rt: &mut MockRuntime) {
         self.construct(rt);
-        let st: State = rt.get_state().unwrap();
+        let st: State = rt.get_state();
         assert_eq!(StoragePower::zero(), st.total_raw_byte_power);
         assert_eq!(StoragePower::zero(), st.total_bytes_committed);
         assert_eq!(StoragePower::zero(), st.total_quality_adj_power);
@@ -153,8 +162,32 @@ impl Harness {
         Ok(())
     }
 
+    pub fn create_miner_basic(
+        &mut self,
+        rt: &mut MockRuntime,
+        owner: Address,
+        worker: Address,
+        miner: Address,
+    ) -> Result<(), ActorError> {
+        let label = format!("{}", self.miner_seq);
+        let actr_addr = Address::new_actor(label.as_bytes());
+        self.miner_seq += 1;
+        let peer = label.as_bytes().to_vec();
+        self.create_miner(
+            rt,
+            &owner,
+            &worker,
+            &miner,
+            &actr_addr,
+            peer,
+            vec![],
+            self.window_post_proof,
+            &TokenAmount::from(0),
+        )
+    }
+
     pub fn list_miners(&self, rt: &MockRuntime) -> Vec<Address> {
-        let st: State = rt.get_state().unwrap();
+        let st: State = rt.get_state();
         let claims: Map<_, Claim> =
             make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).unwrap();
         let keys = collect_keys(claims).unwrap();
@@ -162,14 +195,154 @@ impl Harness {
     }
 
     pub fn get_claim(&self, rt: &MockRuntime, miner: &Address) -> Option<Claim> {
-        let st: State = rt.get_state().unwrap();
+        let st: State = rt.get_state();
         let claims =
             make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).unwrap();
         claims.get(&miner.to_bytes()).unwrap().cloned()
     }
 
+    pub fn delete_claim(&mut self, rt: &mut MockRuntime, miner: &Address) {
+        let mut state: State = rt.get_state();
+
+        let mut claims =
+            make_map_with_root_and_bitwidth::<_, Claim>(&state.claims, rt.store(), HAMT_BIT_WIDTH)
+                .unwrap();
+        claims.delete(&miner.to_bytes()).expect("Failed to delete claim");
+        state.claims = claims.flush().unwrap();
+
+        rt.replace_state(&state);
+    }
+
+    pub fn enroll_cron_event(
+        &self,
+        rt: &mut MockRuntime,
+        epoch: ChainEpoch,
+        miner_address: &Address,
+        payload: &RawBytes,
+    ) {
+        rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address.to_owned());
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        let params = RawBytes::serialize(EnrollCronEventParams {
+            event_epoch: epoch,
+            payload: payload.clone(),
+        })
+        .unwrap();
+        rt.call::<PowerActor>(Method::EnrollCronEvent as u64, &params).unwrap();
+        rt.verify();
+    }
+
+    pub fn get_enrolled_cron_ticks(&self, rt: &MockRuntime, epoch: ChainEpoch) -> Vec<CronEvent> {
+        let state: State = rt.get_state();
+        let events_map = Multimap::from_root(
+            &rt.store,
+            &state.cron_event_queue,
+            CRON_QUEUE_HAMT_BITWIDTH,
+            CRON_QUEUE_AMT_BITWIDTH,
+        )
+        .expect("failed to load cron events");
+
+        let mut events: Vec<CronEvent> = Vec::new();
+        events_map
+            .for_each::<_, CronEvent>(&epoch_key(epoch), |_, v| {
+                events.push(v.to_owned());
+                Ok(())
+            })
+            .unwrap();
+
+        events
+    }
+
     pub fn check_state(&self) {
         // TODO: https://github.com/filecoin-project/builtin-actors/issues/44
+    }
+
+    pub fn update_pledge_total(&self, rt: &mut MockRuntime, miner: Address, delta: &TokenAmount) {
+        let st: State = rt.get_state();
+        let prev = st.total_pledge_collateral;
+
+        rt.set_caller(*MINER_ACTOR_CODE_ID, miner);
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.call::<PowerActor>(
+            Method::UpdatePledgeTotal as MethodNum,
+            &RawBytes::serialize(BigIntDe(delta.clone())).unwrap(),
+        )
+        .unwrap();
+        rt.verify();
+
+        let st: State = rt.get_state();
+        assert_eq!(prev + delta, st.total_pledge_collateral);
+    }
+
+    pub fn current_power_total(&self, rt: &mut MockRuntime) -> CurrentTotalPowerReturn {
+        rt.expect_validate_caller_any();
+        let ret: CurrentTotalPowerReturn = rt
+            .call::<PowerActor>(Method::CurrentTotalPower as u64, &RawBytes::default())
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
+        ret
+    }
+
+    pub fn update_claimed_power(
+        &self,
+        rt: &mut MockRuntime,
+        miner: Address,
+        raw_delta: &StoragePower,
+        qa_delta: &StoragePower,
+    ) {
+        let prev_cl = self.get_claim(rt, &miner).unwrap();
+
+        let params = UpdateClaimedPowerParams {
+            raw_byte_delta: raw_delta.clone(),
+            quality_adjusted_delta: qa_delta.clone(),
+        };
+        rt.set_caller(*MINER_ACTOR_CODE_ID, miner);
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.call::<PowerActor>(
+            Method::UpdateClaimedPower as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+        rt.verify();
+
+        let cl = self.get_claim(rt, &miner).unwrap();
+        let expected_raw = &prev_cl.raw_byte_power + raw_delta;
+        let expected_adjusted = &prev_cl.quality_adj_power + qa_delta;
+        if expected_raw.is_zero() {
+            assert!(cl.raw_byte_power.is_zero());
+        } else {
+            assert_eq!(prev_cl.raw_byte_power + raw_delta, cl.raw_byte_power);
+        }
+
+        if expected_adjusted.is_zero() {
+            assert!(cl.quality_adj_power.is_zero());
+        } else {
+            assert_eq!(prev_cl.quality_adj_power + qa_delta, cl.quality_adj_power);
+        }
+    }
+
+    pub fn expect_total_power_eager(
+        &self,
+        rt: &mut MockRuntime,
+        expected_raw: &StoragePower,
+        expected_qa: &StoragePower,
+    ) {
+        let st: State = rt.get_state();
+
+        let (raw_byte_power, quality_adj_power) = st.current_total_power();
+        assert_eq!(expected_raw, &raw_byte_power);
+        assert_eq!(expected_qa, &quality_adj_power);
+    }
+
+    pub fn expect_total_pledge_eager(&self, rt: &mut MockRuntime, expected_pledge: &TokenAmount) {
+        let st: State = rt.get_state();
+        assert_eq!(expected_pledge, &st.total_pledge_collateral);
+    }
+
+    pub fn expect_miners_above_min_power(&self, rt: &mut MockRuntime, count: i64) {
+        let st: State = rt.get_state();
+        assert_eq!(count, st.miner_above_min_power_count);
     }
 }
 

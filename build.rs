@@ -33,24 +33,34 @@ const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";
 fn network_name() -> String {
     let env_network = std::env::var_os(NETWORK_ENV);
 
-    let cfg_network = if cfg!(feature = "caterpillarnet") {
+    let feat_network = if cfg!(feature = "mainnet") {
+        Some("mainnet")
+    } else if cfg!(feature = "caterpillarnet") {
         Some("caterpillarnet")
+    } else if cfg!(feature = "butterflynet") {
+        Some("butterflynet")
+    } else if cfg!(feature = "calibrationnet") {
+        Some("calibrationnet")
     } else if cfg!(feature = "devnet") {
         Some("devnet")
+    } else if cfg!(feature = "testing") {
+        Some("testing")
+    } else if cfg!(feature = "testing-fake-proofs") {
+        Some("testing-fake-proofs")
     } else {
         None
     };
 
-    // Make sure they match if they're both set. Otherwise, pick the one that's set, or fallback on
-    // "default".
-    match (cfg_network, &env_network) {
+    // Make sure they match if they're both set. Otherwise, pick the one
+    // that's set, or fallback on "mainnet".
+    match (feat_network, &env_network) {
         (Some(from_feature), Some(from_env)) => {
             assert_eq!(from_feature, from_env, "different target network configured via the features than via the {} environment variable", NETWORK_ENV);
             from_feature
         }
         (Some(net), None) => net,
         (None, Some(net)) => net.to_str().expect("network name not utf8"),
-        (None, None) => "default",
+        (None, None) => "mainnet",
     }.to_owned()
 }
 
@@ -152,11 +162,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         // content-addressed CIDs.
         let forced_cid = None;
 
-        let cid = bundler
-            .add_from_file((*id).try_into().unwrap(), forced_cid, &bytecode_path)
-            .unwrap_or_else(|err| {
-                panic!("failed to add file {:?} to bundle for actor {}: {}", bytecode_path, id, err)
-            });
+        let cid = bundler.add_from_file(id, forced_cid, &bytecode_path).unwrap_or_else(|err| {
+            panic!("failed to add file {:?} to bundle for actor {}: {}", bytecode_path, id, err)
+        });
         println!("cargo:warning=added actor {} to bundle with CID {}", id, cid);
     }
     bundler.finish().expect("failed to finish bundle");
