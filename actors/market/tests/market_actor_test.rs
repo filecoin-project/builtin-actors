@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
+use fil_actor_market::ext::miner::GetControlAddressesReturnParams;
 use fil_actor_market::{
     ext, gen_rand_next_epoch, ActivateDealsParams, Actor as MarketActor, ClientDealProposal,
     DealArray, DealMetaArray, DealProposal, DealState, Label, Method,
@@ -383,6 +384,98 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
 
     assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), TokenAmount::from(0));
     // TODO: actor.checkState(rt)
+}
+
+#[test]
+fn fail_when_balance_is_zero() {
+    let mut rt = setup();
+
+    let provider = Address::new_id(PROVIDER_ID);
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(OWNER_ID));
+    rt.set_received(BigInt::from(0_i32));
+
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(&provider).unwrap()),
+    );
+
+    rt.verify();
+}
+
+#[test]
+fn fails_with_a_negative_withdraw_amount() {
+    let mut rt = setup();
+
+    let params = WithdrawBalanceParams {
+        provider_or_client: Address::new_id(PROVIDER_ID),
+        amount: TokenAmount::from(-1_i32),
+    };
+
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<MarketActor>(
+            Method::WithdrawBalance as u64,
+            &RawBytes::serialize(&params).unwrap(),
+        ),
+    );
+
+    rt.verify();
+}
+
+#[test]
+fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker() {
+    let mut rt = setup();
+
+    let owner_addr = Address::new_id(OWNER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+
+    let amount = TokenAmount::from(20u8);
+    add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
+
+    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), amount);
+
+    // only signing parties can add balance for client AND provider.
+    rt.expect_validate_caller_addr(vec![owner_addr, worker_addr]);
+    let params =
+        WithdrawBalanceParams { provider_or_client: provider_addr, amount: TokenAmount::from(1u8) };
+
+    // caller is not owner or worker
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
+    expect_get_control_addresses(&mut rt, provider_addr, owner_addr, worker_addr, vec![]);
+
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        rt.call::<MarketActor>(
+            Method::WithdrawBalance as u64,
+            &RawBytes::serialize(&params).unwrap(),
+        ),
+    );
+    rt.verify();
+
+    // verify there was no withdrawal
+    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), amount);
+    // TODO: actor.checkState(rt)
+}
+
+fn expect_get_control_addresses(
+    rt: &mut MockRuntime,
+    provider: Address,
+    owner: Address,
+    worker: Address,
+    controls: Vec<Address>,
+) {
+    let result = GetControlAddressesReturnParams { owner, worker, control_addresses: controls };
+
+    rt.expect_send(
+        provider,
+        ext::miner::CONTROL_ADDRESSES_METHOD,
+        RawBytes::default(),
+        BigInt::from(0u8),
+        RawBytes::serialize(result).unwrap(),
+        ExitCode::OK,
+    )
 }
 
 #[test]

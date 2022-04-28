@@ -33,7 +33,9 @@ use fvm_shared::{ActorID, MethodNum};
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
-use crate::runtime::{ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls};
+use crate::runtime::{
+    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier,
+};
 use crate::{actor_error, ActorError};
 
 lazy_static! {
@@ -527,6 +529,11 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn set_received(&mut self, amount: TokenAmount) {
+        self.value_received = amount;
+    }
+
+    #[allow(dead_code)]
     pub fn set_circulating_supply(&mut self, circ_supply: TokenAmount) {
         self.circulating_supply = circ_supply;
     }
@@ -944,7 +951,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     }
 }
 
-impl Syscalls for MockRuntime {
+impl Primitives for MockRuntime {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1015,7 +1022,9 @@ impl Syscalls for MockRuntime {
         }
         Ok(exp.cid)
     }
+}
 
+impl Verifier for MockRuntime {
     fn verify_seal(&self, seal: &SealVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
