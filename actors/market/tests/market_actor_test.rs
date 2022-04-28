@@ -1736,19 +1736,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
         deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig.clone() }],
     };
     rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
-    let return_value = ext::miner::GetControlAddressesReturnParams {
-        owner: owner_addr,
-        worker: worker_addr,
-        control_addresses: Vec::new(),
-    };
-    rt.expect_send(
-        provider_addr,
-        ext::miner::CONTROL_ADDRESSES_METHOD,
-        RawBytes::default(),
-        TokenAmount::from(0u8),
-        RawBytes::serialize(return_value).unwrap(),
-        ExitCode::OK,
-    );
+    expect_provider_control_address(&mut rt, provider_addr, owner_addr, worker_addr);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
     rt.expect_verify_signature(ExpectedVerifySig {
