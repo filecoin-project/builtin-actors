@@ -682,7 +682,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     rt.value_received = deal.provider_collateral.clone();
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, owner_addr);
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
-    expect_get_control_addresses(&mut rt, provider_resolved, owner_addr, worker_addr, &[]);
+    expect_get_control_addresses(&mut rt, provider_resolved, owner_addr, worker_addr, vec![]);
 
     assert_eq!(
         RawBytes::default(),
@@ -694,13 +694,13 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     );
     rt.verify();
     rt.add_balance(deal.provider_collateral.clone());
-    assert_eq!(deal.provider_collateral, get_escrow_balance(&mut rt, &provider_resolved).unwrap());
+    assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &provider_resolved).unwrap());
 
     // publish deal using the BLS addresses
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-    expect_get_control_addresses(&mut rt, provider_resolved, owner_addr, worker_addr, &[]);
+    expect_get_control_addresses(&mut rt, provider_resolved, owner_addr, worker_addr, vec![]);
     expect_query_network_info(&mut rt);
 
     //  create a client proposal with a valid signature
@@ -712,7 +712,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     params.deals.push(client_proposal);
     // expect a call to verify the above signature
     rt.expect_verify_signature(ExpectedVerifySig {
-        sig: sig.clone(),
+        sig,
         signer: deal.client,
         plaintext: buf.to_vec(),
         result: Ok(()),
@@ -1711,29 +1711,7 @@ fn expect_provider_control_address(
     owner: Address,
     worker: Address,
 ) {
-    expect_get_control_addresses(rt, provider, owner, worker, &[])
-}
-
-fn expect_get_control_addresses(
-    rt: &mut MockRuntime,
-    provider: Address,
-    owner: Address,
-    worker: Address,
-    controls: &[Address],
-) {
-    let return_value = ext::miner::GetControlAddressesReturnParams {
-        owner,
-        worker,
-        control_addresses: Vec::from(controls),
-    };
-    rt.expect_send(
-        provider,
-        ext::miner::CONTROL_ADDRESSES_METHOD,
-        RawBytes::default(),
-        TokenAmount::from(0u8),
-        RawBytes::serialize(return_value).unwrap(),
-        ExitCode::OK,
-    );
+    expect_get_control_addresses(rt, provider, owner, worker, vec![])
 }
 
 fn add_provider_funds(
