@@ -97,9 +97,8 @@ impl ActorHarness {
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
         let propose_params =
             ProposeParams { to, value: value.clone(), method, params: params.clone() };
-        expect_ok(
-            rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap()),
-        );
+        rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap())
+            .unwrap();
         rt.verify();
         // compute proposal hash
         let txn = Transaction { to, value, method, params, approved: vec![rt.caller] };
@@ -188,7 +187,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         mut expect_txns: Vec<(TxnID, Transaction)>,
     ) {
-        let st = rt.get_state::<State>().unwrap();
+        let st: State = rt.get_state();
         let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &rt.store).unwrap();
         let mut actual_txns = Vec::new();
         ptx.for_each(|k, txn: &Transaction| {

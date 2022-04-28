@@ -80,7 +80,7 @@ fn create_2_payment_channels() {
         assert_eq!(unique_address, exec_ret.robust_address, "Robust Address does not match");
         assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
 
-        let state: State = rt.get_state().unwrap();
+        let state: State = rt.get_state();
         let returned_address = state
             .resolve_address(&rt.store, &unique_address)
             .expect("Resolve should not error")
@@ -123,7 +123,7 @@ fn create_storage_miner() {
     assert_eq!(expected_id_addr, exec_ret.id_address);
 
     // Address should be resolved
-    let state: State = rt.get_state().unwrap();
+    let state: State = rt.get_state();
     let returned_address = state
         .resolve_address(&rt.store, &unique_address)
         .expect("Resolve should not error")
@@ -211,7 +211,7 @@ fn sending_constructor_failure() {
         "Exit Code that is returned is not ErrIllegalState"
     );
 
-    let state: State = rt.get_state().unwrap();
+    let state: State = rt.get_state();
 
     let returned_address = state.resolve_address(&rt.store, &unique_address).unwrap();
     assert_eq!(returned_address, None, "Addresses should have not been found");
@@ -226,7 +226,7 @@ fn construct_and_verify(rt: &mut MockRuntime) {
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
 
-    let state_data: State = rt.get_state().unwrap();
+    let state_data: State = rt.get_state();
 
     // Gets the Result(CID)
     let empty_map =

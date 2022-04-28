@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
+use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
+use num_traits::FromPrimitive;
 
 // A trait for runtime policy configuration
 pub trait RuntimePolicy {
@@ -130,12 +131,31 @@ pub struct Policy {
 
     /// Allowed pre commit proof types for new miners
     pub valid_pre_commit_proof_type: HashSet<RegisteredSealProof>,
+
+    // --- verifreg policy
+    /// Minimum verified deal size
+    pub minimum_verified_deal_size: StoragePower,
+
+    //  --- market policy ---
+    /// The number of blocks between payouts for deals
+    pub deal_updates_interval: i64,
+
+    /// Numerator of the percentage of normalized cirulating
+    /// supply that must be covered by provider collateral
+    pub prov_collateral_percent_supply_num: i64,
+
+    /// Denominator of the percentage of normalized cirulating
+    /// supply that must be covered by provider collateral
+    pub prov_collateral_percent_supply_denom: i64,
+
+    // --- power ---
+    /// Minimum miner consensus power
+    pub minimum_consensus_power: StoragePower,
 }
 
 impl Default for Policy {
     fn default() -> Policy {
-        #[allow(unused_mut)] // for devnet mutation below
-        let mut policy = Policy {
+        Policy {
             max_aggregated_sectors: policy_constants::MAX_AGGREGATED_SECTORS,
             min_aggregated_sectors: policy_constants::MIN_AGGREGATED_SECTORS,
             max_aggregated_proof_size: policy_constants::MAX_AGGREGATED_PROOF_SIZE,
@@ -195,9 +215,20 @@ impl Default for Policy {
                 #[cfg(feature = "sector-64g")]
                 RegisteredSealProof::StackedDRG64GiBV1P1,
             ]),
-        };
 
-        policy
+            minimum_verified_deal_size: StoragePower::from_i32(
+                policy_constants::MINIMUM_VERIFIED_DEAL_SIZE,
+            )
+            .unwrap(),
+
+            deal_updates_interval: policy_constants::DEAL_UPDATES_INTERVAL,
+            prov_collateral_percent_supply_num:
+                policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
+            prov_collateral_percent_supply_denom:
+                policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_DENOM,
+
+            minimum_consensus_power: StoragePower::from(policy_constants::MINIMUM_CONSENSUS_POWER),
+        }
     }
 }
 
@@ -325,4 +356,36 @@ mod policy_constants {
     /// Epochs after which chain state is final with overwhelming probability (hence the likelihood of two fork of this size is negligible)
     /// This is a conservative value that is chosen via simulations of all known attacks.
     pub const CHAIN_FINALITY: ChainEpoch = 900;
+
+    #[cfg(not(feature = "small-deals"))]
+    pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 1 << 20;
+    #[cfg(feature = "small-deals")]
+    pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 256;
+
+    /// DealUpdatesInterval is the number of blocks between payouts for deals
+    pub const DEAL_UPDATES_INTERVAL: i64 = EPOCHS_IN_DAY;
+
+    /// Numerator of the percentage of normalized cirulating
+    /// supply that must be covered by provider collateral
+    #[cfg(not(feature = "no-provider-deal-collateral"))]
+    pub const PROV_COLLATERAL_PERCENT_SUPPLY_NUM: i64 = 1;
+    #[cfg(feature = "no-provider-deal-collateral")]
+    pub const PROV_COLLATERAL_PERCENT_SUPPLY_NUM: i64 = 0;
+
+    /// Denominator of the percentage of normalized cirulating
+    /// supply that must be covered by provider collateral
+    pub const PROV_COLLATERAL_PERCENT_SUPPLY_DENOM: i64 = 100;
+
+    #[cfg(feature = "min-power-2k")]
+    pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 10;
+    #[cfg(feature = "min-power-2g")]
+    pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 30;
+    #[cfg(feature = "min-power-32g")]
+    pub const MINIMUM_CONSENSUS_POWER: i64 = 32 << 30;
+    #[cfg(not(any(
+        feature = "min-power-2k",
+        feature = "min-power-2g",
+        feature = "min-power-32g"
+    )))]
+    pub const MINIMUM_CONSENSUS_POWER: i64 = 10 << 40;
 }
