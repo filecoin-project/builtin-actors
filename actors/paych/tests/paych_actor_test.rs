@@ -68,6 +68,7 @@ mod paych_constructor {
 
     const TEST_PAYCH_ADDR: u64 = 100;
     const TEST_PAYER_ADDR: u64 = 101;
+    const TEST_PAYEE_ADDR: u64 = 102;
     const TEST_CALLER_ADDR: u64 = 102;
 
     fn construct_runtime() -> MockRuntime {
@@ -131,40 +132,52 @@ mod paych_constructor {
     fn actor_constructor_fails() {
         let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
         let payer_addr = Address::new_id(TEST_PAYER_ADDR);
+        let payee_addr = Address::new_id(TEST_PAYEE_ADDR);
         let caller_addr = Address::new_id(TEST_CALLER_ADDR);
 
         struct TestCase {
-            paych_addr: Address,
-            caller_code: Cid,
-            new_actor_code: Cid,
-            payer_code: Cid,
+            from_code: Cid,
+            from_addr: Address,
+            to_code: Cid,
+            to_addr: Address,
             expected_exit_code: ExitCode,
         }
 
-        let test_cases: Vec<TestCase> = vec![TestCase {
-            paych_addr,
-            caller_code: *INIT_ACTOR_CODE_ID,
-            new_actor_code: *MULTISIG_ACTOR_CODE_ID,
-            payer_code: *ACCOUNT_ACTOR_CODE_ID,
-            expected_exit_code: ExitCode::USR_FORBIDDEN,
-        }];
+        let test_cases: Vec<TestCase> = vec![
+            // fails if target (to) is not account actor
+            TestCase {
+                from_code: *ACCOUNT_ACTOR_CODE_ID,
+                from_addr: payer_addr,
+                to_code: *MULTISIG_ACTOR_CODE_ID,
+                to_addr: payee_addr,
+                expected_exit_code: ExitCode::USR_FORBIDDEN,
+            },
+            // fails if sender (from) is not account actor
+            TestCase {
+                from_code: *MULTISIG_ACTOR_CODE_ID,
+                from_addr: payer_addr,
+                to_code: *ACCOUNT_ACTOR_CODE_ID,
+                to_addr: payee_addr,
+                expected_exit_code: ExitCode::USR_FORBIDDEN,
+            },
+        ];
 
         for test_case in test_cases {
             let mut actor_code_cids = HashMap::default();
-            actor_code_cids.insert(test_case.paych_addr, test_case.new_actor_code);
-            actor_code_cids.insert(payer_addr, test_case.payer_code);
+            actor_code_cids.insert(paych_addr, *PAYCH_ACTOR_CODE_ID);
+            actor_code_cids.insert(test_case.to_addr, test_case.to_code);
+            actor_code_cids.insert(test_case.from_addr, test_case.from_code);
 
             let mut rt = MockRuntime {
                 receiver: paych_addr,
                 caller: caller_addr,
-                caller_type: test_case.caller_code,
+                caller_type: *INIT_ACTOR_CODE_ID,
                 actor_code_cids,
                 ..Default::default()
             };
 
             rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
-            let params =
-                ConstructorParams { to: test_case.paych_addr, from: Address::new_id(10001) };
+            let params = ConstructorParams { to: test_case.to_addr, from: test_case.from_addr };
             expect_error(
                 &mut rt,
                 METHOD_CONSTRUCTOR,
