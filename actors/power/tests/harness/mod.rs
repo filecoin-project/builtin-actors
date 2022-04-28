@@ -1,19 +1,30 @@
 use cid::Cid;
 use fil_actor_power::epoch_key;
+use fil_actor_power::ext::miner::ConfirmSectorProofsParams;
+use fil_actor_power::ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD;
+use fil_actor_power::ext::reward::Method::ThisEpochReward;
+use fil_actor_power::ext::reward::UPDATE_NETWORK_KPI;
 use fil_actor_power::CronEvent;
 use fil_actor_power::EnrollCronEventParams;
 use fil_actor_power::CRON_QUEUE_AMT_BITWIDTH;
 use fil_actor_power::CRON_QUEUE_HAMT_BITWIDTH;
+use fil_actors_runtime::test_utils::CRON_ACTOR_CODE_ID;
 use fil_actors_runtime::Multimap;
+use fil_actors_runtime::CRON_ACTOR_ADDR;
+use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_ipld_hamt::Error;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
+use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::reward::ThisEpochRewardReturn;
+use fvm_shared::sector::SealVerifyInfo;
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::MethodNum;
@@ -80,7 +91,7 @@ pub struct Harness {
     seal_proof: RegisteredSealProof,
     pub window_post_proof: RegisteredPoStProof,
     this_epoch_baseline_power: StoragePower,
-    this_epoch_reward_smoothed: FilterEstimate,
+    pub this_epoch_reward_smoothed: FilterEstimate,
 }
 
 impl Harness {
@@ -344,6 +355,85 @@ impl Harness {
         let st: State = rt.get_state();
         assert_eq!(count, st.miner_above_min_power_count);
     }
+
+    pub fn expect_query_network_info(&self, rt: &mut MockRuntime) {
+        let current_reward = ThisEpochRewardReturn {
+            this_epoch_baseline_power: self.this_epoch_baseline_power.clone(),
+            this_epoch_reward_smoothed: self.this_epoch_reward_smoothed.clone(),
+        };
+
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            ThisEpochReward as u64,
+            RawBytes::default(),
+            TokenAmount::from(0u8),
+            RawBytes::serialize(current_reward).unwrap(),
+            ExitCode::OK,
+        );
+    }
+
+    pub fn on_epoch_tick_end(
+        &self,
+        rt: &mut MockRuntime,
+        current_epoch: ChainEpoch,
+        expected_raw_power: &StoragePower,
+        confirmed_sectors: Vec<ConfirmedSectorSend>,
+        infos: Vec<SealVerifyInfo>,
+    ) {
+        self.expect_query_network_info(rt);
+
+        let state: State = rt.get_state();
+
+        //expect sends for confirmed sectors
+        for sector in confirmed_sectors {
+            let param = ConfirmSectorProofsParams {
+                sectors: sector.sector_nums,
+                reward_smoothed: self.this_epoch_reward_smoothed.clone(),
+                reward_baseline_power: self.this_epoch_baseline_power.clone(),
+                quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed.clone(),
+            };
+            rt.expect_send(
+                sector.miner,
+                CONFIRM_SECTOR_PROOFS_VALID_METHOD,
+                RawBytes::serialize(param).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::new(0),
+            );
+        }
+
+        let verified_seals = batch_verify_default_output(&infos);
+        rt.expect_batch_verify_seals(infos, anyhow::Ok(verified_seals));
+
+        // expect power sends to reward actor
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            UPDATE_NETWORK_KPI,
+            RawBytes::serialize(BigIntSer(expected_raw_power)).unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::new(0),
+        );
+        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+
+        rt.set_epoch(current_epoch);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+
+        rt.verify();
+        let state: State = rt.get_state();
+        assert!(state.proof_validation_batch.is_none());
+    }
+}
+
+pub struct ConfirmedSectorSend {
+    miner: Address,
+    sector_nums: Vec<SectorNumber>,
+}
+
+pub fn batch_verify_default_output(infos: &[SealVerifyInfo]) -> Vec<bool> {
+    vec![true; infos.len()]
 }
 
 /// Collects all keys from a map into a vector.
