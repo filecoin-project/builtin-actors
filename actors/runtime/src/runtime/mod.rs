@@ -36,7 +36,7 @@ mod policy;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
-pub trait Runtime<BS: Blockstore>: Syscalls + RuntimePolicy {
+pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// The network protocol version number at the current epoch.
     fn network_version(&self) -> NetworkVersion;
 
@@ -177,15 +177,7 @@ pub trait MessageInfo {
 }
 
 /// Pure functions implemented as primitives by the runtime.
-pub trait Syscalls {
-    /// Verifies that a signature is valid for an address and plaintext.
-    fn verify_signature(
-        &self,
-        signature: &Signature,
-        signer: &Address,
-        plaintext: &[u8],
-    ) -> Result<(), anyhow::Error>;
-
+pub trait Primitives {
     /// Hashes input data using blake2b with 256 bit output.
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32];
 
@@ -196,6 +188,17 @@ pub trait Syscalls {
         pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error>;
 
+    /// Verifies that a signature is valid for an address and plaintext.
+    fn verify_signature(
+        &self,
+        signature: &Signature,
+        signer: &Address,
+        plaintext: &[u8],
+    ) -> Result<(), anyhow::Error>;
+}
+
+/// filcrypto verification primitives provided by the runtime
+pub trait Verifier {
     /// Verifies a sector seal proof.
     fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), anyhow::Error>;
 

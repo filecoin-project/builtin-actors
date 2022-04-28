@@ -138,7 +138,7 @@ impl Actor {
             })?;
             st.miner_count += 1;
 
-            st.update_stats_for_new_miner(window_post_proof_type).map_err(|e| {
+            st.update_stats_for_new_miner(rt.policy(), window_post_proof_type).map_err(|e| {
                 actor_error!(
                     illegal_state,
                     "failed to update power stats for new miner {}: {}",
@@ -175,6 +175,7 @@ impl Actor {
                 )?;
 
             st.add_to_claim(
+                rt.policy(),
                 &mut claims,
                 &miner_addr,
                 &params.raw_byte_delta,
@@ -630,7 +631,7 @@ impl Actor {
 
                 // Remove power and leave miner frozen
                 for miner_addr in failed_miner_crons {
-                    if let Err(e) = st.delete_claim(&mut claims, &miner_addr) {
+                    if let Err(e) = st.delete_claim(rt.policy(), &mut claims, &miner_addr) {
                         error!(
                             "failed to delete claim for miner {} after\
                             failing on deferred cron event: {}",

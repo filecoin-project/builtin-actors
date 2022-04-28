@@ -1,4 +1,10 @@
 use cid::Cid;
+use fil_actor_power::epoch_key;
+use fil_actor_power::CronEvent;
+use fil_actor_power::EnrollCronEventParams;
+use fil_actor_power::CRON_QUEUE_AMT_BITWIDTH;
+use fil_actor_power::CRON_QUEUE_HAMT_BITWIDTH;
+use fil_actors_runtime::Multimap;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_ipld_hamt::BytesKey;
@@ -166,6 +172,57 @@ impl Harness {
         let claims =
             make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).unwrap();
         claims.get(&miner.to_bytes()).unwrap().cloned()
+    }
+
+    pub fn delete_claim(&mut self, rt: &mut MockRuntime, miner: &Address) {
+        let mut state: State = rt.get_state();
+
+        let mut claims =
+            make_map_with_root_and_bitwidth::<_, Claim>(&state.claims, rt.store(), HAMT_BIT_WIDTH)
+                .unwrap();
+        claims.delete(&miner.to_bytes()).expect("Failed to delete claim");
+        state.claims = claims.flush().unwrap();
+
+        rt.replace_state(&state);
+    }
+
+    pub fn enroll_cron_event(
+        &self,
+        rt: &mut MockRuntime,
+        epoch: ChainEpoch,
+        miner_address: &Address,
+        payload: &RawBytes,
+    ) {
+        rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address.to_owned());
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        let params = RawBytes::serialize(EnrollCronEventParams {
+            event_epoch: epoch,
+            payload: payload.clone(),
+        })
+        .unwrap();
+        rt.call::<PowerActor>(Method::EnrollCronEvent as u64, &params).unwrap();
+        rt.verify();
+    }
+
+    pub fn get_enrolled_cron_ticks(&self, rt: &MockRuntime, epoch: ChainEpoch) -> Vec<CronEvent> {
+        let state: State = rt.get_state();
+        let events_map = Multimap::from_root(
+            &rt.store,
+            &state.cron_event_queue,
+            CRON_QUEUE_HAMT_BITWIDTH,
+            CRON_QUEUE_AMT_BITWIDTH,
+        )
+        .expect("failed to load cron events");
+
+        let mut events: Vec<CronEvent> = Vec::new();
+        events_map
+            .for_each::<_, CronEvent>(&epoch_key(epoch), |_, v| {
+                events.push(v.to_owned());
+                Ok(())
+            })
+            .unwrap();
+
+        events
     }
 
     pub fn check_state(&self) {
