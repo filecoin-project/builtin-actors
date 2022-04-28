@@ -7,7 +7,7 @@ use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root, make_map_with_root_and_bitwidth, ActorContext,
-    ActorError, Map, Multimap,
+    ActorContext2, ActorError, Map, Multimap,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -17,6 +17,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use fvm_shared::smooth::{AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA};
 use fvm_shared::HAMT_BIT_WIDTH;
@@ -76,11 +77,11 @@ impl State {
     pub fn new<BS: Blockstore>(store: &BS) -> Result<State, ActorError> {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
-            .context("Failed to create empty map")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty map")?;
 
         let empty_mmap = Multimap::new(store, CRON_QUEUE_HAMT_BITWIDTH, CRON_QUEUE_AMT_BITWIDTH)
             .root()
-            .context("Failed to get empty multimap cid")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to get empty multimap cid")?;
 
         Ok(State {
             cron_event_queue: empty_mmap,
@@ -104,10 +105,13 @@ impl State {
         s: &BS,
         miner: &Address,
     ) -> Result<bool, ActorError> {
-        let claims = make_map_with_root_and_bitwidth(&self.claims, s, HAMT_BIT_WIDTH)?;
+        let claims = make_map_with_root_and_bitwidth(&self.claims, s, HAMT_BIT_WIDTH)
+            .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
         let claim = get_claim(&claims, miner)?
-            .ok_or_else(|| actor_error!(not_found, "no claim for actor: {}", miner))?;
+            .with_context_code(ExitCode::USR_NOT_FOUND, || {
+                format!("no claim for actor: {}", miner)
+            })?;
 
         let miner_nominal_power = &claim.raw_byte_power;
         let miner_min_power = consensus_miner_min_power(policy, claim.window_post_proof_type)
@@ -130,7 +134,7 @@ impl State {
         s: &BS,
         miner: &Address,
     ) -> Result<Option<Claim>, ActorError> {
-        let claims = make_map_with_root(&self.claims, s)?;
+        let claims = make_map_with_root(&self.claims, s).exit_code(ExitCode::USR_ILLEGAL_STATE)?;
         get_claim(&claims, miner).map(|s| s.cloned())
     }
 
@@ -222,7 +226,9 @@ impl State {
 
         events
             .add(epoch_key(epoch), event)
-            .with_context(|| format!("failed to store cron event at epoch {}", epoch))?;
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to store cron event at epoch {}", epoch)
+            })?;
         Ok(())
     }
 
@@ -268,10 +274,13 @@ impl State {
     where
         BS: Blockstore,
     {
-        let claims =
-            make_map_with_root::<_, Claim>(&self.claims, store).context("failed to load claims")?;
+        let claims = make_map_with_root::<_, Claim>(&self.claims, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")?;
 
-        if !claims.contains_key(&miner_addr.to_bytes()).context("failed to look up claim")? {
+        if !claims
+            .contains_key(&miner_addr.to_bytes())
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to look up claim")?
+        {
             return Err(actor_error!(
                 forbidden,
                 "unknown miner {} forbidden to interact with power actor",
@@ -288,7 +297,7 @@ impl State {
     ) -> Result<Option<Claim>, ActorError> {
         let claims =
             make_map_with_root_and_bitwidth::<_, Claim>(&self.claims, store, HAMT_BIT_WIDTH)
-                .context("failed to load claims")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")?;
 
         let claim = get_claim(&claims, miner)?;
         Ok(claim.cloned())
@@ -313,7 +322,9 @@ impl State {
 
         claims
             .delete(&miner.to_bytes())
-            .with_context(|| format!("failed to delete claim for address {}", miner))?
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to delete claim for address {}", miner)
+            })?
             .ok_or_else(|| {
                 actor_error!(illegal_state, "failed to delete claim for address: doesn't exist")
             })?;
@@ -329,7 +340,8 @@ pub(super) fn load_cron_events<BS: Blockstore>(
 
     mmap.for_each(&epoch_key(epoch), |_, v: &CronEvent| {
         events.push(v.clone());
-    })?;
+    })
+    .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
     Ok(events)
 }
@@ -339,7 +351,9 @@ fn get_claim<'m, BS: Blockstore>(
     claims: &'m Map<BS, Claim>,
     a: &Address,
 ) -> Result<Option<&'m Claim>, ActorError> {
-    claims.get(&a.to_bytes()).with_context(|| format!("failed to get claim for address {}", a))
+    claims.get(&a.to_bytes()).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+        format!("failed to get claim for address {}", a)
+    })
 }
 
 pub fn set_claim<BS: Blockstore>(
@@ -364,7 +378,9 @@ pub fn set_claim<BS: Blockstore>(
 
     claims
         .set(a.to_bytes().into(), claim)
-        .with_context(|| format!("failed to set claim for address {}", a))?;
+        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to set claim for address {}", a)
+        })?;
 
     Ok(())
 }

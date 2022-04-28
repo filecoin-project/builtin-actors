@@ -6,13 +6,14 @@ use std::ops::{self, Neg};
 
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{actor_error, ActorContext, ActorError, Array};
+use fil_actors_runtime::{actor_error, ActorContext, ActorContext2, ActorError, Array};
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{SectorSize, StoragePower};
 use num_traits::{Signed, Zero};
 
@@ -66,12 +67,14 @@ impl Partition {
     pub fn new<BS: Blockstore>(store: &BS) -> Result<Self, ActorError> {
         let empty_expiration_array =
             Array::<Cid, BS>::new_with_bit_width(store, PARTITION_EXPIRATION_AMT_BITWIDTH)
-                .flush()?;
+                .flush()
+                .exit_code(ExitCode::USR_SERIALIZATION)?;
         let empty_early_termination_array = Array::<Cid, BS>::new_with_bit_width(
             store,
             PARTITION_EARLY_TERMINATION_ARRAY_AMT_BITWIDTH,
         )
-        .flush()?;
+        .flush()
+        .exit_code(ExitCode::USR_SERIALIZATION)?;
 
         Ok(Self {
             sectors: BitField::new(),
@@ -116,14 +119,16 @@ impl Partition {
         quant: QuantSpec,
     ) -> Result<PowerPair, ActorError> {
         let mut expirations = ExpirationQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load sector expirations")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sector expirations")?;
 
         let (sector_numbers, power, _) = expirations
             .add_active_sectors(sectors, sector_size)
             .context("failed to record new sector expirations")?;
 
-        self.expirations_epochs =
-            expirations.amt.flush().context("failed to store sector expirations")?;
+        self.expirations_epochs = expirations
+            .amt
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store sector expirations")?;
 
         if self.sectors.contains_any(&sector_numbers) {
             return Err(actor_error!(illegal_argument, "not all added sectors are new"));
@@ -158,7 +163,7 @@ impl Partition {
     ) -> Result<(PowerPair, PowerPair), ActorError> {
         // Load expiration queue
         let mut queue = ExpirationQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load partition queue")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load partition queue")?;
 
         // Reschedule faults
         let new_faulty_power = queue
@@ -166,7 +171,7 @@ impl Partition {
             .context("failed to add faults to partition queue")?;
 
         // Save expiration queue
-        self.expirations_epochs = queue.amt.flush()?;
+        self.expirations_epochs = queue.amt.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
 
         // Update partition metadata
         self.faults |= sector_numbers;
@@ -216,8 +221,10 @@ impl Partition {
         validate_partition_contains_sectors(self, sector_numbers)
             .map_err(|e| actor_error!(illegal_argument; "failed fault declaration: {}", e))?;
 
-        let sector_numbers =
-            sector_numbers.validate().context("failed to intersect sectors with recoveries")?;
+        let sector_numbers = sector_numbers.validate().context_code(
+            ExitCode::USR_ILLEGAL_STATE,
+            "failed to intersect sectors with recoveries",
+        )?;
 
         // Split declarations into declarations of new faults, and retraction of declared recoveries.
         let retracted_recoveries = &self.recoveries & sector_numbers;
@@ -270,7 +277,7 @@ impl Partition {
 
         // Load expiration queue
         let mut queue = ExpirationQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load partition queue")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load partition queue")?;
 
         // Reschedule recovered
         let power = queue
@@ -278,7 +285,7 @@ impl Partition {
             .context("failed to reschedule faults in partition queue")?;
 
         // Save expiration queue
-        self.expirations_epochs = queue.amt.flush()?;
+        self.expirations_epochs = queue.amt.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
 
         // Update partition metadata
         self.faults -= &self.recoveries;
@@ -312,7 +319,9 @@ impl Partition {
         validate_partition_contains_sectors(self, sector_numbers)
             .map_err(|e| actor_error!(illegal_argument; "failed fault declaration: {}", e))?;
 
-        let sector_numbers = sector_numbers.validate().context("failed to validate recoveries")?;
+        let sector_numbers = sector_numbers
+            .validate()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to validate recoveries")?;
 
         // Ignore sectors not faulty or already declared recovered
         let mut recoveries = sector_numbers & &self.faults;
@@ -382,9 +391,9 @@ impl Partition {
 
         let sector_infos = sectors.load_sector(&active)?;
         let mut expirations = ExpirationQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load sector expirations")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sector expirations")?;
         expirations.reschedule_expirations(new_expiration, &sector_infos, sector_size)?;
-        self.expirations_epochs = expirations.amt.flush()?;
+        self.expirations_epochs = expirations.amt.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
 
         // check invariants
         self.validate_state()?;
@@ -406,14 +415,16 @@ impl Partition {
         quant: QuantSpec,
     ) -> Result<(PowerPair, TokenAmount), ActorError> {
         let mut expirations = ExpirationQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load sector expirations")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sector expirations")?;
 
         let (old_sector_numbers, new_sector_numbers, power_delta, pledge_delta) = expirations
             .replace_sectors(old_sectors, new_sectors, sector_size)
             .context("failed to replace sector expirations")?;
 
-        self.expirations_epochs =
-            expirations.amt.flush().context("failed to save sector expirations")?;
+        self.expirations_epochs = expirations
+            .amt
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save sector expirations")?;
 
         // Check the sectors being removed are active (alive, not faulty).
         let active = self.active_sectors();
@@ -449,17 +460,20 @@ impl Partition {
         sectors: &BitField,
     ) -> Result<(), ActorError> {
         let mut early_termination_queue =
-            BitFieldQueue::new(store, &self.early_terminated, NO_QUANTIZATION)
-                .context("failed to load early termination queue")?;
+            BitFieldQueue::new(store, &self.early_terminated, NO_QUANTIZATION).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to load early termination queue",
+            )?;
 
-        early_termination_queue
-            .add_to_queue(epoch, sectors)
-            .context("failed to add to early termination queue")?;
+        early_termination_queue.add_to_queue(epoch, sectors).context_code(
+            ExitCode::USR_ILLEGAL_STATE,
+            "failed to add to early termination queue",
+        )?;
 
         self.early_terminated = early_termination_queue
             .amt
             .flush()
-            .context("failed to save early termination queue")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save early termination queue")?;
 
         Ok(())
     }
@@ -489,13 +503,15 @@ impl Partition {
 
         let sector_infos = sectors.load_sector(sector_numbers)?;
         let mut expirations = ExpirationQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load sector expirations")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sector expirations")?;
         let (mut removed, removed_recovering) = expirations
             .remove_sectors(policy, &sector_infos, &self.faults, &self.recoveries, sector_size)
             .context("failed to remove sector expirations")?;
 
-        self.expirations_epochs =
-            expirations.amt.flush().context("failed to save sector expirations")?;
+        self.expirations_epochs = expirations
+            .amt
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save sector expirations")?;
 
         let removed_sectors = &removed.on_time_sectors | &removed.early_sectors;
 
@@ -545,12 +561,12 @@ impl Partition {
         }
 
         let mut expirations = ExpirationQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load expiration queue")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load expiration queue")?;
         let popped = expirations
             .pop_until(until)
             .with_context(|| format!("failed to pop expiration queue until {}", until))?;
 
-        self.expirations_epochs = expirations.amt.flush()?;
+        self.expirations_epochs = expirations.amt.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
 
         let expired_sectors = &popped.on_time_sectors | &popped.early_sectors;
 
@@ -584,7 +600,7 @@ impl Partition {
 
         // Record the epoch of any sectors expiring early, for termination fee calculation later.
         self.record_early_termination(store, until, &popped.early_sectors)
-            .context("failed to record early terminations")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to record early terminations")?;
 
         // check invariants
         self.validate_state()?;
@@ -604,14 +620,14 @@ impl Partition {
         // Collapse tail of queue into the last entry, and mark all power faulty.
         // Load expiration queue
         let mut queue = ExpirationQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load partition queue")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load partition queue")?;
 
         queue
             .reschedule_all_as_faults(fault_expiration)
             .context("failed to reschedule all as faults")?;
 
         // Save expiration queue
-        self.expirations_epochs = queue.amt.flush()?;
+        self.expirations_epochs = queue.amt.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
 
         // Compute faulty power for penalization. New faulty power is the total power minus already faulty.
         let new_faulty_power = &self.live_power - &self.faulty_power;
@@ -644,7 +660,8 @@ impl Partition {
     ) -> Result<(TerminationResult, /* has more */ bool), ActorError> {
         // Load early terminations.
         let mut early_terminated_queue =
-            BitFieldQueue::new(store, &self.early_terminated, NO_QUANTIZATION)?;
+            BitFieldQueue::new(store, &self.early_terminated, NO_QUANTIZATION)
+                .exit_code(ExitCode::USR_SERIALIZATION)?;
 
         let mut processed = Vec::<u64>::new();
         let mut remaining: Option<(BitField, ChainEpoch)> = None;
@@ -654,7 +671,7 @@ impl Partition {
         early_terminated_queue
             .amt
             .try_for_each_while::<_, ActorError>(|i, sectors| {
-                let epoch: ChainEpoch = i.try_into()?;
+                let epoch: ChainEpoch = i.try_into().exit_code(ExitCode::USR_SERIALIZATION)?;
                 let count = sectors.len();
                 let limit = max_sectors - result.sectors_processed;
 
@@ -677,26 +694,29 @@ impl Partition {
                 let keep_going = result.sectors_processed < max_sectors;
                 Ok(keep_going)
             })
-            .context("failed to walk early terminations queue")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to walk early terminations queue")?;
 
         // Update early terminations
-        early_terminated_queue
-            .amt
-            .batch_delete(processed, true)
-            .context("failed to remove entries from early terminations queue")?;
+        early_terminated_queue.amt.batch_delete(processed, true).context_code(
+            ExitCode::USR_ILLEGAL_STATE,
+            "failed to remove entries from early terminations queue",
+        )?;
 
         if let Some((remaining_sectors, remaining_epoch)) = remaining.take() {
             early_terminated_queue
                 .amt
                 .set(remaining_epoch as u64, remaining_sectors)
-                .context("failed to update remaining entry early terminations queue")?;
+                .context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to update remaining entry early terminations queue",
+                )?;
         }
 
         // Save early terminations.
-        self.early_terminated = early_terminated_queue
-            .amt
-            .flush()
-            .context("failed to store early terminations queue")?;
+        self.early_terminated = early_terminated_queue.amt.flush().context_code(
+            ExitCode::USR_ILLEGAL_STATE,
+            "failed to store early terminations queue",
+        )?;
 
         // check invariants
         self.validate_state()?;

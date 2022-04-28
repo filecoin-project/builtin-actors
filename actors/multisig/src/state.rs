@@ -3,6 +3,7 @@
 
 use cid::Cid;
 use fil_actors_runtime::actor_error;
+use fil_actors_runtime::ActorContext2;
 use fil_actors_runtime::ActorError;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -11,6 +12,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use indexmap::IndexMap;
 use num_traits::Zero;
 
@@ -77,7 +79,8 @@ impl State {
         store: &BS,
         addr: &Address,
     ) -> Result<(), ActorError> {
-        let mut txns = make_map_with_root(&self.pending_txs, store)?;
+        let mut txns =
+            make_map_with_root(&self.pending_txs, store).exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
         // Identify transactions that need updating
         let mut txn_ids_to_purge = IndexMap::new();
@@ -87,20 +90,21 @@ impl State {
                     txn_ids_to_purge.insert(tx_id.0.clone(), txn.clone());
                 }
             }
-        })?;
+        })
+        .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
         // Update or remove those transactions.
         for (tx_id, mut txn) in txn_ids_to_purge {
             txn.approved.retain(|approver| approver != addr);
 
             if !txn.approved.is_empty() {
-                txns.set(tx_id.into(), txn)?;
+                txns.set(tx_id.into(), txn).exit_code(ExitCode::USR_ILLEGAL_STATE)?;
             } else {
-                txns.delete(&tx_id)?;
+                txns.delete(&tx_id).exit_code(ExitCode::USR_ILLEGAL_STATE)?;
             }
         }
 
-        self.pending_txs = txns.flush()?;
+        self.pending_txs = txns.flush().exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
         Ok(())
     }

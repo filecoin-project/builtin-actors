@@ -5,7 +5,7 @@ use std::convert::TryInto;
 use std::num::TryFromIntError;
 
 use cid::Cid;
-use fil_actors_runtime::{ActorError, Array};
+use fil_actors_runtime::Array;
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -27,16 +27,6 @@ pub enum Error<E> {
     Int(#[from] TryFromIntError),
     #[error("bitfield {0}")]
     Bitfield(#[from] fvm_ipld_bitfield::OutOfRangeError),
-}
-
-impl<E: std::error::Error> From<Error<E>> for ActorError {
-    fn from(e: Error<E>) -> Self {
-        match e {
-            Error::Amt(e) => e.into(),
-            Error::Int(e) => e.into(),
-            Error::Bitfield(e) => e.into(),
-        }
-    }
 }
 
 impl<'db, BS: Blockstore> BitFieldQueue<'db, BS> {

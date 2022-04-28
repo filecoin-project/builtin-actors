@@ -7,8 +7,8 @@ use std::convert::TryInto;
 use ext::init;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, ActorContext, ActorError, Multimap,
-    CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, make_map_with_root_and_bitwidth, ActorContext, ActorContext2, ActorError,
+    Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -96,7 +96,8 @@ impl Actor {
             peer_id: params.peer,
             multi_addresses: params.multiaddrs,
             control_addresses: Default::default(),
-        })?;
+        })
+        .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
         let miner_actor_code_cid = rt.get_code_cid_for_type(Type::Miner);
         let ext::init::ExecReturn { id_address, robust_address } = rt
@@ -106,16 +107,18 @@ impl Actor {
                 RawBytes::serialize(init::ExecParams {
                     code_cid: miner_actor_code_cid,
                     constructor_params,
-                })?,
+                })
+                .exit_code(ExitCode::USR_ILLEGAL_STATE)?,
                 value,
             )?
-            .deserialize()?;
+            .deserialize()
+            .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
         let window_post_proof_type = params.window_post_proof_type;
         rt.transaction(|st: &mut State, rt| {
             let mut claims =
                 make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH)
-                    .context("failed to load claims")?;
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")?;
             set_claim(
                 &mut claims,
                 &id_address,
@@ -138,7 +141,9 @@ impl Actor {
                 )
             })?;
 
-            st.claims = claims.flush().context("failed to flush claims")?;
+            st.claims = claims
+                .flush()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims")?;
             Ok(())
         })?;
         Ok(CreateMinerReturn { id_address, robust_address })
@@ -160,7 +165,7 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let mut claims =
                 make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH)
-                    .context("failed to load claims")?;
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")?;
 
             st.add_to_claim(
                 rt.policy(),
@@ -176,7 +181,9 @@ impl Actor {
                 )
             })?;
 
-            st.claims = claims.flush().context("failed to flush claims")?;
+            st.claims = claims
+                .flush()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims")?;
             Ok(())
         })
     }
@@ -209,12 +216,14 @@ impl Actor {
                 CRON_QUEUE_HAMT_BITWIDTH,
                 CRON_QUEUE_AMT_BITWIDTH,
             )
-            .context("failed to load cron events")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load cron events")?;
 
             st.append_cron_event(&mut events, params.event_epoch, miner_event)
                 .context("failed to enroll cron event")?;
 
-            st.cron_event_queue = events.root().context("failed to flush cron events")?;
+            st.cron_event_queue = events
+                .root()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush cron events")?;
             Ok(())
         })?;
         Ok(())
@@ -235,7 +244,8 @@ impl Actor {
                 TokenAmount::zero(),
             )
             .map_err(|e| e.wrap("failed to check epoch baseline power"))?
-            .deserialize()?;
+            .deserialize()
+            .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
         if let Err(e) = Self::process_batch_proof_verifies(rt, &rewret) {
             error!("unexpected error processing batch proof verifies: {}. Skipping all verification for epoch {}", e, rt.curr_epoch());
@@ -257,7 +267,7 @@ impl Actor {
         rt.send(
             *REWARD_ACTOR_ADDR,
             ext::reward::UPDATE_NETWORK_KPI,
-            this_epoch_raw_byte_power?,
+            this_epoch_raw_byte_power.exit_code(ExitCode::USR_ILLEGAL_STATE)?,
             TokenAmount::from(0_u32),
         )
         .map_err(|e| e.wrap("failed to update network KPI with reward actor"))?;
@@ -305,15 +315,17 @@ impl Actor {
                     HAMT_BIT_WIDTH,
                     PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
                 )
-                .context("failed to load proof batching set")?
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load proof batching set")?
             } else {
                 debug!("ProofValidationBatch created");
                 Multimap::new(rt.store(), HAMT_BIT_WIDTH, PROOF_VALIDATION_BATCH_AMT_BITWIDTH)
             };
             let miner_addr = rt.message().caller();
-            let arr = mmap.get::<SealVerifyInfo>(&miner_addr.to_bytes()).with_context(|| {
-                format!("failed to get seal verify infos at addr {}", miner_addr)
-            })?;
+            let arr = mmap
+                .get::<SealVerifyInfo>(&miner_addr.to_bytes())
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to get seal verify infos at addr {}", miner_addr)
+                })?;
             if let Some(arr) = arr {
                 if arr.count() >= MAX_MINER_PROVE_COMMITS_PER_EPOCH {
                     return Err(ActorError::unchecked(
@@ -327,9 +339,11 @@ impl Actor {
             }
 
             mmap.add(miner_addr.to_bytes().into(), seal_info)
-                .context("failed to insert proof into set")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to insert proof into set")?;
 
-            let mmrc = mmap.root().context("failed to flush proofs batch map")?;
+            let mmrc = mmap
+                .root()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush proofs batch map")?;
 
             rt.charge_gas("OnSubmitVerifySeal", GAS_ON_SUBMIT_VERIFY_SEAL);
             st.proof_validation_batch = Some(mmrc);
@@ -514,11 +528,11 @@ impl Actor {
                 CRON_QUEUE_HAMT_BITWIDTH,
                 CRON_QUEUE_AMT_BITWIDTH,
             )
-            .context("failed to load cron events")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load cron events")?;
 
             let claims =
                 make_map_with_root_and_bitwidth::<_, Claim>(&st.claims, rt.store(), HAMT_BIT_WIDTH)
-                    .context("failed to load claims")?;
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")?;
             for epoch in st.first_cron_epoch..=rt_epoch {
                 let epoch_events = load_cron_events(&events, epoch)
                     .with_context(|| format!("failed to load cron events at {}", epoch))?;
@@ -530,7 +544,7 @@ impl Actor {
                 for evt in epoch_events.into_iter() {
                     let miner_has_claim = claims
                         .contains_key(&evt.miner_addr.to_bytes())
-                        .context("failed to look up claim")?;
+                        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to look up claim")?;
                     if !miner_has_claim {
                         debug!("skipping cron event for unknown miner: {}", evt.miner_addr);
                         continue;
@@ -540,11 +554,15 @@ impl Actor {
 
                 events
                     .remove_all(&epoch_key(epoch))
-                    .with_context(|| format!("failed to clear cron events at {}", epoch))?;
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to clear cron events at {}", epoch)
+                    })?;
             }
 
             st.first_cron_epoch = rt_epoch + 1;
-            st.cron_event_queue = events.root().context("failed to flush events")?;
+            st.cron_event_queue = events
+                .root()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush events")?;
 
             Ok(())
         })?;
@@ -555,7 +573,8 @@ impl Actor {
                 event_payload: event.callback_payload.bytes().to_owned(),
                 reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
                 quality_adj_power_smoothed: st.this_epoch_qa_power_smoothed.clone(),
-            })?;
+            })
+            .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
             let res = rt.send(
                 event.miner_addr,
                 ext::miner::ON_DEFERRED_CRON_EVENT_METHOD,
@@ -576,7 +595,7 @@ impl Actor {
             rt.transaction(|st: &mut State, rt| {
                 let mut claims =
                     make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH)
-                        .context("failed to load claims")?;
+                        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")?;
 
                 // Remove power and leave miner frozen
                 for miner_addr in failed_miner_crons {
@@ -591,7 +610,9 @@ impl Actor {
                     st.miner_count -= 1
                 }
 
-                st.claims = claims.flush().context("failed to flush claims")?;
+                st.claims = claims
+                    .flush()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims")?;
                 Ok(())
             })?;
         }
@@ -616,7 +637,7 @@ impl ActorCode for Actor {
             }
             Some(Method::CreateMiner) => {
                 let res = Self::create_miner(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
+                Ok(RawBytes::serialize(res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
             Some(Method::UpdateClaimedPower) => {
                 Self::update_claimed_power(rt, cbor::deserialize_params(params)?)?;
@@ -641,7 +662,7 @@ impl ActorCode for Actor {
             }
             Some(Method::CurrentTotalPower) => {
                 let res = Self::current_total_power(rt)?;
-                Ok(RawBytes::serialize(res)?)
+                Ok(RawBytes::serialize(res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }

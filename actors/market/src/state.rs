@@ -3,6 +3,7 @@
 
 use crate::balance_table::BalanceTable;
 use cid::Cid;
+use fil_actors_runtime::ActorContext2;
 use fil_actors_runtime::{
     actor_error, make_empty_map, runtime::Policy, ActorContext, ActorError, Array, Set, SetMultimap,
 };
@@ -14,6 +15,7 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::HAMT_BIT_WIDTH;
 use num_traits::{Signed, Zero};
 
@@ -70,19 +72,27 @@ impl State {
         let empty_proposals_array =
             Array::<(), BS>::new_with_bit_width(store, PROPOSALS_AMT_BITWIDTH)
                 .flush()
-                .context("Failed to create empty proposals array")?;
+                .context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "Failed to create empty proposals array",
+                )?;
         let empty_states_array = Array::<(), BS>::new_with_bit_width(store, STATES_AMT_BITWIDTH)
             .flush()
-            .context("Failed to create empty states array")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty states array")?;
 
-        let empty_pending_proposals_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
-            .flush()
-            .context("Failed to create empty pending proposals map state")?;
-        let empty_balance_table =
-            BalanceTable::new(store).root().context("Failed to create empty balance table map")?;
+        let empty_pending_proposals_map =
+            make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "Failed to create empty pending proposals map state",
+            )?;
+        let empty_balance_table = BalanceTable::new(store).root().context_code(
+            ExitCode::USR_ILLEGAL_STATE,
+            "Failed to create empty balance table map",
+        )?;
 
-        let empty_deal_ops_hamt =
-            SetMultimap::new(store).root().context("Failed to create empty multiset")?;
+        let empty_deal_ops_hamt = SetMultimap::new(store)
+            .root()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty multiset")?;
 
         Ok(Self {
             proposals: empty_proposals_array,
@@ -214,15 +224,24 @@ where
 
     pub(super) fn build(&mut self) -> Result<&mut Self, ActorError> {
         if self.proposal_permit != Permission::Invalid {
-            self.deal_proposals = Some(DealArray::load(&self.st.proposals, self.store)?);
+            self.deal_proposals = Some(
+                DealArray::load(&self.st.proposals, self.store)
+                    .exit_code(ExitCode::USR_SERIALIZATION)?,
+            );
         }
 
         if self.state_permit != Permission::Invalid {
-            self.deal_states = Some(DealMetaArray::load(&self.st.states, self.store)?);
+            self.deal_states = Some(
+                DealMetaArray::load(&self.st.states, self.store)
+                    .exit_code(ExitCode::USR_SERIALIZATION)?,
+            );
         }
 
         if self.locked_permit != Permission::Invalid {
-            self.locked_table = Some(BalanceTable::from_root(self.store, &self.st.locked_table)?);
+            self.locked_table = Some(
+                BalanceTable::from_root(self.store, &self.st.locked_table)
+                    .exit_code(ExitCode::USR_SERIALIZATION)?,
+            );
             self.total_client_locked_collateral =
                 Some(self.st.total_client_locked_collateral.clone());
             self.total_client_storage_fee = Some(self.st.total_client_storage_fee.clone());
@@ -231,16 +250,24 @@ where
         }
 
         if self.escrow_permit != Permission::Invalid {
-            self.escrow_table = Some(BalanceTable::from_root(self.store, &self.st.escrow_table)?);
+            self.escrow_table = Some(
+                BalanceTable::from_root(self.store, &self.st.escrow_table)
+                    .exit_code(ExitCode::USR_SERIALIZATION)?,
+            );
         }
 
         if self.pending_permit != Permission::Invalid {
-            self.pending_deals = Some(Set::from_root(self.store, &self.st.pending_proposals)?);
+            self.pending_deals = Some(
+                Set::from_root(self.store, &self.st.pending_proposals)
+                    .exit_code(ExitCode::USR_SERIALIZATION)?,
+            );
         }
 
         if self.dpe_permit != Permission::Invalid {
-            self.deals_by_epoch =
-                Some(SetMultimap::from_root(self.store, &self.st.deal_ops_by_epoch)?);
+            self.deals_by_epoch = Some(
+                SetMultimap::from_root(self.store, &self.st.deal_ops_by_epoch)
+                    .exit_code(ExitCode::USR_SERIALIZATION)?,
+            );
         }
 
         self.next_deal_id = self.st.next_id;
@@ -281,19 +308,25 @@ where
     pub(super) fn commit_state(&mut self) -> Result<(), ActorError> {
         if self.proposal_permit == Permission::Write {
             if let Some(s) = &mut self.deal_proposals {
-                self.st.proposals = s.flush().context("failed to flush deal proposals")?;
+                self.st.proposals = s
+                    .flush()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal proposals")?;
             }
         }
 
         if self.state_permit == Permission::Write {
             if let Some(s) = &mut self.deal_states {
-                self.st.states = s.flush().context("failed to flush deal states")?;
+                self.st.states = s
+                    .flush()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal states")?;
             }
         }
 
         if self.locked_permit == Permission::Write {
             if let Some(s) = &mut self.locked_table {
-                self.st.locked_table = s.root().context("failed to flush locked table")?;
+                self.st.locked_table = s
+                    .root()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush locked table")?;
             }
             if let Some(s) = &mut self.total_client_locked_collateral {
                 self.st.total_client_locked_collateral = s.clone();
@@ -308,19 +341,25 @@ where
 
         if self.escrow_permit == Permission::Write {
             if let Some(s) = &mut self.escrow_table {
-                self.st.escrow_table = s.root().context("failed to flush escrow table")?;
+                self.st.escrow_table = s
+                    .root()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")?;
             }
         }
 
         if self.pending_permit == Permission::Write {
             if let Some(s) = &mut self.pending_deals {
-                self.st.pending_proposals = s.root().context("failed to flush escrow table")?;
+                self.st.pending_proposals = s
+                    .root()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")?;
             }
         }
 
         if self.dpe_permit == Permission::Write {
             if let Some(s) = &mut self.deals_by_epoch {
-                self.st.deal_ops_by_epoch = s.root().context("failed to flush escrow table")?;
+                self.st.deal_ops_by_epoch = s
+                    .root()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")?;
             }
         }
 
@@ -490,13 +529,13 @@ where
             .as_ref()
             .unwrap()
             .get(&addr)
-            .context("failed to get locked balance")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")?;
         let escrow_balance = self
             .escrow_table
             .as_ref()
             .unwrap()
             .get(&addr)
-            .context("failed to get escrow balance")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")?;
         Ok((prev_locked + amount_to_lock) <= escrow_balance)
     }
 
@@ -514,14 +553,14 @@ where
             .as_ref()
             .unwrap()
             .get(addr)
-            .context("failed to get locked balance")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")?;
 
         let escrow_balance = self
             .escrow_table
             .as_ref()
             .unwrap()
             .get(addr)
-            .context("failed to get escrow balance")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")?;
 
         if &prev_locked + amount > escrow_balance {
             return Err(actor_error!(insufficient_funds;
@@ -534,7 +573,7 @@ where
             .as_mut()
             .unwrap()
             .add(addr, amount)
-            .context("failed to add locked balance")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to add locked balance")?;
         Ok(())
     }
 

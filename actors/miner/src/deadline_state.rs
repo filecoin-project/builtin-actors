@@ -7,13 +7,14 @@ use std::collections::BTreeSet;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{actor_error, ActorContext, ActorError, Array};
+use fil_actors_runtime::{actor_error, ActorContext, ActorContext2, ActorError, Array};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{PoStProof, SectorSize};
 use num_traits::{Signed, Zero};
 
@@ -58,9 +59,12 @@ impl Deadlines {
             return Err(actor_error!(illegal_argument, "invalid deadline {}", deadline_idx));
         }
 
-        store.get_cbor(&self.due[deadline_idx as usize])?.ok_or_else(|| {
-            actor_error!(illegal_state, "failed to lookup deadline {}", deadline_idx)
-        })
+        store
+            .get_cbor(&self.due[deadline_idx as usize])
+            .exit_code(ExitCode::USR_SERIALIZATION)?
+            .ok_or_else(|| {
+                actor_error!(illegal_state, "failed to lookup deadline {}", deadline_idx)
+            })
     }
 
     pub fn for_each<BS: Blockstore>(
@@ -90,7 +94,8 @@ impl Deadlines {
 
         deadline.validate_state()?;
 
-        self.due[deadline_idx as usize] = store.put_cbor(deadline, Code::Blake2b256)?;
+        self.due[deadline_idx as usize] =
+            store.put_cbor(deadline, Code::Blake2b256).exit_code(ExitCode::USR_SERIALIZATION)?;
         Ok(())
     }
 }
@@ -179,20 +184,22 @@ impl Deadline {
         let empty_partitions_array =
             Array::<(), BS>::new_with_bit_width(store, DEADLINE_PARTITIONS_AMT_BITWIDTH)
                 .flush()
-                .context("Failed to create empty states array")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty states array")?;
         let empty_deadline_expiration_array =
             Array::<(), BS>::new_with_bit_width(store, DEADLINE_EXPIRATIONS_AMT_BITWIDTH)
                 .flush()
-                .context("Failed to create empty states array")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty states array")?;
         let empty_post_submissions_array = Array::<(), BS>::new_with_bit_width(
             store,
             DEADLINE_OPTIMISTIC_POST_SUBMISSIONS_AMT_BITWIDTH,
         )
         .flush()
-        .context("Failed to create empty states array")?;
-        let empty_sectors_array = Array::<(), BS>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH)
-            .flush()
-            .context("Failed to construct empty sectors snapshot array")?;
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty states array")?;
+        let empty_sectors_array =
+            Array::<(), BS>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH).flush().context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "Failed to construct empty sectors snapshot array",
+            )?;
         Ok(Self {
             partitions: empty_partitions_array,
             expirations_epochs: empty_deadline_expiration_array,
@@ -212,28 +219,30 @@ impl Deadline {
         &self,
         store: &'db BS,
     ) -> Result<Array<'db, Partition, BS>, ActorError> {
-        Ok(Array::load(&self.partitions, store)?)
+        Ok(Array::load(&self.partitions, store).exit_code(ExitCode::USR_SERIALIZATION)?)
     }
 
     pub fn optimistic_proofs_amt<'db, BS: Blockstore>(
         &self,
         store: &'db BS,
     ) -> Result<Array<'db, WindowedPoSt, BS>, ActorError> {
-        Ok(Array::load(&self.optimistic_post_submissions, store)?)
+        Ok(Array::load(&self.optimistic_post_submissions, store)
+            .exit_code(ExitCode::USR_SERIALIZATION)?)
     }
 
     pub fn partitions_snapshot_amt<'db, BS: Blockstore>(
         &self,
         store: &'db BS,
     ) -> Result<Array<'db, Partition, BS>, ActorError> {
-        Ok(Array::load(&self.partitions_snapshot, store)?)
+        Ok(Array::load(&self.partitions_snapshot, store).exit_code(ExitCode::USR_SERIALIZATION)?)
     }
 
     pub fn optimistic_proofs_snapshot_amt<'db, BS: Blockstore>(
         &self,
         store: &'db BS,
     ) -> Result<Array<'db, WindowedPoSt, BS>, ActorError> {
-        Ok(Array::load(&self.optimistic_post_submissions_snapshot, store)?)
+        Ok(Array::load(&self.optimistic_post_submissions_snapshot, store)
+            .exit_code(ExitCode::USR_SERIALIZATION)?)
     }
 
     pub fn load_partition<BS: Blockstore>(
@@ -241,11 +250,14 @@ impl Deadline {
         store: &BS,
         partition_idx: u64,
     ) -> Result<Partition, ActorError> {
-        let partitions = Array::<Partition, _>::load(&self.partitions, store)?;
+        let partitions = Array::<Partition, _>::load(&self.partitions, store)
+            .exit_code(ExitCode::USR_SERIALIZATION)?;
 
         let partition = partitions
             .get(partition_idx)
-            .with_context(|| format!("failed to lookup partition {}", partition_idx))?
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to lookup partition {}", partition_idx)
+            })?
             .ok_or_else(|| actor_error!(not_found, "no partition {}", partition_idx))?;
 
         Ok(partition.clone())
@@ -256,11 +268,14 @@ impl Deadline {
         store: &BS,
         partition_idx: u64,
     ) -> Result<Partition, ActorError> {
-        let partitions = Array::<Partition, _>::load(&self.partitions_snapshot, store)?;
+        let partitions = Array::<Partition, _>::load(&self.partitions_snapshot, store)
+            .exit_code(ExitCode::USR_SERIALIZATION)?;
 
         let partition = partitions
             .get(partition_idx)
-            .with_context(|| format!("failed to lookup partition snapshot {}", partition_idx))?
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to lookup partition snapshot {}", partition_idx)
+            })?
             .ok_or_else(|| actor_error!(not_found, "no partition snapshot {}", partition_idx))?;
 
         Ok(partition.clone())
@@ -279,12 +294,17 @@ impl Deadline {
             return Ok(());
         }
 
-        let mut queue = BitFieldQueue::new(store, &self.expirations_epochs, quant)?;
+        let mut queue = BitFieldQueue::new(store, &self.expirations_epochs, quant)
+            .exit_code(ExitCode::USR_SERIALIZATION)?;
 
         queue
-            .add_to_queue_values(expiration_epoch, partitions.iter().copied())?;
+            .add_to_queue_values(expiration_epoch, partitions.iter().copied())
+            .exit_code(ExitCode::USR_SERIALIZATION)?;
 
-        self.expirations_epochs = queue.amt.flush().context("failed to save expiration queue")?;
+        self.expirations_epochs = queue
+            .amt
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save expiration queue")?;
 
         Ok(())
     }
@@ -316,9 +336,13 @@ impl Deadline {
         // For each partition with an expiry, remove and collect expirations from the partition queue.
         for i in expired_partitions.iter() {
             let partition_idx = i;
-            let mut partition = partitions.get(partition_idx)?.cloned().ok_or_else(|| {
-                actor_error!(illegal_state, "missing expected partition {}", partition_idx)
-            })?;
+            let mut partition = partitions
+                .get(partition_idx)
+                .exit_code(ExitCode::USR_SERIALIZATION)?
+                .cloned()
+                .ok_or_else(|| {
+                    actor_error!(illegal_state, "missing expected partition {}", partition_idx)
+                })?;
 
             let partition_expiration =
                 partition.pop_expired_sectors(store, until, quant).with_context(|| {
@@ -335,10 +359,10 @@ impl Deadline {
             all_faulty_power += &partition_expiration.faulty_power;
             all_on_time_pledge += &partition_expiration.on_time_pledge;
 
-            partitions.set(partition_idx, partition)?;
+            partitions.set(partition_idx, partition).exit_code(ExitCode::USR_SERIALIZATION)?;
         }
 
-        self.partitions = partitions.flush()?;
+        self.partitions = partitions.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
 
         // Update early expiration bitmap.
         let new_early_terminations = BitField::try_from_bits(partitions_with_early_terminations)
@@ -396,15 +420,16 @@ impl Deadline {
             }
 
             // Get/create partition to update.
-            let mut partition = match partitions.get(partition_idx)? {
-                Some(partition) => partition.clone(),
-                None => {
-                    // This case will usually happen zero times.
-                    // It would require adding more than a full partition in one go
-                    // to happen more than once.
-                    Partition::new(store)?
-                }
-            };
+            let mut partition =
+                match partitions.get(partition_idx).exit_code(ExitCode::USR_SERIALIZATION)? {
+                    Some(partition) => partition.clone(),
+                    None => {
+                        // This case will usually happen zero times.
+                        // It would require adding more than a full partition in one go
+                        // to happen more than once.
+                        Partition::new(store)?
+                    }
+                };
 
             // Figure out which (if any) sectors we want to add to this partition.
             let sector_count = partition.sectors.len();
@@ -424,7 +449,7 @@ impl Deadline {
             total_power += &partition_power;
 
             // Save partition back.
-            partitions.set(partition_idx, partition)?;
+            partitions.set(partition_idx, partition).exit_code(ExitCode::USR_SERIALIZATION)?;
 
             // Record deadline -> partition mapping so we can later update the deadlines.
             partition_deadline_updates
@@ -432,15 +457,17 @@ impl Deadline {
         }
 
         // Save partitions back.
-        self.partitions = partitions.flush()?;
+        self.partitions = partitions.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
 
         // Next, update the expiration queue.
-        let mut deadline_expirations = BitFieldQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load expiration epochs")?;
+        let mut deadline_expirations =
+            BitFieldQueue::new(store, &self.expirations_epochs, quant)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load expiration epochs")?;
         deadline_expirations
             .add_many_to_queue_values(partition_deadline_updates.iter().copied())
-            .context("failed to add expirations for new deadlines")?;
-        self.expirations_epochs = deadline_expirations.amt.flush()?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to add expirations for new deadlines")?;
+        self.expirations_epochs =
+            deadline_expirations.amt.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
 
         Ok(total_power)
     }
@@ -461,8 +488,9 @@ impl Deadline {
 
             let mut partition = match partitions
                 .get(partition_idx)
-                .with_context(|| format!("failed to load partition {}", partition_idx))?
-            {
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to load partition {}", partition_idx)
+                })? {
                 Some(partition) => partition.clone(),
                 None => {
                     partitions_finished.push(partition_idx);
@@ -485,7 +513,9 @@ impl Deadline {
             // Save partition
             partitions
                 .set(partition_idx, partition)
-                .with_context(|| format!("failed to store partition {}", partition_idx))?;
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to store partition {}", partition_idx)
+                })?;
 
             if !result.below_limit(max_partitions, max_sectors) {
                 break;
@@ -498,7 +528,9 @@ impl Deadline {
         }
 
         // Save deadline's partitions
-        self.partitions = partitions.flush().context("failed to update partitions")?;
+        self.partitions = partitions
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to update partitions")?;
 
         // Update global early terminations bitfield.
         let no_early_terminations = self.early_terminations.is_empty();
@@ -511,12 +543,15 @@ impl Deadline {
         until: ChainEpoch,
         quant: QuantSpec,
     ) -> Result<(BitField, bool), ActorError> {
-        let mut expirations = BitFieldQueue::new(store, &self.expirations_epochs, quant)?;
-        let (popped, modified) =
-            expirations.pop_until(until).context("failed to pop expiring partitions")?;
+        let mut expirations = BitFieldQueue::new(store, &self.expirations_epochs, quant)
+            .exit_code(ExitCode::USR_SERIALIZATION)?;
+        let (popped, modified) = expirations
+            .pop_until(until)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to pop expiring partitions")?;
 
         if modified {
-            self.expirations_epochs = expirations.amt.flush()?;
+            self.expirations_epochs =
+                expirations.amt.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
         }
 
         Ok((popped, modified))
@@ -539,7 +574,9 @@ impl Deadline {
         for (partition_idx, sector_numbers) in partition_sectors.iter() {
             let mut partition = partitions
                 .get(partition_idx)
-                .with_context(|| format!("failed to load partition {}", partition_idx))?
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to load partition {}", partition_idx)
+                })?
                 .ok_or_else(
                     || actor_error!(not_found; "failed to find partition {}", partition_idx),
                 )?
@@ -561,7 +598,9 @@ impl Deadline {
 
             partitions
                 .set(partition_idx, partition)
-                .with_context(|| format!("failed to store updated partition {}", partition_idx))?;
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to store updated partition {}", partition_idx)
+                })?;
 
             if !removed.is_empty() {
                 // Record that partition now has pending early terminations.
@@ -578,7 +617,9 @@ impl Deadline {
         }
 
         // save partitions back
-        self.partitions = partitions.flush().context("failed to persist partitions")?;
+        self.partitions = partitions
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to persist partitions")?;
 
         Ok(power_lost)
     }
@@ -642,7 +683,9 @@ impl Deadline {
             .try_for_each::<_, ActorError>(|partition_idx, partition| {
                 // If we're keeping the partition as-is, append it to the new partitions array.
                 if !to_remove_set.contains(&partition_idx) {
-                    new_partitions.set(new_partitions.count(), partition.clone())?;
+                    new_partitions
+                        .set(new_partitions.count(), partition.clone())
+                        .exit_code(ExitCode::USR_SERIALIZATION)?;
                     return Ok(());
                 }
 
@@ -675,10 +718,11 @@ impl Deadline {
 
                 Ok(())
             })
-            .context("while removing partitions")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "while removing partitions")?;
 
-        self.partitions =
-            new_partitions.flush().context("failed to persist new partition table")?;
+        self.partitions = new_partitions
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to persist new partition table")?;
 
         let dead = BitField::union(&all_dead_sectors);
         let live = BitField::union(&all_live_sectors);
@@ -692,14 +736,17 @@ impl Deadline {
 
         // Update expiration bitfields.
         let mut expiration_epochs = BitFieldQueue::new(store, &self.expirations_epochs, quant)
-            .context("failed to load expiration queue")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load expiration queue")?;
 
-        expiration_epochs
-            .cut(to_remove)
-            .context("failed cut removed partitions from deadline expiration queue")?;
+        expiration_epochs.cut(to_remove).context_code(
+            ExitCode::USR_ILLEGAL_STATE,
+            "failed cut removed partitions from deadline expiration queue",
+        )?;
 
-        self.expirations_epochs =
-            expiration_epochs.amt.flush().context("failed persist deadline expiration queue")?;
+        self.expirations_epochs = expiration_epochs.amt.flush().context_code(
+            ExitCode::USR_ILLEGAL_STATE,
+            "failed persist deadline expiration queue",
+        )?;
 
         Ok((live, dead, removed_power))
     }
@@ -723,7 +770,9 @@ impl Deadline {
         for (partition_idx, sector_numbers) in partition_sectors.iter() {
             let mut partition = partitions
                 .get(partition_idx)
-                .with_context(|| format!("failed to load partition {}", partition_idx))?
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to load partition {}", partition_idx)
+                })?
                 .ok_or_else(|| actor_error!(not_found; "no such partition {}", partition_idx))?
                 .clone();
 
@@ -748,10 +797,14 @@ impl Deadline {
 
             partitions
                 .set(partition_idx, partition)
-                .with_context(|| format!("failed to store partition {}", partition_idx))?;
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to store partition {}", partition_idx)
+                })?;
         }
 
-        self.partitions = partitions.flush().context("failed to store partitions root")?;
+        self.partitions = partitions
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store partitions root")?;
 
         self.add_expiration_partitions(
             store,
@@ -776,7 +829,9 @@ impl Deadline {
         for (partition_idx, sector_numbers) in partition_sectors.iter() {
             let mut partition = partitions
                 .get(partition_idx)
-                .with_context(|| format!("failed to load partition {}", partition_idx))?
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to load partition {}", partition_idx)
+                })?
                 .ok_or_else(|| actor_error!(not_found; "no such partition {}", partition_idx))?
                 .clone();
 
@@ -786,12 +841,16 @@ impl Deadline {
 
             partitions
                 .set(partition_idx, partition)
-                .with_context(|| format!("failed to update partition {}", partition_idx))?;
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to update partition {}", partition_idx)
+                })?;
         }
 
         // Power is not regained until the deadline end, when the recovery is confirmed.
 
-        self.partitions = partitions.flush().context("failed to store partitions root")?;
+        self.partitions = partitions
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store partitions root")?;
 
         Ok(())
     }
@@ -821,7 +880,9 @@ impl Deadline {
 
             let mut partition = partitions
                 .get(partition_idx)
-                .with_context(|| format!("failed to load partition {}", partition_idx))?
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to load partition {}", partition_idx)
+                })?
                 .ok_or_else(|| actor_error!(illegal_state; "no partition {}", partition_idx))?
                 .clone();
 
@@ -851,7 +912,9 @@ impl Deadline {
             // Save new partition state.
             partitions
                 .set(partition_idx, partition)
-                .with_context(|| format!("failed to update partition {}", partition_idx))?;
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to update partition {}", partition_idx)
+                })?;
 
             self.faulty_power += &part_new_faulty_power;
 
@@ -861,7 +924,9 @@ impl Deadline {
 
         // Save modified deadline state.
         if detected_any {
-            self.partitions = partitions.flush().context("failed to store partitions")?;
+            self.partitions = partitions
+                .flush()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store partitions")?;
         }
 
         self.add_expiration_partitions(
@@ -881,7 +946,7 @@ impl Deadline {
             DEADLINE_OPTIMISTIC_POST_SUBMISSIONS_AMT_BITWIDTH,
         )
         .flush()
-        .context("failed to clear pending proofs array")?;
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to clear pending proofs array")?;
 
         // only snapshot sectors if there's a proof that might be disputed (this is equivalent to asking if the OptimisticPoStSubmissionsSnapshot is empty)
         if self.optimistic_post_submissions != self.optimistic_post_submissions_snapshot {
@@ -890,7 +955,10 @@ impl Deadline {
             self.sectors_snapshot =
                 Array::<(), BS>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH)
                     .flush()
-                    .context("failed to clear sectors snapshot array")?;
+                    .context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to clear sectors snapshot array",
+                    )?;
         }
         Ok((power_delta, penalized_power))
     }
@@ -901,7 +969,7 @@ impl Deadline {
         f: impl FnMut(u64, &Partition) -> Result<(), ActorError>,
     ) -> Result<(), ActorError> {
         let parts = self.partitions_amt(store)?;
-        parts.try_for_each(f)?;
+        parts.try_for_each(f).exit_code(ExitCode::USR_SERIALIZATION)?;
         Ok(())
     }
 
@@ -933,9 +1001,12 @@ impl Deadline {
         let mut disputed_sectors = PartitionSectorMap::default();
         let mut disputed_power = PowerPair::zero();
         for part_idx in partitions.iter() {
-            let partition_snapshot = partitions_snapshot.get(part_idx)?.ok_or_else(|| {
-                actor_error!(illegal_state, "failed to find partition {}", part_idx)
-            })?;
+            let partition_snapshot = partitions_snapshot
+                .get(part_idx)
+                .exit_code(ExitCode::USR_SERIALIZATION)?
+                .ok_or_else(|| {
+                    actor_error!(illegal_state, "failed to find partition {}", part_idx)
+                })?;
 
             // Record sectors for proof verification
             all_sectors.push(partition_snapshot.sectors.clone());
@@ -1062,7 +1133,9 @@ impl Deadline {
         for post in post_partitions {
             let mut partition = partitions
                 .get(post.index)
-                .with_context(|| format!("failed to load partition {}", post.index))?
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to load partition {}", post.index)
+                })?
                 .ok_or_else(|| actor_error!(not_found; "no such partition {}", post.index))?
                 .clone();
 
@@ -1105,7 +1178,9 @@ impl Deadline {
             // This will be rolled back if the method aborts with a failed proof.
             partitions
                 .set(post.index, partition)
-                .with_context(|| format!("failed to update partition {}", post.index))?;
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to update partition {}", post.index)
+                })?;
 
             new_faulty_power_total += &new_fault_power;
             retracted_recovery_power_total += &retracted_recovery_power;
@@ -1124,7 +1199,9 @@ impl Deadline {
         self.faulty_power -= &recovered_power_total;
         self.faulty_power += &new_faulty_power_total;
 
-        self.partitions = partitions.flush().context("failed to persist partitions")?;
+        self.partitions = partitions
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to persist partitions")?;
 
         // Collect all sectors, faults, and recoveries for proof verification.
         let all_sector_numbers = BitField::union(&all_sectors);
@@ -1157,8 +1234,9 @@ impl Deadline {
                 // TODO: Can we do this with out cloning?
                 WindowedPoSt { partitions: partitions.clone(), proofs: proofs.to_vec() },
             )
-            .context("failed to store proof")?;
-        let root = proof_arr.flush().context("failed to save proofs")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store proof")?;
+        let root =
+            proof_arr.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save proofs")?;
         self.optimistic_post_submissions = root;
         Ok(())
     }
@@ -1178,10 +1256,13 @@ impl Deadline {
         // This will not affect concurrent attempts to refute other proofs.
         let post = proof_arr
             .delete(idx)
-            .with_context(|| format!("failed to retrieve proof {}", idx))?
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to retrieve proof {}", idx)
+            })?
             .ok_or_else(|| actor_error!(illegal_argument, "proof {} not found", idx))?;
 
-        let root = proof_arr.flush().context("failed to save proofs")?;
+        let root =
+            proof_arr.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save proofs")?;
         self.optimistic_post_submissions_snapshot = root;
         Ok((post.partitions, post.proofs))
     }
@@ -1212,8 +1293,9 @@ impl Deadline {
         for (partition_idx, sector_numbers) in partition_sectors.iter() {
             let mut partition = match partitions
                 .get(partition_idx)
-                .with_context(|| format!("failed to load partition {}", partition_idx))?
-            {
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to load partition {}", partition_idx)
+                })? {
                 Some(partition) => partition.clone(),
                 None => {
                     // We failed to find the partition, it could have moved
@@ -1245,11 +1327,15 @@ impl Deadline {
             rescheduled_partitions.push(partition_idx);
             partitions
                 .set(partition_idx, partition)
-                .with_context(|| format!("failed to store partition {}", partition_idx))?;
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to store partition {}", partition_idx)
+                })?;
         }
 
         if !rescheduled_partitions.is_empty() {
-            self.partitions = partitions.flush().context("failed to save partitions")?;
+            self.partitions = partitions
+                .flush()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save partitions")?;
 
             self.add_expiration_partitions(store, expiration, &rescheduled_partitions, quant)
                 .context("failed to reschedule partition expirations")?;

@@ -7,7 +7,7 @@ use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorContext,
-    ActorError, Map, INIT_ACTOR_ADDR,
+    ActorContext2, ActorError, Map, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -99,7 +99,7 @@ impl Actor {
 
         let empty_root = make_empty_map::<_, ()>(rt.store(), HAMT_BIT_WIDTH)
             .flush()
-            .context("Failed to create empty map")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty map")?;
 
         let mut st: State = State {
             signers: resolved_signers,
@@ -146,7 +146,7 @@ impl Actor {
             }
 
             let mut ptx = make_map_with_root(&st.pending_txs, rt.store())
-                .context("failed to load pending transactions")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")?;
 
             let t_id = st.next_tx_id;
             st.next_tx_id.0 += 1;
@@ -159,9 +159,15 @@ impl Actor {
                 approved: Vec::new(),
             };
 
-            ptx.set(t_id.key(), txn.clone()).context("failed to put transaction for propose")?;
+            ptx.set(t_id.key(), txn.clone()).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to put transaction for propose",
+            )?;
 
-            st.pending_txs = ptx.flush().context("failed to flush pending transactions")?;
+            st.pending_txs = ptx.flush().context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to flush pending transactions",
+            )?;
 
             Ok((t_id, txn))
         })?;
@@ -187,7 +193,7 @@ impl Actor {
             }
 
             let ptx = make_map_with_root(&st.pending_txs, rt.store())
-                .context("failed to load pending transactions")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")?;
 
             let txn = get_transaction(rt, &ptx, params.id, params.proposal_hash)?;
 
@@ -222,11 +228,13 @@ impl Actor {
             }
 
             let mut ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, rt.store())
-                .context("failed to load pending transactions")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")?;
 
             let (_, tx) = ptx
                 .delete(&params.id.key())
-                .with_context(|| format!("failed to pop transaction {:?} for cancel", params.id,))?
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to pop transaction {:?} for cancel", params.id,)
+                })?
                 .ok_or_else(|| {
                     actor_error!(not_found, "no such transaction {:?} to cancel", params.id)
                 })?;
@@ -236,15 +244,19 @@ impl Actor {
                 return Err(actor_error!(forbidden; "Cannot cancel another signers transaction"));
             }
 
-            let calculated_hash = compute_proposal_hash(&tx, rt).with_context(|| {
-                format!("failed to compute proposal hash for (tx: {:?})", params.id)
-            })?;
+            let calculated_hash = compute_proposal_hash(&tx, rt)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to compute proposal hash for (tx: {:?})", params.id)
+                })?;
 
             if !params.proposal_hash.is_empty() && params.proposal_hash != calculated_hash {
                 return Err(actor_error!(illegal_state, "hash does not match proposal params"));
             }
 
-            st.pending_txs = ptx.flush().context("failed to flush pending transactions")?;
+            st.pending_txs = ptx.flush().context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to flush pending transactions",
+            )?;
 
             Ok(())
         })
@@ -448,15 +460,20 @@ impl Actor {
 
         let st = rt.transaction(|st: &mut State, rt| {
             let mut ptx = make_map_with_root(&st.pending_txs, rt.store())
-                .context("failed to load pending transactions")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")?;
 
             // update approved on the transaction
             txn.approved.push(rt.message().caller());
 
             ptx.set(tx_id.key(), txn.clone())
-                .with_context(|| format!("failed to put transaction {} for approval", tx_id.0,))?;
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to put transaction {} for approval", tx_id.0,)
+                })?;
 
-            st.pending_txs = ptx.flush().context("failed to flush pending transactions")?;
+            st.pending_txs = ptx.flush().context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to flush pending transactions",
+            )?;
 
             // Go implementation holds reference to state after transaction so this must be cloned
             // to match to handle possible exit code inconsistency
@@ -497,11 +514,17 @@ where
 
         rt.transaction(|st: &mut State, rt| {
             let mut ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, rt.store())
-                .context("failed to load pending transactions")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")?;
 
-            ptx.delete(&txn_id.key()).context("failed to delete transaction for cleanup")?;
+            ptx.delete(&txn_id.key()).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to delete transaction for cleanup",
+            )?;
 
-            st.pending_txs = ptx.flush().context("failed to flush pending transactions")?;
+            st.pending_txs = ptx.flush().context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to flush pending transactions",
+            )?;
             Ok(())
         })?;
     }
@@ -521,7 +544,9 @@ where
 {
     let txn = ptx
         .get(&txn_id.key())
-        .with_context(|| format!("failed to load transaction {:?} for approval", txn_id,))?
+        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to load transaction {:?} for approval", txn_id,)
+        })?
         .ok_or_else(|| actor_error!(not_found, "no such transaction {:?} for approval", txn_id))?;
 
     if !proposal_hash.is_empty() {
@@ -573,11 +598,11 @@ impl ActorCode for Actor {
             }
             Some(Method::Propose) => {
                 let res = Self::propose(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
+                Ok(RawBytes::serialize(res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
             Some(Method::Approve) => {
                 let res = Self::approve(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
+                Ok(RawBytes::serialize(res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
             Some(Method::Cancel) => {
                 Self::cancel(rt, cbor::deserialize_params(params)?)?;

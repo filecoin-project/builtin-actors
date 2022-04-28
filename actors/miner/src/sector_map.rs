@@ -4,9 +4,10 @@
 use std::collections::BTreeMap;
 
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_shared::error::ExitCode;
 use serde::{Deserialize, Serialize};
 
-use fil_actors_runtime::{actor_error, runtime::Policy, ActorContext, ActorError};
+use fil_actors_runtime::{actor_error, runtime::Policy, ActorContext, ActorContext2, ActorError};
 
 /// Maps deadlines to partition maps.
 #[derive(Default)]
@@ -87,7 +88,9 @@ impl DeadlineSectorMap {
             policy,
             deadline_idx,
             partition_idx,
-            BitField::try_from_bits(sector_numbers.iter().copied())?.into(),
+            BitField::try_from_bits(sector_numbers.iter().copied())
+                .exit_code(ExitCode::USR_SERIALIZATION)?
+                .into(),
         )
     }
 
@@ -113,7 +116,10 @@ impl PartitionSectorMap {
         partition_idx: u64,
         sector_numbers: Vec<u64>,
     ) -> Result<(), ActorError> {
-        self.add(partition_idx, BitField::try_from_bits(sector_numbers)?.into())
+        self.add(
+            partition_idx,
+            BitField::try_from_bits(sector_numbers).exit_code(ExitCode::USR_SERIALIZATION)?.into(),
+        )
     }
     /// Records the given sector bitfield at the given partition index, merging
     /// it with any existing bitfields if necessary.
@@ -124,11 +130,14 @@ impl PartitionSectorMap {
     ) -> Result<(), ActorError> {
         match self.0.get_mut(&partition_idx) {
             Some(old_sector_numbers) => {
-                let old = old_sector_numbers
-                    .validate_mut()
-                    .context("failed to validate sector bitfield")?;
-                let new =
-                    sector_numbers.validate().context("failed to validate new sector bitfield")?;
+                let old = old_sector_numbers.validate_mut().context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to validate sector bitfield",
+                )?;
+                let new = sector_numbers.validate().context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to validate new sector bitfield",
+                )?;
                 *old |= new;
             }
             None => {
@@ -141,7 +150,7 @@ impl PartitionSectorMap {
     /// Counts the number of partitions & sectors within the map.
     pub fn count(&mut self) -> Result<(/* partitions */ u64, /* sectors */ u64), ActorError> {
         let sectors = self.0.iter_mut().try_fold(0_u64, |sectors, (partition_idx, bf)| {
-            let validated = bf.validate().with_context(|| {
+            let validated = bf.validate().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                 format!("failed to parse bitmap for partition {}", partition_idx)
             })?;
             sectors.checked_add(validated.len() as u64).ok_or_else(|| {

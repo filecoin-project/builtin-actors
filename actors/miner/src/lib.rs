@@ -17,8 +17,8 @@ pub use deadlines::*;
 pub use expiration_queue::*;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    actor_error, cbor, ActorContext, ActorContext2, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
@@ -179,8 +179,10 @@ impl Actor {
             params.multi_addresses,
             params.window_post_proof_type,
         )?;
-        let info_cid =
-            rt.store().put_cbor(&info, Blake2b256).context("failed to construct illegal state")?;
+        let info_cid = rt
+            .store()
+            .put_cbor(&info, Blake2b256)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")?;
 
         let st = State::new(policy, rt.store(), info_cid, period_start, deadline_idx)
             .context("failed to construct state")?;
@@ -522,8 +524,8 @@ impl Actor {
                 return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
             }
 
-            let sectors =
-                Sectors::load(rt.store(), &state.sectors).context("failed to load sectors")?;
+            let sectors = Sectors::load(rt.store(), &state.sectors)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")?;
 
             let mut deadlines =
                 state.load_deadlines(rt.store()).context("failed to load deadlines")?;
@@ -760,7 +762,7 @@ impl Actor {
             proof: params.aggregate_proof,
             infos: svis,
         })
-        .context("aggregate seal verify failed")?;
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "aggregate seal verify failed")?;
 
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
@@ -822,8 +824,8 @@ impl Actor {
         )?;
 
         let sector_store = rt.store().clone();
-        let mut sectors =
-            Sectors::load(&sector_store, &state.sectors).context("failed to load sectors array")?;
+        let mut sectors = Sectors::load(&sector_store, &state.sectors)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
 
         let mut power_delta = PowerPair::zero();
         let mut pledge_delta = TokenAmount::zero();
@@ -937,7 +939,8 @@ impl Actor {
                 RawBytes::serialize(ext::market::ActivateDealsParams {
                     deal_ids: update.deals.clone(),
                     sector_expiry: sector_info.expiration,
-                })?,
+                })
+                .exit_code(ExitCode::USR_ILLEGAL_STATE)?,
                 TokenAmount::zero(),
             );
 
@@ -1057,7 +1060,7 @@ impl Actor {
                             new_unsealed_cid: with_details.unsealed_cid,
                             proof: with_details.update.replica_proof.clone(),
                         }
-                    ).with_context(|| {
+                    ).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                         format!("failed to verify replica proof for sector {}", with_details.sector_info.sector_number)
                     })?;
 
@@ -1140,7 +1143,7 @@ impl Actor {
 
                     let mut partition = partitions
                         .get(with_details.update.partition)
-                        .with_context(|| format!("failed to load deadline {} partition {}", with_details.update.deadline, with_details.update.partition))?
+                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || format!("failed to load deadline {} partition {}", with_details.update.deadline, with_details.update.partition))?
                         .cloned()
                         .ok_or_else(|| actor_error!(not_found, "no such deadline {} partition {}", dl_idx, with_details.update.partition))?;
 
@@ -1158,7 +1161,7 @@ impl Actor {
 
                     partitions
                         .set(with_details.update.partition, partition)
-                        .with_context(|| {
+                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                             format!("failed to save deadline {} partition {}", with_details.update.deadline, with_details.update.partition)
                         })?;
 
@@ -1166,7 +1169,7 @@ impl Actor {
                     new_sectors.push(new_sector_info);
                 }
 
-                deadline.partitions = partitions.flush().with_context(|| {
+                deadline.partitions = partitions.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                     format!("failed to save partitions for deadline {}", dl_idx)
                 })?;
 
@@ -1196,7 +1199,7 @@ impl Actor {
             // Overwrite sector infos.
             sectors.store(new_sectors).context("failed to update sector infos")?;
 
-            state.sectors = sectors.amt.flush().context("failed to save sectors")?;
+            state.sectors = sectors.amt.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save sectors")?;
             state.save_deadlines(rt.store(), deadlines).context("failed to save deadlines")?;
 
             BitField::try_from_bits(succeeded).map_err(|_|{
@@ -1299,10 +1302,13 @@ impl Actor {
 
                 // Load sectors for the dispute.
                 let sectors = Sectors::load(rt.store(), &dl_current.sectors_snapshot)
-                    .context("failed to load sectors array")?;
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
                 let sector_infos = sectors
                     .load_for_proof(&dispute_info.all_sector_nos, &dispute_info.ignored_sector_nos)
-                    .context("failed to load sectors to dispute window post")?;
+                    .context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to load sectors to dispute window post",
+                    )?;
 
                 // Check proof, we fail if validation succeeds.
                 if verify_windowed_post(rt, target_deadline.challenge, &sector_infos, proofs)? {
@@ -1674,7 +1680,9 @@ impl Actor {
         let st: State = rt.state()?;
         let precommit = st
             .get_precommitted_sector(rt.store(), sector_number)
-            .with_context(|| format!("failed to load pre-committed sector {}", sector_number))?
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to load pre-committed sector {}", sector_number)
+            })?
             .ok_or_else(|| actor_error!(not_found, "no pre-commited sector {}", sector_number))?;
 
         let max_proof_size = precommit.info.seal_proof.proof_size().map_err(|e| {
@@ -1730,7 +1738,7 @@ impl Actor {
         rt.send(
             *STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
-            RawBytes::serialize(&svi)?,
+            RawBytes::serialize(&svi).exit_code(ExitCode::USR_ILLEGAL_STATE)?,
             BigInt::zero(),
         )?;
 
@@ -1900,7 +1908,7 @@ impl Actor {
             }
 
             let mut sectors = Sectors::load(rt.store(), &state.sectors)
-                .context("failed to load sectors array")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
 
             let mut power_delta = PowerPair::zero();
             let mut pledge_delta = TokenAmount::zero();
@@ -1926,7 +1934,9 @@ impl Actor {
 
                     let mut partition = partitions
                         .get(decl.partition)
-                        .with_context(|| format!("failed to load partition {:?}", key))?
+                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                            format!("failed to load partition {:?}", key)
+                        })?
                         .cloned()
                         .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
@@ -2011,7 +2021,9 @@ impl Actor {
 
                     partitions
                         .set(decl.partition, partition)
-                        .with_context(|| format!("failed to save partition {:?}", key))?;
+                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                            format!("failed to save partition {:?}", key)
+                        })?;
 
                     // Record the new partition expiration epoch for setting outside this loop
                     // over declarations.
@@ -2026,9 +2038,10 @@ impl Actor {
                     }
                 }
 
-                deadline.partitions = partitions.flush().with_context(|| {
-                    format!("failed to save partitions for deadline {}", deadline_idx)
-                })?;
+                deadline.partitions =
+                    partitions.flush().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to save partitions for deadline {}", deadline_idx)
+                    })?;
 
                 // Record partitions in deadline expiration queue
                 for epoch in epochs_to_reschedule {
@@ -2048,7 +2061,10 @@ impl Actor {
                     .with_context(|| format!("failed to save deadline {}", deadline_idx))?;
             }
 
-            state.sectors = sectors.amt.flush().context("failed to save sectors")?;
+            state.sectors = sectors
+                .amt
+                .flush()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save sectors")?;
             state.save_deadlines(store, deadlines).context("failed to save deadlines")?;
 
             Ok((power_delta, pledge_delta))
@@ -2146,7 +2162,8 @@ impl Actor {
 
             // We're only reading the sectors, so there's no need to save this back.
             // However, we still want to avoid re-loading this array per-partition.
-            let sectors = Sectors::load(store, &state.sectors).context("failed to load sectors")?;
+            let sectors = Sectors::load(store, &state.sectors)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")?;
 
             for (deadline_idx, partition_sectors) in to_process.iter() {
                 // If the deadline is the current or next deadline to prove, don't allow terminating sectors.
@@ -2275,8 +2292,8 @@ impl Actor {
             let mut deadlines =
                 state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
-            let sectors =
-                Sectors::load(store, &state.sectors).context("failed to load sectors array")?;
+            let sectors = Sectors::load(store, &state.sectors)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
 
             let mut new_fault_power_total = PowerPair::zero();
             let curr_epoch = rt.curr_epoch();
@@ -2416,8 +2433,8 @@ impl Actor {
             let mut deadlines =
                 state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
-            let sectors =
-                Sectors::load(store, &state.sectors).context("failed to load sectors array")?;
+            let sectors = Sectors::load(store, &state.sectors)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
             let curr_epoch = rt.curr_epoch();
             for (deadline_idx, partition_map) in to_process.iter() {
                 let policy = rt.policy();
@@ -2738,7 +2755,7 @@ impl Actor {
 
         let fault = rt
             .verify_consensus_fault(&params.header1, &params.header2, &params.header_extra)
-            .context("fault not verified")?
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "fault not verified")?
             .ok_or_else(|| actor_error!(illegal_argument, "No consensus fault found"))?;
         if fault.target != rt.message().receiver() {
             return Err(actor_error!(
@@ -2795,7 +2812,7 @@ impl Actor {
                     rt.curr_epoch(),
                     &rt.current_balance(),
                 )
-                .context("failed to pay fees")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to pay fees")?;
 
             let mut burn_amount = &penalty_from_vesting + &penalty_from_balance;
             pledge_delta -= penalty_from_vesting;
@@ -3017,8 +3034,8 @@ where
             }
 
             let info = get_miner_info(rt.store(), state)?;
-            let sectors =
-                Sectors::load(store, &state.sectors).context("failed to load sectors array")?;
+            let sectors = Sectors::load(store, &state.sectors)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
 
             let mut total_initial_pledge = TokenAmount::zero();
             let mut deals_to_terminate =
@@ -3030,7 +3047,7 @@ where
             for (epoch, sector_numbers) in result.iter() {
                 let sectors = sectors
                     .load_sector(sector_numbers)
-                    .map_err(|e| e.wrap("failed to load sector infos"))?;
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sector infos")?;
 
                 penalty += termination_penalty(
                     info.sector_size,
@@ -3417,7 +3434,8 @@ where
         RawBytes::serialize(ext::power::UpdateClaimedPowerParams {
             raw_byte_delta: delta.raw,
             quality_adjusted_delta: delta.qa,
-        })?,
+        })
+        .exit_code(ExitCode::USR_ILLEGAL_STATE)?,
         TokenAmount::zero(),
     )
     .map_err(|e| e.wrap(format!("failed to update power with {:?}", delta_clone)))?;
@@ -3443,7 +3461,8 @@ where
             RawBytes::serialize(ext::market::OnMinerSectorsTerminateParamsRef {
                 epoch,
                 deal_ids: chunk,
-            })?,
+            })
+            .exit_code(ExitCode::USR_ILLEGAL_STATE)?,
             TokenAmount::zero(),
         )?;
     }
@@ -3584,10 +3603,12 @@ where
             ext::market::COMPUTE_DATA_COMMITMENT_METHOD,
             RawBytes::serialize(ext::market::ComputeDataCommitmentParamsRef {
                 inputs: data_commitment_inputs,
-            })?,
+            })
+            .exit_code(ExitCode::USR_ILLEGAL_STATE)?,
             TokenAmount::zero(),
         )?
-        .deserialize()?;
+        .deserialize()
+        .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
     if data_commitment_inputs.len() != ret.commds.len() {
         return Err(actor_error!(illegal_state,
             "number of data commitments computed {} does not match number of data commitment inputs {}",
@@ -3627,11 +3648,12 @@ where
     let serialized = rt.send(
         *STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
-        RawBytes::serialize(ext::market::VerifyDealsForActivationParamsRef { sectors })?,
+        RawBytes::serialize(ext::market::VerifyDealsForActivationParamsRef { sectors })
+            .exit_code(ExitCode::USR_ILLEGAL_STATE)?,
         TokenAmount::zero(),
     )?;
 
-    Ok(serialized.deserialize()?)
+    Ok(serialized.deserialize().exit_code(ExitCode::USR_ILLEGAL_STATE)?)
 }
 
 /// Requests the current epoch target block reward from the reward actor.
@@ -3771,7 +3793,7 @@ where
         rt.send(
             *STORAGE_POWER_ACTOR_ADDR,
             ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
-            RawBytes::serialize(BigIntSer(pledge_delta))?,
+            RawBytes::serialize(BigIntSer(pledge_delta)).exit_code(ExitCode::USR_ILLEGAL_STATE)?,
             TokenAmount::zero(),
         )?;
     }
@@ -3786,7 +3808,7 @@ fn assign_proving_period_offset(
     current_epoch: ChainEpoch,
     blake2b: impl FnOnce(&[u8]) -> [u8; 32],
 ) -> Result<ChainEpoch, ActorError> {
-    let mut my_addr = addr.marshal_cbor()?;
+    let mut my_addr = addr.marshal_cbor().exit_code(ExitCode::USR_ILLEGAL_STATE)?;
     my_addr
         .write_i64::<BigEndian>(current_epoch)
         .map_err(|err| actor_error!(serialization, "{}", err))?;
@@ -4065,7 +4087,8 @@ where
                 RawBytes::serialize(ext::market::ActivateDealsParams {
                     deal_ids: pre_commit.info.deal_ids.clone(),
                     sector_expiry: pre_commit.info.expiration,
-                })?,
+                })
+                .exit_code(ExitCode::USR_ILLEGAL_STATE)?,
                 TokenAmount::zero(),
             );
 
@@ -4170,7 +4193,7 @@ where
 
         state
             .delete_precommitted_sectors(store, &new_sector_numbers)
-            .context("failed to delete precommited sectors")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to delete precommited sectors")?;
 
         state
             .assign_sectors_to_deadlines(
@@ -4234,7 +4257,7 @@ impl ActorCode for Actor {
             }
             Some(Method::ControlAddresses) => {
                 let res = Self::control_addresses(rt)?;
-                Ok(RawBytes::serialize(&res)?)
+                Ok(RawBytes::serialize(&res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
             Some(Method::ChangeWorkerAddress) => {
                 Self::change_worker_address(rt, cbor::deserialize_params(params)?)?;
@@ -4262,7 +4285,7 @@ impl ActorCode for Actor {
             }
             Some(Method::TerminateSectors) => {
                 let ret = Self::terminate_sectors(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(ret)?)
+                Ok(RawBytes::serialize(ret).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
             Some(Method::DeclareFaults) => {
                 Self::declare_faults(rt, cbor::deserialize_params(params)?)?;
@@ -4290,7 +4313,7 @@ impl ActorCode for Actor {
             }
             Some(Method::WithdrawBalance) => {
                 let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(&res)?)
+                Ok(RawBytes::serialize(&res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
             Some(Method::ConfirmSectorProofsValid) => {
                 Self::confirm_sector_proofs_valid(rt, cbor::deserialize_params(params)?)?;
@@ -4334,7 +4357,7 @@ impl ActorCode for Actor {
             }
             Some(Method::ProveReplicaUpdates) => {
                 let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
+                Ok(RawBytes::serialize(res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
         }

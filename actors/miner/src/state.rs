@@ -9,7 +9,7 @@ use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorContext,
-    ActorError, Array,
+    ActorContext2, ActorError, Array,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -20,6 +20,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
 use fvm_shared::HAMT_BIT_WIDTH;
 use num_traits::{Signed, Zero};
@@ -130,33 +131,36 @@ impl State {
     ) -> Result<Self, ActorError> {
         let empty_precommit_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
-            .context("failed to construct empty precommit map")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to construct empty precommit map")?;
 
         let empty_precommits_cleanup_array =
             Array::<BitField, BS>::new_with_bit_width(store, PRECOMMIT_EXPIRY_AMT_BITWIDTH)
                 .flush()
-                .context("failed to construct empty precommits array")?;
+                .context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to construct empty precommits array",
+                )?;
 
         let empty_sectors_array =
             Array::<SectorOnChainInfo, BS>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH)
                 .flush()
-                .context("failed to construct sectors array")?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to construct sectors array")?;
 
         let empty_bitfield = store
             .put_cbor(&BitField::new(), Code::Blake2b256)
-            .context("failed to construct empty bitfield")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to construct empty bitfield")?;
         let deadline = Deadline::new(store)?;
         let empty_deadline = store
             .put_cbor(&deadline, Code::Blake2b256)
-            .context("failed to construct illegal state")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")?;
 
         let empty_deadlines = store
             .put_cbor(&Deadlines::new(policy, empty_deadline), Code::Blake2b256)
-            .context("failed to construct illegal state")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")?;
 
         let empty_vesting_funds_cid = store
             .put_cbor(&VestingFunds::new(), Code::Blake2b256)
-            .context("failed to construct illegal state")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")?;
 
         Ok(Self {
             info: info_cid,
@@ -185,7 +189,7 @@ impl State {
         match store.get_cbor(&self.info) {
             Ok(Some(info)) => Ok(info),
             Ok(None) => Err(actor_error!(not_found, "failed to get miner info")),
-            Err(e) => Err(ActorError::from(e).wrap("failed to get miner info")),
+            Err(e) => Err(actor_error!(illegal_state, "failed to get miner info: {:?}", e)),
         }
     }
 
@@ -194,7 +198,7 @@ impl State {
         store: &BS,
         info: &MinerInfo,
     ) -> Result<(), ActorError> {
-        let cid = store.put_cbor(&info, Code::Blake2b256)?;
+        let cid = store.put_cbor(&info, Code::Blake2b256).exit_code(ExitCode::USR_SERIALIZATION)?;
         self.info = cid;
         Ok(())
     }
@@ -238,7 +242,7 @@ impl State {
     ) -> Result<(), ActorError> {
         let prior_allocation = store
             .get_cbor(&self.allocated_sectors)
-            .context("failed to load allocated sectors bitfield")?
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocated sectors bitfield")?
             .ok_or_else(|| actor_error!(illegal_state, "allocated sectors bitfield not found"))?;
 
         if policy != CollisionPolicy::AllowCollisions {
@@ -254,8 +258,9 @@ impl State {
             }
         }
         let new_allocation = &prior_allocation | sector_numbers;
-        self.allocated_sectors =
-            store.put_cbor(&new_allocation, Code::Blake2b256).with_context(|| {
+        self.allocated_sectors = store
+            .put_cbor(&new_allocation, Code::Blake2b256)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                 format!(
                     "failed to store allocated sectors bitfield after adding {:?}",
                     sector_numbers,
@@ -272,12 +277,15 @@ impl State {
         precommits: Vec<SectorPreCommitOnChainInfo>,
     ) -> Result<(), ActorError> {
         let mut precommitted =
-            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
+            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)
+                .exit_code(ExitCode::USR_SERIALIZATION)?;
         for precommit in precommits.into_iter() {
             let sector_no = precommit.info.sector_number;
             let modified = precommitted
                 .set_if_absent(u64_key(precommit.info.sector_number), precommit)
-                .with_context(|| format!("failed to store precommitment for {:?}", sector_no,))?;
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to store precommitment for {:?}", sector_no,)
+                })?;
 
             if !modified {
                 return Err(actor_error!(
@@ -288,7 +296,7 @@ impl State {
             }
         }
 
-        self.pre_committed_sectors = precommitted.flush()?;
+        self.pre_committed_sectors = precommitted.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
         Ok(())
     }
 
@@ -312,14 +320,16 @@ impl State {
             &self.pre_committed_sectors,
             store,
             HAMT_BIT_WIDTH,
-        )?;
+        )
+        .exit_code(ExitCode::USR_SERIALIZATION)?;
         let mut result = Vec::with_capacity(sector_numbers.len());
 
         for &sector_number in sector_numbers {
             let info = match precommitted
                 .get(&u64_key(sector_number))
-                .with_context(|| format!("failed to load precommitment for {}", sector_number))?
-            {
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to load precommitment for {}", sector_number)
+                })? {
                 Some(info) => info.clone(),
                 None => continue,
             };
@@ -354,7 +364,7 @@ impl State {
         store: &BS,
         sector_num: SectorNumber,
     ) -> Result<bool, ActorError> {
-        let sectors = Sectors::load(store, &self.sectors)?;
+        let sectors = Sectors::load(store, &self.sectors).exit_code(ExitCode::USR_SERIALIZATION)?;
         Ok(sectors.get(sector_num)?.is_some())
     }
 
@@ -363,11 +373,15 @@ impl State {
         store: &BS,
         new_sectors: Vec<SectorOnChainInfo>,
     ) -> Result<(), ActorError> {
-        let mut sectors = Sectors::load(store, &self.sectors).context("failed to load sectors")?;
+        let mut sectors = Sectors::load(store, &self.sectors)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")?;
 
         sectors.store(new_sectors)?;
 
-        self.sectors = sectors.amt.flush().context("failed to persist sectors")?;
+        self.sectors = sectors
+            .amt
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to persist sectors")?;
 
         Ok(())
     }
@@ -377,7 +391,7 @@ impl State {
         store: &BS,
         sector_num: SectorNumber,
     ) -> Result<Option<SectorOnChainInfo>, ActorError> {
-        let sectors = Sectors::load(store, &self.sectors)?;
+        let sectors = Sectors::load(store, &self.sectors).exit_code(ExitCode::USR_SERIALIZATION)?;
         sectors.get(sector_num)
     }
 
@@ -386,13 +400,17 @@ impl State {
         store: &BS,
         sector_nos: &BitField,
     ) -> Result<(), ActorError> {
-        let mut sectors = Sectors::load(store, &self.sectors)?;
+        let mut sectors =
+            Sectors::load(store, &self.sectors).exit_code(ExitCode::USR_SERIALIZATION)?;
 
         for sector_num in sector_nos.iter() {
-            sectors.amt.delete(sector_num).context("could not delete sector number")?;
+            sectors
+                .amt
+                .delete(sector_num)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "could not delete sector number")?;
         }
 
-        self.sectors = sectors.amt.flush()?;
+        self.sectors = sectors.amt.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
         Ok(())
     }
 
@@ -400,8 +418,8 @@ impl State {
     where
         F: FnMut(&SectorOnChainInfo) -> Result<(), ActorError>,
     {
-        let sectors = Sectors::load(store, &self.sectors)?;
-        sectors.amt.try_for_each(|_, v| f(v))?;
+        let sectors = Sectors::load(store, &self.sectors).exit_code(ExitCode::USR_SERIALIZATION)?;
+        sectors.amt.try_for_each(|_, v| f(v)).exit_code(ExitCode::USR_SERIALIZATION)?;
         Ok(())
     }
 
@@ -434,7 +452,7 @@ impl State {
         mut deadline_sectors: DeadlineSectorMap,
     ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
         let mut deadlines = self.load_deadlines(store)?;
-        let sectors = Sectors::load(store, &self.sectors)?;
+        let sectors = Sectors::load(store, &self.sectors).exit_code(ExitCode::USR_SERIALIZATION)?;
 
         let mut all_replaced = Vec::new();
         for (deadline_idx, partition_sectors) in deadline_sectors.iter() {
@@ -687,13 +705,15 @@ impl State {
         store: &BS,
         sectors: &BitField,
     ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
-        Sectors::load(store, &self.sectors)?.load_sector(sectors)
+        Sectors::load(store, &self.sectors)
+            .exit_code(ExitCode::USR_SERIALIZATION)?
+            .load_sector(sectors)
     }
 
     pub fn load_deadlines<BS: Blockstore>(&self, store: &BS) -> Result<Deadlines, ActorError> {
         store
             .get_cbor::<Deadlines>(&self.deadlines)
-            .context("failed to load deadlines")?
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deadlines")?
             .ok_or_else(
                 || actor_error!(illegal_state; "failed to load deadlines {}", self.deadlines),
             )
@@ -704,7 +724,8 @@ impl State {
         store: &BS,
         deadlines: Deadlines,
     ) -> Result<(), ActorError> {
-        self.deadlines = store.put_cbor(&deadlines, Code::Blake2b256)?;
+        self.deadlines =
+            store.put_cbor(&deadlines, Code::Blake2b256).exit_code(ExitCode::USR_SERIALIZATION)?;
         Ok(())
     }
 
@@ -715,7 +736,9 @@ impl State {
     ) -> Result<VestingFunds, ActorError> {
         store
             .get_cbor(&self.vesting_funds)
-            .with_context(|| format!("failed to load vesting funds {}", self.vesting_funds))?
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to load vesting funds {}", self.vesting_funds)
+            })?
             .ok_or_else(
                 || actor_error!(not_found; "failed to load vesting funds {:?}", self.vesting_funds),
             )
@@ -727,7 +750,8 @@ impl State {
         store: &BS,
         funds: &VestingFunds,
     ) -> Result<(), ActorError> {
-        self.vesting_funds = store.put_cbor(funds, Code::Blake2b256)?;
+        self.vesting_funds =
+            store.put_cbor(funds, Code::Blake2b256).exit_code(ExitCode::USR_SERIALIZATION)?;
         Ok(())
     }
 
@@ -1013,10 +1037,16 @@ impl State {
         let quant = self.quant_spec_every_deadline(policy);
         let mut queue =
             super::BitFieldQueue::new(store, &self.pre_committed_sectors_cleanup, quant)
-                .context("failed to load pre-commit clean up queue")?;
+                .context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to load pre-commit clean up queue",
+                )?;
 
-        queue.add_many_to_queue_values(cleanup_events.into_iter())?;
-        self.pre_committed_sectors_cleanup = queue.amt.flush()?;
+        queue
+            .add_many_to_queue_values(cleanup_events.into_iter())
+            .exit_code(ExitCode::USR_SERIALIZATION)?;
+        self.pre_committed_sectors_cleanup =
+            queue.amt.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
         Ok(())
     }
 
@@ -1033,12 +1063,15 @@ impl State {
             store,
             &self.pre_committed_sectors_cleanup,
             self.quant_spec_every_deadline(policy),
-        )?;
+        )
+        .exit_code(ExitCode::USR_SERIALIZATION)?;
 
-        let (sectors, modified) = cleanup_queue.pop_until(current_epoch)?;
+        let (sectors, modified) =
+            cleanup_queue.pop_until(current_epoch).exit_code(ExitCode::USR_SERIALIZATION)?;
 
         if modified {
-            self.pre_committed_sectors_cleanup = cleanup_queue.amt.flush()?;
+            self.pre_committed_sectors_cleanup =
+                cleanup_queue.amt.flush().exit_code(ExitCode::USR_SERIALIZATION)?;
         }
 
         let mut precommits_to_delete = Vec::new();
@@ -1046,7 +1079,10 @@ impl State {
         for i in sectors.iter() {
             let sector_number = i as SectorNumber;
 
-            let sector = match self.get_precommitted_sector(store, sector_number)? {
+            let sector = match self
+                .get_precommitted_sector(store, sector_number)
+                .exit_code(ExitCode::USR_SERIALIZATION)?
+            {
                 Some(sector) => sector,
                 // already committed/deleted
                 None => continue,
@@ -1061,7 +1097,8 @@ impl State {
 
         // Actually delete it.
         if !precommits_to_delete.is_empty() {
-            self.delete_precommitted_sectors(store, &precommits_to_delete)?;
+            self.delete_precommitted_sectors(store, &precommits_to_delete)
+                .exit_code(ExitCode::USR_SERIALIZATION)?;
         }
 
         self.pre_commit_deposits -= &deposit_to_burn;
@@ -1167,15 +1204,16 @@ impl State {
     ) -> Result<Vec<SectorPreCommitOnChainInfo>, ActorError> {
         let mut precommits = Vec::new();
         let precommitted =
-            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
+            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)
+                .exit_code(ExitCode::USR_SERIALIZATION)?;
         for sector_no in sector_nos.iter() {
             if sector_no as u64 > MAX_SECTOR_NUMBER {
                 return Err(actor_error!(illegal_argument; "sector number greater than maximum"));
             }
-            let info: &SectorPreCommitOnChainInfo =
-                precommitted
-                    .get(&u64_key(sector_no as u64))?
-                    .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
+            let info: &SectorPreCommitOnChainInfo = precommitted
+                .get(&u64_key(sector_no as u64))
+                .exit_code(ExitCode::USR_SERIALIZATION)?
+                .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
             precommits.push(info.clone());
         }
         Ok(precommits)

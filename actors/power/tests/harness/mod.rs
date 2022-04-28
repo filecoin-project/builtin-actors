@@ -245,7 +245,6 @@ impl Harness {
         events_map
             .for_each::<_, CronEvent>(&epoch_key(epoch), |_, v| {
                 events.push(v.to_owned());
-                Ok(())
             })
             .unwrap();
 

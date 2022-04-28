@@ -1,4 +1,4 @@
-use std::{fmt::Display, num::TryFromIntError};
+use std::fmt::Display;
 
 use fvm_shared::error::ExitCode;
 use thiserror::Error;
@@ -66,94 +66,6 @@ impl ActorError {
     }
 }
 
-/// Converts a raw encoding error into an ErrSerialization.
-impl From<fvm_ipld_encoding::Error> for ActorError {
-    fn from(e: fvm_ipld_encoding::Error) -> Self {
-        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
-    }
-}
-
-impl<E: std::error::Error> From<fvm_ipld_amt::Error<E>> for ActorError {
-    fn from(e: fvm_ipld_amt::Error<E>) -> Self {
-        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
-    }
-}
-
-impl<E: std::error::Error> From<fvm_ipld_hamt::Error<E>> for ActorError {
-    fn from(e: fvm_ipld_hamt::Error<E>) -> Self {
-        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
-    }
-}
-
-impl<E: std::error::Error> From<fvm_ipld_encoding::CborStoreError<E>> for ActorError {
-    fn from(e: fvm_ipld_encoding::CborStoreError<E>) -> Self {
-        Self { exit_code: ExitCode::USR_ILLEGAL_STATE, msg: e.to_string() }
-    }
-}
-
-impl From<fvm_ipld_bitfield::Error> for ActorError {
-    fn from(e: fvm_ipld_bitfield::Error) -> Self {
-        // TODO: correct code?
-        Self { exit_code: ExitCode::USR_ILLEGAL_STATE, msg: e.to_string() }
-    }
-}
-
-impl From<TryFromIntError> for ActorError {
-    fn from(e: TryFromIntError) -> Self {
-        // TODO: correct code?
-        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
-    }
-}
-
-impl From<fvm_ipld_bitfield::OutOfRangeError> for ActorError {
-    fn from(e: fvm_ipld_bitfield::OutOfRangeError) -> Self {
-        // TODO: correct code?
-        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
-    }
-}
-
-impl<E: std::error::Error> From<crate::util::MultiMapError<E>> for ActorError {
-    fn from(e: crate::util::MultiMapError<E>) -> Self {
-        match e {
-            crate::util::MultiMapError::Amt(e) => e.into(),
-            crate::util::MultiMapError::Hamt(e) => e.into(),
-        }
-    }
-}
-
-impl<U: Into<ActorError>, E: std::error::Error> From<crate::util::MultiMapEitherError<U, E>>
-    for ActorError
-{
-    fn from(e: crate::util::MultiMapEitherError<U, E>) -> Self {
-        match e {
-            crate::util::MultiMapEitherError::User(e) => e.into(),
-            crate::util::MultiMapEitherError::MultiMap(e) => e.into(),
-        }
-    }
-}
-
-impl<U: Into<ActorError>, E: std::error::Error> From<fvm_ipld_amt::EitherError<U, E>>
-    for ActorError
-{
-    fn from(e: fvm_ipld_amt::EitherError<U, E>) -> Self {
-        match e {
-            fvm_ipld_amt::EitherError::User(e) => e.into(),
-            fvm_ipld_amt::EitherError::Amt(e) => e.into(),
-        }
-    }
-}
-
-impl<U: Into<ActorError>, E: std::error::Error> From<fvm_ipld_hamt::EitherError<U, E>>
-    for ActorError
-{
-    fn from(e: fvm_ipld_hamt::EitherError<U, E>) -> Self {
-        match e {
-            fvm_ipld_hamt::EitherError::User(e) => e.into(),
-            fvm_ipld_hamt::EitherError::Hamt(e) => e.into(),
-        }
-    }
-}
-
 /// Converts an actor deletion error into an actor error with the appropriate exit code. This
 /// facilitates propagation.
 #[cfg(feature = "fil-actor")]
@@ -202,28 +114,48 @@ pub trait ActorContext<T> {
         F: FnOnce() -> C;
 }
 
-impl<T, E: Into<ActorError>> ActorContext<T> for Result<T, E> {
-    fn context<C>(self, context: C) -> Result<T, ActorError>
+pub trait ActorContext2<T>: Sized {
+    fn exit_code(self, code: ExitCode) -> Result<T, ActorError>;
+
+    fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
     where
         C: Display + Send + Sync + 'static,
     {
-        self.map_err(|err| {
-            let mut err: ActorError = err.into();
-            err.msg = format!("{}: {}", context, err.msg);
-            err
-        })
+        self.with_context_code(code, || context)
     }
 
-    fn with_context<C, F>(self, f: F) -> Result<T, ActorError>
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C;
+}
+
+// hack to allow anyhow::Error + std::error::Error, can be dropped once Runtime is fixed
+impl<T, E: Display> ActorContext2<T> for Result<T, E> {
+    fn exit_code(self, code: ExitCode) -> Result<T, ActorError> {
+        self.map_err(|err| ActorError { exit_code: code, msg: err.to_string() })
+    }
+
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
     where
         C: Display + Send + Sync + 'static,
         F: FnOnce() -> C,
     {
-        self.map_err(|err| {
-            let mut err: ActorError = err.into();
-            err.msg = format!("{}: {}", f(), err.msg);
-            err
-        })
+        self.map_err(|err| ActorError { exit_code: code, msg: format!("{}: {}", f(), err) })
+    }
+}
+
+impl<T> ActorContext2<T> for Option<T> {
+    fn exit_code(self, code: ExitCode) -> Result<T, ActorError> {
+        self.ok_or_else(|| ActorError { exit_code: code, msg: "None".to_string() })
+    }
+
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C,
+    {
+        self.ok_or_else(|| ActorError { exit_code: code, msg: format!("{}", f()) })
     }
 }
 
@@ -237,5 +169,28 @@ impl From<anyhow::Error> for ActorError {
                 format!("runtime error: {}", other),
             ),
         }
+    }
+}
+
+impl<T> ActorContext<T> for Result<T, ActorError> {
+    fn context<C>(self, context: C) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+    {
+        self.map_err(|mut err| {
+            err.msg = format!("{}: {}", context, err.msg);
+            err
+        })
+    }
+
+    fn with_context<C, F>(self, f: F) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C,
+    {
+        self.map_err(|mut err| {
+            err.msg = format!("{}: {}", f(), err.msg);
+            err
+        })
     }
 }

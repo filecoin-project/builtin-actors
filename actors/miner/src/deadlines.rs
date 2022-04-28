@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{actor_error, ActorError, Array};
+use fil_actors_runtime::{actor_error, ActorContext2, ActorError, Array};
 
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 
 use super::{DeadlineInfo, Deadlines, Partition};
@@ -40,18 +41,21 @@ impl Deadlines {
         for i in 0..self.due.len() {
             let deadline_idx = i as u64;
             let deadline = self.load_deadline(policy, store, deadline_idx)?;
-            let partitions = Array::<Partition, _>::load(&deadline.partitions, store)?;
+            let partitions = Array::<Partition, _>::load(&deadline.partitions, store)
+                .exit_code(ExitCode::USR_SERIALIZATION)?;
 
             let mut partition_idx = None;
 
-            partitions.for_each_while(|i, partition| {
-                if partition.sectors.get(sector_number) {
-                    partition_idx = Some(i);
-                    false
-                } else {
-                    true
-                }
-            })?;
+            partitions
+                .for_each_while(|i, partition| {
+                    if partition.sectors.get(sector_number) {
+                        partition_idx = Some(i);
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .exit_code(ExitCode::USR_SERIALIZATION)?;
 
             if let Some(partition_idx) = partition_idx {
                 return Ok((deadline_idx, partition_idx));

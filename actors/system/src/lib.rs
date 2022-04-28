@@ -1,12 +1,13 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
-use anyhow::anyhow;
+
 use cid::{multihash, Cid};
-use fil_actors_runtime::ActorContext;
+use fil_actors_runtime::ActorContext2;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_encoding::{Cbor, RawBytes};
+use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -35,10 +36,11 @@ pub struct State {
 impl Cbor for State {}
 
 impl State {
-    pub fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<Self> {
+    pub fn new<BS: Blockstore>(store: &BS) -> Result<Self, ActorError> {
         let c = store
             .put_cbor(&Vec::<(String, Cid)>::new(), multihash::Code::Blake2b256)
-            .map_err(|e| anyhow!("failed to put system state to store: {}", e))?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to put system state to store")?;
+
         Ok(Self { builtin_actors: c })
     }
 
@@ -65,7 +67,8 @@ impl Actor {
     {
         rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
 
-        let state = State::new(rt.store()).context("failed to construct state")?;
+        let state = State::new(rt.store())
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")?;
         rt.create(&state)?;
 
         Ok(())

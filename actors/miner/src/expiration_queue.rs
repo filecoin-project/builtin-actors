@@ -6,7 +6,7 @@ use std::convert::TryInto;
 
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{actor_error, ActorContext, ActorError, Array};
+use fil_actors_runtime::{actor_error, ActorContext, ActorContext2, ActorError, Array};
 use fvm_ipld_amt::{Error as AmtError, ValueMut};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -14,6 +14,7 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{SectorNumber, SectorSize};
 use num_traits::{Signed, Zero};
 
@@ -192,7 +193,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut total_sectors = Vec::<BitField>::new();
 
         for group in group_new_sectors_by_declared_expiration(sector_size, sectors, self.quant) {
-            let sector_numbers = BitField::try_from_bits(group.sectors)?;
+            let sector_numbers =
+                BitField::try_from_bits(group.sectors).exit_code(ExitCode::USR_SERIALIZATION)?;
 
             self.add(
                 group.epoch,
@@ -272,7 +274,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             } else {
                 // Remove sectors from on-time expiry and active power.
                 let sectors_bitfield =
-                    BitField::try_from_bits(group.sector_epoch_set.sectors.iter().copied())?;
+                    BitField::try_from_bits(group.sector_epoch_set.sectors.iter().copied())
+                        .exit_code(ExitCode::USR_SERIALIZATION)?;
                 group.expiration_set.on_time_sectors -= &sectors_bitfield;
                 group.expiration_set.on_time_pledge -= &group.sector_epoch_set.pledge;
                 group.expiration_set.active_power -= &group.sector_epoch_set.power;
@@ -289,7 +292,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         if !sectors_total.is_empty() {
             // Add sectors to new expiration as early-terminating and faulty.
-            let early_sectors = BitField::try_from_bits(sectors_total)?;
+            let early_sectors =
+                BitField::try_from_bits(sectors_total).exit_code(ExitCode::USR_SERIALIZATION)?;
             self.add(
                 new_expiration,
                 &BitField::new(),
@@ -314,35 +318,37 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         let mut mutated_expiration_sets = Vec::<(ChainEpoch, ExpirationSet)>::new();
 
-        self.amt.try_for_each(|e, expiration_set| {
-            let epoch: ChainEpoch =
-                e.try_into().map_err(|e| actor_error!(illegal_state, "{}", e))?;
+        self.amt
+            .try_for_each(|e, expiration_set| {
+                let epoch: ChainEpoch =
+                    e.try_into().map_err(|e| actor_error!(illegal_state, "{}", e))?;
 
-            if epoch <= self.quant.quantize_up(fault_expiration) {
-                let mut expiration_set = expiration_set.clone();
+                if epoch <= self.quant.quantize_up(fault_expiration) {
+                    let mut expiration_set = expiration_set.clone();
 
-                // Regardless of whether the sectors were expiring on-time or early, all the power is now faulty.
-                // Pledge is still on-time.
-                expiration_set.faulty_power += &expiration_set.active_power;
-                expiration_set.active_power = PowerPair::zero();
-                mutated_expiration_sets.push((epoch, expiration_set));
-            } else {
-                rescheduled_epochs.push(e);
-                // sanity check to make sure we're not trying to re-schedule already faulty sectors.
-                if !expiration_set.early_sectors.is_empty() {
-                    // TODO: correct exit code?
-                    return Err(actor_error!(
-                        illegal_state,
-                        "attempted to re-schedule early expirations to an earlier epoch"
-                    ));
+                    // Regardless of whether the sectors were expiring on-time or early, all the power is now faulty.
+                    // Pledge is still on-time.
+                    expiration_set.faulty_power += &expiration_set.active_power;
+                    expiration_set.active_power = PowerPair::zero();
+                    mutated_expiration_sets.push((epoch, expiration_set));
+                } else {
+                    rescheduled_epochs.push(e);
+                    // sanity check to make sure we're not trying to re-schedule already faulty sectors.
+                    if !expiration_set.early_sectors.is_empty() {
+                        // TODO: correct exit code?
+                        return Err(actor_error!(
+                            illegal_state,
+                            "attempted to re-schedule early expirations to an earlier epoch"
+                        ));
+                    }
+                    rescheduled_sectors |= &expiration_set.on_time_sectors;
+                    rescheduled_power += &expiration_set.active_power;
+                    rescheduled_power += &expiration_set.faulty_power;
                 }
-                rescheduled_sectors |= &expiration_set.on_time_sectors;
-                rescheduled_power += &expiration_set.active_power;
-                rescheduled_power += &expiration_set.faulty_power;
-            }
 
-            Ok(())
-        })?;
+                Ok(())
+            })
+            .exit_code(ExitCode::USR_SERIALIZATION)?;
 
         for (epoch, expiration_set) in mutated_expiration_sets {
             let res = expiration_set.validate_state();
@@ -366,7 +372,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         )?;
 
         // Trim the rescheduled epochs from the queue.
-        self.amt.batch_delete(rescheduled_epochs, true)?;
+        self.amt.batch_delete(rescheduled_epochs, true).exit_code(ExitCode::USR_SERIALIZATION)?;
 
         Ok(())
     }
@@ -624,22 +630,24 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut on_time_pledge = TokenAmount::zero();
         let mut popped_keys = Vec::<u64>::new();
 
-        self.amt.for_each_while(|i, this_value| {
-            if i as ChainEpoch > until {
-                return false;
-            }
+        self.amt
+            .for_each_while(|i, this_value| {
+                if i as ChainEpoch > until {
+                    return false;
+                }
 
-            popped_keys.push(i);
-            on_time_sectors |= &this_value.on_time_sectors;
-            early_sectors |= &this_value.early_sectors;
-            active_power += &this_value.active_power;
-            faulty_power += &this_value.faulty_power;
-            on_time_pledge += &this_value.on_time_pledge;
+                popped_keys.push(i);
+                on_time_sectors |= &this_value.on_time_sectors;
+                early_sectors |= &this_value.early_sectors;
+                active_power += &this_value.active_power;
+                faulty_power += &this_value.faulty_power;
+                on_time_pledge += &this_value.on_time_pledge;
 
-            true
-        })?;
+                true
+            })
+            .exit_code(ExitCode::USR_SERIALIZATION)?;
 
-        self.amt.batch_delete(popped_keys, true)?;
+        self.amt.batch_delete(popped_keys, true).exit_code(ExitCode::USR_SERIALIZATION)?;
 
         Ok(ExpirationSet {
             on_time_sectors,
@@ -682,17 +690,19 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let epoch = self.quant.quantize_up(raw_epoch);
         let mut expiration_set = self
             .amt
-            .get(epoch.try_into()?)
-            .with_context(|| format!("failed to lookup queue epoch {}", epoch))?
+            .get(epoch.try_into().exit_code(ExitCode::USR_SERIALIZATION)?)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to lookup queue epoch {}", epoch)
+            })?
             .ok_or_else(|| {
                 actor_error!(illegal_state, "missing expected expiration set at epoch {}", epoch)
             })?
             .clone();
         expiration_set
             .remove(on_time_sectors, early_sectors, pledge, active_power, faulty_power)
-            .with_context(|| {
-                format!("failed to remove expiration values for queue epoch {}", epoch)
-            })?;
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to remove expiration values for queue epoch {}", epoch)
+        })?;
 
         self.must_update_or_delete(epoch, expiration_set)?;
         Ok(())
@@ -711,7 +721,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let groups = self.find_sectors_by_expiration(sector_size, sectors)?;
         for group in groups {
             let sectors_bitfield =
-                BitField::try_from_bits(group.sector_epoch_set.sectors.iter().copied())?;
+                BitField::try_from_bits(group.sector_epoch_set.sectors.iter().copied())
+                    .exit_code(ExitCode::USR_SERIALIZATION)?;
             self.remove(
                 group.sector_epoch_set.epoch,
                 &sectors_bitfield,
@@ -727,7 +738,12 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             removed_pledge += &group.sector_epoch_set.pledge;
         }
 
-        Ok((BitField::try_from_bits(removed_sector_numbers)?, removed_power, removed_pledge))
+        Ok((
+            BitField::try_from_bits(removed_sector_numbers)
+                .exit_code(ExitCode::USR_SERIALIZATION)?,
+            removed_power,
+            removed_pledge,
+        ))
     }
 
     /// Traverses the entire queue with a callback function that may mutate entries.
@@ -742,19 +758,22 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     ) -> Result<(), ActorError> {
         let mut epochs_emptied = Vec::<u64>::new();
 
-        self.amt.try_for_each_while_mut::<_, ActorError>(|e, expiration_set| {
-            let keep_going = f(e.try_into()?, expiration_set)?;
+        self.amt
+            .try_for_each_while_mut::<_, ActorError>(|e, expiration_set| {
+                let keep_going =
+                    f(e.try_into().exit_code(ExitCode::USR_SERIALIZATION)?, expiration_set)?;
 
-            if expiration_set.is_empty() {
-                // Mark expiration set as unchanged, it will be removed after the iteration.
-                expiration_set.mark_unchanged();
-                epochs_emptied.push(e);
-            }
+                if expiration_set.is_empty() {
+                    // Mark expiration set as unchanged, it will be removed after the iteration.
+                    expiration_set.mark_unchanged();
+                    epochs_emptied.push(e);
+                }
 
-            Ok(keep_going)
-        })?;
+                Ok(keep_going)
+            })
+            .exit_code(ExitCode::USR_SERIALIZATION)?;
 
-        self.amt.batch_delete(epochs_emptied, true)?;
+        self.amt.batch_delete(epochs_emptied, true).exit_code(ExitCode::USR_SERIALIZATION)?;
 
         Ok(())
     }
@@ -762,8 +781,10 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     fn may_get(&self, key: ChainEpoch) -> Result<ExpirationSet, ActorError> {
         Ok(self
             .amt
-            .get(key.try_into()?)
-            .with_context(|| format!("failed to lookup queue epoch {}", key))?
+            .get(key.try_into().exit_code(ExitCode::USR_SERIALIZATION)?)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to lookup queue epoch {}", key)
+            })?
             .cloned()
             .unwrap_or_default())
     }
@@ -774,8 +795,10 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         expiration_set: ExpirationSet,
     ) -> Result<(), ActorError> {
         self.amt
-            .set(epoch.try_into()?, expiration_set)
-            .with_context(|| format!("failed to set queue epoch {}", epoch))
+            .set(epoch.try_into().exit_code(ExitCode::USR_SERIALIZATION)?, expiration_set)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to set queue epoch {}", epoch)
+            })
     }
 
     /// Since this might delete the node, it's not safe for use inside an iteration.
@@ -786,12 +809,16 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     ) -> Result<(), ActorError> {
         if expiration_set.is_empty() {
             self.amt
-                .delete(epoch.try_into()?)
-                .with_context(|| format!("failed to delete queue epoch {}", epoch))?;
+                .delete(epoch.try_into().exit_code(ExitCode::USR_SERIALIZATION)?)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to delete queue epoch {}", epoch)
+                })?;
         } else {
             self.amt
-                .set(epoch.try_into()?, expiration_set)
-                .with_context(|| format!("failed to set queue epoch {}", epoch))?;
+                .set(epoch.try_into().exit_code(ExitCode::USR_SERIALIZATION)?, expiration_set)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to set queue epoch {}", epoch)
+                })?;
         }
 
         Ok(())
@@ -838,34 +865,36 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         // If sectors remain, traverse next in epoch order. Remaining sectors should be
         // rescheduled to expire soon, so this traversal should exit early.
         if !all_remaining.is_empty() {
-            self.amt.try_for_each_while::<_, ActorError>(|epoch, es| {
-                let epoch = epoch as ChainEpoch;
-                // If this set's epoch is one of our declared epochs, we've already processed it
-                // in the loop above, so skip processing here. Sectors rescheduled to this epoch
-                // would have been included in the earlier processing.
-                if declared_expirations.contains_key(&epoch) {
-                    return Ok(true);
-                }
+            self.amt
+                .try_for_each_while::<_, ActorError>(|epoch, es| {
+                    let epoch = epoch as ChainEpoch;
+                    // If this set's epoch is one of our declared epochs, we've already processed it
+                    // in the loop above, so skip processing here. Sectors rescheduled to this epoch
+                    // would have been included in the earlier processing.
+                    if declared_expirations.contains_key(&epoch) {
+                        return Ok(true);
+                    }
 
-                // Sector should not be found in EarlyExpirations which holds faults. An implicit assumption
-                // of grouping is that it only returns sectors with active power. ExpirationQueue should not
-                // provide operations that allow this to happen.
-                check_no_early_sectors(&all_remaining, es)?;
+                    // Sector should not be found in EarlyExpirations which holds faults. An implicit assumption
+                    // of grouping is that it only returns sectors with active power. ExpirationQueue should not
+                    // provide operations that allow this to happen.
+                    check_no_early_sectors(&all_remaining, es)?;
 
-                let group = group_expiration_set(
-                    sector_size,
-                    &sectors_by_number,
-                    &mut all_remaining,
-                    es.clone(),
-                    epoch,
-                );
+                    let group = group_expiration_set(
+                        sector_size,
+                        &sectors_by_number,
+                        &mut all_remaining,
+                        es.clone(),
+                        epoch,
+                    );
 
-                if !group.sector_epoch_set.sectors.is_empty() {
-                    expiration_groups.push(group);
-                }
+                    if !group.sector_epoch_set.sectors.is_empty() {
+                        expiration_groups.push(group);
+                    }
 
-                Ok(!all_remaining.is_empty())
-            })?;
+                    Ok(!all_remaining.is_empty())
+                })
+                .exit_code(ExitCode::USR_SERIALIZATION)?;
         }
 
         if !all_remaining.is_empty() {

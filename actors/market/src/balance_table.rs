@@ -4,13 +4,13 @@
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::Error as HamtError;
-use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::{address::Address, error::ExitCode};
 use num_traits::{Signed, Zero};
 
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map,
+    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorContext2, ActorError, Map,
 };
 
 pub const BALANCE_TABLE_BITWIDTH: u32 = 6;
@@ -47,7 +47,7 @@ where
 
     /// Adds token amount to previously initialized account.
     pub fn add(&mut self, key: &Address, value: &TokenAmount) -> Result<(), ActorError> {
-        let prev = self.get(key)?;
+        let prev = self.get(key).exit_code(ExitCode::USR_SERIALIZATION)?;
         let sum = &prev + value;
         if sum.is_negative() {
             return Err(actor_error!(
@@ -57,10 +57,12 @@ where
             ));
         }
         if sum.is_zero() && !prev.is_zero() {
-            self.0.delete(&key.to_bytes())?;
+            self.0.delete(&key.to_bytes()).exit_code(ExitCode::USR_SERIALIZATION)?;
             Ok(())
         } else {
-            self.0.set(key.to_bytes().into(), BigIntDe(sum))?;
+            self.0
+                .set(key.to_bytes().into(), BigIntDe(sum))
+                .exit_code(ExitCode::USR_SERIALIZATION)?;
             Ok(())
         }
     }
@@ -74,7 +76,7 @@ where
         req: &TokenAmount,
         floor: &TokenAmount,
     ) -> Result<TokenAmount, ActorError> {
-        let prev = self.get(key)?;
+        let prev = self.get(key).exit_code(ExitCode::USR_SERIALIZATION)?;
         let available = std::cmp::max(TokenAmount::zero(), prev - floor);
         let sub: TokenAmount = std::cmp::min(&available, req).clone();
 
@@ -87,7 +89,7 @@ where
 
     /// Subtracts value from a balance, and errors if full amount was not substracted.
     pub fn must_subtract(&mut self, key: &Address, req: &TokenAmount) -> Result<(), ActorError> {
-        let prev = self.get(key)?;
+        let prev = self.get(key).exit_code(ExitCode::USR_SERIALIZATION)?;
 
         if req > &prev {
             return Err(actor_error!(illegal_argument, "couldn't subtract the requested amount"));
