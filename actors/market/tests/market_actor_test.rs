@@ -427,9 +427,9 @@ fn fails_with_a_negative_withdraw_amount() {
 fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker() {
     let mut rt = setup();
 
+    let provider_addr = Address::new_id(PROVIDER_ID);
     let owner_addr = Address::new_id(OWNER_ID);
     let worker_addr = Address::new_id(WORKER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
 
     let amount = TokenAmount::from(20u8);
     add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
