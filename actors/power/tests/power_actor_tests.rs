@@ -1,12 +1,14 @@
 use fil_actor_power::ext::init::{ExecParams, EXEC_METHOD};
 use fil_actor_power::ext::miner::MinerConstructorParams;
 use fil_actors_runtime::test_utils::{
-    expect_abort, ACCOUNT_ACTOR_CODE_ID, CALLER_TYPES_SIGNABLE, MINER_ACTOR_CODE_ID,
-    SYSTEM_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, CALLER_TYPES_SIGNABLE,
+    MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
 use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser::BigIntSer;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
@@ -14,8 +16,8 @@ use num_traits::Zero;
 use std::ops::Neg;
 
 use fil_actor_power::{
-    consensus_miner_min_power, Actor as PowerActor, CreateMinerParams, Method, State,
-    UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
+    consensus_miner_min_power, Actor as PowerActor, CreateMinerParams, EnrollCronEventParams,
+    Method, State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
 };
 
 use crate::harness::*;
@@ -260,6 +262,118 @@ fn power_and_pledge_accounted_below_threshold() {
 }
 
 #[test]
+fn enroll_cron_epoch_multiple_events() {
+    let (h, mut rt) = setup();
+
+    let peer = "miner".as_bytes().to_vec();
+    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
+
+    h.create_miner(
+        &mut rt,
+        &OWNER,
+        &OWNER,
+        &MINER,
+        &ACTOR,
+        peer.clone(),
+        multiaddrs.clone(),
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        &TokenAmount::zero(),
+    )
+    .unwrap();
+
+    let miner2_address = Address::new_id(501);
+    h.create_miner(
+        &mut rt,
+        &OWNER,
+        &OWNER,
+        &miner2_address,
+        &ACTOR,
+        peer,
+        multiaddrs,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        &TokenAmount::zero(),
+    )
+    .unwrap();
+
+    let mut enroll_and_check_cron_event = |epoch, miner_address, payload| {
+        let pre_existing_event_count = h.get_enrolled_cron_ticks(&rt, epoch).len();
+
+        h.enroll_cron_event(&mut rt, epoch, miner_address, payload);
+
+        let events = h.get_enrolled_cron_ticks(&rt, epoch);
+        assert_eq!(events.len(), pre_existing_event_count + 1);
+        assert_eq!(&events.last().unwrap().callback_payload, payload);
+        assert_eq!(&events.last().unwrap().miner_addr, miner_address);
+    };
+
+    // enroll event with miner 1
+    let payload = RawBytes::serialize(b"Cthulhu").unwrap();
+    enroll_and_check_cron_event(1, &MINER, &payload);
+
+    // enroll another event with the same miner
+    let payload = RawBytes::serialize(b"Nyarlathotep").unwrap();
+    enroll_and_check_cron_event(1, &MINER, &payload);
+
+    // enroll another event with a different miner for a different epoch
+    let payload = RawBytes::serialize(b"Azathoth").unwrap();
+    enroll_and_check_cron_event(2, &miner2_address, &payload);
+
+    h.check_state();
+}
+
+#[test]
+fn enroll_cron_epoch_before_current_epoch() {
+    let (h, mut rt) = setup();
+
+    let peer = "miner".as_bytes().to_vec();
+    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
+    h.create_miner(
+        &mut rt,
+        &OWNER,
+        &OWNER,
+        &MINER,
+        &ACTOR,
+        peer,
+        multiaddrs,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        &TokenAmount::zero(),
+    )
+    .unwrap();
+
+    let current_epoch: ChainEpoch = 5;
+    rt.set_epoch(current_epoch);
+
+    // enroll event with miner at epoch=2
+    let miner_epoch = 2;
+    let payload = RawBytes::serialize(b"Cthulhu").unwrap();
+    h.enroll_cron_event(&mut rt, miner_epoch, &MINER, &payload);
+
+    let events = h.get_enrolled_cron_ticks(&rt, miner_epoch);
+    assert_eq!(events.len(), 1);
+    assert_eq!(&events.last().unwrap().callback_payload, &payload);
+    assert_eq!(events.last().unwrap().miner_addr, *MINER);
+
+    let state: State = rt.get_state();
+    assert_eq!(state.first_cron_epoch, 0);
+
+    // enroll event with miner at epoch=1
+    let miner_epoch = 1;
+    let payload = RawBytes::serialize(b"Azathoth").unwrap();
+    h.enroll_cron_event(&mut rt, miner_epoch, &MINER, &payload);
+
+    let events = h.get_enrolled_cron_ticks(&rt, miner_epoch);
+    assert_eq!(events.len(), 1);
+    assert_eq!(&events.last().unwrap().callback_payload, &payload);
+    assert_eq!(events.last().unwrap().miner_addr, *MINER);
+
+    let state: State = rt.get_state();
+    assert_eq!(state.first_cron_epoch, 0);
+
+    rt.verify();
+    h.check_state();
+}
+
+#[test]
 fn new_miner_updates_miner_above_min_power_count() {
     struct TestCase {
         proof: RegisteredPoStProof,
@@ -327,5 +441,65 @@ fn power_accounting_crossing_threshold() {
     // Less than 4 miners above threshold again small miner power is counted again
     h.update_claimed_power(&mut rt, MINER4, &delta.neg(), &(delta.neg() * 10));
     h.expect_total_power_eager(&mut rt, &expected_total_below, &(&expected_total_below * 10));
+    h.check_state();
+}
+
+#[test]
+fn enroll_cron_epoch_given_negative_epoch_should_fail() {
+    let (h, mut rt) = setup();
+
+    rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+
+    let params = EnrollCronEventParams {
+        event_epoch: -1,
+        payload: RawBytes::serialize(b"Cthulhu").unwrap(),
+    };
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<PowerActor>(
+            Method::EnrollCronEvent as u64,
+            &RawBytes::serialize(&params).unwrap(),
+        ),
+    );
+
+    rt.verify();
+    h.check_state();
+}
+
+#[test]
+fn given_no_miner_claim_update_pledge_total_should_abort() {
+    let (mut h, mut rt) = setup();
+
+    let peer = "miner".as_bytes().to_vec();
+    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
+    h.create_miner(
+        &mut rt,
+        &OWNER,
+        &OWNER,
+        &MINER,
+        &ACTOR,
+        peer,
+        multiaddrs,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        &TokenAmount::zero(),
+    )
+    .unwrap();
+
+    // explicitly delete miner claim
+    h.delete_claim(&mut rt, &*MINER);
+
+    rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "unknown miner",
+        rt.call::<PowerActor>(
+            Method::UpdatePledgeTotal as u64,
+            &RawBytes::serialize(BigIntSer(&TokenAmount::from(1_000_000))).unwrap(),
+        ),
+    );
+
+    rt.verify();
     h.check_state();
 }
