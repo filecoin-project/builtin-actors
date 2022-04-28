@@ -65,6 +65,21 @@ lazy_static! {
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
         map
     };
+    pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
+        (Type::System, *SYSTEM_ACTOR_CODE_ID),
+        (Type::Init, *INIT_ACTOR_CODE_ID),
+        (Type::Cron, *CRON_ACTOR_CODE_ID),
+        (Type::Account, *ACCOUNT_ACTOR_CODE_ID),
+        (Type::Power, *POWER_ACTOR_CODE_ID),
+        (Type::Miner, *MINER_ACTOR_CODE_ID),
+        (Type::Market, *MARKET_ACTOR_CODE_ID),
+        (Type::PaymentChannel, *PAYCH_ACTOR_CODE_ID),
+        (Type::Multisig, *MULTISIG_ACTOR_CODE_ID),
+        (Type::Reward, *REWARD_ACTOR_CODE_ID),
+        (Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID),
+    ]
+    .into_iter()
+    .collect();
     pub static ref CALLER_TYPES_SIGNABLE: Vec<Cid> =
         vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID];
     pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {
@@ -1159,7 +1174,6 @@ impl RuntimePolicy for MockRuntime {
 }
 
 pub fn blake2b_256(data: &[u8]) -> [u8; 32] {
-    use std::convert::TryInto;
     blake2b_simd::Params::new()
         .hash_length(32)
         .to_state()

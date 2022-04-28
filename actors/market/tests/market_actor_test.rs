@@ -639,6 +639,120 @@ fn simple_deal() {
     // TODO: actor.checkState(rt)
 }
 
+// Converted from: https://github.com/filecoin-project/specs-actors/blob/0afe155bfffa036057af5519afdead845e0780de/actors/builtin/market/market_test.go#L529
+#[test]
+fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_to_verigreg_actor_for_a_verified_deal(
+) {
+    use fvm_shared::address::BLS_PUB_LEN;
+    let owner_addr = Address::new_id(OWNER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+
+    // provider addresses
+    let provider_bls = Address::new_bls(&[101; BLS_PUB_LEN]).unwrap();
+    let provider_resolved = Address::new_id(112);
+
+    // client addresses
+    let client_bls = Address::new_bls(&[90; BLS_PUB_LEN]).unwrap();
+    let client_resolved = Address::new_id(333);
+
+    let mut rt = setup();
+    rt.actor_code_cids.insert(client_resolved, *ACCOUNT_ACTOR_CODE_ID);
+    rt.actor_code_cids.insert(provider_resolved, *MINER_ACTOR_CODE_ID);
+
+    // mappings for resolving address
+    rt.id_addresses.insert(client_bls, client_resolved);
+    rt.id_addresses.insert(provider_bls, provider_resolved);
+
+    // generate deal and add required funds for deal
+    let start_epoch = 42;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    rt.set_epoch(start_epoch);
+
+    let mut deal = generate_deal_proposal(client_bls, provider_bls, start_epoch, end_epoch);
+    deal.verified_deal = true;
+
+    // add funds for cient using it's BLS address -> will be resolved and persisted
+    add_participant_funds(&mut rt, client_bls, deal.client_balance_requirement());
+    assert_eq!(
+        deal.client_balance_requirement(),
+        get_escrow_balance(&rt, &client_resolved).unwrap()
+    );
+
+    // add funds for provider using it's BLS address -> will be resolved and persisted
+    rt.value_received = deal.provider_collateral.clone();
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, owner_addr);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    expect_get_control_addresses(&mut rt, provider_resolved, owner_addr, worker_addr, vec![]);
+
+    assert_eq!(
+        RawBytes::default(),
+        rt.call::<MarketActor>(
+            Method::AddBalance as u64,
+            &RawBytes::serialize(provider_bls).unwrap(),
+        )
+        .unwrap()
+    );
+    rt.verify();
+    rt.add_balance(deal.provider_collateral.clone());
+    assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &provider_resolved).unwrap());
+
+    // publish deal using the BLS addresses
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+
+    expect_get_control_addresses(&mut rt, provider_resolved, owner_addr, worker_addr, vec![]);
+    expect_query_network_info(&mut rt);
+
+    //  create a client proposal with a valid signature
+    let mut params = PublishStorageDealsParams { deals: vec![] };
+    let buf = RawBytes::serialize(&deal).expect("failed to marshal deal proposal");
+    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let client_proposal =
+        ClientDealProposal { client_signature: sig.clone(), proposal: deal.clone() };
+    params.deals.push(client_proposal);
+    // expect a call to verify the above signature
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig,
+        signer: deal.client,
+        plaintext: buf.to_vec(),
+        result: Ok(()),
+    });
+
+    // request is sent to the VerigReg actor using the resolved address
+    let param = RawBytes::serialize(UseBytesParams {
+        address: client_resolved,
+        deal_size: BigInt::from(deal.piece_size.0),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        ext::verifreg::USE_BYTES_METHOD as u64,
+        param,
+        TokenAmount::from(0u8),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
+    let ret: PublishStorageDealsReturn = rt
+        .call::<MarketActor>(
+            Method::PublishStorageDeals as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+    let deal_id = ret.ids[0];
+
+    // assert that deal is persisted with the resolved addresses
+    let prop = get_deal_proposal(&mut rt, deal_id);
+    assert_eq!(client_resolved, prop.client);
+    assert_eq!(provider_resolved, prop.provider);
+
+    // TODO actor.checkState(rt)
+}
+
 #[test]
 fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_in_the_future() {
     let start_epoch = 1000;
@@ -1761,21 +1875,7 @@ fn expect_provider_control_address(
     owner: Address,
     worker: Address,
 ) {
-    //rt.expect_validate_caller_addr(vec![owner, worker]);
-    let return_value = ext::miner::GetControlAddressesReturnParams {
-        owner,
-        worker,
-        control_addresses: Vec::new(),
-    };
-
-    rt.expect_send(
-        provider,
-        ext::miner::CONTROL_ADDRESSES_METHOD,
-        RawBytes::default(),
-        TokenAmount::from(0u8),
-        RawBytes::serialize(return_value).unwrap(),
-        ExitCode::OK,
-    );
+    expect_get_control_addresses(rt, provider, owner, worker, vec![])
 }
 
 fn add_provider_funds(
