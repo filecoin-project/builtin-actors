@@ -1587,8 +1587,6 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     terminate_deals(&mut rt, provider_addr, &[deal_id1]);
 
     // cron tick will slash deal1 and make payment for deal2
-    let current = slash_epoch + ChainEpoch::from(1);
-    rt.set_epoch(current);
     rt.expect_send(
         *BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
@@ -1601,7 +1599,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
 
     assert_deal_deleted(&mut rt, deal_id1, d1);
     let s2 = get_deal_state(&mut rt, deal_id2);
-    assert_eq!(current, s2.last_updated_epoch);
+    assert_eq!(slash_epoch, s2.last_updated_epoch);
     // TODO: actor.checkState(rt)
 }
 
@@ -1666,14 +1664,12 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
         plaintext: buf.to_vec(),
         result: Ok(()),
     });
-    assert_eq!(
+    expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap_err()
-        .exit_code()
+        ),
     );
     rt.verify();
 }
@@ -2098,7 +2094,7 @@ fn cron_tick_and_assert_balances(
 
     // end epoch for payment calc
     let mut payment_end = d.end_epoch;
-    if s.slash_epoch != -1 {
+    if s.slash_epoch != EPOCH_UNDEFINED {
         rt.expect_send(
             *BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
@@ -2120,7 +2116,7 @@ fn cron_tick_and_assert_balances(
 
     // start epoch for payment calc
     let mut payment_start = d.start_epoch;
-    if s.last_updated_epoch != -1 {
+    if s.last_updated_epoch != EPOCH_UNDEFINED {
         payment_start = s.last_updated_epoch;
     }
     let duration = payment_end - payment_start;
@@ -2133,7 +2129,7 @@ fn cron_tick_and_assert_balances(
     let mut updated_provider_locked = p_locked;
     // if the deal has expired or been slashed, locked amount will be zero for provider and client.
     let is_deal_expired = payment_end == d.end_epoch;
-    if is_deal_expired || s.slash_epoch != -1 {
+    if is_deal_expired || s.slash_epoch != EPOCH_UNDEFINED {
         updated_client_locked = TokenAmount::from(0u8);
         updated_provider_locked = TokenAmount::from(0u8);
     }
