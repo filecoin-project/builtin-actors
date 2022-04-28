@@ -41,7 +41,7 @@ fn call(rt: &mut MockRuntime, method_num: u64, ser: &RawBytes) -> RawBytes {
     rt.call::<PaychActor>(method_num, ser).unwrap()
 }
 
-fn expect_error(rt: &mut MockRuntime, method_num: u64, ser: &RawBytes, exp: ExitCode) {
+fn expect_abort(rt: &mut MockRuntime, method_num: u64, ser: &RawBytes, exp: ExitCode) {
     let err = rt.call::<PaychActor>(method_num, ser).unwrap_err();
     assert_eq!(exp, err.exit_code());
 }
@@ -103,7 +103,7 @@ mod paych_constructor {
             to: Address::new_id(TEST_PAYCH_ADDR),
             from: Address::new_id(TEST_PAYER_ADDR),
         };
-        expect_error(
+        expect_abort(
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(params).unwrap(),
@@ -178,7 +178,7 @@ mod paych_constructor {
 
             rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
             let params = ConstructorParams { to: test_case.to_addr, from: test_case.from_addr };
-            expect_error(
+            expect_abort(
                 &mut rt,
                 METHOD_CONSTRUCTOR,
                 &RawBytes::serialize(params).unwrap(),
@@ -193,8 +193,7 @@ mod paych_constructor {
         let to_addr = Address::new_id(TO_ADDR);
         let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
         let caller_addr = Address::new_id(TEST_CALLER_ADDR);
-        #[allow(overflowing_literals)]
-        let non_id_addr = Address::new_bls(&[501; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+        let non_id_addr = Address::new_bls(&[111; fvm_shared::address::BLS_PUB_LEN]).unwrap();
 
         let mut actor_code_cids = HashMap::default();
         actor_code_cids.insert(to_addr, *ACCOUNT_ACTOR_CODE_ID);
@@ -218,7 +217,7 @@ mod paych_constructor {
 
         rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
         let params = ConstructorParams { from: non_id_addr, to: to_addr };
-        expect_error(
+        expect_abort(
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(&params).unwrap(),
@@ -231,8 +230,7 @@ mod paych_constructor {
         let from_addr = Address::new_id(5555_u64);
         let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
         let caller_addr = Address::new_id(TEST_CALLER_ADDR);
-        #[allow(overflowing_literals)]
-        let non_id_addr = Address::new_bls(&[501; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+        let non_id_addr = Address::new_bls(&[111; fvm_shared::address::BLS_PUB_LEN]).unwrap();
 
         let mut actor_code_cids = HashMap::default();
         actor_code_cids.insert(from_addr, *ACCOUNT_ACTOR_CODE_ID);
@@ -256,7 +254,7 @@ mod paych_constructor {
 
         rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
         let params = ConstructorParams { from: from_addr, to: non_id_addr };
-        expect_error(
+        expect_abort(
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(&params).unwrap(),
@@ -466,7 +464,7 @@ mod create_lane_tests {
                 assert_eq!(sv.amount, ls.redeemed);
                 assert_eq!(sv.nonce, ls.nonce);
             } else {
-                expect_error(
+                expect_abort(
                     &mut rt,
                     Method::UpdateChannelState as u64,
                     &RawBytes::serialize(ucp).unwrap(),
@@ -584,7 +582,7 @@ mod update_channel_state_redeem {
             result: Ok(()),
         });
 
-        expect_error(
+        expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
@@ -614,7 +612,7 @@ mod merge_tests {
             plaintext: sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        expect_error(
+        expect_abort(
             rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
@@ -798,7 +796,7 @@ mod update_channel_state_extra {
     #[ignore = "old functionality -- test framework needs to be updated"]
     fn extra_call_fail() {
         let (mut rt, sv) = construct_runtime(ExitCode::USR_UNSPECIFIED);
-        expect_error(
+        expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
@@ -901,7 +899,7 @@ mod secret_preimage {
             plaintext: ucp.sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        expect_error(
+        expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(ucp).unwrap(),
@@ -942,7 +940,7 @@ mod actor_settle {
         call(&mut rt, Method::Settle as u64, &RawBytes::default());
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        expect_error(
+        expect_abort(
             &mut rt,
             Method::Settle as u64,
             &RawBytes::default(),
@@ -1002,7 +1000,7 @@ mod actor_settle {
             plaintext: sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        expect_error(
+        expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
@@ -1102,7 +1100,7 @@ mod actor_collect {
             // Collect.
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
             rt.expect_validate_caller_addr(vec![state.from, state.to]);
-            expect_error(
+            expect_abort(
                 &mut rt,
                 Method::Collect as u64,
                 &RawBytes::default(),
