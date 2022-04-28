@@ -263,37 +263,11 @@ fn power_and_pledge_accounted_below_threshold() {
 
 #[test]
 fn enroll_cron_epoch_multiple_events() {
-    let (h, mut rt) = setup();
+    let (mut h, mut rt) = setup();
 
-    let peer = "miner".as_bytes().to_vec();
-    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
-
-    h.create_miner(
-        &mut rt,
-        &OWNER,
-        &OWNER,
-        &MINER,
-        &ACTOR,
-        peer.clone(),
-        multiaddrs.clone(),
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        &TokenAmount::zero(),
-    )
-    .unwrap();
-
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, *MINER).unwrap();
     let miner2_address = Address::new_id(501);
-    h.create_miner(
-        &mut rt,
-        &OWNER,
-        &OWNER,
-        &miner2_address,
-        &ACTOR,
-        peer,
-        multiaddrs,
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        &TokenAmount::zero(),
-    )
-    .unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, miner2_address).unwrap();
 
     let mut enroll_and_check_cron_event = |epoch, miner_address, payload| {
         let pre_existing_event_count = h.get_enrolled_cron_ticks(&rt, epoch).len();
@@ -323,22 +297,9 @@ fn enroll_cron_epoch_multiple_events() {
 
 #[test]
 fn enroll_cron_epoch_before_current_epoch() {
-    let (h, mut rt) = setup();
+    let (mut h, mut rt) = setup();
 
-    let peer = "miner".as_bytes().to_vec();
-    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
-    h.create_miner(
-        &mut rt,
-        &OWNER,
-        &OWNER,
-        &MINER,
-        &ACTOR,
-        peer,
-        multiaddrs,
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        &TokenAmount::zero(),
-    )
-    .unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, *MINER).unwrap();
 
     let current_epoch: ChainEpoch = 5;
     rt.set_epoch(current_epoch);
@@ -630,20 +591,7 @@ fn claimed_power_is_externally_available() {
 fn given_no_miner_claim_update_pledge_total_should_abort() {
     let (mut h, mut rt) = setup();
 
-    let peer = "miner".as_bytes().to_vec();
-    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
-    h.create_miner(
-        &mut rt,
-        &OWNER,
-        &OWNER,
-        &MINER,
-        &ACTOR,
-        peer,
-        multiaddrs,
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        &TokenAmount::zero(),
-    )
-    .unwrap();
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, *MINER).unwrap();
 
     // explicitly delete miner claim
     h.delete_claim(&mut rt, &*MINER);
