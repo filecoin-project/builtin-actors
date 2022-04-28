@@ -1705,6 +1705,77 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
     // TODO: actor.checkState
 }
 
+#[cfg(test)]
+mod test_on_miner_sectors_terminate {
+    use super::*;
+
+    #[test]
+    fn fail_when_caller_is_not_the_provider_of_the_deal() {
+        let client_addr = Address::new_id(CLIENT_ID);
+        let provider_addr = Address::new_id(PROVIDER_ID);
+        let owner_addr = Address::new_id(OWNER_ID);
+        let worker_addr = Address::new_id(WORKER_ID);
+        let control_addr = Address::new_id(CONTROL_ID);
+
+        let start_epoch = 10;
+        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+        let sector_expiry = end_epoch + 100;
+
+        let mut rt = setup();
+        let provider2_addr = Address::new_id(201);
+        let deal_id = generate_and_publish_deal(
+            &mut rt,
+            client_addr,
+            provider2_addr,
+            owner_addr,
+            worker_addr,
+            control_addr,
+            start_epoch,
+            end_epoch,
+        );
+
+        let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap()),
+        );
+
+        rt.verify();
+        // TODO: actor.checkState(rt)
+    }
+
+    #[test]
+    fn fail_when_caller_is_not_a_StorageMinerActor() {
+        let provider_addr = Address::new_id(PROVIDER_ID);
+
+        let mut rt = setup();
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, provider_addr);
+
+        let params = ActivateDealsParams { deal_ids: vec![], sector_expiry: 0 };
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap()),
+        );
+
+        rt.verify();
+        // TODO: actor.checkState(rt)
+    }
+
+    #[test]
+    fn fail_when_deal_has_not_been_published_before() {
+        //todo!()
+    }
+
+    #[test]
+    fn fail_when_deal_has_already_been_activated() {
+        //todo!()
+    }
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
