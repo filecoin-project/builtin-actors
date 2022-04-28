@@ -39,9 +39,9 @@ use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND, TOTAL_FILECOIN};
 
+use anyhow::anyhow;
 use cid::Cid;
 use num_traits::FromPrimitive;
-use anyhow::anyhow;
 
 const OWNER_ID: u64 = 101;
 const PROVIDER_ID: u64 = 102;
@@ -1279,8 +1279,12 @@ fn active_deals_multiple_times_with_different_providers() {
     // TODO: actor.checkState(rt)
 }
 
-fn assert_deal_failure<F>(add_funds: bool, post_setup: F, exit_code: ExitCode, sig_result: Result<(), anyhow::Error>)
-where
+fn assert_deal_failure<F>(
+    add_funds: bool,
+    post_setup: F,
+    exit_code: ExitCode,
+    sig_result: Result<(), anyhow::Error>,
+) where
     F: FnOnce(&mut MockRuntime, &mut DealProposal),
 {
     let owner_addr = Address::new_id(OWNER_ID);
@@ -1294,20 +1298,19 @@ where
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
     let mut rt = setup();
-    let mut deal_proposal =
-        if add_funds {
-            generate_deal_and_add_funds(
-                &mut rt,
-                client_addr,
-                provider_addr,
-                owner_addr,
-                worker_addr,
-                start_epoch,
-                end_epoch,
-            )
-        } else {
-            generate_deal_proposal(client_addr, provider_addr, start_epoch, end_epoch)
-        };
+    let mut deal_proposal = if add_funds {
+        generate_deal_and_add_funds(
+            &mut rt,
+            client_addr,
+            provider_addr,
+            owner_addr,
+            worker_addr,
+            start_epoch,
+            end_epoch,
+        )
+    } else {
+        generate_deal_proposal(client_addr, provider_addr, start_epoch, end_epoch)
+    };
     deal_proposal.verified_deal = false;
     rt.set_epoch(current_epoch);
     post_setup(&mut rt, &mut deal_proposal);
