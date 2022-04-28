@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{
-    make_empty_map, make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Array, Map,
+    make_empty_map, make_map_with_root_and_bitwidth, ActorDowncast, Array, Map,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -97,7 +97,7 @@ impl State {
         Ok(subnet.cloned())
     }
 
-    pub fn register_subnet<BS, RT>(&mut self, rt: &RT, id: &SubnetID) -> anyhow::Result<()>
+    pub(crate) fn register_subnet<BS, RT>(&mut self, rt: &RT, id: &SubnetID) -> anyhow::Result<()>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -133,13 +133,50 @@ impl State {
         self.total_subnets += 1;
         Ok(())
     }
+
+    pub(crate) fn rm_subnet<BS, RT>(&mut self, rt: &RT, id: &SubnetID) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        let mut subnets =
+            make_map_with_root_and_bitwidth::<_, Subnet>(&self.subnets, rt.store(), HAMT_BIT_WIDTH)
+                .map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnets")
+                })?;
+        subnets
+            .delete(&id.to_bytes())
+            .map_err(|e| e.downcast_wrap(format!("failed to delete subnet for id {}", id)))?;
+        self.subnets = subnets.flush().map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush subnets")
+        })?;
+        self.total_subnets -= 1;
+        Ok(())
+    }
+
+    pub(crate) fn flush_subnet<BS, RT>(&mut self, rt: &RT, sub: &Subnet) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        let mut subnets =
+            make_map_with_root_and_bitwidth::<_, Subnet>(&self.subnets, rt.store(), HAMT_BIT_WIDTH)
+                .map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnets")
+                })?;
+        set_subnet(&mut subnets, &sub.id, sub.clone())?;
+        self.subnets = subnets.flush().map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush subnets")
+        })?;
+        Ok(())
+    }
 }
 
 fn get_subnet<'m, BS: Blockstore>(
-    claims: &'m Map<BS, Subnet>,
+    subnets: &'m Map<BS, Subnet>,
     id: &SubnetID,
 ) -> anyhow::Result<Option<&'m Subnet>> {
-    claims
+    subnets
         .get(&id.to_bytes())
         .map_err(|e| e.downcast_wrap(format!("failed to get subnet for id {}", id)))
 }
