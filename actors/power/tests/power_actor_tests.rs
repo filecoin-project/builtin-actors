@@ -580,6 +580,53 @@ fn threshold_only_depends_on_raw_power_not_qa_power() {
 }
 
 #[test]
+fn qa_power_is_above_threshold_before_and_after_update() {
+    let power_unit = &consensus_miner_min_power(
+        &Policy::default(),
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+    )
+    .unwrap();
+    let power_unit_x3 = &(power_unit * 3);
+    let power_unit_x4 = &(power_unit * 4);
+
+    let (mut h, mut rt) = setup();
+
+    // update claim so qa is above threshold
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
+    h.update_claimed_power(&mut rt, MINER1, power_unit_x3, power_unit_x3);
+    let st: State = rt.get_state();
+    assert_eq!(power_unit_x3, &st.total_quality_adj_power);
+    assert_eq!(power_unit_x3, &st.total_raw_byte_power);
+
+    // update such that it's above threshold again
+    h.update_claimed_power(&mut rt, MINER1, power_unit, power_unit);
+    let st: State = rt.get_state();
+    assert_eq!(power_unit_x4, &st.total_quality_adj_power);
+    assert_eq!(power_unit_x4, &st.total_raw_byte_power);
+    h.check_state();
+}
+
+#[test]
+fn claimed_power_is_externally_available() {
+    let power_unit = &consensus_miner_min_power(
+        &Policy::default(),
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+    )
+    .unwrap();
+
+    let (mut h, mut rt) = setup();
+
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
+    h.update_claimed_power(&mut rt, MINER1, power_unit, power_unit);
+
+    let claim = h.get_claim(&rt, &MINER1).unwrap();
+
+    assert_eq!(power_unit, &claim.raw_byte_power);
+    assert_eq!(power_unit, &claim.quality_adj_power);
+    h.check_state();
+}
+
+#[test]
 fn given_no_miner_claim_update_pledge_total_should_abort() {
     let (mut h, mut rt) = setup();
 
