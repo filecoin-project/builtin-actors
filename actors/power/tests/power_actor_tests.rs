@@ -610,3 +610,155 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
     rt.verify();
     h.check_state();
 }
+
+#[cfg(test)]
+mod cron_tests {
+    use super::*;
+
+    use fil_actor_power::ext::reward::Method as RewardMethod;
+    use fil_actor_power::ext::{
+        miner::{DeferredCronEventParams, ON_DEFERRED_CRON_EVENT_METHOD},
+        reward::UPDATE_NETWORK_KPI,
+    };
+    use fil_actors_runtime::{test_utils::CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR};
+    use fvm_shared::bigint::BigInt;
+
+    const OWNER: Address = Address::new_id(103);
+
+    #[test]
+    fn call_reward_actor() {
+        let (h, mut rt) = setup();
+
+        let expected_power = BigInt::zero();
+        rt.set_epoch(1);
+
+        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+
+        h.expect_query_network_info(&mut rt);
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            RewardMethod::UpdateNetworkKPI as u64,
+            RawBytes::serialize(BigIntSer(&expected_power)).unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
+
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+
+        rt.verify();
+        h.check_state();
+    }
+
+    #[test]
+    fn amount_sent_to_reward_actor_and_state_change() {
+        let (mut h, mut rt) = setup();
+        let power_unit = consensus_miner_min_power(
+            &Policy::default(),
+            RegisteredPoStProof::StackedDRGWindow2KiBV1,
+        )
+        .unwrap();
+
+        let miner1 = Address::new_id(101);
+        let miner2 = Address::new_id(102);
+        let miner3 = Address::new_id(103);
+        let miner4 = Address::new_id(104);
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner1).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner2).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner3).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner4).unwrap();
+
+        h.update_claimed_power(&mut rt, miner1, &power_unit, &power_unit);
+        h.update_claimed_power(&mut rt, miner2, &power_unit, &power_unit);
+        h.update_claimed_power(&mut rt, miner3, &power_unit, &power_unit);
+        h.update_claimed_power(&mut rt, miner4, &power_unit, &power_unit);
+
+        let expected_power: BigInt = power_unit * 4u8;
+
+        let delta = TokenAmount::from(1u8);
+        h.update_pledge_total(&mut rt, miner1, &delta);
+        h.on_epoch_tick_end(&mut rt, 0, &expected_power, Vec::new(), Vec::new());
+
+        let state: State = rt.get_state();
+
+        assert_eq!(delta, state.this_epoch_pledge_collateral);
+        assert_eq!(expected_power, state.this_epoch_quality_adj_power);
+        assert_eq!(expected_power, state.this_epoch_raw_byte_power);
+
+        rt.verify();
+        h.check_state();
+    }
+
+    #[test]
+    fn event_scheduled_in_null_round_called_next_round() {
+        let (mut h, mut rt) = setup();
+
+        let miner1 = Address::new_id(101);
+        let miner2 = Address::new_id(102);
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner1).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner2).unwrap();
+
+        //  0 - genesis
+        //  1 - block - registers events
+        //  2 - null  - has event
+        //  3 - null
+        //  4 - block - has event
+
+        rt.set_epoch(1);
+        h.enroll_cron_event(&mut rt, 2, &miner1, &RawBytes::from(vec![0x01, 0x03]));
+        h.enroll_cron_event(&mut rt, 4, &miner2, &RawBytes::from(vec![0x02, 0x03]));
+
+        let expected_raw_byte_power = BigInt::zero();
+        rt.set_epoch(4);
+        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        h.expect_query_network_info(&mut rt);
+        let state: State = rt.get_state();
+
+        let params1 = DeferredCronEventParams {
+            event_payload: vec![0x01, 0x03],
+            reward_smoothed: h.this_epoch_reward_smoothed.clone(),
+            quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed.clone(),
+        };
+        rt.expect_send(
+            miner1,
+            ON_DEFERRED_CRON_EVENT_METHOD,
+            RawBytes::serialize(params1).unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        let params2 = DeferredCronEventParams {
+            event_payload: vec![0x02, 0x03],
+            reward_smoothed: h.this_epoch_reward_smoothed.clone(),
+            quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
+        };
+        rt.expect_send(
+            miner2,
+            ON_DEFERRED_CRON_EVENT_METHOD,
+            RawBytes::serialize(params2).unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            UPDATE_NETWORK_KPI,
+            RawBytes::serialize(BigIntSer(&expected_raw_byte_power)).unwrap(),
+            BigInt::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+
+        rt.verify();
+        h.check_state();
+    }
+}
