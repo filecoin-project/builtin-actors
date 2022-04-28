@@ -1,31 +1,31 @@
-use anyhow::anyhow;
 use cid::Cid;
+use fil_actors_runtime::runtime::Runtime;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
+use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{bigint_ser, BigInt};
+use fvm_shared::bigint::bigint_ser;
 use fvm_shared::econ::TokenAmount;
 use lazy_static::lazy_static;
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::borrow::Cow;
 use std::fmt;
 use std::path::Path;
 use std::str::FromStr;
 use thiserror::Error;
 
 use super::checkpoint::*;
+use super::state::State;
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct SubnetID {
     parent: String,
-    sub_act: Address,
+    actor: Address,
 }
 impl Cbor for SubnetID {}
 
 lazy_static! {
     pub static ref ROOTNET_ID: SubnetID =
-        SubnetID { parent: String::from("/root"), sub_act: Address::new_id(0) };
+        SubnetID { parent: String::from("/root"), actor: Address::new_id(0) };
 }
 
 #[derive(Debug, PartialEq, Error)]
@@ -39,6 +39,11 @@ impl SubnetID {
         let str_id = self.to_string();
         str_id.into_bytes()
     }
+
+    pub fn subnet_actor(&self) -> Address {
+        self.actor
+    }
+
     // pub fn common_parent(other: &SubnetID) -> Result<SubnetID, Error> {
     //     panic!("not implemented")
     // }
@@ -53,15 +58,15 @@ impl SubnetID {
 pub fn new_id(parent: &SubnetID, subnet_act: Address) -> SubnetID {
     let parent_str = parent.to_string();
 
-    return SubnetID { parent: parent_str, sub_act: subnet_act };
+    return SubnetID { parent: parent_str, actor: subnet_act };
 }
 
 impl fmt::Display for SubnetID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.parent == "/root" && self.sub_act == Address::new_id(0) {
+        if self.parent == "/root" && self.actor == Address::new_id(0) {
             return write!(f, "{}", self.parent);
         }
-        let act_str = self.sub_act.to_string();
+        let act_str = self.actor.to_string();
         match Path::join(Path::new(&self.parent), Path::new(&act_str)).to_str() {
             Some(r) => write!(f, "{}", r),
             None => Err(fmt::Error),
@@ -71,7 +76,7 @@ impl fmt::Display for SubnetID {
 
 impl Default for SubnetID {
     fn default() -> Self {
-        Self { parent: String::from(""), sub_act: Address::new_id(0) }
+        Self { parent: String::from(""), actor: Address::new_id(0) }
     }
 }
 
@@ -99,7 +104,7 @@ impl FromStr for SubnetID {
 
         Ok(Self {
             parent: String::from(par),
-            sub_act: match act {
+            actor: match act {
                 Ok(addr) => addr,
                 Err(_) => return Err(Error::InvalidID),
             },
@@ -126,6 +131,25 @@ pub struct Subnet {
     pub circ_supply: TokenAmount,
     pub status: Status,
     pub prev_checkpoint: Checkpoint,
+}
+
+impl Subnet {
+    pub(crate) fn add_stake<BS, RT>(
+        &mut self,
+        rt: &RT,
+        st: &mut State,
+        value: &TokenAmount,
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        self.stake += value;
+        if self.stake < st.min_stake {
+            self.status = Status::Inactive;
+        }
+        st.flush_subnet(rt, self)
+    }
 }
 
 #[cfg(test)]

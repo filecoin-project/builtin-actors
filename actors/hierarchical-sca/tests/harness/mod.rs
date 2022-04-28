@@ -1,30 +1,31 @@
 use cid::Cid;
+use fil_actors_runtime::test_utils::expect_abort;
 use fil_actors_runtime::Array;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
+use fvm_shared::METHOD_SEND;
 use lazy_static::lazy_static;
 
 use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::{
-    MockRuntime, ACCOUNT_ACTOR_CODE_ID, SUBNET_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
-};
+use fil_actors_runtime::test_utils::{MockRuntime, SUBNET_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID};
 use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, ActorError, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use hierarchical_sca::{
-    new_id, ConstructorParams, Method, State, Subnet, SubnetID, SubnetIDParam,
+    new_id, ConstructorParams, FundParams, Method, State, Subnet, SubnetID, SubnetIDParam,
     CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT, ROOTNET_ID,
 };
 
 use crate::SCAActor;
 
 lazy_static! {
-    pub static ref OWNER: Address = Address::new_id(101);
-    pub static ref MINER: Address = Address::new_id(201);
+    pub static ref SUBNET_ONE: Address = Address::new_id(101);
+    pub static ref SUBNET_TWO: Address = Address::new_id(202);
     pub static ref ACTOR: Address = Address::new_actor("actor".as_bytes());
 }
 
@@ -90,16 +91,127 @@ impl Harness {
         rt: &mut MockRuntime,
         subnet_addr: &Address,
         value: &TokenAmount,
+        code: ExitCode,
     ) -> Result<(), ActorError> {
         rt.set_caller(*SUBNET_ACTOR_CODE_ID, *subnet_addr);
         rt.set_value(value.clone());
         rt.set_balance(value.clone());
         rt.expect_validate_caller_type(vec![*SUBNET_ACTOR_CODE_ID]);
-        rt.expect_validate_caller_addr(vec![*subnet_addr]);
 
-        // let register_ret = SubnetIDParam { id: new_id(&ROOTNET_ID, *subnet_addr).to_string() };
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(Method::Register as MethodNum, &RawBytes::default()),
+            );
+            rt.verify();
+            return Ok(());
+        }
+
+        let register_ret = SubnetIDParam { id: new_id(&ROOTNET_ID, *subnet_addr).to_string() };
         let ret = rt.call::<SCAActor>(Method::Register as MethodNum, &RawBytes::default()).unwrap();
-        // assert_eq!(ret.deserialize().unwrap(), register_ret);
+        rt.verify();
+        let ret: SubnetIDParam = RawBytes::deserialize(&ret).unwrap();
+        assert_eq!(ret.id, register_ret.id);
+        Ok(())
+    }
+
+    pub fn add_stake(
+        &self,
+        rt: &mut MockRuntime,
+        id: &SubnetID,
+        value: &TokenAmount,
+        code: ExitCode,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*SUBNET_ACTOR_CODE_ID, id.subnet_actor());
+        rt.set_value(value.clone());
+        rt.expect_validate_caller_type(vec![*SUBNET_ACTOR_CODE_ID]);
+
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(Method::AddStake as MethodNum, &RawBytes::default()),
+            );
+            rt.verify();
+            return Ok(());
+        }
+
+        rt.call::<SCAActor>(Method::AddStake as MethodNum, &RawBytes::default()).unwrap();
+        rt.verify();
+
+        Ok(())
+    }
+
+    pub fn release_stake(
+        &self,
+        rt: &mut MockRuntime,
+        id: &SubnetID,
+        value: &TokenAmount,
+        code: ExitCode,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*SUBNET_ACTOR_CODE_ID, id.subnet_actor());
+        rt.expect_validate_caller_type(vec![*SUBNET_ACTOR_CODE_ID]);
+        let params = FundParams { value: value.clone() };
+
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(
+                    Method::ReleaseStake as MethodNum,
+                    &RawBytes::serialize(params).unwrap(),
+                ),
+            );
+            rt.verify();
+            return Ok(());
+        }
+
+        rt.expect_send(
+            id.subnet_actor(),
+            METHOD_SEND,
+            RawBytes::default(),
+            value.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        rt.call::<SCAActor>(
+            Method::ReleaseStake as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+        rt.verify();
+
+        Ok(())
+    }
+
+    pub fn kill(
+        &self,
+        rt: &mut MockRuntime,
+        id: &SubnetID,
+        release_value: &TokenAmount,
+        code: ExitCode,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*SUBNET_ACTOR_CODE_ID, id.subnet_actor());
+        rt.expect_validate_caller_type(vec![*SUBNET_ACTOR_CODE_ID]);
+
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(Method::Kill as MethodNum, &RawBytes::default()),
+            );
+            rt.verify();
+            return Ok(());
+        }
+
+        rt.expect_send(
+            id.subnet_actor(),
+            METHOD_SEND,
+            RawBytes::default(),
+            release_value.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        rt.call::<SCAActor>(Method::Kill as MethodNum, &RawBytes::default()).unwrap();
+        rt.verify();
+
         Ok(())
     }
 
@@ -108,7 +220,7 @@ impl Harness {
     }
 
     pub fn get_subnet(&self, rt: &MockRuntime, id: &SubnetID) -> Option<Subnet> {
-        let st: State = rt.get_state().unwrap();
+        let st: State = rt.get_state();
         let subnets =
             make_map_with_root_and_bitwidth(&st.subnets, rt.store(), HAMT_BIT_WIDTH).unwrap();
         subnets.get(&id.to_bytes()).unwrap().cloned()
