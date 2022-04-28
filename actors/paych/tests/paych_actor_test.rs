@@ -1198,14 +1198,12 @@ fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address
     verify_initial_state(rt, *sender_id, *receiver_id);
 }
 
-
 fn verify_initial_state(rt: &MockRuntime, sender: Address, receiver: Address) {
     let _state: PState = rt.get_state();
     let empt_arr_cid = Amt::<(), _>::new(&rt.store).flush().unwrap();
     let expected_state = PState::new(sender, receiver, empt_arr_cid);
     verify_state(rt, None, expected_state)
 }
-
 
 fn verify_state(rt: &MockRuntime, exp_lanes: Option<u64>, expected_state: PState) {
     let state: PState = rt.get_state();
