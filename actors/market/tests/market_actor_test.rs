@@ -41,6 +41,7 @@ use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND, TOTAL_FILECOIN
 
 use cid::Cid;
 use num_traits::FromPrimitive;
+use anyhow::anyhow;
 
 const OWNER_ID: u64 = 101;
 const PROVIDER_ID: u64 = 102;
@@ -1278,7 +1279,7 @@ fn active_deals_multiple_times_with_different_providers() {
     // TODO: actor.checkState(rt)
 }
 
-fn assert_deal_failure<F>(post_setup: F, exit_code: ExitCode, sig_result: Result<(), anyhow::Error>)
+fn assert_deal_failure<F>(add_funds: bool, post_setup: F, exit_code: ExitCode, sig_result: Result<(), anyhow::Error>)
 where
     F: FnOnce(&mut MockRuntime, &mut DealProposal),
 {
@@ -1286,6 +1287,7 @@ where
     let provider_addr = Address::new_id(PROVIDER_ID);
     let worker_addr = Address::new_id(WORKER_ID);
     let client_addr = Address::new_id(CLIENT_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
 
     let current_epoch = ChainEpoch::from(5);
     let start_epoch = 10;
@@ -1293,7 +1295,20 @@ where
 
     let mut rt = setup();
     let mut deal_proposal =
-        generate_deal_proposal(client_addr, provider_addr, start_epoch, end_epoch);
+        if add_funds {
+            generate_deal_and_add_funds(
+                &mut rt,
+                client_addr,
+                provider_addr,
+                owner_addr,
+                worker_addr,
+                start_epoch,
+                end_epoch,
+            )
+        } else {
+            generate_deal_proposal(client_addr, provider_addr, start_epoch, end_epoch)
+        };
+    deal_proposal.verified_deal = false;
     rt.set_epoch(current_epoch);
     post_setup(&mut rt, &mut deal_proposal);
 
@@ -1301,7 +1316,7 @@ where
     let return_value = ext::miner::GetControlAddressesReturnParams {
         owner: owner_addr,
         worker: worker_addr,
-        control_addresses: vec![],
+        control_addresses: vec![control_addr],
     };
     rt.expect_send(
         provider_addr,
@@ -1350,7 +1365,7 @@ mod publish_storage_deals_failures {
             d.start_epoch = 10;
             d.end_epoch = 9;
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1360,7 +1375,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.start_epoch = current_epoch - 1;
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1369,7 +1384,7 @@ mod publish_storage_deals_failures {
             d.start_epoch = ChainEpoch::from(10);
             d.end_epoch = d.start_epoch + (540 * EPOCHS_IN_DAY) + 1
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1377,7 +1392,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.storage_price_per_epoch = TokenAmount::from(-1);
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1385,7 +1400,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.storage_price_per_epoch = TOTAL_FILECOIN.clone() + 1;
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1393,7 +1408,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.provider_collateral = TokenAmount::from(-1);
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1401,7 +1416,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.provider_collateral = TOTAL_FILECOIN.clone() + 1;
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1416,7 +1431,7 @@ mod publish_storage_deals_failures {
                 / (policy.prov_collateral_percent_supply_denom as u64);
             d.provider_collateral = TokenAmount::from(provider_min - 1);
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1424,7 +1439,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.client_collateral = TokenAmount::from(-1);
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1432,7 +1447,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.client_collateral = TOTAL_FILECOIN.clone() + 1;
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1452,7 +1467,7 @@ mod publish_storage_deals_failures {
                 worker_addr,
             );
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1472,7 +1487,7 @@ mod publish_storage_deals_failures {
                 worker_addr,
             );
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1480,14 +1495,13 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.client = Address::new_id(1);
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
     fn signature_is_invalid() {
         let f = |_rt: &mut MockRuntime, _d: &mut DealProposal| {};
-        // TODO: something is not right in either test framework or actor code
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Err(anyhow!("error")));
     }
 
     #[test]
@@ -1505,7 +1519,7 @@ mod publish_storage_deals_failures {
                 worker_addr,
             );
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1515,7 +1529,7 @@ mod publish_storage_deals_failures {
         let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
             add_participant_funds(rt, client_addr, d.client_balance_requirement());
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1523,7 +1537,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.piece_cid = make_piece_cid("random cid".as_bytes());
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1531,7 +1545,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.piece_size = PaddedPieceSize(0u64);
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1539,7 +1553,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.piece_size = PaddedPieceSize(64u64);
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
@@ -1547,7 +1561,7 @@ mod publish_storage_deals_failures {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.piece_size = PaddedPieceSize(254u64);
         };
-        assert_deal_failure(f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 }
 
