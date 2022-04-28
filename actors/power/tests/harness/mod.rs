@@ -339,6 +339,11 @@ impl Harness {
         let st: State = rt.get_state();
         assert_eq!(expected_pledge, &st.total_pledge_collateral);
     }
+
+    pub fn expect_miners_above_min_power(&self, rt: &mut MockRuntime, count: i64) {
+        let st: State = rt.get_state();
+        assert_eq!(count, st.miner_above_min_power_count);
+    }
 }
 
 /// Collects all keys from a map into a vector.
