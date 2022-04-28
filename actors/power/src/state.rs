@@ -378,7 +378,7 @@ pub fn set_claim<BS: Blockstore>(
     Ok(())
 }
 
-pub(super) fn epoch_key(e: ChainEpoch) -> BytesKey {
+pub fn epoch_key(e: ChainEpoch) -> BytesKey {
     let bz = e.encode_var_vec();
     bz.into()
 }
