@@ -1740,7 +1740,10 @@ mod test_on_miner_sectors_terminate {
         rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
         expect_abort(
             ExitCode::USR_FORBIDDEN,
-            rt.call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap()),
+            rt.call::<MarketActor>(
+                Method::ActivateDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
         );
 
         rt.verify();
@@ -1758,7 +1761,10 @@ mod test_on_miner_sectors_terminate {
         let params = ActivateDealsParams { deal_ids: vec![], sector_expiry: 0 };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
-            rt.call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap()),
+            rt.call::<MarketActor>(
+                Method::ActivateDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
         );
 
         rt.verify();
