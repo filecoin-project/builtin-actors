@@ -1,6 +1,7 @@
 use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,
-    ProposeParams, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID, TxnIDParams,
+    ProposeParams, ProposeReturn, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID,
+    TxnIDParams,
 };
 use fil_actor_multisig::{ChangeNumApprovalsThresholdParams, LockBalanceParams};
 use fil_actors_runtime::test_utils::*;
@@ -95,7 +96,7 @@ impl ActorHarness {
         params: RawBytes,
     ) -> [u8; 32] {
         let ret = self.propose(rt, to, value.clone(), method, params.clone());
-        ret.unwrap();
+        ret.unwrap().deserialize::<ProposeReturn>().unwrap();
         // compute proposal hash
         let txn = Transaction { to, value, method, params, approved: vec![rt.caller] };
         compute_proposal_hash(&txn, rt).unwrap()
@@ -122,11 +123,12 @@ impl ActorHarness {
         value: TokenAmount,
         method: MethodNum,
         params: RawBytes,
-    ) -> Result<RawBytes,ActorError> {
+    ) -> Result<RawBytes, ActorError> {
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
         let propose_params =
             ProposeParams { to, value: value.clone(), method, params: params.clone() };
-        let ret = rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap());
+        let ret =
+            rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap());
         rt.verify();
         ret
     }
