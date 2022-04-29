@@ -32,7 +32,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         command: clippy
-        args: --all --all-targets
+        args: --all
         components: clippy
 
   test:
