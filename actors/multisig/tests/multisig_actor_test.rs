@@ -289,6 +289,7 @@ mod vesting_tests {
         rt.set_balance(TokenAmount::from(MSIG_INITIAL_BALANCE));
         rt.set_received(TokenAmount::from(MSIG_INITIAL_BALANCE));
         h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        rt.set_received(TokenAmount::zero());
 
         // anne proposes that darlene receive inital balance
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
@@ -319,6 +320,105 @@ mod vesting_tests {
 
         // h.check_state()
     }
+
+    #[test]
+    fn partial_vesting_propose_to_send_half_the_actor_balance_when_the_epoch_is_half_the_unlock_duration() {
+        let mut rt = construct_runtime(MSIG);
+        let h = util::ActorHarness::new();
+
+        rt.set_balance(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        rt.set_received(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        rt.set_received(TokenAmount::zero());
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
+        let proposal_hash = h.propose_ok(&mut rt, DARLENE, TokenAmount::from(MSIG_INITIAL_BALANCE / 2), METHOD_SEND, RawBytes::default());
+        rt.set_epoch(START_EPOCH + UNLOCK_DURATION / 2);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, BOB);
+        rt.expect_send(DARLENE, METHOD_SEND, RawBytes::default(), TokenAmount::from(MSIG_INITIAL_BALANCE / 2), RawBytes::default(), ExitCode::OK);
+        h.approve_ok(& mut rt, TxnID(0), proposal_hash);
+
+        // h.check_state()
+    }
+
+    #[test]
+    fn propose_and_autoapprove_tx_above_locked_amount_fails() {
+        let mut rt = construct_runtime(MSIG);
+        let h = util::ActorHarness::new();
+
+        rt.set_balance(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        rt.set_received(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        rt.set_received(TokenAmount::zero());
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, DARLENE, TokenAmount::from(MSIG_INITIAL_BALANCE), METHOD_SEND, RawBytes::default()),
+        );
+        rt.reset();
+        rt.set_epoch(START_EPOCH + UNLOCK_DURATION/10);
+        let amount_out = TokenAmount::from(MSIG_INITIAL_BALANCE/10);
+        rt.expect_send(DARLENE, METHOD_SEND, RawBytes::default(), amount_out.clone(), RawBytes::default(), ExitCode::OK);
+        h.propose_ok(&mut rt, DARLENE, amount_out, METHOD_SEND, RawBytes::default());
+
+        // h.check_state()
+    }   
+
+     #[test]
+     fn fail_to_vest_more_than_locked_amount() {
+        let mut rt = construct_runtime(MSIG);
+        let h = util::ActorHarness::new();
+
+        rt.set_balance(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        rt.set_received(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        rt.set_received(TokenAmount::zero());
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
+        let proposal_hash = h.propose_ok(& mut rt, DARLENE, TokenAmount::from(MSIG_INITIAL_BALANCE/ 2), METHOD_SEND, RawBytes::default());
+        rt.set_epoch(START_EPOCH + UNLOCK_DURATION/10);
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS, 
+            h.approve(&mut rt, TxnID(0), proposal_hash),
+        );
+
+     }
+
+     #[test]
+     fn avoid_truncating_division() {
+        let mut rt = construct_runtime(MSIG);
+        let h = util::ActorHarness::new();
+
+        let locked_balance = TokenAmount::from(UNLOCK_DURATION -1); // balance < duration
+        let one = TokenAmount::from(1u8);
+        rt.set_balance(locked_balance.clone());
+        rt.set_received(locked_balance.clone());
+        h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        rt.set_received(TokenAmount::zero());
+
+        // expect nothing vested yet
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default()),
+        );
+        rt.reset();
+
+        // expect nothing ( (x-1/x) <1 unit) vested after 1 epoch 
+        rt.set_epoch(START_EPOCH + 1);
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default()),
+        );
+        rt.reset();
+
+        // expect 1 unit available after 2 epochs
+        rt.set_epoch(START_EPOCH + 2);
+        rt.expect_send(ANNE, METHOD_SEND, RawBytes::default(), one.clone(), RawBytes::default(), ExitCode::OK);
+        h.propose_ok(&mut rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default());
+        rt.set_balance(locked_balance.clone());
+     }
 }
 
 // Propose
