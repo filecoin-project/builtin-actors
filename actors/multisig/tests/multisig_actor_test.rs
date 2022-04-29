@@ -5,6 +5,8 @@ use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
+use fvm_shared::bigint::Zero;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
@@ -113,7 +115,7 @@ mod constructor_tests {
         let st: State = rt.get_state();
         assert_eq!(params.signers, st.signers);
         assert_eq!(params.num_approvals_threshold, st.num_approvals_threshold);
-        assert_eq!(TokenAmount::from(0u8), st.initial_balance);
+        assert_eq!(TokenAmount::zero(), st.initial_balance);
         assert_eq!(100, st.unlock_duration);
         assert_eq!(1234, st.start_epoch);
         h.assert_transactions(&rt, vec![]);
@@ -205,7 +207,7 @@ mod constructor_tests {
             anne_non_id,
             METHOD_SEND,
             RawBytes::default(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -262,6 +264,60 @@ mod constructor_tests {
             ),
         );
         rt.verify();
+    }
+}
+
+#[cfg(test)]
+mod vesting_tests {
+    use super::*;
+
+    const MSIG: Address = Address::new_id(1000);
+    const ANNE: Address = Address::new_id(101);
+    const BOB: Address = Address::new_id(102);
+    const CHARLIE: Address = Address::new_id(103);
+    const DARLENE: Address = Address::new_id(104);
+
+    const UNLOCK_DURATION: ChainEpoch = 10;
+    const START_EPOCH: ChainEpoch = 0;
+    const MSIG_INITIAL_BALANCE: u8 = 100;
+
+    #[test]
+    fn happy_path_full_vesting() {
+        let mut rt = construct_runtime(MSIG);
+        let h = util::ActorHarness::new();
+
+        rt.set_balance(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        rt.set_received(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+
+        // anne proposes that darlene receive inital balance
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
+        let proposal_hash = h.propose_ok(
+            &mut rt,
+            DARLENE,
+            TokenAmount::from(MSIG_INITIAL_BALANCE),
+            METHOD_SEND,
+            RawBytes::default(),
+        );
+
+        // bob approves anne's tx too soon
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, BOB);
+        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&mut rt, TxnID(0), proposal_hash));
+        rt.reset();
+
+        // advance the epoch s.t. all funds are unlocked
+        rt.set_epoch(START_EPOCH + UNLOCK_DURATION);
+        rt.expect_send(
+            DARLENE,
+            METHOD_SEND,
+            RawBytes::default(),
+            TokenAmount::from(MSIG_INITIAL_BALANCE),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        assert_eq!(RawBytes::default(), h.approve_ok(&mut rt, TxnID(0), proposal_hash))
+
+        // h.check_state()
     }
 }
 
@@ -676,7 +732,7 @@ fn test_approve_simple_propose_and_approval() {
     let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
     let fake_method = 42;
     let fake_ret = RawBytes::from(vec![4, 3, 2, 1]);
-    let send_value = TokenAmount::from(10u8);
+    let send_value = TokenAmount::zero();
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
     let proposal_hash =
         h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());

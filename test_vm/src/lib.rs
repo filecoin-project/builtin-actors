@@ -751,12 +751,15 @@ impl Primitives for InvocationCtx<'_, '_> {
         Ok(())
     }
 
-    fn hash_blake2b(&self, _data: &[u8]) -> [u8; 32] {
-        // TODO: actual blake 2b
-        [
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0,
-        ]
+    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
+        blake2b_simd::Params::new()
+            .hash_length(32)
+            .to_state()
+            .update(data)
+            .finalize()
+            .as_bytes()
+            .try_into()
+            .unwrap()
     }
 
     fn compute_unsealed_sector_cid(
