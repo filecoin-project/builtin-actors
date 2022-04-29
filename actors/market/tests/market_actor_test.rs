@@ -1751,7 +1751,7 @@ mod test_on_miner_sectors_terminate {
     }
 
     #[test]
-    fn fail_when_caller_is_not_a_StorageMinerActor() {
+    fn fail_when_caller_is_not_a_storage_miner_actor() {
         let provider_addr = Address::new_id(PROVIDER_ID);
 
         let mut rt = setup();
