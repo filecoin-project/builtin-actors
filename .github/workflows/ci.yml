@@ -3,77 +3,44 @@ name: Continuous integration
 on:
   push:
 
+env:
+  RUSTFLAGS: -Dwarnings
+
 jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-    - name: Checking out fvm
+    - name: Checking out
       uses: actions/checkout@v2
-    - name: Installing Rust
-      uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
-      with:
-        profile: minimal
-        override: true
-        components: rustfmt
-    - name: Running fmt
-      uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
+    - name: Running rustfmt
+      uses: ./.github/actions/rust-cargo-run
       with:
         command: fmt
         args: -- --check
-  cargo:
+        components: rustfmt
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  check-clippy:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: check-clippy
-            command: clippy
-            args: --all --all-targets
-            components: clippy
-          - name: test
-            command: test
-            args: --all
-          - name: build
-            command: build
-            push: true
-    env:
-      SCCACHE_CACHE_SIZE: 2G
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
-    name: ${{ matrix.name }}
     steps:
-    - name: Checking out builtin-actors
+    - name: Checking out
       uses: actions/checkout@v2
+    - name: Running clippy
+      uses: ./.github/actions/rust-cargo-run
       with:
-        submodules: ${{ matrix.submodules }}
-    - name: Installing Rust
-      uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
+        command: clippy
+        args: --all
+        components: clippy
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v2
+    - name: Running tests
+      uses: ./.github/actions/rust-cargo-run
       with:
-        profile: minimal
-        target: wasm32-unknown-unknown
-        override: true
-        components: ${{ matrix.components }}
-    # we don't check the lockfile in; this is needed for cache restoration/saving
-    - name: Generating Cargo.lock
-      uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-      with:
-        command: generate-lockfile
-    - name: Setting up cache
-      uses: ./.github/actions/rust-sccache
-      with:
-        version: v0.2.15
-        # change this to invalidate sccache for this job
-        shared-key: v1
-    - name: Running ${{ matrix.command }}
-      uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-      with:
-        command: ${{ matrix.command }}
-        args: ${{ matrix.args }}
-    - name: Publishing build artifacts
-      if: ${{ matrix.command == 'build' }}
-      uses: actions/upload-artifact@v2
-      with:
-        name: bundle
-        path: |
-          target/**/bundle.car
+        command: test
+        args: --all
+        github_token: ${{ secrets.GITHUB_TOKEN }}
