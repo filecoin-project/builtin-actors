@@ -25,9 +25,8 @@ jobs:
       uses: actions/checkout@v2
     - name: Install Rust toolchain
       uses: ./.github/actions/rust-cargo-run
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
         command: version
     - name: Writing bundle
       env:
