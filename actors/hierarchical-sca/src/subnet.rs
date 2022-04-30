@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_blockstore::Blockstore;
@@ -16,7 +17,7 @@ use thiserror::Error;
 use super::checkpoint::*;
 use super::state::State;
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct SubnetID {
     parent: String,
     actor: Address,
@@ -42,6 +43,16 @@ impl SubnetID {
 
     pub fn subnet_actor(&self) -> Address {
         self.actor
+    }
+
+    pub fn parent(&self) -> Option<SubnetID> {
+        if *self == *ROOTNET_ID {
+            return None;
+        }
+        match SubnetID::from_str(&self.parent) {
+            Ok(id) => Some(id),
+            Err(_) => None,
+        }
     }
 
     // pub fn common_parent(other: &SubnetID) -> Result<SubnetID, Error> {
@@ -148,7 +159,17 @@ impl Subnet {
         if self.stake < st.min_stake {
             self.status = Status::Inactive;
         }
-        st.flush_subnet(rt, self)
+        st.flush_subnet(rt.store(), self)
+    }
+
+    pub(crate) fn release_supply(&mut self, value: &TokenAmount) -> anyhow::Result<()> {
+        if &self.circ_supply < value {
+            return Err(anyhow!(
+                "wtf! we can't release funds below circ, supply. something went really wrong"
+            ));
+        }
+        self.circ_supply -= value;
+        Ok(())
     }
 }
 
