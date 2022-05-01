@@ -21,56 +21,248 @@ fn construct_runtime(receiver: Address) -> MockRuntime {
 }
 
 // Constructor
+#[cfg(test)]
+mod constructor_tests {
+    use super::*;
 
-#[test]
-fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
-    let msig = Address::new_id(1000);
-    let mut rt = construct_runtime(msig);
-    let zero_signer_params = ConstructorParams {
-        signers: Vec::new(),
-        num_approvals_threshold: 1,
-        unlock_duration: 1,
-        start_epoch: 0,
-    };
-    rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
-    rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+    const MSIG: Address = Address::new_id(1000);
+    const ANNE: Address = Address::new_id(101);
+    const BOB: Address = Address::new_id(102);
+    const CHARLIE: Address = Address::new_id(103);
 
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        rt.call::<MultisigActor>(
+    #[test]
+    fn test_simple_construction() {
+        let mut rt = construct_runtime(MSIG);
+        let h = util::ActorHarness::new();
+        let params = ConstructorParams {
+            signers: vec![ANNE, BOB, CHARLIE],
+            num_approvals_threshold: 2,
+            unlock_duration: 200,
+            start_epoch: 100,
+        };
+
+        rt.set_received(TokenAmount::from(100u8));
+        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        let ret = rt.call::<MultisigActor>(
             Method::Constructor as u64,
-            &RawBytes::serialize(&zero_signer_params).unwrap(),
-        ),
-    );
-    rt.verify();
-}
+            &RawBytes::serialize(&params).unwrap(),
+        );
+        assert_eq!(RawBytes::default(), ret.unwrap());
+        rt.verify();
 
-#[test]
-fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
-    let msig = Address::new_id(1000);
-    let mut rt = construct_runtime(msig);
-    let mut signers = Vec::new();
-    let mut i: u64 = 0;
-    while i <= SIGNERS_MAX as u64 {
-        signers.push(Address::new_id(i + 1000));
-        i += 1;
+        let st: State = rt.get_state();
+        assert_eq!(params.signers, st.signers);
+        assert_eq!(params.num_approvals_threshold, st.num_approvals_threshold);
+        assert_eq!(TokenAmount::from(100u8), st.initial_balance);
+        assert_eq!(200, st.unlock_duration);
+        assert_eq!(100, st.start_epoch);
+        h.assert_transactions(&rt, vec![]);
     }
-    let over_max_signers_params = ConstructorParams {
-        signers,
-        num_approvals_threshold: 1,
-        unlock_duration: 1,
-        start_epoch: 0,
-    };
-    rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
-    rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        rt.call::<MultisigActor>(
-            Method::Constructor as u64,
-            &RawBytes::serialize(&over_max_signers_params).unwrap(),
-        ),
-    );
-    rt.verify();
+
+    #[test]
+    fn test_construction_by_resolving_signers_to_id_addresses() {
+        let anne_non_id = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
+        let bob_non_id = Address::new_bls(&[2u8; BLS_PUB_LEN]).unwrap();
+        let charlie_non_id = Address::new_bls(&[3u8; BLS_PUB_LEN]).unwrap();
+
+        let mut rt = construct_runtime(MSIG);
+        rt.id_addresses.insert(anne_non_id, ANNE);
+        rt.id_addresses.insert(bob_non_id, BOB);
+        rt.id_addresses.insert(charlie_non_id, CHARLIE);
+        let params = ConstructorParams {
+            signers: vec![anne_non_id, bob_non_id, charlie_non_id],
+            num_approvals_threshold: 2,
+            unlock_duration: 0,
+            start_epoch: 0,
+        };
+
+        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        let ret = rt
+            .call::<MultisigActor>(
+                Method::Constructor as u64,
+                &RawBytes::serialize(&params).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(ret, RawBytes::default());
+    }
+
+    #[test]
+    fn test_construction_with_vesting() {
+        let mut rt = construct_runtime(MSIG);
+        let h = util::ActorHarness::new();
+        rt.set_epoch(1234);
+        let params = ConstructorParams {
+            signers: vec![ANNE, BOB, CHARLIE],
+            num_approvals_threshold: 3,
+            unlock_duration: 100,
+            start_epoch: 1234,
+        };
+        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        assert_eq!(
+            RawBytes::default(),
+            rt.call::<MultisigActor>(
+                Method::Constructor as u64,
+                &RawBytes::serialize(&params).unwrap()
+            )
+            .unwrap()
+        );
+
+        let st: State = rt.get_state();
+        assert_eq!(params.signers, st.signers);
+        assert_eq!(params.num_approvals_threshold, st.num_approvals_threshold);
+        assert_eq!(TokenAmount::from(0u8), st.initial_balance);
+        assert_eq!(100, st.unlock_duration);
+        assert_eq!(1234, st.start_epoch);
+        h.assert_transactions(&rt, vec![]);
+    }
+
+    #[test]
+    fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
+        let mut rt = construct_runtime(MSIG);
+        let zero_signer_params = ConstructorParams {
+            signers: Vec::new(),
+            num_approvals_threshold: 1,
+            unlock_duration: 1,
+            start_epoch: 0,
+        };
+        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            rt.call::<MultisigActor>(
+                Method::Constructor as u64,
+                &RawBytes::serialize(&zero_signer_params).unwrap(),
+            ),
+        );
+        rt.verify();
+    }
+
+    #[test]
+    fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
+        let mut rt = construct_runtime(MSIG);
+        let mut signers = Vec::new();
+        let mut i: u64 = 0;
+        while i <= SIGNERS_MAX as u64 {
+            signers.push(Address::new_id(i + 1000));
+            i += 1;
+        }
+        let over_max_signers_params = ConstructorParams {
+            signers,
+            num_approvals_threshold: 1,
+            unlock_duration: 1,
+            start_epoch: 0,
+        };
+        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            rt.call::<MultisigActor>(
+                Method::Constructor as u64,
+                &RawBytes::serialize(&over_max_signers_params).unwrap(),
+            ),
+        );
+        rt.verify();
+    }
+
+    #[test]
+    fn fail_to_construct_multisig_with_more_approvals_than_signers() {
+        let mut rt = construct_runtime(MSIG);
+        let params = ConstructorParams {
+            signers: vec![ANNE],
+            num_approvals_threshold: 2,
+            unlock_duration: 0,
+            start_epoch: 0,
+        };
+        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            rt.call::<MultisigActor>(
+                Method::Constructor as u64,
+                &RawBytes::serialize(&params).unwrap(),
+            ),
+        );
+        rt.verify();
+    }
+
+    #[test]
+    fn fail_to_contruct_multisig_if_a_signer_is_not_resolvable_to_id_address() {
+        let mut rt = construct_runtime(MSIG);
+        let anne_non_id = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
+        // no mapping to ANNE added to runtime
+        let params = ConstructorParams {
+            signers: vec![anne_non_id, BOB, CHARLIE],
+            num_approvals_threshold: 2,
+            unlock_duration: 1,
+            start_epoch: 0,
+        };
+        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.expect_send(
+            anne_non_id,
+            METHOD_SEND,
+            RawBytes::default(),
+            TokenAmount::from(0u8),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        expect_abort(
+            ExitCode::USR_ILLEGAL_STATE,
+            rt.call::<MultisigActor>(
+                Method::Constructor as u64,
+                &RawBytes::serialize(&params).unwrap(),
+            ),
+        );
+        rt.verify();
+    }
+
+    #[test]
+    fn fail_to_construct_msig_with_duplicate_signers_all_id() {
+        let mut rt = construct_runtime(MSIG);
+        let params = ConstructorParams {
+            signers: vec![ANNE, BOB, BOB],
+            num_approvals_threshold: 2,
+            unlock_duration: 0,
+            start_epoch: 0,
+        };
+        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            rt.call::<MultisigActor>(
+                Method::Constructor as u64,
+                &RawBytes::serialize(&params).unwrap(),
+            ),
+        );
+        rt.verify();
+    }
+
+    #[test]
+    fn fail_to_construct_msig_with_duplicate_signers_id_and_non_id() {
+        let bob_non_id = Address::new_bls(&[2u8; BLS_PUB_LEN]).unwrap();
+        let mut rt = construct_runtime(MSIG);
+        rt.id_addresses.insert(bob_non_id, BOB);
+        let params = ConstructorParams {
+            signers: vec![ANNE, bob_non_id, BOB],
+            num_approvals_threshold: 2,
+            unlock_duration: 0,
+            start_epoch: 0,
+        };
+        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            rt.call::<MultisigActor>(
+                Method::Constructor as u64,
+                &RawBytes::serialize(&params).unwrap(),
+            ),
+        );
+        rt.verify();
+    }
 }
 
 // Propose
