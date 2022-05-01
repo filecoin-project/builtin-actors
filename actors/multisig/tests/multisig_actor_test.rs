@@ -1098,18 +1098,16 @@ fn test_approve_simple_propose_and_approval() {
     let anne = Address::new_id(101);
     let bob = Address::new_id(102);
     let chuck = Address::new_id(103);
-
+    let signers = vec![anne, bob];
     let mut rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
     // construct msig
-    let signers = vec![anne, bob];
-
     h.construct_and_verify(&mut rt, 2, 0, 0, signers);
 
     let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
     let fake_method = 42;
     let fake_ret = RawBytes::from(vec![4, 3, 2, 1]);
-    let send_value = TokenAmount::zero();
+    let send_value = TokenAmount::from(10u8);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
     let proposal_hash =
         h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
@@ -1129,6 +1127,33 @@ fn test_approve_simple_propose_and_approval() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
     rt.expect_send(chuck, fake_method, fake_params, send_value, fake_ret, ExitCode::OK);
     h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+    h.assert_transactions(&rt, vec![]);
+}
+
+#[test]
+fn test_approve_with_non_empty_ret_value() {
+    let msig = Address::new_id(100);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let signers = vec![anne, bob];
+    let mut rt = construct_runtime(msig);
+    let send_value = TokenAmount::from(10u8);
+    let h = util::ActorHarness::new();
+    rt.set_balance(send_value.clone());
+    rt.set_received(TokenAmount::zero());
+    h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+
+    let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
+    let fake_method = 42;
+    let fake_ret = RawBytes::from(vec![4, 3, 2, 1]);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+    let proposal_hash = h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
+    rt.expect_send(chuck, fake_method, fake_params, send_value, fake_ret.clone(), ExitCode::OK);
+    let ret = h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+    assert_eq!(fake_ret, ret);
     h.assert_transactions(&rt, vec![]);
 }
 
