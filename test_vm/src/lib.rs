@@ -634,9 +634,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
         };
-        println!("starting send invoc [{}:{}]", to, method);
         let res = new_ctx.invoke();
-        println!("finished send invoc [{}:{}]", to, method);
 
         let invoc = new_ctx.gather_trace(res.clone());
         RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
@@ -751,12 +749,15 @@ impl Primitives for InvocationCtx<'_, '_> {
         Ok(())
     }
 
-    fn hash_blake2b(&self, _data: &[u8]) -> [u8; 32] {
-        // TODO: actual blake 2b
-        [
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0,
-        ]
+    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
+        blake2b_simd::Params::new()
+            .hash_length(32)
+            .to_state()
+            .update(data)
+            .finalize()
+            .as_bytes()
+            .try_into()
+            .unwrap()
     }
 
     fn compute_unsealed_sector_cid(
