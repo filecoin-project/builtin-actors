@@ -100,7 +100,6 @@ impl Actor {
         if params.unlock_duration < 0 {
             return Err(actor_error!(illegal_argument; "negative unlock duration disallowed"));
         }
-        println!("unlock duration: {}", params.unlock_duration);
 
         let empty_root =
             make_empty_map::<_, ()>(rt.store(), HAMT_BIT_WIDTH).flush().map_err(|e| {
@@ -197,7 +196,6 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        println!("rt sees epoch: {}", rt.curr_epoch());
         rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
         let approver: Address = rt.message().caller();
 

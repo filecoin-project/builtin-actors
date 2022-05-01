@@ -634,9 +634,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
         };
-        println!("starting send invoc [{}:{}]", to, method);
         let res = new_ctx.invoke();
-        println!("finished send invoc [{}:{}]", to, method);
 
         let invoc = new_ctx.gather_trace(res.clone());
         RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
