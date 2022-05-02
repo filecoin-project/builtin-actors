@@ -325,6 +325,57 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
 }
 
 #[test]
+fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
+    let client = Address::new_id(CLIENT_ID);
+    let worker = Address::new_id(WORKER_ID);
+    let provider = Address::new_id(PROVIDER_ID);
+    let owner = Address::new_id(OWNER_ID);
+    let control = Address::new_id(CONTROL_ID);
+    let start_epoch = ChainEpoch::from(10);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let publish_epoch = ChainEpoch::from(5);
+
+    let mut rt = setup();
+
+    // publish deal
+    rt.set_epoch(publish_epoch);
+    let deal_id = generate_and_publish_deal(
+        &mut rt,
+        client,
+        provider,
+        owner,
+        worker,
+        control,
+        start_epoch,
+        end_epoch,
+    );
+
+    // activate the deal
+    activate_deals(&mut rt, end_epoch + 1, provider, publish_epoch, &[deal_id]);
+    let st = get_deal_state(&mut rt, deal_id);
+    assert_eq!(publish_epoch, st.sector_start_epoch);
+
+    // slash the deal
+    rt.set_epoch(publish_epoch + 1);
+    terminate_deals(&mut rt, provider, &[deal_id]);
+    let st = get_deal_state(&mut rt, deal_id);
+    assert_eq!(publish_epoch + 1, st.slash_epoch);
+
+    // provider cannot withdraw any funds since all it's balance is locked
+    let withdraw_amount = TokenAmount::from(1);
+    let actual_withdrawn = TokenAmount::from(0);
+    withdraw_provider_balance(&mut rt, withdraw_amount, actual_withdrawn, provider, owner, worker);
+
+    // add some more funds to the provider & ensure withdrawal is limited by the locked funds
+    add_provider_funds(&mut rt, TokenAmount::from(25), provider, owner, worker);
+    let withdraw_amount = TokenAmount::from(30);
+    let actual_withdrawn = TokenAmount::from(25);
+
+    withdraw_provider_balance(&mut rt, withdraw_amount, actual_withdrawn, provider, owner, worker);
+    // TODO: actor.checkState(rt)
+}
+
+#[test]
 fn fails_unless_called_by_an_account_actor() {
     let mut rt = setup();
 
