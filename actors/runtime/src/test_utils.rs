@@ -877,9 +877,23 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
         let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
 
-        assert!(expected_msg.to == to && expected_msg.method == method && expected_msg.params == params && expected_msg.value == value,
-                "expectedMessage being sent does not match expectation.\nMessage -\t to: {:?} method: {:?} value: {:?} params: {:?}\nExpected -\t {:?}",
-                to, method, value, params, expected_msg);
+        assert!(
+            expected_msg.to == to
+                && expected_msg.method == method
+                && expected_msg.params == params
+                && expected_msg.value == value,
+            "expectedMessage being sent does not match expectation.\n\
+             Message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
+             Expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
+            to,
+            method,
+            value,
+            params,
+            expected_msg.to,
+            expected_msg.method,
+            expected_msg.value,
+            expected_msg.params,
+        );
 
         {
             let mut balance = self.balance.borrow_mut();
