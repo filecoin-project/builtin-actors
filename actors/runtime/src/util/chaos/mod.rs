@@ -14,7 +14,7 @@ pub use state::*;
 pub use types::*;
 
 use crate::runtime::{ActorCode, Runtime};
-use crate::{actor_error, cbor, ActorError};
+use crate::{actor_error, cbor, ActorContext2, ActorError};
 
 mod state;
 mod types;
@@ -219,12 +219,12 @@ impl ActorCode for Actor {
             }
             Some(Method::ResolveAddress) => {
                 let res = Self::resolve_address(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
+                Ok(RawBytes::serialize(res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
 
             Some(Method::Send) => {
                 let res: SendReturn = Self::send(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
+                Ok(RawBytes::serialize(res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
 
             Some(Method::DeleteActor) => {
@@ -244,7 +244,7 @@ impl ActorCode for Actor {
 
             Some(Method::InspectRuntime) => {
                 let inspect = Self::inspect_runtime(rt)?;
-                Ok(RawBytes::serialize(inspect)?)
+                Ok(RawBytes::serialize(inspect).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
 
             None => Err(actor_error!(unhandled_message; "Invalid method")),

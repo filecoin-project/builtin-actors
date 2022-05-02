@@ -67,7 +67,7 @@ where
 pub fn make_map_with_root<'bs, BS, V>(
     root: &Cid,
     store: &'bs BS,
-) -> Result<Map<'bs, BS, V>, HamtError>
+) -> Result<Map<'bs, BS, V>, HamtError<BS::Error>>
 where
     BS: Blockstore,
     V: DeserializeOwned + Serialize,
@@ -81,7 +81,7 @@ pub fn make_map_with_root_and_bitwidth<'bs, BS, V>(
     root: &Cid,
     store: &'bs BS,
     bitwidth: u32,
-) -> Result<Map<'bs, BS, V>, HamtError>
+) -> Result<Map<'bs, BS, V>, HamtError<BS::Error>>
 where
     BS: Blockstore,
     V: DeserializeOwned + Serialize,

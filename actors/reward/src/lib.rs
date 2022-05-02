@@ -3,14 +3,15 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, ActorContext2, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{Integer, Sign};
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, warn};
@@ -159,7 +160,7 @@ impl Actor {
         let res = rt.send(
             miner_addr,
             ext::miner::APPLY_REWARDS_METHOD,
-            RawBytes::serialize(&reward_params)?,
+            RawBytes::serialize(&reward_params).exit_code(ExitCode::USR_ILLEGAL_STATE)?,
             total_reward.clone(),
         );
         if let Err(e) = res {
@@ -251,7 +252,7 @@ impl ActorCode for Actor {
             }
             Some(Method::ThisEpochReward) => {
                 let res = Self::this_epoch_reward(rt)?;
-                Ok(RawBytes::serialize(&res)?)
+                Ok(RawBytes::serialize(&res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
             Some(Method::UpdateNetworkKPI) => {
                 let param: Option<BigIntDe> = cbor::deserialize_params(params)?;

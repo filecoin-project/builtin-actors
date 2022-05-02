@@ -1187,7 +1187,7 @@ impl ActorHarness {
                             let live = part.live_sectors();
                             let to_prove = &live & &sector_nos;
                             if to_prove.is_empty() {
-                                return Ok(());
+                                return;
                             }
 
                             let mut to_skip = &live - &to_prove;
@@ -1204,7 +1204,6 @@ impl ActorHarness {
                                     if skipped_proven.get(i) {
                                         skipped_proven_sector_infos.push(sector.clone());
                                     }
-                                    Ok(())
                                 })
                                 .unwrap();
                             let new_faulty_power =
@@ -1218,7 +1217,6 @@ impl ActorHarness {
                                     if new_proven.get(i) {
                                         new_proven_infos.push(sector.clone());
                                     }
-                                    Ok(())
                                 })
                                 .unwrap();
                             let new_proven_power = self.power_pair_for_sectors(&new_proven_infos);
@@ -1230,8 +1228,6 @@ impl ActorHarness {
                                 index: part_idx,
                                 skipped: UnvalidatedBitField::Validated(to_skip),
                             });
-
-                            Ok(())
                         })
                         .unwrap();
 
@@ -1605,7 +1601,6 @@ where
     let arr = Array::<T, _>::load(c, &rt.store).unwrap();
     arr.for_each(|_, v: &T| {
         result.push(v.clone());
-        Ok(())
     })
     .unwrap();
     result

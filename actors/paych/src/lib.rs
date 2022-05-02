@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, resolve_to_id_addr, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{
+    actor_error, cbor, resolve_to_id_addr, ActorContext, ActorContext2, ActorError, Array,
+};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::actor::builtin::Type;
@@ -58,9 +60,7 @@ impl Actor {
         let empty_arr_cid =
             Array::<(), _>::new_with_bit_width(rt.store(), LANE_STATES_AMT_BITWIDTH)
                 .flush()
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to create empty AMT")
-                })?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty AMT")?;
 
         rt.create(&State::new(from, to, empty_arr_cid))?;
         Ok(())
@@ -72,12 +72,8 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let resolved = resolve_to_id_addr(rt, raw).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", raw),
-            )
-        })?;
+        let resolved = resolve_to_id_addr(rt, raw)
+            .with_context(|| format!("failed to resolve address {}", raw))?;
 
         let code_cid = rt
             .get_actor_code_cid(&resolved)
@@ -135,9 +131,8 @@ impl Actor {
         })?;
 
         // Validate signature
-        rt.verify_signature(sig, &signer, &sv_bz).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "voucher signature invalid")
-        })?;
+        rt.verify_signature(sig, &signer, &sv_bz)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "voucher signature invalid")?;
 
         let pch_addr = rt.message().receiver();
         let svpch_id_addr = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {
@@ -177,16 +172,15 @@ impl Actor {
             rt.send(
                 extra.actor,
                 extra.method,
-                RawBytes::serialize(&extra.data)?,
+                RawBytes::serialize(&extra.data).exit_code(ExitCode::USR_ILLEGAL_STATE)?,
                 TokenAmount::from(0u8),
             )
             .map_err(|e| e.wrap("spend voucher verification failed"))?;
         }
 
         rt.transaction(|st: &mut State, rt| {
-            let mut l_states = Array::load(&st.lane_states, rt.store()).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load lane states")
-            })?;
+            let mut l_states = Array::load(&st.lane_states, rt.store())
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load lane states")?;
 
             // Find the voucher lane, create and insert it in sorted order if necessary.
             let lane_id = sv.lane;
@@ -226,12 +220,11 @@ impl Actor {
 
                 redeemed_from_others += &other_ls.redeemed;
                 other_ls.nonce = merge.nonce;
-                l_states.set(merge.lane, other_ls).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to store lane {}", merge.lane),
-                    )
-                })?;
+                l_states
+                    .set(merge.lane, other_ls)
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to store lane {}", merge.lane,)
+                    })?;
             }
 
             // 2. To prevent double counting, remove already redeemed amounts (from
@@ -268,16 +261,15 @@ impl Actor {
                 }
             }
 
-            l_states.set(lane_id, lane_state).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to store lane {}", lane_id),
-                )
-            })?;
+            l_states
+                .set(lane_id, lane_state)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to store lane {}", lane_id,)
+                })?;
 
-            st.lane_states = l_states.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save lanes")
-            })?;
+            st.lane_states = l_states
+                .flush()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save lanes")?;
             Ok(())
         })
     }
@@ -338,9 +330,8 @@ where
         return Err(actor_error!(illegal_argument; "maximum lane ID is 2^63-1"));
     }
 
-    ls.get(id).map_err(|e| {
-        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, format!("failed to load lane {}", id))
-    })
+    ls.get(id)
+        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || format!("failed to load lane {}", id))
 }
 
 impl ActorCode for Actor {

@@ -3,12 +3,11 @@
 
 use std::ops::Neg;
 
-use anyhow::{anyhow, Context};
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root, make_map_with_root_and_bitwidth,
-    ActorDowncast, ActorError, Map, Multimap,
+    actor_error, make_empty_map, make_map_with_root, make_map_with_root_and_bitwidth, ActorContext,
+    ActorContext2, ActorError, Map, Multimap,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -75,16 +74,15 @@ pub struct State {
 }
 
 impl State {
-    pub fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<State> {
+    pub fn new<BS: Blockstore>(store: &BS) -> Result<State, ActorError> {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
-            .map_err(|e| anyhow!("Failed to create empty map: {}", e))?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty map")?;
 
         let empty_mmap = Multimap::new(store, CRON_QUEUE_HAMT_BITWIDTH, CRON_QUEUE_AMT_BITWIDTH)
             .root()
-            .map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to get empty multimap cid")
-            })?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to get empty multimap cid")?;
+
         Ok(State {
             cron_event_queue: empty_mmap,
             claims: empty_map,
@@ -106,11 +104,14 @@ impl State {
         policy: &Policy,
         s: &BS,
         miner: &Address,
-    ) -> anyhow::Result<bool> {
-        let claims = make_map_with_root_and_bitwidth(&self.claims, s, HAMT_BIT_WIDTH)?;
+    ) -> Result<bool, ActorError> {
+        let claims = make_map_with_root_and_bitwidth(&self.claims, s, HAMT_BIT_WIDTH)
+            .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
-        let claim =
-            get_claim(&claims, miner)?.ok_or_else(|| anyhow!("no claim for actor: {}", miner))?;
+        let claim = get_claim(&claims, miner)?
+            .with_context_code(ExitCode::USR_NOT_FOUND, || {
+                format!("no claim for actor: {}", miner)
+            })?;
 
         let miner_nominal_power = &claim.raw_byte_power;
         let miner_min_power = consensus_miner_min_power(policy, claim.window_post_proof_type)
@@ -132,8 +133,8 @@ impl State {
         &self,
         s: &BS,
         miner: &Address,
-    ) -> anyhow::Result<Option<Claim>> {
-        let claims = make_map_with_root(&self.claims, s)?;
+    ) -> Result<Option<Claim>, ActorError> {
+        let claims = make_map_with_root(&self.claims, s).exit_code(ExitCode::USR_ILLEGAL_STATE)?;
         get_claim(&claims, miner).map(|s| s.cloned())
     }
 
@@ -144,7 +145,7 @@ impl State {
         miner: &Address,
         power: &StoragePower,
         qa_power: &StoragePower,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         let old_claim = get_claim(claims, miner)?
             .ok_or_else(|| actor_error!(not_found, "no claim for actor {}", miner))?;
 
@@ -185,25 +186,25 @@ impl State {
         }
 
         if new_claim.raw_byte_power.is_negative() {
-            return Err(anyhow!(actor_error!(
+            return Err(actor_error!(
                 illegal_state,
                 "negative claimed raw byte power: {}",
                 new_claim.raw_byte_power
-            )));
+            ));
         }
         if new_claim.quality_adj_power.is_negative() {
-            return Err(anyhow!(actor_error!(
+            return Err(actor_error!(
                 illegal_state,
                 "negative claimed quality adjusted power: {}",
                 new_claim.quality_adj_power
-            )));
+            ));
         }
         if self.miner_above_min_power_count < 0 {
-            return Err(anyhow!(actor_error!(
+            return Err(actor_error!(
                 illegal_state,
                 "negative amount of miners lather than min: {}",
                 self.miner_above_min_power_count
-            )));
+            ));
         }
 
         set_claim(claims, miner, new_claim)
@@ -218,14 +219,16 @@ impl State {
         events: &mut Multimap<BS>,
         epoch: ChainEpoch,
         event: CronEvent,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         if epoch < self.first_cron_epoch {
             self.first_cron_epoch = epoch;
         }
 
-        events.add(epoch_key(epoch), event).map_err(|e| {
-            e.downcast_wrap(format!("failed to store cron event at epoch {}", epoch))
-        })?;
+        events
+            .add(epoch_key(epoch), event)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to store cron event at epoch {}", epoch)
+            })?;
         Ok(())
     }
 
@@ -253,7 +256,7 @@ impl State {
         &mut self,
         policy: &Policy,
         window_post_proof: RegisteredPoStProof,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         let min_power = consensus_miner_min_power(policy, window_post_proof)?;
 
         if !min_power.is_positive() {
@@ -271,13 +274,13 @@ impl State {
     where
         BS: Blockstore,
     {
-        let claims = make_map_with_root::<_, Claim>(&self.claims, store).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
-        })?;
+        let claims = make_map_with_root::<_, Claim>(&self.claims, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")?;
 
-        if !claims.contains_key(&miner_addr.to_bytes()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to look up claim")
-        })? {
+        if !claims
+            .contains_key(&miner_addr.to_bytes())
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to look up claim")?
+        {
             return Err(actor_error!(
                 forbidden,
                 "unknown miner {} forbidden to interact with power actor",
@@ -291,12 +294,10 @@ impl State {
         &self,
         store: &BS,
         miner: &Address,
-    ) -> anyhow::Result<Option<Claim>> {
+    ) -> Result<Option<Claim>, ActorError> {
         let claims =
             make_map_with_root_and_bitwidth::<_, Claim>(&self.claims, store, HAMT_BIT_WIDTH)
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
-                })?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")?;
 
         let claim = get_claim(&claims, miner)?;
         Ok(claim.cloned())
@@ -307,23 +308,26 @@ impl State {
         policy: &Policy,
         claims: &mut Map<BS, Claim>,
         miner: &Address,
-    ) -> anyhow::Result<()> {
-        let (rbp, qap) =
-            match get_claim(claims, miner).map_err(|e| e.downcast_wrap("failed to get claim"))? {
-                None => {
-                    return Ok(());
-                }
-                Some(claim) => (claim.raw_byte_power.clone(), claim.quality_adj_power.clone()),
-            };
+    ) -> Result<(), ActorError> {
+        let (rbp, qap) = match get_claim(claims, miner).context("failed to get claim")? {
+            None => {
+                return Ok(());
+            }
+            Some(claim) => (claim.raw_byte_power.clone(), claim.quality_adj_power.clone()),
+        };
 
         // Subtract from stats to remove power
         self.add_to_claim(policy, claims, miner, &rbp.neg(), &qap.neg())
-            .map_err(|e| e.downcast_wrap("failed to subtract miner power before deleting claim"))?;
+            .context("failed to subtract miner power before deleting claim")?;
 
         claims
             .delete(&miner.to_bytes())
-            .map_err(|e| e.downcast_wrap(format!("failed to delete claim for address {}", miner)))?
-            .ok_or_else(|| anyhow!("failed to delete claim for address: doesn't exist"))?;
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to delete claim for address {}", miner)
+            })?
+            .ok_or_else(|| {
+                actor_error!(illegal_state, "failed to delete claim for address: doesn't exist")
+            })?;
         Ok(())
     }
 }
@@ -331,13 +335,13 @@ impl State {
 pub(super) fn load_cron_events<BS: Blockstore>(
     mmap: &Multimap<BS>,
     epoch: ChainEpoch,
-) -> anyhow::Result<Vec<CronEvent>> {
+) -> Result<Vec<CronEvent>, ActorError> {
     let mut events = Vec::new();
 
     mmap.for_each(&epoch_key(epoch), |_, v: &CronEvent| {
         events.push(v.clone());
-        Ok(())
-    })?;
+    })
+    .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
     Ok(events)
 }
@@ -346,35 +350,38 @@ pub(super) fn load_cron_events<BS: Blockstore>(
 fn get_claim<'m, BS: Blockstore>(
     claims: &'m Map<BS, Claim>,
     a: &Address,
-) -> anyhow::Result<Option<&'m Claim>> {
-    claims
-        .get(&a.to_bytes())
-        .map_err(|e| e.downcast_wrap(format!("failed to get claim for address {}", a)))
+) -> Result<Option<&'m Claim>, ActorError> {
+    claims.get(&a.to_bytes()).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+        format!("failed to get claim for address {}", a)
+    })
 }
 
 pub fn set_claim<BS: Blockstore>(
     claims: &mut Map<BS, Claim>,
     a: &Address,
     claim: Claim,
-) -> anyhow::Result<()> {
+) -> Result<(), ActorError> {
     if claim.raw_byte_power.is_negative() {
-        return Err(anyhow!(actor_error!(
+        return Err(actor_error!(
             illegal_state,
             "negative claim raw power {}",
             claim.raw_byte_power
-        )));
+        ));
     }
     if claim.quality_adj_power.is_negative() {
-        return Err(anyhow!(actor_error!(
+        return Err(actor_error!(
             illegal_state,
             "negative claim quality-adjusted power {}",
             claim.quality_adj_power
-        )));
+        ));
     }
 
     claims
         .set(a.to_bytes().into(), claim)
-        .map_err(|e| e.downcast_wrap(format!("failed to set claim for address {}", a)))?;
+        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to set claim for address {}", a)
+        })?;
+
     Ok(())
 }
 
@@ -409,7 +416,7 @@ impl Cbor for CronEvent {}
 pub fn consensus_miner_min_power(
     policy: &Policy,
     p: RegisteredPoStProof,
-) -> anyhow::Result<StoragePower> {
+) -> Result<StoragePower, ActorError> {
     use RegisteredPoStProof::*;
     match p {
         StackedDRGWinning2KiBV1
@@ -422,7 +429,7 @@ pub fn consensus_miner_min_power(
         | StackedDRGWindow512MiBV1
         | StackedDRGWindow32GiBV1
         | StackedDRGWindow64GiBV1 => Ok(policy.minimum_consensus_power.clone()),
-        Invalid(i) => Err(anyhow::anyhow!("unsupported proof type: {}", i)),
+        Invalid(i) => Err(actor_error!(illegal_argument, "unsupported proof type: {}", i)),
     }
 }
 

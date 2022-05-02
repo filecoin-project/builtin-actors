@@ -256,7 +256,6 @@ impl Harness {
         events_map
             .for_each::<_, CronEvent>(&epoch_key(epoch), |_, v| {
                 events.push(v.to_owned());
-                Ok(())
             })
             .unwrap();
 
@@ -437,7 +436,7 @@ pub fn batch_verify_default_output(infos: &[SealVerifyInfo]) -> Vec<bool> {
 }
 
 /// Collects all keys from a map into a vector.
-fn collect_keys<BS, V>(m: Map<BS, V>) -> Result<Vec<BytesKey>, Error>
+fn collect_keys<BS, V>(m: Map<BS, V>) -> Result<Vec<BytesKey>, Error<BS::Error>>
 where
     BS: Blockstore,
     V: DeserializeOwned + Serialize,
@@ -445,7 +444,6 @@ where
     let mut ret_keys = Vec::new();
     m.for_each(|k, _| {
         ret_keys.push(k.clone());
-        Ok(())
     })?;
 
     Ok(ret_keys)

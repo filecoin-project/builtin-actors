@@ -19,12 +19,12 @@ use fil_actor_verifreg::UseBytesParams;
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime};
-use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fil_actors_runtime::{test_utils::*, ActorContext2};
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::address::Address;
@@ -124,12 +124,12 @@ fn simple_construction() {
 fn label_cbor() {
     let label = Label::String("i_am_random_string____i_am_random_string____".parse().unwrap());
     let _ = to_vec(&label)
-        .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
+        .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize DealProposal")
         .unwrap();
 
     let label2 = Label::Bytes(b"i_am_random_____i_am_random_____".to_vec());
     let _ = to_vec(&label2)
-        .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
+        .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize DealProposal")
         .unwrap();
 
     let empty_string_label = Label::String("".parse().unwrap());
@@ -3161,7 +3161,6 @@ where
     dobe.for_each(epoch, |id| {
         assert_eq!(epoch % deal_updates_interval, (id as i64) % deal_updates_interval);
         count += 1;
-        Ok(())
     })
     .unwrap();
     assert_eq!(n, count, "unexpected deal count at epoch {}", epoch);

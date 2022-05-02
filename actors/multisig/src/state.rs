@@ -1,8 +1,10 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use anyhow::anyhow;
 use cid::Cid;
+use fil_actors_runtime::actor_error;
+use fil_actors_runtime::ActorContext2;
+use fil_actors_runtime::ActorError;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
@@ -10,6 +12,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use indexmap::IndexMap;
 use num_traits::Zero;
 
@@ -75,8 +78,9 @@ impl State {
         &mut self,
         store: &BS,
         addr: &Address,
-    ) -> anyhow::Result<()> {
-        let mut txns = make_map_with_root(&self.pending_txs, store)?;
+    ) -> Result<(), ActorError> {
+        let mut txns =
+            make_map_with_root(&self.pending_txs, store).exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
         // Identify transactions that need updating
         let mut txn_ids_to_purge = IndexMap::new();
@@ -86,21 +90,21 @@ impl State {
                     txn_ids_to_purge.insert(tx_id.0.clone(), txn.clone());
                 }
             }
-            Ok(())
-        })?;
+        })
+        .exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
         // Update or remove those transactions.
         for (tx_id, mut txn) in txn_ids_to_purge {
             txn.approved.retain(|approver| approver != addr);
 
             if !txn.approved.is_empty() {
-                txns.set(tx_id.into(), txn)?;
+                txns.set(tx_id.into(), txn).exit_code(ExitCode::USR_ILLEGAL_STATE)?;
             } else {
-                txns.delete(&tx_id)?;
+                txns.delete(&tx_id).exit_code(ExitCode::USR_ILLEGAL_STATE)?;
             }
         }
 
-        self.pending_txs = txns.flush()?;
+        self.pending_txs = txns.flush().exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
         Ok(())
     }
@@ -110,12 +114,17 @@ impl State {
         balance: TokenAmount,
         amount_to_spend: &TokenAmount,
         curr_epoch: ChainEpoch,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         if amount_to_spend < &0.into() {
-            return Err(anyhow!("amount to spend {} less than zero", amount_to_spend));
+            return Err(actor_error!(
+                insufficient_funds,
+                "amount to spend {} less than zero",
+                amount_to_spend
+            ));
         }
         if &balance < amount_to_spend {
-            return Err(anyhow!(
+            return Err(actor_error!(
+                insufficient_funds,
                 "current balance {} less than amount to spend {}",
                 balance,
                 amount_to_spend
@@ -131,7 +140,8 @@ impl State {
         let remaining_balance = balance - amount_to_spend;
         let amount_locked = self.amount_locked(curr_epoch - self.start_epoch);
         if remaining_balance < amount_locked {
-            return Err(anyhow!(
+            return Err(actor_error!(
+                insufficient_funds,
                 "actor balance {} if spent {} would be less than required locked amount {}",
                 remaining_balance,
                 amount_to_spend,

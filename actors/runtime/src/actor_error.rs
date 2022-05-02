@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use fvm_shared::error::ExitCode;
 use thiserror::Error;
 
@@ -64,13 +66,6 @@ impl ActorError {
     }
 }
 
-/// Converts a raw encoding error into an ErrSerialization.
-impl From<fvm_ipld_encoding::Error> for ActorError {
-    fn from(e: fvm_ipld_encoding::Error) -> Self {
-        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
-    }
-}
-
 /// Converts an actor deletion error into an actor error with the appropriate exit code. This
 /// facilitates propagation.
 #[cfg(feature = "fil-actor")]
@@ -107,4 +102,95 @@ macro_rules! actor_error {
     ( $code:ident, $msg:literal $(, $ex:expr)+ ) => {
         $crate::actor_error!($code; $msg $(, $ex)*)
     };
+}
+
+pub trait ActorContext<T> {
+    fn context<C>(self, context: C) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static;
+    fn with_context<C, F>(self, f: F) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C;
+}
+
+pub trait ActorContext2<T>: Sized {
+    fn exit_code(self, code: ExitCode) -> Result<T, ActorError>;
+
+    fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+    {
+        self.with_context_code(code, || context)
+    }
+
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C;
+}
+
+// hack to allow anyhow::Error + std::error::Error, can be dropped once Runtime is fixed
+impl<T, E: Display> ActorContext2<T> for Result<T, E> {
+    fn exit_code(self, code: ExitCode) -> Result<T, ActorError> {
+        self.map_err(|err| ActorError { exit_code: code, msg: err.to_string() })
+    }
+
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C,
+    {
+        self.map_err(|err| ActorError { exit_code: code, msg: format!("{}: {}", f(), err) })
+    }
+}
+
+impl<T> ActorContext2<T> for Option<T> {
+    fn exit_code(self, code: ExitCode) -> Result<T, ActorError> {
+        self.ok_or_else(|| ActorError { exit_code: code, msg: "None".to_string() })
+    }
+
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C,
+    {
+        self.ok_or_else(|| ActorError { exit_code: code, msg: format!("{}", f()) })
+    }
+}
+
+// TODO: remove once the runtime doesn't use anyhow::Result anymore
+impl From<anyhow::Error> for ActorError {
+    fn from(e: anyhow::Error) -> Self {
+        match e.downcast::<ActorError>() {
+            Ok(actor_err) => actor_err,
+            Err(other) => ActorError::unchecked(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                format!("runtime error: {}", other),
+            ),
+        }
+    }
+}
+
+impl<T> ActorContext<T> for Result<T, ActorError> {
+    fn context<C>(self, context: C) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+    {
+        self.map_err(|mut err| {
+            err.msg = format!("{}: {}", context, err.msg);
+            err
+        })
+    }
+
+    fn with_context<C, F>(self, f: F) -> Result<T, ActorError>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C,
+    {
+        self.map_err(|mut err| {
+            err.msg = format!("{}: {}", f(), err.msg);
+            err
+        })
+    }
 }

@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{actor_error, cbor, ActorContext2, ActorError, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::actor::builtin::Type;
@@ -43,9 +43,7 @@ impl Actor {
     {
         let sys_ref: &Address = &SYSTEM_ACTOR_ADDR;
         rt.validate_immediate_caller_is(std::iter::once(sys_ref))?;
-        let state = State::new(rt.store(), params.network_name).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct init actor state")
-        })?;
+        let state = State::new(rt.store(), params.network_name)?;
 
         rt.create(&state)?;
 
@@ -86,9 +84,8 @@ impl Actor {
         // Allocate an ID for this actor.
         // Store mapping of pubkey or actor address to actor ID
         let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
-            s.map_address_to_new_id(rt.store(), &robust_address).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to allocate ID address")
-            })
+            s.map_address_to_new_id(rt.store(), &robust_address)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to allocate ID address")
         })?;
 
         // Create an empty actor
@@ -124,7 +121,7 @@ impl ActorCode for Actor {
             }
             Some(Method::Exec) => {
                 let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
+                Ok(RawBytes::serialize(res).exit_code(ExitCode::USR_ILLEGAL_STATE)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }

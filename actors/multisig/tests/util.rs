@@ -205,8 +205,7 @@ impl ActorHarness {
         let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &rt.store).unwrap();
         let mut actual_txns = Vec::new();
         ptx.for_each(|k, txn: &Transaction| {
-            actual_txns.push((TxnID(parse_uint_key(k)? as i64), txn.clone()));
-            Ok(())
+            actual_txns.push((TxnID(parse_uint_key(k).unwrap() as i64), txn.clone()));
         })
         .unwrap();
         expect_txns.sort_by_key(|(TxnID(id), _txn)| (*id));
