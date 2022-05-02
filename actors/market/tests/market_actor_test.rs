@@ -531,7 +531,7 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
 
     // caller is not owner or worker
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
-    expect_get_control_addresses(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR, vec![]);
+    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
     expect_abort(
         ExitCode::USR_FORBIDDEN,
@@ -718,7 +718,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     rt.value_received = deal.provider_collateral.clone();
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
-    expect_get_control_addresses(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR, vec![]);
+    expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
 
     assert_eq!(
         RawBytes::default(),
@@ -736,7 +736,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-    expect_get_control_addresses(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR, vec![]);
+    expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
 
     //  create a client proposal with a valid signature
