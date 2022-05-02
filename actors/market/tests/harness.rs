@@ -360,9 +360,9 @@ pub fn cron_tick_and_assert_balances(
     let payment = duration * d.storage_price_per_epoch;
 
     // expected updated amounts
-    let updated_client_escrow = c_escrow - payment.clone();
-    let updated_provider_escrow = (p_escrow + payment.clone()) - amount_slashed.clone();
-    let mut updated_client_locked = c_locked - payment.clone();
+    let updated_client_escrow = c_escrow - &payment;
+    let updated_provider_escrow = (p_escrow + &payment) - &amount_slashed;
+    let mut updated_client_locked = c_locked - &payment;
     let mut updated_provider_locked = p_locked;
     // if the deal has expired or been slashed, locked amount will be zero for provider and client.
     let is_deal_expired = payment_end == d.end_epoch;
