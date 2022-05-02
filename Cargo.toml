@@ -23,7 +23,7 @@ fil_actor_system = { version = "6.2.0", path = "./actors/system" }
 fil_actor_init = { version = "6.2.0", path = "./actors/init" }
 
 [build-dependencies]
-fil_actor_bundler = "3.0.0"
+fil_actor_bundler = "3.0.2"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
 [workspace]
