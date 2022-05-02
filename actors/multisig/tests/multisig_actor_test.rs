@@ -1868,7 +1868,6 @@ fn test_change_threshold_happy_path_decrease_threshold() {
     assert_eq!(1, st.num_approvals_threshold);
 }
 
-
 #[cfg(test)]
 mod lock_balance_tests {
     use super::*;
@@ -1881,7 +1880,7 @@ mod lock_balance_tests {
 
         let mut rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
-        
+
         // create empty multisig
         rt.set_epoch(100);
         h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
@@ -1909,29 +1908,123 @@ mod lock_balance_tests {
         rt.set_balance(lock_amount.clone());
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, bob, vested.clone() + TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+            h.propose(
+                &mut rt,
+                bob,
+                vested.clone() + TokenAmount::from(1),
+                METHOD_SEND,
+                RawBytes::default(),
+            ),
         );
         rt.reset();
 
         // can fully spend the vested amount
         rt.set_balance(lock_amount.clone());
-        rt.expect_send(bob, METHOD_SEND, RawBytes::default(), vested.clone(), RawBytes::default(), ExitCode::OK);
+        rt.expect_send(
+            bob,
+            METHOD_SEND,
+            RawBytes::default(),
+            vested.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
         h.propose_ok(&mut rt, bob, vested.clone(), METHOD_SEND, RawBytes::default());
 
         // can't spend more
         rt.set_balance(lock_amount.clone() - vested.clone());
         expect_abort(
-            ExitCode::USR_INSUFFICIENT_FUNDS, 
-            h.propose(& mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
         );
         rt.reset();
-    
+
         // later can spend the rest
-        rt.set_epoch(vest_start+vest_duration);
+        rt.set_epoch(vest_start + vest_duration);
         let rested = TokenAmount::from(70_000u32);
-        rt.expect_send(bob, METHOD_SEND, RawBytes::default(), rested.clone(), RawBytes::default(), ExitCode::OK);
-        h.propose_ok(& mut rt, bob, rested, METHOD_SEND, RawBytes::default());
+        rt.expect_send(
+            bob,
+            METHOD_SEND,
+            RawBytes::default(),
+            rested.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
     }
 
+    #[test]
+    fn prospective_vesting() {
+        let msig = Address::new_id(100);
+        let anne = Address::new_id(101);
+        let bob = Address::new_id(102);
 
+        let mut rt = construct_runtime(msig);
+        let h = util::ActorHarness::new();
+        // create empty multisig
+        rt.set_epoch(100);
+        h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+
+        // some time later initialize vesting
+        rt.set_epoch(200);
+        let vest_start = 1000;
+        let lock_amount = TokenAmount::from(100_000);
+        let vest_duration = 1000;
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
+
+        // oversupply the wallet allow spending the oversupply
+        rt.set_epoch(300);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+        rt.set_balance(lock_amount.clone() + TokenAmount::from(1));
+        rt.expect_send(
+            bob,
+            METHOD_SEND,
+            RawBytes::default(),
+            TokenAmount::from(1),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        h.propose_ok(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default());
+
+        // fail to spend locked funds before vesting starts
+        rt.set_balance(lock_amount.clone());
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+        );
+        rt.reset();
+
+        // can spend partially vested amount
+        rt.set_epoch(vest_start + 200);
+        let expect_vested = TokenAmount::from(20_000);
+        rt.expect_send(
+            bob,
+            METHOD_SEND,
+            RawBytes::default(),
+            expect_vested.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        h.propose_ok(&mut rt, bob, expect_vested.clone(), METHOD_SEND, RawBytes::default());
+
+        // can't spend more
+        rt.set_balance(lock_amount - expect_vested);
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+        );
+
+        // later, can spend the rest
+        rt.set_epoch(vest_start + vest_duration);
+        let rested = TokenAmount::from(80_000);
+        rt.expect_send(
+            bob,
+            METHOD_SEND,
+            RawBytes::default(),
+            rested.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
+    }
 }
