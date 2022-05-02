@@ -1869,6 +1869,134 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
     rt.verify();
 }
 
+#[test]
+fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
+    let client_addr = Address::new_id(CLIENT_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let owner_addr = Address::new_id(OWNER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+
+    let mut rt = setup();
+    let deal_id = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+    rt.set_epoch(start_epoch + 1);
+    let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap()),
+    );
+
+    rt.verify();
+    // TODO: actor.checkState(rt)
+}
+
+#[test]
+fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
+    let client_addr = Address::new_id(CLIENT_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let owner_addr = Address::new_id(OWNER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    let mut rt = setup();
+    let deal_id = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+    let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry: end_epoch - 1 };
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap()),
+    );
+
+    rt.verify();
+    // TODO: actor.checkState(rt)
+}
+
+#[test]
+fn fail_to_activate_all_deals_if_one_deal_fails() {
+    let client_addr = Address::new_id(CLIENT_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let owner_addr = Address::new_id(OWNER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+
+    let mut rt = setup();
+    // activate deal1 so it fails later
+    let deal_id1 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+    activate_deals(&mut rt, sector_expiry, provider_addr, 0, &[deal_id1]);
+
+    let deal_id2 = generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch + 1,
+    );
+
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+    let params = ActivateDealsParams { deal_ids: vec![deal_id1, deal_id2], sector_expiry };
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap()),
+    );
+    rt.verify();
+
+    // no state for deal2 means deal2 activation has failed
+    let st: State = rt.get_state();
+
+    let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+
+    let s = states.get(deal_id2).unwrap();
+    assert!(s.is_none());
+    // TODO: actor.checkState(rt)
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
