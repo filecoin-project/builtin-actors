@@ -9,8 +9,7 @@ use cid::Cid;
 use derive_builder::Builder;
 use fil_actor_paych::{
     Actor as PaychActor, ConstructorParams, LaneState, Merge, Method, ModVerifyParams,
-    PaymentVerifyParams, SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE,
-    SETTLE_DELAY,
+    SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE, SETTLE_DELAY,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
@@ -750,14 +749,14 @@ mod update_channel_state_extra {
         let (mut rt, mut sv) = require_create_channel_with_lanes(1);
         let state: PState = rt.get_state();
         let other_addr = Address::new_id(OTHER_ADDR);
-        let fake_params = [1, 2, 3, 4];
+        let fake_params = RawBytes::new(vec![1, 2, 3, 4]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
         sv.extra = Some(ModVerifyParams {
             actor: other_addr,
             method: Method::UpdateChannelState as u64,
-            data: RawBytes::serialize(fake_params).unwrap(),
+            data: fake_params.clone(),
         });
         rt.expect_verify_signature(ExpectedVerifySig {
             sig: sv.clone().signature.unwrap(),
@@ -765,15 +764,11 @@ mod update_channel_state_extra {
             plaintext: sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        let exp_send_params = PaymentVerifyParams {
-            extra: RawBytes::serialize(fake_params.to_vec()).unwrap(),
-            proof: vec![],
-        };
 
         rt.expect_send(
             other_addr,
             Method::UpdateChannelState as u64,
-            RawBytes::serialize(exp_send_params.extra).unwrap(),
+            fake_params,
             TokenAmount::from(0u8),
             RawBytes::default(),
             exit_code,
