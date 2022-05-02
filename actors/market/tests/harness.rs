@@ -161,7 +161,7 @@ pub fn add_participant_funds(rt: &mut MockRuntime, addr: Address, amount: TokenA
     rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
 
     assert!(rt
-        .call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(addr).unwrap(),)
+        .call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(addr).unwrap())
         .is_ok());
 
     rt.verify();
