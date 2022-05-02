@@ -230,7 +230,7 @@ impl Harness {
         epoch: ChainEpoch,
         miner_address: &Address,
         payload: &RawBytes,
-    ) {
+    ) -> Result<(), ActorError> {
         rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address.to_owned());
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
         let params = RawBytes::serialize(EnrollCronEventParams {
@@ -238,8 +238,9 @@ impl Harness {
             payload: payload.clone(),
         })
         .unwrap();
-        rt.call::<PowerActor>(Method::EnrollCronEvent as u64, &params).unwrap();
+        rt.call::<PowerActor>(Method::EnrollCronEvent as u64, &params)?;
         rt.verify();
+        Ok(())
     }
 
     pub fn get_enrolled_cron_ticks(&self, rt: &MockRuntime, epoch: ChainEpoch) -> Vec<CronEvent> {
