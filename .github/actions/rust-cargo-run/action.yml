@@ -11,6 +11,9 @@ inputs:
   components:
     description: The components to include when installing Rust
     required: false
+  github_token:
+    description: Github Token
+    required: true
   save_cache:
     description: Whether to save the SSCACHE
     required: false
@@ -28,6 +31,7 @@ runs:
   - name: Setting up cache
     uses: pl-strflt/rust-sccache-action@v1
     env:
+      GITHUB_TOKEN: ${{ inputs.github_token }}
       SCCACHE_CACHE_SIZE: 2G
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       CACHE_SKIP_SAVE: ${{ inputs.save_cache == '' || inputs.save_cache == 'false' }}
