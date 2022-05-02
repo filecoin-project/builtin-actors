@@ -1910,7 +1910,7 @@ mod publish_storage_deals_failures {
                 &BigInt::from(0u8),
                 &power,
             );
-            d.provider_collateral = TokenAmount::from(provider_min - 1);
+            d.provider_collateral = provider_min - 1;
         };
         assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
