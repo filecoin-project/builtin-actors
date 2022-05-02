@@ -554,7 +554,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_account"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -588,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_cron"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -603,7 +603,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_init"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_market"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_miner"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "anyhow",
  "blake2b_simd",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_multisig"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -687,7 +687,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_paych"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -705,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_power"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -726,7 +726,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_reward"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -742,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_system"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -755,7 +755,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_verifreg"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -773,7 +773,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_runtime"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -803,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_bundle"
-version = "7.2.2"
+version = "7.3.0"
 dependencies = [
  "cid",
  "fil_actor_account",
