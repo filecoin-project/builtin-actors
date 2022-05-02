@@ -33,6 +33,8 @@ use fvm_shared::{ActorID, MethodNum};
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
+use rand::prelude::*;
+
 use crate::runtime::{ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls};
 use crate::{actor_error, ActorError};
 
@@ -1166,4 +1168,12 @@ enum MhCode {
 pub fn make_piece_cid(input: &[u8]) -> Cid {
     let h = MhCode::Sha256TruncPaddedFake.digest(input);
     Cid::new_v1(FIL_COMMITMENT_UNSEALED, h)
+}
+
+pub fn new_bls_addr(s: u8) -> Address {
+    let seed = [s; 32];
+    let mut rng: StdRng = SeedableRng::from_seed(seed);
+    let mut key = [0u8; 48];
+    rng.fill_bytes(&mut key);
+    Address::new_bls(&key).unwrap()
 }

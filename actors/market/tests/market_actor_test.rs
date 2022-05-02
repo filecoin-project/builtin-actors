@@ -1481,9 +1481,17 @@ mod publish_storage_deals_failures {
     }
 
     #[test]
-    fn unable_to_resolve_client_address() {
+    fn client_address_does_not_exist() {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             d.client = Address::new_id(1);
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn unable_to_resolve_client_address() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.client = new_bls_addr(1);
         };
         assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
