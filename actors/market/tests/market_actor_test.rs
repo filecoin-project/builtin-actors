@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
-use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::ext::miner::GetControlAddressesReturnParams;
+use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
     ext, gen_rand_next_epoch, ActivateDealsParams, Actor as MarketActor, ClientDealProposal,
     DealArray, DealMetaArray, DealProposal, DealState, Label, Method,
