@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
+use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
     ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray,
     DealProposal, DealState, Label, Method, OnMinerSectorsTerminateParams,
@@ -1409,14 +1410,15 @@ mod publish_storage_deals_failures {
 
     #[test]
     fn provider_collateral_less_than_bound() {
-        let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
-            // with these two equal provider collatreal min is 5/100 * deal size
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
             let power = StoragePower::from_i128(1 << 50).unwrap();
-            rt.set_circulating_supply(power);
-            let deal_size = 2048; // default deal size used
-            let policy = Policy::default();
-            let provider_min = (deal_size * policy.prov_collateral_percent_supply_num as u64)
-                / (policy.prov_collateral_percent_supply_denom as u64);
+            let (provider_min, _) = deal_provider_collateral_bounds(
+                &Policy::default(),
+                PaddedPieceSize(2048),
+                &BigInt::from(0u8),
+                &BigInt::from(0u8),
+                &power,
+            );
             d.provider_collateral = TokenAmount::from(provider_min - 1);
         };
         assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
