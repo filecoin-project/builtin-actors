@@ -2,9 +2,11 @@ use super::subnet::SubnetID;
 use crate::StorableMsg;
 use anyhow::anyhow;
 use cid::multihash::Code;
+use cid::multihash::MultihashDigest;
 use cid::Cid;
 use fil_actors_runtime::Array;
 use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::to_vec;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_encoding::{serde_bytes, Cbor};
@@ -27,6 +29,16 @@ impl Checkpoint {
             ..Default::default()
         }
     }
+
+    pub fn cid(&self) -> Cid {
+        let mh_code = Code::Blake2b256;
+        Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&self).unwrap()))
+    }
+
+    pub fn epoch(&self) -> ChainEpoch {
+        self.data.epoch
+    }
+
     pub fn source(&self) -> &SubnetID {
         &self.data.source
     }
@@ -35,26 +47,78 @@ impl Checkpoint {
         self.data.prev_check
     }
 
-    pub fn cross_msgs(&mut self) -> &Vec<CrossMsgMeta> {
+    pub fn cross_msgs(&self) -> &Vec<CrossMsgMeta> {
         &self.data.cross_msgs
     }
 
-    pub fn crossmsg_meta(&self, from: &SubnetID, to: &SubnetID) -> Option<&mut CrossMsgMeta> {
-        // Some(self.data.cross_msgs.iter().find(|m| from == &m.from && to == &m.to)?.clone())
-        let out = self.data.cross_msgs.iter().find(|m| from == &m.from && to == &m.to)?;
-        Some(&mut out)
+    fn crossmsg_meta(&self, from: &SubnetID, to: &SubnetID) -> Option<&CrossMsgMeta> {
+        self.data.cross_msgs.iter().find(|m| from == &m.from && to == &m.to)
+    }
+
+    pub fn crossmsg_meta_index(&self, from: &SubnetID, to: &SubnetID) -> Option<usize> {
+        self.data.cross_msgs.iter().position(|m| from == &m.from && to == &m.to)
+    }
+
+    // pub fn set_msgmeta_cid(
+    //     &mut self,
+    //     from: &SubnetID,
+    //     to: &SubnetID,
+    //     cid: Cid,
+    // ) -> anyhow::Result<()> {
+    //     match self.data.cross_msgs.iter_mut().find(|m| from == &m.from && to == &m.to) {
+    //         Some(mt) => mt.msgs_cid = cid,
+    //         None => return Err(anyhow!("no msgmeta in checkpoint")),
+    //     }
+    //     Ok(())
+    // }
+
+    pub fn append_msgmeta(&mut self, meta: CrossMsgMeta) -> anyhow::Result<()> {
+        match self.crossmsg_meta(&meta.from, &meta.to) {
+            Some(mm) => {
+                if meta != *mm {
+                    self.data.cross_msgs.push(meta)
+                }
+            }
+            None => self.data.cross_msgs.push(meta),
+        }
+        Ok(())
+    }
+
+    pub fn add_child_check(&mut self, commit: Checkpoint) -> anyhow::Result<()> {
+        let cid = commit.cid();
+        match self.data.children.iter_mut().find(|m| commit.source() == &m.source) {
+            // if there is already a structure for that child
+            Some(ck) => {
+                // check if the cid already exists
+                if ck.checks.iter().any(|c| c == &cid) {
+                    return Err(anyhow!(
+                        "child checkpoint being committed already exists for source {}",
+                        commit.source()
+                    ));
+                }
+                // and if not append to list of child checkpoints.
+                ck.checks.push(cid);
+            }
+            None => {
+                // if none, new structure for source
+                self.data
+                    .children
+                    .push(ChildCheck { source: commit.data.source, checks: vec![cid] });
+            }
+        };
+        Ok(())
     }
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct CheckData {
-    source: SubnetID,
+    pub source: SubnetID,
     #[serde(with = "serde_bytes")]
-    tip_set: Vec<u8>,
-    epoch: ChainEpoch,
-    prev_check: Cid,
-    childs: Vec<ChildCheck>,
-    cross_msgs: Vec<CrossMsgMeta>,
+    pub tip_set: Vec<u8>,
+    pub epoch: ChainEpoch,
+    pub prev_check: Cid,
+    pub children: Vec<ChildCheck>,
+    pub cross_msgs: Vec<CrossMsgMeta>,
 }
 impl Cbor for CheckData {}
 
@@ -120,6 +184,17 @@ impl CrossMsgs {
             .map_err(|e| anyhow!("Failed to create empty messages array: {}", e))?;
 
         Ok(store.put_cbor(&MetaTag { msgs_cid: msgs_cid, meta_cid: meta_cid }, Code::Blake2b256)?)
+    }
+
+    pub(crate) fn add_metas(&mut self, metas: Vec<CrossMsgMeta>) -> anyhow::Result<()> {
+        for m in metas.iter() {
+            if self.metas.iter().any(|ms| ms == m) {
+                continue;
+            }
+            self.metas.push(m.clone());
+        }
+
+        Ok(())
     }
 }
 

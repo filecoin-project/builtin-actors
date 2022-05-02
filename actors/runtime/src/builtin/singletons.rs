@@ -17,6 +17,10 @@ lazy_static! {
 
     /// Distinguished AccountActor that is the destination of all burnt funds.
     pub static ref BURNT_FUNDS_ACTOR_ADDR: Address = Address::new_id(99);
+
+    // Subnet Coordinator Actor address
+    pub static ref SCA_ACTOR_ADDR: Address = Address::new_id(64);
+
 }
 
 /// Defines first available ID address after builtin actors

@@ -4,6 +4,7 @@ use fil_actors_runtime::Array;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
+use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
@@ -14,11 +15,13 @@ use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::{MockRuntime, SUBNET_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID};
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, ActorError, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    make_map_with_root_and_bitwidth, ActorError, BURNT_FUNDS_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use hierarchical_sca::{
-    new_id, ConstructorParams, FundParams, Method, State, Subnet, SubnetID, SubnetIDParam,
-    CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT, ROOTNET_ID,
+    new_id, Checkpoint, ConstructorParams, FundParams, Method, State, Subnet, SubnetID,
+    SubnetIDParam, CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE,
+    MIN_COLLATERAL_AMOUNT, ROOTNET_ID,
 };
 
 use crate::SCAActor;
@@ -210,6 +213,49 @@ impl Harness {
             ExitCode::OK,
         );
         rt.call::<SCAActor>(Method::Kill as MethodNum, &RawBytes::default()).unwrap();
+        rt.verify();
+
+        Ok(())
+    }
+
+    pub fn commit_child_check(
+        &self,
+        rt: &mut MockRuntime,
+        id: &SubnetID,
+        ch: Checkpoint,
+        code: ExitCode,
+        burn_value: TokenAmount,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*SUBNET_ACTOR_CODE_ID, id.subnet_actor());
+        rt.expect_validate_caller_type(vec![*SUBNET_ACTOR_CODE_ID]);
+
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(
+                    Method::CommitChildCheckpoint as MethodNum,
+                    &RawBytes::serialize(ch).unwrap(),
+                ),
+            );
+            rt.verify();
+            return Ok(());
+        }
+
+        if burn_value > TokenAmount::zero() {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                burn_value.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+        rt.call::<SCAActor>(
+            Method::CommitChildCheckpoint as MethodNum,
+            &RawBytes::serialize(ch).unwrap(),
+        )
+        .unwrap();
         rt.verify();
 
         Ok(())

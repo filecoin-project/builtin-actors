@@ -163,18 +163,31 @@ impl State {
     ) -> anyhow::Result<()> {
         let mut subnets =
             make_map_with_root_and_bitwidth::<_, Subnet>(&self.subnets, store, HAMT_BIT_WIDTH)
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnets")
-                })?;
+                .map_err(|e| anyhow!("error loading subnets: {}", e))?;
         set_subnet(&mut subnets, &sub.id, sub.clone())?;
-        self.subnets = subnets.flush().map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush subnets")
-        })?;
+        self.subnets = subnets.flush().map_err(|e| anyhow!("error flushing subnets: {}", e))?;
+        Ok(())
+    }
+
+    pub(crate) fn flush_checkpoint<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        ch: &Checkpoint,
+    ) -> anyhow::Result<()> {
+        let mut checkpoints = make_map_with_root_and_bitwidth::<_, Checkpoint>(
+            &self.checkpoints,
+            store,
+            HAMT_BIT_WIDTH,
+        )
+        .map_err(|e| anyhow!("error loading checkpoints: {}", e))?;
+        set_checkpoint(&mut checkpoints, ch.clone())?;
+        self.checkpoints =
+            checkpoints.flush().map_err(|e| anyhow!("error flushing checkpoints: {}", e))?;
         Ok(())
     }
 
     pub fn get_window_checkpoint<'m, BS: Blockstore>(
-        &mut self,
+        &self,
         store: &'m BS,
         epoch: ChainEpoch,
     ) -> anyhow::Result<Checkpoint> {
@@ -203,7 +216,7 @@ impl State {
         &mut self,
         store: &'m BS,
         sub: &mut Subnet,
-        commit: &'m mut Checkpoint,
+        commit: &'m Checkpoint,
     ) -> anyhow::Result<(TokenAmount, HashMap<SubnetID, Vec<&'m CrossMsgMeta>>)> {
         let mut burn_val = TokenAmount::zero();
         let mut aux: HashMap<SubnetID, Vec<&CrossMsgMeta>> = HashMap::new();
@@ -229,38 +242,89 @@ impl State {
     }
 
     pub(crate) fn agg_child_msgmeta<BS: Blockstore>(
-        &self,
+        &mut self,
         store: &BS,
         ch: &mut Checkpoint,
         aux: HashMap<SubnetID, Vec<&CrossMsgMeta>>,
     ) -> anyhow::Result<()> {
         for (to, mm) in aux.into_iter() {
-            let empty_meta = &mut CrossMsgMeta::new(&self.network_name, &to);
-
-            let mut msgmeta =
-                ch.crossmsg_meta(&self.network_name, &to).unwrap_or_else(|| empty_meta);
-
             // aggregate values inside msgmeta
             let value = mm.iter().fold(TokenAmount::zero(), |acc, x| acc + x.value.clone());
-            if msgmeta.msgs_cid != Cid::default() {
-                let prev_cid = msgmeta.msgs_cid;
-                panic!("not implemented")
-            } else {
-                let mut n_mt = CrossMsgs::new();
-                n_mt.metas = mm.into_iter().cloned().collect();
-                let mut cross_reg = make_map_with_root_and_bitwidth::<_, CrossMsgs>(
-                    &self.check_msg_registry,
-                    store,
-                    HAMT_BIT_WIDTH,
-                )?;
-                let meta_cid = put_msgmeta(&mut cross_reg, n_mt);
-                msgmeta.value += value.clone();
+            let metas = mm.into_iter().cloned().collect();
 
-                // TODO: Still here!
-                // ch.append_msgmeta()
-            }
+            match ch.crossmsg_meta_index(&self.network_name, &to) {
+                Some(index) => {
+                    let msgmeta = &mut ch.data.cross_msgs[index];
+                    let prev_cid = msgmeta.msgs_cid;
+                    let m_cid = self.append_metas_to_meta(store, &prev_cid, metas)?;
+                    msgmeta.msgs_cid = m_cid;
+                    msgmeta.value += value;
+                }
+                None => {
+                    let mut msgmeta = CrossMsgMeta::new(&self.network_name, &to);
+                    let mut n_mt = CrossMsgs::new();
+                    n_mt.metas = metas;
+                    let mut cross_reg = make_map_with_root_and_bitwidth::<_, CrossMsgs>(
+                        &self.check_msg_registry,
+                        store,
+                        HAMT_BIT_WIDTH,
+                    )?;
+
+                    let meta_cid = put_msgmeta(&mut cross_reg, n_mt);
+                    msgmeta.value += value.clone();
+                    msgmeta.msgs_cid = meta_cid?;
+                    ch.append_msgmeta(msgmeta)?;
+                }
+            };
         }
+
         Ok(())
+    }
+
+    pub(crate) fn append_metas_to_meta<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        meta_cid: &Cid,
+        metas: Vec<CrossMsgMeta>,
+    ) -> anyhow::Result<Cid> {
+        let mut cross_reg = make_map_with_root_and_bitwidth::<_, CrossMsgs>(
+            &self.check_msg_registry,
+            store,
+            HAMT_BIT_WIDTH,
+        )?;
+
+        // get previous meta stored
+        let mut prev_meta = match cross_reg.get(&meta_cid.to_bytes())? {
+            Some(m) => m.clone(),
+            None => return Err(anyhow!("no msgmeta found for cid")),
+        };
+
+        prev_meta.add_metas(metas)?;
+
+        // if the cid hasn't changed
+        let cid = prev_meta.cid()?;
+        if &cid == meta_cid {
+            return Ok(cid);
+        }
+        // else we persist the new msgmeta
+        self.put_delete_flush_meta(&mut cross_reg, meta_cid, prev_meta)
+    }
+
+    pub(crate) fn put_delete_flush_meta<BS: Blockstore>(
+        &mut self,
+        registry: &mut Map<BS, CrossMsgs>,
+        prev_cid: &Cid,
+        meta: CrossMsgs,
+    ) -> anyhow::Result<Cid> {
+        // add new meta
+        let m_cid = put_msgmeta(registry, meta)?;
+        // remove the previous one
+        registry.delete(&prev_cid.to_bytes())?;
+        // flush
+        self.check_msg_registry =
+            registry.flush().map_err(|e| anyhow!("error flushing crossmsg registry: {}", e))?;
+
+        Ok(m_cid)
     }
 
     pub(crate) fn release_circ_supply<BS: Blockstore>(
@@ -330,11 +394,11 @@ fn get_subnet<'m, BS: Blockstore>(
 
 pub fn set_checkpoint<BS: Blockstore>(
     checkpoints: &mut Map<BS, Checkpoint>,
-    epoch: &ChainEpoch,
-    checkpoint: Checkpoint,
+    ch: Checkpoint,
 ) -> anyhow::Result<()> {
+    let epoch = ch.epoch();
     checkpoints
-        .set(BytesKey::from(epoch.to_ne_bytes().to_vec()), checkpoint)
+        .set(BytesKey::from(epoch.to_ne_bytes().to_vec()), ch)
         .map_err(|e| e.downcast_wrap(format!("failed to set checkpoint for epoch {}", epoch)))?;
     Ok(())
 }
@@ -357,4 +421,13 @@ fn put_msgmeta<BS: Blockstore>(
         .set(m_cid.to_bytes().into(), metas)
         .map_err(|e| e.downcast_wrap(format!("failed to set crossmsg meta for cid {}", m_cid)))?;
     Ok(m_cid)
+}
+
+fn get_msgmeta<'m, BS: Blockstore>(
+    registry: &'m Map<BS, CrossMsgs>,
+    cid: &Cid,
+) -> anyhow::Result<Option<&'m CrossMsgs>> {
+    registry
+        .get(&cid.to_bytes())
+        .map_err(|e| e.downcast_wrap(format!("failed to get crossmsgs for cid {}", cid)))
 }
