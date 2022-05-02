@@ -235,6 +235,151 @@ fn adds_to_provider_escrow_funds() {
 }
 
 #[test]
+fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient() {
+    let mut rt = setup();
+    let client = Address::new_id(CLIENT_ID);
+
+    add_participant_funds(&mut rt, client, TokenAmount::from(20u8));
+
+    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &client).unwrap());
+
+    rt.expect_validate_caller_addr(vec![client]);
+
+    let params =
+        WithdrawBalanceParams { provider_or_client: client, amount: TokenAmount::from(1u8) };
+
+    // caller is not the recipient
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        rt.call::<MarketActor>(
+            Method::WithdrawBalance as u64,
+            &RawBytes::serialize(params).unwrap(),
+        ),
+    );
+    rt.verify();
+
+    // verify there was no withdrawal
+    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &client).unwrap());
+
+    // TODO: actor.checkState(rt)
+}
+
+#[test]
+fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amount() {
+    let client = Address::new_id(CLIENT_ID);
+    let worker = Address::new_id(WORKER_ID);
+    let provider = Address::new_id(PROVIDER_ID);
+    let owner = Address::new_id(OWNER_ID);
+    let control = Address::new_id(CONTROL_ID);
+    let start_epoch = ChainEpoch::from(10);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let publish_epoch = ChainEpoch::from(5);
+
+    let mut rt = setup();
+
+    // publish the deal so that client AND provider collateral is locked
+    rt.set_epoch(publish_epoch);
+    let deal_id = generate_and_publish_deal(
+        &mut rt,
+        client,
+        provider,
+        owner,
+        worker,
+        control,
+        start_epoch,
+        end_epoch,
+    );
+    let deal = get_deal_proposal(&mut rt, deal_id);
+    assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &provider).unwrap());
+    assert_eq!(deal.client_balance_requirement(), get_escrow_balance(&rt, &client).unwrap());
+
+    let withdraw_amount = TokenAmount::from(1u8);
+    let withdrawable_amount = TokenAmount::from(0u8);
+    // client cannot withdraw any funds since all it's balance is locked
+    withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdrawable_amount.clone(), client);
+    // provider cannot withdraw any funds since all it's balance is locked
+    withdraw_provider_balance(
+        &mut rt,
+        withdraw_amount,
+        withdrawable_amount,
+        provider,
+        owner,
+        worker,
+    );
+
+    // add some more funds to the provider & ensure withdrawal is limited by the locked funds
+    let withdraw_amount = TokenAmount::from(30u8);
+    let withdrawable_amount = TokenAmount::from(25u8);
+
+    add_provider_funds(&mut rt, withdrawable_amount.clone(), provider, owner, worker);
+    withdraw_provider_balance(
+        &mut rt,
+        withdraw_amount.clone(),
+        withdrawable_amount.clone(),
+        provider,
+        owner,
+        worker,
+    );
+
+    // add some more funds to the client & ensure withdrawal is limited by the locked funds
+    add_participant_funds(&mut rt, client, withdrawable_amount.clone());
+    withdraw_client_balance(&mut rt, withdraw_amount, withdrawable_amount, client);
+    // TODO: actor.checkState(rt)
+}
+
+#[test]
+fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
+    let client = Address::new_id(CLIENT_ID);
+    let worker = Address::new_id(WORKER_ID);
+    let provider = Address::new_id(PROVIDER_ID);
+    let owner = Address::new_id(OWNER_ID);
+    let control = Address::new_id(CONTROL_ID);
+    let start_epoch = ChainEpoch::from(10);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let publish_epoch = ChainEpoch::from(5);
+
+    let mut rt = setup();
+
+    // publish deal
+    rt.set_epoch(publish_epoch);
+    let deal_id = generate_and_publish_deal(
+        &mut rt,
+        client,
+        provider,
+        owner,
+        worker,
+        control,
+        start_epoch,
+        end_epoch,
+    );
+
+    // activate the deal
+    activate_deals(&mut rt, end_epoch + 1, provider, publish_epoch, &[deal_id]);
+    let st = get_deal_state(&mut rt, deal_id);
+    assert_eq!(publish_epoch, st.sector_start_epoch);
+
+    // slash the deal
+    rt.set_epoch(publish_epoch + 1);
+    terminate_deals(&mut rt, provider, &[deal_id]);
+    let st = get_deal_state(&mut rt, deal_id);
+    assert_eq!(publish_epoch + 1, st.slash_epoch);
+
+    // provider cannot withdraw any funds since all it's balance is locked
+    let withdraw_amount = TokenAmount::from(1);
+    let actual_withdrawn = TokenAmount::from(0);
+    withdraw_provider_balance(&mut rt, withdraw_amount, actual_withdrawn, provider, owner, worker);
+
+    // add some more funds to the provider & ensure withdrawal is limited by the locked funds
+    add_provider_funds(&mut rt, TokenAmount::from(25), provider, owner, worker);
+    let withdraw_amount = TokenAmount::from(30);
+    let actual_withdrawn = TokenAmount::from(25);
+
+    withdraw_provider_balance(&mut rt, withdraw_amount, actual_withdrawn, provider, owner, worker);
+    // TODO: actor.checkState(rt)
+}
+
+#[test]
 fn fails_unless_called_by_an_account_actor() {
     let mut rt = setup();
 
@@ -1703,6 +1848,134 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
     expect_abort(ExitCode::USR_ILLEGAL_STATE, cron_tick_raw(&mut rt));
 
     // TODO: actor.checkState
+}
+
+#[cfg(test)]
+mod test_activate_deal_failures {
+    use super::*;
+
+    #[test]
+    fn fail_when_caller_is_not_the_provider_of_the_deal() {
+        let client_addr = Address::new_id(CLIENT_ID);
+        let provider_addr = Address::new_id(PROVIDER_ID);
+        let owner_addr = Address::new_id(OWNER_ID);
+        let worker_addr = Address::new_id(WORKER_ID);
+        let control_addr = Address::new_id(CONTROL_ID);
+
+        let start_epoch = 10;
+        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+        let sector_expiry = end_epoch + 100;
+
+        let mut rt = setup();
+        let provider2_addr = Address::new_id(201);
+        let deal_id = generate_and_publish_deal(
+            &mut rt,
+            client_addr,
+            provider2_addr,
+            owner_addr,
+            worker_addr,
+            control_addr,
+            start_epoch,
+            end_epoch,
+        );
+
+        let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<MarketActor>(
+                Method::ActivateDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+
+        rt.verify();
+        // TODO: actor.checkState(rt)
+    }
+
+    #[test]
+    fn fail_when_caller_is_not_a_storage_miner_actor() {
+        let provider_addr = Address::new_id(PROVIDER_ID);
+
+        let mut rt = setup();
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, provider_addr);
+
+        let params = ActivateDealsParams { deal_ids: vec![], sector_expiry: 0 };
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<MarketActor>(
+                Method::ActivateDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+
+        rt.verify();
+        // TODO: actor.checkState(rt)
+    }
+
+    #[test]
+    fn fail_when_deal_has_not_been_published_before() {
+        let provider_addr = Address::new_id(PROVIDER_ID);
+
+        let mut rt = setup();
+        let params = ActivateDealsParams { deal_ids: vec![DealID::from(42u32)], sector_expiry: 0 };
+
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+        expect_abort(
+            ExitCode::USR_NOT_FOUND,
+            rt.call::<MarketActor>(
+                Method::ActivateDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+
+        rt.verify();
+        // TODO: actor.checkState(rt)
+    }
+
+    #[test]
+    fn fail_when_deal_has_already_been_activated() {
+        let client_addr = Address::new_id(CLIENT_ID);
+        let provider_addr = Address::new_id(PROVIDER_ID);
+        let owner_addr = Address::new_id(OWNER_ID);
+        let worker_addr = Address::new_id(WORKER_ID);
+        let control_addr = Address::new_id(CONTROL_ID);
+
+        let start_epoch = 10;
+        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+        let sector_expiry = end_epoch + 100;
+
+        let mut rt = setup();
+        let deal_id = generate_and_publish_deal(
+            &mut rt,
+            client_addr,
+            provider_addr,
+            owner_addr,
+            worker_addr,
+            control_addr,
+            start_epoch,
+            end_epoch,
+        );
+        activate_deals(&mut rt, sector_expiry, provider_addr, 0, &[deal_id]);
+
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+        let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            rt.call::<MarketActor>(
+                Method::ActivateDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+
+        rt.verify();
+        // TODO: actor.checkState(rt)
+    }
 }
 
 #[test]
