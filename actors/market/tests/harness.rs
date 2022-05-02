@@ -43,6 +43,24 @@ pub const WORKER_ADDR: Address = Address::new_id(WORKER_ID);
 pub const CLIENT_ADDR: Address = Address::new_id(CLIENT_ID);
 pub const CONTROL_ADDR: Address = Address::new_id(CONTROL_ID);
 
+pub struct MinerAddresses {
+    pub owner: Address,
+    pub worker: Address,
+    pub provider: Address,
+    pub control: Vec<Address>,
+}
+
+impl Default for MinerAddresses {
+    fn default() -> Self {
+        MinerAddresses {
+            owner: OWNER_ADDR,
+            worker: WORKER_ADDR,
+            provider: PROVIDER_ADDR,
+            control: vec![CONTROL_ADDR],
+        }
+    }
+}
+
 pub fn setup() -> MockRuntime {
     let mut actor_code_cids = HashMap::default();
     actor_code_cids.insert(Address::new_id(OWNER_ID), *ACCOUNT_ACTOR_CODE_ID);
@@ -111,24 +129,21 @@ pub fn expect_provider_control_address(
     expect_get_control_addresses(rt, provider, owner, worker, vec![])
 }
 
-pub fn add_provider_funds(
-    rt: &mut MockRuntime,
-    amount: TokenAmount,
-    provider: Address,
-    owner: Address,
-    worker: Address,
-) {
+pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &MinerAddresses) {
     rt.set_value(amount.clone());
-    rt.set_address_actor_type(provider, *MINER_ACTOR_CODE_ID);
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, owner);
+    rt.set_address_actor_type(addrs.provider, *MINER_ACTOR_CODE_ID);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.owner);
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-    expect_provider_control_address(rt, provider, owner, worker);
+    expect_provider_control_address(rt, addrs.provider, addrs.owner, addrs.worker);
 
     assert_eq!(
         RawBytes::default(),
-        rt.call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(provider).unwrap(),)
-            .unwrap()
+        rt.call::<MarketActor>(
+            Method::AddBalance as u64,
+            &RawBytes::serialize(addrs.provider).unwrap(),
+        )
+        .unwrap()
     );
     rt.verify();
     rt.add_balance(amount);
@@ -363,21 +378,18 @@ pub fn cron_tick_and_assert_balances(
 
 pub fn publish_deals(
     rt: &mut MockRuntime,
-    provider: Address,
-    owner: Address,
-    worker: Address,
-    control: Address,
+    addrs: &MinerAddresses,
     publish_deals: &[DealProposal],
 ) -> Vec<DealID> {
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
     let return_value = ext::miner::GetControlAddressesReturnParams {
-        owner,
-        worker,
-        control_addresses: vec![control],
+        owner: addrs.owner,
+        worker: addrs.worker,
+        control_addresses: addrs.control.clone(),
     };
     rt.expect_send(
-        provider,
+        addrs.provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
         TokenAmount::from(0u8),
@@ -567,53 +579,39 @@ pub fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
     gen_rand_next_epoch(&policy, start_epoch, deal_id)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn publish_and_activate_deal(
     rt: &mut MockRuntime,
     client: Address,
-    provider: Address,
-    owner: Address,
-    worker: Address,
-    control: Address,
+    addrs: &MinerAddresses,
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
     current_epoch: ChainEpoch,
     sector_expiry: ChainEpoch,
 ) -> DealID {
-    let deal =
-        generate_deal_and_add_funds(rt, client, provider, owner, worker, start_epoch, end_epoch);
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
-    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[deal]);
-    activate_deals(rt, sector_expiry, provider, current_epoch, &deal_ids);
+    let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
+    let deal_ids = publish_deals(rt, addrs, &[deal]);
+    activate_deals(rt, sector_expiry, addrs.provider, current_epoch, &deal_ids);
     deal_ids[0]
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn generate_and_publish_deal(
     rt: &mut MockRuntime,
     client: Address,
-    provider: Address,
-    owner: Address,
-    worker: Address,
-    control: Address,
+    addrs: &MinerAddresses,
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
 ) -> DealID {
-    let deal =
-        generate_deal_and_add_funds(rt, client, provider, owner, worker, start_epoch, end_epoch);
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
-    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[deal]);
+    let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
+    let deal_ids = publish_deals(rt, addrs, &[deal]);
     deal_ids[0]
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn generate_and_publish_deal_for_piece(
     rt: &mut MockRuntime,
     client: Address,
-    provider: Address,
-    owner: Address,
-    worker: Address,
-    control: Address,
+    addrs: &MinerAddresses,
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
     piece_cid: Cid,
@@ -629,7 +627,7 @@ pub fn generate_and_publish_deal_for_piece(
         piece_size,
         verified_deal: true,
         client,
-        provider,
+        provider: addrs.provider,
         label: "label".to_string(),
         start_epoch,
         end_epoch,
@@ -639,37 +637,32 @@ pub fn generate_and_publish_deal_for_piece(
     };
 
     // add funds
-    add_provider_funds(rt, deal.provider_collateral.clone(), provider, owner, worker);
+    add_provider_funds(rt, deal.provider_collateral.clone(), addrs);
     add_participant_funds(rt, client, deal.client_balance_requirement());
 
     // publish
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker);
-    let deal_ids = publish_deals(rt, provider, owner, worker, control, &[deal]);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
+    let deal_ids = publish_deals(rt, addrs, &[deal]);
     deal_ids[0]
 }
 
 pub fn generate_deal_and_add_funds(
     rt: &mut MockRuntime,
     client: Address,
-    provider: Address,
-    owner: Address,
-    worker: Address,
+    addrs: &MinerAddresses,
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
 ) -> DealProposal {
-    let deal = generate_deal_proposal(client, provider, start_epoch, end_epoch);
-    add_provider_funds(rt, deal.provider_collateral.clone(), provider, owner, worker);
+    let deal = generate_deal_proposal(client, addrs.provider, start_epoch, end_epoch);
+    add_provider_funds(rt, deal.provider_collateral.clone(), addrs);
     add_participant_funds(rt, client, deal.client_balance_requirement());
     deal
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn generate_deal_with_collateral_and_add_funds(
     rt: &mut MockRuntime,
     client: Address,
-    provider: Address,
-    owner: Address,
-    worker: Address,
+    addrs: &MinerAddresses,
     provider_collateral: BigInt,
     client_collateral: BigInt,
     start_epoch: ChainEpoch,
@@ -677,13 +670,13 @@ pub fn generate_deal_with_collateral_and_add_funds(
 ) -> DealProposal {
     let deal = generate_deal_proposal_with_collateral(
         client,
-        provider,
+        addrs.provider,
         client_collateral,
         provider_collateral,
         start_epoch,
         end_epoch,
     );
-    add_provider_funds(rt, deal.provider_collateral.clone(), provider, owner, worker);
+    add_provider_funds(rt, deal.provider_collateral.clone(), addrs);
     add_participant_funds(rt, client, deal.client_balance_requirement());
     deal
 }

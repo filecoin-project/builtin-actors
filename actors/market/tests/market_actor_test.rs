@@ -237,10 +237,7 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
     let deal_id = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -271,13 +268,7 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
     let withdraw_amount = TokenAmount::from(30u8);
     let withdrawable_amount = TokenAmount::from(25u8);
 
-    add_provider_funds(
-        &mut rt,
-        withdrawable_amount.clone(),
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-    );
+    add_provider_funds(&mut rt, withdrawable_amount.clone(), &MinerAddresses::default());
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount.clone(),
@@ -306,10 +297,7 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     let deal_id = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -338,7 +326,7 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     );
 
     // add some more funds to the provider & ensure withdrawal is limited by the locked funds
-    add_provider_funds(&mut rt, TokenAmount::from(25), PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    add_provider_funds(&mut rt, TokenAmount::from(25), &MinerAddresses::default());
     let withdraw_amount = TokenAmount::from(30);
     let actual_withdrawn = TokenAmount::from(25);
 
@@ -417,7 +405,7 @@ fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
     let mut rt = setup();
 
     let amount = TokenAmount::from(20);
-    add_provider_funds(&mut rt, amount.clone(), PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
 
     assert_eq!(amount, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
 
@@ -471,7 +459,7 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     let mut rt = setup();
 
     let amount = TokenAmount::from(20);
-    add_provider_funds(&mut rt, amount.clone(), PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
 
     assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
 
@@ -532,7 +520,7 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
     let mut rt = setup();
 
     let amount = TokenAmount::from(20u8);
-    add_provider_funds(&mut rt, amount.clone(), PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
 
     assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
 
@@ -574,10 +562,7 @@ fn deal_starts_on_day_boundary() {
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
             CLIENT_ADDR,
-            PROVIDER_ADDR,
-            OWNER_ADDR,
-            WORKER_ADDR,
-            CONTROL_ADDR,
+            &MinerAddresses::default(),
             start_epoch,
             end_epoch,
             piece_cid,
@@ -618,10 +603,7 @@ fn deal_starts_partway_through_day() {
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
             CLIENT_ADDR,
-            PROVIDER_ADDR,
-            OWNER_ADDR,
-            WORKER_ADDR,
-            CONTROL_ADDR,
+            &MinerAddresses::default(),
             start_epoch,
             end_epoch,
             piece_cid,
@@ -646,10 +628,7 @@ fn deal_starts_partway_through_day() {
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
             CLIENT_ADDR,
-            PROVIDER_ADDR,
-            OWNER_ADDR,
-            WORKER_ADDR,
-            CONTROL_ADDR,
+            &MinerAddresses::default(),
             start_epoch,
             end_epoch,
             piece_cid,
@@ -678,27 +657,23 @@ fn simple_deal() {
     let deal1 = generate_deal_and_add_funds(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR, CONTROL_ADDR, &[deal1]);
+    publish_deals(&mut rt, &MinerAddresses::default(), &[deal1]);
 
     // Publish from miner control address.
     let deal2 = generate_deal_and_add_funds(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         start_epoch + 1,
         end_epoch + 1,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, CONTROL_ADDR);
-    publish_deals(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR, CONTROL_ADDR, &[deal2]);
+    publish_deals(&mut rt, &MinerAddresses::default(), &[deal2]);
     check_state(&mut rt);
 }
 
@@ -827,10 +802,7 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
     let deal1 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -844,10 +816,7 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
     let deal2 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch + 1,
         end_epoch + 1,
     );
@@ -873,10 +842,7 @@ fn terminate_multiple_deals_from_multiple_providers() {
             generate_and_publish_deal(
                 &mut rt,
                 CLIENT_ADDR,
-                PROVIDER_ADDR,
-                OWNER_ADDR,
-                WORKER_ADDR,
-                CONTROL_ADDR,
+                &MinerAddresses::default(),
                 start_epoch,
                 epoch,
             )
@@ -886,26 +852,9 @@ fn terminate_multiple_deals_from_multiple_providers() {
         .unwrap();
     activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2, deal3]);
 
-    let deal4 = generate_and_publish_deal(
-        &mut rt,
-        CLIENT_ADDR,
-        provider2,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
-        start_epoch,
-        end_epoch,
-    );
-    let deal5 = generate_and_publish_deal(
-        &mut rt,
-        CLIENT_ADDR,
-        provider2,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
-        start_epoch,
-        end_epoch + 1,
-    );
+    let addrs = MinerAddresses { provider: provider2, ..MinerAddresses::default() };
+    let deal4 = generate_and_publish_deal(&mut rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
+    let deal5 = generate_and_publish_deal(&mut rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch + 1);
     activate_deals(&mut rt, sector_expiry, provider2, current_epoch, &[deal4, deal5]);
 
     terminate_deals(&mut rt, PROVIDER_ADDR, &[deal1]);
@@ -938,10 +887,7 @@ fn ignore_deal_proposal_that_does_not_exist() {
     let deal1 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -967,30 +913,21 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     let deal1 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
     let deal2 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch + 1,
     );
     let deal3 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch - 1,
     );
@@ -1018,31 +955,20 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     let deal1 = generate_deal_and_add_funds(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
     let deal2 = generate_deal_and_add_funds(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch - deal_updates_interval,
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(
-        &mut rt,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
-        &[deal1, deal2.clone()],
-    );
+    let deal_ids = publish_deals(&mut rt, &MinerAddresses::default(), &[deal1, deal2.clone()]);
     activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &deal_ids);
 
     let new_epoch = end_epoch - 1;
@@ -1068,10 +994,7 @@ fn terminating_a_deal_the_second_time_does_not_change_its_slash_epoch() {
     let deal1 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1105,10 +1028,7 @@ fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_
             generate_and_publish_deal(
                 &mut rt,
                 CLIENT_ADDR,
-                PROVIDER_ADDR,
-                OWNER_ADDR,
-                WORKER_ADDR,
-                CONTROL_ADDR,
+                &MinerAddresses::default(),
                 start_epoch,
                 epoch,
             )
@@ -1150,10 +1070,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     let deal1 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1167,10 +1084,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     let deal2 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch + 1,
         end_epoch,
     );
@@ -1216,10 +1130,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     let deal = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1247,10 +1158,7 @@ fn fail_when_deal_has_been_published_but_not_activated() {
     let deal = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1275,10 +1183,7 @@ fn termination_of_all_deals_should_fail_when_one_deal_fails() {
     let deal1 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1286,10 +1191,7 @@ fn termination_of_all_deals_should_fail_when_one_deal_fails() {
     let deal2 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch + 1,
     );
@@ -1320,12 +1222,11 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
         (deal_size.0 * (policy.prov_collateral_percent_supply_num as u64))
             / policy.prov_collateral_percent_supply_denom as u64,
     );
+
     let deal = generate_deal_with_collateral_and_add_funds(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         provider_collateral,
         client_collateral,
         start_epoch,
@@ -1337,7 +1238,7 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
     // publish the deal successfully
     rt.set_epoch(publish_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR, CONTROL_ADDR, &[deal]);
+    publish_deals(&mut rt, &MinerAddresses::default(), &[deal]);
     check_state(&mut rt);
 }
 
@@ -1356,9 +1257,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let deal1 = generate_deal_and_add_funds(
         &mut rt,
         client1_addr,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1367,9 +1266,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let deal2 = generate_deal_and_add_funds(
         &mut rt,
         client2_addr,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1378,9 +1275,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let deal3 = generate_deal_and_add_funds(
         &mut rt,
         client3_addr,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1388,10 +1283,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(
         &mut rt,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         &[deal1.clone(), deal2.clone(), deal3.clone()],
     );
 
@@ -1420,30 +1312,19 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let deal4 = generate_deal_and_add_funds(
         &mut rt,
         client3_addr,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         1000,
         1000 + 200 * EPOCHS_IN_DAY,
     );
     let deal5 = generate_deal_and_add_funds(
         &mut rt,
         client3_addr,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         100,
         100 + 200 * EPOCHS_IN_DAY,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(
-        &mut rt,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
-        &[deal4.clone(), deal5.clone()],
-    );
+    publish_deals(&mut rt, &MinerAddresses::default(), &[deal4.clone(), deal5.clone()]);
 
     // assert locked balances for clients and provider
     let provider_locked_expected =
@@ -1476,37 +1357,17 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let provider2_addr = Address::new_id(109);
 
     // generate first deal for second provider
-    let deal6 = generate_deal_and_add_funds(
-        &mut rt,
-        client1_addr,
-        provider2_addr,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        20,
-        20 + 200 * EPOCHS_IN_DAY,
-    );
+    let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
+    let deal6 =
+        generate_deal_and_add_funds(&mut rt, client1_addr, &addrs, 20, 20 + 200 * EPOCHS_IN_DAY);
 
     // generate second deal for second provider
-    let deal7 = generate_deal_and_add_funds(
-        &mut rt,
-        client1_addr,
-        provider2_addr,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        25,
-        60 + 200 * EPOCHS_IN_DAY,
-    );
+    let deal7 =
+        generate_deal_and_add_funds(&mut rt, client1_addr, &addrs, 25, 60 + 200 * EPOCHS_IN_DAY);
 
     // publish both the deals for the second provider
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(
-        &mut rt,
-        provider2_addr,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
-        &[deal6.clone(), deal7.clone()],
-    );
+    publish_deals(&mut rt, &addrs, &[deal6.clone(), deal7.clone()]);
 
     // assertions
     let st: State = rt.get_state();
@@ -1545,56 +1406,30 @@ fn active_deals_multiple_times_with_different_providers() {
     let deal1 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
     let deal2 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch + 1,
     );
     let deal3 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch + 2,
     );
 
     // provider2 publishes deal4 and deal5
     let provider2_addr = Address::new_id(401);
-    let deal4 = generate_and_publish_deal(
-        &mut rt,
-        CLIENT_ADDR,
-        provider2_addr,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
-        start_epoch,
-        end_epoch,
-    );
-    let deal5 = generate_and_publish_deal(
-        &mut rt,
-        CLIENT_ADDR,
-        provider2_addr,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
-        start_epoch,
-        end_epoch + 1,
-    );
+    let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
+    let deal4 = generate_and_publish_deal(&mut rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
+    let deal5 = generate_and_publish_deal(&mut rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch + 1);
 
     // provider1 activates deal1 and deal2 but that does not activate deal3 to deal5
     activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2]);
@@ -1622,10 +1457,7 @@ fn fail_when_deal_is_activated_but_proposal_is_not_found() {
     let deal_id = publish_and_activate_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
         0,
@@ -1653,10 +1485,7 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
     let deal_id = publish_and_activate_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
         0,
@@ -1691,16 +1520,9 @@ mod test_activate_deal_failures {
 
         let mut rt = setup();
         let provider2_addr = Address::new_id(201);
-        let deal_id = generate_and_publish_deal(
-            &mut rt,
-            CLIENT_ADDR,
-            provider2_addr,
-            OWNER_ADDR,
-            WORKER_ADDR,
-            CONTROL_ADDR,
-            start_epoch,
-            end_epoch,
-        );
+        let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
+        let deal_id =
+            generate_and_publish_deal(&mut rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
 
         let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
 
@@ -1766,10 +1588,7 @@ mod test_activate_deal_failures {
         let deal_id = generate_and_publish_deal(
             &mut rt,
             CLIENT_ADDR,
-            PROVIDER_ADDR,
-            OWNER_ADDR,
-            WORKER_ADDR,
-            CONTROL_ADDR,
+            &MinerAddresses::default(),
             start_epoch,
             end_epoch,
         );
@@ -1803,10 +1622,7 @@ fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashin
     let deal_id = publish_and_activate_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
         0,
@@ -1838,10 +1654,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     let deal_id1 = publish_and_activate_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
         0,
@@ -1852,10 +1665,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     let deal_id2 = publish_and_activate_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch + 1,
         end_epoch + 1,
         0,
@@ -1894,10 +1704,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
     generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1906,9 +1713,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
     let d2 = generate_deal_and_add_funds(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1947,10 +1752,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
     let deal_id = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -1977,10 +1779,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
     let deal_id = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -2008,10 +1807,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
     let deal_id1 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
@@ -2020,10 +1816,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
     let deal_id2 = generate_and_publish_deal(
         &mut rt,
         CLIENT_ADDR,
-        PROVIDER_ADDR,
-        OWNER_ADDR,
-        WORKER_ADDR,
-        CONTROL_ADDR,
+        &MinerAddresses::default(),
         start_epoch,
         end_epoch + 1,
     );
