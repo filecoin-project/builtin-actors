@@ -118,7 +118,7 @@ pub fn expect_get_control_addresses(
         provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
-        BigInt::from(0u8),
+        BigInt::zero(),
         RawBytes::serialize(result).unwrap(),
         ExitCode::OK,
     )
