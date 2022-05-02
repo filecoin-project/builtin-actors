@@ -41,7 +41,7 @@ fn call(rt: &mut MockRuntime, method_num: u64, ser: &RawBytes) -> RawBytes {
     rt.call::<PaychActor>(method_num, ser).unwrap()
 }
 
-fn expect_error(rt: &mut MockRuntime, method_num: u64, ser: &RawBytes, exp: ExitCode) {
+fn expect_abort(rt: &mut MockRuntime, method_num: u64, ser: &RawBytes, exp: ExitCode) {
     let err = rt.call::<PaychActor>(method_num, ser).unwrap_err();
     assert_eq!(exp, err.exit_code());
 }
@@ -62,11 +62,13 @@ fn get_lane_state(rt: &MockRuntime, cid: &Cid, lane: u64) -> LaneState {
 
 mod paych_constructor {
     use fvm_shared::METHOD_CONSTRUCTOR;
+    use fvm_shared::METHOD_SEND;
 
     use super::*;
 
     const TEST_PAYCH_ADDR: u64 = 100;
     const TEST_PAYER_ADDR: u64 = 101;
+    const TEST_PAYEE_ADDR: u64 = 102;
     const TEST_CALLER_ADDR: u64 = 102;
 
     fn construct_runtime() -> MockRuntime {
@@ -101,7 +103,7 @@ mod paych_constructor {
             to: Address::new_id(TEST_PAYCH_ADDR),
             from: Address::new_id(TEST_PAYER_ADDR),
         };
-        expect_error(
+        expect_abort(
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(params).unwrap(),
@@ -110,50 +112,154 @@ mod paych_constructor {
     }
 
     #[test]
+    fn create_paych_actor_after_resolving_to_id_address() {
+        let payer_addr = Address::new_id(TEST_PAYER_ADDR);
+        let payer_non_id = Address::new_bls(&[102; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+        let payee_addr = Address::new_id(103_u64);
+        let payee_non_id = Address::new_bls(&[104; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+
+        let mut rt = construct_runtime();
+
+        rt.actor_code_cids.insert(payee_addr, *ACCOUNT_ACTOR_CODE_ID);
+
+        rt.id_addresses.insert(payer_non_id, payer_addr);
+        rt.id_addresses.insert(payee_non_id, payee_addr);
+
+        construct_and_verify(&mut rt, payer_non_id, payee_non_id);
+    }
+
+    #[test]
     fn actor_constructor_fails() {
         let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
         let payer_addr = Address::new_id(TEST_PAYER_ADDR);
+        let payee_addr = Address::new_id(TEST_PAYEE_ADDR);
         let caller_addr = Address::new_id(TEST_CALLER_ADDR);
 
         struct TestCase {
-            paych_addr: Address,
-            caller_code: Cid,
-            new_actor_code: Cid,
-            payer_code: Cid,
+            from_code: Cid,
+            from_addr: Address,
+            to_code: Cid,
+            to_addr: Address,
             expected_exit_code: ExitCode,
         }
 
-        let test_cases: Vec<TestCase> = vec![TestCase {
-            paych_addr,
-            caller_code: *INIT_ACTOR_CODE_ID,
-            new_actor_code: *MULTISIG_ACTOR_CODE_ID,
-            payer_code: *ACCOUNT_ACTOR_CODE_ID,
-            expected_exit_code: ExitCode::USR_FORBIDDEN,
-        }];
+        let test_cases: Vec<TestCase> = vec![
+            // fails if target (to) is not account actor
+            TestCase {
+                from_code: *ACCOUNT_ACTOR_CODE_ID,
+                from_addr: payer_addr,
+                to_code: *MULTISIG_ACTOR_CODE_ID,
+                to_addr: payee_addr,
+                expected_exit_code: ExitCode::USR_FORBIDDEN,
+            },
+            // fails if sender (from) is not account actor
+            TestCase {
+                from_code: *MULTISIG_ACTOR_CODE_ID,
+                from_addr: payer_addr,
+                to_code: *ACCOUNT_ACTOR_CODE_ID,
+                to_addr: payee_addr,
+                expected_exit_code: ExitCode::USR_FORBIDDEN,
+            },
+        ];
 
         for test_case in test_cases {
             let mut actor_code_cids = HashMap::default();
-            actor_code_cids.insert(test_case.paych_addr, test_case.new_actor_code);
-            actor_code_cids.insert(payer_addr, test_case.payer_code);
+            actor_code_cids.insert(paych_addr, *PAYCH_ACTOR_CODE_ID);
+            actor_code_cids.insert(test_case.to_addr, test_case.to_code);
+            actor_code_cids.insert(test_case.from_addr, test_case.from_code);
 
             let mut rt = MockRuntime {
                 receiver: paych_addr,
                 caller: caller_addr,
-                caller_type: test_case.caller_code,
+                caller_type: *INIT_ACTOR_CODE_ID,
                 actor_code_cids,
                 ..Default::default()
             };
 
             rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
-            let params =
-                ConstructorParams { to: test_case.paych_addr, from: Address::new_id(10001) };
-            expect_error(
+            let params = ConstructorParams { to: test_case.to_addr, from: test_case.from_addr };
+            expect_abort(
                 &mut rt,
                 METHOD_CONSTRUCTOR,
                 &RawBytes::serialize(params).unwrap(),
                 test_case.expected_exit_code,
             );
         }
+    }
+
+    #[test]
+    fn sendr_addr_not_resolvable_to_id_addr() {
+        const TO_ADDR: u64 = 101;
+        let to_addr = Address::new_id(TO_ADDR);
+        let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
+        let caller_addr = Address::new_id(TEST_CALLER_ADDR);
+        let non_id_addr = Address::new_bls(&[111; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+
+        let mut actor_code_cids = HashMap::default();
+        actor_code_cids.insert(to_addr, *ACCOUNT_ACTOR_CODE_ID);
+
+        let mut rt = MockRuntime {
+            receiver: paych_addr,
+            caller: caller_addr,
+            caller_type: *INIT_ACTOR_CODE_ID,
+            actor_code_cids,
+            ..Default::default()
+        };
+
+        rt.expect_send(
+            non_id_addr,
+            METHOD_SEND,
+            Default::default(),
+            TokenAmount::from(0u8),
+            Default::default(),
+            ExitCode::OK,
+        );
+
+        rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+        let params = ConstructorParams { from: non_id_addr, to: to_addr };
+        expect_abort(
+            &mut rt,
+            METHOD_CONSTRUCTOR,
+            &RawBytes::serialize(&params).unwrap(),
+            ExitCode::USR_ILLEGAL_STATE,
+        );
+    }
+
+    #[test]
+    fn target_addr_not_resolvable_to_id_addr() {
+        let from_addr = Address::new_id(5555_u64);
+        let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
+        let caller_addr = Address::new_id(TEST_CALLER_ADDR);
+        let non_id_addr = Address::new_bls(&[111; fvm_shared::address::BLS_PUB_LEN]).unwrap();
+
+        let mut actor_code_cids = HashMap::default();
+        actor_code_cids.insert(from_addr, *ACCOUNT_ACTOR_CODE_ID);
+
+        let mut rt = MockRuntime {
+            receiver: paych_addr,
+            caller: caller_addr,
+            caller_type: *INIT_ACTOR_CODE_ID,
+            actor_code_cids,
+            ..Default::default()
+        };
+
+        rt.expect_send(
+            non_id_addr,
+            METHOD_SEND,
+            Default::default(),
+            TokenAmount::from(0u8),
+            Default::default(),
+            ExitCode::OK,
+        );
+
+        rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+        let params = ConstructorParams { from: from_addr, to: non_id_addr };
+        expect_abort(
+            &mut rt,
+            METHOD_CONSTRUCTOR,
+            &RawBytes::serialize(&params).unwrap(),
+            ExitCode::USR_ILLEGAL_STATE,
+        );
     }
 }
 
@@ -358,13 +464,13 @@ mod create_lane_tests {
                 assert_eq!(sv.amount, ls.redeemed);
                 assert_eq!(sv.nonce, ls.nonce);
             } else {
-                expect_error(
+                expect_abort(
                     &mut rt,
                     Method::UpdateChannelState as u64,
                     &RawBytes::serialize(ucp).unwrap(),
                     test_case.exp_exit_code,
                 );
-                verify_initial_state(&mut rt, payer_addr, payee_addr);
+                verify_initial_state(&rt, payer_addr, payee_addr);
             }
             rt.verify();
         }
@@ -410,7 +516,7 @@ mod update_channel_state_redeem {
             min_settle_height: state.min_settle_height,
             lane_states: construct_lane_state_amt(&rt, vec![exp_ls]),
         };
-        verify_state(&mut rt, Some(1), exp_state);
+        verify_state(&rt, Some(1), exp_state);
     }
 
     #[test]
@@ -476,7 +582,7 @@ mod update_channel_state_redeem {
             result: Ok(()),
         });
 
-        expect_error(
+        expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
@@ -506,7 +612,7 @@ mod merge_tests {
             plaintext: sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        expect_error(
+        expect_abort(
             rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
@@ -553,7 +659,7 @@ mod merge_tests {
             vec![exp_merge_to, exp_merge_from, get_lane_state(&rt, &state.lane_states, 2)],
         );
 
-        verify_state(&mut rt, Some(num_lanes), state);
+        verify_state(&rt, Some(num_lanes), state);
     }
 
     #[test]
@@ -688,7 +794,7 @@ mod update_channel_state_extra {
     #[test]
     fn extra_call_fail() {
         let (mut rt, sv) = construct_runtime(ExitCode::USR_UNSPECIFIED);
-        expect_error(
+        expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
@@ -791,7 +897,7 @@ mod secret_preimage {
             plaintext: ucp.sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        expect_error(
+        expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(ucp).unwrap(),
@@ -832,7 +938,7 @@ mod actor_settle {
         call(&mut rt, Method::Settle as u64, &RawBytes::default());
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        expect_error(
+        expect_abort(
             &mut rt,
             Method::Settle as u64,
             &RawBytes::default(),
@@ -892,7 +998,7 @@ mod actor_settle {
             plaintext: sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        expect_error(
+        expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
@@ -992,7 +1098,7 @@ mod actor_collect {
             // Collect.
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
             rt.expect_validate_caller_addr(vec![state.from, state.to]);
-            expect_error(
+            expect_abort(
                 &mut rt,
                 Method::Collect as u64,
                 &RawBytes::default(),
@@ -1083,18 +1189,21 @@ fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address
     rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
     call(rt, METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap());
     rt.verify();
-    verify_initial_state(rt, sender, receiver);
+    let sender_id = rt.id_addresses.get(&sender).unwrap_or(&sender);
+    let receiver_id = rt.id_addresses.get(&receiver).unwrap_or(&receiver);
+    verify_initial_state(rt, *sender_id, *receiver_id);
 }
 
-fn verify_initial_state(rt: &mut MockRuntime, sender: Address, receiver: Address) {
+fn verify_initial_state(rt: &MockRuntime, sender: Address, receiver: Address) {
     let _state: PState = rt.get_state();
     let empt_arr_cid = Amt::<(), _>::new(&rt.store).flush().unwrap();
     let expected_state = PState::new(sender, receiver, empt_arr_cid);
     verify_state(rt, None, expected_state)
 }
 
-fn verify_state(rt: &mut MockRuntime, exp_lanes: Option<u64>, expected_state: PState) {
+fn verify_state(rt: &MockRuntime, exp_lanes: Option<u64>, expected_state: PState) {
     let state: PState = rt.get_state();
+
     assert_eq!(expected_state.to, state.to);
     assert_eq!(expected_state.from, state.from);
     assert_eq!(expected_state.min_settle_height, state.min_settle_height);

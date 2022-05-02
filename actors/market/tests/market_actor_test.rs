@@ -20,8 +20,8 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, SetMultimap, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    make_empty_map, ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
@@ -1705,6 +1705,170 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
     // TODO: actor.checkState
 }
 
+#[test]
+fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashing() {
+    let start_epoch = ChainEpoch::from(50);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+
+    let client_addr = Address::new_id(CLIENT_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let owner_addr = Address::new_id(OWNER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    // set start epoch to coincide with processing (0 + 0 % 2880 = 0)
+    let start_epoch = 0;
+    let mut rt = setup();
+    let deal_id = publish_and_activate_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+        0,
+        sector_expiry,
+    );
+
+    // move the current epoch to processing epoch
+    let current = process_epoch(start_epoch, deal_id);
+    rt.set_epoch(current);
+    let (pay, slashed) =
+        cron_tick_and_assert_balances(&mut rt, client_addr, provider_addr, current, deal_id);
+    assert_eq!(TokenAmount::from(0u8), pay);
+    assert_eq!(TokenAmount::from(0u8), slashed);
+
+    // deal proposal and state should NOT be deleted
+    get_deal_proposal(&mut rt, deal_id);
+    get_deal_state(&mut rt, deal_id);
+    // TODO: actor.checkState(rt)
+}
+
+#[test]
+fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
+    let start_epoch = ChainEpoch::from(50);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+
+    let client_addr = Address::new_id(CLIENT_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let owner_addr = Address::new_id(OWNER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    let mut rt = setup();
+
+    let deal_id1 = publish_and_activate_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+        0,
+        sector_expiry,
+    );
+    let d1 = get_deal_proposal(&mut rt, deal_id1);
+
+    let deal_id2 = publish_and_activate_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch + 1,
+        end_epoch + 1,
+        0,
+        sector_expiry,
+    );
+
+    // slash deal1
+    let slash_epoch = process_epoch(start_epoch, deal_id2) + ChainEpoch::from(100);
+    rt.set_epoch(slash_epoch);
+    terminate_deals(&mut rt, provider_addr, &[deal_id1]);
+
+    // cron tick will slash deal1 and make payment for deal2
+    rt.expect_send(
+        *BURNT_FUNDS_ACTOR_ADDR,
+        METHOD_SEND,
+        RawBytes::default(),
+        d1.provider_collateral.clone(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    cron_tick(&mut rt);
+
+    assert_deal_deleted(&mut rt, deal_id1, d1);
+    let s2 = get_deal_state(&mut rt, deal_id2);
+    assert_eq!(slash_epoch, s2.last_updated_epoch);
+    // TODO: actor.checkState(rt)
+}
+
+#[test]
+fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
+    let start_epoch = ChainEpoch::from(50);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    let client_addr = Address::new_id(CLIENT_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let owner_addr = Address::new_id(OWNER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let control_addr = Address::new_id(CONTROL_ID);
+
+    // Publish a deal
+    let mut rt = setup();
+    generate_and_publish_deal(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        control_addr,
+        start_epoch,
+        end_epoch,
+    );
+
+    // now try to publish it again and it should fail because it will still be in pending state
+    let d2 = generate_deal_and_add_funds(
+        &mut rt,
+        client_addr,
+        provider_addr,
+        owner_addr,
+        worker_addr,
+        start_epoch,
+        end_epoch,
+    );
+    let buf = RawBytes::serialize(d2.clone()).expect("failed to marshal deal proposal");
+    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let params = PublishStorageDealsParams {
+        deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig.clone() }],
+    };
+    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    expect_provider_control_address(&mut rt, provider_addr, owner_addr, worker_addr);
+    expect_query_network_info(&mut rt);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig,
+        signer: d2.client,
+        plaintext: buf.to_vec(),
+        result: Ok(()),
+    });
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<MarketActor>(
+            Method::PublishStorageDeals as u64,
+            &RawBytes::serialize(params).unwrap(),
+        ),
+    );
+    rt.verify();
+}
+
 fn expect_provider_control_address(
     rt: &mut MockRuntime,
     provider: Address,
@@ -2088,6 +2252,76 @@ fn publish_and_activate_deal(
     let deal_ids = publish_deals(rt, provider, owner, worker, control, &[deal]);
     activate_deals(rt, sector_expiry, provider, current_epoch, &deal_ids);
     deal_ids[0]
+}
+
+// if this is the first crontick for the deal, it's next tick will be scheduled at `desiredNextEpoch`
+// if this is not the first crontick, the `desiredNextEpoch` param is ignored.
+fn cron_tick_and_assert_balances(
+    rt: &mut MockRuntime,
+    client_addr: Address,
+    provider_addr: Address,
+    current_epoch: ChainEpoch,
+    deal_id: DealID,
+) -> (TokenAmount, TokenAmount) {
+    // fetch current client and provider escrow balances
+    let c_locked = get_locked_balance(rt, client_addr);
+    let c_escrow = get_escrow_balance(rt, &client_addr).unwrap();
+    let p_locked = get_locked_balance(rt, provider_addr);
+    let p_escrow = get_escrow_balance(rt, &provider_addr).unwrap();
+    let mut amount_slashed = TokenAmount::from(0u8);
+
+    let s = get_deal_state(rt, deal_id);
+    let d = get_deal_proposal(rt, deal_id);
+
+    // end epoch for payment calc
+    let mut payment_end = d.end_epoch;
+    if s.slash_epoch != EPOCH_UNDEFINED {
+        rt.expect_send(
+            *BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            RawBytes::default(),
+            d.provider_collateral.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        amount_slashed = d.provider_collateral;
+
+        if s.slash_epoch < d.start_epoch {
+            payment_end = d.start_epoch;
+        } else {
+            payment_end = s.slash_epoch;
+        }
+    } else if current_epoch < payment_end {
+        payment_end = current_epoch;
+    }
+
+    // start epoch for payment calc
+    let mut payment_start = d.start_epoch;
+    if s.last_updated_epoch != EPOCH_UNDEFINED {
+        payment_start = s.last_updated_epoch;
+    }
+    let duration = payment_end - payment_start;
+    let payment = duration * d.storage_price_per_epoch;
+
+    // expected updated amounts
+    let updated_client_escrow = c_escrow - payment.clone();
+    let updated_provider_escrow = (p_escrow + payment.clone()) - amount_slashed.clone();
+    let mut updated_client_locked = c_locked - payment.clone();
+    let mut updated_provider_locked = p_locked;
+    // if the deal has expired or been slashed, locked amount will be zero for provider and client.
+    let is_deal_expired = payment_end == d.end_epoch;
+    if is_deal_expired || s.slash_epoch != EPOCH_UNDEFINED {
+        updated_client_locked = TokenAmount::from(0u8);
+        updated_provider_locked = TokenAmount::from(0u8);
+    }
+
+    cron_tick(rt);
+
+    assert_eq!(updated_client_escrow, get_escrow_balance(rt, &client_addr).unwrap());
+    assert_eq!(updated_client_locked, get_locked_balance(rt, client_addr));
+    assert_eq!(updated_provider_escrow, get_escrow_balance(rt, &provider_addr).unwrap());
+    assert_eq!(updated_provider_locked, get_locked_balance(rt, provider_addr));
+    (payment, amount_slashed)
 }
 
 fn publish_deals(
