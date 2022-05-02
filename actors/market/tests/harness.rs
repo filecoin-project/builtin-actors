@@ -43,8 +43,6 @@ pub const WORKER_ADDR: Address = Address::new_id(WORKER_ID);
 pub const CLIENT_ADDR: Address = Address::new_id(CLIENT_ID);
 pub const CONTROL_ADDR: Address = Address::new_id(CONTROL_ID);
 
-pub struct Harness {}
-
 pub fn setup() -> MockRuntime {
     let mut actor_code_cids = HashMap::default();
     actor_code_cids.insert(Address::new_id(OWNER_ID), *ACCOUNT_ACTOR_CODE_ID);

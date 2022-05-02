@@ -165,31 +165,30 @@ fn adds_to_provider_escrow_funds() {
         TestCase { delta: 40, total: 70 },
     ];
 
-    let owner = Address::new_id(OWNER_ID);
-    let worker = Address::new_id(WORKER_ID);
-    let provider = Address::new_id(PROVIDER_ID);
-
-    for caller_addr in &[owner, worker] {
+    for caller_addr in &[OWNER_ADDR, WORKER_ADDR] {
         let mut rt = setup();
 
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
             rt.set_value(TokenAmount::from(tc.delta));
             rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
-            expect_provider_control_address(&mut rt, provider, owner, worker);
+            expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
             assert_eq!(
                 RawBytes::default(),
                 rt.call::<MarketActor>(
                     Method::AddBalance as u64,
-                    &RawBytes::serialize(provider).unwrap(),
+                    &RawBytes::serialize(PROVIDER_ADDR).unwrap(),
                 )
                 .unwrap()
             );
 
             rt.verify();
 
-            assert_eq!(get_escrow_balance(&rt, &provider).unwrap(), TokenAmount::from(tc.total));
+            assert_eq!(
+                get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(),
+                TokenAmount::from(tc.total)
+            );
             // TODO: actor.checkState(rt)
         }
     }
@@ -198,16 +197,15 @@ fn adds_to_provider_escrow_funds() {
 #[test]
 fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient() {
     let mut rt = setup();
-    let client = Address::new_id(CLIENT_ID);
 
-    add_participant_funds(&mut rt, client, TokenAmount::from(20u8));
+    add_participant_funds(&mut rt, CLIENT_ADDR, TokenAmount::from(20u8));
 
-    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &client).unwrap());
+    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
 
-    rt.expect_validate_caller_addr(vec![client]);
+    rt.expect_validate_caller_addr(vec![CLIENT_ADDR]);
 
     let params =
-        WithdrawBalanceParams { provider_or_client: client, amount: TokenAmount::from(1u8) };
+        WithdrawBalanceParams { provider_or_client: CLIENT_ADDR, amount: TokenAmount::from(1u8) };
 
     // caller is not the recipient
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
@@ -221,18 +219,13 @@ fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient()
     rt.verify();
 
     // verify there was no withdrawal
-    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &client).unwrap());
+    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
 
     // TODO: actor.checkState(rt)
 }
 
 #[test]
 fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amount() {
-    let client = Address::new_id(CLIENT_ID);
-    let worker = Address::new_id(WORKER_ID);
-    let provider = Address::new_id(PROVIDER_ID);
-    let owner = Address::new_id(OWNER_ID);
-    let control = Address::new_id(CONTROL_ID);
     let start_epoch = ChainEpoch::from(10);
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(5);
@@ -243,59 +236,65 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
     rt.set_epoch(publish_epoch);
     let deal_id = generate_and_publish_deal(
         &mut rt,
-        client,
-        provider,
-        owner,
-        worker,
-        control,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
     let deal = get_deal_proposal(&mut rt, deal_id);
-    assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &provider).unwrap());
-    assert_eq!(deal.client_balance_requirement(), get_escrow_balance(&rt, &client).unwrap());
+    assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
+    assert_eq!(deal.client_balance_requirement(), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
 
     let withdraw_amount = TokenAmount::from(1u8);
     let withdrawable_amount = TokenAmount::from(0u8);
     // client cannot withdraw any funds since all it's balance is locked
-    withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdrawable_amount.clone(), client);
+    withdraw_client_balance(
+        &mut rt,
+        withdraw_amount.clone(),
+        withdrawable_amount.clone(),
+        CLIENT_ADDR,
+    );
     // provider cannot withdraw any funds since all it's balance is locked
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount,
         withdrawable_amount,
-        provider,
-        owner,
-        worker,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
     );
 
     // add some more funds to the provider & ensure withdrawal is limited by the locked funds
     let withdraw_amount = TokenAmount::from(30u8);
     let withdrawable_amount = TokenAmount::from(25u8);
 
-    add_provider_funds(&mut rt, withdrawable_amount.clone(), provider, owner, worker);
+    add_provider_funds(
+        &mut rt,
+        withdrawable_amount.clone(),
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+    );
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount.clone(),
         withdrawable_amount.clone(),
-        provider,
-        owner,
-        worker,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
     );
 
     // add some more funds to the client & ensure withdrawal is limited by the locked funds
-    add_participant_funds(&mut rt, client, withdrawable_amount.clone());
-    withdraw_client_balance(&mut rt, withdraw_amount, withdrawable_amount, client);
+    add_participant_funds(&mut rt, CLIENT_ADDR, withdrawable_amount.clone());
+    withdraw_client_balance(&mut rt, withdraw_amount, withdrawable_amount, CLIENT_ADDR);
     // TODO: actor.checkState(rt)
 }
 
 #[test]
 fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
-    let client = Address::new_id(CLIENT_ID);
-    let worker = Address::new_id(WORKER_ID);
-    let provider = Address::new_id(PROVIDER_ID);
-    let owner = Address::new_id(OWNER_ID);
-    let control = Address::new_id(CONTROL_ID);
     let start_epoch = ChainEpoch::from(10);
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(5);
@@ -306,37 +305,51 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     rt.set_epoch(publish_epoch);
     let deal_id = generate_and_publish_deal(
         &mut rt,
-        client,
-        provider,
-        owner,
-        worker,
-        control,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
 
     // activate the deal
-    activate_deals(&mut rt, end_epoch + 1, provider, publish_epoch, &[deal_id]);
+    activate_deals(&mut rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, &[deal_id]);
     let st = get_deal_state(&mut rt, deal_id);
     assert_eq!(publish_epoch, st.sector_start_epoch);
 
     // slash the deal
     rt.set_epoch(publish_epoch + 1);
-    terminate_deals(&mut rt, provider, &[deal_id]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal_id]);
     let st = get_deal_state(&mut rt, deal_id);
     assert_eq!(publish_epoch + 1, st.slash_epoch);
 
     // provider cannot withdraw any funds since all it's balance is locked
     let withdraw_amount = TokenAmount::from(1);
     let actual_withdrawn = TokenAmount::from(0);
-    withdraw_provider_balance(&mut rt, withdraw_amount, actual_withdrawn, provider, owner, worker);
+    withdraw_provider_balance(
+        &mut rt,
+        withdraw_amount,
+        actual_withdrawn,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+    );
 
     // add some more funds to the provider & ensure withdrawal is limited by the locked funds
-    add_provider_funds(&mut rt, TokenAmount::from(25), provider, owner, worker);
+    add_provider_funds(&mut rt, TokenAmount::from(25), PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     let withdraw_amount = TokenAmount::from(30);
     let actual_withdrawn = TokenAmount::from(25);
 
-    withdraw_provider_balance(&mut rt, withdraw_amount, actual_withdrawn, provider, owner, worker);
+    withdraw_provider_balance(
+        &mut rt,
+        withdraw_amount,
+        actual_withdrawn,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+    );
     // TODO: actor.checkState(rt)
 }
 
@@ -347,13 +360,12 @@ fn fails_unless_called_by_an_account_actor() {
     rt.set_value(TokenAmount::from(10));
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     assert_eq!(
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
             Method::AddBalance as u64,
-            &RawBytes::serialize(provider_addr).unwrap(),
+            &RawBytes::serialize(PROVIDER_ADDR).unwrap(),
         )
         .unwrap_err()
         .exit_code()
@@ -375,10 +387,7 @@ fn adds_to_non_provider_funds() {
         TestCase { delta: 40, total: 70 },
     ];
 
-    let client = Address::new_id(CLIENT_ID);
-    let worker = Address::new_id(WORKER_ID);
-
-    for caller_addr in &[client, worker] {
+    for caller_addr in &[CLIENT_ADDR, WORKER_ADDR] {
         let mut rt = setup();
 
         for tc in &test_cases {
@@ -407,14 +416,10 @@ fn adds_to_non_provider_funds() {
 fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
     let mut rt = setup();
 
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-
     let amount = TokenAmount::from(20);
-    add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
+    add_provider_funds(&mut rt, amount.clone(), PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-    assert_eq!(amount, get_escrow_balance(&rt, &provider_addr).unwrap());
+    assert_eq!(amount, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
 
     // worker calls WithdrawBalance, balance is transferred to owner
     let withdraw_amount = TokenAmount::from(1);
@@ -422,12 +427,12 @@ fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
         &mut rt,
         withdraw_amount.clone(),
         withdraw_amount,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
     );
 
-    assert_eq!(TokenAmount::from(19), get_escrow_balance(&rt, &provider_addr).unwrap());
+    assert_eq!(TokenAmount::from(19), get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
     // TODO: actor.checkState(rt)
 }
 
@@ -435,17 +440,15 @@ fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
 fn withdraws_from_non_provider_escrow_funds() {
     let mut rt = setup();
 
-    let client_addr = Address::new_id(CLIENT_ID);
-
     let amount = TokenAmount::from(20);
-    add_participant_funds(&mut rt, client_addr, amount.clone());
+    add_participant_funds(&mut rt, CLIENT_ADDR, amount.clone());
 
-    assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), amount);
+    assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), amount);
 
     let withdraw_amount = TokenAmount::from(1);
-    withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount, client_addr);
+    withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount, CLIENT_ADDR);
 
-    assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), TokenAmount::from(19));
+    assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::from(19));
     // TODO: actor.checkState(rt)
 }
 
@@ -453,42 +456,36 @@ fn withdraws_from_non_provider_escrow_funds() {
 fn client_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     let mut rt = setup();
 
-    let client_addr = Address::new_id(CLIENT_ID);
-
     let amount = TokenAmount::from(20);
-    add_participant_funds(&mut rt, client_addr, amount.clone());
+    add_participant_funds(&mut rt, CLIENT_ADDR, amount.clone());
 
     // withdraw amount greater than escrow balance
     let withdraw_amount = TokenAmount::from(25);
-    withdraw_client_balance(&mut rt, withdraw_amount, amount, client_addr);
+    withdraw_client_balance(&mut rt, withdraw_amount, amount, CLIENT_ADDR);
 
-    assert_eq!(get_escrow_balance(&rt, &client_addr).unwrap(), TokenAmount::from(0));
+    assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::from(0));
 }
 
 #[test]
 fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     let mut rt = setup();
 
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-
     let amount = TokenAmount::from(20);
-    add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
+    add_provider_funds(&mut rt, amount.clone(), PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), amount);
+    assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
 
     let withdraw_amount = TokenAmount::from(25);
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount,
         amount,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
     );
 
-    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), TokenAmount::from(0));
+    assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), TokenAmount::from(0));
     // TODO: actor.checkState(rt)
 }
 
@@ -496,14 +493,15 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
 fn fail_when_balance_is_zero() {
     let mut rt = setup();
 
-    let provider = Address::new_id(PROVIDER_ID);
-
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(OWNER_ID));
     rt.set_received(BigInt::from(0_i32));
 
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        rt.call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(&provider).unwrap()),
+        rt.call::<MarketActor>(
+            Method::AddBalance as u64,
+            &RawBytes::serialize(&PROVIDER_ADDR).unwrap(),
+        ),
     );
 
     rt.verify();
@@ -533,23 +531,19 @@ fn fails_with_a_negative_withdraw_amount() {
 fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker() {
     let mut rt = setup();
 
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-
     let amount = TokenAmount::from(20u8);
-    add_provider_funds(&mut rt, amount.clone(), provider_addr, owner_addr, worker_addr);
+    add_provider_funds(&mut rt, amount.clone(), PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), amount);
+    assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
 
     // only signing parties can add balance for client AND provider.
-    rt.expect_validate_caller_addr(vec![owner_addr, worker_addr]);
+    rt.expect_validate_caller_addr(vec![OWNER_ADDR, WORKER_ADDR]);
     let params =
-        WithdrawBalanceParams { provider_or_client: provider_addr, amount: TokenAmount::from(1u8) };
+        WithdrawBalanceParams { provider_or_client: PROVIDER_ADDR, amount: TokenAmount::from(1u8) };
 
     // caller is not owner or worker
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
-    expect_get_control_addresses(&mut rt, provider_addr, owner_addr, worker_addr, vec![]);
+    expect_get_control_addresses(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR, vec![]);
 
     expect_abort(
         ExitCode::USR_FORBIDDEN,
@@ -561,7 +555,7 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
     rt.verify();
 
     // verify there was no withdrawal
-    assert_eq!(get_escrow_balance(&rt, &provider_addr).unwrap(), amount);
+    assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
     // TODO: actor.checkState(rt)
 }
 
@@ -575,21 +569,15 @@ fn deal_starts_on_day_boundary() {
     let mut rt = setup();
     rt.set_epoch(publish_epoch);
 
-    let client_addr = Address::new_id(CLIENT_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     for i in 0..(3 * deal_updates_interval) {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
-            client_addr,
-            provider_addr,
-            owner_addr,
-            worker_addr,
-            control_addr,
+            CLIENT_ADDR,
+            PROVIDER_ADDR,
+            OWNER_ADDR,
+            WORKER_ADDR,
+            CONTROL_ADDR,
             start_epoch,
             end_epoch,
             piece_cid,
@@ -624,22 +612,16 @@ fn deal_starts_partway_through_day() {
     let mut rt = setup();
     rt.set_epoch(publish_epoch);
 
-    let client_addr = Address::new_id(CLIENT_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     // First 1000 deals (start_epoch % update interval) scheduled starting in the next day
     for i in 0..1000 {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
-            client_addr,
-            provider_addr,
-            owner_addr,
-            worker_addr,
-            control_addr,
+            CLIENT_ADDR,
+            PROVIDER_ADDR,
+            OWNER_ADDR,
+            WORKER_ADDR,
+            CONTROL_ADDR,
             start_epoch,
             end_epoch,
             piece_cid,
@@ -663,11 +645,11 @@ fn deal_starts_partway_through_day() {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
         let deal_id = generate_and_publish_deal_for_piece(
             &mut rt,
-            client_addr,
-            provider_addr,
-            owner_addr,
-            worker_addr,
-            control_addr,
+            CLIENT_ADDR,
+            PROVIDER_ADDR,
+            OWNER_ADDR,
+            WORKER_ADDR,
+            CONTROL_ADDR,
             start_epoch,
             end_epoch,
             piece_cid,
@@ -692,37 +674,31 @@ fn simple_deal() {
     let mut rt = setup();
     rt.set_epoch(publish_epoch);
 
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     // Publish from miner worker.
     let deal1 = generate_deal_and_add_funds(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         start_epoch,
         end_epoch,
     );
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
-    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal1]);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    publish_deals(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR, CONTROL_ADDR, &[deal1]);
 
     // Publish from miner control address.
     let deal2 = generate_deal_and_add_funds(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         start_epoch + 1,
         end_epoch + 1,
     );
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, control_addr);
-    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal2]);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, CONTROL_ADDR);
+    publish_deals(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR, CONTROL_ADDR, &[deal2]);
     // TODO: actor.checkState(rt)
 }
 
@@ -731,8 +707,6 @@ fn simple_deal() {
 fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_to_verigreg_actor_for_a_verified_deal(
 ) {
     use fvm_shared::address::BLS_PUB_LEN;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
 
     // provider addresses
     let provider_bls = Address::new_bls(&[101; BLS_PUB_LEN]).unwrap();
@@ -767,9 +741,9 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
 
     // add funds for provider using it's BLS address -> will be resolved and persisted
     rt.value_received = deal.provider_collateral.clone();
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, owner_addr);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
-    expect_get_control_addresses(&mut rt, provider_resolved, owner_addr, worker_addr, vec![]);
+    expect_get_control_addresses(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR, vec![]);
 
     assert_eq!(
         RawBytes::default(),
@@ -784,10 +758,10 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &provider_resolved).unwrap());
 
     // publish deal using the BLS addresses
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-    expect_get_control_addresses(&mut rt, provider_resolved, owner_addr, worker_addr, vec![]);
+    expect_get_control_addresses(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR, vec![]);
     expect_query_network_info(&mut rt);
 
     //  create a client proposal with a valid signature
@@ -846,27 +820,21 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     let mut rt = setup();
 
     // publish the deal and activate it
     rt.set_epoch(publish_epoch);
     let deal1 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
-    activate_deals(&mut rt, end_epoch, provider_addr, publish_epoch, &[deal1]);
+    activate_deals(&mut rt, end_epoch, PROVIDER_ADDR, publish_epoch, &[deal1]);
     let st = get_deal_state(&mut rt, deal1);
     assert_eq!(publish_epoch, st.sector_start_epoch);
 
@@ -875,15 +843,15 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
     rt.set_epoch(new_epoch);
     let deal2 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch + 1,
         end_epoch + 1,
     );
-    activate_deals(&mut rt, end_epoch + 1, provider_addr, new_epoch, &[deal2]);
+    activate_deals(&mut rt, end_epoch + 1, PROVIDER_ADDR, new_epoch, &[deal2]);
     // TODO: actor.checkState(rt)
 }
 
@@ -894,11 +862,6 @@ fn terminate_multiple_deals_from_multiple_providers() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
 
     let provider2 = Address::new_id(501);
 
@@ -909,11 +872,11 @@ fn terminate_multiple_deals_from_multiple_providers() {
         .map(|epoch| {
             generate_and_publish_deal(
                 &mut rt,
-                client_addr,
-                provider_addr,
-                owner_addr,
-                worker_addr,
-                control_addr,
+                CLIENT_ADDR,
+                PROVIDER_ADDR,
+                OWNER_ADDR,
+                WORKER_ADDR,
+                CONTROL_ADDR,
                 start_epoch,
                 epoch,
             )
@@ -921,31 +884,31 @@ fn terminate_multiple_deals_from_multiple_providers() {
         .collect::<Vec<DealID>>()
         .try_into()
         .unwrap();
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1, deal2, deal3]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2, deal3]);
 
     let deal4 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
+        CLIENT_ADDR,
         provider2,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
     let deal5 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
+        CLIENT_ADDR,
         provider2,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch + 1,
     );
     activate_deals(&mut rt, sector_expiry, provider2, current_epoch, &[deal4, deal5]);
 
-    terminate_deals(&mut rt, provider_addr, &[deal1]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal1]);
     assert_deals_terminated(&mut rt, current_epoch, &[deal1]);
     assert_deals_not_terminated(&mut rt, &[deal2, deal3, deal4, deal5]);
 
@@ -953,7 +916,7 @@ fn terminate_multiple_deals_from_multiple_providers() {
     assert_deals_terminated(&mut rt, current_epoch, &[deal5]);
     assert_deals_not_terminated(&mut rt, &[deal2, deal3, deal4]);
 
-    terminate_deals(&mut rt, provider_addr, &[deal2, deal3]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal2, deal3]);
     assert_deals_terminated(&mut rt, current_epoch, &[deal2, deal3]);
     assert_deals_not_terminated(&mut rt, &[deal4]);
 
@@ -968,28 +931,23 @@ fn ignore_deal_proposal_that_does_not_exist() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
 
     let mut rt = setup();
     rt.set_epoch(current_epoch);
 
     let deal1 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
 
-    terminate_deals(&mut rt, provider_addr, &[deal1, 42]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal1, 42]);
 
     let s = get_deal_state(&mut rt, deal1);
     assert_eq!(s.slash_epoch, current_epoch);
@@ -1002,51 +960,46 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
 
     let mut rt = setup();
     rt.set_epoch(current_epoch);
 
     let deal1 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
     let deal2 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch + 1,
     );
     let deal3 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch - 1,
     );
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1, deal2, deal3]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2, deal3]);
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
 
-    terminate_deals(&mut rt, provider_addr, &[deal1, deal2, deal3]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal1, deal2, deal3]);
     assert_deals_terminated(&mut rt, new_epoch, &[deal1, deal2]);
     assert_deals_not_terminated(&mut rt, &[deal3]);
 }
@@ -1058,50 +1011,45 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
 
     let mut rt = setup();
     rt.set_epoch(current_epoch);
 
     let deal1 = generate_deal_and_add_funds(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         start_epoch,
         end_epoch,
     );
     let deal2 = generate_deal_and_add_funds(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         start_epoch,
         end_epoch - deal_updates_interval,
     );
 
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     let deal_ids = publish_deals(
         &mut rt,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         &[deal1, deal2.clone()],
     );
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &deal_ids);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &deal_ids);
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
     cron_tick(&mut rt);
 
-    terminate_deals(&mut rt, provider_addr, &deal_ids);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &deal_ids);
     assert_deals_terminated(&mut rt, new_epoch, &deal_ids[0..0]);
     assert_deal_deleted(&mut rt, deal_ids[1], deal2);
 }
@@ -1113,33 +1061,28 @@ fn terminating_a_deal_the_second_time_does_not_change_its_slash_epoch() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
 
     let mut rt = setup();
     rt.set_epoch(current_epoch);
 
     let deal1 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
 
     // terminating the deal so slash epoch is the current epoch
-    terminate_deals(&mut rt, provider_addr, &[deal1]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal1]);
 
     // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
     rt.set_epoch(current_epoch + 1);
-    terminate_deals(&mut rt, provider_addr, &[deal1]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal1]);
     let s = get_deal_state(&mut rt, deal1);
     assert_eq!(s.slash_epoch, current_epoch);
 }
@@ -1151,11 +1094,6 @@ fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
 
     let mut rt = setup();
     rt.set_epoch(current_epoch);
@@ -1166,26 +1104,26 @@ fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_
         .map(|&epoch| {
             generate_and_publish_deal(
                 &mut rt,
-                client_addr,
-                provider_addr,
-                owner_addr,
-                worker_addr,
-                control_addr,
+                CLIENT_ADDR,
+                PROVIDER_ADDR,
+                OWNER_ADDR,
+                WORKER_ADDR,
+                CONTROL_ADDR,
                 start_epoch,
                 epoch,
             )
         })
         .collect();
     let [deal1, deal2, deal3]: [DealID; 3] = deals.as_slice().try_into().unwrap();
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &deals);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &deals);
 
     // terminating the deal so slash epoch is the current epoch
-    terminate_deals(&mut rt, provider_addr, &[deal1]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal1]);
 
     // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
     let new_epoch = current_epoch + 1;
     rt.set_epoch(new_epoch);
-    terminate_deals(&mut rt, provider_addr, &deals);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &deals);
 
     let s1 = get_deal_state(&mut rt, deal1);
     assert_eq!(s1.slash_epoch, current_epoch);
@@ -1204,11 +1142,6 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
 
     let mut rt = setup();
     rt.set_epoch(current_epoch);
@@ -1216,45 +1149,43 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     // deal1 has endepoch equal to current epoch when terminate is called
     let deal1 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
     rt.set_epoch(end_epoch);
-    terminate_deals(&mut rt, provider_addr, &[deal1]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal1]);
     assert_deals_not_terminated(&mut rt, &[deal1]);
 
     // deal2 has end epoch less than current epoch when terminate is called
     rt.set_epoch(current_epoch);
     let deal2 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch + 1,
         end_epoch,
     );
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal2]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal2]);
     rt.set_epoch(end_epoch + 1);
-    terminate_deals(&mut rt, provider_addr, &[deal2]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal2]);
     assert_deals_not_terminated(&mut rt, &[deal2]);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1436
 #[test]
 fn fail_when_caller_is_not_a_storage_miner_actor() {
-    let provider_addr = Address::new_id(PROVIDER_ID);
-
     let mut rt = setup();
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, provider_addr);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: vec![] };
 
     // XXX: Which exit code is correct: SYS_FORBIDDEN(8) or USR_FORBIDDEN(18)?
@@ -1276,11 +1207,6 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
 
     let provider2 = Address::new_id(501);
 
@@ -1289,15 +1215,15 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
 
     let deal = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal]);
 
     // XXX: Difference between go messages: 't0501' has turned into 'f0501'.
     let ret = terminate_deals_raw(&mut rt, provider2, &[deal]);
@@ -1314,27 +1240,22 @@ fn fail_when_deal_has_been_published_but_not_activated() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let current_epoch = 5;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
 
     let mut rt = setup();
     rt.set_epoch(current_epoch);
 
     let deal = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
 
-    let ret = terminate_deals_raw(&mut rt, provider_addr, &[deal]);
+    let ret = terminate_deals_raw(&mut rt, PROVIDER_ADDR, &[deal]);
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no state for deal", ret);
     rt.verify();
 }
@@ -1346,11 +1267,6 @@ fn termination_of_all_deals_should_fail_when_one_deal_fails() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
 
     let mut rt = setup();
     rt.set_epoch(current_epoch);
@@ -1358,27 +1274,27 @@ fn termination_of_all_deals_should_fail_when_one_deal_fails() {
     // deal1 would terminate but deal2 will fail because deal2 has not been activated
     let deal1 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
     let deal2 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch + 1,
     );
 
-    let ret = terminate_deals_raw(&mut rt, provider_addr, &[deal1, deal2]);
+    let ret = terminate_deals_raw(&mut rt, PROVIDER_ADDR, &[deal1, deal2]);
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no state for deal", ret);
     rt.verify();
 
@@ -1394,12 +1310,6 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     let mut rt = setup();
 
     let client_collateral = TokenAmount::from(10u8); // min is zero so this is placeholder
@@ -1412,10 +1322,10 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
     );
     let deal = generate_deal_with_collateral_and_add_funds(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         provider_collateral,
         client_collateral,
         start_epoch,
@@ -1426,8 +1336,8 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
 
     // publish the deal successfully
     rt.set_epoch(publish_epoch);
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
-    publish_deals(&mut rt, provider_addr, owner_addr, worker_addr, control_addr, &[deal]);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    publish_deals(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR, CONTROL_ADDR, &[deal]);
     // TODO: actor.checkState(rt)
 }
 
@@ -1442,18 +1352,13 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let client2_addr = Address::new_id(901);
     let client3_addr = Address::new_id(902);
 
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     // generate first deal for
     let deal1 = generate_deal_and_add_funds(
         &mut rt,
         client1_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         start_epoch,
         end_epoch,
     );
@@ -1462,9 +1367,9 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let deal2 = generate_deal_and_add_funds(
         &mut rt,
         client2_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         start_epoch,
         end_epoch,
     );
@@ -1473,20 +1378,20 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let deal3 = generate_deal_and_add_funds(
         &mut rt,
         client3_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         start_epoch,
         end_epoch,
     );
 
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(
         &mut rt,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         &[deal1.clone(), deal2.clone(), deal3.clone()],
     );
 
@@ -1499,7 +1404,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     assert_eq!(deal1.client_balance_requirement(), client1_locked);
     assert_eq!(deal2.client_balance_requirement(), client2_locked);
     assert_eq!(deal3.client_balance_requirement(), client3_locked);
-    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, provider_addr));
+    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, PROVIDER_ADDR));
 
     // assert locked funds dealStates
     let st: State = rt.get_state();
@@ -1515,35 +1420,35 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let deal4 = generate_deal_and_add_funds(
         &mut rt,
         client3_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         1000,
         1000 + 200 * EPOCHS_IN_DAY,
     );
     let deal5 = generate_deal_and_add_funds(
         &mut rt,
         client3_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         100,
         100 + 200 * EPOCHS_IN_DAY,
     );
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(
         &mut rt,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         &[deal4.clone(), deal5.clone()],
     );
 
     // assert locked balances for clients and provider
     let provider_locked_expected =
         &provider_locked_expected + &deal4.provider_collateral + &deal5.provider_collateral;
-    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, provider_addr));
+    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, PROVIDER_ADDR));
 
     let client3_locked_updated = get_locked_balance(&mut rt, client3_addr);
     assert_eq!(
@@ -1575,8 +1480,8 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         &mut rt,
         client1_addr,
         provider2_addr,
-        owner_addr,
-        worker_addr,
+        OWNER_ADDR,
+        WORKER_ADDR,
         20,
         20 + 200 * EPOCHS_IN_DAY,
     );
@@ -1586,20 +1491,20 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         &mut rt,
         client1_addr,
         provider2_addr,
-        owner_addr,
-        worker_addr,
+        OWNER_ADDR,
+        WORKER_ADDR,
         25,
         60 + 200 * EPOCHS_IN_DAY,
     );
 
     // publish both the deals for the second provider
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(
         &mut rt,
         provider2_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         &[deal6.clone(), deal7.clone()],
     );
 
@@ -1614,7 +1519,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     );
 
     // assert first provider's balance as well
-    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, provider_addr));
+    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, PROVIDER_ADDR));
 
     let total_client_collateral_locked =
         &total_client_collateral_locked + &deal6.client_collateral + &deal7.client_collateral;
@@ -1636,40 +1541,34 @@ fn active_deals_multiple_times_with_different_providers() {
     let mut rt = setup();
     rt.set_epoch(current_epoch);
 
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     // provider 1 publishes deals1 and deals2 and deal3
     let deal1 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
     let deal2 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch + 1,
     );
     let deal3 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch + 2,
     );
@@ -1678,27 +1577,27 @@ fn active_deals_multiple_times_with_different_providers() {
     let provider2_addr = Address::new_id(401);
     let deal4 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
+        CLIENT_ADDR,
         provider2_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
     let deal5 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
+        CLIENT_ADDR,
         provider2_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch + 1,
     );
 
     // provider1 activates deal1 and deal2 but that does not activate deal3 to deal5
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal1, deal2]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2]);
     assert_deals_not_activated(&mut rt, current_epoch, &[deal3, deal4, deal5]);
 
     // provider2 activates deal5 but that does not activate deal3 or deal4
@@ -1706,7 +1605,7 @@ fn active_deals_multiple_times_with_different_providers() {
     assert_deals_not_activated(&mut rt, current_epoch, &[deal3, deal4]);
 
     // provider1 activates deal3
-    activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal3]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal3]);
     assert_deals_not_activated(&mut rt, current_epoch, &[deal4]);
     // TODO: actor.checkState(rt)
 }
@@ -1720,19 +1619,13 @@ fn fail_when_deal_is_activated_but_proposal_is_not_found() {
 
     let mut rt = setup();
 
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     let deal_id = publish_and_activate_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
         0,
@@ -1757,19 +1650,13 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
 
     let mut rt = setup();
 
-    let owner_addr = Address::new_id(OWNER_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let client_addr = Address::new_id(CLIENT_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     let deal_id = publish_and_activate_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
         0,
@@ -1798,12 +1685,6 @@ mod test_activate_deal_failures {
 
     #[test]
     fn fail_when_caller_is_not_the_provider_of_the_deal() {
-        let client_addr = Address::new_id(CLIENT_ID);
-        let provider_addr = Address::new_id(PROVIDER_ID);
-        let owner_addr = Address::new_id(OWNER_ID);
-        let worker_addr = Address::new_id(WORKER_ID);
-        let control_addr = Address::new_id(CONTROL_ID);
-
         let start_epoch = 10;
         let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
         let sector_expiry = end_epoch + 100;
@@ -1812,11 +1693,11 @@ mod test_activate_deal_failures {
         let provider2_addr = Address::new_id(201);
         let deal_id = generate_and_publish_deal(
             &mut rt,
-            client_addr,
+            CLIENT_ADDR,
             provider2_addr,
-            owner_addr,
-            worker_addr,
-            control_addr,
+            OWNER_ADDR,
+            WORKER_ADDR,
+            CONTROL_ADDR,
             start_epoch,
             end_epoch,
         );
@@ -1824,7 +1705,7 @@ mod test_activate_deal_failures {
         let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
 
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
-        rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
         expect_abort(
             ExitCode::USR_FORBIDDEN,
             rt.call::<MarketActor>(
@@ -1839,11 +1720,9 @@ mod test_activate_deal_failures {
 
     #[test]
     fn fail_when_caller_is_not_a_storage_miner_actor() {
-        let provider_addr = Address::new_id(PROVIDER_ID);
-
         let mut rt = setup();
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, provider_addr);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, PROVIDER_ADDR);
 
         let params = ActivateDealsParams { deal_ids: vec![], sector_expiry: 0 };
         expect_abort(
@@ -1860,13 +1739,11 @@ mod test_activate_deal_failures {
 
     #[test]
     fn fail_when_deal_has_not_been_published_before() {
-        let provider_addr = Address::new_id(PROVIDER_ID);
-
         let mut rt = setup();
         let params = ActivateDealsParams { deal_ids: vec![DealID::from(42u32)], sector_expiry: 0 };
 
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
-        rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
         expect_abort(
             ExitCode::USR_NOT_FOUND,
             rt.call::<MarketActor>(
@@ -1881,12 +1758,6 @@ mod test_activate_deal_failures {
 
     #[test]
     fn fail_when_deal_has_already_been_activated() {
-        let client_addr = Address::new_id(CLIENT_ID);
-        let provider_addr = Address::new_id(PROVIDER_ID);
-        let owner_addr = Address::new_id(OWNER_ID);
-        let worker_addr = Address::new_id(WORKER_ID);
-        let control_addr = Address::new_id(CONTROL_ID);
-
         let start_epoch = 10;
         let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
         let sector_expiry = end_epoch + 100;
@@ -1894,18 +1765,18 @@ mod test_activate_deal_failures {
         let mut rt = setup();
         let deal_id = generate_and_publish_deal(
             &mut rt,
-            client_addr,
-            provider_addr,
-            owner_addr,
-            worker_addr,
-            control_addr,
+            CLIENT_ADDR,
+            PROVIDER_ADDR,
+            OWNER_ADDR,
+            WORKER_ADDR,
+            CONTROL_ADDR,
             start_epoch,
             end_epoch,
         );
-        activate_deals(&mut rt, sector_expiry, provider_addr, 0, &[deal_id]);
+        activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
 
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
-        rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
         let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -1926,22 +1797,16 @@ fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashin
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
 
-    let client_addr = Address::new_id(CLIENT_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     // set start epoch to coincide with processing (0 + 0 % 2880 = 0)
     let start_epoch = 0;
     let mut rt = setup();
     let deal_id = publish_and_activate_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
         0,
@@ -1952,7 +1817,7 @@ fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashin
     let current = process_epoch(start_epoch, deal_id);
     rt.set_epoch(current);
     let (pay, slashed) =
-        cron_tick_and_assert_balances(&mut rt, client_addr, provider_addr, current, deal_id);
+        cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
     assert_eq!(TokenAmount::from(0u8), pay);
     assert_eq!(TokenAmount::from(0u8), slashed);
 
@@ -1968,21 +1833,15 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
 
-    let client_addr = Address::new_id(CLIENT_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     let mut rt = setup();
 
     let deal_id1 = publish_and_activate_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
         0,
@@ -1992,11 +1851,11 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
 
     let deal_id2 = publish_and_activate_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch + 1,
         end_epoch + 1,
         0,
@@ -2006,7 +1865,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     // slash deal1
     let slash_epoch = process_epoch(start_epoch, deal_id2) + ChainEpoch::from(100);
     rt.set_epoch(slash_epoch);
-    terminate_deals(&mut rt, provider_addr, &[deal_id1]);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal_id1]);
 
     // cron tick will slash deal1 and make payment for deal2
     rt.expect_send(
@@ -2030,21 +1889,15 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
     let start_epoch = ChainEpoch::from(50);
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-    let client_addr = Address::new_id(CLIENT_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     // Publish a deal
     let mut rt = setup();
     generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
@@ -2052,10 +1905,10 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
     // now try to publish it again and it should fail because it will still be in pending state
     let d2 = generate_deal_and_add_funds(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
         start_epoch,
         end_epoch,
     );
@@ -2065,9 +1918,9 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
         deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig.clone() }],
     };
     rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
-    expect_provider_control_address(&mut rt, provider_addr, owner_addr, worker_addr);
+    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     rt.expect_verify_signature(ExpectedVerifySig {
         sig,
         signer: d2.client,
@@ -2086,12 +1939,6 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
 
 #[test]
 fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
-    let client_addr = Address::new_id(CLIENT_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
@@ -2099,17 +1946,17 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
     let mut rt = setup();
     let deal_id = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
 
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     rt.set_epoch(start_epoch + 1);
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
     expect_abort(
@@ -2123,29 +1970,23 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
 
 #[test]
 fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
-    let client_addr = Address::new_id(CLIENT_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
     let mut rt = setup();
     let deal_id = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
 
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry: end_epoch - 1 };
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -2158,12 +1999,6 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
 
 #[test]
 fn fail_to_activate_all_deals_if_one_deal_fails() {
-    let client_addr = Address::new_id(CLIENT_ID);
-    let provider_addr = Address::new_id(PROVIDER_ID);
-    let owner_addr = Address::new_id(OWNER_ID);
-    let worker_addr = Address::new_id(WORKER_ID);
-    let control_addr = Address::new_id(CONTROL_ID);
-
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
@@ -2172,29 +2007,29 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
     // activate deal1 so it fails later
     let deal_id1 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch,
     );
-    activate_deals(&mut rt, sector_expiry, provider_addr, 0, &[deal_id1]);
+    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id1]);
 
     let deal_id2 = generate_and_publish_deal(
         &mut rt,
-        client_addr,
-        provider_addr,
-        owner_addr,
-        worker_addr,
-        control_addr,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        OWNER_ADDR,
+        WORKER_ADDR,
+        CONTROL_ADDR,
         start_epoch,
         end_epoch + 1,
     );
 
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, provider_addr);
+    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = ActivateDealsParams { deal_ids: vec![deal_id1, deal_id2], sector_expiry };
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
