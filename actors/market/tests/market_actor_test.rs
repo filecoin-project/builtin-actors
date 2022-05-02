@@ -266,7 +266,7 @@ fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient()
 #[test]
 fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amount() {
     let mut rt = setup();
-    let publish_epoch = ChainEpoch::from(1);
+    let publish_epoch = ChainEpoch::from(5);
     rt.set_epoch(publish_epoch);
 
     let client = Address::new_id(CLIENT_ID);
