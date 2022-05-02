@@ -64,11 +64,12 @@ impl Default for MinerAddresses {
 }
 
 pub fn setup() -> MockRuntime {
-    let mut actor_code_cids = HashMap::default();
-    actor_code_cids.insert(OWNER_ADDR, *ACCOUNT_ACTOR_CODE_ID);
-    actor_code_cids.insert(WORKER_ADDR, *ACCOUNT_ACTOR_CODE_ID);
-    actor_code_cids.insert(PROVIDER_ADDR, *MINER_ACTOR_CODE_ID);
-    actor_code_cids.insert(CLIENT_ADDR, *ACCOUNT_ACTOR_CODE_ID);
+    let actor_code_cids = HashMap::from([
+        (OWNER_ADDR, *ACCOUNT_ACTOR_CODE_ID),
+        (WORKER_ADDR, *ACCOUNT_ACTOR_CODE_ID),
+        (PROVIDER_ADDR, *MINER_ACTOR_CODE_ID),
+        (CLIENT_ADDR, *ACCOUNT_ACTOR_CODE_ID),
+    ]);
 
     let mut rt = MockRuntime {
         receiver: *STORAGE_MARKET_ACTOR_ADDR,
