@@ -1867,3 +1867,71 @@ fn test_change_threshold_happy_path_decrease_threshold() {
     let st: State = rt.get_state();
     assert_eq!(1, st.num_approvals_threshold);
 }
+
+
+#[cfg(test)]
+mod lock_balance_tests {
+    use super::*;
+
+    #[test]
+    fn retroactive_vesting() {
+        let msig = Address::new_id(100);
+        let anne = Address::new_id(101);
+        let bob = Address::new_id(102);
+
+        let mut rt = construct_runtime(msig);
+        let h = util::ActorHarness::new();
+        
+        // create empty multisig
+        rt.set_epoch(100);
+        h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+
+        // some time later, initialize vesting
+        rt.set_epoch(200);
+        let vest_start = 0;
+        let lock_amount = TokenAmount::from(100_000u32);
+        let vest_duration = 1000;
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
+
+        rt.set_epoch(300);
+        let vested = TokenAmount::from(30_000);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+
+        // Fail to spend balance the multisig doesn't have
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, bob, vested.clone(), METHOD_SEND, RawBytes::default()),
+        );
+        rt.reset();
+
+        // fail to spend more than the vested amount
+        rt.set_balance(lock_amount.clone());
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, bob, vested.clone() + TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+        );
+        rt.reset();
+
+        // can fully spend the vested amount
+        rt.set_balance(lock_amount.clone());
+        rt.expect_send(bob, METHOD_SEND, RawBytes::default(), vested.clone(), RawBytes::default(), ExitCode::OK);
+        h.propose_ok(&mut rt, bob, vested.clone(), METHOD_SEND, RawBytes::default());
+
+        // can't spend more
+        rt.set_balance(lock_amount.clone() - vested.clone());
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS, 
+            h.propose(& mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+        );
+        rt.reset();
+    
+        // later can spend the rest
+        rt.set_epoch(vest_start+vest_duration);
+        let rested = TokenAmount::from(70_000u32);
+        rt.expect_send(bob, METHOD_SEND, RawBytes::default(), rested.clone(), RawBytes::default(), ExitCode::OK);
+        h.propose_ok(& mut rt, bob, rested, METHOD_SEND, RawBytes::default());
+    }
+
+
+}
