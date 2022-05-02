@@ -31,7 +31,7 @@ pub(super) fn deal_price_per_epoch_bounds(
     (0.into(), &TOTAL_FILECOIN)
 }
 
-pub(super) fn deal_provider_collateral_bounds(
+pub fn deal_provider_collateral_bounds(
     policy: &Policy,
     size: PaddedPieceSize,
     network_raw_power: &StoragePower,

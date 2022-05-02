@@ -35,5 +35,6 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 serde = { version = "1.0.136", features = ["derive"] }
 thiserror = "1.0.30"
 anyhow = "1.0.56"
+blake2b_simd = "1.0"
 
 
