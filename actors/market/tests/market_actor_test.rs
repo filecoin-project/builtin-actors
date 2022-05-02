@@ -189,7 +189,7 @@ fn adds_to_provider_escrow_funds() {
                 get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(),
                 TokenAmount::from(tc.total)
             );
-            // TODO: actor.checkState(rt)
+            check_state(&mut rt);
         }
     }
 }
@@ -221,7 +221,7 @@ fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient()
     // verify there was no withdrawal
     assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
 
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -290,7 +290,7 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
     // add some more funds to the client & ensure withdrawal is limited by the locked funds
     add_participant_funds(&mut rt, CLIENT_ADDR, withdrawable_amount.clone());
     withdraw_client_balance(&mut rt, withdraw_amount, withdrawable_amount, CLIENT_ADDR);
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -350,7 +350,7 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
         OWNER_ADDR,
         WORKER_ADDR,
     );
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -372,7 +372,7 @@ fn fails_unless_called_by_an_account_actor() {
     );
 
     rt.verify();
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -407,7 +407,7 @@ fn adds_to_non_provider_funds() {
             rt.verify();
 
             assert_eq!(get_escrow_balance(&rt, caller_addr).unwrap(), TokenAmount::from(tc.total));
-            // TODO: actor.checkState(rt)
+            check_state(&mut rt);
         }
     }
 }
@@ -433,7 +433,7 @@ fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
     );
 
     assert_eq!(TokenAmount::from(19), get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -449,7 +449,7 @@ fn withdraws_from_non_provider_escrow_funds() {
     withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount, CLIENT_ADDR);
 
     assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::from(19));
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -486,7 +486,7 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     );
 
     assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), TokenAmount::from(0));
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -556,7 +556,7 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
 
     // verify there was no withdrawal
     assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -699,7 +699,7 @@ fn simple_deal() {
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, CONTROL_ADDR);
     publish_deals(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR, CONTROL_ADDR, &[deal2]);
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/0afe155bfffa036057af5519afdead845e0780de/actors/builtin/market/market_test.go#L529
@@ -811,7 +811,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     assert_eq!(client_resolved, prop.client);
     assert_eq!(provider_resolved, prop.provider);
 
-    // TODO actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -852,7 +852,7 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
         end_epoch + 1,
     );
     activate_deals(&mut rt, end_epoch + 1, PROVIDER_ADDR, new_epoch, &[deal2]);
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 // Converted from https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1274
@@ -1338,7 +1338,7 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
     rt.set_epoch(publish_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR, CONTROL_ADDR, &[deal]);
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -1528,7 +1528,7 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     let total_storage_fee =
         &total_storage_fee + &deal6.total_storage_fee() + &deal7.total_storage_fee();
     assert_eq!(total_storage_fee, st.total_client_storage_fee);
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -1607,7 +1607,7 @@ fn active_deals_multiple_times_with_different_providers() {
     // provider1 activates deal3
     activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal3]);
     assert_deals_not_activated(&mut rt, current_epoch, &[deal4]);
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1519
@@ -1638,7 +1638,7 @@ fn fail_when_deal_is_activated_but_proposal_is_not_found() {
     rt.set_epoch(process_epoch(start_epoch, deal_id));
     expect_abort(ExitCode::USR_NOT_FOUND, cron_tick_raw(&mut rt));
 
-    // TODO: actor.checkState
+    check_state(&mut rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1540
@@ -1676,7 +1676,7 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
 
     expect_abort(ExitCode::USR_ILLEGAL_STATE, cron_tick_raw(&mut rt));
 
-    // TODO: actor.checkState
+    check_state(&mut rt);
 }
 
 #[cfg(test)]
@@ -1715,7 +1715,7 @@ mod test_activate_deal_failures {
         );
 
         rt.verify();
-        // TODO: actor.checkState(rt)
+        check_state(&mut rt);
     }
 
     #[test]
@@ -1734,7 +1734,7 @@ mod test_activate_deal_failures {
         );
 
         rt.verify();
-        // TODO: actor.checkState(rt)
+        check_state(&mut rt);
     }
 
     #[test]
@@ -1753,7 +1753,7 @@ mod test_activate_deal_failures {
         );
 
         rt.verify();
-        // TODO: actor.checkState(rt)
+        check_state(&mut rt);
     }
 
     #[test]
@@ -1787,7 +1787,7 @@ mod test_activate_deal_failures {
         );
 
         rt.verify();
-        // TODO: actor.checkState(rt)
+        check_state(&mut rt);
     }
 }
 
@@ -1824,7 +1824,7 @@ fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashin
     // deal proposal and state should NOT be deleted
     get_deal_proposal(&mut rt, deal_id);
     get_deal_state(&mut rt, deal_id);
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -1881,7 +1881,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     assert_deal_deleted(&mut rt, deal_id1, d1);
     let s2 = get_deal_state(&mut rt, deal_id2);
     assert_eq!(slash_epoch, s2.last_updated_epoch);
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -1965,7 +1965,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
     );
 
     rt.verify();
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -1994,7 +1994,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
     );
 
     rt.verify();
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }
 
 #[test]
@@ -2044,5 +2044,5 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
 
     let s = states.get(deal_id2).unwrap();
     assert!(s.is_none());
-    // TODO: actor.checkState(rt)
+    check_state(&mut rt);
 }

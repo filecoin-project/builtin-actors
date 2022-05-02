@@ -62,6 +62,10 @@ pub fn setup() -> MockRuntime {
     rt
 }
 
+pub fn check_state(_rt: &mut MockRuntime) {
+    // TODO
+}
+
 pub fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
     assert_eq!(
