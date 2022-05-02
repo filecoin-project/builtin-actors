@@ -1533,9 +1533,9 @@ mod publish_storage_deals_failures {
     #[test]
     fn bad_piece_cid() {
         let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
-            d.piece_cid = make_piece_cid("random cid".as_bytes());
+            d.piece_cid = Cid::default();
         };
-        assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
 
     #[test]
