@@ -1,5 +1,5 @@
 use cid::Cid;
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, Zero};
 use std::collections::HashMap;
 
 use fil_actor_market::{
