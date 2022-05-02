@@ -493,7 +493,7 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
 fn fail_when_balance_is_zero() {
     let mut rt = setup();
 
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(OWNER_ID));
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.set_received(BigInt::from(0_i32));
 
     expect_abort(
@@ -512,7 +512,7 @@ fn fails_with_a_negative_withdraw_amount() {
     let mut rt = setup();
 
     let params = WithdrawBalanceParams {
-        provider_or_client: Address::new_id(PROVIDER_ID),
+        provider_or_client: PROVIDER_ADDR,
         amount: TokenAmount::from(-1_i32),
     };
 
