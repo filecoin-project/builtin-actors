@@ -19,15 +19,14 @@ jobs:
       CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
     strategy:
       matrix:
-        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing' ]
+        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
     steps:
     - name: Checking out
       uses: actions/checkout@v2
     - name: Install Rust toolchain
       uses: ./.github/actions/rust-cargo-run
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
         command: version
     - name: Writing bundle
       env:

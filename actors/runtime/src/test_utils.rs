@@ -35,7 +35,9 @@ use multihash::MultihashDigest;
 
 use rand::prelude::*;
 
-use crate::runtime::{ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls};
+use crate::runtime::{
+    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier,
+};
 use crate::{actor_error, ActorError};
 
 lazy_static! {
@@ -65,8 +67,31 @@ lazy_static! {
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
         map
     };
+    pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
+        (Type::System, *SYSTEM_ACTOR_CODE_ID),
+        (Type::Init, *INIT_ACTOR_CODE_ID),
+        (Type::Cron, *CRON_ACTOR_CODE_ID),
+        (Type::Account, *ACCOUNT_ACTOR_CODE_ID),
+        (Type::Power, *POWER_ACTOR_CODE_ID),
+        (Type::Miner, *MINER_ACTOR_CODE_ID),
+        (Type::Market, *MARKET_ACTOR_CODE_ID),
+        (Type::PaymentChannel, *PAYCH_ACTOR_CODE_ID),
+        (Type::Multisig, *MULTISIG_ACTOR_CODE_ID),
+        (Type::Reward, *REWARD_ACTOR_CODE_ID),
+        (Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID),
+    ]
+    .into_iter()
+    .collect();
     pub static ref CALLER_TYPES_SIGNABLE: Vec<Cid> =
         vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID];
+    pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {
+        let mut map = BTreeMap::new();
+        map.insert(*ACCOUNT_ACTOR_CODE_ID, ());
+        map.insert(*PAYCH_ACTOR_CODE_ID, ());
+        map.insert(*MULTISIG_ACTOR_CODE_ID, ());
+        map.insert(*MINER_ACTOR_CODE_ID, ());
+        map
+    };
 }
 
 const IPLD_RAW: u64 = 0x55;
@@ -521,6 +546,11 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn set_received(&mut self, amount: TokenAmount) {
+        self.value_received = amount;
+    }
+
+    #[allow(dead_code)]
     pub fn set_circulating_supply(&mut self, circ_supply: TokenAmount) {
         self.circulating_supply = circ_supply;
     }
@@ -938,7 +968,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
     }
 }
 
-impl Syscalls for MockRuntime {
+impl Primitives for MockRuntime {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1009,7 +1039,9 @@ impl Syscalls for MockRuntime {
         }
         Ok(exp.cid)
     }
+}
 
+impl Verifier for MockRuntime {
     fn verify_seal(&self, seal: &SealVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
@@ -1144,7 +1176,6 @@ impl RuntimePolicy for MockRuntime {
 }
 
 pub fn blake2b_256(data: &[u8]) -> [u8; 32] {
-    use std::convert::TryInto;
     blake2b_simd::Params::new()
         .hash_length(32)
         .to_state()
