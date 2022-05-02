@@ -667,7 +667,7 @@ mod update_channel_state_extra {
         rt.expect_send(
             other_addr,
             Method::UpdateChannelState as u64,
-            RawBytes::serialize(exp_send_params).unwrap(),
+            RawBytes::serialize(exp_send_params.extra).unwrap(),
             TokenAmount::from(0u8),
             RawBytes::default(),
             exit_code,
@@ -675,7 +675,6 @@ mod update_channel_state_extra {
         (rt, sv)
     }
     #[test]
-    #[ignore = "old functionality -- test framework needs to be updated"]
     fn extra_call_succeed() {
         let (mut rt, sv) = construct_runtime(ExitCode::OK);
         call(
@@ -687,7 +686,6 @@ mod update_channel_state_extra {
     }
 
     #[test]
-    #[ignore = "old functionality -- test framework needs to be updated"]
     fn extra_call_fail() {
         let (mut rt, sv) = construct_runtime(ExitCode::USR_UNSPECIFIED);
         expect_error(
