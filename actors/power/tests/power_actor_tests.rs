@@ -846,4 +846,166 @@ mod cron_tests {
             h.enroll_cron_event(&mut rt, -2, &miner_addr, &RawBytes::from(vec![0x01, 0x03])),
         );
     }
+
+    #[test]
+    fn skips_invocation_if_miner_has_no_claim() {
+        let (mut h, mut rt) = setup();
+        rt.set_epoch(1);
+
+        let miner1 = Address::new_id(101);
+        let miner2 = Address::new_id(102);
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner1).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner2).unwrap();
+
+        h.enroll_cron_event(&mut rt, 2, &miner1, &RawBytes::default()).unwrap();
+        h.enroll_cron_event(&mut rt, 2, &miner2, &RawBytes::default()).unwrap();
+
+        // explicitly delete miner 1's claim
+        h.delete_claim(&mut rt, &miner1);
+
+        rt.set_epoch(2);
+        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+
+        // process batch verifies first
+        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
+        h.expect_query_network_info(&mut rt);
+
+        let state: State = rt.get_state();
+        let input = DeferredCronEventParams {
+            event_payload: Vec::new(),
+            reward_smoothed: h.this_epoch_reward_smoothed.clone(),
+            quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
+        };
+
+        // only expect second deferred cron event call
+        rt.expect_send(
+            miner2,
+            ON_DEFERRED_CRON_EVENT_METHOD,
+            RawBytes::serialize(input).unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // reward actor is still invoked
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            UPDATE_NETWORK_KPI,
+            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            BigInt::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.verify();
+
+        h.check_state();
+    }
+
+    #[test]
+    fn handles_failed_call() {
+        let (mut h, mut rt) = setup();
+        rt.set_epoch(1);
+
+        let miner1 = Address::new_id(101);
+        let miner2 = Address::new_id(102);
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner1).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner2).unwrap();
+
+        h.enroll_cron_event(&mut rt, 2, &miner1, &RawBytes::default()).unwrap();
+        h.enroll_cron_event(&mut rt, 2, &miner2, &RawBytes::default()).unwrap();
+
+        let raw_power = consensus_miner_min_power(
+            &Policy::default(),
+            RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        )
+        .unwrap();
+
+        let qa_power = &raw_power;
+        h.update_claimed_power(&mut rt, miner1, &raw_power, qa_power);
+        h.expect_total_power_eager(&mut rt, &raw_power, qa_power);
+        h.expect_miners_above_min_power(&mut rt, 1);
+
+        rt.set_epoch(2);
+        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+
+        // process batch verifies first
+        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
+
+        h.expect_query_network_info(&mut rt);
+
+        let state: State = rt.get_state();
+        let input = RawBytes::serialize(DeferredCronEventParams {
+            event_payload: Vec::new(),
+            reward_smoothed: h.this_epoch_reward_smoothed.clone(),
+            quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
+        })
+        .unwrap();
+
+        // first send fails
+        rt.expect_send(
+            miner1,
+            ON_DEFERRED_CRON_EVENT_METHOD,
+            RawBytes::from(input.bytes().to_vec()),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::USR_ILLEGAL_STATE,
+        );
+
+        // subsequent one still invoked
+        rt.expect_send(
+            miner2,
+            ON_DEFERRED_CRON_EVENT_METHOD,
+            input,
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        // reward actor is still invoked
+        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            UPDATE_NETWORK_KPI,
+            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            BigInt::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.verify();
+
+        // expect power stats to be decremented due to claim deletion
+        h.expect_total_power_eager(&mut rt, &BigInt::zero(), &BigInt::zero());
+        h.expect_miners_above_min_power(&mut rt, 0);
+
+        // miner's claim is removed
+        assert!(h.get_claim(&rt, &miner1).is_none());
+
+        // miner count has been reduced to 1
+        assert_eq!(h.miner_count(&rt), 1);
+
+        // next epoch, only the reward actor is invoked
+        rt.set_epoch(3);
+        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+
+        h.expect_query_network_info(&mut rt);
+
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            UPDATE_NETWORK_KPI,
+            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            BigInt::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
+
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.verify();
+        h.check_state();
+    }
 }

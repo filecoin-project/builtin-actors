@@ -205,6 +205,11 @@ impl Harness {
         keys.iter().map(|k| Address::from_bytes(k).unwrap()).collect::<Vec<_>>()
     }
 
+    pub fn miner_count(&self, rt: &MockRuntime) -> i64 {
+        let st: State = rt.get_state();
+        st.miner_count
+    }
+
     pub fn get_claim(&self, rt: &MockRuntime, miner: &Address) -> Option<Claim> {
         let st: State = rt.get_state();
         let claims =
