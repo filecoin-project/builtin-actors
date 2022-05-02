@@ -1360,10 +1360,8 @@ mod publish_storage_deals_failures {
 
     #[test]
     fn current_epoch_greater_than_start_epoch() {
-        let current_epoch = ChainEpoch::from(5);
-
-        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
-            d.start_epoch = current_epoch - 1;
+        let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.start_epoch = rt.epoch - 1;
         };
         assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
