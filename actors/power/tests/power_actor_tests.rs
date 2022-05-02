@@ -1009,3 +1009,90 @@ mod cron_tests {
         h.check_state();
     }
 }
+
+#[cfg(test)]
+mod cron_batch_proof_verifies_tests {
+    use super::*;
+    use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
+    use fvm_shared::{
+        bigint::BigInt,
+        sector::{InteractiveSealRandomness, SealRandomness, SealVerifyInfo, SectorID},
+    };
+
+    fn create_basic_seal_info(id: u64) -> SealVerifyInfo {
+        SealVerifyInfo {
+            registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1,
+            deal_ids: Vec::new(),
+            randomness: SealRandomness::default(),
+            interactive_randomness: InteractiveSealRandomness::default(),
+            proof: Vec::new(),
+            sealed_cid: make_sealed_cid(format!("CommR-{id}").as_bytes()),
+            unsealed_cid: make_piece_cid(format!("CommD-{id}").as_bytes()),
+            sector_id: SectorID { number: id, ..Default::default() },
+        }
+    }
+
+    const MINER_1: Address = Address::new_id(101);
+    const OWNER: Address = Address::new_id(102);
+
+    #[test]
+    fn success_with_one_miner_and_one_confirmed_sector() {
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
+
+        let info = create_basic_seal_info(0);
+        h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info.clone()).unwrap();
+
+        let confirmed_sectors =
+            vec![ConfirmedSectorSend { miner: MINER_1, sector_nums: vec![info.sector_id.number] }];
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, vec![info]);
+
+        rt.verify();
+        h.check_state();
+    }
+
+    #[test]
+    fn success_with_one_miner_and_multiple_confirmed_sectors() {
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
+
+        let infos: Vec<_> = (1..=3).map(create_basic_seal_info).collect();
+        infos.iter().for_each(|info| {
+            h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info.clone()).unwrap()
+        });
+
+        let sector_id_nums = infos.iter().map(|info| info.sector_id.number).collect();
+        let confirmed_sectors =
+            vec![ConfirmedSectorSend { miner: MINER_1, sector_nums: sector_id_nums }];
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
+
+        rt.verify();
+        h.check_state();
+    }
+
+    #[test]
+    fn duplicate_sector_numbers_are_ignored_for_a_miner() {
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
+
+        // duplicates will be sent to the batch verify call
+        let infos =
+            vec![create_basic_seal_info(1), create_basic_seal_info(1), create_basic_seal_info(2)];
+
+        infos.iter().for_each(|info| {
+            h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info.clone()).unwrap()
+        });
+
+        // however, duplicates will not be sent to the miner as confirmed
+        let sector_id_nums = vec![infos[0].sector_id.number, infos[2].sector_id.number];
+        let confirmed_sectors =
+            vec![ConfirmedSectorSend { miner: MINER_1, sector_nums: sector_id_nums }];
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
+
+        rt.verify();
+        h.check_state();
+    }
+}
