@@ -6,6 +6,7 @@ use std::convert::TryInto;
 
 use fil_actor_market::balance_table::{BalanceTable, BALANCE_TABLE_BITWIDTH};
 use fil_actor_market::ext::miner::GetControlAddressesReturnParams;
+use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
     ext, gen_rand_next_epoch, ActivateDealsParams, Actor as MarketActor, ClientDealProposal,
     DealArray, DealMetaArray, DealProposal, DealState, Label, Method,
@@ -38,8 +39,9 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND, TOTAL_FILECOIN};
 
+use anyhow::anyhow;
 use cid::Cid;
 use num_traits::FromPrimitive;
 
@@ -1767,6 +1769,289 @@ fn active_deals_multiple_times_with_different_providers() {
     activate_deals(&mut rt, sector_expiry, provider_addr, current_epoch, &[deal3]);
     assert_deals_not_activated(&mut rt, current_epoch, &[deal4]);
     // TODO: actor.checkState(rt)
+}
+
+fn assert_deal_failure<F>(
+    add_funds: bool,
+    post_setup: F,
+    exit_code: ExitCode,
+    sig_result: Result<(), anyhow::Error>,
+) where
+    F: FnOnce(&mut MockRuntime, &mut DealProposal),
+{
+    let owner_addr = Address::new_id(OWNER_ID);
+    let provider_addr = Address::new_id(PROVIDER_ID);
+    let worker_addr = Address::new_id(WORKER_ID);
+    let client_addr = Address::new_id(CLIENT_ID);
+
+    let current_epoch = ChainEpoch::from(5);
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    let mut rt = setup();
+    let mut deal_proposal = if add_funds {
+        generate_deal_and_add_funds(
+            &mut rt,
+            client_addr,
+            provider_addr,
+            owner_addr,
+            worker_addr,
+            start_epoch,
+            end_epoch,
+        )
+    } else {
+        generate_deal_proposal(client_addr, provider_addr, start_epoch, end_epoch)
+    };
+    deal_proposal.verified_deal = false;
+    rt.set_epoch(current_epoch);
+    post_setup(&mut rt, &mut deal_proposal);
+
+    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    expect_provider_control_address(&mut rt, provider_addr, owner_addr, worker_addr);
+    expect_query_network_info(&mut rt);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, worker_addr);
+
+    let buf = RawBytes::serialize(deal_proposal.clone()).expect("failed to marshal deal proposal");
+    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig: sig.clone(),
+        signer: deal_proposal.client,
+        plaintext: buf.to_vec(),
+        result: sig_result,
+    });
+
+    let params: PublishStorageDealsParams = PublishStorageDealsParams {
+        deals: vec![ClientDealProposal { proposal: deal_proposal, client_signature: sig }],
+    };
+
+    assert_eq!(
+        exit_code,
+        rt.call::<MarketActor>(
+            Method::PublishStorageDeals as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap_err()
+        .exit_code()
+    );
+    rt.verify();
+    // TODO: actor.checkState(rt)
+}
+
+#[cfg(test)]
+mod publish_storage_deals_failures {
+    use super::*;
+
+    #[test]
+    fn deal_end_after_deal_start() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.start_epoch = 10;
+            d.end_epoch = 9;
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn current_epoch_greater_than_start_epoch() {
+        let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.start_epoch = rt.epoch - 1;
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn deal_duration_greater_than_max_deal_duration() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.start_epoch = ChainEpoch::from(10);
+            d.end_epoch = d.start_epoch + (540 * EPOCHS_IN_DAY) + 1
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn negative_price_per_epoch() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.storage_price_per_epoch = TokenAmount::from(-1);
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn price_per_epoch_greater_than_total_filecoin() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.storage_price_per_epoch = TOTAL_FILECOIN.clone() + 1;
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn negative_provider_collateral() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.provider_collateral = TokenAmount::from(-1);
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn provider_collateral_greater_than_max_collateral() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.provider_collateral = TOTAL_FILECOIN.clone() + 1;
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn provider_collateral_less_than_bound() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            let power = StoragePower::from_i128(1 << 50).unwrap();
+            let (provider_min, _) = deal_provider_collateral_bounds(
+                &Policy::default(),
+                PaddedPieceSize(2048),
+                &BigInt::from(0u8),
+                &BigInt::from(0u8),
+                &power,
+            );
+            d.provider_collateral = provider_min - 1;
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn negative_client_collateral() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.client_collateral = TokenAmount::from(-1);
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn client_collateral_greater_than_max_collateral() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.client_collateral = TOTAL_FILECOIN.clone() + 1;
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn client_does_not_have_enough_balance_for_collateral() {
+        let owner_addr = Address::new_id(OWNER_ID);
+        let provider_addr = Address::new_id(PROVIDER_ID);
+        let worker_addr = Address::new_id(WORKER_ID);
+        let client_addr = Address::new_id(CLIENT_ID);
+
+        let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
+            add_participant_funds(rt, client_addr, d.client_balance_requirement() - 1);
+            add_provider_funds(
+                rt,
+                d.provider_collateral.clone(),
+                provider_addr,
+                owner_addr,
+                worker_addr,
+            );
+        };
+        assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn provider_does_not_have_enough_balance_for_collateral() {
+        let owner_addr = Address::new_id(OWNER_ID);
+        let provider_addr = Address::new_id(PROVIDER_ID);
+        let worker_addr = Address::new_id(WORKER_ID);
+        let client_addr = Address::new_id(CLIENT_ID);
+
+        let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
+            add_participant_funds(rt, client_addr, d.client_balance_requirement());
+            add_provider_funds(
+                rt,
+                d.provider_collateral.clone() - 1,
+                provider_addr,
+                owner_addr,
+                worker_addr,
+            );
+        };
+        assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn client_address_does_not_exist() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.client = Address::new_id(1);
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn unable_to_resolve_client_address() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.client = new_bls_addr(1);
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn signature_is_invalid() {
+        let f = |_rt: &mut MockRuntime, _d: &mut DealProposal| {};
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Err(anyhow!("error")));
+    }
+
+    #[test]
+    fn no_entry_for_client_in_locked_balance_table() {
+        let owner_addr = Address::new_id(OWNER_ID);
+        let provider_addr = Address::new_id(PROVIDER_ID);
+        let worker_addr = Address::new_id(WORKER_ID);
+
+        let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
+            add_provider_funds(
+                rt,
+                d.provider_collateral.clone(),
+                provider_addr,
+                owner_addr,
+                worker_addr,
+            );
+        };
+        assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn no_entry_for_provider_in_locked_balance_table() {
+        let client_addr = Address::new_id(CLIENT_ID);
+
+        let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
+            add_participant_funds(rt, client_addr, d.client_balance_requirement());
+        };
+        assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn bad_piece_cid() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.piece_cid = Cid::default();
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn zero_piece_size() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.piece_size = PaddedPieceSize(0u64);
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn piece_size_less_than_128_bytes() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.piece_size = PaddedPieceSize(64u64);
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
+
+    #[test]
+    fn piece_size_is_not_a_power_of_2() {
+        let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+            d.piece_size = PaddedPieceSize(254u64);
+        };
+        assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    }
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1519

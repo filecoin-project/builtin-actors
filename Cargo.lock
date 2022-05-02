@@ -788,6 +788,7 @@ dependencies = [
  "multihash",
  "num-derive",
  "num-traits",
+ "rand",
  "serde",
  "thiserror",
  "unsigned-varint",
