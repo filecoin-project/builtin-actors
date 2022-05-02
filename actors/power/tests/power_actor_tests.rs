@@ -762,3 +762,67 @@ mod cron_tests {
         h.check_state();
     }
 }
+
+#[cfg(test)]
+mod submit_porep_for_bulk_verify_tests {
+    use super::*;
+
+    use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
+    use fil_actor_power::{ERR_TOO_MANY_PROVE_COMMITS, MAX_MINER_PROVE_COMMITS_PER_EPOCH};
+    use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
+    use fvm_shared::sector::{InteractiveSealRandomness, SealRandomness, SealVerifyInfo, SectorID};
+
+    const MINER: Address = Address::new_id(101);
+    const OWNER: Address = Address::new_id(101);
+
+    #[test]
+    #[ignore = "todo"]
+    fn registers_porep_and_charges_gas() {
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER).unwrap();
+    }
+
+    #[test]
+    fn aborts_when_too_many_poreps() {
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER).unwrap();
+
+        fn create_basic_seal_info(id: u64) -> SealVerifyInfo {
+            SealVerifyInfo {
+                registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1,
+                deal_ids: Vec::new(),
+                randomness: SealRandomness::default(),
+                interactive_randomness: InteractiveSealRandomness::default(),
+                proof: Vec::new(),
+                sealed_cid: make_sealed_cid(format!("CommR-{id}").as_bytes()),
+                unsealed_cid: make_piece_cid(format!("CommD-{id}").as_bytes()),
+                sector_id: SectorID { number: id, ..Default::default() },
+            }
+        }
+
+        for i in 0..MAX_MINER_PROVE_COMMITS_PER_EPOCH {
+            h.submit_porep_for_bulk_verify(&mut rt, MINER, create_basic_seal_info(i)).unwrap();
+        }
+
+        expect_abort(
+            ERR_TOO_MANY_PROVE_COMMITS,
+            h.submit_porep_for_bulk_verify(
+                &mut rt,
+                MINER,
+                create_basic_seal_info(MAX_MINER_PROVE_COMMITS_PER_EPOCH),
+            ),
+        );
+
+        rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL * MAX_MINER_PROVE_COMMITS_PER_EPOCH as i64);
+    }
+
+    #[test]
+    #[ignore = "todo"]
+    fn aborts_when_miner_has_no_claim() {
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER).unwrap();
+    }
+}
