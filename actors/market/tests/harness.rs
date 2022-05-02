@@ -513,7 +513,7 @@ pub fn expect_query_network_info(rt: &mut MockRuntime) {
         *STORAGE_POWER_ACTOR_ADDR,
         PowerMethod::CurrentTotalPower as u64,
         RawBytes::default(),
-        TokenAmount::from(0u8),
+        TokenAmount::zero(),
         RawBytes::serialize(current_power).unwrap(),
         ExitCode::OK,
     );
