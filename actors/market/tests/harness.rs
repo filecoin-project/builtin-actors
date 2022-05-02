@@ -83,7 +83,7 @@ pub fn setup() -> MockRuntime {
     rt
 }
 
-pub fn check_state(_rt: &mut MockRuntime) {
+pub fn check_state(_rt: &MockRuntime) {
     // TODO
 }
 
