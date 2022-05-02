@@ -487,15 +487,15 @@ pub fn cron_tick_raw(rt: &mut MockRuntime) -> Result<RawBytes, ActorError> {
 pub fn expect_query_network_info(rt: &mut MockRuntime) {
     //networkQAPower
     //networkBaselinePower
-    let rwd = TokenAmount::from(10u8) * TokenAmount::from(10_i128.pow(18));
+    let reward = TokenAmount::from(10u8) * TokenAmount::from(10_i128.pow(18));
     let power = StoragePower::from_i128(1 << 50).unwrap();
-    let epoch_reward_smooth = FilterEstimate::new(rwd.clone(), BigInt::from(0u8));
+    let epoch_reward_smooth = FilterEstimate::new(reward.clone(), BigInt::from(0u8));
 
     let current_power = CurrentTotalPowerReturn {
         raw_byte_power: StoragePower::default(),
         quality_adj_power: power.clone(),
         pledge_collateral: TokenAmount::default(),
-        quality_adj_power_smoothed: FilterEstimate::new(rwd, TokenAmount::default()),
+        quality_adj_power_smoothed: FilterEstimate::new(reward, TokenAmount::default()),
     };
     let current_reward = ThisEpochRewardReturn {
         this_epoch_baseline_power: power,
