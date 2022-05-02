@@ -32,11 +32,11 @@ use fvm_shared::{
 };
 
 // Define common set of actor ids that will be used across all tests.
-pub const OWNER_ID: u64 = 101;
-pub const PROVIDER_ID: u64 = 102;
-pub const WORKER_ID: u64 = 103;
-pub const CLIENT_ID: u64 = 104;
-pub const CONTROL_ID: u64 = 200;
+const OWNER_ID: u64 = 101;
+const PROVIDER_ID: u64 = 102;
+const WORKER_ID: u64 = 103;
+const CLIENT_ID: u64 = 104;
+const CONTROL_ID: u64 = 200;
 
 pub const OWNER_ADDR: Address = Address::new_id(OWNER_ID);
 pub const PROVIDER_ADDR: Address = Address::new_id(PROVIDER_ID);
