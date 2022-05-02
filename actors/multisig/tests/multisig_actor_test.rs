@@ -1,10 +1,14 @@
 use fil_actor_multisig::{
-    Actor as MultisigActor, ConstructorParams, Method, State, Transaction, TxnID, SIGNERS_MAX,
+    Actor as MultisigActor, ConstructorParams, Method, ProposeReturn, State, Transaction, TxnID,
+    SIGNERS_MAX,
 };
+use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
+use fvm_shared::bigint::bigint_ser;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -573,6 +577,155 @@ fn test_simple_propose() {
     };
     let expect_txns = vec![(TxnID(0), txn0)];
     h.assert_transactions(&rt, expect_txns);
+}
+
+#[test]
+fn test_propose_with_threshold_met() {
+    let msig = Address::new_id(1000);
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+
+    let num_approvals = 1;
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let fake_params = RawBytes::from([99u8; 3].to_vec());
+    let send_value = TokenAmount::from(10u8);
+
+    let no_unlock_duration = 0;
+    let start_epoch = 0;
+    let signers = vec![anne, bob];
+    rt.set_balance(TokenAmount::from(10u8));
+    rt.set_received(TokenAmount::zero());
+    h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
+
+    rt.expect_send(
+        chuck,
+        METHOD_SEND,
+        fake_params.clone(),
+        send_value.clone(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+    h.propose_ok(&mut rt, chuck, send_value, METHOD_SEND, fake_params);
+    h.assert_transactions(&rt, vec![]);
+}
+
+#[test]
+fn test_propose_with_threshold_and_non_empty_return_value() {
+    let msig = Address::new_id(1000);
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+
+    let num_approvals = 1;
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let fake_params = RawBytes::from([99u8; 3].to_vec());
+    let send_value = TokenAmount::from(10u8);
+    let no_unlock_duration = 0;
+    let start_epoch = 0;
+    let signers = vec![anne, bob];
+
+    rt.set_balance(TokenAmount::from(20u8));
+    rt.set_received(TokenAmount::zero());
+    h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    struct FakeReturn {
+        addr1: Address,
+        addr2: Address,
+        #[serde(with = "bigint_ser")]
+        tokens: TokenAmount,
+    }
+
+    let propose_ret = FakeReturn {
+        addr1: Address::new_id(1),
+        addr2: Address::new_id(2),
+        tokens: TokenAmount::from(77u8),
+    };
+    let inner_ret_bytes = serialize(&propose_ret, "fake proposal return value").unwrap();
+    let fake_method = 42u64;
+    rt.expect_send(
+        chuck,
+        fake_method,
+        fake_params.clone(),
+        send_value.clone(),
+        inner_ret_bytes.clone(),
+        ExitCode::OK,
+    );
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+    let ret = h
+        .propose(&mut rt, chuck, send_value, fake_method, fake_params)
+        .unwrap()
+        .deserialize::<ProposeReturn>()
+        .unwrap();
+    assert!(ret.applied);
+    assert_eq!(TxnID(0), ret.txn_id);
+    assert_eq!(ExitCode::OK, ret.code);
+    assert_eq!(inner_ret_bytes, ret.ret);
+}
+
+#[test]
+fn test_fail_propose_with_threshold_met_and_insufficient_balance() {
+    let msig = Address::new_id(1000);
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+
+    let num_approvals = 1;
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let fake_params = RawBytes::from([99u8; 3].to_vec());
+    let send_value = TokenAmount::from(10u8);
+    let no_unlock_duration = 0;
+    let start_epoch = 0;
+    let signers = vec![anne, bob];
+
+    rt.set_balance(TokenAmount::zero());
+    rt.set_received(TokenAmount::zero());
+    h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+    expect_abort(
+        ExitCode::USR_INSUFFICIENT_FUNDS,
+        h.propose(&mut rt, chuck, send_value, METHOD_SEND, fake_params),
+    );
+    rt.reset();
+    h.assert_transactions(&mut rt, vec![]);
+}
+
+#[test]
+fn test_fail_propose_from_non_signer() {
+    let msig = Address::new_id(1000);
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+
+    let num_approvals = 1;
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let fake_params = RawBytes::from([99u8; 3].to_vec());
+    let send_value = TokenAmount::from(10u8);
+    let no_unlock_duration = 0;
+    let start_epoch = 0;
+    let signers = vec![anne, bob];
+
+    rt.set_balance(TokenAmount::zero());
+    rt.set_received(TokenAmount::zero());
+    h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
+
+    // non signer
+    let richard = Address::new_id(105);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, richard);
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        h.propose(&mut rt, chuck, send_value, METHOD_SEND, fake_params),
+    );
+
+    rt.reset();
+    h.assert_transactions(&mut rt, vec![]);
 }
 
 // AddSigner
