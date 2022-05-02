@@ -768,8 +768,13 @@ mod submit_porep_for_bulk_verify_tests {
     use super::*;
 
     use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
-    use fil_actor_power::{ERR_TOO_MANY_PROVE_COMMITS, MAX_MINER_PROVE_COMMITS_PER_EPOCH};
+    use fil_actor_power::{
+        ERR_TOO_MANY_PROVE_COMMITS, MAX_MINER_PROVE_COMMITS_PER_EPOCH,
+        PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
+    };
+    use fil_actors_runtime::shared::HAMT_BIT_WIDTH;
     use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
+    use fil_actors_runtime::Multimap;
     use fvm_shared::sector::{InteractiveSealRandomness, SealRandomness, SealVerifyInfo, SectorID};
 
     const MINER: Address = Address::new_id(101);
@@ -781,6 +786,38 @@ mod submit_porep_for_bulk_verify_tests {
         let (mut h, mut rt) = setup();
 
         h.create_miner_basic(&mut rt, OWNER, OWNER, MINER).unwrap();
+
+        let comm_r = make_sealed_cid("commR".as_bytes());
+        let comm_d = make_piece_cid("commD".as_bytes());
+
+        let info = SealVerifyInfo {
+            registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1,
+            deal_ids: Vec::new(),
+            randomness: SealRandomness::default(),
+            interactive_randomness: InteractiveSealRandomness::default(),
+            proof: Vec::new(),
+            sealed_cid: comm_r,
+            unsealed_cid: comm_d,
+            sector_id: SectorID { number: 0, ..Default::default() },
+        };
+
+        h.submit_porep_for_bulk_verify(&mut rt, MINER, info.clone()).unwrap();
+        rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL);
+        let st: State = rt.get_state();
+        let store = &rt.store;
+        assert!(st.proof_validation_batch.is_some());
+        let mmap = Multimap::from_root(
+            store,
+            st.proof_validation_batch.as_ref().unwrap(),
+            HAMT_BIT_WIDTH,
+            PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
+        )
+        .unwrap();
+        let arr = mmap.get::<SealVerifyInfo>(&MINER.to_bytes()).unwrap();
+        let _found = arr.unwrap();
+        assert_eq!(comm_r, info.sealed_cid);
+        h.check_state();
+        todo!();
     }
 
     #[test]
