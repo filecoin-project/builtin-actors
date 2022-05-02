@@ -31,6 +31,7 @@ use fvm_shared::{
     address::Address, econ::TokenAmount, error::ExitCode, METHOD_CONSTRUCTOR, METHOD_SEND,
 };
 
+// Define common set of actor ids that will be used across all tests.
 pub const OWNER_ID: u64 = 101;
 pub const PROVIDER_ID: u64 = 102;
 pub const WORKER_ID: u64 = 103;
@@ -50,6 +51,7 @@ pub struct MinerAddresses {
     pub control: Vec<Address>,
 }
 
+// Use the predefined actor addresses by default
 impl Default for MinerAddresses {
     fn default() -> Self {
         MinerAddresses {
@@ -63,10 +65,10 @@ impl Default for MinerAddresses {
 
 pub fn setup() -> MockRuntime {
     let mut actor_code_cids = HashMap::default();
-    actor_code_cids.insert(Address::new_id(OWNER_ID), *ACCOUNT_ACTOR_CODE_ID);
-    actor_code_cids.insert(Address::new_id(WORKER_ID), *ACCOUNT_ACTOR_CODE_ID);
-    actor_code_cids.insert(Address::new_id(PROVIDER_ID), *MINER_ACTOR_CODE_ID);
-    actor_code_cids.insert(Address::new_id(CLIENT_ID), *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(OWNER_ADDR, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(WORKER_ADDR, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(PROVIDER_ADDR, *MINER_ACTOR_CODE_ID);
+    actor_code_cids.insert(CLIENT_ADDR, *ACCOUNT_ACTOR_CODE_ID);
 
     let mut rt = MockRuntime {
         receiver: *STORAGE_MARKET_ACTOR_ADDR,
