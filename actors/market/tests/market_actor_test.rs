@@ -1706,7 +1706,7 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
 }
 
 #[cfg(test)]
-mod test_on_miner_sectors_terminate {
+mod test_activate_deal_failures {
     use super::*;
 
     #[test]
