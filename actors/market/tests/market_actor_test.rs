@@ -267,10 +267,6 @@ fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient()
 
 #[test]
 fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amount() {
-    let mut rt = setup();
-    let publish_epoch = ChainEpoch::from(5);
-    rt.set_epoch(publish_epoch);
-
     let client = Address::new_id(CLIENT_ID);
     let worker = Address::new_id(WORKER_ID);
     let provider = Address::new_id(PROVIDER_ID);
@@ -278,7 +274,12 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
     let control = Address::new_id(CONTROL_ID);
     let start_epoch = ChainEpoch::from(10);
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let publish_epoch = ChainEpoch::from(5);
 
+    let mut rt = setup();
+
+    // publish the deal so that client AND provider collateral is locked
+    rt.set_epoch(publish_epoch);
     let deal_id = generate_and_publish_deal(
         &mut rt,
         client,
@@ -289,16 +290,15 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
         start_epoch,
         end_epoch,
     );
-
     let deal = get_deal_proposal(&mut rt, deal_id);
-
     assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &provider).unwrap());
     assert_eq!(deal.client_balance_requirement(), get_escrow_balance(&rt, &client).unwrap());
 
     let withdraw_amount = TokenAmount::from(1u8);
     let withdrawable_amount = TokenAmount::from(0u8);
-
+    // client cannot withdraw any funds since all it's balance is locked
     withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdrawable_amount.clone(), client);
+    // provider cannot withdraw any funds since all it's balance is locked
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount,
@@ -308,6 +308,7 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
         worker,
     );
 
+    // add some more funds to the provider & ensure withdrawal is limited by the locked funds
     let withdraw_amount = TokenAmount::from(30u8);
     let withdrawable_amount = TokenAmount::from(25u8);
 
@@ -321,6 +322,7 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
         worker,
     );
 
+    // add some more funds to the client & ensure withdrawal is limited by the locked funds
     add_participant_funds(&mut rt, client, withdrawable_amount.clone());
     withdraw_client_balance(&mut rt, withdraw_amount, withdrawable_amount, client);
     // TODO: actor.checkState(rt)
