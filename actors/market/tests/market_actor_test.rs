@@ -261,6 +261,8 @@ fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient()
 
     // verify there was no withdrawal
     assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &client).unwrap());
+
+    // TODO: actor.checkState(rt)
 }
 
 #[test]
