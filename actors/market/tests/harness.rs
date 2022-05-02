@@ -99,9 +99,10 @@ pub fn construct_and_verify(rt: &mut MockRuntime) {
 pub fn get_escrow_balance(rt: &MockRuntime, addr: &Address) -> Result<TokenAmount, ActorError> {
     let st: State = rt.get_state();
 
-    let et = BalanceTable::from_root(rt.store(), &st.escrow_table).unwrap();
+    let et = BalanceTable::from_root(rt.store(), &st.escrow_table)
+        .expect("failed to construct balance table from blockstore");
 
-    Ok(et.get(addr).unwrap())
+    Ok(et.get(addr).expect("address does not exist in escrow balance table"))
 }
 
 pub fn expect_get_control_addresses(
