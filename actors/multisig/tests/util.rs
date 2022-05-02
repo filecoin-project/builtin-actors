@@ -1,6 +1,7 @@
 use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,
-    ProposeParams, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID, TxnIDParams,
+    ProposeParams, ProposeReturn, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID,
+    TxnIDParams,
 };
 use fil_actor_multisig::{ChangeNumApprovalsThresholdParams, LockBalanceParams};
 use fil_actors_runtime::test_utils::*;
@@ -94,12 +95,8 @@ impl ActorHarness {
         method: MethodNum,
         params: RawBytes,
     ) -> [u8; 32] {
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
-        let propose_params =
-            ProposeParams { to, value: value.clone(), method, params: params.clone() };
-        rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap())
-            .unwrap();
-        rt.verify();
+        let ret = self.propose(rt, to, value.clone(), method, params.clone());
+        ret.unwrap().deserialize::<ProposeReturn>().unwrap();
         // compute proposal hash
         let txn = Transaction { to, value, method, params, approved: vec![rt.caller] };
         compute_proposal_hash(&txn, rt).unwrap()
@@ -117,6 +114,23 @@ impl ActorHarness {
         let approve_ret = ret.deserialize::<ApproveReturn>().unwrap();
         assert_eq!(ExitCode::OK, approve_ret.code);
         approve_ret.ret
+    }
+
+    pub fn propose(
+        &self,
+        rt: &mut MockRuntime,
+        to: Address,
+        value: TokenAmount,
+        method: MethodNum,
+        params: RawBytes,
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        let propose_params =
+            ProposeParams { to, value: value.clone(), method, params: params.clone() };
+        let ret =
+            rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap());
+        rt.verify();
+        ret
     }
 
     pub fn approve(
@@ -187,7 +201,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         mut expect_txns: Vec<(TxnID, Transaction)>,
     ) {
-        let st = rt.get_state::<State>().unwrap();
+        let st: State = rt.get_state();
         let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &rt.store).unwrap();
         let mut actual_txns = Vec::new();
         ptx.for_each(|k, txn: &Transaction| {

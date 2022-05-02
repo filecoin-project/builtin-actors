@@ -4,7 +4,7 @@ description = "System actors for the Filecoin protocol"
 version = "8.0.0-alpha.1"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
-edition = "2018"
+edition = "2021"
 repository = "https://github.com/filecoin-project/builtin-actors"
 
 [dependencies]
@@ -31,6 +31,7 @@ fvm_sdk = { version = "0.6.0", optional = true }
 blake2b_simd = "1.0"
 fvm_ipld_blockstore = { version = "0.1" }
 fvm_ipld_encoding = "0.1.0"
+multihash = { version = "0.16.1", default-features = false }
 
 [dev-dependencies]
 derive_builder = "0.10.2"
@@ -62,5 +63,11 @@ short-precommit = []
 min-power-2k = []
 # Lower the minimum power requirement to 2g
 min-power-2g = []
+
+# no collateral for deals (for testing)
+no-provider-deal-collateral = []
+
+# fake proofs (for testing)
+fake-proofs = []
 
 test_utils = ["hex"]
