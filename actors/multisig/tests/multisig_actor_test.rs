@@ -1209,7 +1209,7 @@ mod approval_tests {
     }
 
     #[test]
-    fn test_fail_approval_if_current_balanfce_less_than_tx_value() {
+    fn test_fail_approval_if_current_balance_less_than_tx_value() {
         let msig = Address::new_id(100);
         let anne = Address::new_id(101);
         let bob = Address::new_id(102);
@@ -1230,6 +1230,19 @@ mod approval_tests {
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
         expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&mut rt, TxnID(0), proposal_hash));
+        h.assert_transactions(
+            &rt,
+            vec![(
+                TxnID(0),
+                Transaction {
+                    to: chuck,
+                    value: send_value.clone(),
+                    method: fake_method,
+                    params: fake_params.clone(),
+                    approved: vec![anne],
+                },
+            )],
+        );
     }
     #[test]
     fn fail_approval_if_not_enough_unlocked_balance_available() {
@@ -1358,7 +1371,7 @@ mod approval_tests {
         let proposal_hash =
             h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
-        // anne approves twice and fails
+        // anne tries to approve a tx she proposed and fails
         expect_abort(ExitCode::USR_FORBIDDEN, h.approve(&mut rt, TxnID(0), proposal_hash));
         rt.reset();
         h.assert_transactions(
@@ -1394,7 +1407,7 @@ mod approval_tests {
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
         let params = TxnIDParams { id: dne_tx_id, proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
-            .expect_err("should fail on approve of non existant tx id");
+            .expect_err("should fail on approve of non existent tx id");
         rt.verify();
     }
 
@@ -1462,7 +1475,7 @@ mod approval_tests {
         let new_threshold = 1;
         h.change_num_approvals_threshold(&mut rt, new_threshold).unwrap();
 
-        // duplicate approval executes tx because the msig is across the threshold
+        // self approval executes tx because the msig is across the threshold
         rt.expect_send(
             chuck,
             fake_method,
@@ -1551,8 +1564,8 @@ mod approval_tests {
         expect_abort(ExitCode::USR_FORBIDDEN, h.approve(&mut rt, TxnID(0), proposal_hash));
         rt.reset();
 
-        // bob attempts to approve and it goes through immediately
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
+        // anne can self approve with lower threshold
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         rt.expect_send(
             chuck,
             fake_method,
