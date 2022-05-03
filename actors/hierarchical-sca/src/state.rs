@@ -365,7 +365,8 @@ impl State {
         new_meta.nonce = self.bottomup_nonce;
         crossmsgs
             .set(new_meta.nonce, new_meta)
-            .map_err(|e| anyhow!("failed to load crossmsg meta array: {}", e))?;
+            .map_err(|e| anyhow!("failed to set crossmsg meta array: {}", e))?;
+        self.bottomup_msg_meta = crossmsgs.flush()?;
 
         self.bottomup_nonce += 1;
         Ok(())
@@ -423,11 +424,9 @@ fn put_msgmeta<BS: Blockstore>(
     Ok(m_cid)
 }
 
-fn get_msgmeta<'m, BS: Blockstore>(
-    registry: &'m Map<BS, CrossMsgs>,
-    cid: &Cid,
-) -> anyhow::Result<Option<&'m CrossMsgs>> {
-    registry
-        .get(&cid.to_bytes())
-        .map_err(|e| e.downcast_wrap(format!("failed to get crossmsgs for cid {}", cid)))
+pub fn get_bottomup_msg<'m, BS: Blockstore>(
+    crossmsgs: &'m CrossMsgMetaArray<BS>,
+    nonce: u64,
+) -> anyhow::Result<Option<&'m CrossMsgMeta>> {
+    crossmsgs.get(nonce).map_err(|e| anyhow!("failed to load crossmsg meta array: {}", e))
 }

@@ -26,7 +26,7 @@ pub use self::types::*;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
-mod checkpoint;
+pub mod checkpoint;
 #[doc(hidden)]
 pub mod ext;
 mod state;
@@ -75,7 +75,7 @@ impl Actor {
         let subnet_addr = rt.message().caller();
         let mut shid = subnet::SubnetID::default();
         rt.transaction(|st: &mut State, rt| {
-            shid = subnet::new_id(&st.network_name, subnet_addr);
+            shid = SubnetID::new(&st.network_name, subnet_addr);
             let sub = st.get_subnet(rt.store(), &shid).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnet")
             })?;
@@ -118,7 +118,7 @@ impl Actor {
         }
 
         rt.transaction(|st: &mut State, rt| {
-            let shid = subnet::new_id(&st.network_name, subnet_addr);
+            let shid = SubnetID::new(&st.network_name, subnet_addr);
             let sub = st.get_subnet(rt.store(), &shid).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnet")
             })?;
@@ -161,7 +161,7 @@ impl Actor {
         let send_val = params.value.clone();
 
         rt.transaction(|st: &mut State, rt| {
-            let shid = subnet::new_id(&st.network_name, subnet_addr);
+            let shid = SubnetID::new(&st.network_name, subnet_addr);
             let sub = st.get_subnet(rt.store(), &shid).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnet")
             })?;
@@ -215,7 +215,7 @@ impl Actor {
         let mut send_val = TokenAmount::zero();
 
         rt.transaction(|st: &mut State, rt| {
-            let shid = subnet::new_id(&st.network_name, subnet_addr);
+            let shid = SubnetID::new(&st.network_name, subnet_addr);
             let sub = st.get_subnet(rt.store(), &shid).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnet")
             })?;
@@ -274,7 +274,7 @@ impl Actor {
 
         let mut burn_value = TokenAmount::zero();
         rt.transaction(|st: &mut State, rt| {
-            let shid = subnet::new_id(&st.network_name, subnet_addr);
+            let shid = SubnetID::new(&st.network_name, subnet_addr);
             let sub = st.get_subnet(rt.store(), &shid).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnet")
             })?;
@@ -299,7 +299,7 @@ impl Actor {
 
                     // if this is not the first checkpoint we need to perform some
                     // additional verifications.
-                    if sub.prev_checkpoint.prev_check() != Cid::default() {
+                    if sub.prev_checkpoint != Checkpoint::default() {
                         if sub.prev_checkpoint.epoch() > commit.epoch() {
                             return Err(actor_error!(
                                 illegal_argument,
@@ -333,9 +333,9 @@ impl Actor {
                         )
                     })?;
                     // append new checkpoint to the list of childs
-                    ch.add_child_check(commit).map_err(|e| {
+                    ch.add_child_check(&commit).map_err(|e| {
                         e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
+                            ExitCode::USR_ILLEGAL_ARGUMENT,
                             "error adding child checkpoint",
                         )
                     })?;
@@ -345,7 +345,7 @@ impl Actor {
                     })?;
 
                     // update prev_check for child
-                    sub.prev_checkpoint = ch;
+                    sub.prev_checkpoint = commit;
                     // flush subnet
                     st.flush_subnet(rt.store(), &sub).map_err(|e| {
                         e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error flushing subnet")

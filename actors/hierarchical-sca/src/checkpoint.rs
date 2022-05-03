@@ -51,26 +51,13 @@ impl Checkpoint {
         &self.data.cross_msgs
     }
 
-    fn crossmsg_meta(&self, from: &SubnetID, to: &SubnetID) -> Option<&CrossMsgMeta> {
+    pub fn crossmsg_meta(&self, from: &SubnetID, to: &SubnetID) -> Option<&CrossMsgMeta> {
         self.data.cross_msgs.iter().find(|m| from == &m.from && to == &m.to)
     }
 
     pub fn crossmsg_meta_index(&self, from: &SubnetID, to: &SubnetID) -> Option<usize> {
         self.data.cross_msgs.iter().position(|m| from == &m.from && to == &m.to)
     }
-
-    // pub fn set_msgmeta_cid(
-    //     &mut self,
-    //     from: &SubnetID,
-    //     to: &SubnetID,
-    //     cid: Cid,
-    // ) -> anyhow::Result<()> {
-    //     match self.data.cross_msgs.iter_mut().find(|m| from == &m.from && to == &m.to) {
-    //         Some(mt) => mt.msgs_cid = cid,
-    //         None => return Err(anyhow!("no msgmeta in checkpoint")),
-    //     }
-    //     Ok(())
-    // }
 
     pub fn append_msgmeta(&mut self, meta: CrossMsgMeta) -> anyhow::Result<()> {
         match self.crossmsg_meta(&meta.from, &meta.to) {
@@ -84,7 +71,7 @@ impl Checkpoint {
         Ok(())
     }
 
-    pub fn add_child_check(&mut self, commit: Checkpoint) -> anyhow::Result<()> {
+    pub fn add_child_check(&mut self, commit: &Checkpoint) -> anyhow::Result<()> {
         let cid = commit.cid();
         match self.data.children.iter_mut().find(|m| commit.source() == &m.source) {
             // if there is already a structure for that child
@@ -103,7 +90,7 @@ impl Checkpoint {
                 // if none, new structure for source
                 self.data
                     .children
-                    .push(ChildCheck { source: commit.data.source, checks: vec![cid] });
+                    .push(ChildCheck { source: commit.data.source.clone(), checks: vec![cid] });
             }
         };
         Ok(())
@@ -145,8 +132,8 @@ impl CrossMsgMeta {
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ChildCheck {
-    source: SubnetID,
-    checks: Vec<Cid>,
+    pub source: SubnetID,
+    pub checks: Vec<Cid>,
 }
 impl Cbor for ChildCheck {}
 

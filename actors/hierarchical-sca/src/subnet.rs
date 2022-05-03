@@ -36,6 +36,11 @@ pub enum Error {
 }
 
 impl SubnetID {
+    pub fn new(parent: &SubnetID, subnet_act: Address) -> SubnetID {
+        let parent_str = parent.to_string();
+
+        return SubnetID { parent: parent_str, actor: subnet_act };
+    }
     pub fn to_bytes(&self) -> Vec<u8> {
         let str_id = self.to_string();
         str_id.into_bytes()
@@ -64,12 +69,6 @@ impl SubnetID {
     // pub fn up(other: &SubnetID) -> Result<SubnetID, Error> {
     //     panic!("not implemented")
     // }
-}
-
-pub fn new_id(parent: &SubnetID, subnet_act: Address) -> SubnetID {
-    let parent_str = parent.to_string();
-
-    return SubnetID { parent: parent_str, actor: subnet_act };
 }
 
 impl fmt::Display for SubnetID {
@@ -181,7 +180,7 @@ mod tests {
     #[test]
     fn test_subnet_id() {
         let act = Address::new_id(1001);
-        let sub_id = new_id(&ROOTNET_ID.clone(), act);
+        let sub_id = SubnetID::new(&ROOTNET_ID.clone(), act);
         let sub_id_str = sub_id.to_string();
         assert_eq!(sub_id_str, "/root/f01001");
 
