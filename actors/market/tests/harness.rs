@@ -380,6 +380,26 @@ pub fn cron_tick_and_assert_balances(
     (payment, amount_slashed)
 }
 
+pub fn cron_tick_no_change(rt: &mut MockRuntime, client_addr: Address, provider_addr: Address) {
+    let st: State = rt.get_state();
+    let epoch_cid = st.deal_ops_by_epoch;
+
+    // fetch current client and provider escrow balances
+    let c_locked = get_locked_balance(rt, client_addr);
+    let c_escrow = get_escrow_balance(rt, &client_addr).unwrap();
+    let p_locked = get_locked_balance(rt, provider_addr);
+    let p_escrow = get_escrow_balance(rt, &provider_addr).unwrap();
+
+    cron_tick(rt);
+
+    let st: State = rt.get_state();
+    assert_eq!(epoch_cid, st.deal_ops_by_epoch);
+    assert_eq!(c_locked, get_locked_balance(rt, client_addr));
+    assert_eq!(c_escrow, get_escrow_balance(rt, &client_addr).unwrap());
+    assert_eq!(p_locked, get_locked_balance(rt, provider_addr));
+    assert_eq!(p_escrow, get_escrow_balance(rt, &provider_addr).unwrap());
+}
+
 pub fn publish_deals(
     rt: &mut MockRuntime,
     addrs: &MinerAddresses,
@@ -749,4 +769,11 @@ pub fn terminate_deals_raw(
         Method::OnMinerSectorsTerminate as u64,
         &RawBytes::serialize(params).unwrap(),
     )
+}
+
+pub fn assert_account_zero(rt: &mut MockRuntime, addr: Address) {
+    let st: State = rt.get_state();
+
+    assert!(get_escrow_balance(rt, &addr).unwrap().is_zero());
+    assert!(get_locked_balance(rt, addr).is_zero());
 }
