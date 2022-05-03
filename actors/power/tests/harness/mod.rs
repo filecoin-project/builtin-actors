@@ -1,4 +1,5 @@
 use cid::Cid;
+use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
 use fil_actor_power::epoch_key;
 use fil_actor_power::ext::miner::ConfirmSectorProofsParams;
 use fil_actor_power::ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD;
@@ -205,6 +206,11 @@ impl Harness {
         keys.iter().map(|k| Address::from_bytes(k).unwrap()).collect::<Vec<_>>()
     }
 
+    pub fn miner_count(&self, rt: &MockRuntime) -> i64 {
+        let st: State = rt.get_state();
+        st.miner_count
+    }
+
     pub fn get_claim(&self, rt: &MockRuntime, miner: &Address) -> Option<Claim> {
         let st: State = rt.get_state();
         let claims =
@@ -230,7 +236,7 @@ impl Harness {
         epoch: ChainEpoch,
         miner_address: &Address,
         payload: &RawBytes,
-    ) {
+    ) -> Result<(), ActorError> {
         rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address.to_owned());
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
         let params = RawBytes::serialize(EnrollCronEventParams {
@@ -238,8 +244,9 @@ impl Harness {
             payload: payload.clone(),
         })
         .unwrap();
-        rt.call::<PowerActor>(Method::EnrollCronEvent as u64, &params).unwrap();
+        rt.call::<PowerActor>(Method::EnrollCronEvent as u64, &params)?;
         rt.verify();
+        Ok(())
     }
 
     pub fn get_enrolled_cron_ticks(&self, rt: &MockRuntime, epoch: ChainEpoch) -> Vec<CronEvent> {
@@ -425,11 +432,28 @@ impl Harness {
         let state: State = rt.get_state();
         assert!(state.proof_validation_batch.is_none());
     }
+
+    pub fn submit_porep_for_bulk_verify(
+        &self,
+        rt: &mut MockRuntime,
+        miner_address: Address,
+        seal_info: SealVerifyInfo,
+    ) -> Result<(), ActorError> {
+        rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL);
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address);
+        rt.call::<PowerActor>(
+            Method::SubmitPoRepForBulkVerify as u64,
+            &RawBytes::serialize(seal_info).unwrap(),
+        )?;
+        rt.verify();
+        Ok(())
+    }
 }
 
 pub struct ConfirmedSectorSend {
-    miner: Address,
-    sector_nums: Vec<SectorNumber>,
+    pub miner: Address,
+    pub sector_nums: Vec<SectorNumber>,
 }
 
 pub fn batch_verify_default_output(infos: &[SealVerifyInfo]) -> Vec<bool> {
