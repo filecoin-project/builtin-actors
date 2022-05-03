@@ -30,35 +30,44 @@ impl Checkpoint {
         }
     }
 
+    /// return cid for the checkpoint
     pub fn cid(&self) -> Cid {
         let mh_code = Code::Blake2b256;
         Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&self).unwrap()))
     }
 
+    /// return checkpoint epoch
     pub fn epoch(&self) -> ChainEpoch {
         self.data.epoch
     }
 
+    /// return checkpoint source
     pub fn source(&self) -> &SubnetID {
         &self.data.source
     }
 
+    /// return the cid of the previous checkpoint this checkpoint points to.
     pub fn prev_check(&self) -> Cid {
         self.data.prev_check
     }
 
+    /// return cross_msg metas included in the checkpoint.
     pub fn cross_msgs(&self) -> &Vec<CrossMsgMeta> {
         &self.data.cross_msgs
     }
 
+    /// return specific crossmsg meta from and to the corresponding subnets.
     pub fn crossmsg_meta(&self, from: &SubnetID, to: &SubnetID) -> Option<&CrossMsgMeta> {
         self.data.cross_msgs.iter().find(|m| from == &m.from && to == &m.to)
     }
 
+    /// return the index in crossmsg_meta of the structure including metadata from
+    /// and to the correponding subnets.
     pub fn crossmsg_meta_index(&self, from: &SubnetID, to: &SubnetID) -> Option<usize> {
         self.data.cross_msgs.iter().position(|m| from == &m.from && to == &m.to)
     }
 
+    /// append msgmeta to checkpoint
     pub fn append_msgmeta(&mut self, meta: CrossMsgMeta) -> anyhow::Result<()> {
         match self.crossmsg_meta(&meta.from, &meta.to) {
             Some(mm) => {
@@ -71,6 +80,8 @@ impl Checkpoint {
         Ok(())
     }
 
+    /// Add the cid of a checkpoint from a child subnet for further propagation
+    /// to the upper layerse of the hierarchy.
     pub fn add_child_check(&mut self, commit: &Checkpoint) -> anyhow::Result<()> {
         let cid = commit.cid();
         match self.data.children.iter_mut().find(|m| commit.source() == &m.source) {

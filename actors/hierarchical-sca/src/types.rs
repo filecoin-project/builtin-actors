@@ -37,8 +37,13 @@ pub struct SubnetIDParam {
     pub id: String,
 }
 
-// FIXME: This is temporary, because we can't store
-// types.Messages as we did in Go
+/// StorableMsg stores all the relevant information required
+/// to execute cross-messages.
+///
+/// We follow this approach because we can't directly store types.Message
+/// as we did in the actor's Go counter-part. Instead we just persist the
+/// information required to create the cross-messages and execute in the
+/// corresponding node implementation.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct StorableMsg {
     pub from: Address,

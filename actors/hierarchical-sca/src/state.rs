@@ -84,6 +84,7 @@ impl State {
         })
     }
 
+    /// Get content for a child subnet.
     pub fn get_subnet<BS: Blockstore>(
         &self,
         store: &BS,
@@ -99,6 +100,7 @@ impl State {
         Ok(subnet.cloned())
     }
 
+    /// Register a subnet in the map of subnets and flush.
     pub(crate) fn register_subnet<BS, RT>(&mut self, rt: &RT, id: &SubnetID) -> anyhow::Result<()>
     where
         BS: Blockstore,
@@ -136,6 +138,7 @@ impl State {
         Ok(())
     }
 
+    /// Remove a subnet from the map of subnets and flush.
     pub(crate) fn rm_subnet<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -156,6 +159,7 @@ impl State {
         Ok(())
     }
 
+    /// flush a subnet
     pub(crate) fn flush_subnet<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -169,6 +173,7 @@ impl State {
         Ok(())
     }
 
+    /// flush a checkpoint
     pub(crate) fn flush_checkpoint<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -186,6 +191,7 @@ impl State {
         Ok(())
     }
 
+    /// get checkpoint being populated in the current window.
     pub fn get_window_checkpoint<'m, BS: Blockstore>(
         &self,
         store: &'m BS,
@@ -212,6 +218,7 @@ impl State {
         Ok(out_ch)
     }
 
+    /// apply the cross-messages included in a checkpoint.
     pub(crate) fn apply_check_msgs<'m, BS: Blockstore>(
         &mut self,
         store: &'m BS,
@@ -241,6 +248,8 @@ impl State {
         Ok((burn_val, aux))
     }
 
+    /// aggregate child message meta that are not directed for the current
+    /// subnet to propagate them further.
     pub(crate) fn agg_child_msgmeta<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -281,6 +290,7 @@ impl State {
         Ok(())
     }
 
+    /// append crossmsg_meta to a specific mesasge meta.
     pub(crate) fn append_metas_to_meta<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -310,6 +320,7 @@ impl State {
         self.put_delete_flush_meta(&mut cross_reg, meta_cid, prev_meta)
     }
 
+    /// update a message meta and remove the old one.
     pub(crate) fn put_delete_flush_meta<BS: Blockstore>(
         &mut self,
         registry: &mut Map<BS, CrossMsgs>,
@@ -327,6 +338,10 @@ impl State {
         Ok(m_cid)
     }
 
+    /// release circulating supply from a subent
+    ///
+    /// This is triggered through bottom-up messages sending subnet tokens
+    /// to some other subnet in the hierarchy.
     pub(crate) fn release_circ_supply<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -353,6 +368,7 @@ impl State {
         Ok(())
     }
 
+    /// store bottomup messages for their execution in the subnet
     pub(crate) fn store_bottomup_msg<BS: Blockstore>(
         &mut self,
         store: &BS,

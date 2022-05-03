@@ -41,6 +41,7 @@ impl SubnetID {
 
         return SubnetID { parent: parent_str, actor: subnet_act };
     }
+
     pub fn to_bytes(&self) -> Vec<u8> {
         let str_id = self.to_string();
         str_id.into_bytes()

@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ConsensusLab
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -33,7 +32,7 @@ mod state;
 pub mod subnet;
 mod types;
 
-/// Storage power actor methods available
+/// SCA actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
@@ -255,6 +254,9 @@ impl Actor {
         Ok(())
     }
 
+    /// CommitChildCheck propagates the commitment of a checkpoint from a child subnet,
+    /// process the cross-messages directed to the subnet, and propagates the corresponding
+    /// once further.
     fn commit_child_check<BS, RT>(rt: &mut RT, params: Checkpoint) -> Result<(), ActorError>
     where
         BS: Blockstore,
