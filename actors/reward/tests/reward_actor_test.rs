@@ -162,30 +162,26 @@ mod test_award_block_reward {
     }
 
     #[test]
-    // TODO remove ignore when fixing (v0->v2 migration)
-    #[ignore = "invalidated -- update"]
     fn pays_out_current_balance_when_reward_exceeds_total_balance() {
         let mut rt = construct_and_verify(&StoragePower::from(1));
+
+        // Total reward is a huge number, upon writing ~1e18, so 300 should be way less
         let small_reward = TokenAmount::from(300);
+        let penalty = TokenAmount::from(100);
         rt.set_balance(small_reward.clone());
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
 
-        let penalty = TokenAmount::from(100);
-        let expected_reward = &small_reward - &penalty;
-
+        let miner_penalty = PENALTY_MULTIPLIER * &penalty;
+        let params = RawBytes::serialize(&ext::miner::ApplyRewardParams {
+            reward: small_reward.clone(),
+            penalty: miner_penalty,
+        })
+        .unwrap();
         rt.expect_send(
             *WINNER,
             ext::miner::APPLY_REWARDS_METHOD,
-            RawBytes::serialize(BigIntSer(&expected_reward)).unwrap(),
-            expected_reward,
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-        rt.expect_send(
-            *BURNT_FUNDS_ACTOR_ADDR,
-            METHOD_SEND,
-            RawBytes::default(),
-            penalty.clone(),
+            params,
+            small_reward,
             RawBytes::default(),
             ExitCode::OK,
         );
