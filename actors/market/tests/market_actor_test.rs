@@ -1689,6 +1689,152 @@ mod publish_storage_deals_failures {
         };
         assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
     }
+
+    #[test]
+    fn fail_when_client_has_some_funds_but_not_enough_for_a_deal() {
+    }
+
+    #[test]
+    fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
+    }
+
+    #[test]
+    fn fail_when_deals_have_different_providers() {
+    }
+
+    #[test]
+    fn fail_when_caller_is_not_of_signable_type() {
+        let start_epoch = 10;
+        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+        let mut rt = setup();
+        let deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
+        let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+        let params = PublishStorageDealsParams {
+            deals: vec![ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() }]
+        };
+        let w = Address::new_id(1000);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, w);
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<MarketActor>(
+                Method::PublishStorageDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+        check_state(&rt);
+    }
+
+    #[test]
+    fn fail_when_no_deals_in_params() {
+        let mut rt = setup();
+        let params = PublishStorageDealsParams {
+            deals: vec![]
+        };
+        rt.set_caller(*MINER_ACTOR_CODE_ID, WORKER_ADDR);
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        expect_abort(
+            ExitCode::USR_FORBIDDEN, // TODO: should be USR_ILLEGAL_ARGUMENT
+            rt.call::<MarketActor>(
+                Method::PublishStorageDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+        check_state(&rt);
+    }
+
+    #[test]
+    fn fail_to_resolve_provider_address() {
+        let start_epoch = 10;
+        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+        let mut rt = setup();
+        let mut deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
+        deal.provider = new_bls_addr(100);
+
+        let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+        let params = PublishStorageDealsParams {
+            deals: vec![ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() }]
+        };
+        rt.set_caller(*MINER_ACTOR_CODE_ID, WORKER_ADDR);
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        expect_abort(
+            ExitCode::USR_FORBIDDEN, // TODO: should be USR_NOT_FOUND
+            rt.call::<MarketActor>(
+                Method::PublishStorageDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+        check_state(&rt);
+    }
+
+    #[test]
+    fn caller_is_not_the_same_as_the_worker_address_for_miner() {
+        let start_epoch = 10;
+        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+        let mut rt = setup();
+        let deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
+        let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+        let params = PublishStorageDealsParams {
+            deals: vec![ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() }]
+        };
+
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        let return_value = ext::miner::GetControlAddressesReturnParams {
+            owner: OWNER_ADDR,
+            worker: Address::new_id(999),
+            control_addresses: vec![],
+        };
+        rt.expect_send(
+            PROVIDER_ADDR,
+            ext::miner::CONTROL_ADDRESSES_METHOD,
+            RawBytes::default(),
+            TokenAmount::default(),
+            RawBytes::serialize(return_value).unwrap(),
+            ExitCode::OK,
+        );
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            rt.call::<MarketActor>(
+                Method::PublishStorageDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+
+        rt.verify();
+        check_state(&rt);
+    }
+
+    #[test]
+    fn fails_if_provider_is_not_a_storage_miner_actor() {
+        let mut rt = setup();
+
+        // deal provider will be a Storage Miner Actor.
+        let p2 = Address::new_id(505);
+        rt.set_address_actor_type(p2, *POWER_ACTOR_CODE_ID);
+        let deal = generate_deal_proposal(CLIENT_ADDR, p2, ChainEpoch::from(1), ChainEpoch::from(5));
+
+        let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+        let params = PublishStorageDealsParams {
+            deals: vec![ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() }]
+        };
+
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            rt.call::<MarketActor>(
+                Method::PublishStorageDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+
+        rt.verify();
+        check_state(&rt);
+    }
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1519
