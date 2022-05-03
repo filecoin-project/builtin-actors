@@ -1173,6 +1173,7 @@ mod submit_porep_for_bulk_verify_tests {
             }
         }
 
+        // Adding MAX_MINER_PROVE_COMMITS_PER_EPOCH works without error
         for i in 0..MAX_MINER_PROVE_COMMITS_PER_EPOCH {
             h.submit_porep_for_bulk_verify(&mut rt, MINER, create_basic_seal_info(i)).unwrap();
         }
@@ -1186,6 +1187,7 @@ mod submit_porep_for_bulk_verify_tests {
             ),
         );
 
+        // Gas only charged for successful submissions
         rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL * MAX_MINER_PROVE_COMMITS_PER_EPOCH as i64);
     }
 
@@ -1209,6 +1211,7 @@ mod submit_porep_for_bulk_verify_tests {
             sector_id: SectorID { number: 0, ..Default::default() },
         };
 
+        // delete miner
         h.delete_claim(&mut rt, &MINER);
 
         expect_abort(ExitCode::USR_FORBIDDEN, h.submit_porep_for_bulk_verify(&mut rt, MINER, info));
