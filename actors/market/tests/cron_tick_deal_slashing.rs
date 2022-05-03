@@ -255,9 +255,9 @@ fn slash_multiple_deals_in_the_same_epoch() {
 
     // process slashing of deals 200 epochs later
     rt.set_epoch(process_epoch(START_EPOCH, deal_id3) + 300);
-    let total_slashed = deal_proposal1.provider_collateral
-        + deal_proposal2.provider_collateral
-        + deal_proposal3.provider_collateral;
+    let total_slashed = &deal_proposal1.provider_collateral
+        + &deal_proposal2.provider_collateral
+        + &deal_proposal3.provider_collateral;
     rt.expect_send(
         *BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
@@ -271,5 +271,75 @@ fn slash_multiple_deals_in_the_same_epoch() {
     assert_deal_deleted(&mut rt, deal_id1, deal_proposal1);
     assert_deal_deleted(&mut rt, deal_id2, deal_proposal2);
     assert_deal_deleted(&mut rt, deal_id3, deal_proposal3);
+    check_state(&rt);
+}
+
+#[test]
+fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
+    let mut rt = setup();
+    let deal_id = publish_and_activate_deal(
+        &mut rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        START_EPOCH,
+        END_EPOCH,
+        0,
+        SECTOR_EXPIRY,
+    );
+    let deal_proposal = get_deal_proposal(&mut rt, deal_id);
+
+    // move the current epoch to the process epoch + 5 so payment is made
+    let process_start = process_epoch(START_EPOCH, deal_id);
+    let current = process_start + 5;
+    rt.set_epoch(current);
+
+    // assert payment
+    let (pay, slashed) =
+        cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    assert_eq!(pay, (5 + process_start - START_EPOCH) * &deal_proposal.storage_price_per_epoch);
+    assert!(slashed.is_zero());
+
+    // Setting the current epoch to before the next schedule will NOT make any changes as the deal
+    // is still not scheduled
+    let current = current + Policy::default().deal_updates_interval - 1;
+    rt.set_epoch(current);
+    cron_tick_no_change(&mut rt, CLIENT_ADDR, PROVIDER_ADDR);
+
+    // a second cron tick for the same epoch should not change anything
+    cron_tick_no_change(&mut rt, CLIENT_ADDR, PROVIDER_ADDR);
+
+    // make another payment
+    let current = current + 1;
+    rt.set_epoch(current);
+    let duration = Policy::default().deal_updates_interval;
+    let (pay, slashed) =
+        cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    assert_eq!(pay, duration * &deal_proposal.storage_price_per_epoch);
+    assert!(slashed.is_zero());
+
+    // a second cron tick for the same epoch should not change anything
+    cron_tick_no_change(&mut rt, CLIENT_ADDR, PROVIDER_ADDR);
+
+    // now terminate the deal
+    let slash_epoch = current + 1;
+    rt.set_epoch(slash_epoch);
+    let duration = slash_epoch - current;
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal_id]);
+
+    // Setting the epoch to anything less than next schedule will not make any change even though the deal is slashed
+    let current = current + Policy::default().deal_updates_interval - 1;
+    rt.set_epoch(current);
+    cron_tick_no_change(&mut rt, CLIENT_ADDR, PROVIDER_ADDR);
+
+    // next epoch for cron schedule  -> payment will be made and deal will be slashed
+    let current = current + 1;
+    rt.set_epoch(current);
+    let (pay, slashed) =
+        cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    assert_eq!(pay, duration * &deal_proposal.storage_price_per_epoch);
+    assert_eq!(slashed, deal_proposal.provider_collateral);
+
+    // deal should be deleted as it should have expired
+    assert_deal_deleted(&mut rt, deal_id, deal_proposal);
     check_state(&rt);
 }
