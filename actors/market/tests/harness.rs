@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use cid::Cid;
 use num_traits::{FromPrimitive, Zero};
 use std::collections::HashMap;
@@ -12,10 +13,12 @@ use fil_actor_market::{
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::UseBytesParams;
-use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::{
-    test_utils::*, ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    network::EPOCHS_IN_DAY,
+    runtime::{Policy, Runtime},
+    test_utils::*,
+    ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::{to_vec, RawBytes};
@@ -576,6 +579,65 @@ pub fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposa
         )
         .unwrap();
     assert!(!pending_deals.contains_key(&BytesKey(p_cid.to_bytes())).unwrap());
+}
+
+pub fn assert_deal_failure<F>(
+    add_funds: bool,
+    post_setup: F,
+    exit_code: ExitCode,
+    sig_result: Result<(), anyhow::Error>,
+) where
+    F: FnOnce(&mut MockRuntime, &mut DealProposal),
+{
+    let current_epoch = ChainEpoch::from(5);
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    let mut rt = setup();
+    let mut deal_proposal = if add_funds {
+        generate_deal_and_add_funds(
+            &mut rt,
+            CLIENT_ADDR,
+            &MinerAddresses::default(),
+            start_epoch,
+            end_epoch,
+        )
+    } else {
+        generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch)
+    };
+    deal_proposal.verified_deal = false;
+    rt.set_epoch(current_epoch);
+    post_setup(&mut rt, &mut deal_proposal);
+
+    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_query_network_info(&mut rt);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+
+    let buf = RawBytes::serialize(deal_proposal.clone()).expect("failed to marshal deal proposal");
+    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig: sig.clone(),
+        signer: deal_proposal.client,
+        plaintext: buf.to_vec(),
+        result: sig_result,
+    });
+
+    let params: PublishStorageDealsParams = PublishStorageDealsParams {
+        deals: vec![ClientDealProposal { proposal: deal_proposal, client_signature: sig }],
+    };
+
+    assert_eq!(
+        exit_code,
+        rt.call::<MarketActor>(
+            Method::PublishStorageDeals as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap_err()
+        .exit_code()
+    );
+    rt.verify();
+    // TODO: actor.checkState(rt)
 }
 
 pub fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
