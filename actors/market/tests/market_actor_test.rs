@@ -1473,10 +1473,10 @@ mod publish_storage_deals_failures {
     fn fail_when_no_deals_in_params() {
         let mut rt = setup();
         let params = PublishStorageDealsParams { deals: vec![] };
-        rt.set_caller(*MINER_ACTOR_CODE_ID, WORKER_ADDR);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
         expect_abort(
-            ExitCode::USR_FORBIDDEN, // TODO: should be USR_ILLEGAL_ARGUMENT
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MarketActor>(
                 Method::PublishStorageDeals as u64,
                 &RawBytes::serialize(params).unwrap(),
@@ -1498,10 +1498,10 @@ mod publish_storage_deals_failures {
         let params = PublishStorageDealsParams {
             deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
         };
-        rt.set_caller(*MINER_ACTOR_CODE_ID, WORKER_ADDR);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
         expect_abort(
-            ExitCode::USR_FORBIDDEN, // TODO: should be USR_NOT_FOUND
+            ExitCode::USR_NOT_FOUND,
             rt.call::<MarketActor>(
                 Method::PublishStorageDeals as u64,
                 &RawBytes::serialize(params).unwrap(),
