@@ -773,8 +773,6 @@ pub fn terminate_deals_raw(
 }
 
 pub fn assert_account_zero(rt: &mut MockRuntime, addr: Address) {
-    let st: State = rt.get_state();
-
     assert!(get_escrow_balance(rt, &addr).unwrap().is_zero());
     assert!(get_locked_balance(rt, addr).is_zero());
 }
