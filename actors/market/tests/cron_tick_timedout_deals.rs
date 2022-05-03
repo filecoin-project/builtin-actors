@@ -1,43 +1,22 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::convert::TryInto;
-
-use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
 use fil_actor_market::ext::verifreg::RestoreBytesParams;
-use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
-    ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealMetaArray,
-    DealProposal, Label, Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
-    PublishStorageDealsReturn, State, WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH,
-    STATES_AMT_BITWIDTH,
+    ext, Actor as MarketActor, ClientDealProposal, Method, PublishStorageDealsParams,
 };
-use fil_actor_verifreg::UseBytesParams;
-use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{
-    make_empty_map, ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
-};
-use fvm_ipld_amt::Amt;
-use fvm_ipld_encoding::{to_vec, RawBytes};
-use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
-use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
+use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
-use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND, TOTAL_FILECOIN};
+use fvm_shared::METHOD_SEND;
 
-use anyhow::anyhow;
-use cid::Cid;
-use num_traits::{FromPrimitive, Zero};
+use num_traits::Zero;
 
 mod harness;
 use harness::*;
@@ -171,7 +150,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted_and_sent_to_the_registry_act
     deal2.verified_deal = true;
 
     // deal3 is NOT verified
-    let mut deal3 = generate_deal_and_add_funds(
+    let deal3 = generate_deal_and_add_funds(
         &mut rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
