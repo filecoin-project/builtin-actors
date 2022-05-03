@@ -114,6 +114,7 @@ pub struct MockRuntime {
     pub value_received: TokenAmount,
     pub hash_func: Box<dyn Fn(&[u8]) -> [u8; 32]>,
     pub network_version: NetworkVersion,
+    pub logs: Vec<String>,
 
     // Actor State
     pub state: Option<Cid>,
@@ -266,6 +267,7 @@ impl Default for MockRuntime {
             expectations: Default::default(),
             policy: Default::default(),
             circulating_supply: Default::default(),
+            logs: vec![],
         }
     }
 }
@@ -454,6 +456,16 @@ impl MockRuntime {
     }
 
     ///// Mock expectations /////
+
+    #[allow(dead_code)]
+    pub fn expect_logs_contains(&mut self, substring: &str) {
+        for msg in &self.logs {
+            if msg.contains(substring) {
+                return ();
+            }
+        }
+        panic!("logs contain {} message(s) and do not contain \"{}\"", self.logs.len(), substring,);
+    }
 
     #[allow(dead_code)]
     pub fn expect_validate_caller_addr(&mut self, addr: Vec<Address>) {
