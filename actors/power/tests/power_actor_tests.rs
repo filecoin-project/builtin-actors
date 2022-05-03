@@ -856,10 +856,27 @@ mod submit_porep_for_bulk_verify_tests {
     }
 
     #[test]
-    #[ignore = "todo"]
     fn aborts_when_miner_has_no_claim() {
         let (mut h, mut rt) = setup();
 
         h.create_miner_basic(&mut rt, OWNER, OWNER, MINER).unwrap();
+
+        let comm_r = make_sealed_cid("commR".as_bytes());
+        let comm_d = make_piece_cid("commD".as_bytes());
+
+        let info = SealVerifyInfo {
+            registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1,
+            deal_ids: Vec::new(),
+            randomness: SealRandomness::default(),
+            interactive_randomness: InteractiveSealRandomness::default(),
+            proof: Vec::new(),
+            sealed_cid: comm_r,
+            unsealed_cid: comm_d,
+            sector_id: SectorID { number: 0, ..Default::default() },
+        };
+
+        h.delete_claim(&mut rt, &MINER);
+
+        expect_abort(ExitCode::USR_FORBIDDEN, h.submit_porep_for_bulk_verify(&mut rt, MINER, info));
     }
 }
