@@ -781,7 +781,7 @@ mod submit_porep_for_bulk_verify_tests {
     const OWNER: Address = Address::new_id(101);
 
     #[test]
-    #[ignore = "todo"]
+    //#[ignore = "todo"]
     fn registers_porep_and_charges_gas() {
         let (mut h, mut rt) = setup();
 
@@ -801,7 +801,7 @@ mod submit_porep_for_bulk_verify_tests {
             sector_id: SectorID { number: 0, ..Default::default() },
         };
 
-        h.submit_porep_for_bulk_verify(&mut rt, MINER, info.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, MINER, info).unwrap();
         rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL);
         let st: State = rt.get_state();
         let store = &rt.store;
@@ -814,10 +814,11 @@ mod submit_porep_for_bulk_verify_tests {
         )
         .unwrap();
         let arr = mmap.get::<SealVerifyInfo>(&MINER.to_bytes()).unwrap();
-        let _found = arr.unwrap();
-        assert_eq!(comm_r, info.sealed_cid);
+        let found = arr.unwrap();
+        assert_eq!(1_u64, found.count());
+        let sealed_cid = found.get(0).unwrap().unwrap().sealed_cid;
+        assert_eq!(comm_r, sealed_cid);
         h.check_state();
-        todo!();
     }
 
     #[test]
