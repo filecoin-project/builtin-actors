@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::Policy;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 
@@ -160,5 +161,48 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
     // deal should be deleted as it should have expired
     assert_deal_deleted(&mut rt, deal_id, deal_proposal);
 
+    check_state(&rt);
+}
+
+#[test]
+fn deal_is_correctly_processed_twice_in_the_same_crontick_and_slashed() {
+    // start epoch should equal first processing epoch for logic to work
+    // 2880 + 0 % 2880 = 2880
+    const START_EPOCH: ChainEpoch = EPOCHS_IN_DAY;
+    let mut rt = setup();
+    let deal_id = publish_and_activate_deal(
+        &mut rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        START_EPOCH,
+        END_EPOCH,
+        0,
+        SECTOR_EXPIRY,
+    );
+    let deal_proposal = get_deal_proposal(&mut rt, deal_id);
+
+    // move the current epoch to startEpoch so next cron epoch will be start + Interval
+    let current = process_epoch(START_EPOCH, deal_id);
+    rt.set_epoch(current);
+    let (pay, slashed) =
+        cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    assert!(pay.is_zero());
+    assert!(slashed.is_zero());
+
+    // set slash epoch of deal
+    let slash_epoch = current + Policy::default().deal_updates_interval + 1;
+    rt.set_epoch(slash_epoch);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal_id]);
+
+    let duration = slash_epoch - current;
+    let current = current + Policy::default().deal_updates_interval + 2;
+    rt.set_epoch(current);
+    let (pay, slashed) =
+        cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
+    assert_eq!(deal_proposal.provider_collateral, slashed);
+
+    // deal should be deleted as it should have expired
+    assert_deal_deleted(&mut rt, deal_id, deal_proposal);
     check_state(&rt);
 }
