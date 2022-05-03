@@ -781,7 +781,6 @@ mod submit_porep_for_bulk_verify_tests {
     const OWNER: Address = Address::new_id(101);
 
     #[test]
-    //#[ignore = "todo"]
     fn registers_porep_and_charges_gas() {
         let (mut h, mut rt) = setup();
 
