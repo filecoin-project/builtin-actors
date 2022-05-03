@@ -1709,8 +1709,8 @@ mod publish_storage_deals_failures {
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
             deals: vec![ClientDealProposal {
-                proposal: deal.clone(),
-                client_signature: sig.clone(),
+                proposal: deal,
+                client_signature: sig,
             }],
         };
         let w = Address::new_id(1000);
@@ -1754,8 +1754,8 @@ mod publish_storage_deals_failures {
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
             deals: vec![ClientDealProposal {
-                proposal: deal.clone(),
-                client_signature: sig.clone(),
+                proposal: deal,
+                client_signature: sig,
             }],
         };
         rt.set_caller(*MINER_ACTOR_CODE_ID, WORKER_ADDR);
@@ -1780,8 +1780,8 @@ mod publish_storage_deals_failures {
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
             deals: vec![ClientDealProposal {
-                proposal: deal.clone(),
-                client_signature: sig.clone(),
+                proposal: deal,
+                client_signature: sig,
             }],
         };
 
@@ -1825,8 +1825,8 @@ mod publish_storage_deals_failures {
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
             deals: vec![ClientDealProposal {
-                proposal: deal.clone(),
-                client_signature: sig.clone(),
+                proposal: deal,
+                client_signature: sig,
             }],
         };
 
