@@ -4,9 +4,9 @@
 use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
 use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
-    ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealMetaArray, Label,
-    DealProposal, Method, PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
-    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealMetaArray,
+    DealProposal, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn, State,
+    WithdrawBalanceParams, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actor_verifreg::UseBytesParams;
 use fil_actors_runtime::cbor::deserialize;
