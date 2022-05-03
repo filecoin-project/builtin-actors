@@ -1691,13 +1691,142 @@ mod publish_storage_deals_failures {
     }
 
     #[test]
-    fn fail_when_client_has_some_funds_but_not_enough_for_a_deal() {}
+    fn fail_when_client_has_some_funds_but_not_enough_for_a_deal() {
+        let mut rt = setup();
+
+        //
+        add_participant_funds(&mut rt, CLIENT_ADDR, TokenAmount::from(100u8));
+        let start_epoch = 42;
+        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+        let deal1 = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
+        add_provider_funds(&mut rt, deal1.clone().provider_collateral, &MinerAddresses::default());
+        let buf = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
+        let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+        let params = PublishStorageDealsParams {
+            deals: vec![ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() }],
+        };
+
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+        expect_query_network_info(&mut rt);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+        rt.expect_verify_signature(ExpectedVerifySig {
+            sig,
+            signer: deal1.client,
+            plaintext: buf.to_vec(),
+            result: Ok(()),
+        });
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            rt.call::<MarketActor>(
+                Method::PublishStorageDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+
+        rt.verify();
+        check_state(&rt);
+    }
 
     #[test]
-    fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {}
+    fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
+        let start_epoch = 10;
+        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+        let mut rt = setup();
+
+        add_provider_funds(&mut rt, TokenAmount::from(1u8), &MinerAddresses::default());
+        let deal1 = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
+        add_participant_funds(&mut rt, CLIENT_ADDR, deal1.client_balance_requirement());
+
+        let buf = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
+        let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+        let params = PublishStorageDealsParams {
+            deals: vec![ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() }],
+        };
+
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+        expect_query_network_info(&mut rt);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+        rt.expect_verify_signature(ExpectedVerifySig {
+            sig,
+            signer: deal1.client,
+            plaintext: buf.to_vec(),
+            result: Ok(()),
+        });
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            rt.call::<MarketActor>(
+                Method::PublishStorageDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            ),
+        );
+
+        rt.verify();
+        check_state(&rt);
+    }
 
     #[test]
-    fn fail_when_deals_have_different_providers() {}
+    fn fail_when_deals_have_different_providers() {
+        let start_epoch = 10;
+        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+        let mut rt = setup();
+        let deal1 = generate_deal_and_add_funds(
+            &mut rt,
+            CLIENT_ADDR,
+            &MinerAddresses::default(),
+            start_epoch,
+            end_epoch,
+        );
+        let m2 = MinerAddresses { provider: Address::new_id(1000), ..MinerAddresses::default() };
+
+        let deal2 = generate_deal_and_add_funds(
+            &mut rt,
+            CLIENT_ADDR,
+            &m2,
+            1,
+            end_epoch,
+        );
+
+        let buf1 = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
+        let buf2 = RawBytes::serialize(deal2.clone()).expect("failed to marshal deal proposal");
+        let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+        let params = PublishStorageDealsParams {
+            deals: vec![
+                ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() },
+                ClientDealProposal { proposal: deal2.clone(), client_signature: sig.clone() }
+            ],
+        };
+
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+        expect_query_network_info(&mut rt);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+        rt.expect_verify_signature(ExpectedVerifySig {
+            sig: sig.clone(),
+            signer: deal1.client,
+            plaintext: buf1.to_vec(),
+            result: Ok(()),
+        });
+        rt.expect_verify_signature(ExpectedVerifySig {
+            sig,
+            signer: deal2.client,
+            plaintext: buf2.to_vec(),
+            result: Ok(()),
+        });
+
+        // let psd_ret: PublishStorageDealsReturn = rt
+        //     .call::<MarketActor>(
+        //         Method::PublishStorageDeals as u64,
+        //         &RawBytes::serialize(params).unwrap(),
+        //     )
+        //     .unwrap()
+        //     .deserialize()
+        //     .unwrap();
+        ()
+    }
 
     #[test]
     fn fail_when_caller_is_not_of_signable_type() {
