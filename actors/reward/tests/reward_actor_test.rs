@@ -235,8 +235,6 @@ mod test_award_block_reward {
     }
 
     #[test]
-    // TODO remove ignore when fixing (v0->v2 migration)
-    #[ignore = "invalidated -- update"]
     fn funds_are_sent_to_burnt_funds_actor_if_sending_locked_funds_to_miner_fails() {
         let mut rt = construct_and_verify(&StoragePower::from(1));
         let mut state: State = rt.get_state();
@@ -244,14 +242,21 @@ mod test_award_block_reward {
         assert_eq!(TokenAmount::from(0), state.total_storage_power_reward);
         state.this_epoch_reward = TokenAmount::from(5000);
         rt.replace_state(&state);
+        // enough balance to pay 3 full rewards and one partial
         rt.set_balance(TokenAmount::from(3500));
 
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
         let expected_reward = TokenAmount::from(1000);
+        let miner_penalty = TokenAmount::from(0);
+        let params = RawBytes::serialize(&ext::miner::ApplyRewardParams {
+            reward: expected_reward.clone(),
+            penalty: miner_penalty,
+        })
+        .unwrap();
         rt.expect_send(
             *WINNER,
             ext::miner::APPLY_REWARDS_METHOD,
-            RawBytes::serialize(BigIntSer(&expected_reward)).unwrap(),
+            params,
             expected_reward.clone(),
             RawBytes::default(),
             ExitCode::USR_FORBIDDEN,
