@@ -3,8 +3,12 @@
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::METHOD_SEND;
 
 use num_traits::Zero;
 
@@ -204,5 +208,68 @@ fn deal_is_correctly_processed_twice_in_the_same_crontick_and_slashed() {
 
     // deal should be deleted as it should have expired
     assert_deal_deleted(&mut rt, deal_id, deal_proposal);
+    check_state(&rt);
+}
+
+#[test]
+fn slash_multiple_deals_in_the_same_epoch() {
+    let mut rt = setup();
+
+    // three deals for slashing
+    let deal_id1 = publish_and_activate_deal(
+        &mut rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        START_EPOCH,
+        END_EPOCH,
+        0,
+        SECTOR_EXPIRY,
+    );
+    let deal_proposal1 = get_deal_proposal(&mut rt, deal_id1);
+
+    let deal_id2 = publish_and_activate_deal(
+        &mut rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        START_EPOCH,
+        END_EPOCH + 1,
+        0,
+        SECTOR_EXPIRY,
+    );
+    let deal_proposal2 = get_deal_proposal(&mut rt, deal_id1);
+
+    let deal_id3 = publish_and_activate_deal(
+        &mut rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        START_EPOCH,
+        END_EPOCH + 2,
+        0,
+        SECTOR_EXPIRY,
+    );
+    let deal_proposal3 = get_deal_proposal(&mut rt, deal_id1);
+
+    // set slash epoch of deal at 100 epochs past last process epoch
+    rt.set_epoch(process_epoch(START_EPOCH, deal_id3) + 100);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal_id1, deal_id2, deal_id3]);
+
+    // process slashing of deals 200 epochs later
+    rt.set_epoch(process_epoch(START_EPOCH, deal_id3) + 300);
+    let total_slashed = deal_proposal1.provider_collateral
+        + deal_proposal2.provider_collateral
+        + deal_proposal3.provider_collateral;
+    rt.expect_send(
+        *BURNT_FUNDS_ACTOR_ADDR,
+        METHOD_SEND,
+        RawBytes::default(),
+        total_slashed,
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    cron_tick(&mut rt);
+
+    assert_deal_deleted(&mut rt, deal_id1, deal_proposal1);
+    assert_deal_deleted(&mut rt, deal_id2, deal_proposal2);
+    assert_deal_deleted(&mut rt, deal_id3, deal_proposal3);
     check_state(&rt);
 }
