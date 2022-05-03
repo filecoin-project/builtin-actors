@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use cid::Cid;
 use num_traits::{FromPrimitive, Zero};
 use std::collections::HashMap;
