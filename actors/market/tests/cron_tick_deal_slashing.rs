@@ -343,3 +343,56 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
     assert_deal_deleted(&mut rt, deal_id, deal_proposal);
     check_state(&rt);
 }
+
+#[test]
+fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_will_not_be_slashed() {
+    let mut rt = setup();
+    let deal_id = publish_and_activate_deal(
+        &mut rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        START_EPOCH,
+        END_EPOCH,
+        0,
+        SECTOR_EXPIRY,
+    );
+    let deal_proposal = get_deal_proposal(&mut rt, deal_id);
+
+    // move the current epoch to processEpoch + 5 so payment is made and assert payment
+    let process_start = process_epoch(START_EPOCH, deal_id);
+    let current = process_start + 5;
+    rt.set_epoch(current);
+    let (pay, slashed) =
+        cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    assert_eq!(pay, (5 + process_start - START_EPOCH) * &deal_proposal.storage_price_per_epoch);
+    assert!(slashed.is_zero());
+
+    //  Incrementing the current epoch another update interval will make another payment
+    let current = current + Policy::default().deal_updates_interval;
+    rt.set_epoch(current);
+    let duration = Policy::default().deal_updates_interval;
+    let (pay, slashed) =
+        cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    assert_eq!(pay, duration * &deal_proposal.storage_price_per_epoch);
+    assert!(slashed.is_zero());
+
+    // set current epoch to deal end epoch and attempt to slash it -> should not be slashed
+    // as deal is considered to be expired.
+    let duration = END_EPOCH - current;
+    rt.set_epoch(END_EPOCH);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal_id]);
+
+    // next epoch for cron schedule is endEpoch + 300 ->
+    // setting epoch to higher than that will cause deal to be expired, payment will be made
+    // and deal will NOT be slashed
+    let current = END_EPOCH + 300;
+    rt.set_epoch(current);
+    let (pay, slashed) =
+        cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    assert_eq!(pay, duration * &deal_proposal.storage_price_per_epoch);
+    assert!(slashed.is_zero());
+
+    // deal should be deleted as it should have expired
+    assert_deal_deleted(&mut rt, deal_id, deal_proposal);
+    check_state(&rt);
+}
