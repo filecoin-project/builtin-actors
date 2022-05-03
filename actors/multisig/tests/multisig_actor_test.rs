@@ -1090,6 +1090,91 @@ fn test_signer_swap() {
 }
 
 #[test]
+fn test_swap_signer_removes_approvals() {
+    let msig = Address::new_id(100);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let darlene = Address::new_id(104);
+    let num_approvals: u64 = 3;
+
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+    h.construct_and_verify(&mut rt, num_approvals, 0, 0, vec![anne, bob, chuck]);
+
+    // anne proposes a tx
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+    let proposal_hash1 =
+        h.propose_ok(&mut rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
+
+    // bob approves
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
+    h.approve_ok(&mut rt, TxnID(0), proposal_hash1);
+
+    // bob proposes a tx
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
+    let proposal_hash2 =
+        h.propose_ok(&mut rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
+    // anne approves
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+    h.approve_ok(&mut rt, TxnID(1), proposal_hash2);
+
+    // anne is removed, threshold dropped to 2 of 2
+    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+    h.swap_signers(&mut rt, anne, darlene).unwrap();
+
+    // Anne's approval is removed from each tx
+    h.assert_transactions(
+        &mut rt,
+        vec![
+            (
+                TxnID(0),
+                Transaction {
+                    to: chuck,
+                    value: TokenAmount::zero(),
+                    method: METHOD_SEND,
+                    params: RawBytes::default(),
+                    approved: vec![bob],
+                },
+            ),
+            (
+                TxnID(1),
+                Transaction {
+                    to: chuck,
+                    value: TokenAmount::zero(),
+                    method: METHOD_SEND,
+                    params: RawBytes::default(),
+                    approved: vec![bob],
+                },
+            ),
+        ],
+    )
+}
+
+#[test]
+fn test_swap_signer_deletes_solo_proposals() {
+    let msig = Address::new_id(100);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let darlene = Address::new_id(104);
+    let num_approvals: u64 = 3;
+
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+    h.construct_and_verify(&mut rt, num_approvals, 0, 0, vec![anne, bob, chuck]);
+
+    // anne proposes a tx
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+    h.propose_ok(&mut rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
+
+    // anne is swapped
+    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+    h.swap_signers(&mut rt, anne, darlene).unwrap();
+    h.assert_transactions(&rt, vec![]);
+}
+
+#[test]
 fn test_remove_signer_removes_approvals() {
     let msig = Address::new_id(100);
     let anne = Address::new_id(101);
