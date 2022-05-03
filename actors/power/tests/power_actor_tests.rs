@@ -1095,4 +1095,25 @@ mod cron_batch_proof_verifies_tests {
         rt.verify();
         h.check_state();
     }
+
+    #[test]
+    fn skips_verify_if_miner_has_no_claim() {
+        let (mut h, mut rt) = setup();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER1).unwrap();
+
+        let info = create_basic_seal_info(1);
+
+        h.submit_porep_for_bulk_verify(&mut rt, *MINER, info).unwrap();
+
+        h.delete_claim(&mut rt, &MINER);
+
+        let infos = vec![];
+
+        let confirmed_sectors = vec![];
+
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
+
+        rt.expect_logs_contain("skipping batch verifies for unknown miner t0101");
+        h.check_state();
+    }
 }
