@@ -29,3 +29,4 @@ pub struct ExecReturn {
 }
 
 impl Cbor for ExecReturn {}
+impl Cbor for ExecParams {}

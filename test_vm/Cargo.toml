@@ -10,7 +10,7 @@ keywords = ["filecoin", "web3", "wasm"]
 [lib]
 
 [dependencies]
-fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../actors/runtime" }
+fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../actors/runtime", features = [ "test_utils" ] }
 fil_actor_init = { version = "8.0.0-alpha.1", path = "../actors/init" }
 fil_actor_cron = { version = "8.0.0-alpha.1", path = "../actors/cron" }
 fil_actor_system = { version = "8.0.0-alpha.1", path = "../actors/system" }
@@ -23,10 +23,10 @@ fil_actor_market = { version = "8.0.0-alpha.1", path = "../actors/market" }
 fil_actor_verifreg = { version = "8.0.0-alpha.1", path = "../actors/verifreg" }
 fil_actor_miner = { version = "8.0.0-alpha.1", path = "../actors/miner" }
 lazy_static = "1.4.0"
-fvm_shared = { version = "0.6.0", default-features = false }
-fvm_ipld_encoding = { version = "0.1.0", default-features = false }
+fvm_shared = { version = "0.6.1", default-features = false }
+fvm_ipld_encoding = { version = "0.2.0", default-features = false }
 fvm_ipld_blockstore = { version = "0.1.0", default-features = false }
-fvm_ipld_hamt = "0.4.0"
+fvm_ipld_hamt = "0.5.1"
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 log = "0.4.14"
@@ -35,7 +35,6 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 serde = { version = "1.0.136", features = ["derive"] }
 thiserror = "1.0.30"
 anyhow = "1.0.56"
-[dev-dependencies]
-fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../actors/runtime", features = ["test_utils", "sector-default"] }
+blake2b_simd = "1.0"
 
 

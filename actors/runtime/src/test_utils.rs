@@ -15,7 +15,7 @@ use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
 
-use fvm_shared::commcid::FIL_COMMITMENT_UNSEALED;
+use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
@@ -32,6 +32,8 @@ use fvm_shared::{ActorID, MethodNum};
 
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
+
+use rand::prelude::*;
 
 use crate::runtime::{
     ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier,
@@ -67,6 +69,21 @@ lazy_static! {
         map.insert(*SUBNET_ACTOR_CODE_ID, Type::Subnet);
         map
     };
+    pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
+        (Type::System, *SYSTEM_ACTOR_CODE_ID),
+        (Type::Init, *INIT_ACTOR_CODE_ID),
+        (Type::Cron, *CRON_ACTOR_CODE_ID),
+        (Type::Account, *ACCOUNT_ACTOR_CODE_ID),
+        (Type::Power, *POWER_ACTOR_CODE_ID),
+        (Type::Miner, *MINER_ACTOR_CODE_ID),
+        (Type::Market, *MARKET_ACTOR_CODE_ID),
+        (Type::PaymentChannel, *PAYCH_ACTOR_CODE_ID),
+        (Type::Multisig, *MULTISIG_ACTOR_CODE_ID),
+        (Type::Reward, *REWARD_ACTOR_CODE_ID),
+        (Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID),
+    ]
+    .into_iter()
+    .collect();
     pub static ref CALLER_TYPES_SIGNABLE: Vec<Cid> =
         vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID];
     pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {
@@ -943,7 +960,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
     fn charge_gas(&mut self, _: &'static str, value: i64) {
         let mut exs = self.expectations.borrow_mut();
-        assert!(exs.expect_gas_charge.is_empty(), "unexpected gas charge {:?}", value);
+        assert!(!exs.expect_gas_charge.is_empty(), "unexpected gas charge {:?}", value);
         let expected = exs.expect_gas_charge.pop_front().unwrap();
         assert_eq!(expected, value, "expected gas charge {:?}, actual {:?}", expected, value);
     }
@@ -1161,7 +1178,6 @@ impl RuntimePolicy for MockRuntime {
 }
 
 pub fn blake2b_256(data: &[u8]) -> [u8; 32] {
-    use std::convert::TryInto;
     blake2b_simd::Params::new()
         .hash_length(32)
         .to_state()
@@ -1182,7 +1198,23 @@ enum MhCode {
     Sha256TruncPaddedFake,
 }
 
+pub fn make_cid(input: &[u8], prefix: u64) -> Cid {
+    let hash = MhCode::Sha256TruncPaddedFake.digest(input);
+    Cid::new_v1(prefix, hash)
+}
+
 pub fn make_piece_cid(input: &[u8]) -> Cid {
-    let h = MhCode::Sha256TruncPaddedFake.digest(input);
-    Cid::new_v1(FIL_COMMITMENT_UNSEALED, h)
+    make_cid(input, FIL_COMMITMENT_UNSEALED)
+}
+
+pub fn make_sealed_cid(input: &[u8]) -> Cid {
+    make_cid(input, FIL_COMMITMENT_SEALED)
+}
+
+pub fn new_bls_addr(s: u8) -> Address {
+    let seed = [s; 32];
+    let mut rng: StdRng = SeedableRng::from_seed(seed);
+    let mut key = [0u8; 48];
+    rng.fill_bytes(&mut key);
+    Address::new_bls(&key).unwrap()
 }
