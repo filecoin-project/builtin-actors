@@ -1691,16 +1691,13 @@ mod publish_storage_deals_failures {
     }
 
     #[test]
-    fn fail_when_client_has_some_funds_but_not_enough_for_a_deal() {
-    }
+    fn fail_when_client_has_some_funds_but_not_enough_for_a_deal() {}
 
     #[test]
-    fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
-    }
+    fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {}
 
     #[test]
-    fn fail_when_deals_have_different_providers() {
-    }
+    fn fail_when_deals_have_different_providers() {}
 
     #[test]
     fn fail_when_caller_is_not_of_signable_type() {
@@ -1711,7 +1708,10 @@ mod publish_storage_deals_failures {
         let deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() }]
+            deals: vec![ClientDealProposal {
+                proposal: deal.clone(),
+                client_signature: sig.clone(),
+            }],
         };
         let w = Address::new_id(1000);
         rt.set_caller(*MINER_ACTOR_CODE_ID, w);
@@ -1729,9 +1729,7 @@ mod publish_storage_deals_failures {
     #[test]
     fn fail_when_no_deals_in_params() {
         let mut rt = setup();
-        let params = PublishStorageDealsParams {
-            deals: vec![]
-        };
+        let params = PublishStorageDealsParams { deals: vec![] };
         rt.set_caller(*MINER_ACTOR_CODE_ID, WORKER_ADDR);
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
         expect_abort(
@@ -1755,7 +1753,10 @@ mod publish_storage_deals_failures {
 
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() }]
+            deals: vec![ClientDealProposal {
+                proposal: deal.clone(),
+                client_signature: sig.clone(),
+            }],
         };
         rt.set_caller(*MINER_ACTOR_CODE_ID, WORKER_ADDR);
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
@@ -1778,7 +1779,10 @@ mod publish_storage_deals_failures {
         let deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() }]
+            deals: vec![ClientDealProposal {
+                proposal: deal.clone(),
+                client_signature: sig.clone(),
+            }],
         };
 
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
@@ -1815,11 +1819,15 @@ mod publish_storage_deals_failures {
         // deal provider will be a Storage Miner Actor.
         let p2 = Address::new_id(505);
         rt.set_address_actor_type(p2, *POWER_ACTOR_CODE_ID);
-        let deal = generate_deal_proposal(CLIENT_ADDR, p2, ChainEpoch::from(1), ChainEpoch::from(5));
+        let deal =
+            generate_deal_proposal(CLIENT_ADDR, p2, ChainEpoch::from(1), ChainEpoch::from(5));
 
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() }]
+            deals: vec![ClientDealProposal {
+                proposal: deal.clone(),
+                client_signature: sig.clone(),
+            }],
         };
 
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
