@@ -124,3 +124,41 @@ fn deal_is_slashed() {
         check_state(&rt);
     }
 }
+
+const START_EPOCH: ChainEpoch = 50;
+const END_EPOCH: ChainEpoch = 50 + 200 * EPOCHS_IN_DAY;
+
+#[test]
+fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_considered_expired() {
+    let mut rt = setup();
+    let deal_id = publish_and_activate_deal(
+        &mut rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        START_EPOCH,
+        END_EPOCH,
+        0,
+        SECTOR_EXPIRY,
+    );
+    let deal_proposal = get_deal_proposal(&mut rt, deal_id);
+
+    // set current epoch to deal end epoch and attempt to slash it -> should not be slashed
+    // as deal is considered to be expired.
+
+    rt.set_epoch(END_EPOCH);
+    terminate_deals(&mut rt, PROVIDER_ADDR, &[deal_id]);
+
+    // on the next cron tick, it will be processed as expired
+    let current = END_EPOCH + 300;
+    rt.set_epoch(current);
+    let (pay, slashed) =
+        cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    let duration = END_EPOCH - START_EPOCH;
+    assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
+    assert!(slashed.is_zero());
+
+    // deal should be deleted as it should have expired
+    assert_deal_deleted(&mut rt, deal_id, deal_proposal);
+
+    check_state(&rt);
+}
