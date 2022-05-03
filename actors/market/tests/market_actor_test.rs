@@ -1708,10 +1708,7 @@ mod publish_storage_deals_failures {
         let deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal {
-                proposal: deal,
-                client_signature: sig,
-            }],
+            deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
         };
         let w = Address::new_id(1000);
         rt.set_caller(*MINER_ACTOR_CODE_ID, w);
@@ -1753,10 +1750,7 @@ mod publish_storage_deals_failures {
 
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal {
-                proposal: deal,
-                client_signature: sig,
-            }],
+            deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
         };
         rt.set_caller(*MINER_ACTOR_CODE_ID, WORKER_ADDR);
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
@@ -1779,10 +1773,7 @@ mod publish_storage_deals_failures {
         let deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal {
-                proposal: deal,
-                client_signature: sig,
-            }],
+            deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
         };
 
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
@@ -1824,10 +1815,7 @@ mod publish_storage_deals_failures {
 
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal {
-                proposal: deal,
-                client_signature: sig,
-            }],
+            deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
         };
 
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
