@@ -1703,7 +1703,10 @@ mod publish_storage_deals_failures {
         let buf = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() }],
+            deals: vec![ClientDealProposal {
+                proposal: deal1.clone(),
+                client_signature: sig.clone(),
+            }],
         };
 
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
@@ -1742,7 +1745,10 @@ mod publish_storage_deals_failures {
         let buf = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
         let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
         let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() }],
+            deals: vec![ClientDealProposal {
+                proposal: deal1.clone(),
+                client_signature: sig.clone(),
+            }],
         };
 
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
@@ -1782,13 +1788,7 @@ mod publish_storage_deals_failures {
         );
         let m2 = MinerAddresses { provider: Address::new_id(1000), ..MinerAddresses::default() };
 
-        let deal2 = generate_deal_and_add_funds(
-            &mut rt,
-            CLIENT_ADDR,
-            &m2,
-            1,
-            end_epoch,
-        );
+        let deal2 = generate_deal_and_add_funds(&mut rt, CLIENT_ADDR, &m2, 1, end_epoch);
 
         let buf1 = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
         let buf2 = RawBytes::serialize(deal2.clone()).expect("failed to marshal deal proposal");
@@ -1796,7 +1796,7 @@ mod publish_storage_deals_failures {
         let params = PublishStorageDealsParams {
             deals: vec![
                 ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() },
-                ClientDealProposal { proposal: deal2.clone(), client_signature: sig.clone() }
+                ClientDealProposal { proposal: deal2.clone(), client_signature: sig.clone() },
             ],
         };
 
