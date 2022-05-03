@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use cid::Cid;
 use num_traits::{FromPrimitive, Zero};
 use std::collections::HashMap;
@@ -245,21 +247,31 @@ pub fn activate_deals(
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
 ) {
+    let ret = activate_deals_raw(rt, sector_expiry, provider, current_epoch, deal_ids).unwrap();
+    assert_eq!(ret, RawBytes::default());
+}
+
+pub fn activate_deals_raw(
+    rt: &mut MockRuntime,
+    sector_expiry: ChainEpoch,
+    provider: Address,
+    current_epoch: ChainEpoch,
+    deal_ids: &[DealID],
+) -> Result<RawBytes, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
 
     let params = ActivateDealsParams { deal_ids: deal_ids.to_vec(), sector_expiry };
 
     let ret = rt
-        .call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap())
-        .unwrap();
-    assert_eq!(ret, RawBytes::default());
+        .call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap())?;
     rt.verify();
 
     for d in deal_ids {
         let s = get_deal_state(rt, *d);
         assert_eq!(current_epoch, s.sector_start_epoch);
     }
+    Ok(ret)
 }
 
 pub fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
@@ -378,6 +390,26 @@ pub fn cron_tick_and_assert_balances(
     assert_eq!(updated_provider_escrow, get_escrow_balance(rt, &provider_addr).unwrap());
     assert_eq!(updated_provider_locked, get_locked_balance(rt, provider_addr));
     (payment, amount_slashed)
+}
+
+pub fn cron_tick_no_change(rt: &mut MockRuntime, client_addr: Address, provider_addr: Address) {
+    let st: State = rt.get_state();
+    let epoch_cid = st.deal_ops_by_epoch;
+
+    // fetch current client and provider escrow balances
+    let c_locked = get_locked_balance(rt, client_addr);
+    let c_escrow = get_escrow_balance(rt, &client_addr).unwrap();
+    let p_locked = get_locked_balance(rt, provider_addr);
+    let p_escrow = get_escrow_balance(rt, &provider_addr).unwrap();
+
+    cron_tick(rt);
+
+    let st: State = rt.get_state();
+    assert_eq!(epoch_cid, st.deal_ops_by_epoch);
+    assert_eq!(c_locked, get_locked_balance(rt, client_addr));
+    assert_eq!(c_escrow, get_escrow_balance(rt, &client_addr).unwrap());
+    assert_eq!(p_locked, get_locked_balance(rt, provider_addr));
+    assert_eq!(p_escrow, get_escrow_balance(rt, &provider_addr).unwrap());
 }
 
 pub fn publish_deals(
