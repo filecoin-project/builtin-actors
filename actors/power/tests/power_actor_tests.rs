@@ -1175,6 +1175,13 @@ mod cron_batch_proof_verifies_tests {
         h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
         h.check_state();
     }
+
+    #[test]
+    fn success_when_no_confirmed_sector() {
+        let (h, mut rt) = setup();
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), vec![], vec![]);
+        h.check_state();
+    }
 }
 
 #[cfg(test)]
