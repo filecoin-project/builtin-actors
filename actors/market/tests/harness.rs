@@ -491,18 +491,11 @@ pub fn publish_deals_expect_abort(
     expected_exit_code: ExitCode,
 ) {
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
-    let return_value = ext::miner::GetControlAddressesReturnParams {
-        owner: miner_addresses.owner,
-        worker: miner_addresses.worker,
-        control_addresses: miner_addresses.control.clone(),
-    };
-    rt.expect_send(
+    expect_provider_control_address(
+        rt,
         miner_addresses.provider,
-        ext::miner::CONTROL_ADDRESSES_METHOD,
-        RawBytes::default(),
-        TokenAmount::zero(),
-        RawBytes::serialize(return_value).unwrap(),
-        ExitCode::OK,
+        miner_addresses.owner,
+        miner_addresses.worker,
     );
 
     let deal_serialized =
