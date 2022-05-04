@@ -1116,6 +1116,41 @@ mod cron_batch_proof_verifies_tests {
         rt.expect_logs_contains("skipping batch verifies for unknown miner t0101");
         h.check_state();
     }
+
+    #[test]
+    fn success_with_multiple_miners_and_multiple_confirmed_sectors_and_assert_expected_power() {
+        let miner2 = Address::new_id(102);
+        let miner3 = Address::new_id(103);
+        let miner4 = Address::new_id(104);
+
+        let info1 = create_basic_seal_info(1);
+        let info2 = create_basic_seal_info(2);
+        let info3 = create_basic_seal_info(3);
+        let info4 = create_basic_seal_info(101);
+        let info5 = create_basic_seal_info(200);
+        let info6 = create_basic_seal_info(201);
+        let info7 = create_basic_seal_info(300);
+        let info8 = create_basic_seal_info(301);
+
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER1).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER2).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER3).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER4).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, MINER1, info1).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, MINER1, info2).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner2, info3).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner2, info4).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner3, info5).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner3, info6).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner4, info7).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner4, info8).unwrap();
+    }
 }
 
 #[cfg(test)]
