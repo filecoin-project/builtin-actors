@@ -149,10 +149,9 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
 }
 
 #[test]
-fn deal_is_correctly_processed_twice_in_the_same_crontick_and_slashed() {
+fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
     // start epoch should equal first processing epoch for logic to work
-    // 2880 + 0 % 2880 = 2880
-    const START_EPOCH: ChainEpoch = EPOCHS_IN_DAY;
+    const START_EPOCH: ChainEpoch = Policy::default().deal_updates_interval;
     let mut rt = setup();
     let deal_id = publish_and_activate_deal(
         &mut rt,
