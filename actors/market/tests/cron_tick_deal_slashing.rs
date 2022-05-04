@@ -106,18 +106,6 @@ fn deal_is_slashed() {
         assert_eq!(deal_proposal.provider_collateral, slashed);
         assert_deal_deleted(&mut rt, deal_id, deal_proposal);
 
-        if tc.payment.is_zero() {
-            assert_account_zero(&mut rt, PROVIDER_ADDR);
-            // client balances should not change
-            let c_locked = get_locked_balance(&mut rt, CLIENT_ADDR);
-            let c_escrow = get_escrow_balance(&rt, &CLIENT_ADDR).unwrap();
-            cron_tick(&mut rt);
-            assert_eq!(c_escrow, get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
-            assert_eq!(c_locked, get_locked_balance(&mut rt, CLIENT_ADDR));
-        } else {
-            // running cron tick again dosen't do anything
-            cron_tick_no_change(&mut rt, CLIENT_ADDR, PROVIDER_ADDR);
-        }
         check_state(&rt);
     }
 }
