@@ -151,13 +151,13 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
 #[test]
 fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
     // start epoch should equal first processing epoch for logic to work
-    const START_EPOCH: ChainEpoch = Policy::default().deal_updates_interval;
+    let start_epoch: ChainEpoch = Policy::default().deal_updates_interval;
     let mut rt = setup();
     let deal_id = publish_and_activate_deal(
         &mut rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
-        START_EPOCH,
+        start_epoch,
         END_EPOCH,
         0,
         SECTOR_EXPIRY,
@@ -165,7 +165,7 @@ fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
     let deal_proposal = get_deal_proposal(&mut rt, deal_id);
 
     // move the current epoch to startEpoch so next cron epoch will be start + Interval
-    let current = process_epoch(START_EPOCH, deal_id);
+    let current = process_epoch(start_epoch, deal_id);
     rt.set_epoch(current);
     let (pay, slashed) =
         cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
