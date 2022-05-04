@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
+use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealMetaArray, Label,
     Method, PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
@@ -30,7 +31,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 
-use num_traits::{FromPrimitive, Zero};
+use num_traits::FromPrimitive;
 
 mod harness;
 use harness::*;
@@ -1374,57 +1375,58 @@ fn market_actor_deals() {
     add_participant_funds(&mut rt, CLIENT_ADDR, funds);
     let mut deal_proposal =
         generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, 1, 200 * EPOCHS_IN_DAY);
-    let deal_serialized =
-        RawBytes::serialize(deal_proposal.clone()).expect("Failed to marshal deal proposal");
-    let deal_signature =
-        Signature::new_bls(b"Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn".to_vec());
 
     // First attempt at publishing the deal should work
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(&mut rt, &miner_addresses, &[deal_proposal.clone()]);
 
     // Second attempt at publishing the same deal should fail
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
-    let return_value = ext::miner::GetControlAddressesReturnParams {
-        owner: miner_addresses.owner,
-        worker: miner_addresses.worker,
-        control_addresses: miner_addresses.control.clone(),
-    };
-    rt.expect_send(
-        miner_addresses.provider,
-        ext::miner::CONTROL_ADDRESSES_METHOD,
-        RawBytes::default(),
-        TokenAmount::zero(),
-        RawBytes::serialize(return_value).unwrap(),
-        ExitCode::OK,
-    );
-    expect_query_network_info(&mut rt);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig: deal_signature.clone(),
-        signer: deal_proposal.client,
-        plaintext: deal_serialized.to_vec(),
-        result: Ok(()),
-    });
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_params = PublishStorageDealsParams {
-        deals: vec![ClientDealProposal {
-            proposal: deal_proposal.clone(),
-            client_signature: deal_signature,
-        }],
-    };
-    expect_abort(
+    publish_deals_expect_abort(
+        &mut rt,
+        &miner_addresses,
+        deal_proposal.clone(),
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        rt.call::<MarketActor>(
-            Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(&deal_params).unwrap(),
-        ),
     );
-
-    rt.verify();
 
     // Same deal with a different label should work
     deal_proposal.label = "Cthulhu".to_owned();
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(&mut rt, &miner_addresses, &[deal_proposal]);
+    check_state(&rt);
+}
+
+#[test]
+fn max_deal_label_size() {
+    let mut rt = setup();
+    let miner_addresses = MinerAddresses {
+        owner: OWNER_ADDR,
+        worker: WORKER_ADDR,
+        provider: PROVIDER_ADDR,
+        control: vec![],
+    };
+
+    // Test adding provider funds from both worker and owner address
+    let funds = TokenAmount::from_u32(20_000_000).unwrap();
+    add_provider_funds(&mut rt, funds.clone(), &MinerAddresses::default());
+    assert_eq!(funds, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
+
+    add_participant_funds(&mut rt, CLIENT_ADDR, funds);
+    let mut deal_proposal =
+        generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, 1, 200 * EPOCHS_IN_DAY);
+
+    // DealLabel at max size should work.
+    deal_proposal.label = "s".repeat(DEAL_MAX_LABEL_SIZE);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    publish_deals(&mut rt, &miner_addresses, &[deal_proposal.clone()]);
+
+    // over max should fail
+    deal_proposal.label = "s".repeat(DEAL_MAX_LABEL_SIZE + 1);
+    publish_deals_expect_abort(
+        &mut rt,
+        &miner_addresses,
+        deal_proposal,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
+
     check_state(&rt);
 }

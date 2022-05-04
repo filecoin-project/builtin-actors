@@ -16,8 +16,10 @@ use num_traits::Zero;
 
 use super::deal::DealProposal;
 
-/// Maximum length of a deal label.
-pub(super) const DEAL_MAX_LABEL_SIZE: usize = 256;
+pub mod detail {
+    /// Maximum length of a deal label.
+    pub const DEAL_MAX_LABEL_SIZE: usize = 256;
+}
 
 /// Bounds (inclusive) on deal duration.
 pub(super) fn deal_duration_bounds(_size: PaddedPieceSize) -> (ChainEpoch, ChainEpoch) {
