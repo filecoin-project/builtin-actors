@@ -215,7 +215,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
         0,
         SECTOR_EXPIRY,
     );
-    let deal_proposal2 = get_deal_proposal(&mut rt, deal_id1);
+    let deal_proposal2 = get_deal_proposal(&mut rt, deal_id2);
 
     let deal_id3 = publish_and_activate_deal(
         &mut rt,
@@ -226,7 +226,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
         0,
         SECTOR_EXPIRY,
     );
-    let deal_proposal3 = get_deal_proposal(&mut rt, deal_id1);
+    let deal_proposal3 = get_deal_proposal(&mut rt, deal_id3);
 
     // set slash epoch of deal at 100 epochs past last process epoch
     rt.set_epoch(process_epoch(START_EPOCH, deal_id3) + 100);
