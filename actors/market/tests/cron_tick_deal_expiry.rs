@@ -56,13 +56,13 @@ fn deal_is_correctly_processed_if_first_cron_after_expiry() {
 #[test]
 fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     // start epoch should equal first processing epoch for logic to work
-    const START_EPOCH: ChainEpoch = Policy::default().deal_updates_interval;
+    let start_epoch = Policy::default().deal_updates_interval;
     let mut rt = setup();
     let deal_id = publish_and_activate_deal(
         &mut rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
-        START_EPOCH,
+        start_epoch,
         END_EPOCH,
         0,
         SECTOR_EXPIRY,
@@ -70,7 +70,7 @@ fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     let deal_proposal = get_deal_proposal(&mut rt, deal_id);
 
     // move the current epoch to startEpoch + 5 so payment is made
-    let current = START_EPOCH + 5;
+    let current = start_epoch + 5;
     rt.set_epoch(current);
     // assert payment
     let (pay, slashed) =
