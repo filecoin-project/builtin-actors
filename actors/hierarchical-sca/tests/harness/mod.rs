@@ -4,7 +4,8 @@ use cid::Cid;
 use fil_actors_runtime::test_utils::expect_abort;
 use fil_actors_runtime::Array;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
+use fvm_shared::address::subnet::ROOTNET_ID;
+use fvm_shared::address::{Address, SubnetID};
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -22,9 +23,8 @@ use fil_actors_runtime::{
 };
 use hierarchical_sca::checkpoint::ChildCheck;
 use hierarchical_sca::{
-    Checkpoint, ConstructorParams, CrossMsgMeta, FundParams, Method, State, Subnet, SubnetID,
-    SubnetIDParam, CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE,
-    MIN_COLLATERAL_AMOUNT, ROOTNET_ID,
+    Checkpoint, ConstructorParams, CrossMsgMeta, FundParams, Method, State, Subnet, SubnetIDParam,
+    CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT,
 };
 
 use crate::SCAActor;
@@ -303,6 +303,7 @@ pub fn add_msg_meta(
 ) {
     let mh_code = Code::Blake2b256;
     let c = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&rand));
-    let meta = CrossMsgMeta { from: from.clone(), to: to.clone(), msgs_cid: c, nonce: 0, value: value };
+    let meta =
+        CrossMsgMeta { from: from.clone(), to: to.clone(), msgs_cid: c, nonce: 0, value: value };
     ch.append_msgmeta(meta).unwrap();
 }

@@ -10,6 +10,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_ipld_hamt::BytesKey;
+use fvm_shared::address::SubnetID;
 use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -21,6 +22,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use super::checkpoint::*;
+use super::cross::*;
 use super::subnet::*;
 use super::types::*;
 

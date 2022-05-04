@@ -7,7 +7,8 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::actor::builtin::Type;
+use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
+use fvm_shared::address::{Address, SubnetID};
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -26,6 +27,7 @@ pub use self::types::*;
 fil_actors_runtime::wasm_trampoline!(Actor);
 
 pub mod checkpoint;
+mod cross;
 #[doc(hidden)]
 pub mod ext;
 mod state;
@@ -43,6 +45,7 @@ pub enum Method {
     ReleaseStake = 4,
     Kill = 5,
     CommitChildCheckpoint = 6,
+    Fund = 7,
 }
 
 /// Subnet Coordinator Actor
@@ -72,7 +75,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Subnet))?;
         let subnet_addr = rt.message().caller();
-        let mut shid = subnet::SubnetID::default();
+        let mut shid = SubnetID::default();
         rt.transaction(|st: &mut State, rt| {
             shid = SubnetID::new(&st.network_name, subnet_addr);
             let sub = st.get_subnet(rt.store(), &shid).map_err(|e| {
@@ -370,6 +373,27 @@ impl Actor {
         }
         Ok(())
     }
+
+    /// Fund the controlled addres in a subnet
+    fn fund<BS, RT>(rt: &mut RT, params: SubnetIDParam) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        let value = rt.message().value_received();
+        if value < TokenAmount::zero() {
+            return Err(actor_error!(illegal_argument, "no funds included in fund message"));
+        }
+
+        rt.transaction(|st: &mut State, rt| {
+            // Create fund message
+            // Commit top-down message.
+            Ok(())
+        })?;
+
+        Ok(())
+    }
 }
 
 impl ActorCode for Actor {
@@ -407,7 +431,29 @@ impl ActorCode for Actor {
                 Self::commit_child_check(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
+            Some(Method::Fund) => {
+                Self::fund(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
+}
+
+fn resolve_secp_bls<BS, RT>(rt: &mut RT, raw: Address) -> Result<Address, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    let resolved = rt
+        .resolve_address(&raw)
+        .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
+    let ret = rt.send(
+        resolved,
+        ext::account::PUBKEY_ADDRESS_METHOD,
+        RawBytes::default(),
+        TokenAmount::zero(),
+    )?;
+    let pub_key: Address = cbor::deserialize(&ret, "address response")?;
+    Ok(pub_key)
 }
