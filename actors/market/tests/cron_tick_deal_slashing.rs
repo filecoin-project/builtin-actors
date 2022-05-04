@@ -62,21 +62,14 @@ fn deal_is_slashed() {
             payment: TokenAmount::from(0), // (10 - 10) * 10
         },
         Case {
-            name: "deal is slashed and then deal expiry happens on crontick, but slashing still occurs",
-            deal_start: 10,
-            deal_end: 10 + 200 * EPOCHS_IN_DAY,
-            activation_epoch: 5,
-            termination_epoch: 15,
-            payment: TokenAmount::from(50),
-        },
-        Case {
             name: "deal is slashed just BEFORE the end epoch",
             deal_start: 10,
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 19,
             payment: TokenAmount::from(90), // (19 - 10) * 10
-        }];
+        },
+    ];
     for tc in cases {
         eprintln!("Running testcase: {}", tc.name);
         let mut rt = setup();
