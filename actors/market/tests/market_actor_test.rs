@@ -1443,11 +1443,7 @@ mod publish_storage_deals_failures {
             .deserialize()
             .unwrap();
 
-        let valid: Vec<u64> = psd_ret
-            .valid_deals
-            .bounded_iter(std::u64::MAX)
-            .unwrap()
-            .collect();
+        let valid: Vec<u64> = psd_ret.valid_deals.bounded_iter(std::u64::MAX).unwrap().collect();
         assert_eq!(vec![0], valid);
 
         rt.verify();
