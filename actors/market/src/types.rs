@@ -4,13 +4,13 @@
 use cid::Cid;
 use fil_actors_runtime::{Array, DealWeight};
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::RegisteredSealProof;
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use super::deal::{ClientDealProposal, DealProposal, DealState};
 

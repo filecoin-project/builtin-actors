@@ -3,7 +3,6 @@
 
 use cid::{Cid, Version};
 use fil_actors_runtime::DealWeight;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{BytesSer, Cbor};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
@@ -14,6 +13,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use libipld_core::ipld::Ipld;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 use std::convert::{TryFrom, TryInto};
 
 /// Cid prefix for piece Cids

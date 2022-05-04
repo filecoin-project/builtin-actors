@@ -572,6 +572,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -606,6 +607,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -623,6 +625,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -648,6 +651,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -676,6 +680,7 @@ dependencies = [
  "num-traits",
  "rand",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -694,6 +699,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -711,6 +717,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -731,6 +738,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -747,6 +755,8 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_repr",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -762,6 +772,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -779,6 +790,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_tuple",
 ]
 
 [[package]]
@@ -808,6 +820,7 @@ dependencies = [
  "num-traits",
  "rand",
  "serde",
+ "serde_tuple",
  "thiserror",
  "unsigned-varint",
 ]
@@ -1620,9 +1633,9 @@ dependencies = [
 
 [[package]]
 name = "serde_repr"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98d0516900518c29efa217c298fa1f4e6c6ffc85ae29fd7f4ee48f176e1a9ed5"
+checksum = "a2ad84e47328a31223de7fed7a4f5087f2d6ddfe586cf3ca25b7a165bc0a5aed"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1754,6 +1767,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+ "serde_tuple",
  "thiserror",
 ]
 

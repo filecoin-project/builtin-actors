@@ -11,12 +11,12 @@ use fil_actors_runtime::{ActorDowncast, Array};
 use fvm_ipld_amt::{Error as AmtError, ValueMut};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::tuple::*;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
 use num_traits::{Signed, Zero};
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use super::{power_for_sector, PowerPair, SectorOnChainInfo};
 

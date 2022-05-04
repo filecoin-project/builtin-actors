@@ -4,7 +4,6 @@
 use anyhow::anyhow;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, Integer};
@@ -12,6 +11,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use indexmap::IndexMap;
 use num_traits::Zero;
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use super::types::Transaction;
 use super::TxnID;

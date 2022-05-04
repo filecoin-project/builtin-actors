@@ -1,7 +1,7 @@
-use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::econ::TokenAmount;
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::FilterEstimate;

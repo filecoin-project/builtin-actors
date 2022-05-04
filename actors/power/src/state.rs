@@ -11,7 +11,6 @@ use fil_actors_runtime::{
     ActorDowncast, ActorError, Map, Multimap,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
@@ -25,6 +24,7 @@ use fvm_shared::HAMT_BIT_WIDTH;
 use integer_encoding::VarInt;
 use lazy_static::lazy_static;
 use num_traits::Signed;
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use super::{CONSENSUS_MINER_MIN_MINERS, CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT_BITWIDTH};
 

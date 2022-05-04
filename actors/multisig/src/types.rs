@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
@@ -12,6 +11,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
 use integer_encoding::VarInt;
 use serde::{Deserialize, Serialize};
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 /// SignersMax is the maximum number of signers allowed in a multisig. If more
 /// are required, please use a combining tree of multisigs.

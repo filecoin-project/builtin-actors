@@ -4,7 +4,6 @@
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::UnvalidatedBitField;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, BytesDe};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
@@ -17,6 +16,7 @@ use fvm_shared::sector::{
     StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 pub type CronEvent = i64;
 

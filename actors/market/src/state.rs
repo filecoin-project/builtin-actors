@@ -9,7 +9,6 @@ use fil_actors_runtime::{
     actor_error, make_empty_map, ActorDowncast, ActorError, Array, Set, SetMultimap,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
@@ -19,6 +18,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::HAMT_BIT_WIDTH;
 use num_traits::{Signed, Zero};
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use super::policy::*;
 use super::types::*;

@@ -1,5 +1,4 @@
 use cid::Cid;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
@@ -7,6 +6,7 @@ use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 pub mod init {
     use super::*;

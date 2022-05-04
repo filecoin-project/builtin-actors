@@ -3,12 +3,12 @@
 
 use std::{iter, mem};
 
-use fvm_ipld_encoding::tuple::*;
 use fvm_shared::bigint::{bigint_ser, Integer};
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
 use itertools::{EitherOrBoth, Itertools};
 use num_traits::Zero;
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use super::VestSpec;
 
