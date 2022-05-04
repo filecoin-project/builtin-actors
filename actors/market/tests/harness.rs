@@ -484,6 +484,54 @@ pub fn publish_deals(
     ret.ids
 }
 
+pub fn publish_deals_expect_abort(
+    rt: &mut MockRuntime,
+    miner_addresses: &MinerAddresses,
+    proposal: DealProposal,
+    expected_exit_code: ExitCode,
+) {
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    let return_value = ext::miner::GetControlAddressesReturnParams {
+        owner: miner_addresses.owner,
+        worker: miner_addresses.worker,
+        control_addresses: miner_addresses.control.clone(),
+    };
+    rt.expect_send(
+        miner_addresses.provider,
+        ext::miner::CONTROL_ADDRESSES_METHOD,
+        RawBytes::default(),
+        TokenAmount::zero(),
+        RawBytes::serialize(return_value).unwrap(),
+        ExitCode::OK,
+    );
+
+    let deal_serialized =
+        RawBytes::serialize(proposal.clone()).expect("Failed to marshal deal proposal");
+    let client_signature =
+        Signature::new_bls(b"Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn".to_vec());
+
+    expect_query_network_info(rt);
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig: client_signature.clone(),
+        signer: proposal.client,
+        plaintext: deal_serialized.to_vec(),
+        result: Ok(()),
+    });
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_params = PublishStorageDealsParams {
+        deals: vec![ClientDealProposal { proposal, client_signature }],
+    };
+    expect_abort(
+        expected_exit_code,
+        rt.call::<MarketActor>(
+            Method::PublishStorageDeals as u64,
+            &RawBytes::serialize(&deal_params).unwrap(),
+        ),
+    );
+
+    rt.verify();
+}
+
 pub fn assert_deals_not_activated(rt: &mut MockRuntime, _epoch: ChainEpoch, deal_ids: &[DealID]) {
     let st: State = rt.get_state();
 
