@@ -1113,7 +1113,6 @@ mod cron_batch_proof_verifies_tests {
 
         h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
 
-        rt.expect_logs_contains("skipping batch verifies for unknown miner t0101");
         h.check_state();
     }
 
