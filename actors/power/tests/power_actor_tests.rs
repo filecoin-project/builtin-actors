@@ -1099,13 +1099,13 @@ mod cron_batch_proof_verifies_tests {
     #[test]
     fn skips_verify_if_miner_has_no_claim() {
         let (mut h, mut rt) = setup();
-        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER1).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
 
         let info = create_basic_seal_info(1);
 
-        h.submit_porep_for_bulk_verify(&mut rt, *MINER, info).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info).unwrap();
 
-        h.delete_claim(&mut rt, &MINER);
+        h.delete_claim(&mut rt, &MINER_1);
 
         let infos = vec![];
 
@@ -1118,6 +1118,7 @@ mod cron_batch_proof_verifies_tests {
 
     #[test]
     fn success_with_multiple_miners_and_multiple_confirmed_sectors_and_assert_expected_power() {
+        let miner1 = Address::new_id(101);
         let miner2 = Address::new_id(102);
         let miner3 = Address::new_id(103);
         let miner4 = Address::new_id(104);
@@ -1133,13 +1134,13 @@ mod cron_batch_proof_verifies_tests {
 
         let (mut h, mut rt) = setup();
 
-        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER1).unwrap();
-        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER2).unwrap();
-        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER3).unwrap();
-        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER4).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner1).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner2).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner3).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner4).unwrap();
 
-        h.submit_porep_for_bulk_verify(&mut rt, MINER1, info1.clone()).unwrap();
-        h.submit_porep_for_bulk_verify(&mut rt, MINER1, info2.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner1, info1.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner1, info2.clone()).unwrap();
 
         h.submit_porep_for_bulk_verify(&mut rt, miner2, info3.clone()).unwrap();
         h.submit_porep_for_bulk_verify(&mut rt, miner2, info4.clone()).unwrap();
@@ -1152,7 +1153,7 @@ mod cron_batch_proof_verifies_tests {
 
         let confirmed_sectors = vec![
             ConfirmedSectorSend {
-                miner: MINER1,
+                miner: MINER_1,
                 sector_nums: vec![info1.sector_id.number, info2.sector_id.number],
             },
             ConfirmedSectorSend {
