@@ -6,10 +6,11 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_ipld_encoding::{CborStore, RawBytes};
-use fvm_shared::address::Address;
+use fvm_shared::address::{Address, SubnetID};
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::MethodNum;
+use fvm_shared::METHOD_SEND;
 
 use crate::checkpoint::CrossMsgMeta;
 
@@ -28,12 +29,32 @@ pub struct StorableMsg {
     pub params: RawBytes,
     #[serde(with = "bigint_ser")]
     pub value: TokenAmount,
+    pub nonce: u64,
 }
 impl Cbor for StorableMsg {}
 
 impl StorableMsg {
-    pub fn new_fund_msg() {
-        panic!("not implemented");
+    pub fn new_fund_msg(
+        sub_id: &SubnetID,
+        sig_addr: &Address,
+        value: TokenAmount,
+    ) -> anyhow::Result<Self> {
+        let from = Address::new_hierarchical(
+            &match sub_id.parent() {
+                Some(s) => s,
+                None => return Err(anyhow!("error getting parent for subnet addr")),
+            },
+            sig_addr,
+        )?;
+        let to = Address::new_hierarchical(sub_id, sig_addr)?;
+        Ok(Self {
+            from: from,
+            to: to,
+            method: METHOD_SEND,
+            params: RawBytes::default(),
+            value: value,
+            nonce: 0,
+        })
     }
 }
 

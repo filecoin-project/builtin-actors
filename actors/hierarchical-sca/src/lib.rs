@@ -19,6 +19,7 @@ use num_traits::FromPrimitive;
 use std::collections::HashMap;
 
 pub use self::checkpoint::{Checkpoint, CrossMsgMeta};
+pub use self::cross::StorableMsg;
 pub use self::state::*;
 pub use self::subnet::*;
 pub use self::types::*;
@@ -68,7 +69,7 @@ impl Actor {
 
     /// Register is called by subnet actors to put the required collateral
     /// and register the subnet to the hierarchy.
-    fn register<BS, RT>(rt: &mut RT) -> Result<SubnetIDParam, ActorError>
+    fn register<BS, RT>(rt: &mut RT) -> Result<SubnetID, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -102,7 +103,7 @@ impl Actor {
             Ok(())
         })?;
 
-        Ok(SubnetIDParam { id: shid.to_string() })
+        Ok(shid)
     }
 
     /// Add stake adds stake to the collateral of a subnet.
@@ -375,20 +376,30 @@ impl Actor {
     }
 
     /// Fund the controlled addres in a subnet
-    fn fund<BS, RT>(rt: &mut RT, params: SubnetIDParam) -> Result<(), ActorError>
+    fn fund<BS, RT>(rt: &mut RT, params: SubnetID) -> Result<(), ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        // FIXME: Only supporting cross-messages initiated by signable addresses for
+        // now. Consider supporting also send-cross messages initiated by actors.
         rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
         let value = rt.message().value_received();
         if value < TokenAmount::zero() {
             return Err(actor_error!(illegal_argument, "no funds included in fund message"));
         }
 
+        let sig_addr = resolve_secp_bls(rt, rt.message().caller())?;
+
         rt.transaction(|st: &mut State, rt| {
             // Create fund message
+            let mut f_msg = StorableMsg::new_fund_msg(&params, &sig_addr, value).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error creating fund cross-message")
+            })?;
             // Commit top-down message.
+            st.commit_topdown_msg(rt.store(), &mut f_msg).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error committing top-down message")
+            })?;
             Ok(())
         })?;
 

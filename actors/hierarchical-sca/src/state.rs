@@ -389,6 +389,42 @@ impl State {
         self.bottomup_nonce += 1;
         Ok(())
     }
+
+    /// commit topdown messages for their execution in the subnet
+    pub(crate) fn commit_topdown_msg<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        msg: &mut StorableMsg,
+    ) -> anyhow::Result<()> {
+        let sto = msg.to.subnet()?;
+        let sfrom = msg.from.subnet()?;
+
+        let sub = self.get_subnet(store, &sto).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnet")
+        })?;
+        match sub {
+            Some(mut sub) => {
+                msg.nonce = sub.nonce;
+                sub.store_topdown_msg(store, &msg)?;
+                sub.nonce += 1;
+                sub.circ_supply += msg.value.clone();
+                self.flush_subnet(store, &sub)?;
+            }
+            None => {
+                if sfrom == self.network_name {
+                    return Err(anyhow!("can't direct top-down message to the current subnet"));
+                } else {
+                    self.noop_msg();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// noop is triggered to notify when a crossMsg fails to be applied successfully.
+    pub fn noop_msg(&self) {
+        panic!("error committing cross-msg. noop should be returned but not implemented yet");
+    }
 }
 
 pub fn set_subnet<BS: Blockstore>(

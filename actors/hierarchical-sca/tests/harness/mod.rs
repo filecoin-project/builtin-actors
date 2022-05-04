@@ -23,7 +23,7 @@ use fil_actors_runtime::{
 };
 use hierarchical_sca::checkpoint::ChildCheck;
 use hierarchical_sca::{
-    Checkpoint, ConstructorParams, CrossMsgMeta, FundParams, Method, State, Subnet, SubnetIDParam,
+    Checkpoint, ConstructorParams, CrossMsgMeta, FundParams, Method, State, Subnet,
     CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT,
 };
 
@@ -113,12 +113,11 @@ impl Harness {
             return Ok(());
         }
 
-        let register_ret =
-            SubnetIDParam { id: SubnetID::new(&ROOTNET_ID, *subnet_addr).to_string() };
+        let register_ret = SubnetID::new(&ROOTNET_ID, *subnet_addr);
         let ret = rt.call::<SCAActor>(Method::Register as MethodNum, &RawBytes::default()).unwrap();
         rt.verify();
-        let ret: SubnetIDParam = RawBytes::deserialize(&ret).unwrap();
-        assert_eq!(ret.id, register_ret.id);
+        let ret: SubnetID = RawBytes::deserialize(&ret).unwrap();
+        assert_eq!(ret, register_ret);
         Ok(())
     }
 
