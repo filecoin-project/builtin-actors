@@ -1434,15 +1434,24 @@ mod publish_storage_deals_failures {
             result: Ok(()),
         });
 
-        // let psd_ret: PublishStorageDealsReturn = rt
-        //     .call::<MarketActor>(
-        //         Method::PublishStorageDeals as u64,
-        //         &RawBytes::serialize(params).unwrap(),
-        //     )
-        //     .unwrap()
-        //     .deserialize()
-        //     .unwrap();
-        ()
+        let psd_ret: PublishStorageDealsReturn = rt
+            .call::<MarketActor>(
+                Method::PublishStorageDeals as u64,
+                &RawBytes::serialize(params).unwrap(),
+            )
+            .unwrap()
+            .deserialize()
+            .unwrap();
+
+        let valid: Vec<u64> = psd_ret
+            .valid_deals
+            .bounded_iter(std::u64::MAX)
+            .unwrap()
+            .collect();
+        assert_eq!(vec![0], valid);
+
+        rt.verify();
+        check_state(&rt);
     }
 
     #[test]
