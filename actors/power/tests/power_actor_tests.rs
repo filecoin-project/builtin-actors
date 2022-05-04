@@ -1157,16 +1157,16 @@ mod cron_batch_proof_verifies_tests {
                 sector_nums: vec![info1.sector_id.number, info2.sector_id.number],
             },
             ConfirmedSectorSend {
+                miner: miner2,
+                sector_nums: vec![info3.sector_id.number, info4.sector_id.number],
+            },
+            ConfirmedSectorSend {
                 miner: miner3,
                 sector_nums: vec![info5.sector_id.number, info6.sector_id.number],
             },
             ConfirmedSectorSend {
                 miner: miner4,
                 sector_nums: vec![info7.sector_id.number, info8.sector_id.number],
-            },
-            ConfirmedSectorSend {
-                miner: miner2,
-                sector_nums: vec![info3.sector_id.number, info4.sector_id.number],
             },
         ];
 
