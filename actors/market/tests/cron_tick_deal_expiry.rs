@@ -15,7 +15,7 @@ const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
 const SECTOR_EXPIRY: ChainEpoch = END_EPOCH + 400;
 
 #[test]
-fn deal_is_correctly_processed_twice_in_the_same_crontick() {
+fn deal_is_correctly_processed_if_first_cron_after_expiry() {
     let mut rt = setup();
     let deal_id = publish_and_activate_deal(
         &mut rt,
@@ -28,7 +28,7 @@ fn deal_is_correctly_processed_twice_in_the_same_crontick() {
     );
     let deal_proposal = get_deal_proposal(&mut rt, deal_id);
 
-    // move the current epoch to startEpoch and scheduled next epoch at endepoch -1
+    // move the current epoch to startEpoch
     let current = START_EPOCH;
     rt.set_epoch(current);
     let (pay, slashed) =
@@ -38,7 +38,7 @@ fn deal_is_correctly_processed_twice_in_the_same_crontick() {
     // assert deal exists
     let _found = get_deal_proposal(&mut rt, deal_id);
 
-    // move the epoch to endEpoch+5(anything greater than endEpoch), so deal is first processed at endEpoch - 1 AND then at it's end epoch
+    // move the epoch to endEpoch+5(anything greater than endEpoch)
     // total payment = (end - start)
     let current = END_EPOCH + 5;
     rt.set_epoch(current);
@@ -56,8 +56,7 @@ fn deal_is_correctly_processed_twice_in_the_same_crontick() {
 #[test]
 fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     // start epoch should equal first processing epoch for logic to work
-    // 2880 + 0 % 2880 = 2880
-    const START_EPOCH: ChainEpoch = EPOCHS_IN_DAY;
+    const START_EPOCH: ChainEpoch = Policy::default().deal_updates_interval;
     let mut rt = setup();
     let deal_id = publish_and_activate_deal(
         &mut rt,
