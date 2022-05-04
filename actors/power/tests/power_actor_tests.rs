@@ -1138,17 +1138,41 @@ mod cron_batch_proof_verifies_tests {
         h.create_miner_basic(&mut rt, OWNER, OWNER, MINER3).unwrap();
         h.create_miner_basic(&mut rt, OWNER, OWNER, MINER4).unwrap();
 
-        h.submit_porep_for_bulk_verify(&mut rt, MINER1, info1).unwrap();
-        h.submit_porep_for_bulk_verify(&mut rt, MINER1, info2).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, MINER1, info1.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, MINER1, info2.clone()).unwrap();
 
-        h.submit_porep_for_bulk_verify(&mut rt, miner2, info3).unwrap();
-        h.submit_porep_for_bulk_verify(&mut rt, miner2, info4).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner2, info3.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner2, info4.clone()).unwrap();
 
-        h.submit_porep_for_bulk_verify(&mut rt, miner3, info5).unwrap();
-        h.submit_porep_for_bulk_verify(&mut rt, miner3, info6).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner3, info5.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner3, info6.clone()).unwrap();
 
-        h.submit_porep_for_bulk_verify(&mut rt, miner4, info7).unwrap();
-        h.submit_porep_for_bulk_verify(&mut rt, miner4, info8).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner4, info7.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner4, info8.clone()).unwrap();
+
+        let confirmed_sectors = vec![
+            ConfirmedSectorSend {
+                miner: MINER1,
+                sector_nums: vec![info1.sector_id.number, info2.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner3,
+                sector_nums: vec![info5.sector_id.number, info6.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner4,
+                sector_nums: vec![info7.sector_id.number, info8.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner2,
+                sector_nums: vec![info3.sector_id.number, info4.sector_id.number],
+            },
+        ];
+
+        let infos = vec![info1, info2, info3, info4, info5, info6, info7, info8];
+
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
+        h.check_state();
     }
 }
 
