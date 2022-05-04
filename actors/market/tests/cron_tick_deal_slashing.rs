@@ -106,7 +106,6 @@ fn deal_is_slashed() {
         assert_eq!(deal_proposal.provider_collateral, slashed);
         assert_deal_deleted(&mut rt, deal_id, deal_proposal);
 
-        // if there has been no payment, provider will have zero balance and hence should be slashed
         if tc.payment.is_zero() {
             assert_account_zero(&mut rt, PROVIDER_ADDR);
             // client balances should not change
