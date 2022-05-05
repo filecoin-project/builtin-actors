@@ -4622,3 +4622,35 @@ impl ActorCode for Actor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fil_actors_runtime::test_utils::blake2b_256;
+
+    #[test]
+    fn test_assign_proving_period_boundary() {
+        let addr1 = Address::new_actor("a".as_bytes());
+        let addr2 = Address::new_actor("b".as_bytes());
+        let start_epoch = 1;
+        let policy = Policy::default();
+
+        // ensure the values are different for different addresses
+        let b1 = assign_proving_period_offset(&policy, addr1, start_epoch, blake2b_256).unwrap();
+        assert!(b1 >= 0);
+        assert!(b1 < policy.wpost_proving_period);
+
+        let b2 = assign_proving_period_offset(&policy, addr2, start_epoch, blake2b_256).unwrap();
+        assert!(b2 >= 0);
+        assert!(b2 < policy.wpost_proving_period);
+
+        assert_ne!(b1, b2);
+
+        // Ensure boundaries are always less than a proving period.
+        for i in 0..10_000 {
+            let boundary = assign_proving_period_offset(&policy, addr1, i, blake2b_256).unwrap();
+            assert!(boundary >= 0);
+            assert!(boundary < policy.wpost_proving_period);
+        }
+    }
+}
