@@ -1095,6 +1095,9 @@ mod cron_batch_proof_verifies_tests {
         rt.verify();
         h.check_state();
     }
+
+    #[test]
+    fn verification_for_one_sector_fails_but_others_succeeds_for_a_miner() {}
 }
 
 #[cfg(test)]
