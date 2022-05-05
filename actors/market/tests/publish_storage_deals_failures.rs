@@ -213,40 +213,13 @@ mod publish_storage_deals_failures {
     fn fail_when_client_has_some_funds_but_not_enough_for_a_deal() {
         let mut rt = setup();
 
-        //
         add_participant_funds(&mut rt, CLIENT_ADDR, TokenAmount::from(100u8));
         let start_epoch = 42;
         let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
         let deal1 = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
         add_provider_funds(&mut rt, deal1.clone().provider_collateral, &MinerAddresses::default());
-        let buf = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
-        let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
-        let params = PublishStorageDealsParams {
-            deals: vec![ClientDealProposal {
-                proposal: deal1.clone(),
-                client_signature: sig.clone(),
-            }],
-        };
+        publish_deals_expect_abort(&mut rt, &MinerAddresses::default(), deal1, ExitCode::USR_ILLEGAL_ARGUMENT);
 
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
-        expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
-        expect_query_network_info(&mut rt);
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig,
-            signer: deal1.client,
-            plaintext: buf.to_vec(),
-            result: Ok(()),
-        });
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            rt.call::<MarketActor>(
-                Method::PublishStorageDeals as u64,
-                &RawBytes::serialize(params).unwrap(),
-            ),
-        );
-
-        rt.verify();
         check_state(&rt);
     }
 
@@ -430,8 +403,8 @@ mod publish_storage_deals_failures {
         };
 
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
-        expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, Address::new_id(999));
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+        expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(999));
         expect_abort(
             ExitCode::USR_FORBIDDEN,
             rt.call::<MarketActor>(
