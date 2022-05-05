@@ -248,21 +248,31 @@ pub fn activate_deals(
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
 ) {
+    let ret = activate_deals_raw(rt, sector_expiry, provider, current_epoch, deal_ids).unwrap();
+    assert_eq!(ret, RawBytes::default());
+}
+
+pub fn activate_deals_raw(
+    rt: &mut MockRuntime,
+    sector_expiry: ChainEpoch,
+    provider: Address,
+    current_epoch: ChainEpoch,
+    deal_ids: &[DealID],
+) -> Result<RawBytes, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
 
     let params = ActivateDealsParams { deal_ids: deal_ids.to_vec(), sector_expiry };
 
     let ret = rt
-        .call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap())
-        .unwrap();
-    assert_eq!(ret, RawBytes::default());
+        .call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap())?;
     rt.verify();
 
     for d in deal_ids {
         let s = get_deal_state(rt, *d);
         assert_eq!(current_epoch, s.sector_start_epoch);
     }
+    Ok(ret)
 }
 
 pub fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
@@ -484,6 +494,47 @@ pub fn publish_deals(
     ret.ids
 }
 
+pub fn publish_deals_expect_abort(
+    rt: &mut MockRuntime,
+    miner_addresses: &MinerAddresses,
+    proposal: DealProposal,
+    expected_exit_code: ExitCode,
+) {
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    expect_provider_control_address(
+        rt,
+        miner_addresses.provider,
+        miner_addresses.owner,
+        miner_addresses.worker,
+    );
+
+    let deal_serialized =
+        RawBytes::serialize(proposal.clone()).expect("Failed to marshal deal proposal");
+    let client_signature =
+        Signature::new_bls(b"Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn".to_vec());
+
+    expect_query_network_info(rt);
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig: client_signature.clone(),
+        signer: proposal.client,
+        plaintext: deal_serialized.to_vec(),
+        result: Ok(()),
+    });
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_params = PublishStorageDealsParams {
+        deals: vec![ClientDealProposal { proposal, client_signature }],
+    };
+    expect_abort(
+        expected_exit_code,
+        rt.call::<MarketActor>(
+            Method::PublishStorageDeals as u64,
+            &RawBytes::serialize(&deal_params).unwrap(),
+        ),
+    );
+
+    rt.verify();
+}
+
 pub fn assert_deals_not_activated(rt: &mut MockRuntime, _epoch: ChainEpoch, deal_ids: &[DealID]) {
     let st: State = rt.get_state();
 
@@ -625,7 +676,6 @@ pub fn assert_deal_failure<F>(
     } else {
         generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch)
     };
-    deal_proposal.verified_deal = false;
     rt.set_epoch(current_epoch);
     post_setup(&mut rt, &mut deal_proposal);
 
@@ -711,7 +761,7 @@ pub fn generate_and_publish_deal_for_piece(
     let deal = DealProposal {
         piece_cid,
         piece_size,
-        verified_deal: true,
+        verified_deal: false,
         client,
         provider: addrs.provider,
         label: "label".to_string(),
@@ -781,7 +831,7 @@ fn generate_deal_proposal_with_collateral(
     DealProposal {
         piece_cid,
         piece_size,
-        verified_deal: true,
+        verified_deal: false,
         client,
         provider,
         label: "label".to_string(),
