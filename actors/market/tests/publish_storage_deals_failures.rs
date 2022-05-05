@@ -220,7 +220,12 @@ mod publish_storage_deals_failures {
         let deal1 = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
         assert!(amount < deal1.client_balance_requirement());
         add_provider_funds(&mut rt, deal1.clone().provider_collateral, &MinerAddresses::default());
-        publish_deals_expect_abort(&mut rt, &MinerAddresses::default(), deal1, ExitCode::USR_ILLEGAL_ARGUMENT);
+        publish_deals_expect_abort(
+            &mut rt,
+            &MinerAddresses::default(),
+            deal1,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+        );
 
         check_state(&rt);
     }
