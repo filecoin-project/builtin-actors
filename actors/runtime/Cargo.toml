@@ -43,7 +43,7 @@ derive_builder = "0.10.2"
 hex = "0.4.3"
 
 [features]
-default = ["sector-2k", "sector-8m", "sector-512m", "sector-32g", "sector-64g", "small-deals", "min-power-2k" ]
+default = []
 fil-actor = ["fvm_sdk"]
 
 # Enable 2k sectors
