@@ -666,7 +666,6 @@ pub fn assert_deal_failure<F>(
     } else {
         generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch)
     };
-    deal_proposal.verified_deal = false;
     rt.set_epoch(current_epoch);
     post_setup(&mut rt, &mut deal_proposal);
 
@@ -752,7 +751,7 @@ pub fn generate_and_publish_deal_for_piece(
     let deal = DealProposal {
         piece_cid,
         piece_size,
-        verified_deal: true,
+        verified_deal: false,
         client,
         provider: addrs.provider,
         label: "label".to_string(),
@@ -822,7 +821,7 @@ fn generate_deal_proposal_with_collateral(
     DealProposal {
         piece_cid,
         piece_size,
-        verified_deal: true,
+        verified_deal: false,
         client,
         provider,
         label: "label".to_string(),
