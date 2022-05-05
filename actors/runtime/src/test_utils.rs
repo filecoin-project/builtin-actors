@@ -1053,6 +1053,10 @@ impl Primitives for MockRuntime {
         }
         Ok(exp.cid)
     }
+
+    fn install_actor(&self, _code_cid: &Cid) -> anyhow::Result<(), anyhow::Error> {
+        Ok(())
+    }
 }
 
 impl Verifier for MockRuntime {
@@ -1180,10 +1184,6 @@ impl Verifier for MockRuntime {
             "mismatched new unsealed CID"
         );
         exp.result
-    }
-
-    fn install_actor(&self, _code_cid: &Cid) -> anyhow::Result<(), anyhow::Error> {
-        Ok(())
     }
 }
 
