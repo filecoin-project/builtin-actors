@@ -17,8 +17,16 @@ use num_traits::Zero;
 use super::deal::DealProposal;
 
 pub mod detail {
+    use super::*;
+
     /// Maximum length of a deal label.
     pub const DEAL_MAX_LABEL_SIZE: usize = 256;
+
+    /// Computes the weight for a deal proposal, which is a function of its size and duration.
+    pub fn deal_weight(proposal: &DealProposal) -> DealWeight {
+        let deal_duration = DealWeight::from(proposal.duration());
+        deal_duration * proposal.piece_size.0
+    }
 }
 
 /// Bounds (inclusive) on deal duration.
@@ -65,10 +73,4 @@ pub(super) fn collateral_penalty_for_deal_activation_missed(
     provider_collateral: TokenAmount,
 ) -> TokenAmount {
     provider_collateral
-}
-
-/// Computes the weight for a deal proposal, which is a function of its size and duration.
-pub(super) fn deal_weight(proposal: &DealProposal) -> DealWeight {
-    let deal_duration = DealWeight::from(proposal.duration());
-    deal_duration * proposal.piece_size.0
 }
