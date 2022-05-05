@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
+use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealMetaArray, Label,
     Method, PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
@@ -1478,4 +1479,77 @@ fn assert_locked_fund_states(rt: &MockRuntime, storage_fee: TokenAmount, provide
     assert_eq!(client_collateral, st.total_client_locked_collateral);
     assert_eq!(provider_collateral, st.total_provider_locked_collateral);
     assert_eq!(storage_fee, st.total_client_storage_fee);
+}
+
+fn market_actor_deals() {
+    let mut rt = setup();
+    let miner_addresses = MinerAddresses {
+        owner: OWNER_ADDR,
+        worker: WORKER_ADDR,
+        provider: PROVIDER_ADDR,
+        control: vec![],
+    };
+
+    // test adding provider funds
+    let funds = TokenAmount::from_u32(20_000_000).unwrap();
+    add_provider_funds(&mut rt, funds.clone(), &MinerAddresses::default());
+    assert_eq!(funds, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
+
+    add_participant_funds(&mut rt, CLIENT_ADDR, funds);
+    let mut deal_proposal =
+        generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, 1, 200 * EPOCHS_IN_DAY);
+
+    // First attempt at publishing the deal should work
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    publish_deals(&mut rt, &miner_addresses, &[deal_proposal.clone()]);
+
+    // Second attempt at publishing the same deal should fail
+    publish_deals_expect_abort(
+        &mut rt,
+        &miner_addresses,
+        deal_proposal.clone(),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
+
+    // Same deal with a different label should work
+    deal_proposal.label = "Cthulhu".to_owned();
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    publish_deals(&mut rt, &miner_addresses, &[deal_proposal]);
+    check_state(&rt);
+}
+
+#[test]
+fn max_deal_label_size() {
+    let mut rt = setup();
+    let miner_addresses = MinerAddresses {
+        owner: OWNER_ADDR,
+        worker: WORKER_ADDR,
+        provider: PROVIDER_ADDR,
+        control: vec![],
+    };
+
+    // Test adding provider funds from both worker and owner address
+    let funds = TokenAmount::from_u32(20_000_000).unwrap();
+    add_provider_funds(&mut rt, funds.clone(), &MinerAddresses::default());
+    assert_eq!(funds, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
+
+    add_participant_funds(&mut rt, CLIENT_ADDR, funds);
+    let mut deal_proposal =
+        generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, 1, 200 * EPOCHS_IN_DAY);
+
+    // DealLabel at max size should work.
+    deal_proposal.label = "s".repeat(DEAL_MAX_LABEL_SIZE);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    publish_deals(&mut rt, &miner_addresses, &[deal_proposal.clone()]);
+
+    // over max should fail
+    deal_proposal.label = "s".repeat(DEAL_MAX_LABEL_SIZE + 1);
+    publish_deals_expect_abort(
+        &mut rt,
+        &miner_addresses,
+        deal_proposal,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
+
+    check_state(&rt);
 }
