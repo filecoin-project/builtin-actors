@@ -1913,6 +1913,7 @@ mod change_threshold_tests {
                     );
                 }
             }
+            rt.verify();
         }
     }
 
