@@ -7,7 +7,8 @@ use fil_actor_market::{
     balance_table::BalanceTable, ext, ext::miner::GetControlAddressesReturnParams,
     gen_rand_next_epoch, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
     DealMetaArray, DealProposal, DealState, Method, OnMinerSectorsTerminateParams,
-    PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
+    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn, WithdrawBalanceParams,
     WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
@@ -744,6 +745,20 @@ pub fn generate_and_publish_deal(
     deal_ids[0]
 }
 
+pub fn generate_and_publish_verified_deal(
+    rt: &mut MockRuntime,
+    client: Address,
+    addrs: &MinerAddresses,
+    start_epoch: ChainEpoch,
+    end_epoch: ChainEpoch,
+) -> DealID {
+    let mut deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
+    deal.verified_deal = true;
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
+    let deal_ids = publish_deals(rt, addrs, &[deal]);
+    deal_ids[0]
+}
+
 pub fn generate_and_publish_deal_for_piece(
     rt: &mut MockRuntime,
     client: Address,
@@ -886,4 +901,25 @@ pub fn terminate_deals_raw(
 pub fn assert_account_zero(rt: &mut MockRuntime, addr: Address) {
     assert!(get_escrow_balance(rt, &addr).unwrap().is_zero());
     assert!(get_locked_balance(rt, addr).is_zero());
+}
+
+pub fn verify_deals_for_activation(
+    rt: &mut MockRuntime,
+    provider: Address,
+    sector_deals: Vec<SectorDeals>,
+) -> VerifyDealsForActivationReturn {
+    let param = VerifyDealsForActivationParams { sectors: sector_deals };
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
+
+    let ret: VerifyDealsForActivationReturn = rt
+        .call::<MarketActor>(
+            Method::VerifyDealsForActivation as u64,
+            &RawBytes::serialize(param).unwrap(),
+        )
+        .unwrap()
+        .deserialize()
+        .expect("VerifyDealsForActivation failed!");
+    rt.verify();
+    ret
 }
