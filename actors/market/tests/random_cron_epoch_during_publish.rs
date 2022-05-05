@@ -164,7 +164,6 @@ fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
 }
 
 #[test]
-#[ignore = "XXX: Divergence from golang actors"]
 fn cron_processing_of_deal_after_missed_activation_should_fail_and_slash() {
     let mut rt = setup();
     let deal_id = generate_and_publish_deal(
