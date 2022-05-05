@@ -1169,11 +1169,11 @@ where
 
     let proposal = &deal.proposal;
 
-    if proposal.label.len() > DEAL_MAX_LABEL_SIZE {
+    if proposal.label.len() > detail::DEAL_MAX_LABEL_SIZE {
         return Err(actor_error!(
             illegal_argument,
             "deal label can be at most {} bytes, is {}",
-            DEAL_MAX_LABEL_SIZE,
+            detail::DEAL_MAX_LABEL_SIZE,
             proposal.label.len()
         ));
     }
