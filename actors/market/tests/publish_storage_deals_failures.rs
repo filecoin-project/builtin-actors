@@ -213,10 +213,12 @@ mod publish_storage_deals_failures {
     fn fail_when_client_has_some_funds_but_not_enough_for_a_deal() {
         let mut rt = setup();
 
-        add_participant_funds(&mut rt, CLIENT_ADDR, TokenAmount::from(100u8));
+        let amount = TokenAmount::from(100u8);
+        add_participant_funds(&mut rt, CLIENT_ADDR, amount.clone());
         let start_epoch = 42;
         let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
         let deal1 = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
+        assert!(amount < deal1.client_balance_requirement());
         add_provider_funds(&mut rt, deal1.clone().provider_collateral, &MinerAddresses::default());
         publish_deals_expect_abort(&mut rt, &MinerAddresses::default(), deal1, ExitCode::USR_ILLEGAL_ARGUMENT);
 
@@ -230,8 +232,10 @@ mod publish_storage_deals_failures {
 
         let mut rt = setup();
 
-        add_provider_funds(&mut rt, TokenAmount::from(1u8), &MinerAddresses::default());
+        let amount = TokenAmount::from(1u8);
+        add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
         let deal1 = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
+        assert!(amount < deal1.client_balance_requirement());
         add_participant_funds(&mut rt, CLIENT_ADDR, deal1.client_balance_requirement());
 
         let buf = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
