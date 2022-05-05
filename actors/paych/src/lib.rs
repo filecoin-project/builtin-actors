@@ -174,13 +174,8 @@ impl Actor {
         }
 
         if let Some(extra) = &sv.extra {
-            rt.send(
-                extra.actor,
-                extra.method,
-                RawBytes::serialize(&extra.data)?,
-                TokenAmount::from(0u8),
-            )
-            .map_err(|e| e.wrap("spend voucher verification failed"))?;
+            rt.send(extra.actor, extra.method, extra.data.clone(), TokenAmount::from(0u8))
+                .map_err(|e| e.wrap("spend voucher verification failed"))?;
         }
 
         rt.transaction(|st: &mut State, rt| {

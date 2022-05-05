@@ -15,7 +15,7 @@ use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
 
-use fvm_shared::commcid::FIL_COMMITMENT_UNSEALED;
+use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
@@ -32,6 +32,8 @@ use fvm_shared::{ActorID, MethodNum};
 
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
+
+use rand::prelude::*;
 
 use crate::runtime::{
     ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier,
@@ -877,9 +879,23 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
         let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
 
-        assert!(expected_msg.to == to && expected_msg.method == method && expected_msg.params == params && expected_msg.value == value,
-                "expectedMessage being sent does not match expectation.\nMessage -\t to: {:?} method: {:?} value: {:?} params: {:?}\nExpected -\t {:?}",
-                to, method, value, params, expected_msg);
+        assert!(
+            expected_msg.to == to
+                && expected_msg.method == method
+                && expected_msg.params == params
+                && expected_msg.value == value,
+            "expectedMessage being sent does not match expectation.\n\
+             Message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
+             Expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
+            to,
+            method,
+            value,
+            params,
+            expected_msg.to,
+            expected_msg.method,
+            expected_msg.value,
+            expected_msg.params,
+        );
 
         {
             let mut balance = self.balance.borrow_mut();
@@ -956,7 +972,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
     fn charge_gas(&mut self, _: &'static str, value: i64) {
         let mut exs = self.expectations.borrow_mut();
-        assert!(exs.expect_gas_charge.is_empty(), "unexpected gas charge {:?}", value);
+        assert!(!exs.expect_gas_charge.is_empty(), "unexpected gas charge {:?}", value);
         let expected = exs.expect_gas_charge.pop_front().unwrap();
         assert_eq!(expected, value, "expected gas charge {:?}, actual {:?}", expected, value);
     }
@@ -1194,7 +1210,23 @@ enum MhCode {
     Sha256TruncPaddedFake,
 }
 
+pub fn make_cid(input: &[u8], prefix: u64) -> Cid {
+    let hash = MhCode::Sha256TruncPaddedFake.digest(input);
+    Cid::new_v1(prefix, hash)
+}
+
 pub fn make_piece_cid(input: &[u8]) -> Cid {
-    let h = MhCode::Sha256TruncPaddedFake.digest(input);
-    Cid::new_v1(FIL_COMMITMENT_UNSEALED, h)
+    make_cid(input, FIL_COMMITMENT_UNSEALED)
+}
+
+pub fn make_sealed_cid(input: &[u8]) -> Cid {
+    make_cid(input, FIL_COMMITMENT_SEALED)
+}
+
+pub fn new_bls_addr(s: u8) -> Address {
+    let seed = [s; 32];
+    let mut rng: StdRng = SeedableRng::from_seed(seed);
+    let mut key = [0u8; 48];
+    rng.fill_bytes(&mut key);
+    Address::new_bls(&key).unwrap()
 }
