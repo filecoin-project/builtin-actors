@@ -25,7 +25,6 @@ const START_EPOCH: ChainEpoch = 50;
 const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
 
 #[test]
-#[ignore = "XXX: Diverges from golang actor"]
 fn timed_out_deal_is_slashed_and_deleted() {
     let mut rt = setup();
     let deal_id = generate_and_publish_deal(
@@ -59,7 +58,6 @@ fn timed_out_deal_is_slashed_and_deleted() {
 }
 
 #[test]
-#[ignore = "XXX: Diverges from golang actor"]
 fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_longer_be_pending() {
     const START_EPOCH: ChainEpoch = 0;
     let mut rt = setup();
@@ -129,7 +127,6 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
 }
 
 #[test]
-#[ignore = "XXX: Diverges from golang actor"]
 fn timed_out_and_verified_deals_are_slashed_deleted_and_sent_to_the_registry_actor() {
     let mut rt = setup();
     let mut deal1 = generate_deal_and_add_funds(
