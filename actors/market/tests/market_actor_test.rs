@@ -1359,7 +1359,6 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
 
 #[test]
 fn locked_fund_tracking_states() {
-
     let p1 = Address::new_id(201);
     let p2 = Address::new_id(202);
     let p3 = Address::new_id(203);
