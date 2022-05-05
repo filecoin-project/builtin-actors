@@ -1850,7 +1850,6 @@ fn test_lock_balance_checks_preconditions() {
 mod change_threshold_tests {
     use super::*;
 
-
     #[test]
     fn test_change_threshold() {
         let msig = Address::new_id(100);
@@ -1865,19 +1864,19 @@ mod change_threshold_tests {
             set_threshold: u64,
             code: ExitCode,
         }
-    
+
         let test_cases = vec![
             TestCase {
                 desc: "happy path decrease threshold",
                 initial_threshold: 2,
                 set_threshold: 1,
                 code: ExitCode::OK,
-            }, 
+            },
             TestCase {
                 desc: "happy path simple increase threshold",
                 initial_threshold: 2,
                 set_threshold: 3,
-                code: ExitCode::OK
+                code: ExitCode::OK,
             },
             TestCase {
                 desc: "fail to set threshold to zero",
@@ -1888,7 +1887,7 @@ mod change_threshold_tests {
             TestCase {
                 desc: "fail to set threshold above number of signers",
                 initial_threshold: 2,
-                set_threshold: 4, 
+                set_threshold: 4,
                 code: ExitCode::USR_ILLEGAL_ARGUMENT,
             },
         ];
@@ -1909,9 +1908,11 @@ mod change_threshold_tests {
                 _ => {
                     assert_eq!(
                         tc.code,
-                        ret.expect_err("change threshold return expected to be actor error").exit_code()
-                    );             }
-            } 
+                        ret.expect_err("change threshold return expected to be actor error")
+                            .exit_code()
+                    );
+                }
+            }
         }
     }
 
@@ -1933,14 +1934,22 @@ mod change_threshold_tests {
         let fake_method = 42;
         let send_value = TokenAmount::from(10u8);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        let proposal_hash = h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, RawBytes::default());
-        
+        let proposal_hash =
+            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, RawBytes::default());
+
         // lower approval threshold, tx is technically approved, but will not be executed yet
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-        h.change_num_approvals_threshold(&mut rt , 1).unwrap();
+        h.change_num_approvals_threshold(&mut rt, 1).unwrap();
 
         // anne may re-approve causing tx to be exected
-        rt.expect_send(chuck, fake_method, RawBytes::default(), send_value.clone(), RawBytes::default(), ExitCode::OK);
+        rt.expect_send(
+            chuck,
+            fake_method,
+            RawBytes::default(),
+            send_value.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
         rt.set_balance(send_value);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
