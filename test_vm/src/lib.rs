@@ -960,6 +960,10 @@ impl Primitives for InvocationCtx<'_, '_> {
     ) -> Result<Cid, anyhow::Error> {
         self.v.compute_unsealed_sector_cid(proof_type, pieces)
     }
+
+    fn install_actor(&self, _: &Cid) -> Result<(), anyhow::Error> {
+        panic!("TODO implement me")
+    }
 }
 
 impl Verifier for InvocationCtx<'_, '_> {

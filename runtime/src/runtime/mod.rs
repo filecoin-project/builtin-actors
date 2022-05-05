@@ -196,6 +196,8 @@ pub trait Primitives {
         signer: &Address,
         plaintext: &[u8],
     ) -> Result<(), anyhow::Error>;
+
+    fn install_actor(&self, code_cid: &Cid) -> Result<(), anyhow::Error>;
 }
 
 /// filcrypto verification primitives provided by the runtime
@@ -231,6 +233,4 @@ pub trait Verifier {
     ) -> Result<(), anyhow::Error>;
 
     fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error>;
-
-    fn install_actor(&self, code_cid: &Cid) -> Result<(), anyhow::Error>;
 }
