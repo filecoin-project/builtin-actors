@@ -380,6 +380,10 @@ where
         fvm::crypto::compute_unsealed_sector_cid(proof_type, pieces)
             .map_err(|e| anyhow!("failed to compute unsealed sector CID; exit code: {}", e))
     }
+
+    fn install_actor(&self, code_id: &Cid) -> Result<(), Error> {
+        fvm::actor::install_actor(code_id).map_err(|_| Error::msg("failed to install actor"))
+    }
 }
 
 #[cfg(not(feature = "fake-proofs"))]
@@ -429,10 +433,6 @@ where
             Ok(true) => Ok(()),
             Ok(false) | Err(_) => Err(Error::msg("invalid replica")),
         }
-    }
-
-    fn install_actor(&self, code_id: &Cid) -> Result<(), Error> {
-        fvm::actor::install_actor(code_id).map_err(|_| Error::msg("failed to install actor"))
     }
 }
 

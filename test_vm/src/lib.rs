@@ -767,6 +767,10 @@ impl Primitives for InvocationCtx<'_, '_> {
     ) -> Result<Cid, anyhow::Error> {
         panic!("TODO implement me")
     }
+
+    fn install_actor(&self, _: &Cid) -> Result<(), anyhow::Error> {
+        panic!("TODO implement me")
+    }
 }
 
 impl Verifier for InvocationCtx<'_, '_> {
