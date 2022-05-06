@@ -1,31 +1,18 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
-    Actor as MarketActor, ClientDealProposal, ComputeDataCommitmentParams,
-    ComputeDataCommitmentReturn, DealProposal, Method, PublishStorageDealsParams,
-    PublishStorageDealsReturn, SectorDataSpec,
+    Actor as MarketActor, ComputeDataCommitmentParams, ComputeDataCommitmentReturn, Method,
+    SectorDataSpec,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::signature::Signature;
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
-use fvm_shared::sector::StoragePower;
-use fvm_shared::TOTAL_FILECOIN;
 
-use anyhow::anyhow;
 use cid::Cid;
-use num_traits::FromPrimitive;
 
 mod harness;
 use harness::*;
