@@ -1125,6 +1125,7 @@ mod cron_batch_proof_verifies_tests {
 
         let state: State = rt.get_state();
 
+        // expect sends for confirmed sectors
         let params = ConfirmSectorProofsParams {
             sectors: cs.sector_nums,
             reward_smoothed: h.this_epoch_reward_smoothed.clone(),
