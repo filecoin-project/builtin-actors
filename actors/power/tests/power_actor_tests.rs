@@ -1167,6 +1167,37 @@ mod cron_batch_proof_verifies_tests {
         rt.verify();
         h.check_state();
     }
+
+    #[test]
+    fn cron_tick_does_not_fail_if_batch_verify_seals_fails() {
+        let (mut h, mut rt) = setup();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
+
+        let infos: Vec<_> = (1..=3).map(create_basic_seal_info).collect();
+        infos.iter().for_each(|info| {
+            h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info.clone()).unwrap()
+        });
+
+        expect_query_network_info(&mut rt, &h);
+        rt.expect_batch_verify_seals(infos.clone(), Ok(batch_verify_default_output(&infos)));
+        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+
+        // expect power sends to reward actor
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            UPDATE_NETWORK_KPI,
+            RawBytes::serialize(0u8).unwrap(),
+            TokenAmount::from(0u8),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        rt.set_epoch(0);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.verify();
+        h.check_state();
+    }
 }
 
 #[cfg(test)]
