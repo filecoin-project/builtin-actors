@@ -83,9 +83,6 @@ mod compute_data_commitment {
 
     #[test]
     fn success_on_empty_piece_info() {
-        let start_epoch = 10;
-        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-
         let mut rt = setup();
         let input = SectorDataSpec {
             deal_ids: vec![],
@@ -194,9 +191,6 @@ mod compute_data_commitment {
 
     #[test]
     fn fail_when_deal_proposal_is_absent() {
-        let start_epoch = 10;
-        let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-
         let mut rt = setup();
         let input = SectorDataSpec {
             deal_ids: vec![1],
