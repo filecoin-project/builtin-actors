@@ -70,7 +70,7 @@ pub struct Policy {
     pub addressed_partitions_max: u64,
 
     /// Maximum number of unique "declarations" in batch operations.
-    pub delcarations_max: u64,
+    pub declarations_max: u64,
 
     /// The maximum number of sector infos that may be required to be loaded in a single invocation.
     pub addressed_sectors_max: u64,
@@ -174,7 +174,7 @@ impl Default for Policy {
             max_peer_id_length: policy_constants::MAX_PEER_ID_LENGTH,
             max_multiaddr_data: policy_constants::MAX_MULTIADDR_DATA,
             addressed_partitions_max: policy_constants::ADDRESSED_PARTITIONS_MAX,
-            delcarations_max: policy_constants::DELCARATIONS_MAX,
+            declarations_max: policy_constants::DECLARATIONS_MAX,
             addressed_sectors_max: policy_constants::ADDRESSED_SECTORS_MAX,
             max_pre_commit_randomness_lookback:
                 policy_constants::MAX_PRE_COMMIT_RANDOMNESS_LOOKBACK,
@@ -298,7 +298,7 @@ mod policy_constants {
     pub const ADDRESSED_PARTITIONS_MAX: u64 = MAX_PARTITIONS_PER_DEADLINE;
 
     /// Maximum number of unique "declarations" in batch operations.
-    pub const DELCARATIONS_MAX: u64 = ADDRESSED_PARTITIONS_MAX;
+    pub const DECLARATIONS_MAX: u64 = ADDRESSED_PARTITIONS_MAX;
 
     /// The maximum number of sector infos that may be required to be loaded in a single invocation.
     pub const ADDRESSED_SECTORS_MAX: u64 = 25_000;
