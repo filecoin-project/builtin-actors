@@ -487,7 +487,19 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
-    pub fn expect_compute_unsealed_sector_cid(&self, exp: ExpectComputeUnsealedSectorCid) {
+    pub fn expect_compute_unsealed_sector_cid(
+        &self,
+        reg: RegisteredSealProof,
+        pieces: Vec<PieceInfo>,
+        cid: Cid,
+        exit_code: ExitCode,
+    ) {
+        let exp = ExpectComputeUnsealedSectorCid {
+            reg,
+            pieces,
+            cid,
+            exit_code,
+        };
         self.expectations.borrow_mut().expect_compute_unsealed_sector_cid = Some(exp);
     }
 
