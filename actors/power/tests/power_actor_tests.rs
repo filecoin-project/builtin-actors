@@ -1,9 +1,11 @@
 use fil_actor_power::ext::init::{ExecParams, EXEC_METHOD};
 use fil_actor_power::ext::miner::MinerConstructorParams;
+use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, CALLER_TYPES_SIGNABLE,
-    MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID,
+    CALLER_TYPES_SIGNABLE, MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
+use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
@@ -11,6 +13,7 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use num_traits::Zero;
 use std::ops::Neg;
@@ -1121,7 +1124,7 @@ mod cron_batch_proof_verifies_tests {
             sector_nums: vec![infos[0].sector_id.number, infos[2].sector_id.number],
         };
 
-        // todo: expect_query_network_info(&mut rt, h);
+        expect_query_network_info(&mut rt, &h);
 
         let state: State = rt.get_state();
 
@@ -1159,7 +1162,7 @@ mod cron_batch_proof_verifies_tests {
         rt.set_epoch(0);
         rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
 
-        // todo: rt.call()
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
 
         rt.verify();
         h.check_state();
@@ -1285,4 +1288,20 @@ mod submit_porep_for_bulk_verify_tests {
 
         expect_abort(ExitCode::USR_FORBIDDEN, h.submit_porep_for_bulk_verify(&mut rt, MINER, info));
     }
+}
+
+fn expect_query_network_info(rt: &mut MockRuntime, h: &Harness) {
+    let current_reward = ThisEpochRewardReturn {
+        this_epoch_reward_smoothed: h.this_epoch_reward_smoothed.clone(),
+        this_epoch_baseline_power: h.this_epoch_baseline_power().to_owned(),
+    };
+
+    rt.expect_send(
+        *REWARD_ACTOR_ADDR,
+        RewardMethod::ThisEpochReward as u64,
+        RawBytes::default(),
+        TokenAmount::zero(),
+        RawBytes::serialize(current_reward).unwrap(),
+        ExitCode::OK,
+    );
 }
