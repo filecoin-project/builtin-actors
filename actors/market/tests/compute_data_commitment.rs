@@ -47,7 +47,7 @@ mod compute_data_commitment {
 
         let input = SectorDataSpec {
             deal_ids: vec![deal_id1, deal_id2],
-            sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
         };
 
         let param = ComputeDataCommitmentParams { inputs: vec![input] };
@@ -58,7 +58,7 @@ mod compute_data_commitment {
         let c = make_piece_cid("100".as_bytes());
 
         rt.expect_compute_unsealed_sector_cid(
-            RegisteredSealProof::StackedDRG2KiBV1P1,
+            RegisteredSealProof::StackedDRG8MiBV1,
             vec![p1, p2],
             c,
             ExitCode::OK,
@@ -86,13 +86,13 @@ mod compute_data_commitment {
         let mut rt = setup();
         let input = SectorDataSpec {
             deal_ids: vec![],
-            sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
         };
         let param = ComputeDataCommitmentParams { inputs: vec![input] };
 
         let c = make_piece_cid("UnsealedEmpty".as_bytes());
         rt.expect_compute_unsealed_sector_cid(
-            RegisteredSealProof::StackedDRG2KiBV1P1,
+            RegisteredSealProof::StackedDRG8MiBV1,
             vec![],
             c,
             ExitCode::OK,
@@ -144,11 +144,11 @@ mod compute_data_commitment {
             inputs: vec![
                 SectorDataSpec {
                     deal_ids: vec![],
-                    sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 },
                 SectorDataSpec {
                     deal_ids: vec![deal_id1, deal_id2],
-                    sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 },
             ],
         };
@@ -160,13 +160,13 @@ mod compute_data_commitment {
         let c2 = make_piece_cid("UnsealedSector2".as_bytes());
 
         rt.expect_compute_unsealed_sector_cid(
-            RegisteredSealProof::StackedDRG2KiBV1P1,
+            RegisteredSealProof::StackedDRG8MiBV1,
             vec![],
             c1,
             ExitCode::OK,
         );
         rt.expect_compute_unsealed_sector_cid(
-            RegisteredSealProof::StackedDRG2KiBV1P1,
+            RegisteredSealProof::StackedDRG8MiBV1,
             vec![p1, p2],
             c2,
             ExitCode::OK,
@@ -194,7 +194,7 @@ mod compute_data_commitment {
         let mut rt = setup();
         let input = SectorDataSpec {
             deal_ids: vec![1],
-            sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
         };
         let param = ComputeDataCommitmentParams { inputs: vec![input] };
         rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
@@ -225,14 +225,14 @@ mod compute_data_commitment {
         let d = get_deal_proposal(&mut rt, deal_id);
         let input = SectorDataSpec {
             deal_ids: vec![deal_id],
-            sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
         };
         let param = ComputeDataCommitmentParams { inputs: vec![input] };
 
         let pi = PieceInfo { size: d.piece_size, cid: d.piece_cid };
 
         rt.expect_compute_unsealed_sector_cid(
-            RegisteredSealProof::StackedDRG2KiBV1P1,
+            RegisteredSealProof::StackedDRG8MiBV1,
             vec![pi],
             Cid::default(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -268,17 +268,17 @@ mod compute_data_commitment {
             inputs: vec![
                 SectorDataSpec {
                     deal_ids: vec![],
-                    sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 },
                 SectorDataSpec {
                     deal_ids: vec![deal_id1, deal_id2],
-                    sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 },
             ],
         };
         let c1 = make_piece_cid("UnsealedSector1".as_bytes());
         rt.expect_compute_unsealed_sector_cid(
-            RegisteredSealProof::StackedDRG2KiBV1P1,
+            RegisteredSealProof::StackedDRG8MiBV1,
             vec![],
             c1,
             ExitCode::OK,
@@ -320,16 +320,16 @@ mod compute_data_commitment {
             inputs: vec![
                 SectorDataSpec {
                     deal_ids: vec![],
-                    sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 },
                 SectorDataSpec {
                     deal_ids: vec![deal_id1, deal_id2],
-                    sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 },
             ],
         };
         rt.expect_compute_unsealed_sector_cid(
-            RegisteredSealProof::StackedDRG2KiBV1P1,
+            RegisteredSealProof::StackedDRG8MiBV1,
             vec![],
             Cid::default(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
