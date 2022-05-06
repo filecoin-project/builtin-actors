@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actors_runtime::runtime::Policy;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use serde::{Deserialize, Serialize};
 
@@ -83,6 +84,24 @@ impl DeadlineInfo {
                 fault_declaration_cutoff,
             }
         }
+    }
+
+    pub fn new_from_policy(
+        period_start: ChainEpoch,
+        deadline_idx: u64,
+        current_epoch: ChainEpoch,
+        policy: &Policy,
+    ) -> Self {
+        Self::new(
+            period_start,
+            deadline_idx,
+            current_epoch,
+            policy.wpost_period_deadlines,
+            policy.wpost_proving_period,
+            policy.wpost_challenge_window,
+            policy.wpost_challenge_lookback,
+            policy.fault_declaration_cutoff,
+        )
     }
 
     /// Whether the proving period has begun.
