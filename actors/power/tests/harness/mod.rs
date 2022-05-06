@@ -211,6 +211,10 @@ impl Harness {
         st.miner_count
     }
 
+    pub fn this_epoch_baseline_power(self) -> StoragePower {
+        self.this_epoch_baseline_power
+    }
+
     pub fn get_claim(&self, rt: &MockRuntime, miner: &Address) -> Option<Claim> {
         let st: State = rt.get_state();
         let claims =
