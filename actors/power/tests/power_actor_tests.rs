@@ -1119,6 +1119,10 @@ mod cron_batch_proof_verifies_tests {
     #[test]
     fn success_with_multiple_miners_and_multiple_confirmed_sectors_and_assert_expected_power() {
         let miner1 = Address::new_id(101);
+
+        // TODO: shares an id with constant `OWNER`
+        // this is a known issue however the ordering of the values
+        // are vital for this test and have been left as such
         let miner2 = Address::new_id(102);
         let miner3 = Address::new_id(103);
         let miner4 = Address::new_id(104);
