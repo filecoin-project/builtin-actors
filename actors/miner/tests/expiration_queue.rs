@@ -1,15 +1,24 @@
 use fil_actor_miner::{
     power_for_sectors, ExpirationQueue, ExpirationSet, PowerPair, SectorOnChainInfo,
 };
-use fil_actors_runtime::test_utils::MockRuntime;
+use fil_actors_runtime::{
+    test_utils::{make_sealed_cid, MockRuntime},
+    DealWeight,
+};
+use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::{BitField, MaybeBitField};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::bigint::Zero;
-use fvm_shared::clock::{QuantSpec, NO_QUANTIZATION};
+use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::{SectorNumber, StoragePower};
+use fvm_shared::sector::{SectorNumber, SectorSize, StoragePower};
 use std::convert::TryInto;
 use std::iter::FromIterator;
+
+mod util;
+use util::*;
+
+const TEST_AMT_BITWIDTH: u32 = 3;
 
 fn mk_bitfield<const N: usize>(keys: [u64; N]) -> BitField {
     MaybeBitField::from_iter(keys.iter().copied()).try_into().unwrap()
@@ -227,21 +236,6 @@ fn set_is_empty_when_all_sectors_removed() {
     assert!(set.is_empty());
     assert_eq!(set.len(), 0);
 }
-
-use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::DealWeight;
-use fvm_ipld_amt::Amt;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::sector::SectorSize;
-
-mod util;
-use util::*;
-// let empty_states_array =
-//     Amt::<(), _>::new_with_bit_width(store, STATES_AMT_BITWIDTH).flush().unwrap();
-
-// new(&rt.store, &empty_states_array, NO_QUANTIZATION)
-
-const TEST_AMT_BITWIDTH: u32 = 3;
 
 fn sectors() -> [SectorOnChainInfo; 6] {
     [
@@ -468,13 +462,6 @@ fn reschedules_all_sectors_as_faults() {
     assert_eq!(set.faulty_power, PowerPair::zero());
 }
 /*
-        // all pledge is dropped
-        assert.Equal(t, big.Zero(), set.OnTimePledge)
-
-        assert.True(t, set.ActivePower.Equals(miner.NewPowerPairZero()))
-        assert.True(t, set.FaultyPower.Equals(miner.NewPowerPairZero()))
-    })
-
     t.Run("reschedule recover restores all sector stats", func(t *testing.T) {
         // Create expiration 3 sets with 2 sectors apiece
         queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
