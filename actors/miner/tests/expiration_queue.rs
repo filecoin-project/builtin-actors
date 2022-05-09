@@ -302,67 +302,56 @@ fn added_sectors_can_be_popped_off_queue() {
     assert_eq!(queue.amt.count(), 0);
 }
 
-// #[test]
-// fn quantizes_added_sectors_by_expiration
+#[test]
+fn quantizes_added_sectors_by_expiration() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 5, offset: 3 });
+
+    let (sec_nums, power, pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+    assert_eq!(sec_nums, mk_bitfield([1, 2, 3, 4, 5, 6]));
+    assert_eq!(power, power_for_sectors(SECTOR_SIZE, &sectors()));
+    assert_eq!(pledge, TokenAmount::from(6015));
+
+    // quantizing spec means sectors should be grouped into 3 sets expiring at 3, 8 and 13
+    assert_eq!(queue.amt.count(), 3);
+
+    // set popped before first quantized sector should be empty
+    let set = queue.pop_until(2).unwrap();
+    assert!(set.on_time_sectors.is_empty());
+    assert_eq!(queue.amt.count(), 3);
+
+    // first 2 sectors will be in first set popped off at quantization offset (3)
+    let set = queue.pop_until(3).unwrap();
+    assert_eq!(set.on_time_sectors, mk_bitfield([1, 2]));
+    assert_eq!(queue.amt.count(), 2);
+
+    let _ = queue.amt.flush().unwrap();
+
+    // no sectors will be popped off in quantization interval
+    let set = queue.pop_until(7).unwrap();
+    assert!(set.on_time_sectors.is_empty());
+    assert_eq!(queue.amt.count(), 2);
+
+    // next 2 sectors will be in first set popped off after quantization interval (8)
+    let set = queue.pop_until(8).unwrap();
+    assert_eq!(set.on_time_sectors, mk_bitfield([3, 4]));
+    assert_eq!(queue.amt.count(), 1);
+
+    let _ = queue.amt.flush().unwrap();
+
+    // no sectors will be popped off in quantization interval
+    let set = queue.pop_until(12).unwrap();
+    assert!(set.on_time_sectors.is_empty());
+    assert_eq!(queue.amt.count(), 1);
+
+    // rest of sectors will be in first set popped off after quantization interval (13)
+    let set = queue.pop_until(13).unwrap();
+    assert_eq!(set.on_time_sectors, mk_bitfield([5, 6]));
+    assert_eq!(queue.amt.count(), 0);
+}
 /*
-    t.Run("quantizes added sectors by expiration", func(t *testing.T) {
-        queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(5, 3), testAmtBitwidth)
-        secNums, power, pledge, err := queue.AddActiveSectors(sectors, sectorSize)
-        require.NoError(t, err)
-        assertBitfieldEquals(t, secNums, 1, 2, 3, 4, 5, 6)
-        assert.True(t, power.Equals(miner.PowerForSectors(sectorSize, sectors)))
-        assert.Equal(t, abi.NewTokenAmount(6015), pledge)
-
-        // work around caching issues in amt
-        _, err = queue.Root()
-        require.NoError(t, err)
-
-        // quantizing spec means sectors should be grouped into 3 sets expiring at 3, 8 and 13
-        assert.Equal(t, 3, int(queue.Length()))
-
-        // set popped before first quantized sector should be empty
-        set, err := queue.PopUntil(2)
-        require.NoError(t, err)
-        assertBitfieldEmpty(t, set.OnTimeSectors)
-        assert.Equal(t, 3, int(queue.Length()))
-
-        // first 2 sectors will be in first set popped off at quantization offset (3)
-        set, err = queue.PopUntil(3)
-        require.NoError(t, err)
-        assertBitfieldEquals(t, set.OnTimeSectors, 1, 2)
-        assert.Equal(t, 2, int(queue.Length()))
-
-        _, err = queue.Root()
-        require.NoError(t, err)
-
-        // no sectors will be popped off in quantization interval
-        set, err = queue.PopUntil(7)
-        require.NoError(t, err)
-        assertBitfieldEmpty(t, set.OnTimeSectors)
-        assert.Equal(t, 2, int(queue.Length()))
-
-        // next 2 sectors will be in first set popped off after quantization interval (8)
-        set, err = queue.PopUntil(8)
-        require.NoError(t, err)
-        assertBitfieldEquals(t, set.OnTimeSectors, 3, 4)
-        assert.Equal(t, 1, int(queue.Length()))
-
-        _, err = queue.Root()
-        require.NoError(t, err)
-
-        // no sectors will be popped off in quantization interval
-        set, err = queue.PopUntil(12)
-        require.NoError(t, err)
-        assertBitfieldEmpty(t, set.OnTimeSectors)
-        assert.Equal(t, 1, int(queue.Length()))
-
-        // rest of sectors will be in first set popped off after quantization interval (13)
-        set, err = queue.PopUntil(13)
-        require.NoError(t, err)
-        assertBitfieldEquals(t, set.OnTimeSectors, 5, 6)
-        assert.Equal(t, 0, int(queue.Length()))
-    })
-
     t.Run("reschedules sectors as faults", func(t *testing.T) {
         // Create 3 expiration sets with 2 sectors apiece
         queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
