@@ -59,7 +59,9 @@ fn test_deadline_assignment() {
         TestCase {
             sectors: 1,
             deadlines: vec![
+                // one live, one dead.
                 Some(Spec { dead_sectors: 4, live_sectors: 4, expect_sectors: vec![] }),
+                // 1 live partitions. +1 would add another.
                 Some(Spec { dead_sectors: 0, live_sectors: 4, expect_sectors: vec![0] }),
             ],
         },
