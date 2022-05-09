@@ -121,6 +121,7 @@ fn remove_fails_when_pledge_underflows() {
         .err()
         .unwrap();
     // XXX: This is not a good way to check for specific errors.
+    //      See: https://github.com/filecoin-project/builtin-actors/issues/338
     assert!(err.to_string().contains("pledge underflow"));
 }
 
@@ -140,6 +141,7 @@ fn remove_fails_to_remove_sectors_it_does_not_contain() {
         .err()
         .unwrap();
     // XXX: This is not a good way to check for specific errors.
+    //      See: https://github.com/filecoin-project/builtin-actors/issues/338
     assert!(err.to_string().contains("not contained"));
 
     // remove faulty sector 8, that is active in the set
@@ -154,6 +156,7 @@ fn remove_fails_to_remove_sectors_it_does_not_contain() {
         .err()
         .unwrap();
     // XXX: This is not a good way to check for specific errors.
+    //      See: https://github.com/filecoin-project/builtin-actors/issues/338
     assert!(err.to_string().contains("not contained"));
 }
 
@@ -173,6 +176,7 @@ fn remove_fails_when_active_or_fault_qa_power_underflows() {
         .err()
         .unwrap();
     // XXX: This is not a good way to check for specific errors.
+    //      See: https://github.com/filecoin-project/builtin-actors/issues/338
     assert!(err.to_string().contains("power underflow"));
 
     let mut set = default_set();
@@ -189,6 +193,7 @@ fn remove_fails_when_active_or_fault_qa_power_underflows() {
         .err()
         .unwrap();
     // XXX: This is not a good way to check for specific errors.
+    //      See: https://github.com/filecoin-project/builtin-actors/issues/338
     assert!(err.to_string().contains("power underflow"));
 }
 
