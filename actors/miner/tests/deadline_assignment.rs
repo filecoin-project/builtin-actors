@@ -146,3 +146,62 @@ fn test_deadline_assignment() {
         }
     }
 }
+
+const MAX_PARTITIONS: u64 = 5;
+const PARITION_SIZE: u64 = 5;
+
+#[test]
+fn fails_if_all_deadlines_hit_their_max_partitions_limit_before_assigning_all_sectors_to_deadlines()
+{
+    // one deadline can take 5 * 5 = 25 sectors
+    // so 48 deadlines can take 48 * 25 = 1200 sectors.
+    // Hence, we should fail if we try to assign 1201 sectors.
+
+    let policy = Policy::default();
+    let mut deadlines = Vec::new();
+    deadlines.resize_with(policy.wpost_period_deadlines as usize, || {
+        Some(Deadline { live_sectors: 0, total_sectors: 0, ..Default::default() })
+    });
+
+    let sectors: Vec<SectorOnChainInfo> =
+        (0..1201).map(|i| SectorOnChainInfo { sector_number: i, ..Default::default() }).collect();
+
+    assert!(assign_deadlines(&policy, MAX_PARTITIONS, PARITION_SIZE, &deadlines, sectors).is_err());
+}
+
+#[test]
+fn succeeds_if_all_deadlines_hit_their_max_partitions_limit_but_assignment_is_complete() {
+    // one deadline can take 5 * 5 = 25 sectors
+    // so 48 deadlines that can take 48 * 25 = 1200 sectors.
+
+    let policy = Policy::default();
+    let mut deadlines = Vec::new();
+    deadlines.resize_with(policy.wpost_period_deadlines as usize, || {
+        Some(Deadline { live_sectors: 0, total_sectors: 0, ..Default::default() })
+    });
+
+    let sectors: Vec<SectorOnChainInfo> =
+        (0..1200).map(|i| SectorOnChainInfo { sector_number: i, ..Default::default() }).collect();
+
+    let deadline_to_sectors =
+        assign_deadlines(&policy, MAX_PARTITIONS, PARITION_SIZE, &deadlines, sectors).unwrap();
+    for sectors in deadline_to_sectors {
+        assert_eq!(sectors.len(), 25);
+    }
+}
+
+#[test]
+fn fails_if_some_deadlines_have_sectors_beforehand_and_all_deadlines_hit_their_max_partition_limit()
+{
+    let policy = Policy::default();
+    let mut deadlines = Vec::new();
+    deadlines.resize_with(policy.wpost_period_deadlines as usize, || {
+        Some(Deadline { live_sectors: 1, total_sectors: 2, ..Default::default() })
+    });
+
+    // can only take 1200 - (2 * 48) = 1104 sectors
+    let sectors: Vec<SectorOnChainInfo> =
+        (0..1105).map(|i| SectorOnChainInfo { sector_number: i, ..Default::default() }).collect();
+
+    assert!(assign_deadlines(&policy, MAX_PARTITIONS, PARITION_SIZE, &deadlines, sectors).is_err());
+}
