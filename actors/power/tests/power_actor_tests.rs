@@ -1178,7 +1178,33 @@ mod cron_batch_proof_verifies_tests {
             h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info.clone()).unwrap()
         });
 
+        // send will only be for the first and third sector as the middle sector will fail verification
+        let cs = ConfirmedSectorSend {
+            miner: MINER_1,
+            sector_nums: vec![infos[0].sector_id.number, infos[1].sector_id.number, infos[2].sector_id.number],
+        };
+
         expect_query_network_info(&mut rt, &h);
+
+        let state: State = rt.get_state();
+
+        // expect sends for confirmed sectors
+        let params = ConfirmSectorProofsParams {
+            sectors: cs.sector_nums,
+            reward_smoothed: h.this_epoch_reward_smoothed.clone(),
+            reward_baseline_power: h.this_epoch_baseline_power().clone(),
+            quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
+        };
+
+        rt.expect_send(
+            cs.miner,
+            CONFIRM_SECTOR_PROOFS_VALID_METHOD,
+            RawBytes::serialize(params).unwrap(),
+            TokenAmount::from(0u8),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
         rt.expect_batch_verify_seals(infos.clone(), Ok(batch_verify_default_output(&infos)));
         rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
 
