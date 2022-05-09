@@ -37,7 +37,7 @@ fn test_deadline_assignment() {
             sectors: 5,
             deadlines: vec![
                 Some(Spec { dead_sectors: 0, live_sectors: 0, expect_sectors: vec![3, 4] }),
-                Some(Spec { dead_sectors: 0, live_sectors: 0, expect_sectors: vec![] }),
+                None, // expect nothing.
                 None,
                 Some(Spec { dead_sectors: 0, live_sectors: 1, expect_sectors: vec![0, 1, 2] }),
             ],
