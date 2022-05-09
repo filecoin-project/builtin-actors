@@ -1358,6 +1358,143 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
 }
 
 #[test]
+fn locked_fund_tracking_states() {
+    let p1 = Address::new_id(201);
+    let p2 = Address::new_id(202);
+    let p3 = Address::new_id(203);
+
+    let c1 = Address::new_id(104);
+    let c2 = Address::new_id(105);
+    let c3 = Address::new_id(106);
+
+    let m1 = MinerAddresses {
+        owner: OWNER_ADDR,
+        worker: WORKER_ADDR,
+        provider: p1,
+        control: vec![CONTROL_ADDR],
+    };
+    let m2 = MinerAddresses {
+        owner: OWNER_ADDR,
+        worker: WORKER_ADDR,
+        provider: p2,
+        control: vec![CONTROL_ADDR],
+    };
+    let m3 = MinerAddresses {
+        owner: OWNER_ADDR,
+        worker: WORKER_ADDR,
+        provider: p3,
+        control: vec![CONTROL_ADDR],
+    };
+
+    let start_epoch = ChainEpoch::from(2880);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 400;
+
+    let mut rt = setup();
+    rt.actor_code_cids.insert(p1, *MINER_ACTOR_CODE_ID);
+    rt.actor_code_cids.insert(c1, *ACCOUNT_ACTOR_CODE_ID);
+    let st: State = rt.get_state();
+
+    // assert values are zero
+    assert_eq!(st.total_client_locked_collateral, BigInt::from(0_i32));
+    assert_eq!(st.total_provider_locked_collateral, BigInt::from(0_i32));
+    assert_eq!(st.total_client_storage_fee, BigInt::from(0_i32));
+
+    // Publish deal1, deal2, and deal3 with different client and provider
+    let deal_id1 = generate_and_publish_deal(&mut rt, c1, &m1, start_epoch, end_epoch);
+    let d1 = get_deal_proposal(&mut rt, deal_id1);
+
+    let deal_id2 = generate_and_publish_deal(&mut rt, c2, &m2, start_epoch, end_epoch);
+    let d2 = get_deal_proposal(&mut rt, deal_id2);
+
+    let deal_id3 = generate_and_publish_deal(&mut rt, c3, &m3, start_epoch, end_epoch);
+    let d3 = get_deal_proposal(&mut rt, deal_id3);
+
+    let csf = d1.total_storage_fee() + d2.total_storage_fee() + d3.total_storage_fee();
+    let plc = &d1.provider_collateral + d2.provider_collateral + &d3.provider_collateral;
+    let clc = d1.client_collateral + d2.client_collateral + &d3.client_collateral;
+
+    assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
+
+    // activation doesn't change anything
+    let curr = start_epoch - 1;
+    rt.set_epoch(curr);
+    activate_deals(&mut rt, sector_expiry, p1, curr, &[deal_id1]);
+    activate_deals(&mut rt, sector_expiry, p2, curr, &[deal_id2]);
+
+    assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
+
+    // make payment for p1 and p2, p3 times out as it has not been activated
+    let curr = process_epoch(start_epoch, deal_id3);
+    rt.set_epoch(curr);
+    rt.expect_send(
+        *BURNT_FUNDS_ACTOR_ADDR,
+        METHOD_SEND,
+        RawBytes::default(),
+        d3.provider_collateral.clone(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    cron_tick(&mut rt);
+    let duration = curr - start_epoch;
+    let payment = BigInt::from(2_i32) * &d1.storage_price_per_epoch * duration;
+    let mut csf = (csf - payment) - d3.total_storage_fee();
+    let mut plc = plc - d3.provider_collateral;
+    let mut clc = clc - d3.client_collateral;
+    assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
+
+    // deal1 and deal2 will now be charged at epoch curr + market.DealUpdatesInterval, so nothing changes before that.
+    let deal_updates_interval = Policy::default().deal_updates_interval;
+    let curr = curr + deal_updates_interval - 1;
+    rt.set_epoch(curr);
+    cron_tick(&mut rt);
+    assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
+
+    // one more round of payment for deal1 and deal2
+    let curr = curr + 1;
+    rt.set_epoch(curr);
+    let duration = BigInt::from(deal_updates_interval);
+    let payment = BigInt::from(2_i32) * d1.storage_price_per_epoch * duration;
+    csf -= payment;
+    cron_tick(&mut rt);
+    assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
+
+    // slash deal1
+    rt.set_epoch(curr + 1);
+    terminate_deals(&mut rt, m1.provider, &[deal_id1]);
+
+    // cron tick to slash deal1 and expire deal2
+    rt.set_epoch(end_epoch);
+    csf = BigInt::from(0_i32);
+    clc = BigInt::from(0_i32);
+    plc = BigInt::from(0_i32);
+    rt.expect_send(
+        *BURNT_FUNDS_ACTOR_ADDR,
+        METHOD_SEND,
+        RawBytes::default(),
+        d1.provider_collateral,
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    cron_tick(&mut rt);
+    assert_locked_fund_states(&rt, csf, plc, clc);
+    check_state(&rt);
+}
+
+fn assert_locked_fund_states(
+    rt: &MockRuntime,
+    storage_fee: TokenAmount,
+    provider_collateral: TokenAmount,
+    client_collateral: TokenAmount,
+) {
+    let st: State = rt.get_state();
+
+    assert_eq!(client_collateral, st.total_client_locked_collateral);
+    assert_eq!(provider_collateral, st.total_provider_locked_collateral);
+    assert_eq!(storage_fee, st.total_client_storage_fee);
+}
+
+#[allow(dead_code)]
 fn market_actor_deals() {
     let mut rt = setup();
     let miner_addresses = MinerAddresses {
