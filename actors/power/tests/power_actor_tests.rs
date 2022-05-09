@@ -1178,7 +1178,6 @@ mod cron_batch_proof_verifies_tests {
             h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info.clone()).unwrap()
         });
 
-        // send will only be for the first and third sector as the middle sector will fail verification
         let cs = ConfirmedSectorSend {
             miner: MINER_1,
             sector_nums: vec![infos[0].sector_id.number, infos[1].sector_id.number, infos[2].sector_id.number],
