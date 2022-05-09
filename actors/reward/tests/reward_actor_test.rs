@@ -6,6 +6,7 @@ use fil_actor_reward::{
     BASELINE_INITIAL_VALUE, PENALTY_MULTIPLIER,
 };
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
@@ -152,7 +153,8 @@ mod test_award_block_reward {
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
         let penalty: TokenAmount = TokenAmount::from(100);
         let gas_reward: TokenAmount = TokenAmount::from(200);
-        let expected_reward: TokenAmount = &*EPOCH_ZERO_REWARD / 5 + &gas_reward;
+        let expected_reward: TokenAmount =
+            &*EPOCH_ZERO_REWARD / EXPECTED_LEADERS_PER_EPOCH + &gas_reward;
         let miner_penalty = PENALTY_MULTIPLIER * &penalty;
         let params = RawBytes::serialize(&ext::miner::ApplyRewardParams {
             reward: expected_reward.clone(),
