@@ -1186,14 +1186,14 @@ mod cron_batch_proof_verifies_tests {
         rt.expect_send(
             *REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            RawBytes::serialize(0u8).unwrap(),
-            TokenAmount::from(0u8),
+            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            BigInt::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
-
         rt.set_epoch(0);
         rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
         rt.verify();
         h.check_state();
