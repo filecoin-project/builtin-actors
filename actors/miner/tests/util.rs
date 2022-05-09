@@ -9,10 +9,10 @@ use fil_actor_market::{
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
-    ApplyRewardParams, ChangeMultiaddrsParams, ChangePeerIDParams, ConfirmSectorProofsParams,
-    CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
-    DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
-    FaultDeclaration, GetControlAddressesReturn, Method,
+    ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams,
+    ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
+    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
+    DisputeWindowedPoStParams, FaultDeclaration, GetControlAddressesReturn, Method,
     MinerConstructorParams as ConstructorParams, Partition, PoStPartition, PowerPair,
     PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo,
     SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, VestingFunds,
@@ -24,6 +24,7 @@ use fil_actor_power::{
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::ActorDowncast;
 use fil_actors_runtime::{
     ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -57,6 +58,7 @@ use multihash::MultihashDigest;
 use rand::prelude::*;
 
 use std::collections::{BTreeMap, HashMap};
+use std::convert::TryInto;
 
 const RECEIVER_ID: u64 = 1000;
 
@@ -323,7 +325,7 @@ impl ActorHarness {
         state.recorded_deadline_info(&rt.policy, rt.epoch)
     }
 
-    fn make_pre_commit_params(
+    pub fn make_pre_commit_params(
         &self,
         sector_no: u64,
         challenge: ChainEpoch,
@@ -349,7 +351,7 @@ impl ActorHarness {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192] }
     }
 
-    fn pre_commit_sector(
+    pub fn pre_commit_sector(
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorParams,
@@ -1334,6 +1336,28 @@ impl ActorHarness {
         )
     }
 
+    pub fn collect_precommit_expirations(
+        &self,
+        rt: &MockRuntime,
+        st: &State,
+    ) -> HashMap<ChainEpoch, Vec<u64>> {
+        let quant = st.quant_spec_every_deadline(&rt.policy);
+        let queue = BitFieldQueue::new(&rt.store, &st.pre_committed_sectors_cleanup, quant)
+            .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))
+            .unwrap();
+        let mut expirations: HashMap<ChainEpoch, Vec<u64>> = HashMap::new();
+        queue
+            .amt
+            .for_each(|epoch, bf| {
+                let expanded: Vec<u64> =
+                    bf.bounded_iter(rt.policy.addressed_sectors_max).unwrap().collect();
+                expirations.insert(epoch.try_into().unwrap(), expanded);
+                Ok(())
+            })
+            .unwrap();
+        expirations
+    }
+
     pub fn find_sector(&self, rt: &MockRuntime, sno: SectorNumber) -> (Deadline, Partition) {
         let state = self.get_state(rt);
         let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sno).unwrap();
@@ -1396,9 +1420,9 @@ impl PoStConfig {
 }
 
 pub struct PreCommitConfig {
-    deal_weight: DealWeight,
-    verified_deal_weight: DealWeight,
-    deal_space: Option<SectorSize>,
+    pub deal_weight: DealWeight,
+    pub verified_deal_weight: DealWeight,
+    pub deal_space: Option<SectorSize>,
 }
 
 #[allow(dead_code)]
