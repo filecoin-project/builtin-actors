@@ -418,11 +418,10 @@ impl ActorHarness {
             );
         }
 
-        let result = rt
-            .call::<Actor>(
-                Method::PreCommitSector as u64,
-                &RawBytes::serialize(params.clone()).unwrap(),
-            );
+        let result = rt.call::<Actor>(
+            Method::PreCommitSector as u64,
+            &RawBytes::serialize(params.clone()).unwrap(),
+        );
         result
     }
 
