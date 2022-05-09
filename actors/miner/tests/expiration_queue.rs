@@ -461,72 +461,68 @@ fn reschedules_all_sectors_as_faults() {
     assert_eq!(set.active_power, PowerPair::zero());
     assert_eq!(set.faulty_power, PowerPair::zero());
 }
+
+#[test]
+fn reschedule_recover_restores_all_sector_stats() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    // Create expiration 3 sets with 2 sectors apiece
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+    let (_sec_nums, _power, _pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+
+    let _ = queue.amt.flush().unwrap();
+
+    // Fault middle sectors to expire at epoch 6 to put sectors in a state
+    // described in "reschedules sectors as faults"
+    let _ = queue.reschedule_as_faults(6, &sectors()[1..5], SECTOR_SIZE).unwrap();
+
+    let _ = queue.amt.flush().unwrap();
+
+    // mark faulted sectors as recovered
+    let recovered = queue.reschedule_recovered(sectors()[1..5].to_vec(), SECTOR_SIZE).unwrap();
+    assert_eq!(recovered, power_for_sectors(SECTOR_SIZE, &sectors()[1..5]));
+
+    // expect first set to contain first two sectors with active power
+    require_no_expiration_groups_before(5, &mut queue);
+    let set = queue.pop_until(5).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([1, 2]));
+    assert!(set.early_sectors.is_empty());
+
+    // pledge from both sectors
+    assert_eq!(set.on_time_pledge, TokenAmount::from(2001));
+
+    assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[0..2]));
+    assert_eq!(set.faulty_power, PowerPair::zero());
+
+    // expect second set to have lost early sector 5 and have active power just from 3 and 4
+    require_no_expiration_groups_before(9, &mut queue);
+    let set = queue.pop_until(9).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([3, 4]));
+    assert!(set.early_sectors.is_empty());
+
+    // pledge is kept from original 2 sectors
+    assert_eq!(set.on_time_pledge, TokenAmount::from(2005));
+
+    assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[2..4]));
+    assert_eq!(set.faulty_power, PowerPair::zero());
+
+    // expect sector 5 to be returned to last setu
+    require_no_expiration_groups_before(13, &mut queue);
+    let set = queue.pop_until(13).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([5, 6]));
+    assert!(set.early_sectors.is_empty());
+
+    // Pledge from sector 5 is restored
+    assert_eq!(set.on_time_pledge, TokenAmount::from(2009));
+
+    assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[4..]));
+    assert_eq!(set.faulty_power, PowerPair::zero());
+}
 /*
-    t.Run("reschedule recover restores all sector stats", func(t *testing.T) {
-        // Create expiration 3 sets with 2 sectors apiece
-        queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
-        _, _, _, err := queue.AddActiveSectors(sectors, sectorSize)
-        require.NoError(t, err)
-
-        _, err = queue.Root()
-        require.NoError(t, err)
-
-        // Fault middle sectors to expire at epoch 6 to put sectors in a state
-        // described in "reschedules sectors as faults"
-        _, err = queue.RescheduleAsFaults(abi.ChainEpoch(6), sectors[1:5], sectorSize)
-        require.NoError(t, err)
-
-        _, err = queue.Root()
-        require.NoError(t, err)
-
-        // mark faulted sectors as recovered
-        recovered, err := queue.RescheduleRecovered(sectors[1:5], sectorSize)
-        require.NoError(t, err)
-        assert.True(t, recovered.Equals(miner.PowerForSectors(sectorSize, sectors[1:5])))
-
-        // expect first set to contain first two sectors with active power
-        requireNoExpirationGroupsBefore(t, 5, queue)
-        set, err := queue.PopUntil(5)
-        require.NoError(t, err)
-
-        assertBitfieldEquals(t, set.OnTimeSectors, 1, 2)
-        assertBitfieldEmpty(t, set.EarlySectors)
-
-        // pledge from both sectors
-        assert.Equal(t, big.NewInt(2001), set.OnTimePledge)
-
-        assert.True(t, set.ActivePower.Equals(miner.PowerForSectors(sectorSize, sectors[:2])))
-        assert.True(t, set.FaultyPower.Equals(miner.NewPowerPairZero()))
-
-        // expect second set to have lost early sector 5 and have active power just from 3 and 4
-        requireNoExpirationGroupsBefore(t, 9, queue)
-        set, err = queue.PopUntil(9)
-        require.NoError(t, err)
-
-        assertBitfieldEquals(t, set.OnTimeSectors, 3, 4)
-        assertBitfieldEmpty(t, set.EarlySectors)
-
-        // pledge is kept from original 2 sectors
-        assert.Equal(t, big.NewInt(2005), set.OnTimePledge)
-
-        assert.True(t, set.ActivePower.Equals(miner.PowerForSectors(sectorSize, sectors[2:4])))
-        assert.True(t, set.FaultyPower.Equals(miner.NewPowerPairZero()))
-
-        // expect sector 5 to be returned to last setu
-        requireNoExpirationGroupsBefore(t, 13, queue)
-        set, err = queue.PopUntil(13)
-        require.NoError(t, err)
-
-        assertBitfieldEquals(t, set.OnTimeSectors, 5, 6)
-        assertBitfieldEmpty(t, set.EarlySectors)
-
-        // Pledge from sector 5 is restored
-        assert.Equal(t, big.NewInt(2009), set.OnTimePledge)
-
-        assert.True(t, set.ActivePower.Equals(miner.PowerForSectors(sectorSize, sectors[4:])))
-        assert.True(t, set.FaultyPower.Equals(miner.NewPowerPairZero()))
-    })
-
     t.Run("replaces sectors with new sectors", func(t *testing.T) {
         // Create expiration 3 sets
         queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
