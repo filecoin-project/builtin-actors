@@ -1151,6 +1151,8 @@ mod cron_batch_proof_verifies_tests {
         h.submit_porep_for_bulk_verify(&mut rt, miner4, info7.clone()).unwrap();
         h.submit_porep_for_bulk_verify(&mut rt, miner4, info8.clone()).unwrap();
 
+        // TODO Because read order of keys in a multi-map is not as per insertion order,
+        // we have to move around the expected sends
         let confirmed_sectors = vec![
             ConfirmedSectorSend {
                 miner: MINER_1,
