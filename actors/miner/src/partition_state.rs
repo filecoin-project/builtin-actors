@@ -711,7 +711,7 @@ impl Partition {
     /// Returns the amount of power newly faulty, or declared recovered but faulty again.
     ///
     /// - Skipped faults that are not in the provided partition triggers an error.
-    /// - Skipped faults that are already declared (but not delcared recovered) are ignored.
+    /// - Skipped faults that are already declared (but not declared recovered) are ignored.
     pub fn record_skipped_faults<BS: Blockstore>(
         &mut self,
         store: &BS,
