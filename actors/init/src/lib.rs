@@ -79,19 +79,6 @@ impl Actor {
         //     ));
         // }
 
-        // Ensure the code is installed/loaded
-        rt.transaction(|st: &mut State, rt| {
-            if st.is_installed_actor(rt.store(), &params.code_cid).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to check state")
-            })? {
-                rt.install_actor(&params.code_cid).map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to check state")
-                })
-            } else {
-                Ok(())
-            }
-        })?;
-
         // Compute a re-org-stable address.
         // This address exists for use by messages coming from outside the system, in order to
         // stably address the newly created actor even if a chain re-org causes it to end up with
