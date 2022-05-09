@@ -159,4 +159,62 @@ mod miner_actor_test_commitment {
         );
         util::check_state_invariants(&rt);
     }
+
+    #[test]
+    fn deal_space_exceeds_sector_space() {
+        let period_offset = ChainEpoch::from(100);
+
+        let mut h = ActorHarness::new(period_offset);
+        h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
+        let mut rt = h.new_runtime();
+        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_received(TokenAmount::zero());
+
+        let precommit_epoch = period_offset + 1;
+        rt.set_epoch(precommit_epoch);
+        h.construct_and_verify(&mut rt);
+        let deadline = h.deadline(&rt);
+        let challenge_epoch = precommit_epoch - 1;
+        let expiration =
+            deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
+
+        let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
+
+        let ret = h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params.clone(),
+            util::PreCommitConfig {
+                deal_weight: BigInt::default(),
+                verified_deal_weight: BigInt::default(),
+                deal_space: Some(h.sector_size), // TODO: need to increment?
+            },
+            true,
+        );
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "deals too large to fit in sector",
+            ret,
+        );
+        util::check_state_invariants(&rt);
+    }
+
+    #[ignore]
+    #[test]
+    fn precommit_pays_back_fee_debt() {}
+
+    #[ignore]
+    #[test]
+    fn invalid_pre_commit_rejected() {}
+
+    #[ignore]
+    #[test]
+    fn fails_with_too_many_deals() {}
+
+    #[ignore]
+    #[test]
+    fn precommit_checks_seal_proof_version() {}
+
+    #[ignore]
+    #[test]
+    fn precommit_does_not_vest_funds() {}
 }
