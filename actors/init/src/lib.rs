@@ -78,16 +78,14 @@ impl Actor {
         //     ));
         // }
 
-        // Ensure the code is installed/loaded
+        // Ensure the code is installed
         rt.transaction(|st: &mut State, rt| {
             if st.is_installed_actor(rt.store(), &params.code_cid).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to check state")
             })? {
-                rt.install_actor(&params.code_cid).map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to check state")
-                })
-            } else {
                 Ok(())
+            } else {
+                Err(actor_error!(illegal_state; "Unknown actor"))
             }
         })?;
 
