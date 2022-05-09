@@ -1987,35 +1987,6 @@ mod cancel_tests {
     }
 }
 
-// LockBalance
-#[test]
-fn test_lock_balance_checks_preconditions() {
-    let msig = Address::new_id(100);
-    let anne = Address::new_id(101);
-
-    let mut rt = construct_runtime(msig);
-    let h = util::ActorHarness::new();
-
-    h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
-
-    let vest_start = 0_i64;
-    let lock_amount = TokenAmount::from(100_000u32);
-    let vest_duration = 1000_i64;
-
-    // Disallow negative duration but allow negative start epoch
-    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        h.lock_balance(&mut rt, vest_start, -1_i64, lock_amount),
-    );
-
-    // Disallow negative amount
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        h.lock_balance(&mut rt, vest_start, vest_duration, TokenAmount::from(-1i32)),
-    );
-}
-
 // ChangeNumApprovalsThreshold
 mod change_threshold_tests {
     use super::*;
@@ -2125,5 +2096,254 @@ mod change_threshold_tests {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
         h.assert_transactions(&rt, vec![]);
+    }
+}
+
+#[cfg(test)]
+mod lock_balance_tests {
+    use super::*;
+
+    #[test]
+    fn retroactive_vesting() {
+        let msig = Address::new_id(100);
+        let anne = Address::new_id(101);
+        let bob = Address::new_id(102);
+
+        let mut rt = construct_runtime(msig);
+        let h = util::ActorHarness::new();
+
+        // create empty multisig
+        rt.set_epoch(100);
+        h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+
+        // some time later, initialize vesting
+        rt.set_epoch(200);
+        let vest_start = 0;
+        let lock_amount = TokenAmount::from(100_000u32);
+        let vest_duration = 1000;
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
+
+        rt.set_epoch(300);
+        let vested = TokenAmount::from(30_000);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+
+        // Fail to spend balance the multisig doesn't have
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, bob, vested.clone(), METHOD_SEND, RawBytes::default()),
+        );
+        rt.reset();
+
+        // fail to spend more than the vested amount
+        rt.set_balance(lock_amount.clone());
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(
+                &mut rt,
+                bob,
+                vested.clone() + TokenAmount::from(1),
+                METHOD_SEND,
+                RawBytes::default(),
+            ),
+        );
+        rt.reset();
+
+        // can fully spend the vested amount
+        rt.set_balance(lock_amount.clone());
+        rt.expect_send(
+            bob,
+            METHOD_SEND,
+            RawBytes::default(),
+            vested.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        h.propose_ok(&mut rt, bob, vested.clone(), METHOD_SEND, RawBytes::default());
+
+        // can't spend more
+        rt.set_balance(lock_amount.clone() - vested.clone());
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+        );
+        rt.reset();
+
+        // later can spend the rest
+        rt.set_epoch(vest_start + vest_duration);
+        let rested = TokenAmount::from(70_000u32);
+        rt.expect_send(
+            bob,
+            METHOD_SEND,
+            RawBytes::default(),
+            rested.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
+    }
+
+    #[test]
+    fn prospective_vesting() {
+        let msig = Address::new_id(100);
+        let anne = Address::new_id(101);
+        let bob = Address::new_id(102);
+
+        let mut rt = construct_runtime(msig);
+        let h = util::ActorHarness::new();
+        // create empty multisig
+        rt.set_epoch(100);
+        h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+
+        // some time later initialize vesting
+        rt.set_epoch(200);
+        let vest_start = 1000;
+        let lock_amount = TokenAmount::from(100_000);
+        let vest_duration = 1000;
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
+
+        // oversupply the wallet allow spending the oversupply
+        rt.set_epoch(300);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+        rt.set_balance(lock_amount.clone() + TokenAmount::from(1));
+        rt.expect_send(
+            bob,
+            METHOD_SEND,
+            RawBytes::default(),
+            TokenAmount::from(1),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        h.propose_ok(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default());
+
+        // fail to spend locked funds before vesting starts
+        rt.set_balance(lock_amount.clone());
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+        );
+        rt.reset();
+
+        // can spend partially vested amount
+        rt.set_epoch(vest_start + 200);
+        let expect_vested = TokenAmount::from(20_000);
+        rt.expect_send(
+            bob,
+            METHOD_SEND,
+            RawBytes::default(),
+            expect_vested.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        h.propose_ok(&mut rt, bob, expect_vested.clone(), METHOD_SEND, RawBytes::default());
+
+        // can't spend more
+        rt.set_balance(lock_amount - expect_vested);
+        expect_abort(
+            ExitCode::USR_INSUFFICIENT_FUNDS,
+            h.propose(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+        );
+
+        // later, can spend the rest
+        rt.set_epoch(vest_start + vest_duration);
+        let rested = TokenAmount::from(80_000);
+        rt.expect_send(
+            bob,
+            METHOD_SEND,
+            RawBytes::default(),
+            rested.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
+    }
+
+    #[test]
+    fn cant_alter_vesting() {
+        let msig = Address::new_id(100);
+        let anne = Address::new_id(101);
+
+        let mut rt = construct_runtime(msig);
+        let h = util::ActorHarness::new();
+
+        // create empty multisig
+        rt.set_epoch(100);
+        h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+
+        // initialize vesting from zero
+        let vest_start = 0;
+        let lock_amount = TokenAmount::from(100_000);
+        let vest_duration = 1000;
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
+
+        // can't change vest start
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            h.lock_balance(&mut rt, vest_start - 1, vest_duration, lock_amount.clone()),
+        );
+
+        // can't change lock duration
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            h.lock_balance(&mut rt, vest_start, vest_duration - 1, lock_amount.clone()),
+        );
+
+        // can't change locked amount
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount - TokenAmount::from(1)),
+        );
+        rt.reset()
+    }
+
+    #[test]
+    fn cant_alter_vesting_from_constructor() {
+        let msig = Address::new_id(100);
+        let anne = Address::new_id(101);
+
+        let mut rt = construct_runtime(msig);
+        let h = util::ActorHarness::new();
+
+        let start_epoch = 100;
+        let unlock_duration = 1000;
+        h.construct_and_verify(&mut rt, 1, unlock_duration, start_epoch, vec![anne]);
+
+        // can't change vest start
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        expect_abort(
+            ExitCode::USR_FORBIDDEN,
+            h.lock_balance(&mut rt, start_epoch - 1, unlock_duration, TokenAmount::zero()),
+        );
+        rt.reset();
+    }
+
+    #[test]
+    fn test_lock_balance_checks_preconditions() {
+        let msig = Address::new_id(100);
+        let anne = Address::new_id(101);
+
+        let mut rt = construct_runtime(msig);
+        let h = util::ActorHarness::new();
+
+        h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+
+        let vest_start = 0_i64;
+        let lock_amount = TokenAmount::from(100_000u32);
+        let vest_duration = 1000_i64;
+
+        // Disallow negative duration but allow negative start epoch
+        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            h.lock_balance(&mut rt, vest_start, -1_i64, lock_amount),
+        );
+
+        // Disallow negative amount
+        expect_abort(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            h.lock_balance(&mut rt, vest_start, vest_duration, TokenAmount::from(-1i32)),
+        );
     }
 }
