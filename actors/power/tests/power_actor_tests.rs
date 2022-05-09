@@ -1151,7 +1151,7 @@ mod cron_batch_proof_verifies_tests {
         rt.expect_send(
             *REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            RawBytes::serialize(0u8).unwrap(),
+            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::from(0u8),
             RawBytes::default(),
             ExitCode::OK,
