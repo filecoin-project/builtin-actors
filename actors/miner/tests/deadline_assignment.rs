@@ -169,7 +169,7 @@ fn fails_if_all_deadlines_hit_their_max_partitions_limit_before_assigning_all_se
 }
 
 #[test]
-fn succeeds_if_all_all_deadlines_hit_their_max_partitions_limit_but_assignment_is_complete() {
+fn succeeds_if_all_deadlines_hit_their_max_partitions_limit_but_assignment_is_complete() {
     // one deadline can take 5 * 5 = 25 sectors
     // so 48 deadlines that can take 48 * 25 = 1200 sectors.
 
