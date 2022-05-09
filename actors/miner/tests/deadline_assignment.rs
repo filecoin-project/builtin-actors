@@ -125,7 +125,6 @@ fn test_deadline_assignment() {
         .unwrap();
         for (i, sectors) in assignment.iter().enumerate() {
             if let Some(Some(dl)) = tc.deadlines.get(i) {
-                // require.Equal(t, len(dl.expectSectors), len(sectors), "for deadline %d", i)
                 assert_eq!(
                     dl.expect_sectors.len(),
                     sectors.len(),
