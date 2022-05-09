@@ -198,9 +198,41 @@ mod miner_actor_test_commitment {
         util::check_state_invariants(&rt);
     }
 
-    #[ignore]
     #[test]
-    fn precommit_pays_back_fee_debt() {}
+    fn precommit_pays_back_fee_debt() {
+        let period_offset = ChainEpoch::from(100);
+
+        let mut h = ActorHarness::new(period_offset);
+        h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
+        let mut rt = h.new_runtime();
+        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_received(TokenAmount::zero());
+
+        let precommit_epoch = period_offset + 1;
+        rt.set_epoch(precommit_epoch);
+        h.construct_and_verify(&mut rt);
+        let deadline = h.deadline(&rt);
+        let challenge_epoch = precommit_epoch - 1;
+        let expiration =
+            deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
+
+        let mut st: State = rt.get_state();
+        st.fee_debt = TokenAmount::from(9999);
+        rt.replace_state(&st);
+
+        let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
+
+        h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params.clone(),
+            util::PreCommitConfig::empty(),
+            true,
+        )
+        .unwrap();
+        let st: State = rt.get_state();
+        assert_eq!(TokenAmount::zero(), st.fee_debt);
+        util::check_state_invariants(&rt);
+    }
 
     #[ignore]
     #[test]
