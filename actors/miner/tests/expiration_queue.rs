@@ -409,69 +409,65 @@ fn reschedules_sectors_as_faults() {
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[5..]));
     assert_eq!(set.faulty_power, PowerPair::zero());
 }
+
+#[test]
+fn reschedules_all_sectors_as_faults() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    // Create expiration 3 sets with 2 sectors apiece
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+    let (_sec_nums, _power, _pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+
+    let _ = queue.amt.flush().unwrap();
+
+    // Fault all sectors
+    // This converts the first 2 sets to faults and adds the 3rd set as early sectors to the second set
+    queue.reschedule_all_as_faults(6).unwrap();
+
+    let _ = queue.amt.flush().unwrap();
+
+    // expect first set to contain first two sectors but with the seconds power moved to faulty power
+    require_no_expiration_groups_before(5, &mut queue);
+    let set = queue.pop_until(5).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([1, 2])); // sectors are unmoved
+    assert!(set.early_sectors.is_empty());
+
+    assert_eq!(set.on_time_pledge, TokenAmount::from(2001)); // pledge is same
+
+    // active power is converted to fault power
+    assert_eq!(set.active_power, PowerPair::zero());
+    assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[0..2]));
+
+    // expect the second set to have all faulty power and now contain 5th and 6th sectors as an early sectors
+    require_no_expiration_groups_before(9, &mut queue);
+    let set = queue.pop_until(9).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([3, 4]));
+    assert_eq!(set.early_sectors, mk_bitfield([5, 6]));
+
+    // pledge is kept from original 2 sectors. Pledge from new early sectors is NOT added.
+    assert_eq!(set.on_time_pledge, TokenAmount::from(2005));
+
+    // fault power is all power for sectors previously in the first and second sets
+    assert_eq!(set.active_power, PowerPair::zero());
+    assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[2..]));
+
+    // expect last set to only contain non faulty sector
+    require_no_expiration_groups_before(13, &mut queue);
+    let set = queue.pop_until(13).unwrap();
+
+    assert!(set.on_time_sectors.is_empty());
+    assert!(set.early_sectors.is_empty());
+
+    // all pledge is dropped
+    assert!(set.on_time_pledge.is_zero());
+
+    assert_eq!(set.active_power, PowerPair::zero());
+    assert_eq!(set.faulty_power, PowerPair::zero());
+}
 /*
-    t.Run("reschedules sectors as faults", func(t *testing.T) {
-        // Pledge from sector moved from this set is dropped
-        assert.Equal(t, big.NewInt(1005), set.OnTimePledge)
-
-        assert.True(t, set.ActivePower.Equals(miner.PowerForSectors(sectorSize, sectors[5:])))
-        assert.True(t, set.FaultyPower.Equals(miner.NewPowerPairZero()))
-    })
-
-    t.Run("reschedules all sectors as faults", func(t *testing.T) {
-        // Create expiration 3 sets with 2 sectors apiece
-        queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
-        _, _, _, err := queue.AddActiveSectors(sectors, sectorSize)
-        require.NoError(t, err)
-
-        _, err = queue.Root()
-        require.NoError(t, err)
-
-        // Fault all sectors
-        // This converts the first 2 sets to faults and adds the 3rd set as early sectors to the second set
-        err = queue.RescheduleAllAsFaults(abi.ChainEpoch(6))
-        require.NoError(t, err)
-
-        _, err = queue.Root()
-        require.NoError(t, err)
-
-        // expect first set to contain first two sectors but with the seconds power moved to faulty power
-        requireNoExpirationGroupsBefore(t, 5, queue)
-        set, err := queue.PopUntil(5)
-        require.NoError(t, err)
-
-        assertBitfieldEquals(t, set.OnTimeSectors, 1, 2) // sectors are unmoved
-        assertBitfieldEmpty(t, set.EarlySectors)
-
-        assert.Equal(t, big.NewInt(2001), set.OnTimePledge) // pledge is same
-
-        // active power is converted to fault power
-        assert.True(t, set.ActivePower.Equals(miner.NewPowerPairZero()))
-        assert.True(t, set.FaultyPower.Equals(miner.PowerForSectors(sectorSize, sectors[:2])))
-
-        // expect the second set to have all faulty power and now contain 5th and 6th sectors as an early sectors
-        requireNoExpirationGroupsBefore(t, 9, queue)
-        set, err = queue.PopUntil(9)
-        require.NoError(t, err)
-
-        assertBitfieldEquals(t, set.OnTimeSectors, 3, 4)
-        assertBitfieldEquals(t, set.EarlySectors, 5, 6)
-
-        // pledge is kept from original 2 sectors. Pledge from new early sectors is NOT added.
-        assert.Equal(t, big.NewInt(2005), set.OnTimePledge)
-
-        // fault power is all power for sectors previously in the first and second sets
-        assert.True(t, set.ActivePower.Equals(miner.NewPowerPairZero()))
-        assert.True(t, set.FaultyPower.Equals(miner.PowerForSectors(sectorSize, sectors[2:])))
-
-        // expect last set to only contain non faulty sector
-        requireNoExpirationGroupsBefore(t, 13, queue)
-        set, err = queue.PopUntil(13)
-        require.NoError(t, err)
-
-        assertBitfieldEmpty(t, set.OnTimeSectors)
-        assertBitfieldEmpty(t, set.EarlySectors)
-
         // all pledge is dropped
         assert.Equal(t, big.Zero(), set.OnTimePledge)
 
