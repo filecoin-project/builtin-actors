@@ -1436,7 +1436,8 @@ fn locked_fund_tracking_states() {
         ExitCode::OK,
     );
     cron_tick(&mut rt);
-    let payment = BigInt::from(4_i32) * &d1.storage_price_per_epoch;
+    let duration = curr - start_epoch;
+    let payment = BigInt::from(2_i32) * &d1.storage_price_per_epoch * duration;
     let mut csf = (csf - payment) - d3.total_storage_fee();
     let mut plc = plc - d3.provider_collateral;
     let mut clc = clc - d3.client_collateral;
@@ -1458,7 +1459,7 @@ fn locked_fund_tracking_states() {
     cron_tick(&mut rt);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
-    // slash deal1 at 201
+    // slash deal1
     rt.set_epoch(curr + 1);
     terminate_deals(&mut rt, m1.provider, &[deal_id1]);
 
