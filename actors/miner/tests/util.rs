@@ -351,13 +351,14 @@ impl ActorHarness {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192] }
     }
 
-    pub fn pre_commit_sector(
+    // TODO: find a better name
+    pub fn pre_commit_sector_internal(
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorParams,
         conf: PreCommitConfig,
         first: bool,
-    ) -> SectorPreCommitOnChainInfo {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
         self.expect_query_network_info(rt);
@@ -421,9 +422,20 @@ impl ActorHarness {
             .call::<Actor>(
                 Method::PreCommitSector as u64,
                 &RawBytes::serialize(params.clone()).unwrap(),
-            )
-            .unwrap();
-        expect_empty(result);
+            );
+        result
+    }
+
+    pub fn pre_commit_sector(
+        &self,
+        rt: &mut MockRuntime,
+        params: PreCommitSectorParams,
+        conf: PreCommitConfig,
+        first: bool,
+    ) -> SectorPreCommitOnChainInfo {
+        let result = self.pre_commit_sector_internal(rt, params.clone(), conf, first);
+
+        expect_empty(result.unwrap());
         rt.verify();
 
         self.get_precommit(rt, params.sector_number)
