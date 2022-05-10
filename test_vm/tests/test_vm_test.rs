@@ -7,6 +7,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 use test_vm::{actor, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
+use test_vm::util::{pk_addrs_from};
 
 #[test]
 fn state_control() {
@@ -105,4 +106,13 @@ fn test_sent() {
     assert_eq!(ExitCode::SYS_INVALID_RECEIVER, mres.code);
     assert_account_actor(3, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::from(0u8), addr2, &v, expect_id_addr2);
+}
+
+#[test]
+fn test_pk_gen() {
+    let addrs = pk_addrs_from(5, 2);
+    let second_addr_seeded_five = addrs[1];
+    let addrs = pk_addrs_from(6, 1);
+    let first_addr_seeded_six = addrs[0];
+    assert!(second_addr_seeded_five != first_addr_seeded_six);
 }

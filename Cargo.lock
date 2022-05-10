@@ -1742,6 +1742,8 @@ dependencies = [
  "log",
  "num-derive",
  "num-traits",
+ "rand",
+ "rand_chacha",
  "serde",
  "thiserror",
 ]

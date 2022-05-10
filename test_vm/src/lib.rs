@@ -50,6 +50,8 @@ use std::error::Error;
 use std::fmt;
 use std::ops::Add;
 
+pub mod util;
+
 pub struct VM<'bs> {
     store: &'bs MemoryBlockstore,
     state_root: RefCell<Cid>,
