@@ -1107,6 +1107,100 @@ mod cron_batch_proof_verifies_tests {
     }
 
     #[test]
+    fn skips_verify_if_miner_has_no_claim() {
+        let (mut h, mut rt) = setup();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
+
+        let info = create_basic_seal_info(1);
+
+        h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info).unwrap();
+
+        h.delete_claim(&mut rt, &MINER_1);
+
+        let infos = vec![];
+
+        let confirmed_sectors = vec![];
+
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
+
+        h.check_state();
+    }
+
+    #[test]
+    fn success_with_multiple_miners_and_multiple_confirmed_sectors_and_assert_expected_power() {
+        let miner1 = Address::new_id(101);
+
+        // TODO: shares an id with constant `OWNER`
+        // this is a known issue however the ordering of the values
+        // are vital for this test and have been left as such
+        let miner2 = Address::new_id(102);
+        let miner3 = Address::new_id(103);
+        let miner4 = Address::new_id(104);
+
+        let info1 = create_basic_seal_info(1);
+        let info2 = create_basic_seal_info(2);
+        let info3 = create_basic_seal_info(3);
+        let info4 = create_basic_seal_info(101);
+        let info5 = create_basic_seal_info(200);
+        let info6 = create_basic_seal_info(201);
+        let info7 = create_basic_seal_info(300);
+        let info8 = create_basic_seal_info(301);
+
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner1).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner2).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner3).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner4).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner1, info1.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner1, info2.clone()).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner2, info3.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner2, info4.clone()).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner3, info5.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner3, info6.clone()).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner4, info7.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner4, info8.clone()).unwrap();
+
+        // TODO Because read order of keys in a multi-map is not as per insertion order,
+        // we have to move around the expected sends
+        let confirmed_sectors = vec![
+            ConfirmedSectorSend {
+                miner: MINER_1,
+                sector_nums: vec![info1.sector_id.number, info2.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner3,
+                sector_nums: vec![info5.sector_id.number, info6.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner4,
+                sector_nums: vec![info7.sector_id.number, info8.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner2,
+                sector_nums: vec![info3.sector_id.number, info4.sector_id.number],
+            },
+        ];
+
+        let infos = vec![info1, info2, info5, info6, info7, info8, info3, info4];
+
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
+        h.check_state();
+    }
+
+    #[test]
+    fn success_when_no_confirmed_sector() {
+        let (h, mut rt) = setup();
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), vec![], vec![]);
+
+        h.check_state();
+    }
+
+    #[test]
     fn verification_for_one_sector_fails_but_others_succeeds_for_a_miner() {
         let (mut h, mut rt) = setup();
         h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
@@ -1165,7 +1259,6 @@ mod cron_batch_proof_verifies_tests {
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
 
         rt.verify();
-        h.check_state();
     }
 
     #[test]
@@ -1180,7 +1273,11 @@ mod cron_batch_proof_verifies_tests {
 
         let cs = ConfirmedSectorSend {
             miner: MINER_1,
-            sector_nums: vec![infos[0].sector_id.number, infos[1].sector_id.number, infos[2].sector_id.number],
+            sector_nums: vec![
+                infos[0].sector_id.number,
+                infos[1].sector_id.number,
+                infos[2].sector_id.number,
+            ],
         };
 
         expect_query_network_info(&mut rt, &h);
@@ -1221,7 +1318,6 @@ mod cron_batch_proof_verifies_tests {
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
         rt.verify();
-        h.check_state();
     }
 }
 

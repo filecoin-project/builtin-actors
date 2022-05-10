@@ -1947,12 +1947,12 @@ impl Actor {
     {
         {
             let policy = rt.policy();
-            if params.extensions.len() as u64 > policy.delcarations_max {
+            if params.extensions.len() as u64 > policy.declarations_max {
                 return Err(actor_error!(
                     illegal_argument,
                     "too many declarations {}, max {}",
                     params.extensions.len(),
-                    policy.delcarations_max
+                    policy.declarations_max
                 ));
             }
         }
@@ -2263,12 +2263,12 @@ impl Actor {
 
         {
             let policy = rt.policy();
-            if params.terminations.len() as u64 > policy.delcarations_max {
+            if params.terminations.len() as u64 > policy.declarations_max {
                 return Err(actor_error!(
                     illegal_argument,
                     "too many declarations when terminating sectors: {} > {}",
                     params.terminations.len(),
-                    policy.delcarations_max
+                    policy.declarations_max
                 ));
             }
         }
@@ -2414,12 +2414,12 @@ impl Actor {
     {
         {
             let policy = rt.policy();
-            if params.faults.len() as u64 > policy.delcarations_max {
+            if params.faults.len() as u64 > policy.declarations_max {
                 return Err(actor_error!(
                     illegal_argument,
                     "too many fault declarations for a single message: {} > {}",
                     params.faults.len(),
-                    policy.delcarations_max
+                    policy.declarations_max
                 ));
             }
         }
@@ -2557,12 +2557,12 @@ impl Actor {
     {
         {
             let policy = rt.policy();
-            if params.recoveries.len() as u64 > policy.delcarations_max {
+            if params.recoveries.len() as u64 > policy.declarations_max {
                 return Err(actor_error!(
                     illegal_argument,
                     "too many recovery declarations for a single message: {} > {}",
                     params.recoveries.len(),
-                    policy.delcarations_max
+                    policy.declarations_max
                 ));
             }
         }
@@ -4622,3 +4622,6 @@ impl ActorCode for Actor {
         }
     }
 }
+
+#[cfg(test)]
+mod internal_tests;

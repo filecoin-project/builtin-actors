@@ -30,13 +30,14 @@ use fil_actors_runtime::{
 };
 
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
 use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::ChainEpoch;
+use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::deal::DealID;
@@ -54,18 +55,17 @@ use cid::Cid;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
-use rand::prelude::*;
-
 use std::collections::{BTreeMap, HashMap};
 
 const RECEIVER_ID: u64 = 1000;
 
-pub fn new_bls_addr(s: u8) -> Address {
-    let seed = [s; 32];
-    let mut rng: StdRng = SeedableRng::from_seed(seed);
-    let mut key = [0u8; 48];
-    rng.fill_bytes(&mut key);
-    Address::new_bls(&key).unwrap()
+#[allow(dead_code)]
+pub fn setup() -> (ActorHarness, MockRuntime) {
+    let mut rt = MockRuntime::default();
+    let h = ActorHarness::new(0);
+
+    h.construct_and_verify(&mut rt);
+    (h, rt)
 }
 
 pub struct ActorHarness {
@@ -1636,4 +1636,58 @@ fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
 #[allow(dead_code)]
 pub fn check_state_invariants(_rt: &MockRuntime) {
     // TODO check state invariants
+}
+
+#[allow(dead_code)]
+pub fn test_sector(
+    expiration: ChainEpoch,
+    sector_number: SectorNumber,
+    deal_weight: u64,
+    verified_deal_weight: u64,
+    pledge: u64,
+) -> SectorOnChainInfo {
+    SectorOnChainInfo {
+        expiration,
+        sector_number,
+        deal_weight: DealWeight::from(deal_weight),
+        verified_deal_weight: DealWeight::from(verified_deal_weight),
+        initial_pledge: TokenAmount::from(pledge),
+        sealed_cid: make_sealed_cid(format!("commR-{sector_number}").as_bytes()),
+        ..Default::default()
+    }
+}
+
+#[allow(dead_code)]
+pub fn sectors_array<'a, BS: Blockstore>(
+    rt: &MockRuntime,
+    store: &'a BS,
+    sectors_info: Vec<SectorOnChainInfo>,
+) -> Sectors<'a, BS> {
+    let state: State = rt.get_state();
+    let mut sectors = Sectors::load(store, &state.sectors).unwrap();
+    sectors.store(sectors_info).unwrap();
+    sectors
+}
+
+#[derive(Default)]
+pub struct DeadlineStateSummary {
+    pub all_sectors: BitField,
+    pub live_sectors: BitField,
+    pub faulty_sectors: BitField,
+    pub recovering_sectors: BitField,
+    pub unproven_sectors: BitField,
+    pub terminated_sectors: BitField,
+    pub live_power: PowerPair,
+    pub active_power: PowerPair,
+    pub faulty_power: PowerPair,
+}
+
+#[allow(dead_code)]
+pub fn check_deadline_state_invariants<BS: Blockstore>(
+    _deadline: Deadline,
+    _store: &BS,
+    _quant: QuantSpec,
+    _sector_size: SectorSize,
+) -> DeadlineStateSummary {
+    todo!()
 }
