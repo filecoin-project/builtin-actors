@@ -1,13 +1,14 @@
-use fil_actor_miner::deadline_available_for_compaction;
-use fil_actor_miner::deadline_available_for_optimistic_post_dispute;
-use fil_actor_miner::DeadlineInfo;
+use fil_actor_miner::{
+    deadline_available_for_compaction, deadline_available_for_optimistic_post_dispute,
+    new_deadline_info,
+};
 use fil_actors_runtime::runtime::Policy;
 
 #[test]
 fn test_compaction_window() {
     let period_start = 1024;
     let policy = Policy::default();
-    let dl_info = DeadlineInfo::new_from_policy(period_start, 0, 0, &policy);
+    let dl_info = new_deadline_info(&policy, period_start, 0, 0);
 
     assert!(
         deadline_available_for_compaction(
@@ -82,7 +83,7 @@ fn test_compaction_window() {
 fn test_challenge_window() {
     let period_start = 1024;
     let policy = Policy::default();
-    let dl_info = DeadlineInfo::new_from_policy(period_start, 0, 0, &policy);
+    let dl_info = new_deadline_info(&policy, period_start, 0, 0);
 
     assert!(
         !deadline_available_for_optimistic_post_dispute(&policy, period_start, 0, dl_info.open),
