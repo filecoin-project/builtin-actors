@@ -652,21 +652,21 @@ fn adding_no_sectors_leaves_the_queue_empty() {
 
     assert_eq!(queue.amt.count(), 0);
 }
+
+#[test]
+fn rescheduling_no_expirations_as_faults_leaves_the_queue_empty() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+    let _ = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+
+    // all sectors already expire before epoch 15, nothing should change.
+    let length = queue.amt.count();
+    let _ = queue.reschedule_as_faults(15, &sectors(), SECTOR_SIZE).unwrap();
+    assert_eq!(queue.amt.count(), length);
+}
 /*
-
-    t.Run("rescheduling no expirations as faults leaves the queue empty", func(t *testing.T) {
-        queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
-
-        _, _, _, err := queue.AddActiveSectors(sectors, sectorSize)
-        require.NoError(t, err)
-
-        // all sectors already expire before epoch 15, nothing should change.
-        length := queue.Length()
-        _, err = queue.RescheduleAsFaults(15, sectors, sectorSize)
-        require.NoError(t, err)
-        assert.Equal(t, length, queue.Length())
-    })
-
     t.Run("rescheduling all expirations as faults leaves the queue empty if it was empty", func(t *testing.T) {
         queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
 
