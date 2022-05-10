@@ -9,14 +9,14 @@ use fil_actor_market::{
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
-    ApplyRewardParams, ChangeMultiaddrsParams, ChangePeerIDParams, ConfirmSectorProofsParams,
-    CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
-    DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
-    FaultDeclaration, GetControlAddressesReturn, Method,
-    MinerConstructorParams as ConstructorParams, Partition, PoStPartition, PowerPair,
-    PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo,
-    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, VestingFunds,
-    WindowedPoSt, CRON_EVENT_PROVING_DEADLINE,
+    ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams,
+    ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
+    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
+    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, FaultDeclaration,
+    GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
+    PoStPartition, PowerPair, PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration,
+    SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams,
+    VestingFunds, WindowedPoSt, CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -37,7 +37,7 @@ use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::deal::DealID;
@@ -323,7 +323,7 @@ impl ActorHarness {
         state.recorded_deadline_info(&rt.policy, rt.epoch)
     }
 
-    fn make_pre_commit_params(
+    pub fn make_pre_commit_params(
         &self,
         sector_no: u64,
         challenge: ChainEpoch,
@@ -345,11 +345,11 @@ impl ActorHarness {
         }
     }
 
-    fn make_prove_commit_params(&self, sector_no: u64) -> ProveCommitSectorParams {
+    pub fn make_prove_commit_params(&self, sector_no: u64) -> ProveCommitSectorParams {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192] }
     }
 
-    fn pre_commit_sector(
+    pub fn pre_commit_sector(
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorParams,
@@ -369,7 +369,7 @@ impl ActorHarness {
             };
             let vdreturn = VerifyDealsForActivationReturn {
                 sectors: vec![SectorWeights {
-                    deal_space: conf.deal_space.unwrap() as u64,
+                    deal_space: conf.deal_space.map(|s| s as u64).unwrap_or(0),
                     deal_weight: conf.deal_weight,
                     verified_deal_weight: conf.verified_deal_weight,
                 }],
@@ -465,7 +465,7 @@ impl ActorHarness {
         );
     }
 
-    fn prove_commit_sector_and_confirm(
+    pub fn prove_commit_sector_and_confirm(
         &self,
         rt: &mut MockRuntime,
         pc: &SectorPreCommitOnChainInfo,
@@ -1363,6 +1363,43 @@ impl ActorHarness {
     fn get_partition(&self, rt: &MockRuntime, deadline: &Deadline, pidx: u64) -> Partition {
         deadline.load_partition(&rt.store, pidx).unwrap()
     }
+
+    pub fn collect_deadline_expirations(
+        &self,
+        rt: &MockRuntime,
+        deadline: &Deadline,
+    ) -> HashMap<ChainEpoch, Vec<u64>> {
+        let queue =
+            BitFieldQueue::new(&rt.store, &deadline.expirations_epochs, NO_QUANTIZATION).unwrap();
+        let mut expirations = HashMap::new();
+        queue
+            .amt
+            .for_each(|epoch, bitfield| {
+                let expanded = bitfield.bounded_iter(rt.policy.addressed_sectors_max).unwrap();
+                expirations.insert(epoch as ChainEpoch, expanded.collect::<Vec<u64>>());
+                Ok(())
+            })
+            .unwrap();
+        expirations
+    }
+
+    pub fn collect_partition_expirations(
+        &self,
+        rt: &MockRuntime,
+        partition: &Partition,
+    ) -> HashMap<ChainEpoch, ExpirationSet> {
+        let queue = ExpirationQueue::new(&rt.store, &partition.expirations_epochs, NO_QUANTIZATION)
+            .unwrap();
+        let mut expirations = HashMap::new();
+        queue
+            .amt
+            .for_each(|epoch, set| {
+                expirations.insert(epoch as ChainEpoch, set.clone());
+                Ok(())
+            })
+            .unwrap();
+        expirations
+    }
 }
 
 #[allow(dead_code)]
@@ -1396,9 +1433,9 @@ impl PoStConfig {
 }
 
 pub struct PreCommitConfig {
-    deal_weight: DealWeight,
-    verified_deal_weight: DealWeight,
-    deal_space: Option<SectorSize>,
+    pub deal_weight: DealWeight,
+    pub verified_deal_weight: DealWeight,
+    pub deal_space: Option<SectorSize>,
 }
 
 #[allow(dead_code)]
@@ -1412,6 +1449,7 @@ impl PreCommitConfig {
     }
 }
 
+#[derive(Default, Clone)]
 pub struct ProveCommitConfig {
     verify_deals_exit: HashMap<SectorNumber, ExitCode>,
 }
