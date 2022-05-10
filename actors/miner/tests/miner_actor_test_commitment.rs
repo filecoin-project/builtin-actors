@@ -1,4 +1,5 @@
 use fil_actor_miner::{pre_commit_deposit_for_power, qa_power_for_weight, State, VestSpec};
+use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -15,7 +16,7 @@ use std::collections::HashMap;
 mod util;
 use util::*;
 
-// an expriration ~10 days greater than effective min expiration taking into account 30 days max
+// an expiration ~10 days greater than effective min expiration taking into account 30 days max
 // between pre and prove commit
 const DEFAULT_SECTOR_EXPIRATION: i64 = 220;
 
@@ -235,9 +236,192 @@ mod miner_actor_test_commitment {
         util::check_state_invariants(&rt);
     }
 
-    #[ignore]
     #[test]
-    fn invalid_pre_commit_rejected() {}
+    fn invalid_pre_commit_rejected() {
+        let period_offset = ChainEpoch::from(100);
+
+        let mut h = ActorHarness::new(period_offset);
+        h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
+        let mut rt = h.new_runtime();
+        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_received(TokenAmount::zero());
+
+        let precommit_epoch = period_offset + 1;
+        rt.set_epoch(precommit_epoch);
+        h.construct_and_verify(&mut rt);
+        let deadline = h.deadline(&rt);
+        let challenge_epoch = precommit_epoch - 1;
+
+        let old_sector =
+            &h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true)[0];
+        let st: State = rt.get_state();
+        assert!(st.deadline_cron_active);
+        // Good commitment.
+        let expiration =
+            deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
+        let precommit_params =
+            h.make_pre_commit_params(101, challenge_epoch, expiration, vec![]);
+        h.pre_commit_sector(&mut rt, precommit_params.clone(), util::PreCommitConfig::default(), false);
+        // Duplicate pre-commit sector ID
+        let ret = h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params,
+            util::PreCommitConfig::default(),
+            false,
+        );
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "already allocated",
+            ret,
+        );
+        rt.reset();
+
+        // Sector ID already committed
+        let precommit_params =
+            h.make_pre_commit_params(old_sector.sector_number, challenge_epoch, expiration, vec![]);
+        let ret = h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params,
+            util::PreCommitConfig::default(),
+            false,
+        );
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "already allocated",
+            ret,
+        );
+        rt.reset();
+
+        // Bad sealed CID
+        let mut precommit_params =
+            h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
+        precommit_params.sealed_cid = make_cid("Random Data".as_bytes(), 0);
+        let ret = h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params,
+            util::PreCommitConfig::default(),
+            false,
+        );
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "sealed CID had wrong prefix",
+            ret,
+        );
+        rt.reset();
+
+        // Bad seal proof type
+        let mut precommit_params =
+            h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
+        precommit_params.seal_proof = RegisteredSealProof::StackedDRG8MiBV1;
+        let ret = h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params,
+            util::PreCommitConfig::default(),
+            false,
+        );
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "unsupported seal proof type",
+            ret,
+        );
+        rt.reset();
+
+        // Expires at current epoch
+        let precommit_params =
+            h.make_pre_commit_params(102, challenge_epoch, rt.epoch, vec![]);
+        let ret = h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params,
+            util::PreCommitConfig::default(),
+            false,
+        );
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "must be after activation",
+            ret,
+        );
+        rt.reset();
+
+        // Expires before current epoch
+        let precommit_params =
+            h.make_pre_commit_params(102, challenge_epoch, rt.epoch - 1, vec![]);
+        let ret = h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params,
+            util::PreCommitConfig::default(),
+            false,
+        );
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "must be after activation",
+            ret,
+        );
+        rt.reset();
+
+        // Expires too early
+        let early_expiration = rt.policy.min_sector_expiration - EPOCHS_IN_DAY;
+        let precommit_params =
+            h.make_pre_commit_params(102, challenge_epoch, early_expiration, vec![]);
+        let ret = h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params,
+            util::PreCommitConfig::default(),
+            false,
+        );
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "must exceed",
+            ret,
+        );
+        rt.reset();
+
+        // Expires before min duration + max seal duration
+        let expiration =
+            rt.epoch +
+            rt.policy.min_sector_expiration
+            + rt.policy.max_prove_commit_duration[&h.seal_proof_type] - 1;
+        let precommit_params =
+            h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
+        let ret = h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params,
+            util::PreCommitConfig::default(),
+            false,
+        );
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "must exceed",
+            ret,
+        );
+        rt.reset();
+
+        // Errors when expiry too far in the future
+        rt.set_epoch(precommit_epoch);
+        let expiration =
+            deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * (rt.policy.max_sector_expiration_extension / rt.policy.wpost_proving_period + 1);
+        let precommit_params =
+            h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
+        let ret = h.pre_commit_sector_internal(
+            &mut rt,
+            precommit_params,
+            util::PreCommitConfig::default(),
+            false,
+        );
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "invalid expiration",
+            ret,
+        );
+        rt.reset();
+
+        // Sector ID out of range
+
+        // Seal randomness challenge too far in past
+
+        // Deals too large for sector
+
+        ()
+    }
 
     #[ignore]
     #[test]
