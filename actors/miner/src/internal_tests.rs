@@ -109,8 +109,8 @@ fn br_looks_right_in_plausible_sector_power_network_power_reward_range() {
     // between 10 and 100 FIL is reasonable for near-mid future
     let tens_of_fil: TokenAmount = TokenAmount::from(10).pow(18) * 50;
     let reward_estimate = FilterEstimate::new(tens_of_fil.clone(), Zero::zero());
-    let small_power = StoragePower::from(32_u64 << 30);
-    let huge_power = StoragePower::from(1_u64 << 60);
+    let small_power = StoragePower::from(32_u64 << 30); // 32 GiB
+    let huge_power = StoragePower::from(1_u64 << 60); // 1 EiB
     let small_power_br_num = &small_power * EPOCHS_IN_DAY * &tens_of_fil;
     let huge_power_br_num = &huge_power * EPOCHS_IN_DAY * &tens_of_fil;
 
