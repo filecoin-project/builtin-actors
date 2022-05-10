@@ -6,6 +6,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
+use fvm_shared::version::NetworkVersion;
 
 use num_traits::{FromPrimitive, Zero};
 
@@ -242,9 +243,55 @@ mod miner_actor_test_commitment {
     #[test]
     fn fails_with_too_many_deals() {}
 
-    #[ignore]
     #[test]
-    fn precommit_checks_seal_proof_version() {}
+    fn precommit_checks_seal_proof_version() {
+        let period_offset = ChainEpoch::from(100);
+
+        let mut h = ActorHarness::new(period_offset);
+        h.set_proof_type(RegisteredSealProof::StackedDRG32GiBV1);
+        let mut rt = h.new_runtime();
+        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_received(TokenAmount::zero());
+
+        // Create miner before version 7
+        rt.set_network_version(NetworkVersion::V6);
+        h.construct_and_verify(&mut rt);
+        let precommit_epoch = period_offset + 1;
+        rt.set_epoch(precommit_epoch);
+        let deadline = h.deadline(&rt);
+        let challenge_epoch = precommit_epoch - 1;
+        let expiration =
+            deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
+        {
+            // After version 7, only V1_1 accepted
+            rt.set_network_version(NetworkVersion::V8);
+
+            let mut precommit_params = h.make_pre_commit_params(104, challenge_epoch, expiration, vec![]);
+            precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1;
+            expect_abort(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                h.pre_commit_sector_internal(
+                    &mut rt,
+                    precommit_params.clone(),
+                    util::PreCommitConfig::default(),
+                    true,
+                ),
+            );
+            rt.reset();
+            precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+            expect_abort(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                h.pre_commit_sector_internal(
+                    &mut rt,
+                    precommit_params.clone(),
+                    util::PreCommitConfig::default(),
+                    true,
+                ),
+            );
+        }
+
+        util::check_state_invariants(&rt);
+    }
 
     #[ignore]
     #[test]
