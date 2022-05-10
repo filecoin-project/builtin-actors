@@ -629,7 +629,6 @@ dependencies = [
 name = "fil_actor_market"
 version = "8.0.0-alpha.1"
 dependencies = [
- "ahash",
  "anyhow",
  "cid",
  "fil_actor_power",
