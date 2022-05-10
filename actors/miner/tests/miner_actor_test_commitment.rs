@@ -279,14 +279,11 @@ mod miner_actor_test_commitment {
             );
             rt.reset();
             precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-            expect_abort(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                h.pre_commit_sector_internal(
-                    &mut rt,
-                    precommit_params.clone(),
-                    util::PreCommitConfig::default(),
-                    true,
-                ),
+            h.pre_commit_sector(
+                &mut rt,
+                precommit_params.clone(),
+                util::PreCommitConfig::default(),
+                true,
             );
         }
 
