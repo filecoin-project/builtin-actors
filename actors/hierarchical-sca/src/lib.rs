@@ -19,7 +19,7 @@ use num_traits::FromPrimitive;
 use std::collections::HashMap;
 
 pub use self::checkpoint::{Checkpoint, CrossMsgMeta};
-pub use self::cross::StorableMsg;
+pub use self::cross::{CrossMsgs, StorableMsg};
 pub use self::state::*;
 pub use self::subnet::*;
 pub use self::types::*;
@@ -47,6 +47,7 @@ pub enum Method {
     Kill = 5,
     CommitChildCheckpoint = 6,
     Fund = 7,
+    Release = 8,
 }
 
 /// Subnet Coordinator Actor
@@ -375,7 +376,13 @@ impl Actor {
         Ok(())
     }
 
-    /// Fund the controlled addres in a subnet
+    /// Fund injects new funds from an account of the parent chain to a subnet.
+    ///
+    /// This functions receives a transaction with the FILs that want to be injected in the subnet.
+    /// - Funds injected are frozen.
+    /// - A new fund cross-message is created and stored to propagate it to the subnet. It will be
+    /// picked up by miners to include it in the next possible block.
+    /// - The cross-message nonce is updated.
     fn fund<BS, RT>(rt: &mut RT, params: SubnetID) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -385,7 +392,7 @@ impl Actor {
         // now. Consider supporting also send-cross messages initiated by actors.
         rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
         let value = rt.message().value_received();
-        if value < TokenAmount::zero() {
+        if value <= TokenAmount::zero() {
             return Err(actor_error!(illegal_argument, "no funds included in fund message"));
         }
 
@@ -398,6 +405,49 @@ impl Actor {
             })?;
             // Commit top-down message.
             st.commit_topdown_msg(rt.store(), &mut f_msg).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error committing top-down message")
+            })?;
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// Release creates a new check message to release funds in parent chain
+    ///
+    /// This function burns the funds that will be released in the current subnet
+    /// and propagates a new checkpoint message to the parent chain to signal
+    /// the amount of funds that can be released for a specific address.
+    fn release<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        // FIXME: Only supporting cross-messages initiated by signable addresses for
+        // now. Consider supporting also send-cross messages initiated by actors.
+        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        let value = rt.message().value_received();
+        if value <= TokenAmount::zero() {
+            return Err(actor_error!(illegal_argument, "no funds included in message"));
+        }
+
+        let sig_addr = resolve_secp_bls(rt, rt.message().caller())?;
+
+        // burn funds that are being released
+        rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), value.clone())?;
+
+        rt.transaction(|st: &mut State, rt| {
+            // Create release message
+            let r_msg = StorableMsg::new_release_msg(&st.network_name, &sig_addr, value, st.nonce)
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "error creating release cross-message",
+                    )
+                })?;
+
+            // Commit bottom-up message.
+            st.commit_bottomup_msg(rt.store(), &r_msg, rt.curr_epoch()).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error committing top-down message")
             })?;
             Ok(())
@@ -444,6 +494,10 @@ impl ActorCode for Actor {
             }
             Some(Method::Fund) => {
                 Self::fund(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::Release) => {
+                Self::release(rt)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

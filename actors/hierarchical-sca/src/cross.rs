@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::Cid;
-use fil_actors_runtime::Array;
+use fil_actors_runtime::{Array, BURNT_FUNDS_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
@@ -34,6 +34,30 @@ pub struct StorableMsg {
 impl Cbor for StorableMsg {}
 
 impl StorableMsg {
+    pub fn new_release_msg(
+        sub_id: &SubnetID,
+        sig_addr: &Address,
+        value: TokenAmount,
+        nonce: u64,
+    ) -> anyhow::Result<Self> {
+        let to = Address::new_hierarchical(
+            &match sub_id.parent() {
+                Some(s) => s,
+                None => return Err(anyhow!("error getting parent for subnet addr")),
+            },
+            sig_addr,
+        )?;
+        let from = Address::new_hierarchical(sub_id, &BURNT_FUNDS_ACTOR_ADDR)?;
+        Ok(Self {
+            from: from,
+            to: to,
+            method: METHOD_SEND,
+            params: RawBytes::default(),
+            value: value,
+            nonce: nonce,
+        })
+    }
+
     pub fn new_fund_msg(
         sub_id: &SubnetID,
         sig_addr: &Address,
@@ -102,6 +126,12 @@ impl CrossMsgs {
             self.metas.push(m.clone());
         }
 
+        Ok(())
+    }
+
+    pub(crate) fn add_msg(&mut self, msg: &StorableMsg) -> anyhow::Result<()> {
+        // TODO: Check if the message has already been added.
+        self.msgs.push(msg.clone());
         Ok(())
     }
 }
