@@ -1,4 +1,4 @@
-use fil_actor_miner::{pre_commit_deposit_for_power, qa_power_for_weight, State};
+use fil_actor_miner::{pre_commit_deposit_for_power, qa_power_for_weight, State, VestSpec};
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -266,7 +266,8 @@ mod miner_actor_test_commitment {
             // After version 7, only V1_1 accepted
             rt.set_network_version(NetworkVersion::V8);
 
-            let mut precommit_params = h.make_pre_commit_params(104, challenge_epoch, expiration, vec![]);
+            let mut precommit_params =
+                h.make_pre_commit_params(104, challenge_epoch, expiration, vec![]);
             precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1;
             expect_abort(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -290,7 +291,43 @@ mod miner_actor_test_commitment {
         util::check_state_invariants(&rt);
     }
 
-    #[ignore]
     #[test]
-    fn precommit_does_not_vest_funds() {}
+    fn precommit_does_not_vest_funds() {
+        let period_offset = ChainEpoch::from(100);
+
+        let mut h = ActorHarness::new(period_offset);
+        h.set_proof_type(RegisteredSealProof::StackedDRG32GiBV1P1);
+        let mut rt = h.new_runtime();
+        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_received(TokenAmount::zero());
+        let precommit_epoch = period_offset + 1;
+        rt.set_epoch(precommit_epoch);
+        h.construct_and_verify(&mut rt);
+        let dl_info = h.deadline(&rt);
+
+        // Make a good commitment for the proof to target.
+        let sector_number: SectorNumber = 100;
+        let expiration =
+            dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
+
+        // add 1000 tokens that vest immediately
+        let mut st: State = rt.get_state();
+        let _ = st
+            .add_locked_funds(
+                &rt.store,
+                rt.epoch,
+                &TokenAmount::from(1000u16),
+                &VestSpec { initial_delay: 0, vest_period: 1, step_duration: 1, quantization: 1 },
+            )
+            .unwrap();
+        rt.replace_state(&st);
+
+        rt.set_epoch(rt.epoch + 2);
+
+        // Pre-commit with a deal in order to exercise non-zero deal weights.
+        let precommit_params =
+            h.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, vec![1]);
+        // The below call expects no pledge delta.
+        h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
+    }
 }
