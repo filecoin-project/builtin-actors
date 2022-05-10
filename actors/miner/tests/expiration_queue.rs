@@ -690,52 +690,6 @@ fn rescheduling_no_sectors_as_recovered_leaves_the_queue_empty() {
     let _ = queue.reschedule_recovered([].to_vec(), SECTOR_SIZE).unwrap();
     assert!(queue.amt.count().is_zero());
 }
-/*
-    t.Run("rescheduling no sectors as recovered leaves the queue empty", func(t *testing.T) {
-        queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
-        _, err := queue.RescheduleRecovered(nil, sectorSize)
-        require.NoError(t, err)
-        assert.Zero(t, queue.Length())
-    })
-}
-
-func testSector(expiration, number, weight, vweight, pledge int64) *miner.SectorOnChainInfo {
-    return &miner.SectorOnChainInfo{
-        Expiration:         abi.ChainEpoch(expiration),
-        SectorNumber:       abi.SectorNumber(number),
-        DealWeight:         big.NewInt(weight),
-        VerifiedDealWeight: big.NewInt(vweight),
-        InitialPledge:      abi.NewTokenAmount(pledge),
-        SealedCID:          tutil.MakeCID(fmt.Sprintf("commR-%d", number), &miner.SealedCIDPrefix),
-    }
-}
-
-func requireNoExpirationGroupsBefore(t *testing.T, epoch abi.ChainEpoch, queue miner.ExpirationQueue) {
-    _, err := queue.Root()
-    require.NoError(t, err)
-
-    set, err := queue.PopUntil(epoch - 1)
-    require.NoError(t, err)
-    empty, err := set.IsEmpty()
-    require.NoError(t, err)
-    require.True(t, empty)
-}
-
-func emptyExpirationQueueWithQuantizing(t *testing.T, quant builtin.QuantSpec, bitwidth int) miner.ExpirationQueue {
-    rt := mock.NewBuilder(address.Undef).Build(t)
-    store := adt.AsStore(rt)
-    emptyArray, err := adt.StoreEmptyArray(store, testAmtBitwidth)
-    require.NoError(t, err)
-
-    queue, err := miner.LoadExpirationQueue(store, emptyArray, quant, bitwidth)
-    require.NoError(t, err)
-    return queue
-}
-
-func emptyExpirationQueue(t *testing.T) miner.ExpirationQueue {
-    return emptyExpirationQueueWithQuantizing(t, builtin.NoQuantization, testAmtBitwidth)
-}
- */
 
 fn test_sector(
     expiration: ChainEpoch,
