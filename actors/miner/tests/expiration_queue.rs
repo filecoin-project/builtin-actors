@@ -522,61 +522,64 @@ fn reschedule_recover_restores_all_sector_stats() {
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[4..]));
     assert_eq!(set.faulty_power, PowerPair::zero());
 }
+
+#[test]
+fn replaces_sectors_with_new_sectors() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    // Create expiration 3 sets
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+
+    // add sectors to each set
+    let sectors = sectors();
+    let (_sec_nums, _power, _pledge) = queue
+        .add_active_sectors(
+            &[sectors[0].clone(), sectors[1].clone(), sectors[3].clone(), sectors[5].clone()],
+            SECTOR_SIZE,
+        )
+        .unwrap();
+
+    let _ = queue.amt.flush().unwrap();
+
+    // remove all from first set, replace second set, and append to third
+    let to_remove = [sectors[0].clone(), sectors[1].clone(), sectors[3].clone()];
+    let to_add = [sectors[2].clone(), sectors[4].clone()];
+    let (removed, added, power_delta, pledge_delta) =
+        queue.replace_sectors(&to_remove, &to_add, SECTOR_SIZE).unwrap();
+    assert_eq!(removed, mk_bitfield([1, 2, 4]));
+    assert_eq!(added, mk_bitfield([3, 5]));
+    let added_power = power_for_sectors(SECTOR_SIZE, &to_add);
+    assert_eq!(power_delta, &added_power - &power_for_sectors(SECTOR_SIZE, &to_remove));
+    assert_eq!(TokenAmount::from(1002 + 1004 - 1000 - 1001 - 1003), pledge_delta);
+
+    // first set is gone
+    require_no_expiration_groups_before(9, &mut queue);
+
+    // second set is replaced
+    let set = queue.pop_until(9).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([3]));
+    assert!(set.early_sectors.is_empty());
+
+    // pledge and power is only from sector 3
+    assert_eq!(set.on_time_pledge, TokenAmount::from(1002));
+    assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors[2..3]));
+    assert_eq!(set.faulty_power, PowerPair::zero());
+
+    // last set appends sector 6
+    require_no_expiration_groups_before(13, &mut queue);
+    let set = queue.pop_until(13).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([5, 6]));
+    assert!(set.early_sectors.is_empty());
+
+    // pledge and power are some of old and new sectors
+    assert_eq!(set.on_time_pledge, TokenAmount::from(2009));
+    assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors[4..]));
+    assert_eq!(set.faulty_power, PowerPair::zero());
+}
 /*
-    t.Run("replaces sectors with new sectors", func(t *testing.T) {
-        // Create expiration 3 sets
-        queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
-
-        // add sectors to each set
-        _, _, _, err := queue.AddActiveSectors([]*miner.SectorOnChainInfo{sectors[0], sectors[1], sectors[3], sectors[5]}, sectorSize)
-        require.NoError(t, err)
-
-        _, err = queue.Root()
-        require.NoError(t, err)
-
-        // remove all from first set, replace second set, and append to third
-        toRemove := []*miner.SectorOnChainInfo{sectors[0], sectors[1], sectors[3]}
-        toAdd := []*miner.SectorOnChainInfo{sectors[2], sectors[4]}
-        removed, added, powerDelta, pledgeDelta, err := queue.ReplaceSectors(
-            toRemove,
-            toAdd,
-            sectorSize)
-        require.NoError(t, err)
-        assertBitfieldEquals(t, removed, 1, 2, 4)
-        assertBitfieldEquals(t, added, 3, 5)
-        addedPower := miner.PowerForSectors(sectorSize, toAdd)
-        assert.True(t, powerDelta.Equals(addedPower.Sub(miner.PowerForSectors(sectorSize, toRemove))))
-        assert.Equal(t, abi.NewTokenAmount(1002+1004-1000-1001-1003), pledgeDelta)
-
-        // first set is gone
-        requireNoExpirationGroupsBefore(t, 9, queue)
-
-        // second set is replaced
-        set, err := queue.PopUntil(9)
-        require.NoError(t, err)
-
-        assertBitfieldEquals(t, set.OnTimeSectors, 3)
-        assertBitfieldEmpty(t, set.EarlySectors)
-
-        // pledge and power is only from sector 3
-        assert.Equal(t, big.NewInt(1002), set.OnTimePledge)
-        assert.True(t, set.ActivePower.Equals(miner.PowerForSectors(sectorSize, sectors[2:3])))
-        assert.True(t, set.FaultyPower.Equals(miner.NewPowerPairZero()))
-
-        // last set appends sector 6
-        requireNoExpirationGroupsBefore(t, 13, queue)
-        set, err = queue.PopUntil(13)
-        require.NoError(t, err)
-
-        assertBitfieldEquals(t, set.OnTimeSectors, 5, 6)
-        assertBitfieldEmpty(t, set.EarlySectors)
-
-        // pledge and power are some of old and new sectors
-        assert.Equal(t, big.NewInt(2009), set.OnTimePledge)
-        assert.True(t, set.ActivePower.Equals(miner.PowerForSectors(sectorSize, sectors[4:])))
-        assert.True(t, set.FaultyPower.Equals(miner.NewPowerPairZero()))
-    })
-
     t.Run("removes sectors", func(t *testing.T) {
         // add all sectors into 3 sets
         queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
