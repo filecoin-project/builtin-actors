@@ -579,69 +579,70 @@ fn replaces_sectors_with_new_sectors() {
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors[4..]));
     assert_eq!(set.faulty_power, PowerPair::zero());
 }
+
+#[test]
+fn removes_sectors() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    // add all sectors into 3 sets
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+    let _ = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+
+    let _ = queue.amt.flush().unwrap();
+
+    // put queue in a state where some sectors are early and some are faulty
+    let _ = queue.reschedule_as_faults(6, &sectors()[1..6], SECTOR_SIZE).unwrap();
+
+    let _ = queue.amt.flush().unwrap();
+
+    // remove an active sector from first set, faulty sector and early faulty sector from second set,
+    let to_remove =
+        [sectors()[0].clone(), sectors()[3].clone(), sectors()[4].clone(), sectors()[5].clone()];
+
+    // and only sector from last set
+    let faults = mk_bitfield([4, 5, 6]);
+
+    // label the last as recovering
+    let recovering = mk_bitfield([6]);
+    let (removed, recovering_power) =
+        queue.remove_sectors(&rt.policy, &to_remove, &faults, &recovering, SECTOR_SIZE).unwrap();
+
+    // assert all return values are correct
+    assert_eq!(removed.on_time_sectors, mk_bitfield([1, 4]));
+    assert_eq!(removed.early_sectors, mk_bitfield([5, 6]));
+    assert_eq!(removed.on_time_pledge, TokenAmount::from(1000 + 1003)); // only on-time sectors
+    assert_eq!(removed.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[0..1]));
+    assert_eq!(removed.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[3..6]));
+    assert_eq!(recovering_power, power_for_sectors(SECTOR_SIZE, &sectors()[5..6]));
+
+    // assert queue state is as expected
+
+    // only faulty sector 2 is found in first set
+    require_no_expiration_groups_before(5, &mut queue);
+    let set = queue.pop_until(5).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([2]));
+    assert!(set.early_sectors.is_empty());
+    assert_eq!(set.on_time_pledge, TokenAmount::from(1001));
+    assert_eq!(set.active_power, PowerPair::zero());
+    assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[1..2]));
+
+    // only faulty on-time sector 3 is found in second set
+    require_no_expiration_groups_before(9, &mut queue);
+    let set = queue.pop_until(9).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([3]));
+    assert!(set.early_sectors.is_empty());
+    assert_eq!(set.on_time_pledge, TokenAmount::from(1002));
+    assert_eq!(set.active_power, PowerPair::zero());
+    assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[2..3]));
+
+    // no further sets remain
+    require_no_expiration_groups_before(20, &mut queue);
+}
 /*
-    t.Run("removes sectors", func(t *testing.T) {
-        // add all sectors into 3 sets
-        queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
-        _, _, _, err := queue.AddActiveSectors(sectors, sectorSize)
-        require.NoError(t, err)
 
-        _, err = queue.Root()
-        require.NoError(t, err)
-
-        // put queue in a state where some sectors are early and some are faulty
-        _, err = queue.RescheduleAsFaults(abi.ChainEpoch(6), sectors[1:6], sectorSize)
-        require.NoError(t, err)
-
-        _, err = queue.Root()
-        require.NoError(t, err)
-
-        // remove an active sector from first set, faulty sector and early faulty sector from second set,
-        toRemove := []*miner.SectorOnChainInfo{sectors[0], sectors[3], sectors[4], sectors[5]}
-
-        // and only sector from last set
-        faults := bitfield.NewFromSet([]uint64{4, 5, 6})
-
-        // label the last as recovering
-        recovering := bitfield.NewFromSet([]uint64{6})
-        removed, recoveringPower, err := queue.RemoveSectors(toRemove, faults, recovering, sectorSize)
-        require.NoError(t, err)
-
-        // assert all return values are correct
-        assertBitfieldEquals(t, removed.OnTimeSectors, 1, 4)
-        assertBitfieldEquals(t, removed.EarlySectors, 5, 6)
-        assert.Equal(t, abi.NewTokenAmount(1000+1003), removed.OnTimePledge) // only on-time sectors
-        assert.True(t, removed.ActivePower.Equals(miner.PowerForSectors(sectorSize, []*miner.SectorOnChainInfo{sectors[0]})))
-        assert.True(t, removed.FaultyPower.Equals(miner.PowerForSectors(sectorSize, sectors[3:6])))
-        assert.True(t, recoveringPower.Equals(miner.PowerForSectors(sectorSize, sectors[5:6])))
-
-        // assert queue state is as expected
-
-        // only faulty sector 2 is found in first set
-        requireNoExpirationGroupsBefore(t, 5, queue)
-        set, err := queue.PopUntil(5)
-        require.NoError(t, err)
-
-        assertBitfieldEquals(t, set.OnTimeSectors, 2)
-        assertBitfieldEmpty(t, set.EarlySectors)
-        assert.Equal(t, abi.NewTokenAmount(1001), set.OnTimePledge)
-        assert.True(t, set.ActivePower.Equals(miner.NewPowerPairZero()))
-        assert.True(t, set.FaultyPower.Equals(miner.PowerForSectors(sectorSize, sectors[1:2])))
-
-        // only faulty on-time sector 3 is found in second set
-        requireNoExpirationGroupsBefore(t, 9, queue)
-        set, err = queue.PopUntil(9)
-        require.NoError(t, err)
-
-        assertBitfieldEquals(t, set.OnTimeSectors, 3)
-        assertBitfieldEmpty(t, set.EarlySectors)
-        assert.Equal(t, abi.NewTokenAmount(1002), set.OnTimePledge)
-        assert.True(t, set.ActivePower.Equals(miner.NewPowerPairZero()))
-        assert.True(t, set.FaultyPower.Equals(miner.PowerForSectors(sectorSize, sectors[2:3])))
-
-        // no further sets remain
-        requireNoExpirationGroupsBefore(t, 20, queue)
-    })
 
     t.Run("adding no sectors leaves the queue empty", func(t *testing.T) {
         queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
