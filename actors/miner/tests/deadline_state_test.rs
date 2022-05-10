@@ -40,134 +40,6 @@ const SECTOR_SIZE: SectorSize = SectorSize::_32GiB;
 const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
 const PARTITION_SIZE: u64 = 4;
 
-// Helper type for validating deadline state.
-//
-// All methods take the state by value so one can (and should) construct a
-// sane base-state.
-struct ExpectedDeadlineState {
-    quant: QuantSpec,
-    #[allow(dead_code)]
-    sector_size: SectorSize,
-    #[allow(dead_code)]
-    partition_size: u64,
-    #[allow(dead_code)]
-    sectors: Vec<SectorOnChainInfo>,
-    faults: BitField,
-    recovering: BitField,
-    terminations: BitField,
-    unproven: BitField,
-    posts: BitField,
-    partition_sectors: Vec<BitField>,
-}
-
-impl Default for ExpectedDeadlineState {
-    fn default() -> Self {
-        Self {
-            quant: QuantSpec { offset: 0, unit: 0 },
-            sector_size: SectorSize::_32GiB,
-            partition_size: 0,
-            sectors: vec![],
-            faults: BitField::default(),
-            recovering: BitField::default(),
-            terminations: BitField::default(),
-            unproven: BitField::default(),
-            posts: BitField::default(),
-            partition_sectors: vec![],
-        }
-    }
-}
-
-impl ExpectedDeadlineState {
-    #[allow(dead_code)]
-    fn with_quant_spec(mut self, quant: QuantSpec) -> Self {
-        self.quant = quant;
-        self
-    }
-
-    fn with_faults(mut self, faults: &[u64]) -> Self {
-        self.faults = make_bitfield(faults);
-        self
-    }
-
-    #[allow(dead_code)]
-    fn with_recovering(mut self, recovering: &[u64]) -> Self {
-        self.recovering = make_bitfield(recovering);
-        self
-    }
-
-    fn with_terminations(mut self, terminations: &[u64]) -> Self {
-        self.terminations = make_bitfield(terminations);
-        self
-    }
-
-    fn with_unproven(mut self, unproven: &[u64]) -> Self {
-        self.unproven = make_bitfield(unproven);
-        self
-    }
-
-    #[allow(dead_code)]
-    fn with_posts(mut self, posts: &[u64]) -> Self {
-        self.posts = make_bitfield(posts);
-        self
-    }
-
-    fn with_partitions(mut self, partitions: Vec<BitField>) -> Self {
-        self.partition_sectors = partitions;
-        self
-    }
-
-    // Assert that the deadline's state matches the expected state.
-    fn assert<BS: Blockstore>(
-        self,
-        store: &BS,
-        _sectors: &[SectorOnChainInfo],
-        deadline: &Deadline,
-    ) -> Self {
-        let (_faults, _recoveries, _terminations, _unproven) =
-            self.check_deadline_invariants(store, deadline);
-        self
-    }
-
-    // check the deadline's invariants, returning all contained sectors, faults,
-    // recoveries, terminations, and partition/sector assignments.
-    fn check_deadline_invariants<BS: Blockstore>(
-        &self,
-        _store: &BS,
-        _deadline: &Deadline,
-    ) -> (BitField, BitField, BitField, BitField) {
-        // TODO
-        (BitField::default(), BitField::default(), BitField::default(), BitField::default())
-    }
-}
-
-fn deadline_state() -> ExpectedDeadlineState {
-    ExpectedDeadlineState {
-        quant: QUANT_SPEC,
-        partition_size: PARTITION_SIZE,
-        sector_size: SECTOR_SIZE,
-        sectors: all_sectors(),
-        ..Default::default()
-    }
-}
-
-fn sector_power(sector_numbers: &[u64]) -> PowerPair {
-    power_for_sectors(SECTOR_SIZE, &select_sectors(&all_sectors(), &make_bitfield(sector_numbers)))
-}
-
-fn make_bitfield(sector_numbers: &[u64]) -> BitField {
-    MaybeBitField::from_iter(sector_numbers.iter().copied()).try_into().unwrap()
-}
-
-fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
-    let mut to_include: BTreeSet<_> = field.iter().collect();
-    let included =
-        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
-
-    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
-
-    included
-}
-
 // Define some basic test scenarios that build one each other.
 //
 
@@ -515,4 +387,147 @@ fn can_pop_early_terminations_in_multiple_steps() {
             make_bitfield(&[9]),
         ])
         .assert(store, &sectors, &deadline);
+}
+
+fn deadline_state() -> ExpectedDeadlineState {
+    ExpectedDeadlineState {
+        quant: QUANT_SPEC,
+        partition_size: PARTITION_SIZE,
+        sector_size: SECTOR_SIZE,
+        sectors: all_sectors(),
+        ..Default::default()
+    }
+}
+
+fn sector_power(sector_numbers: &[u64]) -> PowerPair {
+    power_for_sectors(SECTOR_SIZE, &select_sectors(&all_sectors(), &make_bitfield(sector_numbers)))
+}
+
+fn make_bitfield(sector_numbers: &[u64]) -> BitField {
+    MaybeBitField::from_iter(sector_numbers.iter().copied()).try_into().unwrap()
+}
+
+fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
+    let mut to_include: BTreeSet<_> = field.iter().collect();
+    let included =
+        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
+
+    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
+
+    included
+}
+
+// Helper type for validating deadline state.
+//
+// All methods take the state by value so one can (and should) construct a
+// sane base-state.
+struct ExpectedDeadlineState {
+    quant: QuantSpec,
+    #[allow(dead_code)]
+    sector_size: SectorSize,
+    #[allow(dead_code)]
+    partition_size: u64,
+    #[allow(dead_code)]
+    sectors: Vec<SectorOnChainInfo>,
+    faults: BitField,
+    recovering: BitField,
+    terminations: BitField,
+    unproven: BitField,
+    posts: BitField,
+    partition_sectors: Vec<BitField>,
+}
+
+impl Default for ExpectedDeadlineState {
+    fn default() -> Self {
+        Self {
+            quant: QuantSpec { offset: 0, unit: 0 },
+            sector_size: SectorSize::_32GiB,
+            partition_size: 0,
+            sectors: vec![],
+            faults: BitField::default(),
+            recovering: BitField::default(),
+            terminations: BitField::default(),
+            unproven: BitField::default(),
+            posts: BitField::default(),
+            partition_sectors: vec![],
+        }
+    }
+}
+
+impl ExpectedDeadlineState {
+    #[allow(dead_code)]
+    fn with_quant_spec(mut self, quant: QuantSpec) -> Self {
+        self.quant = quant;
+        self
+    }
+
+    fn with_faults(mut self, faults: &[u64]) -> Self {
+        self.faults = make_bitfield(faults);
+        self
+    }
+
+    #[allow(dead_code)]
+    fn with_recovering(mut self, recovering: &[u64]) -> Self {
+        self.recovering = make_bitfield(recovering);
+        self
+    }
+
+    fn with_terminations(mut self, terminations: &[u64]) -> Self {
+        self.terminations = make_bitfield(terminations);
+        self
+    }
+
+    fn with_unproven(mut self, unproven: &[u64]) -> Self {
+        self.unproven = make_bitfield(unproven);
+        self
+    }
+
+    #[allow(dead_code)]
+    fn with_posts(mut self, posts: &[u64]) -> Self {
+        self.posts = make_bitfield(posts);
+        self
+    }
+
+    fn with_partitions(mut self, partitions: Vec<BitField>) -> Self {
+        self.partition_sectors = partitions;
+        self
+    }
+
+    // Assert that the deadline's state matches the expected state.
+    fn assert<BS: Blockstore>(
+        self,
+        store: &BS,
+        _sectors: &[SectorOnChainInfo],
+        deadline: &Deadline,
+    ) -> Self {
+        let (_faults, _recoveries, _terminations, _unproven) =
+            self.check_deadline_invariants(store, deadline);
+
+        // TODO uncomment once invariants are implemented
+        //assert_eq!(self.faults, faults);
+        //assert_eq!(self.recovering, recoveries);
+        //assert_eq!(self.terminations, terminations);
+        //assert_eq!(self.unproven, unproven);
+
+        let partitions = deadline.partitions_amt(store).unwrap();
+        assert_eq!(self.partition_sectors.len() as u64, partitions.count());
+
+        for (i, partition_sectors) in self.partition_sectors.iter().enumerate() {
+            let partitions = partitions.get(i as u64).unwrap().unwrap();
+            assert_eq!(partition_sectors, &partitions.sectors);
+        }
+
+        self
+    }
+
+    // check the deadline's invariants, returning all contained sectors, faults,
+    // recoveries, terminations, and partition/sector assignments.
+    fn check_deadline_invariants<BS: Blockstore>(
+        &self,
+        _store: &BS,
+        _deadline: &Deadline,
+    ) -> (BitField, BitField, BitField, BitField) {
+        // TODO
+        (BitField::default(), BitField::default(), BitField::default(), BitField::default())
+    }
 }
