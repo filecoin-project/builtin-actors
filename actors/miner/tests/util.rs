@@ -55,19 +55,9 @@ use cid::Cid;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
-use rand::prelude::*;
-
 use std::collections::{BTreeMap, HashMap};
 
 const RECEIVER_ID: u64 = 1000;
-
-pub fn new_bls_addr(s: u8) -> Address {
-    let seed = [s; 32];
-    let mut rng: StdRng = SeedableRng::from_seed(seed);
-    let mut key = [0u8; 48];
-    rng.fill_bytes(&mut key);
-    Address::new_bls(&key).unwrap()
-}
 
 #[allow(dead_code)]
 pub fn setup() -> (ActorHarness, MockRuntime) {
