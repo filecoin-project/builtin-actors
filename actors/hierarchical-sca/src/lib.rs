@@ -19,7 +19,7 @@ use num_traits::FromPrimitive;
 use std::collections::HashMap;
 
 pub use self::checkpoint::{Checkpoint, CrossMsgMeta};
-pub use self::cross::{CrossMsgs, StorableMsg};
+pub use self::cross::{CrossMsgs, HCMsgType, StorableMsg};
 pub use self::state::*;
 pub use self::subnet::*;
 pub use self::types::*;
@@ -48,6 +48,7 @@ pub enum Method {
     CommitChildCheckpoint = 6,
     Fund = 7,
     Release = 8,
+    SendCross = 9,
 }
 
 /// Subnet Coordinator Actor
@@ -455,6 +456,71 @@ impl Actor {
 
         Ok(())
     }
+
+    /// SendCross sends an arbitrary cross-message to other subnet in the hierarchy.
+    ///
+    /// If the message includes any funds they need to be burnt (like in Release)
+    /// before being propagated to the corresponding subnet.
+    /// The circulating supply in each subnet needs to be updated as the message passes through them.
+    ///
+    /// Params expect a raw message without any subnet context (the hierarchical address is
+    /// included in the message by the actor).
+    fn send_cross<BS, RT>(rt: &mut RT, params: CrossMsgParams) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        if params.destination == SubnetID::default() {
+            return Err(actor_error!(
+                illegal_argument,
+                "no destination for cross-message explicitly set"
+            ));
+        }
+        let mut msg = params.msg.clone();
+        let mut tp = HCMsgType::Unknown;
+
+        // FIXME: Only supporting cross-messages initiated by signable addresses for
+        // now. Consider supporting also send-cross messages initiated by actors.
+        let sig_addr = resolve_secp_bls(rt, rt.message().caller())?;
+
+        rt.transaction(|st: &mut State, rt| {
+            if params.destination == st.network_name {
+            return Err(actor_error!(
+                illegal_argument,
+                "destination is the current network, you are better off with a good ol' message, no cross needed"
+            ));
+            }
+            // we disregard the to of the message. the caller is the one set as the from of the
+            // message.
+        msg.to = match Address::new_hierarchical(&params.destination, &msg.to) {
+            Ok(addr) => addr,
+            Err(_) => { return Err(actor_error!(
+                illegal_argument,
+                "error setting hierarchical address in cross-msg to param"
+            ));
+            }
+        };
+        msg.from = match Address::new_hierarchical(&st.network_name, &sig_addr) {
+            Ok(addr) => addr,
+            Err(_) => { return Err(actor_error!(
+                illegal_argument,
+                "error setting hierarchical address in cross-msg from param"
+            ));
+            }
+        };
+        tp = st.send_cross(rt.store(), &mut msg, rt.curr_epoch()).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error committing cross message")
+            })?;
+
+        Ok(())
+        })?;
+
+        if tp == HCMsgType::BottomUp && msg.value > TokenAmount::zero() {
+            rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), msg.value)?;
+        }
+        Ok(())
+    }
 }
 
 impl ActorCode for Actor {
@@ -498,6 +564,10 @@ impl ActorCode for Actor {
             }
             Some(Method::Release) => {
                 Self::release(rt)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::SendCross) => {
+                Self::send_cross(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

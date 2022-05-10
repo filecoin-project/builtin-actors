@@ -515,6 +515,22 @@ impl State {
         Ok(())
     }
 
+    /// commits a cross-msg for propagation
+    pub(crate) fn send_cross<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        msg: &mut StorableMsg,
+        curr_epoch: ChainEpoch,
+    ) -> anyhow::Result<HCMsgType> {
+        let tp = msg.hc_type()?;
+        match tp {
+            HCMsgType::TopDown => self.commit_topdown_msg(store, msg)?,
+            HCMsgType::BottomUp => self.commit_bottomup_msg(store, msg, curr_epoch)?,
+            _ => return Err(anyhow!("cross-msg is not of the right type")),
+        };
+        Ok(tp)
+    }
+
     /// noop is triggered to notify when a crossMsg fails to be applied successfully.
     pub fn noop_msg(&self) {
         panic!("error committing cross-msg. noop should be returned but not implemented yet");

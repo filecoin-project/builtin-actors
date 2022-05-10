@@ -1,5 +1,6 @@
 use fil_actors_runtime::Array;
 use fvm_ipld_encoding::tuple::*;
+use fvm_shared::address::SubnetID;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -30,4 +31,10 @@ pub struct FundParams {
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct CheckpointParams {
     pub checkpoint: Checkpoint,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+pub struct CrossMsgParams {
+    pub msg: StorableMsg,
+    pub destination: SubnetID,
 }
