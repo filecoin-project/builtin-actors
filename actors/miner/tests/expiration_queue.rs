@@ -641,15 +641,18 @@ fn removes_sectors() {
     // no further sets remain
     require_no_expiration_groups_before(20, &mut queue);
 }
+
+#[test]
+fn adding_no_sectors_leaves_the_queue_empty() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+    let _ = queue.add_active_sectors(&[], SECTOR_SIZE).unwrap();
+
+    assert_eq!(queue.amt.count(), 0);
+}
 /*
-
-
-    t.Run("adding no sectors leaves the queue empty", func(t *testing.T) {
-        queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
-        _, _, _, err := queue.AddActiveSectors(nil, sectorSize)
-        require.NoError(t, err)
-        assert.Zero(t, queue.Length())
-    })
 
     t.Run("rescheduling no expirations as faults leaves the queue empty", func(t *testing.T) {
         queue := emptyExpirationQueueWithQuantizing(t, builtin.NewQuantSpec(4, 1), testAmtBitwidth)
