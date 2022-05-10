@@ -1091,7 +1091,7 @@ where
             .map_err(|e| e.wrap(&format!("cannot activate deal {}", deal_id)))?;
 
         total_deal_space += proposal.piece_size.0;
-        let deal_space_time = deal_weight(proposal);
+        let deal_space_time = detail::deal_weight(proposal);
         if proposal.verified_deal {
             total_verified_space_time += deal_space_time;
         } else {

@@ -6,6 +6,7 @@ use fil_actor_reward::{
     BASELINE_INITIAL_VALUE, PENALTY_MULTIPLIER,
 };
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
@@ -146,46 +147,60 @@ mod test_award_block_reward {
     }
 
     #[test]
-    // TODO remove ignore when fixing (v0->v2 migration)
-    #[ignore = "invalidated -- update"]
-    fn pays_reward_and_burns_penalty() {
+    fn pays_reward_and_tracks_penalty() {
         let mut rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from(10_i128.pow(27)));
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
         let penalty: TokenAmount = TokenAmount::from(100);
         let gas_reward: TokenAmount = TokenAmount::from(200);
-        let expected_reward = &*EPOCH_ZERO_REWARD / 5 + &gas_reward - &penalty;
-        assert!(
-            award_block_reward(&mut rt, *WINNER, penalty, gas_reward, 1, expected_reward).is_ok()
-        );
-        rt.reset();
-    }
-
-    #[test]
-    // TODO remove ignore when fixing (v0->v2 migration)
-    #[ignore = "invalidated -- update"]
-    fn pays_out_current_balance_when_reward_exceeds_total_balance() {
-        let mut rt = construct_and_verify(&StoragePower::from(1));
-        let small_reward = TokenAmount::from(300);
-        rt.set_balance(small_reward.clone());
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
-
-        let penalty = TokenAmount::from(100);
-        let expected_reward = &small_reward - &penalty;
-
+        let expected_reward: TokenAmount =
+            &*EPOCH_ZERO_REWARD / EXPECTED_LEADERS_PER_EPOCH + &gas_reward;
+        let miner_penalty = PENALTY_MULTIPLIER * &penalty;
+        let params = RawBytes::serialize(&ext::miner::ApplyRewardParams {
+            reward: expected_reward.clone(),
+            penalty: miner_penalty,
+        })
+        .unwrap();
         rt.expect_send(
             *WINNER,
             ext::miner::APPLY_REWARDS_METHOD,
-            RawBytes::serialize(BigIntSer(&expected_reward)).unwrap(),
+            params,
             expected_reward,
             RawBytes::default(),
             ExitCode::OK,
         );
+        let params = AwardBlockRewardParams { miner: *WINNER, penalty, gas_reward, win_count: 1 };
+        assert!(rt
+            .call::<RewardActor>(
+                Method::AwardBlockReward as u64,
+                &RawBytes::serialize(params).unwrap()
+            )
+            .is_ok());
+        rt.verify();
+        rt.reset();
+    }
+
+    #[test]
+    fn pays_out_current_balance_when_reward_exceeds_total_balance() {
+        let mut rt = construct_and_verify(&StoragePower::from(1));
+
+        // Total reward is a huge number, upon writing ~1e18, so 300 should be way less
+        let small_reward = TokenAmount::from(300);
+        let penalty = TokenAmount::from(100);
+        rt.set_balance(small_reward.clone());
+        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+
+        let miner_penalty = PENALTY_MULTIPLIER * &penalty;
+        let params = RawBytes::serialize(&ext::miner::ApplyRewardParams {
+            reward: small_reward.clone(),
+            penalty: miner_penalty,
+        })
+        .unwrap();
         rt.expect_send(
-            *BURNT_FUNDS_ACTOR_ADDR,
-            METHOD_SEND,
-            RawBytes::default(),
-            penalty.clone(),
+            *WINNER,
+            ext::miner::APPLY_REWARDS_METHOD,
+            params,
+            small_reward,
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -235,8 +250,6 @@ mod test_award_block_reward {
     }
 
     #[test]
-    // TODO remove ignore when fixing (v0->v2 migration)
-    #[ignore = "invalidated -- update"]
     fn funds_are_sent_to_burnt_funds_actor_if_sending_locked_funds_to_miner_fails() {
         let mut rt = construct_and_verify(&StoragePower::from(1));
         let mut state: State = rt.get_state();
@@ -244,14 +257,21 @@ mod test_award_block_reward {
         assert_eq!(TokenAmount::from(0), state.total_storage_power_reward);
         state.this_epoch_reward = TokenAmount::from(5000);
         rt.replace_state(&state);
+        // enough balance to pay 3 full rewards and one partial
         rt.set_balance(TokenAmount::from(3500));
 
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
         let expected_reward = TokenAmount::from(1000);
+        let miner_penalty = TokenAmount::from(0);
+        let params = RawBytes::serialize(&ext::miner::ApplyRewardParams {
+            reward: expected_reward.clone(),
+            penalty: miner_penalty,
+        })
+        .unwrap();
         rt.expect_send(
             *WINNER,
             ext::miner::APPLY_REWARDS_METHOD,
-            RawBytes::serialize(BigIntSer(&expected_reward)).unwrap(),
+            params,
             expected_reward.clone(),
             RawBytes::default(),
             ExitCode::USR_FORBIDDEN,

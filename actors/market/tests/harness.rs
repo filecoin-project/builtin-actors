@@ -7,7 +7,8 @@ use fil_actor_market::{
     balance_table::BalanceTable, ext, ext::miner::GetControlAddressesReturnParams,
     gen_rand_next_epoch, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
     DealMetaArray, DealProposal, DealState, Method, OnMinerSectorsTerminateParams,
-    PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
+    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn, WithdrawBalanceParams,
     WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
@@ -248,21 +249,31 @@ pub fn activate_deals(
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
 ) {
+    let ret = activate_deals_raw(rt, sector_expiry, provider, current_epoch, deal_ids).unwrap();
+    assert_eq!(ret, RawBytes::default());
+}
+
+pub fn activate_deals_raw(
+    rt: &mut MockRuntime,
+    sector_expiry: ChainEpoch,
+    provider: Address,
+    current_epoch: ChainEpoch,
+    deal_ids: &[DealID],
+) -> Result<RawBytes, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
 
     let params = ActivateDealsParams { deal_ids: deal_ids.to_vec(), sector_expiry };
 
     let ret = rt
-        .call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap())
-        .unwrap();
-    assert_eq!(ret, RawBytes::default());
+        .call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap())?;
     rt.verify();
 
     for d in deal_ids {
         let s = get_deal_state(rt, *d);
         assert_eq!(current_epoch, s.sector_start_epoch);
     }
+    Ok(ret)
 }
 
 pub fn get_deal_proposal(rt: &mut MockRuntime, deal_id: DealID) -> DealProposal {
@@ -666,7 +677,6 @@ pub fn assert_deal_failure<F>(
     } else {
         generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch)
     };
-    deal_proposal.verified_deal = false;
     rt.set_epoch(current_epoch);
     post_setup(&mut rt, &mut deal_proposal);
 
@@ -735,6 +745,20 @@ pub fn generate_and_publish_deal(
     deal_ids[0]
 }
 
+pub fn generate_and_publish_verified_deal(
+    rt: &mut MockRuntime,
+    client: Address,
+    addrs: &MinerAddresses,
+    start_epoch: ChainEpoch,
+    end_epoch: ChainEpoch,
+) -> DealID {
+    let mut deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
+    deal.verified_deal = true;
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
+    let deal_ids = publish_deals(rt, addrs, &[deal]);
+    deal_ids[0]
+}
+
 pub fn generate_and_publish_deal_for_piece(
     rt: &mut MockRuntime,
     client: Address,
@@ -752,7 +776,7 @@ pub fn generate_and_publish_deal_for_piece(
     let deal = DealProposal {
         piece_cid,
         piece_size,
-        verified_deal: true,
+        verified_deal: false,
         client,
         provider: addrs.provider,
         label: "label".to_string(),
@@ -822,7 +846,7 @@ fn generate_deal_proposal_with_collateral(
     DealProposal {
         piece_cid,
         piece_size,
-        verified_deal: true,
+        verified_deal: false,
         client,
         provider,
         label: "label".to_string(),
@@ -877,4 +901,25 @@ pub fn terminate_deals_raw(
 pub fn assert_account_zero(rt: &mut MockRuntime, addr: Address) {
     assert!(get_escrow_balance(rt, &addr).unwrap().is_zero());
     assert!(get_locked_balance(rt, addr).is_zero());
+}
+
+pub fn verify_deals_for_activation(
+    rt: &mut MockRuntime,
+    provider: Address,
+    sector_deals: Vec<SectorDeals>,
+) -> VerifyDealsForActivationReturn {
+    let param = VerifyDealsForActivationParams { sectors: sector_deals };
+    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
+
+    let ret: VerifyDealsForActivationReturn = rt
+        .call::<MarketActor>(
+            Method::VerifyDealsForActivation as u64,
+            &RawBytes::serialize(param).unwrap(),
+        )
+        .unwrap()
+        .deserialize()
+        .expect("VerifyDealsForActivation failed!");
+    rt.verify();
+    ret
 }
