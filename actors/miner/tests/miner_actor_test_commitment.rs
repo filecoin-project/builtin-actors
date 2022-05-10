@@ -165,7 +165,7 @@ mod miner_actor_test_commitment {
         let period_offset = ChainEpoch::from(100);
 
         let mut h = ActorHarness::new(period_offset);
-        h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
+        h.set_proof_type(RegisteredSealProof::StackedDRG32GiBV1);
         let mut rt = h.new_runtime();
         rt.set_balance(TokenAmount::from(BIG_BALANCE));
         rt.set_received(TokenAmount::zero());
@@ -186,7 +186,7 @@ mod miner_actor_test_commitment {
             util::PreCommitConfig {
                 deal_weight: BigInt::default(),
                 verified_deal_weight: BigInt::default(),
-                deal_space: Some(h.sector_size), // TODO: need to increment?
+                deal_space: Some(SectorSize::_64GiB),
             },
             true,
         );
@@ -225,7 +225,7 @@ mod miner_actor_test_commitment {
         h.pre_commit_sector_internal(
             &mut rt,
             precommit_params.clone(),
-            util::PreCommitConfig::empty(),
+            util::PreCommitConfig::default(),
             true,
         )
         .unwrap();

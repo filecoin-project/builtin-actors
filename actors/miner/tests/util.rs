@@ -1445,6 +1445,14 @@ impl PreCommitConfig {
             deal_space: None,
         }
     }
+
+    pub fn default() -> PreCommitConfig {
+        PreCommitConfig {
+            deal_weight: DealWeight::from(0),
+            verified_deal_weight: DealWeight::from(0),
+            deal_space: Some(SectorSize::_2KiB),
+        }
+    }
 }
 
 pub struct ProveCommitConfig {
