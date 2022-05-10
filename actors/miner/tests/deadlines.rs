@@ -1,4 +1,4 @@
-use fil_actor_miner::{new_deadline_info_from_offset_and_epoch, DeadlineInfo};
+use fil_actor_miner::{new_deadline_info, new_deadline_info_from_offset_and_epoch};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::EPOCHS_IN_DAY;
 
@@ -7,7 +7,7 @@ fn quantization_spec_rounds_to_the_next_deadline() {
     let policy = Policy::default();
     let period_start = 2;
     let curr = period_start + policy.wpost_proving_period;
-    let d = DeadlineInfo::new_from_policy(period_start, 10, curr, &policy);
+    let d = new_deadline_info(&policy, period_start, 10, curr);
     let quant = d.quant_spec();
     assert_eq!(d.next_not_elapsed().last(), quant.quantize_up(curr));
 }
