@@ -5,7 +5,6 @@ use cid::Cid;
 use fil_actors_runtime::test_utils::expect_abort;
 use fil_actors_runtime::Array;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::Cbor;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::subnet::ROOTNET_ID;
 use fvm_shared::address::{Address, SubnetID};
@@ -454,5 +453,5 @@ fn get_cross_msgs<'m, BS: Blockstore>(
     registry: &'m Map<BS, CrossMsgs>,
     cid: &Cid,
 ) -> anyhow::Result<Option<&'m CrossMsgs>> {
-    registry.get(&cid.to_bytes()).map_err(|e| anyhow!("error getting fross messages"))
+    registry.get(&cid.to_bytes()).map_err(|e| anyhow!("error getting fross messages: {}", e))
 }
