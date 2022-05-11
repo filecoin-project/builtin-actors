@@ -512,7 +512,7 @@ mod miner_actor_test_commitment {
             );
             expect_abort_contains_message(
                 ExitCode::USR_INSUFFICIENT_FUNDS,
-                "unlocked balance can not repay fee debt: unlocked balance can not repay fee debt (999962843750031386501120 < 1000010000000000000000000)", // TODO: fix message to return "unlocked balance can not repay fee debt"
+                "unlocked balance can not repay fee debt",
                 ret,
             );
             // reset state back to normal
