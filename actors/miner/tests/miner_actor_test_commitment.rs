@@ -1,4 +1,6 @@
-use fil_actor_miner::{pre_commit_deposit_for_power, qa_power_for_weight, State, VestSpec};
+use fil_actor_miner::{
+    pre_commit_deposit_for_power, qa_power_for_weight, DeadlineInfo, State, VestSpec,
+};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::bigint::BigInt;
@@ -264,7 +266,8 @@ mod miner_actor_test_commitment {
 
         // Good commitment.
         {
-            let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![]);
+            let precommit_params =
+                h.make_pre_commit_params(101, challenge_epoch, expiration, vec![]);
             h.pre_commit_sector(
                 &mut rt,
                 precommit_params.clone(),
@@ -284,8 +287,12 @@ mod miner_actor_test_commitment {
 
         // Sector ID already committed
         {
-            let precommit_params =
-                h.make_pre_commit_params(old_sector.sector_number, challenge_epoch, expiration, vec![]);
+            let precommit_params = h.make_pre_commit_params(
+                old_sector.sector_number,
+                challenge_epoch,
+                expiration,
+                vec![],
+            );
             let ret = h.pre_commit_sector_internal(
                 &mut rt,
                 precommit_params,
@@ -353,7 +360,8 @@ mod miner_actor_test_commitment {
 
         // Expires before current epoch
         {
-            let precommit_params = h.make_pre_commit_params(102, challenge_epoch, rt.epoch - 1, vec![]);
+            let precommit_params =
+                h.make_pre_commit_params(102, challenge_epoch, rt.epoch - 1, vec![]);
             let ret = h.pre_commit_sector_internal(
                 &mut rt,
                 precommit_params,
@@ -389,7 +397,8 @@ mod miner_actor_test_commitment {
                 + rt.policy.min_sector_expiration
                 + rt.policy.max_prove_commit_duration[&h.seal_proof_type]
                 - 1;
-            let precommit_params = h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
+            let precommit_params =
+                h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
             let ret = h.pre_commit_sector_internal(
                 &mut rt,
                 precommit_params,
@@ -542,7 +551,64 @@ mod miner_actor_test_commitment {
 
     #[test]
     fn fails_with_too_many_deals() {
+        let setup = |proof: RegisteredSealProof| -> (MockRuntime, ActorHarness, DeadlineInfo) {
+            let period_offset = ChainEpoch::from(100);
 
+            let mut h = ActorHarness::new(period_offset);
+            h.set_proof_type(proof);
+            let mut rt = h.new_runtime();
+            rt.set_balance(TokenAmount::from(BIG_BALANCE));
+            rt.set_received(TokenAmount::zero());
+
+            rt.set_epoch(period_offset + 1);
+            h.construct_and_verify(&mut rt);
+            let deadline = h.deadline(&rt);
+            (rt, h, deadline)
+        };
+
+        let make_deal_ids = |n| -> Vec<DealID> { (0..n).collect() };
+
+        let sector_number: SectorNumber = 100;
+        let deal_limits = [
+            (RegisteredSealProof::StackedDRG2KiBV1P1, 256),
+            (RegisteredSealProof::StackedDRG32GiBV1P1, 256),
+            (RegisteredSealProof::StackedDRG64GiBV1P1, 512),
+        ];
+
+        for (proof, limit) in deal_limits {
+            // attempt to pre-commmit a sector with too many deals
+            let (mut rt, h, deadline) = setup(proof);
+            let expiration =
+                deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
+            let precommit_params = h.make_pre_commit_params(
+                sector_number,
+                rt.epoch - 1,
+                expiration,
+                make_deal_ids(limit + 1),
+            );
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                true,
+            );
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "too many deals for sector",
+                ret,
+            );
+
+            // sector at or below limit succeeds
+            let (mut rt, h, _) = setup(proof);
+            let precommit_params = h.make_pre_commit_params(
+                sector_number,
+                rt.epoch - 1,
+                expiration,
+                make_deal_ids(limit),
+            );
+            h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
+            util::check_state_invariants(&rt);
+        }
     }
 
     #[ignore]
