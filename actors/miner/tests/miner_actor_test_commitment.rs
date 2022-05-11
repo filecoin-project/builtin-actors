@@ -244,7 +244,6 @@ mod miner_actor_test_commitment {
         let period_offset = ChainEpoch::from(100);
 
         let mut h = ActorHarness::new(period_offset);
-        h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
         let mut rt = h.new_runtime();
         rt.set_balance(TokenAmount::from(BIG_BALANCE));
         rt.set_received(TokenAmount::zero());
@@ -472,29 +471,27 @@ mod miner_actor_test_commitment {
             rt.reset();
         }
 
-        // // Deals too large for sector
-        // {
-        //     //h.set_proof_type(RegisteredSealProof::StackedDRG32GiBV1);
-        //     let deal_weight = TokenAmount::from(32u32 << 30) * (expiration - rt.epoch);
-        //     let precommit_params =
-        //         h.make_pre_commit_params(0, challenge_epoch, expiration, vec![1]);
-        //     let ret = h.pre_commit_sector_internal(
-        //         &mut rt,
-        //         precommit_params,
-        //         util::PreCommitConfig {
-        //             deal_weight,
-        //             verified_deal_weight: BigInt::zero(),
-        //             deal_space: Some(SectorSize::_64GiB),
-        //         },
-        //         false,
-        //     );
-        //     expect_abort_contains_message(
-        //         ExitCode::USR_ILLEGAL_ARGUMENT,
-        //         "unsupported seal proof type 3", // TODO: fix message to return "deals too large"
-        //         ret,
-        //     );
-        //     rt.reset();
-        // }
+        // Deals too large for sector
+        {
+            let deal_weight = TokenAmount::from(32u32 << 30) * (expiration - rt.epoch);
+            let precommit_params =
+                h.make_pre_commit_params(0, challenge_epoch, expiration, vec![1]);
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig {
+                    deal_weight,
+                    verified_deal_weight: BigInt::zero(),
+                    deal_space: Some(SectorSize::_64GiB),
+                },
+                false,
+            );
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "deals too large",
+                ret,
+            );
+        }
 
         // Try to precommit while in fee debt with insufficient balance
         {
