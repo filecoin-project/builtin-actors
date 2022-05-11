@@ -258,10 +258,12 @@ mod miner_actor_test_commitment {
                 [0];
         let st: State = rt.get_state();
         assert!(st.deadline_cron_active);
+
+        let expiration =
+            deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
+
         // Good commitment.
         {
-            let expiration =
-                deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
             let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![]);
             h.pre_commit_sector(
                 &mut rt,
