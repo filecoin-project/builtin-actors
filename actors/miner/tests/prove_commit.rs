@@ -1,8 +1,8 @@
 use fil_actor_market::SectorWeights;
-use fil_actor_miner::PreCommitSectorBatchParams;
 use fil_actor_miner::{
     initial_pledge_for_power, pre_commit_deposit_for_power, qa_power_for_weight, PowerPair,
 };
+use fil_actor_miner::{PreCommitSectorBatchParams, VestSpec};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::expect_abort;
@@ -643,4 +643,54 @@ fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
     h.confirm_sector_proofs_valid(&mut rt, ProveCommitConfig::empty(), vec![precommit.clone()])
         .unwrap();
     check_state_invariants(&rt);
+}
+
+#[test]
+fn verify_proof_does_not_vest_funds() {
+    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+
+    let precommit_epoch = PERIOD_OFFSET + 1;
+    rt.set_epoch(precommit_epoch);
+
+    h.construct_and_verify(&mut rt);
+    let deadline = h.deadline(&rt);
+
+    // Make a good commitment for the proof to target.
+    let sector_no = 100;
+    let params = h.make_pre_commit_params(
+        sector_no,
+        precommit_epoch - 1,
+        deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period,
+        vec![1],
+    );
+    let precommit = h.pre_commit_sector(&mut rt, params, PreCommitConfig::empty(), true);
+
+    // add 1000 tokens that vest immediately
+    let mut st = h.get_state(&rt);
+    let _ = st
+        .add_locked_funds(
+            &rt.store,
+            rt.epoch,
+            &TokenAmount::from(1000),
+            &VestSpec { initial_delay: 0, vest_period: 1, step_duration: 1, quantization: 1 },
+        )
+        .unwrap();
+    rt.replace_state(&st);
+
+    // Set the right epoch for all following tests
+    rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
+    rt.balance.replace(TokenAmount::from(1000) * 1e18 as u64);
+
+    let mut prove_commit = h.make_prove_commit_params(sector_no);
+    prove_commit.proof.resize(192, 0);
+    // The below call expects exactly the pledge delta for the proven sector, zero for any other vesting.
+    h.prove_commit_sector_and_confirm(
+        &mut rt,
+        &precommit,
+        prove_commit,
+        ProveCommitConfig::empty(),
+    )
+    .unwrap();
 }
