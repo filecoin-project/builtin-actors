@@ -7,6 +7,7 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::expect_abort;
 use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY};
+use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
@@ -14,6 +15,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::MAX_SECTOR_NUMBER;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use fvm_shared::smooth::FilterEstimate;
 use std::collections::HashMap;
 
 mod util;
@@ -485,5 +487,63 @@ fn invalid_proof_rejected() {
         ),
     );
     rt.reset();
+    check_state_invariants(&rt);
+}
+
+#[test]
+fn prove_commit_aborts_if_pledge_requirement_not_met() {
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+
+    h.construct_and_verify(&mut rt);
+
+    // Set the circulating supply high and expected reward low in order to coerce
+    // pledge requirements (BR + share of money supply, but capped at 1FIL)
+    // to exceed pre-commit deposit (BR only).
+    rt.set_circulating_supply(TokenAmount::from(100_000_000) * 1e18 as u64);
+    h.epoch_reward_smooth = FilterEstimate::new(BigInt::from(1e15 as u64), BigInt::zero());
+
+    // prove one sector to establish collateral and locked funds
+    let sectors =
+        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+
+    // preecommit another sector so we may prove it
+    let expiration = DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period + PERIOD_OFFSET - 1;
+    let precommit_epoch = rt.epoch + 1;
+    rt.set_epoch(precommit_epoch);
+    let params = h.make_pre_commit_params(h.next_sector_no, rt.epoch - 1, expiration, vec![]);
+    let precommit = h.pre_commit_sector(&mut rt, params, PreCommitConfig::empty(), false);
+
+    // Confirm the unlocked PCD will not cover the new IP
+    assert!(sectors[0].initial_pledge > precommit.pre_commit_deposit);
+
+    // Set balance to exactly cover locked funds.
+    let st = h.get_state(&rt);
+    rt.balance.replace(&st.pre_commit_deposits + &st.initial_pledge + &st.locked_funds);
+
+    rt.set_epoch(precommit_epoch + max_prove_commit_duration(&rt.policy, h.seal_proof_type) - 1);
+    expect_abort(
+        ExitCode::USR_INSUFFICIENT_FUNDS,
+        h.prove_commit_sector_and_confirm(
+            &mut rt,
+            &precommit,
+            h.make_prove_commit_params(h.next_sector_no),
+            ProveCommitConfig::empty(),
+        ),
+    );
+    rt.reset();
+
+    // succeeds with enough free balance (enough to cover 2x IP)
+    rt.balance.replace(
+        &st.pre_commit_deposits + &st.initial_pledge + &st.initial_pledge + &st.locked_funds,
+    );
+    h.prove_commit_sector_and_confirm(
+        &mut rt,
+        &precommit,
+        h.make_prove_commit_params(h.next_sector_no),
+        ProveCommitConfig::empty(),
+    )
+    .unwrap();
     check_state_invariants(&rt);
 }
