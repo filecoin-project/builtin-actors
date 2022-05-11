@@ -178,7 +178,7 @@ fn declared_and_undeclared_fault_penalties_are_linear_over_sector_qa_power_term(
     // Construct plausible reward and qa power filtered estimates
     let epoch_reward = TokenAmount::from(100_u64 << 53);
     // not too much growth over ~3000 epoch projection in BR
-    let reward_estimate = FilterEstimate::new(epoch_reward.clone(), Zero::zero());
+    let reward_estimate = FilterEstimate::new(epoch_reward, Zero::zero());
 
     let network_power = StoragePower::from(100_u64 << 50);
     let power_estimate = FilterEstimate::new(network_power, Zero::zero());

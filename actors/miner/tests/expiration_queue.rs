@@ -719,16 +719,16 @@ fn require_no_expiration_groups_before(
     assert!(set.is_empty());
 }
 
-fn empty_expiration_queue_with_quantizing<'a>(
-    rt: &'a MockRuntime,
+fn empty_expiration_queue_with_quantizing(
+    rt: &MockRuntime,
     quant: QuantSpec,
-) -> ExpirationQueue<'a, MemoryBlockstore> {
+) -> ExpirationQueue<MemoryBlockstore> {
     let empty_array =
         Amt::<(), _>::new_with_bit_width(&rt.store, TEST_AMT_BITWIDTH).flush().unwrap();
 
     ExpirationQueue::new(&rt.store, &empty_array, quant).unwrap()
 }
 
-fn empty_expiration_queue<'a>(rt: &'a MockRuntime) -> ExpirationQueue<'a, MemoryBlockstore> {
+fn empty_expiration_queue(rt: &MockRuntime) -> ExpirationQueue<MemoryBlockstore> {
     empty_expiration_queue_with_quantizing(rt, NO_QUANTIZATION)
 }
