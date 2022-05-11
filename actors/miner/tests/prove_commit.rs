@@ -580,3 +580,24 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
     h.confirm_sector_proofs_valid(&mut rt, conf, vec![pre_commit_a, pre_commit_b]).unwrap();
     check_state_invariants(&rt);
 }
+
+#[test]
+fn prove_commit_just_after_period_start_permits_post() {
+    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+
+    // Epoch 101 should be at the beginning of the miner's proving period so there will be time to commit
+    // and PoSt a sector.
+    rt.set_epoch(101);
+    h.construct_and_verify(&mut rt);
+
+    // Commit a sector the very next epoch
+    rt.set_epoch(102);
+    let sector =
+        h.commit_and_prove_sector(&mut rt, MAX_SECTOR_NUMBER, DEFAULT_SECTOR_EXPIRATION, vec![]);
+
+    // advance cron to activate power.
+    h.advance_and_submit_posts(&mut rt, &[sector]);
+    check_state_invariants(&rt);
+}
