@@ -574,7 +574,7 @@ fn replaces_sectors_with_new_sectors() {
     assert_eq!(set.on_time_sectors, mk_bitfield([5, 6]));
     assert!(set.early_sectors.is_empty());
 
-    // pledge and power are some of old and new sectors
+    // pledge and power are the sum of old and new sectors
     assert_eq!(set.on_time_pledge, TokenAmount::from(2009));
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors[4..]));
     assert_eq!(set.faulty_power, PowerPair::zero());
@@ -592,7 +592,7 @@ fn removes_sectors() {
     let _ = queue.amt.flush().unwrap();
 
     // put queue in a state where some sectors are early and some are faulty
-    let _ = queue.reschedule_as_faults(6, &sectors()[1..6], SECTOR_SIZE).unwrap();
+    let _ = queue.reschedule_as_faults(6, &sectors()[1..], SECTOR_SIZE).unwrap();
 
     let _ = queue.amt.flush().unwrap();
 
