@@ -323,6 +323,40 @@ impl ActorHarness {
         info
     }
 
+    pub fn commit_and_prove_sector(
+        &self,
+        rt: &mut MockRuntime,
+        sector_no: SectorNumber,
+        lifetime_periods: i64,
+        deal_ids: Vec<DealID>,
+    ) -> SectorOnChainInfo {
+        let precommit_epoch = rt.epoch;
+        let deadline = self.deadline(rt);
+        let expiration = deadline.period_end() + lifetime_periods * rt.policy.wpost_proving_period;
+
+        // Precommit
+        let pre_commit_params =
+            self.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, deal_ids);
+        let precommit =
+            self.pre_commit_sector(rt, pre_commit_params.clone(), PreCommitConfig::empty(), true);
+
+        self.advance_to_epoch_with_cron(
+            rt,
+            precommit_epoch + rt.policy.pre_commit_challenge_delay + 1,
+        );
+
+        let sector_info = self
+            .prove_commit_sector_and_confirm(
+                rt,
+                &precommit,
+                self.make_prove_commit_params(pre_commit_params.sector_number),
+                ProveCommitConfig::empty(),
+            )
+            .unwrap();
+        rt.reset();
+        sector_info
+    }
+
     pub fn get_deadline_info(&self, rt: &MockRuntime) -> DeadlineInfo {
         let state = self.get_state(rt);
         state.recorded_deadline_info(&rt.policy, rt.epoch)
