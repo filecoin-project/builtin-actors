@@ -14,9 +14,9 @@ use fil_actor_miner::{
     DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
     DisputeWindowedPoStParams, FaultDeclaration, GetControlAddressesReturn, Method,
     MinerConstructorParams as ConstructorParams, Partition, PoStPartition, PowerPair,
-    PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo,
-    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, VestingFunds,
-    WindowedPoSt, CRON_EVENT_PROVING_DEADLINE,
+    PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration,
+    ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
+    SubmitWindowedPoStParams, VestingFunds, WindowedPoSt, CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -39,6 +39,7 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -1397,6 +1398,16 @@ impl ActorHarness {
 
     fn get_partition(&self, rt: &MockRuntime, deadline: &Deadline, pidx: u64) -> Partition {
         deadline.load_partition(&rt.store, pidx).unwrap()
+    }
+
+    pub fn report_consensus_fault(
+        &self,
+        rt: &mut MockRuntime,
+        fault: ConsensusFault,
+    ) -> Result<RawBytes, ActorError> {
+        let params =
+            ReportConsensusFaultParams { header1: vec![], header2: vec![], header_extra: vec![] };
+        rt.call::<Actor>(Method::ReportConsensusFault as u64, &RawBytes::serialize(params).unwrap())
     }
 }
 
