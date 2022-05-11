@@ -20,6 +20,7 @@ pub const SETTLE_DELAY: ChainEpoch = EPOCHS_IN_HOUR * 12;
 
 // Maximum byte length of a secret that can be submitted with a payment channel update.
 pub const MAX_SECRET_SIZE: usize = 256;
+pub const MAX_SECRET_HASH_SIXE: usize = 2 << 20;
 
 pub const LANE_STATES_AMT_BITWIDTH: u32 = 3;
 /// Constructor parameters for payment channel actor
@@ -42,7 +43,7 @@ pub struct SignedVoucher {
     pub time_lock_max: ChainEpoch,
     /// (optional) Used by `to` to validate
     #[serde(with = "serde_bytes")]
-    pub secret_pre_image: Vec<u8>,
+    pub secret_hash: Vec<u8>,
     /// (optional) Specified by `from` to add a verification method to the voucher
     pub extra: Option<ModVerifyParams>,
     /// Specifies which lane the Voucher merges into (will be created if does not exist)
@@ -85,7 +86,7 @@ impl SignedVoucher {
             channel_addr: &self.channel_addr,
             time_lock_min: self.time_lock_min,
             time_lock_max: self.time_lock_max,
-            secret_pre_image: &self.secret_pre_image,
+            secret_pre_image: &self.secret_hash,
             extra: &self.extra,
             lane: self.lane,
             nonce: self.nonce,

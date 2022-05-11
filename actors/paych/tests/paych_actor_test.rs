@@ -193,7 +193,7 @@ mod create_lane_tests {
         #[builder(default = "1")]
         amt: i64,
         #[builder(default)]
-        secret_preimage: Vec<u8>,
+        secret_hash: Vec<u8>,
         #[builder(default)]
         sig: Option<Signature>,
         #[builder(default = "true")]
@@ -255,17 +255,16 @@ mod create_lane_tests {
                 .unwrap(),
             TestCase::builder()
                 .desc("fails if signature is not verified".to_string())
-                .sig(sig)
+                .sig(sig.clone())
                 .verify_sig(false)
                 .build()
                 .unwrap(),
-            // TODO this should fail with byte array max from cbor gen (pre image serialization)
-            // TestCase::builder()
-            //     .desc("Fails if signing fails".to_string())
-            //     .sig(sig.clone())
-            //     .secret_preimage(vec![0; 2 << 21])
-            //     .build()
-            //     .unwrap(),
+            TestCase::builder()
+                .desc("Fails if signing fails".to_string())
+                .sig(sig)
+                .secret_hash(vec![0; 2 << 21])
+                .build()
+                .unwrap(),
         ];
 
         for test_case in test_cases {
@@ -290,7 +289,7 @@ mod create_lane_tests {
             let sv = SignedVoucher {
                 time_lock_min: test_case.tl_min,
                 time_lock_max: test_case.tl_max,
-                secret_pre_image: test_case.secret_preimage.clone(),
+                secret_hash: test_case.secret_hash.clone(),
                 lane: test_case.lane,
                 nonce: test_case.nonce,
                 amount: BigInt::from(test_case.amt),
@@ -305,7 +304,7 @@ mod create_lane_tests {
             rt.set_caller(test_case.target_code, payee_addr);
             rt.expect_validate_caller_addr(vec![payer_addr, payee_addr]);
 
-            if test_case.sig.is_some() && test_case.secret_preimage.is_empty() {
+            if test_case.sig.is_some() && test_case.secret_hash.is_empty() {
                 let exp_exit_code =
                     if !test_case.verify_sig { Err(anyhow!("bad signature")) } else { Ok(()) };
                 rt.expect_verify_signature(ExpectedVerifySig {
@@ -733,7 +732,7 @@ mod secret_preimage {
         let mut ucp = UpdateChannelStateParams { secret: b"Profesr".to_vec(), sv: sv.clone() };
         let mut mag = b"Magneto".to_vec();
         mag.append(&mut vec![0; 25]);
-        ucp.sv.secret_pre_image = mag;
+        ucp.sv.secret_hash = mag;
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
         rt.expect_verify_signature(ExpectedVerifySig {
@@ -976,7 +975,7 @@ fn require_add_new_lane(rt: &mut MockRuntime, param: LaneParams) -> SignedVouche
         nonce: param.nonce,
         amount: param.amt.clone(),
         signature: Some(sig.clone()),
-        secret_pre_image: Default::default(),
+        secret_hash: Default::default(),
         channel_addr: Address::new_id(PAYCH_ID),
         extra: Default::default(),
         min_settle_height: Default::default(),

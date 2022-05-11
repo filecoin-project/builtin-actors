@@ -133,6 +133,13 @@ impl Actor {
             ));
         }
 
+        if sv.secret_hash.len() > MAX_SECRET_HASH_SIXE {
+            return Err(actor_error!(
+                illegal_argument,
+                "secret hash cannot exceed 2 << 20 bytes long"
+            ));
+        }
+
         // Generate unsigned bytes
         let sv_bz = sv
             .signing_bytes()
@@ -170,9 +177,9 @@ impl Actor {
                     "voucher amount must be non-negative, was {}", sv.amount));
         }
 
-        if !sv.secret_pre_image.is_empty() {
+        if !sv.secret_hash.is_empty() {
             let hashed_secret: &[u8] = &rt.hash_blake2b(&params.secret);
-            if hashed_secret != sv.secret_pre_image.as_slice() {
+            if hashed_secret != sv.secret_hash.as_slice() {
                 return Err(actor_error!(USR_ILLEGAL_ARGUMENT; "incorrect secret"));
             }
         }
