@@ -444,7 +444,7 @@ fn reschedules_all_sectors_as_faults() {
     // pledge is kept from original 2 sectors. Pledge from new early sectors is NOT added.
     assert_eq!(set.on_time_pledge, TokenAmount::from(2005));
 
-    // fault power is all power for sectors previously in the first and second sets
+    // fault power is all power for sectors previously in the second and third sets
     assert_eq!(set.active_power, PowerPair::zero());
     assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[2..]));
 
