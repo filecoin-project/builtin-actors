@@ -266,7 +266,7 @@ fn added_sectors_can_be_popped_off_queue() {
 
     queue.amt.flush().unwrap();
 
-    // pop off sectors up to and including epoch 8
+    // pop off sectors up to and including epoch 7
     let set = queue.pop_until(7).unwrap();
 
     // only 3 sectors remain
@@ -282,7 +282,7 @@ fn added_sectors_can_be_popped_off_queue() {
     assert_eq!(set.active_power, active_power);
     assert_eq!(set.faulty_power, faulty_power);
 
-    // pop off rest up to and including epoch 8
+    // pop off rest up to and including epoch 20
     let set = queue.pop_until(20).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([4, 5, 6]));
@@ -359,7 +359,7 @@ fn reschedules_sectors_as_faults() {
 
     // Fault middle sectors to expire at epoch 6
     // This faults one sector from the first set, all of the second set and one from the third.
-    // Faulting at epoch 6 means the first 3 will expire on time, but the last will be early and
+    // Faulting at epoch 6 means the first 2 will expire on time, but the last will be early and
     // moved to the second set
     let power_delta = queue.reschedule_as_faults(6, &sectors()[1..5], SECTOR_SIZE).unwrap();
     assert_eq!(power_delta, power_for_sectors(SECTOR_SIZE, &sectors()[1..5]));
@@ -421,7 +421,7 @@ fn reschedules_all_sectors_as_faults() {
 
     let _ = queue.amt.flush().unwrap();
 
-    // expect first set to contain first two sectors but with the seconds power moved to faulty power
+    // expect first set to contain first two sectors but with all power moved to faulty power
     require_no_expiration_groups_before(5, &mut queue);
     let set = queue.pop_until(5).unwrap();
 
