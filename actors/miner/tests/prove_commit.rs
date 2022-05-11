@@ -1,21 +1,21 @@
 use fil_actor_market::SectorWeights;
 use fil_actor_miner::{
     initial_pledge_for_power, pre_commit_deposit_for_power, qa_power_for_weight, PowerPair,
+    PreCommitSectorBatchParams, VestSpec,
 };
-use fil_actor_miner::{PreCommitSectorBatchParams, VestSpec};
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::expect_abort;
-use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY};
-use fvm_shared::bigint::BigInt;
-use fvm_shared::bigint::Zero;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::error::ExitCode;
-
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::MAX_SECTOR_NUMBER;
-use fvm_shared::sector::{RegisteredSealProof, StoragePower};
-use fvm_shared::smooth::FilterEstimate;
+use fil_actors_runtime::{
+    runtime::{Policy, Runtime},
+    test_utils::expect_abort,
+    DealWeight, EPOCHS_IN_DAY,
+};
+use fvm_shared::{
+    bigint::{BigInt, Zero},
+    clock::ChainEpoch,
+    econ::TokenAmount,
+    error::ExitCode,
+    sector::{RegisteredSealProof, StoragePower, MAX_SECTOR_NUMBER},
+    smooth::FilterEstimate,
+};
 use std::collections::HashMap;
 
 mod util;
