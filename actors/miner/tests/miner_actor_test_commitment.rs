@@ -452,8 +452,8 @@ mod miner_actor_test_commitment {
         // Seal randomness challenge too far in past
         {
             let too_old_challenge_epoch = precommit_epoch
-                + rt.policy.chain_finality
-                + rt.policy.max_prove_commit_duration[&h.seal_proof_type]
+                - rt.policy.chain_finality
+                - rt.policy.max_prove_commit_duration[&h.seal_proof_type]
                 - 1;
             let precommit_params =
                 h.make_pre_commit_params(102, too_old_challenge_epoch, expiration, vec![]);
@@ -465,7 +465,7 @@ mod miner_actor_test_commitment {
             );
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                "seal challenge epoch 4030 must be before now 101", // TODO: fix message to return "too old"
+                "too old",
                 ret,
             );
             rt.reset();
