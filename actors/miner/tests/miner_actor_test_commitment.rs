@@ -259,128 +259,144 @@ mod miner_actor_test_commitment {
         let st: State = rt.get_state();
         assert!(st.deadline_cron_active);
         // Good commitment.
-        let expiration =
-            deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
-        let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![]);
-        h.pre_commit_sector(
-            &mut rt,
-            precommit_params.clone(),
-            util::PreCommitConfig::default(),
-            false,
-        );
-        // Duplicate pre-commit sector ID
-        let ret = h.pre_commit_sector_internal(
-            &mut rt,
-            precommit_params,
-            util::PreCommitConfig::default(),
-            false,
-        );
-        expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "already allocated", ret);
-        rt.reset();
+        {
+            let expiration =
+                deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
+            let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![]);
+            h.pre_commit_sector(
+                &mut rt,
+                precommit_params.clone(),
+                util::PreCommitConfig::default(),
+                false,
+            );
+            // Duplicate pre-commit sector ID
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                false,
+            );
+            expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "already allocated", ret);
+            rt.reset();
+        }
 
         // Sector ID already committed
-        let precommit_params =
-            h.make_pre_commit_params(old_sector.sector_number, challenge_epoch, expiration, vec![]);
-        let ret = h.pre_commit_sector_internal(
-            &mut rt,
-            precommit_params,
-            util::PreCommitConfig::default(),
-            false,
-        );
-        expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "already allocated", ret);
-        rt.reset();
+        {
+            let precommit_params =
+                h.make_pre_commit_params(old_sector.sector_number, challenge_epoch, expiration, vec![]);
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                false,
+            );
+            expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "already allocated", ret);
+            rt.reset();
+        }
 
         // Bad sealed CID
-        let mut precommit_params =
-            h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
-        precommit_params.sealed_cid = make_cid("Random Data".as_bytes(), 0);
-        let ret = h.pre_commit_sector_internal(
-            &mut rt,
-            precommit_params,
-            util::PreCommitConfig::default(),
-            false,
-        );
-        expect_abort_contains_message(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            "sealed CID had wrong prefix",
-            ret,
-        );
-        rt.reset();
+        {
+            let mut precommit_params =
+                h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
+            precommit_params.sealed_cid = make_cid("Random Data".as_bytes(), 0);
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                false,
+            );
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "sealed CID had wrong prefix",
+                ret,
+            );
+            rt.reset();
+        }
 
         // Bad seal proof type
-        let mut precommit_params =
-            h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
-        precommit_params.seal_proof = RegisteredSealProof::StackedDRG8MiBV1;
-        let ret = h.pre_commit_sector_internal(
-            &mut rt,
-            precommit_params,
-            util::PreCommitConfig::default(),
-            false,
-        );
-        expect_abort_contains_message(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            "unsupported seal proof type",
-            ret,
-        );
-        rt.reset();
+        {
+            let mut precommit_params =
+                h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
+            precommit_params.seal_proof = RegisteredSealProof::StackedDRG8MiBV1;
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                false,
+            );
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "unsupported seal proof type",
+                ret,
+            );
+            rt.reset();
+        }
 
         // Expires at current epoch
-        let precommit_params = h.make_pre_commit_params(102, challenge_epoch, rt.epoch, vec![]);
-        let ret = h.pre_commit_sector_internal(
-            &mut rt,
-            precommit_params,
-            util::PreCommitConfig::default(),
-            false,
-        );
-        expect_abort_contains_message(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            "must be after activation",
-            ret,
-        );
-        rt.reset();
+        {
+            let precommit_params = h.make_pre_commit_params(102, challenge_epoch, rt.epoch, vec![]);
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                false,
+            );
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "must be after activation",
+                ret,
+            );
+            rt.reset();
+        }
 
         // Expires before current epoch
-        let precommit_params = h.make_pre_commit_params(102, challenge_epoch, rt.epoch - 1, vec![]);
-        let ret = h.pre_commit_sector_internal(
-            &mut rt,
-            precommit_params,
-            util::PreCommitConfig::default(),
-            false,
-        );
-        expect_abort_contains_message(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            "must be after activation",
-            ret,
-        );
-        rt.reset();
+        {
+            let precommit_params = h.make_pre_commit_params(102, challenge_epoch, rt.epoch - 1, vec![]);
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                false,
+            );
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "must be after activation",
+                ret,
+            );
+            rt.reset();
+        }
 
         // Expires too early
-        let early_expiration = rt.policy.min_sector_expiration - EPOCHS_IN_DAY;
-        let precommit_params =
-            h.make_pre_commit_params(102, challenge_epoch, early_expiration, vec![]);
-        let ret = h.pre_commit_sector_internal(
-            &mut rt,
-            precommit_params,
-            util::PreCommitConfig::default(),
-            false,
-        );
-        expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "must exceed", ret);
-        rt.reset();
+        {
+            let early_expiration = rt.policy.min_sector_expiration - EPOCHS_IN_DAY;
+            let precommit_params =
+                h.make_pre_commit_params(102, challenge_epoch, early_expiration, vec![]);
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                false,
+            );
+            expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "must exceed", ret);
+            rt.reset();
+        }
 
         // Expires before min duration + max seal duration
-        let expiration = rt.epoch
-            + rt.policy.min_sector_expiration
-            + rt.policy.max_prove_commit_duration[&h.seal_proof_type]
-            - 1;
-        let precommit_params = h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-        let ret = h.pre_commit_sector_internal(
-            &mut rt,
-            precommit_params,
-            util::PreCommitConfig::default(),
-            false,
-        );
-        expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "must exceed", ret);
-        rt.reset();
+        {
+            let expiration = rt.epoch
+                + rt.policy.min_sector_expiration
+                + rt.policy.max_prove_commit_duration[&h.seal_proof_type]
+                - 1;
+            let precommit_params = h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                false,
+            );
+            expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "must exceed", ret);
+            rt.reset();
+        }
 
         // Errors when expiry too far in the future
         {
@@ -520,13 +536,12 @@ mod miner_actor_test_commitment {
         //     rt.replace_state(&st);
         //     rt.reset();
         // }
-
-        ()
     }
 
-    #[ignore]
     #[test]
-    fn fails_with_too_many_deals() {}
+    fn fails_with_too_many_deals() {
+
+    }
 
     #[ignore]
     #[test]
