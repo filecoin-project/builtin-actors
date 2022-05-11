@@ -1239,54 +1239,45 @@ pub struct MessageAccumulator {
     /// Accumulated messages.
     /// This is a `Rc<RefCell>` to support accumulators derived from `with_prefix()` accumulating to
     /// the same underlying collection.
-    #[allow(dead_code)]
     msgs: Rc<RefCell<Vec<String>>>,
     /// Optional prefix to all new messages, e.g. describing higher level context.
-    #[allow(dead_code)]
     prefix: String,
 }
 
 impl MessageAccumulator {
     /// Returns a new accumulator backed by the same collection, that will prefix each new message with
     /// a formatted string.
-    #[allow(dead_code)]
-    fn with_prefix(&self, prefix: &str) -> Self {
+    pub fn with_prefix(&self, prefix: &str) -> Self {
         MessageAccumulator { msgs: self.msgs.clone(), prefix: self.prefix.to_owned() + prefix }
     }
 
-    #[allow(dead_code)]
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.msgs.borrow().is_empty()
     }
 
-    #[allow(dead_code)]
-    fn messages(&self) -> Vec<String> {
+    pub fn messages(&self) -> Vec<String> {
         self.msgs.borrow().to_owned()
     }
 
     /// Adds a message to the accumulator
-    #[allow(dead_code)]
-    fn add(&mut self, msg: &str) {
+    pub fn add(&mut self, msg: &str) {
         self.msgs.borrow_mut().push(format!("{}{msg}", self.prefix));
     }
 
     /// Adds messages from another accumulator to this one
-    #[allow(dead_code)]
-    fn add_all(&mut self, other: &Self) {
+    pub fn add_all(&mut self, other: &Self) {
         self.msgs.borrow_mut().extend_from_slice(&other.msgs.borrow());
     }
 
     /// Adds a message if predicate is false
-    #[allow(dead_code)]
-    fn require(&mut self, predicate: bool, msg: &str) {
+    pub fn require(&mut self, predicate: bool, msg: &str) {
         if !predicate {
             self.add(msg);
         }
     }
 
     /// Adds a message if result is `Err`. Underlying error must be `Display`.
-    #[allow(dead_code)]
-    fn require_no_error<V, E: Display>(&mut self, result: Result<V, E>, msg: String) {
+    pub fn require_no_error<V, E: Display>(&mut self, result: Result<V, E>, msg: String) {
         if let Err(e) = result {
             self.add(&format!("{msg}: {e}"));
         }
