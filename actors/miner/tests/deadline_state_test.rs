@@ -5,7 +5,7 @@ use fil_actor_miner::{
     TerminationResult,
 };
 use fil_actors_runtime::runtime::{Policy, Runtime};
-use fil_actors_runtime::test_utils::{MockRuntime, MessageAccumulator};
+use fil_actors_runtime::test_utils::{MessageAccumulator, MockRuntime};
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_bitfield::{BitField, MaybeBitField};
 use fvm_ipld_blockstore::Blockstore;
@@ -529,7 +529,14 @@ impl ExpectedDeadlineState {
         deadline: &Deadline,
     ) -> (BitField, BitField, BitField, BitField) {
         let mut acc = MessageAccumulator::default();
-        let _summary = check_deadline_state_invariants(deadline, store, QUANT_SPEC, SECTOR_SIZE, &sectors_as_map(sectors), &mut acc);
+        let _summary = check_deadline_state_invariants(
+            deadline,
+            store,
+            QUANT_SPEC,
+            SECTOR_SIZE,
+            &sectors_as_map(sectors),
+            &mut acc,
+        );
 
         assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
 

@@ -1844,7 +1844,8 @@ impl PartitionStateSummary {
 
                 expiration_epochs = queue_summary.expiration_epochs;
                 // check the queue is compatible with partition fields
-                let queue_sectors = BitField::union([&queue_summary.on_time_sectors, &queue_summary.early_sectors]);
+                let queue_sectors =
+                    BitField::union([&queue_summary.on_time_sectors, &queue_summary.early_sectors]);
                 require_equal(&live, &queue_sectors, acc, "live does not equal all expirations");
             }
             Err(err) => {
@@ -1967,10 +1968,10 @@ impl ExpirationQueueStateSummary {
             let (active_sectors, missing) = select_sectors_map(live_sectors, &all_active);
             acc.require(missing.is_empty(), &format!("active sectors missing from live: {missing:?}"));
 
-            let all_faulty = &all & &partition_faults; 
+            let all_faulty = &all & &partition_faults;
             let (faulty_sectors, missing) = select_sectors_map(live_sectors, &all_faulty);
             acc.require(missing.is_empty(), &format!("faulty sectors missing from live: {missing:?}"));
-            
+
             let active_sectors_power = power_for_sectors(sector_size, &active_sectors.values().cloned().collect::<Vec<_>>());
             acc.require(expiration_set.active_power == active_sectors_power, &format!("active power recorded {:?} doesn't match computed {active_sectors_power:?}", expiration_set.active_power));
 
@@ -1998,7 +1999,7 @@ impl ExpirationQueueStateSummary {
             active_power: all_active_power,
             faulty_power: all_faulty_power,
             on_time_pledge: all_on_time_pledge,
-            expiration_epochs
+            expiration_epochs,
         }
     }
 }
@@ -2076,15 +2077,12 @@ fn require_contains_none(
     }
 }
 
-fn require_equal(
-    first: &BitField,
-    second: &BitField,
-    acc: &mut MessageAccumulator,
-    msg: &str) {
+fn require_equal(first: &BitField, second: &BitField, acc: &mut MessageAccumulator, msg: &str) {
     require_contains_all(first, second, acc, msg);
     require_contains_all(second, first, acc, msg);
 }
 
+#[allow(dead_code)]
 pub fn sectors_as_map(sectors: &[SectorOnChainInfo]) -> SectorsMap {
     sectors.iter().map(|sector| (sector.sector_number, sector.to_owned())).collect()
 }
@@ -2130,7 +2128,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
             Ok(())
         })
         .expect("error iterating partitions");
-    
+
     // TODO more checks
 
     DeadlineStateSummary::default()
