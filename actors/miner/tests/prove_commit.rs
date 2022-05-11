@@ -1,4 +1,5 @@
-use fil_actor_miner::SectorPreCommitInfo;
+use fil_actor_market::SectorWeights;
+use fil_actor_miner::PreCommitSectorBatchParams;
 use fil_actor_miner::{
     initial_pledge_for_power, pre_commit_deposit_for_power, qa_power_for_weight, PowerPair,
 };
@@ -173,114 +174,171 @@ fn prove_sectors_from_batch_pre_commit() {
     let mut rt = h.new_runtime();
     rt.balance.replace(TokenAmount::from(BIG_BALANCE));
 
-    let precommitEpoch = PERIOD_OFFSET + 1;
-    rt.set_epoch(precommitEpoch);
+    let precommit_epoch = PERIOD_OFFSET + 1;
+    rt.set_epoch(precommit_epoch);
 
     h.construct_and_verify(&mut rt);
     let dl_info = h.deadline(&rt);
 
-    let sectorExpiration =
+    let sector_expiration =
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
 
     let sectors = [
-        h.make_pre_commit_params(100, precommitEpoch - 1, sectorExpiration, vec![]),
-        h.make_pre_commit_params(101, precommitEpoch - 1, sectorExpiration, vec![1]), // 1 * 32GiB verified deal
-        h.make_pre_commit_params(102, precommitEpoch - 1, sectorExpiration, vec![2, 3]), // 2 * 16GiB verified deals
+        h.make_pre_commit_params(100, precommit_epoch - 1, sector_expiration, vec![]),
+        h.make_pre_commit_params(101, precommit_epoch - 1, sector_expiration, vec![1]), // 1 * 32GiB verified deal
+        h.make_pre_commit_params(102, precommit_epoch - 1, sector_expiration, vec![2, 3]), // 2 * 16GiB verified deals
     ];
 
-    let dealSpace = 32 << 30;
-    let dealWeight = DealWeight::zero();
-    let proveCommitEpoch = precommitEpoch + rt.policy.pre_commit_challenge_delay + 1;
-    let dealLifespan = sectorExpiration - proveCommitEpoch;
-    let verifiedDealWeight = dealSpace * DealWeight::from(dealLifespan);
+    let deal_space = 32 << 30;
+    let deal_weight = DealWeight::zero();
+    let prove_commit_epoch = precommit_epoch + rt.policy.pre_commit_challenge_delay + 1;
+    let deal_lifespan = sector_expiration - prove_commit_epoch;
+    let verified_deal_weight = deal_space * DealWeight::from(deal_lifespan);
 
     // Power estimates made a pre-commit time
-    let noDealPowerEstimate = qa_power_for_weight(
+    let no_deal_power_estimate = qa_power_for_weight(
         h.sector_size,
-        sectorExpiration - precommitEpoch,
+        sector_expiration - precommit_epoch,
         &DealWeight::zero(),
         &DealWeight::zero(),
     );
-    let fullDealPowerEstimate = qa_power_for_weight(
+    let full_deal_power_estimate = qa_power_for_weight(
         h.sector_size,
-        sectorExpiration - precommitEpoch,
-        &dealWeight,
-        &verifiedDealWeight,
+        sector_expiration - precommit_epoch,
+        &deal_weight,
+        &verified_deal_weight,
     );
 
     let deposits = [
         pre_commit_deposit_for_power(
             &h.epoch_reward_smooth,
             &h.epoch_qa_power_smooth,
-            &noDealPowerEstimate,
+            &no_deal_power_estimate,
         ),
         pre_commit_deposit_for_power(
             &h.epoch_reward_smooth,
             &h.epoch_qa_power_smooth,
-            &fullDealPowerEstimate,
+            &full_deal_power_estimate,
         ),
         pre_commit_deposit_for_power(
             &h.epoch_reward_smooth,
             &h.epoch_qa_power_smooth,
-            &fullDealPowerEstimate,
+            &full_deal_power_estimate,
         ),
     ];
-    let conf = preCommitBatchConf{
-        sectorWeights: []market.SectorWeights{
-            {DealSpace: 0, DealWeight: big.Zero(), verified_deal_weight: big.Zero()},
-            {DealSpace: dealSpace, DealWeight: dealWeight, verified_deal_weight: verifiedDealWeight},
-            {DealSpace: dealSpace, DealWeight: dealWeight, verified_deal_weight: verifiedDealWeight},
-        },
-        firstForMiner: true,
+    let conf = PreCommitBatchConfig {
+        sector_weights: vec![
+            SectorWeights {
+                deal_space: 0,
+                deal_weight: DealWeight::zero(),
+                verified_deal_weight: DealWeight::zero(),
+            },
+            SectorWeights {
+                deal_space: deal_space,
+                deal_weight: deal_weight.clone(),
+                verified_deal_weight: verified_deal_weight.clone(),
+            },
+            SectorWeights {
+                deal_space: deal_space,
+                deal_weight: deal_weight.clone(),
+                verified_deal_weight: verified_deal_weight.clone(),
+            },
+        ],
+        first_for_miner: true,
+    };
+
+    let precommits = h.pre_commit_sector_batch(
+        &mut rt,
+        PreCommitSectorBatchParams { sectors: sectors.to_vec() },
+        conf,
+        TokenAmount::zero(),
+    );
+
+    rt.set_epoch(prove_commit_epoch);
+
+    let no_deal_power = qa_power_for_weight(
+        h.sector_size,
+        sector_expiration - prove_commit_epoch,
+        &DealWeight::zero(),
+        &DealWeight::zero(),
+    );
+    let no_deal_pledge = initial_pledge_for_power(
+        &no_deal_power,
+        &h.baseline_power,
+        &h.epoch_reward_smooth,
+        &h.epoch_qa_power_smooth,
+        &rt.total_fil_circ_supply(),
+    );
+    let full_deal_power = qa_power_for_weight(
+        h.sector_size,
+        sector_expiration - prove_commit_epoch,
+        &deal_weight,
+        &verified_deal_weight,
+    );
+    let expected_power = StoragePower::from(h.sector_size as u64)
+        * (VERIFIED_DEAL_WEIGHT_MULTIPLIER / QUALITY_BASE_MULTIPLIER);
+    assert_eq!(full_deal_power, expected_power);
+    let full_deal_pledge = initial_pledge_for_power(
+        &full_deal_power,
+        &h.baseline_power,
+        &h.epoch_reward_smooth,
+        &h.epoch_qa_power_smooth,
+        &rt.total_fil_circ_supply(),
+    );
+
+    // Prove just the first sector, with no deals
+    {
+        let precommit = &precommits[0];
+        let sector = h.prove_commit_sector_and_confirm(
+            &mut rt,
+            precommit,
+            h.make_prove_commit_params(precommit.info.sector_number),
+            ProveCommitConfig::default(),
+        );
+        assert_eq!(rt.epoch, sector.activation);
+        let st = h.get_state(&rt);
+        let expected_deposit: TokenAmount = deposits[1..].iter().sum(); // First sector deposit released
+        assert_eq!(expected_deposit, st.pre_commit_deposits);
+
+        // Expect power/pledge for a sector with no deals
+        assert_eq!(no_deal_pledge, sector.initial_pledge);
+        assert_eq!(no_deal_pledge, st.initial_pledge);
     }
+    // Prove the next, with one deal
+    {
+        let precommit = &precommits[1];
+        let sector = h.prove_commit_sector_and_confirm(
+            &mut rt,
+            precommit,
+            h.make_prove_commit_params(precommit.info.sector_number),
+            ProveCommitConfig::default(),
+        );
+        assert_eq!(rt.epoch, sector.activation);
+        let st = h.get_state(&rt);
+        let expected_deposit: TokenAmount = deposits[2..].iter().sum(); // First and second sector deposits released
+        assert_eq!(expected_deposit, st.pre_commit_deposits);
 
-    // precommits := actor.preCommitSectorBatch(rt, &miner.PreCommitSectorBatchParams{Sectors: sectors}, conf, big.Zero())
+        // Expect power/pledge for the two sectors (only this one having any deal weight)
+        assert_eq!(full_deal_pledge, sector.initial_pledge);
+        assert_eq!(&no_deal_pledge + &full_deal_pledge, st.initial_pledge);
+    }
+    // Prove the last
+    {
+        let precommit = &precommits[2];
+        let sector = h.prove_commit_sector_and_confirm(
+            &mut rt,
+            precommit,
+            h.make_prove_commit_params(precommit.info.sector_number),
+            ProveCommitConfig::default(),
+        );
+        assert_eq!(rt.epoch, sector.activation);
+        let st = h.get_state(&rt);
+        assert!(st.pre_commit_deposits.is_zero());
 
-    // rt.SetEpoch(proveCommitEpoch)
-    // noDealPower := miner.QAPowerForWeight(actor.sectorSize, sectorExpiration-proveCommitEpoch, big.Zero(), big.Zero())
-    // noDealPledge := miner.InitialPledgeForPower(noDealPower, actor.baselinePower, actor.epochRewardSmooth, actor.epochQAPowerSmooth, rt.TotalFilCircSupply())
-    // fullDealPower := miner.QAPowerForWeight(actor.sectorSize, sectorExpiration-proveCommitEpoch, dealWeight, verifiedDealWeight)
-    // assert_eq!( big.Mul(big.NewInt(int64(actor.sectorSize)), big.Div(builtin.verified_deal_weightMultiplier, builtin.QualityBaseMultiplier)), fullDealPower)
-    // fullDealPledge := miner.InitialPledgeForPower(fullDealPower, actor.baselinePower, actor.epochRewardSmooth, actor.epochQAPowerSmooth, rt.TotalFilCircSupply())
-
-    // // Prove just the first sector, with no deals
-    // {
-    //     precommit := precommits[0]
-    //     sector := actor.proveCommitSectorAndConfirm(rt, precommit, makeProveCommit(precommit.Info.SectorNumber), proveCommitConf{})
-    //     assert_eq!( rt.Epoch(), sector.Activation)
-    //     st := getState(rt)
-    //     expectedDeposit := big.Sum(deposits[1:]...) // First sector deposit released
-    //     assert_eq!( expectedDeposit, st.PreCommitDeposits)
-
-    //     // Expect power/pledge for a sector with no deals
-    //     assert_eq!( noDealPledge, sector.initial_pledge)
-    //     assert_eq!( noDealPledge, st.initial_pledge)
-    // }
-    // // Prove the next, with one deal
-    // {
-    //     precommit := precommits[1]
-    //     sector := actor.proveCommitSectorAndConfirm(rt, precommit, makeProveCommit(precommit.Info.SectorNumber), proveCommitConf{})
-    //     assert_eq!( rt.Epoch(), sector.Activation)
-    //     st := getState(rt)
-    //     expectedDeposit := big.Sum(deposits[2:]...) // First and second sector deposits released
-    //     assert_eq!( expectedDeposit, st.PreCommitDeposits)
-
-    //     // Expect power/pledge for the two sectors (only this one having any deal weight)
-    //     assert_eq!( fullDealPledge, sector.initial_pledge)
-    //     assert_eq!( big.Add(noDealPledge, fullDealPledge), st.initial_pledge)
-    // }
-    // // Prove the last
-    // {
-    //     precommit := precommits[2]
-    //     sector := actor.proveCommitSectorAndConfirm(rt, precommit, makeProveCommit(precommit.Info.SectorNumber), proveCommitConf{})
-    //     assert_eq!( rt.Epoch(), sector.Activation)
-    //     st := getState(rt)
-    //     assert_eq!( big.Zero(), st.PreCommitDeposits)
-
-    //     // Expect power/pledge for the three sectors
-    //     assert_eq!( fullDealPledge, sector.initial_pledge)
-    //     assert_eq!( big.Sum(noDealPledge, fullDealPledge, fullDealPledge), st.initial_pledge)
-    // }
+        // Expect power/pledge for the three sectors
+        assert_eq!(&full_deal_pledge, &sector.initial_pledge);
+        assert_eq!(&no_deal_pledge + &full_deal_pledge + &full_deal_pledge, st.initial_pledge);
+    }
 }
 /*
     t.Run("prove sectors from batch pre-commit", func(t *testing.T) {
