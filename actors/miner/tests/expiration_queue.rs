@@ -523,6 +523,174 @@ fn reschedule_recover_restores_all_sector_stats() {
     assert_eq!(set.faulty_power, PowerPair::zero());
 }
 
+#[test]
+fn replaces_sectors_with_new_sectors() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    // Create expiration 3 sets
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+
+    // add sectors to each set
+    let sectors = sectors();
+    let (_sec_nums, _power, _pledge) = queue
+        .add_active_sectors(
+            &[sectors[0].clone(), sectors[1].clone(), sectors[3].clone(), sectors[5].clone()],
+            SECTOR_SIZE,
+        )
+        .unwrap();
+
+    let _ = queue.amt.flush().unwrap();
+
+    // remove all from first set, replace second set, and append to third
+    let to_remove = [sectors[0].clone(), sectors[1].clone(), sectors[3].clone()];
+    let to_add = [sectors[2].clone(), sectors[4].clone()];
+    let (removed, added, power_delta, pledge_delta) =
+        queue.replace_sectors(&to_remove, &to_add, SECTOR_SIZE).unwrap();
+    assert_eq!(removed, mk_bitfield([1, 2, 4]));
+    assert_eq!(added, mk_bitfield([3, 5]));
+    let added_power = power_for_sectors(SECTOR_SIZE, &to_add);
+    assert_eq!(power_delta, &added_power - &power_for_sectors(SECTOR_SIZE, &to_remove));
+    assert_eq!(TokenAmount::from(1002 + 1004 - 1000 - 1001 - 1003), pledge_delta);
+
+    // first set is gone
+    require_no_expiration_groups_before(9, &mut queue);
+
+    // second set is replaced
+    let set = queue.pop_until(9).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([3]));
+    assert!(set.early_sectors.is_empty());
+
+    // pledge and power is only from sector 3
+    assert_eq!(set.on_time_pledge, TokenAmount::from(1002));
+    assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors[2..3]));
+    assert_eq!(set.faulty_power, PowerPair::zero());
+
+    // last set appends sector 6
+    require_no_expiration_groups_before(13, &mut queue);
+    let set = queue.pop_until(13).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([5, 6]));
+    assert!(set.early_sectors.is_empty());
+
+    // pledge and power are the sum of old and new sectors
+    assert_eq!(set.on_time_pledge, TokenAmount::from(2009));
+    assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors[4..]));
+    assert_eq!(set.faulty_power, PowerPair::zero());
+}
+
+#[test]
+fn removes_sectors() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    // add all sectors into 3 sets
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+    let _ = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+
+    let _ = queue.amt.flush().unwrap();
+
+    // put queue in a state where some sectors are early and some are faulty
+    let _ = queue.reschedule_as_faults(6, &sectors()[1..], SECTOR_SIZE).unwrap();
+
+    let _ = queue.amt.flush().unwrap();
+
+    // remove an active sector from first set, faulty sector and early faulty sector from second set,
+    let to_remove =
+        [sectors()[0].clone(), sectors()[3].clone(), sectors()[4].clone(), sectors()[5].clone()];
+
+    // and only sector from last set
+    let faults = mk_bitfield([4, 5, 6]);
+
+    // label the last as recovering
+    let recovering = mk_bitfield([6]);
+    let (removed, recovering_power) =
+        queue.remove_sectors(&rt.policy, &to_remove, &faults, &recovering, SECTOR_SIZE).unwrap();
+
+    // assert all return values are correct
+    assert_eq!(removed.on_time_sectors, mk_bitfield([1, 4]));
+    assert_eq!(removed.early_sectors, mk_bitfield([5, 6]));
+    assert_eq!(removed.on_time_pledge, TokenAmount::from(1000 + 1003)); // only on-time sectors
+    assert_eq!(removed.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[0..1]));
+    assert_eq!(removed.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[3..6]));
+    assert_eq!(recovering_power, power_for_sectors(SECTOR_SIZE, &sectors()[5..6]));
+
+    // assert queue state is as expected
+
+    // only faulty sector 2 is found in first set
+    require_no_expiration_groups_before(5, &mut queue);
+    let set = queue.pop_until(5).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([2]));
+    assert!(set.early_sectors.is_empty());
+    assert_eq!(set.on_time_pledge, TokenAmount::from(1001));
+    assert_eq!(set.active_power, PowerPair::zero());
+    assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[1..2]));
+
+    // only faulty on-time sector 3 is found in second set
+    require_no_expiration_groups_before(9, &mut queue);
+    let set = queue.pop_until(9).unwrap();
+
+    assert_eq!(set.on_time_sectors, mk_bitfield([3]));
+    assert!(set.early_sectors.is_empty());
+    assert_eq!(set.on_time_pledge, TokenAmount::from(1002));
+    assert_eq!(set.active_power, PowerPair::zero());
+    assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[2..3]));
+
+    // no further sets remain
+    require_no_expiration_groups_before(20, &mut queue);
+}
+
+#[test]
+fn adding_no_sectors_leaves_the_queue_empty() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+    let _ = queue.add_active_sectors(&[], SECTOR_SIZE).unwrap();
+
+    assert_eq!(queue.amt.count(), 0);
+}
+
+#[test]
+fn rescheduling_no_expirations_as_faults_leaves_the_queue_empty() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+    let _ = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+
+    // all sectors already expire before epoch 15, nothing should change.
+    let length = queue.amt.count();
+    let _ = queue.reschedule_as_faults(15, &sectors(), SECTOR_SIZE).unwrap();
+    assert_eq!(queue.amt.count(), length);
+}
+
+#[test]
+fn rescheduling_all_expirations_as_faults_leaves_the_queue_empty_if_it_was_empty() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+    let _ = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
+
+    // all sectors already expire before epoch 15, nothing should change.
+    let length = queue.amt.count();
+    let _ = queue.reschedule_all_as_faults(15).unwrap();
+    assert_eq!(queue.amt.count(), length);
+}
+
+#[test]
+fn rescheduling_no_sectors_as_recovered_leaves_the_queue_empty() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+
+    let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
+    let _ = queue.reschedule_recovered([].to_vec(), SECTOR_SIZE).unwrap();
+    assert!(queue.amt.count().is_zero());
+}
+
 fn test_sector(
     expiration: ChainEpoch,
     sector_number: SectorNumber,
