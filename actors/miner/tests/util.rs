@@ -588,7 +588,7 @@ impl ActorHarness {
         Ok(self.get_sector(rt, sector_number))
     }
 
-    fn prove_commit_sector(
+    pub fn prove_commit_sector(
         &self,
         rt: &mut MockRuntime,
         pc: &SectorPreCommitOnChainInfo,
@@ -656,7 +656,7 @@ impl ActorHarness {
         Ok(())
     }
 
-    fn confirm_sector_proofs_valid(
+    pub fn confirm_sector_proofs_valid(
         &self,
         rt: &mut MockRuntime,
         cfg: ProveCommitConfig,

@@ -547,3 +547,36 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
     .unwrap();
     check_state_invariants(&rt);
 }
+
+#[test]
+fn drop_invalid_prove_commit_while_processing_valid_one() {
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+
+    h.construct_and_verify(&mut rt);
+
+    // make two precommits
+    let expiration = DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period + PERIOD_OFFSET - 1;
+    let precommit_epoch = rt.epoch + 1;
+    rt.set_epoch(precommit_epoch);
+    let params_a = h.make_pre_commit_params(h.next_sector_no, rt.epoch - 1, expiration, vec![1]);
+    let pre_commit_a = h.pre_commit_sector(&mut rt, params_a, PreCommitConfig::empty(), true);
+    let sector_no_a = h.next_sector_no;
+    h.next_sector_no += 1;
+    let params_b = h.make_pre_commit_params(h.next_sector_no, rt.epoch - 1, expiration, vec![2]);
+    let pre_commit_b = h.pre_commit_sector(&mut rt, params_b, PreCommitConfig::empty(), false);
+    let sector_no_b = h.next_sector_no;
+
+    // handle both prove commits in the same epoch
+    rt.set_epoch(precommit_epoch + max_prove_commit_duration(&rt.policy, h.seal_proof_type) - 1);
+
+    h.prove_commit_sector(&mut rt, &pre_commit_a, h.make_prove_commit_params(sector_no_a)).unwrap();
+    h.prove_commit_sector(&mut rt, &pre_commit_b, h.make_prove_commit_params(sector_no_b)).unwrap();
+
+    let conf = ProveCommitConfig {
+        verify_deals_exit: HashMap::from([(sector_no_a, ExitCode::USR_ILLEGAL_ARGUMENT)]),
+    };
+    h.confirm_sector_proofs_valid(&mut rt, conf, vec![pre_commit_a, pre_commit_b]).unwrap();
+    check_state_invariants(&rt);
+}
