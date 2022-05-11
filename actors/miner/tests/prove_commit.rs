@@ -601,3 +601,46 @@ fn prove_commit_just_after_period_start_permits_post() {
     h.advance_and_submit_posts(&mut rt, &[sector]);
     check_state_invariants(&rt);
 }
+
+#[test]
+fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
+    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+
+    let precommit_epoch = PERIOD_OFFSET + 1;
+    rt.set_epoch(precommit_epoch);
+
+    h.construct_and_verify(&mut rt);
+    let deadline = h.deadline(&rt);
+
+    let sector_no = 100;
+    let params = h.make_pre_commit_params(
+        sector_no,
+        precommit_epoch - 1,
+        deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period,
+        vec![],
+    );
+    let precommit = h.pre_commit_sector(&mut rt, params, PreCommitConfig::empty(), true);
+
+    // precommit at correct epoch
+    rt.set_epoch(rt.epoch + rt.policy.pre_commit_challenge_delay + 1);
+    h.prove_commit_sector(&mut rt, &precommit, h.make_prove_commit_params(sector_no)).unwrap();
+
+    // confirm at sector expiration (this probably can't happen)
+    rt.set_epoch(precommit.info.expiration);
+    // sector skipped but no failure occurs
+    h.confirm_sector_proofs_valid(&mut rt, ProveCommitConfig::empty(), vec![precommit.clone()])
+        .unwrap();
+
+    // it still skips if sector lifetime is negative
+    rt.set_epoch(precommit.info.expiration + 1);
+    h.confirm_sector_proofs_valid(&mut rt, ProveCommitConfig::empty(), vec![precommit.clone()])
+        .unwrap();
+
+    // it fails up to the miniumum expiration
+    rt.set_epoch(precommit.info.expiration - rt.policy.min_sector_expiration + 1);
+    h.confirm_sector_proofs_valid(&mut rt, ProveCommitConfig::empty(), vec![precommit.clone()])
+        .unwrap();
+    check_state_invariants(&rt);
+}
