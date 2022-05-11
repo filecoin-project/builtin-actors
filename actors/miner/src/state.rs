@@ -884,7 +884,13 @@ impl State {
     pub fn repay_debts(&mut self, curr_balance: &TokenAmount) -> anyhow::Result<TokenAmount> {
         let unlocked_balance = self.get_unlocked_balance(curr_balance)?;
         if unlocked_balance < self.fee_debt {
-            return Err(actor_error!(insufficient_funds, "").into());
+            return Err(actor_error!(
+                insufficient_funds,
+                "unlocked balance can not repay fee debt ({} < {})",
+                unlocked_balance,
+                self.fee_debt
+            )
+            .into());
         }
 
         Ok(std::mem::take(&mut self.fee_debt))
