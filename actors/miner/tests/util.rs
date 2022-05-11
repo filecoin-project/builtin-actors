@@ -309,12 +309,14 @@ impl ActorHarness {
 
         let mut info = Vec::with_capacity(num_sectors);
         for pc in precommits {
-            let sector = self.prove_commit_sector_and_confirm(
-                rt,
-                &pc,
-                self.make_prove_commit_params(pc.info.sector_number),
-                ProveCommitConfig::empty(),
-            );
+            let sector = self
+                .prove_commit_sector_and_confirm(
+                    rt,
+                    &pc,
+                    self.make_prove_commit_params(pc.info.sector_number),
+                    ProveCommitConfig::empty(),
+                )
+                .unwrap();
             info.push(sector);
         }
         rt.reset();
@@ -578,12 +580,12 @@ impl ActorHarness {
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
         cfg: ProveCommitConfig,
-    ) -> SectorOnChainInfo {
+    ) -> Result<SectorOnChainInfo, ActorError> {
         let sector_number = params.sector_number;
-        self.prove_commit_sector(rt, pc, params);
-        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()]);
+        self.prove_commit_sector(rt, pc, params)?;
+        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()])?;
 
-        self.get_sector(rt, sector_number)
+        Ok(self.get_sector(rt, sector_number))
     }
 
     fn prove_commit_sector(
@@ -591,7 +593,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
-    ) {
+    ) -> Result<(), ActorError> {
         let commd = make_piece_cid(b"commd");
         let seal_rand = Randomness(vec![1, 2, 3, 4]);
         let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
@@ -645,11 +647,13 @@ impl ActorHarness {
             ExitCode::OK,
         );
         rt.expect_validate_caller_any();
-        let result = rt
-            .call::<Actor>(Method::ProveCommitSector as u64, &RawBytes::serialize(params).unwrap())
-            .unwrap();
+        let result = rt.call::<Actor>(
+            Method::ProveCommitSector as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
         expect_empty(result);
         rt.verify();
+        Ok(())
     }
 
     fn confirm_sector_proofs_valid(
@@ -657,7 +661,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         cfg: ProveCommitConfig,
         pcs: Vec<SectorPreCommitOnChainInfo>,
-    ) {
+    ) -> Result<(), ActorError> {
         self.confirm_sector_proofs_valid_internal(rt, cfg, &pcs);
 
         let mut all_sector_numbers = Vec::new();
@@ -677,9 +681,9 @@ impl ActorHarness {
         rt.call::<Actor>(
             Method::ConfirmSectorProofsValid as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
+        )?;
         rt.verify();
+        Ok(())
     }
 
     fn confirm_sector_proofs_valid_internal(
@@ -1558,7 +1562,7 @@ impl PreCommitConfig {
 
 #[derive(Default, Clone)]
 pub struct ProveCommitConfig {
-    verify_deals_exit: HashMap<SectorNumber, ExitCode>,
+    pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
 }
 
 #[allow(dead_code)]

@@ -3,13 +3,17 @@ use fil_actor_miner::PreCommitSectorBatchParams;
 use fil_actor_miner::{
     initial_pledge_for_power, pre_commit_deposit_for_power, qa_power_for_weight, PowerPair,
 };
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::DealWeight;
+use fil_actors_runtime::test_utils::expect_abort;
+use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY};
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::error::ExitCode;
+
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::MAX_SECTOR_NUMBER;
+use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use std::collections::HashMap;
 
 mod util;
@@ -87,12 +91,14 @@ fn prove_single_sector() {
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
     rt.balance.replace(TokenAmount::from(1000) * 1e18 as u64);
-    let sector = h.prove_commit_sector_and_confirm(
-        &mut rt,
-        &precommit,
-        h.make_prove_commit_params(sector_no),
-        ProveCommitConfig::default(),
-    );
+    let sector = h
+        .prove_commit_sector_and_confirm(
+            &mut rt,
+            &precommit,
+            h.make_prove_commit_params(sector_no),
+            ProveCommitConfig::default(),
+        )
+        .unwrap();
 
     assert_eq!(precommit.info.seal_proof, sector.seal_proof);
     assert_eq!(precommit.info.sealed_cid, sector.sealed_cid);
@@ -289,12 +295,14 @@ fn prove_sectors_from_batch_pre_commit() {
     // Prove just the first sector, with no deals
     {
         let precommit = &precommits[0];
-        let sector = h.prove_commit_sector_and_confirm(
-            &mut rt,
-            precommit,
-            h.make_prove_commit_params(precommit.info.sector_number),
-            ProveCommitConfig::default(),
-        );
+        let sector = h
+            .prove_commit_sector_and_confirm(
+                &mut rt,
+                precommit,
+                h.make_prove_commit_params(precommit.info.sector_number),
+                ProveCommitConfig::default(),
+            )
+            .unwrap();
         assert_eq!(rt.epoch, sector.activation);
         let st = h.get_state(&rt);
         let expected_deposit: TokenAmount = deposits[1..].iter().sum(); // First sector deposit released
@@ -307,12 +315,14 @@ fn prove_sectors_from_batch_pre_commit() {
     // Prove the next, with one deal
     {
         let precommit = &precommits[1];
-        let sector = h.prove_commit_sector_and_confirm(
-            &mut rt,
-            precommit,
-            h.make_prove_commit_params(precommit.info.sector_number),
-            ProveCommitConfig::default(),
-        );
+        let sector = h
+            .prove_commit_sector_and_confirm(
+                &mut rt,
+                precommit,
+                h.make_prove_commit_params(precommit.info.sector_number),
+                ProveCommitConfig::default(),
+            )
+            .unwrap();
         assert_eq!(rt.epoch, sector.activation);
         let st = h.get_state(&rt);
         let expected_deposit: TokenAmount = deposits[2..].iter().sum(); // First and second sector deposits released
@@ -325,12 +335,14 @@ fn prove_sectors_from_batch_pre_commit() {
     // Prove the last
     {
         let precommit = &precommits[2];
-        let sector = h.prove_commit_sector_and_confirm(
-            &mut rt,
-            precommit,
-            h.make_prove_commit_params(precommit.info.sector_number),
-            ProveCommitConfig::default(),
-        );
+        let sector = h
+            .prove_commit_sector_and_confirm(
+                &mut rt,
+                precommit,
+                h.make_prove_commit_params(precommit.info.sector_number),
+                ProveCommitConfig::default(),
+            )
+            .unwrap();
         assert_eq!(rt.epoch, sector.activation);
         let st = h.get_state(&rt);
         assert!(st.pre_commit_deposits.is_zero());
@@ -339,4 +351,139 @@ fn prove_sectors_from_batch_pre_commit() {
         assert_eq!(&full_deal_pledge, &sector.initial_pledge);
         assert_eq!(&no_deal_pledge + &full_deal_pledge + &full_deal_pledge, st.initial_pledge);
     }
+}
+
+fn max_prove_commit_duration(policy: &Policy, seal_proof: RegisteredSealProof) -> ChainEpoch {
+    use RegisteredSealProof::*;
+    match seal_proof {
+        // PARAM_SPEC
+        StackedDRG2KiBV1 => EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
+        StackedDRG512MiBV1 => EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
+        StackedDRG8MiBV1 => EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
+        StackedDRG32GiBV1 => EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
+        StackedDRG64GiBV1 => EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
+
+        // PARAM_SPEC
+        StackedDRG2KiBV1P1 => 30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
+        StackedDRG512MiBV1P1 => 30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
+        StackedDRG8MiBV1P1 => 30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
+        StackedDRG32GiBV1P1 => 30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
+        StackedDRG64GiBV1P1 => 30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
+        Invalid(_) => panic!("max_prove_commit_duration not defined for invalid seal proofs."),
+    }
+}
+
+#[test]
+fn invalid_proof_rejected() {
+    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+
+    let precommit_epoch = PERIOD_OFFSET + 1;
+    rt.set_epoch(precommit_epoch);
+
+    h.construct_and_verify(&mut rt);
+    let deadline = h.deadline(&rt);
+
+    // Make a good commitment for the proof to target.
+    let sector_no = 100;
+    let params = h.make_pre_commit_params(
+        sector_no,
+        precommit_epoch - 1,
+        deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period,
+        vec![1],
+    );
+    let precommit = h.pre_commit_sector(&mut rt, params, PreCommitConfig::empty(), true);
+
+    // Sector pre-commitment missing.
+    rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
+    expect_abort(
+        ExitCode::USR_NOT_FOUND,
+        h.prove_commit_sector_and_confirm(
+            &mut rt,
+            &precommit,
+            h.make_prove_commit_params(sector_no + 1),
+            ProveCommitConfig::empty(),
+        ),
+    );
+    rt.reset();
+
+    // Too late.
+    rt.set_epoch(
+        precommit_epoch + max_prove_commit_duration(&rt.policy, precommit.info.seal_proof) + 1,
+    );
+    expect_abort(
+        ExitCode::USR_NOT_FOUND,
+        h.prove_commit_sector_and_confirm(
+            &mut rt,
+            &precommit,
+            h.make_prove_commit_params(sector_no + 1),
+            ProveCommitConfig::empty(),
+        ),
+    );
+    rt.reset();
+
+    // Too early.
+    rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay - 1);
+    expect_abort(
+        ExitCode::USR_NOT_FOUND,
+        h.prove_commit_sector_and_confirm(
+            &mut rt,
+            &precommit,
+            h.make_prove_commit_params(sector_no + 1),
+            ProveCommitConfig::empty(),
+        ),
+    );
+    rt.reset();
+
+    // Set the right epoch for all following tests
+    rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
+
+    // Invalid deals (market ActivateDeals aborts)
+    let verify_deals_exit =
+        HashMap::from([(precommit.info.sector_number, ExitCode::USR_ILLEGAL_ARGUMENT)]);
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        h.prove_commit_sector_and_confirm(
+            &mut rt,
+            &precommit,
+            h.make_prove_commit_params(sector_no),
+            ProveCommitConfig { verify_deals_exit },
+        ),
+    );
+    rt.reset();
+
+    rt.balance.replace(TokenAmount::from(1_000) * 1e18 as u64);
+
+    let prove_commit = h.make_prove_commit_params(sector_no);
+    h.prove_commit_sector_and_confirm(
+        &mut rt,
+        &precommit,
+        prove_commit,
+        ProveCommitConfig::empty(),
+    )
+    .unwrap();
+    let st = h.get_state(&rt);
+
+    // Verify new sectors
+    // TODO minerstate
+    //newSectors, err := st.NewSectors.All(miner.SectorsMax)
+    //require.NoError(t, err)
+    //assert.Equal(t, []uint64{uint64(sectorNo)}, newSectors)
+    // Verify pledge lock-up
+    assert!(st.initial_pledge > TokenAmount::zero());
+    rt.reset();
+
+    // Duplicate proof (sector no-longer pre-committed)
+    expect_abort(
+        ExitCode::USR_NOT_FOUND,
+        h.prove_commit_sector_and_confirm(
+            &mut rt,
+            &precommit,
+            h.make_prove_commit_params(sector_no),
+            ProveCommitConfig::empty(),
+        ),
+    );
+    rt.reset();
+    check_state_invariants(&rt);
 }
