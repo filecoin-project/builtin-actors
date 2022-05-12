@@ -947,3 +947,6 @@ fn check_no_early_sectors(set: &BTreeSet<u64>, es: &ExpirationSet) -> anyhow::Re
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

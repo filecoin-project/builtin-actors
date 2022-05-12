@@ -126,8 +126,7 @@ impl ActorHarness {
         params: RawBytes,
     ) -> Result<RawBytes, ActorError> {
         rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
-        let propose_params =
-            ProposeParams { to, value: value.clone(), method, params: params.clone() };
+        let propose_params = ProposeParams { to, value, method, params };
         let ret =
             rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap());
         rt.verify();
