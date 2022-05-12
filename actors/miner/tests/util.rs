@@ -344,8 +344,12 @@ impl ActorHarness {
         // Precommit
         let pre_commit_params =
             self.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, deal_ids);
-        let precommit =
-            self.pre_commit_sector(rt, pre_commit_params.clone(), PreCommitConfig::empty(), true);
+        let precommit = self.pre_commit_sector_and_get(
+            rt,
+            pre_commit_params.clone(),
+            PreCommitConfig::empty(),
+            true,
+        );
 
         self.advance_to_epoch_with_cron(
             rt,
