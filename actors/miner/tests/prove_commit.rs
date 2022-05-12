@@ -234,12 +234,12 @@ fn prove_sectors_from_batch_pre_commit() {
                 verified_deal_weight: DealWeight::zero(),
             },
             SectorWeights {
-                deal_space: deal_space,
+                deal_space,
                 deal_weight: deal_weight.clone(),
                 verified_deal_weight: verified_deal_weight.clone(),
             },
             SectorWeights {
-                deal_space: deal_space,
+                deal_space,
                 deal_weight: deal_weight.clone(),
                 verified_deal_weight: verified_deal_weight.clone(),
             },
