@@ -860,6 +860,14 @@ impl ops::Add for &PowerPair {
     }
 }
 
+impl ops::Add for PowerPair {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        &self + &rhs
+    }
+}
+
 impl ops::AddAssign<&Self> for PowerPair {
     fn add_assign(&mut self, rhs: &Self) {
         *self = &*self + rhs;
@@ -871,6 +879,14 @@ impl ops::Sub for &PowerPair {
 
     fn sub(self, rhs: Self) -> Self::Output {
         PowerPair { raw: &self.raw - &rhs.raw, qa: &self.qa - &rhs.qa }
+    }
+}
+
+impl ops::Sub for PowerPair {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        &self - &rhs
     }
 }
 
