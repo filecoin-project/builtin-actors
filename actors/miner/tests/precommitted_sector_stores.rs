@@ -74,11 +74,11 @@ fn duplicate_put_rejected() {
     // In sequence
     let mut st = h.get_state(&rt);
     assert!(st.put_precommitted_sectors(&rt.store, vec![pc1.clone()]).is_ok());
-    assert!(st.put_precommitted_sectors(&rt.store, vec![pc1.clone()]).is_err());
+    assert!(st.put_precommitted_sectors(&rt.store, vec![pc1]).is_err());
 
     // In batch
     let pc2 = new_pre_commit_on_chain(2, make_sealed_cid("2".as_bytes()), TokenAmount::from(1), 1);
-    assert!(st.put_precommitted_sectors(&rt.store, vec![pc2.clone(), pc2.clone()]).is_err());
+    assert!(st.put_precommitted_sectors(&rt.store, vec![pc2.clone(), pc2]).is_err());
 }
 
 fn delete_pre_commit(rt: &mut MockRuntime, sector_number: SectorNumber) {
