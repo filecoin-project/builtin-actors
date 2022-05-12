@@ -78,7 +78,7 @@ pub struct VerifyDealsForActivationReturn {
     pub sectors: Vec<SectorWeights>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Default)]
+#[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
 pub struct SectorWeights {
     pub deal_space: u64,
     #[serde(with = "bigint_ser")]
