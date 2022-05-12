@@ -14,6 +14,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{
     RegisteredPoStProof, RegisteredSealProof, SectorQuality, SectorSize, StoragePower,
 };
+use fvm_shared::version::NetworkVersion;
 use lazy_static::lazy_static;
 
 use super::types::SectorOnChainInfo;
@@ -49,8 +50,16 @@ pub fn is_sealed_sector(c: &Cid) -> bool {
 }
 
 /// List of proof types which can be used when creating new miner actors
-pub fn can_pre_commit_seal_proof(policy: &Policy, proof: RegisteredSealProof) -> bool {
-    policy.valid_pre_commit_proof_type.contains(&proof)
+pub fn can_pre_commit_seal_proof(
+    policy: &Policy,
+    proof: RegisteredSealProof,
+    network_version: NetworkVersion,
+) -> bool {
+    if network_version >= NetworkVersion::V8 {
+        policy.valid_pre_commit_proof_type_v8.contains(&proof)
+    } else {
+        policy.valid_pre_commit_proof_type.contains(&proof)
+    }
 }
 
 /// Checks whether a seal proof type is supported for new miners and sectors.

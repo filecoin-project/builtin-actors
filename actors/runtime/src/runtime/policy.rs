@@ -137,6 +137,9 @@ pub struct Policy {
     /// Allowed pre commit proof types for new miners
     pub valid_pre_commit_proof_type: HashSet<RegisteredSealProof>,
 
+    /// Allowed pre commit proof types for new miners from network version 8 onwards
+    pub valid_pre_commit_proof_type_v8: HashSet<RegisteredSealProof>,
+
     // --- verifreg policy
     /// Minimum verified deal size
     pub minimum_verified_deal_size: StoragePower,
@@ -228,6 +231,12 @@ impl Default for Policy {
                 RegisteredSealProof::StackedDRG8MiBV1P1,
                 #[cfg(feature = "sector-512m")]
                 RegisteredSealProof::StackedDRG512MiBV1P1,
+                #[cfg(feature = "sector-32g")]
+                RegisteredSealProof::StackedDRG32GiBV1P1,
+                #[cfg(feature = "sector-64g")]
+                RegisteredSealProof::StackedDRG64GiBV1P1,
+            ]),
+            valid_pre_commit_proof_type_v8: HashSet::<RegisteredSealProof>::from([
                 #[cfg(feature = "sector-32g")]
                 RegisteredSealProof::StackedDRG32GiBV1P1,
                 #[cfg(feature = "sector-64g")]

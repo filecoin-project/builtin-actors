@@ -463,11 +463,7 @@ mod miner_actor_test_commitment {
                 util::PreCommitConfig::default(),
                 false,
             );
-            expect_abort_contains_message(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                "too old",
-                ret,
-            );
+            expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "too old", ret);
             rt.reset();
         }
 
@@ -486,11 +482,7 @@ mod miner_actor_test_commitment {
                 },
                 false,
             );
-            expect_abort_contains_message(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                "deals too large",
-                ret,
-            );
+            expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "deals too large", ret);
         }
 
         // Try to precommit while in fee debt with insufficient balance
@@ -608,7 +600,6 @@ mod miner_actor_test_commitment {
         }
     }
 
-    #[ignore]
     #[test]
     fn precommit_checks_seal_proof_version() {
         let period_offset = ChainEpoch::from(100);
