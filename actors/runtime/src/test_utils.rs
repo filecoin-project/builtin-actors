@@ -1277,7 +1277,7 @@ impl MessageAccumulator {
     }
 
     /// Adds a message if result is `Err`. Underlying error must be `Display`.
-    pub fn require_no_error<V, E: Display>(&mut self, result: Result<V, E>, msg: String) {
+    pub fn require_no_error<V, E: Display>(&mut self, result: Result<V, E>, msg: &str) {
         if let Err(e) = result {
             self.add(&format!("{msg}: {e}"));
         }
@@ -1323,7 +1323,7 @@ mod message_accumulator_test {
     fn require_no_error() {
         let fiasco: Result<(), String> = Err("fiasco".to_owned());
         let mut acc = MessageAccumulator::default();
-        acc.require_no_error(fiasco, "Cthulhu says".to_owned());
+        acc.require_no_error(fiasco, "Cthulhu says");
 
         let msgs = acc.messages();
         assert_eq!(msgs.len(), 1);

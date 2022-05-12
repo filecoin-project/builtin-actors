@@ -5,7 +5,7 @@ use fil_actor_miner::{
     TerminationResult,
 };
 use fil_actors_runtime::runtime::{Policy, Runtime};
-use fil_actors_runtime::test_utils::MockRuntime;
+use fil_actors_runtime::test_utils::{MessageAccumulator, MockRuntime};
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_bitfield::{BitField, MaybeBitField};
 use fvm_ipld_blockstore::Blockstore;
@@ -497,11 +497,11 @@ impl ExpectedDeadlineState {
     fn assert<BS: Blockstore>(
         self,
         store: &BS,
-        _sectors: &[SectorOnChainInfo],
+        sectors: &[SectorOnChainInfo],
         deadline: &Deadline,
     ) -> Self {
         let (_faults, _recoveries, _terminations, _unproven) =
-            self.check_deadline_invariants(store, deadline);
+            self.check_deadline_invariants(store, sectors, deadline);
 
         // TODO uncomment once invariants are implemented
         //assert_eq!(self.faults, faults);
@@ -524,10 +524,24 @@ impl ExpectedDeadlineState {
     // recoveries, terminations, and partition/sector assignments.
     fn check_deadline_invariants<BS: Blockstore>(
         &self,
-        _store: &BS,
-        _deadline: &Deadline,
+        store: &BS,
+        sectors: &[SectorOnChainInfo],
+        deadline: &Deadline,
     ) -> (BitField, BitField, BitField, BitField) {
-        // TODO
+        let mut acc = MessageAccumulator::default();
+        let _summary = check_deadline_state_invariants(
+            deadline,
+            store,
+            QUANT_SPEC,
+            SECTOR_SIZE,
+            &sectors_as_map(sectors),
+            &mut acc,
+        );
+
+        assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+
+        // TODO more checks
+
         (BitField::default(), BitField::default(), BitField::default(), BitField::default())
     }
 }
