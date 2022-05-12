@@ -486,7 +486,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
     let sectors =
         h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
 
-    // preecommit another sector so we may prove it
+    // precommit another sector so we may prove it
     let expiration = DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period + PERIOD_OFFSET - 1;
     let precommit_epoch = rt.epoch + 1;
     rt.set_epoch(precommit_epoch);
