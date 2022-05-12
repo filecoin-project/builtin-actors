@@ -1696,12 +1696,13 @@ pub struct PartitionStateSummary {
     pub active_power: PowerPair,
     pub faulty_power: PowerPair,
     pub recovering_power: PowerPair,
+    // Epochs at which some sector is scheduled to expire.
     pub expiration_epochs: Vec<ChainEpoch>,
     pub early_termination_count: usize,
 }
 
 impl PartitionStateSummary {
-    fn create<BS: Blockstore>(
+    fn check_partition_state_invariants<BS: Blockstore>(
         partition: &Partition,
         store: &BS,
         quant: QuantSpec,
@@ -1833,7 +1834,7 @@ impl PartitionStateSummary {
         let mut expiration_epochs = Vec::new();
         match ExpirationQueue::new(store, &partition.expirations_epochs, quant) {
             Ok(expiration_queue) => {
-                let queue_summary = ExpirationQueueStateSummary::create(
+                let queue_summary = ExpirationQueueStateSummary::check_expiration_queue(
                     &expiration_queue,
                     &live_sectors,
                     &partition.faults,
@@ -1896,7 +1897,7 @@ struct ExpirationQueueStateSummary {
 
 impl ExpirationQueueStateSummary {
     // Checks the expiration queue for consistency.
-    fn create<BS: Blockstore>(
+    fn check_expiration_queue<BS: Blockstore>(
         expiration_queue: &ExpirationQueue<BS>,
         live_sectors: &SectorsMap,
         partition_faults: &BitField,
@@ -1911,16 +1912,12 @@ impl ExpirationQueueStateSummary {
         let mut all_active_power = PowerPair::zero();
         let mut all_faulty_power = PowerPair::zero();
         let mut all_on_time_pledge = BigInt::zero();
-        let mut first_queue_epoch: ChainEpoch = -1;
 
         let ret = expiration_queue.amt.for_each(|epoch, expiration_set| {
             let epoch = epoch as i64;
             let mut acc = acc.with_prefix(&format!("expiration epoch {epoch}: "));
             let quant_up = quant.quantize_up(epoch);
             acc.require(quant_up == epoch, &format!("expiration queue key {epoch} is not quantized, expected {quant_up}"));
-            if first_queue_epoch == -1 {
-                first_queue_epoch = epoch;
-            }
 
             expiration_epochs.push(epoch);
 
@@ -1933,10 +1930,8 @@ impl ExpirationQueueStateSummary {
 
                 // check expiring sectors are still alive
                 if let Some(sector) = live_sectors.get(&sector_number) {
-                    // The sector can be "on time" either at its target expiration epoch, or in the first queue entry
-                    // (a CC-replaced sector moved forward).
                     let target = quant.quantize_up(sector.expiration);
-                    acc.require(epoch == target || epoch == first_queue_epoch, &format!("invalid expiration {epoch} for sector {sector_number}, expected {first_queue_epoch} or {target}"));
+                    acc.require(epoch == target, &format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
                     on_time_sectors_pledge += sector.initial_pledge.clone();
                 } else {
                     acc.add(&format!("on time expiration sector {sector_number} isn't live"));
@@ -1950,7 +1945,7 @@ impl ExpirationQueueStateSummary {
                 }
 
                 // check early sectors are faulty
-                acc.require(partition_faults.is_empty() || partition_faults.get(sector_number), &format!("sector {sector_number} expiring early but not faulty"));
+                acc.require(partition_faults.get(sector_number), &format!("sector {sector_number} expiring early but not faulty"));
 
                 // check expiring sectors are still alive
                 if let Some(sector) = live_sectors.get(&sector_number) {
@@ -2122,8 +2117,14 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
             assert_eq!(index, partition_count);
             partition_count += 1;
 
-            let _summary =
-                PartitionStateSummary::create(partition, store, quant, sector_size, sectors, acc);
+            let _summary = PartitionStateSummary::check_partition_state_invariants(
+                partition,
+                store,
+                quant,
+                sector_size,
+                sectors,
+                acc,
+            );
 
             Ok(())
         })
