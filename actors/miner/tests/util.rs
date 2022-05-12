@@ -1896,7 +1896,7 @@ impl PartitionStateSummary {
         quant: QuantSpec,
         sector_size: SectorSize,
         sectors_map: &SectorsMap,
-        acc: &mut MessageAccumulator,
+        acc: &MessageAccumulator,
     ) -> Self {
         let live = partition.live_sectors();
         let active = partition.active_sectors();
@@ -2091,7 +2091,7 @@ impl ExpirationQueueStateSummary {
         partition_faults: &BitField,
         quant: QuantSpec,
         sector_size: SectorSize,
-        acc: &mut MessageAccumulator,
+        acc: &MessageAccumulator,
     ) -> Self {
         let mut seen_sectors: HashSet<SectorNumber> = HashSet::new();
         let mut all_on_time: Vec<BitField> = Vec::new();
@@ -2103,7 +2103,7 @@ impl ExpirationQueueStateSummary {
 
         let ret = expiration_queue.amt.for_each(|epoch, expiration_set| {
             let epoch = epoch as i64;
-            let mut acc = acc.with_prefix(&format!("expiration epoch {epoch}: "));
+            let acc = acc.with_prefix(&format!("expiration epoch {epoch}: "));
             let quant_up = quant.quantize_up(epoch);
             acc.require(quant_up == epoch, &format!("expiration queue key {epoch} is not quantized, expected {quant_up}"));
 
@@ -2192,13 +2192,13 @@ impl ExpirationQueueStateSummary {
 fn check_early_termination_queue<BS: Blockstore>(
     early_queue: BitFieldQueue<BS>,
     terminated: &BitField,
-    acc: &mut MessageAccumulator,
+    acc: &MessageAccumulator,
 ) -> usize {
     let mut seen: HashSet<u64> = HashSet::new();
     let mut seen_bitfield = BitField::new();
 
     let iter_result = early_queue.amt.for_each(|epoch, bitfield| {
-        let mut acc = acc.with_prefix(&format!("early termination epoch {epoch}: "));
+        let acc = acc.with_prefix(&format!("early termination epoch {epoch}: "));
         for i in bitfield.iter() {
             acc.require(
                 !seen.contains(&i),
@@ -2241,7 +2241,7 @@ fn select_sectors_map(sectors: &SectorsMap, include: &BitField) -> (SectorsMap, 
 fn require_contains_all(
     superset: &BitField,
     subset: &BitField,
-    acc: &mut MessageAccumulator,
+    acc: &MessageAccumulator,
     error_msg: &str,
 ) {
     if !superset.contains_all(subset) {
@@ -2252,7 +2252,7 @@ fn require_contains_all(
 fn require_contains_none(
     superset: &BitField,
     subset: &BitField,
-    acc: &mut MessageAccumulator,
+    acc: &MessageAccumulator,
     error_msg: &str,
 ) {
     if superset.contains_any(subset) {
@@ -2260,7 +2260,7 @@ fn require_contains_none(
     }
 }
 
-fn require_equal(first: &BitField, second: &BitField, acc: &mut MessageAccumulator, msg: &str) {
+fn require_equal(first: &BitField, second: &BitField, acc: &MessageAccumulator, msg: &str) {
     require_contains_all(first, second, acc, msg);
     require_contains_all(second, first, acc, msg);
 }
@@ -2277,7 +2277,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     quant: QuantSpec,
     sector_size: SectorSize,
     sectors: &SectorsMap,
-    acc: &mut MessageAccumulator,
+    acc: &MessageAccumulator,
 ) -> DeadlineStateSummary {
     // load linked structures
     let partitions = if let Ok(partitions) = deadline.partitions_amt(store) {

@@ -528,14 +528,14 @@ impl ExpectedDeadlineState {
         sectors: &[SectorOnChainInfo],
         deadline: &Deadline,
     ) -> (BitField, BitField, BitField, BitField) {
-        let mut acc = MessageAccumulator::default();
+        let acc = MessageAccumulator::default();
         let _summary = check_deadline_state_invariants(
             deadline,
             store,
             QUANT_SPEC,
             SECTOR_SIZE,
             &sectors_as_map(sectors),
-            &mut acc,
+            &acc,
         );
 
         assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
