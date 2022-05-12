@@ -60,6 +60,7 @@ use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::convert::TryInto;
 
 const RECEIVER_ID: u64 = 1000;
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
@@ -458,7 +459,7 @@ impl ActorHarness {
         params.sectors.iter().map(|sector| self.get_precommit(rt, sector.sector_number)).collect()
     }
 
-    pub fn pre_commit_sector(
+    pub fn pre_commit_sector_internal(
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorParams,

@@ -233,20 +233,4 @@ mod miner_actor_test_commitment {
         assert_eq!(TokenAmount::zero(), st.fee_debt);
         util::check_state_invariants(&rt);
     }
-
-    #[ignore]
-    #[test]
-    fn invalid_pre_commit_rejected() {}
-
-    #[ignore]
-    #[test]
-    fn fails_with_too_many_deals() {}
-
-    #[ignore]
-    #[test]
-    fn precommit_checks_seal_proof_version() {}
-
-    #[ignore]
-    #[test]
-    fn precommit_does_not_vest_funds() {}
 }
