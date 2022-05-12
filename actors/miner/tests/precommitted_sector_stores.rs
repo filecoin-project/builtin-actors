@@ -44,6 +44,44 @@ fn put_get_and_delete() {
     assert!(h.has_precommit(&rt, 2));
 }
 
+#[test]
+#[ignore = "FIXME: delete_precommitted_sectors doesn't fail on nonexistent sector"]
+fn delete_nonexistent_value_returns_an_error() {
+    let h = ActorHarness::new(0);
+    let mut rt = h.new_runtime();
+    h.construct_and_verify(&mut rt);
+
+    let mut st = h.get_state(&rt);
+    assert!(st.delete_precommitted_sectors(&rt.store, &[1]).is_err());
+}
+
+#[test]
+fn get_nonexistent_value_returns_false() {
+    let h = ActorHarness::new(0);
+    let mut rt = h.new_runtime();
+    h.construct_and_verify(&mut rt);
+
+    assert!(!h.has_precommit(&rt, 1));
+}
+
+#[test]
+fn duplicate_put_rejected() {
+    let h = ActorHarness::new(0);
+    let mut rt = h.new_runtime();
+    h.construct_and_verify(&mut rt);
+
+    let pc1 = new_pre_commit_on_chain(1, make_sealed_cid("1".as_bytes()), TokenAmount::from(1), 1);
+
+    // In sequence
+    let mut st = h.get_state(&rt);
+    assert!(st.put_precommitted_sectors(&rt.store, vec![pc1.clone()]).is_ok());
+    assert!(st.put_precommitted_sectors(&rt.store, vec![pc1.clone()]).is_err());
+
+    // In batch
+    let pc2 = new_pre_commit_on_chain(2, make_sealed_cid("2".as_bytes()), TokenAmount::from(1), 1);
+    assert!(st.put_precommitted_sectors(&rt.store, vec![pc2.clone(), pc2.clone()]).is_err());
+}
+
 fn delete_pre_commit(rt: &mut MockRuntime, sector_number: SectorNumber) {
     let mut st = rt.get_state::<State>();
     st.delete_precommitted_sectors(&rt.store, &[sector_number]).unwrap();
