@@ -1,4 +1,5 @@
 use cid::Cid;
+use fil_actor_miner::State;
 use fil_actor_miner::{SectorPreCommitInfo, SectorPreCommitOnChainInfo};
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::test_utils::MockRuntime;
@@ -38,13 +39,13 @@ fn put_get_and_delete() {
     assert_eq!(pc3, h.get_precommit(&mut rt, 3));
     assert_eq!(pc4, h.get_precommit(&mut rt, 4));
 
-    delete_pre_commit(&h, &mut rt, 1);
+    delete_pre_commit(&mut rt, 1);
     assert!(!h.has_precommit(&rt, 1));
     assert!(h.has_precommit(&rt, 2));
 }
 
-fn delete_pre_commit(h: &ActorHarness, rt: &mut MockRuntime, sector_number: SectorNumber) {
-    let mut st = h.get_state(&rt);
+fn delete_pre_commit(rt: &mut MockRuntime, sector_number: SectorNumber) {
+    let mut st = rt.get_state::<State>();
     st.delete_precommitted_sectors(&rt.store, &[sector_number]).unwrap();
     rt.replace_state(&st);
 }
