@@ -152,7 +152,7 @@ mod miner_actor_test_commitment {
             ExitCode::USR_INSUFFICIENT_FUNDS,
             h.pre_commit_sector(
                 &mut rt,
-                precommit_params.clone(),
+                precommit_params,
                 util::PreCommitConfig::empty(),
                 true,
             ),
@@ -182,7 +182,7 @@ mod miner_actor_test_commitment {
 
         let ret = h.pre_commit_sector(
             &mut rt,
-            precommit_params.clone(),
+            precommit_params,
             util::PreCommitConfig {
                 deal_weight: BigInt::default(),
                 verified_deal_weight: BigInt::default(),
@@ -224,7 +224,7 @@ mod miner_actor_test_commitment {
 
         h.pre_commit_sector(
             &mut rt,
-            precommit_params.clone(),
+            precommit_params,
             util::PreCommitConfig::default(),
             true,
         )
