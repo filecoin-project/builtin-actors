@@ -1,19 +1,15 @@
 use fil_actor_market::SectorWeights;
 use fil_actor_miner::{
-    initial_pledge_for_power, pre_commit_deposit_for_power, qa_power_for_weight, PowerPair,
-    PreCommitSectorBatchParams, VestSpec,
+    initial_pledge_for_power, max_prove_commit_duration, pre_commit_deposit_for_power,
+    qa_power_for_weight, PowerPair, PreCommitSectorBatchParams, VestSpec,
 };
-use fil_actors_runtime::{
-    runtime::{Policy, Runtime},
-    test_utils::expect_abort,
-    DealWeight, EPOCHS_IN_DAY,
-};
+use fil_actors_runtime::{runtime::Runtime, test_utils::expect_abort, DealWeight};
 use fvm_shared::{
     bigint::{BigInt, Zero},
     clock::ChainEpoch,
     econ::TokenAmount,
     error::ExitCode,
-    sector::{RegisteredSealProof, StoragePower, MAX_SECTOR_NUMBER},
+    sector::{StoragePower, MAX_SECTOR_NUMBER},
     smooth::FilterEstimate,
 };
 use std::collections::HashMap;
@@ -355,26 +351,6 @@ fn prove_sectors_from_batch_pre_commit() {
     }
 }
 
-fn max_prove_commit_duration(policy: &Policy, seal_proof: RegisteredSealProof) -> ChainEpoch {
-    use RegisteredSealProof::*;
-    match seal_proof {
-        // PARAM_SPEC
-        StackedDRG2KiBV1 => EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
-        StackedDRG512MiBV1 => EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
-        StackedDRG8MiBV1 => EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
-        StackedDRG32GiBV1 => EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
-        StackedDRG64GiBV1 => EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
-
-        // PARAM_SPEC
-        StackedDRG2KiBV1P1 => 30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
-        StackedDRG512MiBV1P1 => 30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
-        StackedDRG8MiBV1P1 => 30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
-        StackedDRG32GiBV1P1 => 30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
-        StackedDRG64GiBV1P1 => 30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay,
-        Invalid(_) => panic!("max_prove_commit_duration not defined for invalid seal proofs."),
-    }
-}
-
 #[test]
 fn invalid_proof_rejected() {
     let h = ActorHarness::new(PERIOD_OFFSET);
@@ -412,7 +388,9 @@ fn invalid_proof_rejected() {
 
     // Too late.
     rt.set_epoch(
-        precommit_epoch + max_prove_commit_duration(&rt.policy, precommit.info.seal_proof) + 1,
+        precommit_epoch
+            + max_prove_commit_duration(&rt.policy, precommit.info.seal_proof).unwrap()
+            + 1,
     );
     expect_abort(
         ExitCode::USR_NOT_FOUND,
@@ -522,7 +500,9 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
     let st = h.get_state(&rt);
     rt.balance.replace(&st.pre_commit_deposits + &st.initial_pledge + &st.locked_funds);
 
-    rt.set_epoch(precommit_epoch + max_prove_commit_duration(&rt.policy, h.seal_proof_type) - 1);
+    rt.set_epoch(
+        precommit_epoch + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap() - 1,
+    );
     expect_abort(
         ExitCode::USR_INSUFFICIENT_FUNDS,
         h.prove_commit_sector_and_confirm(
@@ -569,7 +549,9 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
     let sector_no_b = h.next_sector_no;
 
     // handle both prove commits in the same epoch
-    rt.set_epoch(precommit_epoch + max_prove_commit_duration(&rt.policy, h.seal_proof_type) - 1);
+    rt.set_epoch(
+        precommit_epoch + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap() - 1,
+    );
 
     h.prove_commit_sector(&mut rt, &pre_commit_a, h.make_prove_commit_params(sector_no_a)).unwrap();
     h.prove_commit_sector(&mut rt, &pre_commit_b, h.make_prove_commit_params(sector_no_b)).unwrap();
