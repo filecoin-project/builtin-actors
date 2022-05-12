@@ -114,6 +114,7 @@ fn add_sectors(
     assert!(recovery_power.is_zero());
 
     let deadline_state = deadline_state
+        .with_unproven(&[])
         .with_partitions(vec![
             make_bitfield(&[1, 2, 3, 4]),
             make_bitfield(&[5, 6, 7, 8]),
@@ -380,7 +381,7 @@ fn can_pop_early_terminations_in_multiple_steps() {
 
     // Popping early terminations doesn't affect the terminations bitfield.
     deadline_state
-        .with_faults(&[1, 3, 6])
+        .with_terminations(&[1, 3, 6])
         .with_partitions(vec![
             make_bitfield(&[1, 2, 3, 4]),
             make_bitfield(&[5, 6, 7, 8]),
@@ -500,14 +501,13 @@ impl ExpectedDeadlineState {
         sectors: &[SectorOnChainInfo],
         deadline: &Deadline,
     ) -> Self {
-        let (_faults, _recoveries, _terminations, _unproven) =
-            self.check_deadline_invariants(store, sectors, deadline);
+        let summary = self.check_deadline_invariants(store, sectors, deadline);
 
-        // TODO uncomment once invariants are implemented
-        //assert_eq!(self.faults, faults);
-        //assert_eq!(self.recovering, recoveries);
-        //assert_eq!(self.terminations, terminations);
-        //assert_eq!(self.unproven, unproven);
+        assert_eq!(self.faults, summary.faulty_sectors);
+        assert_eq!(self.recovering, summary.recovering_sectors);
+        assert_eq!(self.terminations, summary.terminated_sectors);
+        assert_eq!(self.unproven, summary.unproven_sectors);
+        assert_eq!(self.posts, deadline.partitions_posted);
 
         let partitions = deadline.partitions_amt(store).unwrap();
         assert_eq!(self.partition_sectors.len() as u64, partitions.count());
@@ -527,9 +527,9 @@ impl ExpectedDeadlineState {
         store: &BS,
         sectors: &[SectorOnChainInfo],
         deadline: &Deadline,
-    ) -> (BitField, BitField, BitField, BitField) {
+    ) -> DeadlineStateSummary {
         let acc = MessageAccumulator::default();
-        let _summary = check_deadline_state_invariants(
+        let summary = check_deadline_state_invariants(
             deadline,
             store,
             QUANT_SPEC,
@@ -540,8 +540,6 @@ impl ExpectedDeadlineState {
 
         assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
 
-        // TODO more checks
-
-        (BitField::default(), BitField::default(), BitField::default(), BitField::default())
+        summary
     }
 }

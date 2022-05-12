@@ -2280,45 +2280,213 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     acc: &MessageAccumulator,
 ) -> DeadlineStateSummary {
     // load linked structures
-    let partitions = if let Ok(partitions) = deadline.partitions_amt(store) {
-        partitions
-    } else {
-        return DeadlineStateSummary::default();
+    let partitions = match deadline.partitions_amt(store) {
+        Ok(partitions) => partitions,
+        Err(e) => {
+            // Hard to do any useful checks.
+            acc.add(&format!("error loading partitions: {e}"));
+            return DeadlineStateSummary::default();
+        }
     };
 
-    //let mut all_sectors = BitField::new();
-    //let mut all_live_sectors: Vec<BitField> = Vec::new();
-    //let mut all_faulty_sectors: Vec<BitField> = Vec::new();
-    //let mut all_recovering_sectors: Vec<BitField> = Vec::new();
-    //let mut all_unproven_sectors: Vec<BitField> = Vec::new();
-    //let mut all_terminated_sectors: Vec<BitField> = Vec::new();
-    //let mut all_live_power = PowerPair::zero();
-    //let mut all_active_power = PowerPair::zero();
-    //let mut all_faulty_power = PowerPair::zero();
+    let mut all_sectors = BitField::new();
+    let mut all_live_sectors: Vec<BitField> = Vec::new();
+    let mut all_faulty_sectors: Vec<BitField> = Vec::new();
+    let mut all_recovering_sectors: Vec<BitField> = Vec::new();
+    let mut all_unproven_sectors: Vec<BitField> = Vec::new();
+    let mut all_terminated_sectors: Vec<BitField> = Vec::new();
+    let mut all_live_power = PowerPair::zero();
+    let mut all_active_power = PowerPair::zero();
+    let mut all_faulty_power = PowerPair::zero();
 
     let mut partition_count = 0;
 
     // check partitions
+    let mut partitions_with_expirations: HashMap<ChainEpoch, Vec<u64>> = HashMap::new();
+    let mut partitions_with_early_terminations = BitField::new();
     partitions
         .for_each(|index, partition| {
             // check sequential partitions
-            assert_eq!(index, partition_count);
+            acc.require(
+                index == partition_count,
+                &format!(
+                    "Non-sequential partitions, expected index {partition_count}, found {index}"
+                ),
+            );
             partition_count += 1;
 
-            let _summary = PartitionStateSummary::check_partition_state_invariants(
+            let acc = acc.with_prefix(&format!("partition {index}"));
+            let summary = PartitionStateSummary::check_partition_state_invariants(
                 partition,
                 store,
                 quant,
                 sector_size,
                 sectors,
-                acc,
+                &acc,
             );
+
+            acc.require(
+                !all_sectors.contains_any(&summary.all_sectors),
+                &format!("duplicate sector in partition {index}"),
+            );
+
+            summary.expiration_epochs.iter().for_each(|&epoch| {
+                partitions_with_expirations.entry(epoch).or_insert(Vec::new()).push(index);
+            });
+
+            if summary.early_termination_count > 0 {
+                partitions_with_early_terminations.set(index);
+            }
+
+            all_sectors = BitField::union([&all_sectors, &summary.all_sectors]);
+            all_live_sectors.push(summary.live_sectors);
+            all_faulty_sectors.push(summary.faulty_sectors);
+            all_recovering_sectors.push(summary.recovering_sectors);
+            all_unproven_sectors.push(summary.unproven_sectors);
+            all_terminated_sectors.push(summary.terminated_sectors);
+            all_live_power += &summary.live_power;
+            all_active_power += &summary.active_power;
+            all_faulty_power += &summary.faulty_power;
 
             Ok(())
         })
         .expect("error iterating partitions");
 
-    // TODO more checks
+    // Check invariants on partitions proven
+    if let Some(last_proof) = deadline.partitions_posted.last() {
+        acc.require(
+            partition_count >= last_proof + 1,
+            &format!("expected at least {} partitions, found {partition_count}", last_proof + 1),
+        );
+        acc.require(
+            deadline.live_sectors > 0,
+            &format!("expected at least one live sector when partitions have been proven"),
+        );
+    }
 
-    DeadlineStateSummary::default()
+    // Check partitions snapshot to make sure we take the snapshot after
+    // dealing with recovering power and unproven power.
+    match deadline.partitions_snapshot_amt(store) {
+        Ok(partition_snapshot) => {
+            let ret = partition_snapshot.for_each(|i, partition| {
+                let acc = acc.with_prefix(&format!("partition snapshot {i}"));
+                acc.require(
+                    partition.recovering_power.is_zero(),
+                    "snapshot partition has recovering power",
+                );
+                acc.require(
+                    partition.recoveries.is_empty(),
+                    "snapshot partition has pending recoveries",
+                );
+                acc.require(
+                    partition.unproven_power.is_zero(),
+                    "snapshot partition has unproven power",
+                );
+                acc.require(
+                    partition.unproven.is_empty(),
+                    "snapshot partition has unproven sectors",
+                );
+
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating partitions snapshot");
+        }
+        Err(e) => acc.add(&format!("error loading partitions snapshot: {e}")),
+    };
+
+    // Check that we don't have any proofs proving partitions that are not in the snapshot.
+    match deadline.optimistic_proofs_amt(store) {
+        Ok(proofs_snapshot) => {
+            if let Ok(partitions_snapshot) = deadline.partitions_snapshot_amt(store) {
+                let ret = proofs_snapshot.for_each(|_, proof| {
+                    for partition in proof.partitions.iter() {
+                        match partitions_snapshot.get(partition) {
+                            Ok(snapshot) => acc.require(
+                                snapshot.is_some(),
+                                "failed to find partition for recorded proof in the snapshot",
+                            ),
+                            Err(e) => acc.add(&format!("error loading partition snapshot: {e}")),
+                        }
+                    }
+                    Ok(())
+                });
+                acc.require_no_error(ret, "error iterating proofs snapshot");
+            }
+        }
+        Err(e) => acc.add(&format!("error loading proofs snapshot: {e}")),
+    };
+
+    // check memoized sector and power values
+    let live_sectors = BitField::union(&all_live_sectors);
+    acc.require(
+        deadline.live_sectors == live_sectors.len(),
+        &format!(
+            "deadline live sectors {} != partitions count {}",
+            deadline.live_sectors,
+            live_sectors.len()
+        ),
+    );
+
+    acc.require(
+        deadline.total_sectors == all_sectors.len(),
+        &format!(
+            "deadline total sectors {} != partitions count {}",
+            deadline.total_sectors,
+            all_sectors.len()
+        ),
+    );
+
+    let faulty_sectors = BitField::union(&all_faulty_sectors);
+    let recovering_sectors = BitField::union(&all_recovering_sectors);
+    let unproven_sectors = BitField::union(&all_unproven_sectors);
+    let terminated_sectors = BitField::union(&all_terminated_sectors);
+
+    acc.require(
+        deadline.faulty_power == all_faulty_power,
+        &format!(
+            "deadline faulty power {:?} != partitions total {all_faulty_power:?}",
+            deadline.faulty_power
+        ),
+    );
+
+    // Validate partition expiration queue contains an entry for each partition and epoch with an expiration.
+    // The queue may be a superset of the partitions that have expirations because we never remove from it.
+    match BitFieldQueue::new(store, &deadline.expirations_epochs, quant) {
+        Ok(expiration_queue) => {
+            for (epoch, expiring_idx) in partitions_with_expirations {
+                match expiration_queue.amt.get(epoch as u64) {
+                    Ok(expiration_bitfield) if expiration_bitfield.is_some() => {
+                        for partition in expiring_idx {
+                            acc.require(expiration_bitfield.unwrap().get(partition), &format!("expected partition {partition} to be present in deadline expiration queue at epoch {epoch}"));
+                        }
+                    }
+                    Ok(_) => acc.add(&format!(
+                        "expected to find partition expiration entry at epoch {epoch}"
+                    )),
+                    Err(e) => acc.add(&format!("error fetching expiration bitfield: {e}")),
+                }
+            }
+        }
+        Err(e) => acc.add(&format!("error loading expiration queue: {e}")),
+    }
+
+    // Validate the early termination queue contains exactly the partitions with early terminations.
+    require_equal(
+        &partitions_with_early_terminations,
+        &deadline.early_terminations,
+        acc,
+        "deadline early terminations doesn't match expected partitions",
+    );
+
+    DeadlineStateSummary {
+        all_sectors,
+        live_sectors,
+        faulty_sectors,
+        recovering_sectors,
+        unproven_sectors,
+        terminated_sectors,
+        live_power: all_live_power,
+        active_power: all_active_power,
+        faulty_power: all_faulty_power,
+    }
 }
