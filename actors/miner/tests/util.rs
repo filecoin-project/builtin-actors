@@ -316,16 +316,52 @@ impl ActorHarness {
 
         let mut info = Vec::with_capacity(num_sectors);
         for pc in precommits {
-            let sector = self.prove_commit_sector_and_confirm(
-                rt,
-                &pc,
-                self.make_prove_commit_params(pc.info.sector_number),
-                ProveCommitConfig::empty(),
-            );
+            let sector = self
+                .prove_commit_sector_and_confirm(
+                    rt,
+                    &pc,
+                    self.make_prove_commit_params(pc.info.sector_number),
+                    ProveCommitConfig::empty(),
+                )
+                .unwrap();
             info.push(sector);
         }
         rt.reset();
         info
+    }
+
+    pub fn commit_and_prove_sector(
+        &self,
+        rt: &mut MockRuntime,
+        sector_no: SectorNumber,
+        lifetime_periods: i64,
+        deal_ids: Vec<DealID>,
+    ) -> SectorOnChainInfo {
+        let precommit_epoch = rt.epoch;
+        let deadline = self.deadline(rt);
+        let expiration = deadline.period_end() + lifetime_periods * rt.policy.wpost_proving_period;
+
+        // Precommit
+        let pre_commit_params =
+            self.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, deal_ids);
+        let precommit =
+            self.pre_commit_sector(rt, pre_commit_params.clone(), PreCommitConfig::empty(), true);
+
+        self.advance_to_epoch_with_cron(
+            rt,
+            precommit_epoch + rt.policy.pre_commit_challenge_delay + 1,
+        );
+
+        let sector_info = self
+            .prove_commit_sector_and_confirm(
+                rt,
+                &precommit,
+                self.make_prove_commit_params(pre_commit_params.sector_number),
+                ProveCommitConfig::empty(),
+            )
+            .unwrap();
+        rt.reset();
+        sector_info
     }
 
     pub fn get_deadline_info(&self, rt: &MockRuntime) -> DeadlineInfo {
@@ -595,20 +631,20 @@ impl ActorHarness {
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
         cfg: ProveCommitConfig,
-    ) -> SectorOnChainInfo {
+    ) -> Result<SectorOnChainInfo, ActorError> {
         let sector_number = params.sector_number;
-        self.prove_commit_sector(rt, pc, params);
-        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()]);
+        self.prove_commit_sector(rt, pc, params)?;
+        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()])?;
 
-        self.get_sector(rt, sector_number)
+        Ok(self.get_sector(rt, sector_number))
     }
 
-    fn prove_commit_sector(
+    pub fn prove_commit_sector(
         &self,
         rt: &mut MockRuntime,
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
-    ) {
+    ) -> Result<(), ActorError> {
         let commd = make_piece_cid(b"commd");
         let seal_rand = Randomness(vec![1, 2, 3, 4]);
         let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
@@ -662,19 +698,21 @@ impl ActorHarness {
             ExitCode::OK,
         );
         rt.expect_validate_caller_any();
-        let result = rt
-            .call::<Actor>(Method::ProveCommitSector as u64, &RawBytes::serialize(params).unwrap())
-            .unwrap();
+        let result = rt.call::<Actor>(
+            Method::ProveCommitSector as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
         expect_empty(result);
         rt.verify();
+        Ok(())
     }
 
-    fn confirm_sector_proofs_valid(
+    pub fn confirm_sector_proofs_valid(
         &self,
         rt: &mut MockRuntime,
         cfg: ProveCommitConfig,
         pcs: Vec<SectorPreCommitOnChainInfo>,
-    ) {
+    ) -> Result<(), ActorError> {
         self.confirm_sector_proofs_valid_internal(rt, cfg, &pcs);
 
         let mut all_sector_numbers = Vec::new();
@@ -694,9 +732,9 @@ impl ActorHarness {
         rt.call::<Actor>(
             Method::ConfirmSectorProofsValid as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
+        )?;
         rt.verify();
+        Ok(())
     }
 
     fn confirm_sector_proofs_valid_internal(
@@ -1605,7 +1643,7 @@ impl PreCommitConfig {
 
 #[derive(Default, Clone)]
 pub struct ProveCommitConfig {
-    verify_deals_exit: HashMap<SectorNumber, ExitCode>,
+    pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
 }
 
 #[allow(dead_code)]
