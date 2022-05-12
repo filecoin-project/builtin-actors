@@ -150,12 +150,7 @@ mod miner_actor_test_commitment {
 
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.pre_commit_sector(
-                &mut rt,
-                precommit_params,
-                util::PreCommitConfig::empty(),
-                true,
-            ),
+            h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::empty(), true),
         );
         util::check_state_invariants(&rt);
     }
@@ -222,13 +217,8 @@ mod miner_actor_test_commitment {
 
         let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
 
-        h.pre_commit_sector(
-            &mut rt,
-            precommit_params,
-            util::PreCommitConfig::default(),
-            true,
-        )
-        .unwrap();
+        h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true)
+            .unwrap();
         let st: State = rt.get_state();
         assert_eq!(TokenAmount::zero(), st.fee_debt);
         util::check_state_invariants(&rt);
