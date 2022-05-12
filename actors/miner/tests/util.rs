@@ -6,17 +6,19 @@ use fil_actor_market::{
     Method as MarketMethod, SectorDataSpec, SectorDeals, SectorWeights,
     VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
+use fil_actor_miner::aggregate_pre_commit_network_fee;
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
     ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams,
     ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
     DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
-    DisputeWindowedPoStParams, ExpirationQueue, FaultDeclaration, GetControlAddressesReturn,
-    Method, MinerConstructorParams as ConstructorParams, Partition, PoStPartition, PowerPair,
-    PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo,
-    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, VestingFunds,
-    WindowedPoSt, CRON_EVENT_PROVING_DEADLINE,
+    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, FaultDeclaration,
+    GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
+    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
+    ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo,
+    Sectors, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt,
+    CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -28,6 +30,7 @@ use fil_actors_runtime::{
     ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
+use fvm_shared::bigint::Zero;
 
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_ipld_blockstore::Blockstore;
@@ -54,7 +57,6 @@ use fvm_shared::METHOD_SEND;
 use cid::Cid;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
-use num_traits::Zero;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -325,7 +327,7 @@ impl ActorHarness {
         state.recorded_deadline_info(&rt.policy, rt.epoch)
     }
 
-    fn make_pre_commit_params(
+    pub fn make_pre_commit_params(
         &self,
         sector_no: u64,
         challenge: ChainEpoch,
@@ -347,11 +349,115 @@ impl ActorHarness {
         }
     }
 
-    fn make_prove_commit_params(&self, sector_no: u64) -> ProveCommitSectorParams {
+    pub fn make_prove_commit_params(&self, sector_no: u64) -> ProveCommitSectorParams {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192] }
     }
 
-    fn pre_commit_sector(
+    pub fn pre_commit_sector_batch(
+        &self,
+        rt: &mut MockRuntime,
+        params: PreCommitSectorBatchParams,
+        conf: PreCommitBatchConfig,
+        base_fee: TokenAmount,
+    ) -> Vec<SectorPreCommitOnChainInfo> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        self.expect_query_network_info(rt);
+        let mut sector_deals = Vec::new();
+        let mut sector_weights = Vec::new();
+        let mut any_deals = false;
+        for (i, sector) in params.sectors.iter().enumerate() {
+            sector_deals.push(SectorDeals {
+                sector_expiry: sector.expiration,
+                deal_ids: sector.deal_ids.clone(),
+            });
+
+            if conf.sector_weights.len() > i {
+                sector_weights.push(conf.sector_weights[i].clone());
+            } else {
+                sector_weights.push(SectorWeights {
+                    deal_space: 0,
+                    deal_weight: DealWeight::zero(),
+                    verified_deal_weight: DealWeight::zero(),
+                });
+            }
+
+            // Sanity check on expectations
+            let sector_has_deals = !sector.deal_ids.is_empty();
+            let deal_total_weight =
+                &sector_weights[i].deal_weight + &sector_weights[i].verified_deal_weight;
+            assert_eq!(
+                sector_has_deals,
+                !deal_total_weight.is_zero(),
+                "sector deals inconsistent with configured weight"
+            );
+            assert_eq!(
+                sector_has_deals,
+                (sector_weights[i].deal_space != 0),
+                "sector deals inconsistent with configured space"
+            );
+            any_deals |= sector_has_deals;
+        }
+        if any_deals {
+            let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
+            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_weights };
+            rt.expect_send(
+                *STORAGE_MARKET_ACTOR_ADDR,
+                MarketMethod::VerifyDealsForActivation as u64,
+                RawBytes::serialize(vdparams).unwrap(),
+                TokenAmount::from(0u8),
+                RawBytes::serialize(vdreturn).unwrap(),
+                ExitCode::OK,
+            );
+        }
+
+        let state = self.get_state(rt);
+        // burn networkFee
+        if state.fee_debt > TokenAmount::from(0u8) || params.sectors.len() > 1 {
+            let expected_network_fee =
+                aggregate_pre_commit_network_fee(params.sectors.len() as i64, &base_fee);
+            let expected_burn = expected_network_fee + state.fee_debt;
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_burn,
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        if conf.first_for_miner {
+            let dlinfo = new_deadline_info_from_offset_and_epoch(
+                &rt.policy,
+                state.proving_period_start,
+                rt.epoch,
+            );
+            let cron_params = make_deadline_cron_event_params(dlinfo.last());
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                PowerMethod::EnrollCronEvent as u64,
+                RawBytes::serialize(cron_params).unwrap(),
+                TokenAmount::from(0u8),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let result = rt
+            .call::<Actor>(
+                Method::PreCommitSectorBatch as u64,
+                &RawBytes::serialize(params.clone()).unwrap(),
+            )
+            .unwrap();
+        expect_empty(result);
+        rt.verify();
+
+        params.sectors.iter().map(|sector| self.get_precommit(rt, sector.sector_number)).collect()
+    }
+
+    pub fn pre_commit_sector(
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorParams,
@@ -371,7 +477,7 @@ impl ActorHarness {
             };
             let vdreturn = VerifyDealsForActivationReturn {
                 sectors: vec![SectorWeights {
-                    deal_space: conf.deal_space.unwrap() as u64,
+                    deal_space: conf.deal_space.map(|s| s as u64).unwrap_or(0),
                     deal_weight: conf.deal_weight,
                     verified_deal_weight: conf.verified_deal_weight,
                 }],
@@ -467,7 +573,7 @@ impl ActorHarness {
         );
     }
 
-    fn prove_commit_sector_and_confirm(
+    pub fn prove_commit_sector_and_confirm(
         &self,
         rt: &mut MockRuntime,
         pc: &SectorPreCommitOnChainInfo,
@@ -1365,6 +1471,43 @@ impl ActorHarness {
     fn get_partition(&self, rt: &MockRuntime, deadline: &Deadline, pidx: u64) -> Partition {
         deadline.load_partition(&rt.store, pidx).unwrap()
     }
+
+    pub fn collect_deadline_expirations(
+        &self,
+        rt: &MockRuntime,
+        deadline: &Deadline,
+    ) -> HashMap<ChainEpoch, Vec<u64>> {
+        let queue =
+            BitFieldQueue::new(&rt.store, &deadline.expirations_epochs, NO_QUANTIZATION).unwrap();
+        let mut expirations = HashMap::new();
+        queue
+            .amt
+            .for_each(|epoch, bitfield| {
+                let expanded = bitfield.bounded_iter(rt.policy.addressed_sectors_max).unwrap();
+                expirations.insert(epoch as ChainEpoch, expanded.collect::<Vec<u64>>());
+                Ok(())
+            })
+            .unwrap();
+        expirations
+    }
+
+    pub fn collect_partition_expirations(
+        &self,
+        rt: &MockRuntime,
+        partition: &Partition,
+    ) -> HashMap<ChainEpoch, ExpirationSet> {
+        let queue = ExpirationQueue::new(&rt.store, &partition.expirations_epochs, NO_QUANTIZATION)
+            .unwrap();
+        let mut expirations = HashMap::new();
+        queue
+            .amt
+            .for_each(|epoch, set| {
+                expirations.insert(epoch as ChainEpoch, set.clone());
+                Ok(())
+            })
+            .unwrap();
+        expirations
+    }
 }
 
 #[allow(dead_code)]
@@ -1398,9 +1541,9 @@ impl PoStConfig {
 }
 
 pub struct PreCommitConfig {
-    deal_weight: DealWeight,
-    verified_deal_weight: DealWeight,
-    deal_space: Option<SectorSize>,
+    pub deal_weight: DealWeight,
+    pub verified_deal_weight: DealWeight,
+    pub deal_space: Option<SectorSize>,
 }
 
 #[allow(dead_code)]
@@ -1414,6 +1557,7 @@ impl PreCommitConfig {
     }
 }
 
+#[derive(Default, Clone)]
 pub struct ProveCommitConfig {
     verify_deals_exit: HashMap<SectorNumber, ExitCode>,
 }
@@ -1423,6 +1567,12 @@ impl ProveCommitConfig {
     pub fn empty() -> ProveCommitConfig {
         ProveCommitConfig { verify_deals_exit: HashMap::new() }
     }
+}
+
+#[derive(Default)]
+pub struct PreCommitBatchConfig {
+    pub sector_weights: Vec<SectorWeights>,
+    pub first_for_miner: bool,
 }
 
 pub struct CronConfig {
