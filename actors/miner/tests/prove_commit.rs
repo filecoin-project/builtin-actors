@@ -51,7 +51,7 @@ fn prove_single_sector() {
     // Pre-commit with a deal in order to exercise non-zero deal weights.
     let precommit_params =
         h.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, vec![1]);
-    let precommit = h.pre_commit_sector(
+    let precommit = h.pre_commit_sector_and_get(
         &mut rt,
         precommit_params,
         PreCommitConfig {

@@ -300,7 +300,7 @@ impl ActorHarness {
                 sector_deal_ids,
             );
             let precommit =
-                self.pre_commit_sector(rt, params, PreCommitConfig::empty(), first && i == 0);
+                self.pre_commit_sector_and_get(rt, params, PreCommitConfig::empty(), first && i == 0);
             precommits.push(precommit);
             self.next_sector_no += 1;
         }
@@ -459,7 +459,7 @@ impl ActorHarness {
         params.sectors.iter().map(|sector| self.get_precommit(rt, sector.sector_number)).collect()
     }
 
-    pub fn pre_commit_sector_internal(
+    pub fn pre_commit_sector(
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorParams,
@@ -532,14 +532,14 @@ impl ActorHarness {
         result
     }
 
-    pub fn pre_commit_sector(
+    pub fn pre_commit_sector_and_get(
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorParams,
         conf: PreCommitConfig,
         first: bool,
     ) -> SectorPreCommitOnChainInfo {
-        let result = self.pre_commit_sector_internal(rt, params.clone(), conf, first);
+        let result = self.pre_commit_sector(rt, params.clone(), conf, first);
 
         expect_empty(result.unwrap());
         rt.verify();

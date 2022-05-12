@@ -50,7 +50,7 @@ fn assert_simple_pre_commit(
 
     let precommit_params =
         h.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, deal_ids.to_vec());
-    let precommit = h.pre_commit_sector(
+    let precommit = h.pre_commit_sector_and_get(
         &mut rt,
         precommit_params.clone(),
         util::PreCommitConfig {
@@ -150,7 +150,7 @@ mod miner_actor_test_commitment {
 
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.pre_commit_sector_internal(
+            h.pre_commit_sector(
                 &mut rt,
                 precommit_params.clone(),
                 util::PreCommitConfig::empty(),
@@ -180,7 +180,7 @@ mod miner_actor_test_commitment {
 
         let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
 
-        let ret = h.pre_commit_sector_internal(
+        let ret = h.pre_commit_sector(
             &mut rt,
             precommit_params.clone(),
             util::PreCommitConfig {
@@ -222,7 +222,7 @@ mod miner_actor_test_commitment {
 
         let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
 
-        h.pre_commit_sector_internal(
+        h.pre_commit_sector(
             &mut rt,
             precommit_params.clone(),
             util::PreCommitConfig::default(),
