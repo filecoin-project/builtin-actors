@@ -299,8 +299,12 @@ impl ActorHarness {
                 expiration,
                 sector_deal_ids,
             );
-            let precommit =
-                self.pre_commit_sector_and_get(rt, params, PreCommitConfig::empty(), first && i == 0);
+            let precommit = self.pre_commit_sector_and_get(
+                rt,
+                params,
+                PreCommitConfig::empty(),
+                first && i == 0,
+            );
             precommits.push(precommit);
             self.next_sector_no += 1;
         }
