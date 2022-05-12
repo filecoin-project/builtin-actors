@@ -4622,3 +4622,6 @@ impl ActorCode for Actor {
         }
     }
 }
+
+#[cfg(test)]
+mod internal_tests;
