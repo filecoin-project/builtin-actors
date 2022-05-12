@@ -393,11 +393,11 @@ fn invalid_proof_rejected() {
             + 1,
     );
     expect_abort(
-        ExitCode::USR_NOT_FOUND,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
         h.prove_commit_sector_and_confirm(
             &mut rt,
             &precommit,
-            h.make_prove_commit_params(sector_no + 1),
+            h.make_prove_commit_params(sector_no),
             ProveCommitConfig::empty(),
         ),
     );
@@ -406,11 +406,11 @@ fn invalid_proof_rejected() {
     // Too early.
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay - 1);
     expect_abort(
-        ExitCode::USR_NOT_FOUND,
+        ExitCode::USR_FORBIDDEN,
         h.prove_commit_sector_and_confirm(
             &mut rt,
             &precommit,
-            h.make_prove_commit_params(sector_no + 1),
+            h.make_prove_commit_params(sector_no),
             ProveCommitConfig::empty(),
         ),
     );
