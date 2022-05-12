@@ -19,7 +19,7 @@ use num_traits::FromPrimitive;
 use std::collections::HashMap;
 
 pub use self::checkpoint::{Checkpoint, CrossMsgMeta};
-pub use self::cross::{CrossMsgs, HCMsgType, StorableMsg};
+pub use self::cross::{is_bottomup, CrossMsgs, HCMsgType, StorableMsg};
 pub use self::state::*;
 pub use self::subnet::*;
 pub use self::types::*;

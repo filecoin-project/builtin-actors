@@ -91,7 +91,7 @@ fn add_stake() {
     // Add some stake
     h.add_stake(&mut rt, &shid, &value, ExitCode::OK).unwrap();
     let subnet = h.get_subnet(&rt, &shid).unwrap();
-    assert_eq!(subnet.stake, TokenAmount::from(2_i16) * value.clone());
+    assert_eq!(subnet.stake, TokenAmount::from(2_i16) * &value);
 
     // Add to unregistered subnet
     h.add_stake(
@@ -105,7 +105,7 @@ fn add_stake() {
     // Add some more stake
     h.add_stake(&mut rt, &shid, &value, ExitCode::OK).unwrap();
     let subnet = h.get_subnet(&rt, &shid).unwrap();
-    assert_eq!(subnet.stake, TokenAmount::from(3_i16) * value.clone());
+    assert_eq!(subnet.stake, TokenAmount::from(3_i16) * &value);
 
     // Add with zero value
     h.add_stake(&mut rt, &shid, &TokenAmount::zero(), ExitCode::USR_ILLEGAL_ARGUMENT).unwrap();
@@ -153,10 +153,10 @@ fn release_stake() {
     h.release_stake(&mut rt, &shid, &TokenAmount::zero(), ExitCode::USR_ILLEGAL_ARGUMENT).unwrap();
 
     // Release enough to inactivate
-    rt.set_balance(TokenAmount::from(2_i16) * value.clone());
+    rt.set_balance(TokenAmount::from(2_i16) * &value);
     h.release_stake(&mut rt, &shid, &TokenAmount::from(5u64.pow(17)), ExitCode::OK).unwrap();
     let subnet = h.get_subnet(&rt, &shid).unwrap();
-    assert_eq!(subnet.stake, value.clone() - TokenAmount::from(5u64.pow(17)));
+    assert_eq!(subnet.stake, &value - TokenAmount::from(5u64.pow(17)));
     assert_eq!(subnet.status, subnet::Status::Inactive);
 
     // Not enough funds to release
@@ -407,13 +407,44 @@ fn test_release() {
     let shid = SubnetID::new(&ROOTNET_ID, *SUBNET_ONE);
     let (h, mut rt) = setup(shid.clone());
 
-    // Include some funds
     let releaser = Address::new_id(1001);
-
     // Release funds
     let r_amount = TokenAmount::from(5_u64.pow(18));
     rt.set_balance(2 * r_amount.clone());
     let prev_cid =
         h.release(&mut rt, &releaser, ExitCode::OK, r_amount.clone(), 0, &Cid::default()).unwrap();
     h.release(&mut rt, &releaser, ExitCode::OK, r_amount, 1, &prev_cid).unwrap();
+}
+
+#[test]
+fn test_send_cross() {
+    let shid = SubnetID::new(&ROOTNET_ID, *SUBNET_ONE);
+    let (h, mut rt) = setup(shid.clone());
+
+    let from = Address::new_id(1001);
+    let to = Address::new_id(1002);
+
+    let value = TokenAmount::from(10_u64.pow(18));
+
+    // top-down
+    let reg_value = TokenAmount::from(10_u64.pow(18));
+    h.register(&mut rt, &SUBNET_ONE, &reg_value, ExitCode::OK).unwrap();
+    let sub = SubnetID::from_str("/root/f0101/f0101").unwrap();
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 1, &value).unwrap();
+    let sub = SubnetID::from_str("/root/f0101/f0101").unwrap();
+    let circ_sup = 2 * &value;
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 2, &circ_sup).unwrap();
+    let sub = SubnetID::from_str("/root/f0101/f0101/f01002").unwrap();
+    let circ_sup = circ_sup.clone() + &value;
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 3, &circ_sup).unwrap();
+
+    // bottom-up
+    rt.set_balance(3 * &value);
+    let sub = SubnetID::from_str("/root/f0102/f0101").unwrap();
+    let zero = TokenAmount::zero();
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 0, &zero).unwrap();
+    let sub = SubnetID::from_str("/root/f0102/f0101").unwrap();
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 1, &zero).unwrap();
+    let sub = SubnetID::from_str("/root").unwrap();
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 0, &zero).unwrap();
 }

@@ -29,9 +29,9 @@ use fil_actors_runtime::{
 use hierarchical_sca::checkpoint::ChildCheck;
 use hierarchical_sca::ext;
 use hierarchical_sca::{
-    get_topdown_msg, Checkpoint, ConstructorParams, CrossMsgArray, CrossMsgMeta, CrossMsgs,
-    FundParams, Method, State, Subnet, CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE,
-    MIN_COLLATERAL_AMOUNT,
+    get_topdown_msg, is_bottomup, Checkpoint, ConstructorParams, CrossMsgArray, CrossMsgMeta,
+    CrossMsgParams, CrossMsgs, FundParams, Method, State, StorableMsg, Subnet,
+    CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT,
 };
 
 use crate::SCAActor;
@@ -404,6 +404,109 @@ impl Harness {
         }
 
         Ok(chmeta.msgs_cid)
+    }
+
+    pub fn send_cross(
+        &self,
+        rt: &mut MockRuntime,
+        from: &Address,
+        to: &Address,
+        sub: SubnetID,
+        code: ExitCode,
+        value: TokenAmount,
+        nonce: u64,
+        expected_circ_sup: &TokenAmount,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *from);
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+
+        rt.set_value(value.clone());
+
+        let msg = StorableMsg {
+            from: from.clone(),
+            to: to.clone(),
+            nonce: nonce,
+            method: METHOD_SEND,
+            params: RawBytes::default(),
+            value: value.clone(),
+        };
+        let dest = sub.clone();
+        let params = CrossMsgParams { destination: sub, msg: msg };
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(
+                    Method::SendCross as MethodNum,
+                    &RawBytes::serialize(params).unwrap(),
+                ),
+            );
+            rt.verify();
+            return Ok(());
+        }
+
+        rt.expect_send(
+            *from,
+            ext::account::PUBKEY_ADDRESS_METHOD,
+            RawBytes::default(),
+            TokenAmount::zero(),
+            RawBytes::serialize(*TEST_BLS).unwrap(),
+            ExitCode::OK,
+        );
+
+        let is_bu = is_bottomup(&self.net_name, &dest);
+        if is_bu {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                value.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+        rt.call::<SCAActor>(Method::SendCross as MethodNum, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+
+        let st: State = rt.get_state();
+        if is_bu {
+            let from = Address::new_hierarchical(&self.net_name, &TEST_BLS).unwrap();
+            let to = Address::new_hierarchical(&dest, &to).unwrap();
+            rt.set_epoch(0);
+            let ch = st.get_window_checkpoint(rt.store(), 0).unwrap();
+            let chmeta_ind = ch.crossmsg_meta_index(&self.net_name, &dest).unwrap();
+            let chmeta = &ch.data.cross_msgs[chmeta_ind];
+
+            let cross_reg = make_map_with_root_and_bitwidth::<_, CrossMsgs>(
+                &st.check_msg_registry,
+                rt.store(),
+                HAMT_BIT_WIDTH,
+            )
+            .unwrap();
+            let meta = get_cross_msgs(&cross_reg, &chmeta.msgs_cid).unwrap().unwrap();
+            let msg = meta.msgs[nonce as usize].clone();
+
+            assert_eq!(meta.msgs.len(), (nonce + 1) as usize);
+            assert_eq!(msg.from, from);
+            assert_eq!(msg.to, to);
+            assert_eq!(msg.nonce, nonce);
+            assert_eq!(msg.value, value);
+        } else {
+            // top-down
+            let sub = self.get_subnet(rt, &dest.down(&self.net_name).unwrap()).unwrap();
+            let crossmsgs = CrossMsgArray::load(&sub.top_down_msgs, rt.store()).unwrap();
+            let msg = get_topdown_msg(&crossmsgs, nonce - 1).unwrap().unwrap();
+            assert_eq!(&sub.circ_supply, expected_circ_sup);
+            assert_eq!(sub.nonce, nonce);
+            let from = Address::new_hierarchical(&self.net_name, &TEST_BLS).unwrap();
+            let to = Address::new_hierarchical(&dest, &to).unwrap();
+            assert_eq!(msg.from, from);
+            assert_eq!(msg.to, to);
+            assert_eq!(msg.nonce, nonce - 1);
+            assert_eq!(msg.value, value);
+        }
+
+        Ok(())
     }
 
     pub fn check_state(&self) {

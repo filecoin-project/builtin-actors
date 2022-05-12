@@ -243,7 +243,7 @@ impl State {
                 let meta = aux.entry(mm.to.clone()).or_insert(vec![mm]);
                 (*meta).push(mm);
             }
-            burn_val += mm.value.clone();
+            burn_val += &mm.value;
             self.release_circ_supply(store, sub, &mm.from, &mm.value)?;
         }
 
@@ -260,7 +260,7 @@ impl State {
     ) -> anyhow::Result<()> {
         for (to, mm) in aux.into_iter() {
             // aggregate values inside msgmeta
-            let value = mm.iter().fold(TokenAmount::zero(), |acc, x| acc + x.value.clone());
+            let value = mm.iter().fold(TokenAmount::zero(), |acc, x| acc + &x.value);
             let metas = mm.into_iter().cloned().collect();
 
             match ch.crossmsg_meta_index(&self.network_name, &to) {
@@ -283,7 +283,7 @@ impl State {
 
                     let meta_cid = put_msgmeta(&mut cross_reg, n_mt)?;
                     self.check_msg_registry = cross_reg.flush()?;
-                    msgmeta.value += value.clone();
+                    msgmeta.value += &value;
                     msgmeta.msgs_cid = meta_cid;
                     ch.append_msgmeta(msgmeta)?;
                 }
@@ -311,7 +311,7 @@ impl State {
                 let prev_cid = msgmeta.msgs_cid;
                 let m_cid = self.append_msg_to_meta(store, &prev_cid, msg)?;
                 msgmeta.msgs_cid = m_cid;
-                msgmeta.value += msg.value.clone();
+                msgmeta.value += &msg.value;
             }
             None => {
                 let mut msgmeta = CrossMsgMeta::new(&sfrom, &sto);
@@ -325,7 +325,7 @@ impl State {
 
                 let meta_cid = put_msgmeta(&mut cross_reg, n_mt)?;
                 self.check_msg_registry = cross_reg.flush()?;
-                msgmeta.value += msg.value.clone();
+                msgmeta.value += &msg.value;
                 msgmeta.msgs_cid = meta_cid;
                 ch.append_msgmeta(msgmeta)?;
             }
@@ -478,15 +478,23 @@ impl State {
         let sto = msg.to.subnet()?;
         // let sfrom = msg.from.subnet()?;
 
-        let sub = self.get_subnet(store, &sto).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnet")
-        })?;
+        let sub = self
+            .get_subnet(
+                store,
+                match &sto.down(&self.network_name) {
+                    Some(sub) => sub,
+                    None => return Err(anyhow!("couldn't compute the next subnet in route")),
+                },
+            )
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnet")
+            })?;
         match sub {
             Some(mut sub) => {
                 msg.nonce = sub.nonce;
                 sub.store_topdown_msg(store, &msg)?;
                 sub.nonce += 1;
-                sub.circ_supply += msg.value.clone();
+                sub.circ_supply += &msg.value;
                 self.flush_subnet(store, &sub)?;
             }
             None => {
