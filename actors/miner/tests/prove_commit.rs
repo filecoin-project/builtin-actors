@@ -569,13 +569,13 @@ fn prove_commit_just_after_period_start_permits_post() {
     let mut rt = h.new_runtime();
     rt.balance.replace(TokenAmount::from(BIG_BALANCE));
 
-    // Epoch 101 should be at the beginning of the miner's proving period so there will be time to commit
+    // Epoch PERIOD_OFFSET+1 should be at the beginning of the miner's proving period so there will be time to commit
     // and PoSt a sector.
-    rt.set_epoch(101);
+    rt.set_epoch(PERIOD_OFFSET + 1);
     h.construct_and_verify(&mut rt);
 
     // Commit a sector the very next epoch
-    rt.set_epoch(102);
+    rt.set_epoch(PERIOD_OFFSET + 2);
     let sector =
         h.commit_and_prove_sector(&mut rt, MAX_SECTOR_NUMBER, DEFAULT_SECTOR_EXPIRATION, vec![]);
 
