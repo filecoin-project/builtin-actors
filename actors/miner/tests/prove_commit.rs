@@ -661,7 +661,6 @@ fn verify_proof_does_not_vest_funds() {
         .unwrap();
     rt.replace_state(&st);
 
-    // Set the right epoch for all following tests
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
     rt.balance.replace(TokenAmount::from(1000) * 1e18 as u64);
 
