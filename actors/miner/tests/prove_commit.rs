@@ -627,6 +627,8 @@ fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
     rt.set_epoch(precommit.info.expiration - rt.policy.min_sector_expiration + 1);
     h.confirm_sector_proofs_valid(&mut rt, ProveCommitConfig::empty(), vec![precommit.clone()])
         .unwrap();
+    let st = h.get_state(&rt);
+    assert!(st.get_sector(&rt.store, sector_no).unwrap().is_none());
     check_state_invariants(&rt);
 }
 
