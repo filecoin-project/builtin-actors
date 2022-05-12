@@ -1,43 +1,58 @@
 use fil_actor_miner::BitFieldQueue;
-//use fil_actor_power::epoch_key;
+use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::BitField;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::clock::NO_QUANTIZATION;
+use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
+use std::collections::HashMap;
 use std::ops::Range;
-//use fvm_ipld_encoding::RawBytes;
-use fvm_ipld_hamt::Hamt;
-use std::convert::TryInto;
 
 mod util;
-//use fil_actors_runtime::make_empty_map;
 use util::*;
 
 const TEST_AMT_BITWIDTH: u32 = 3;
+
+pub struct BQExpectation<V> {
+    expected: HashMap<i64, V>,
+}
+
+// todo: remove std::fmt::Debug
+impl<V: std::fmt::Debug> BQExpectation<V> {
+    fn add(&mut self, epoch: ChainEpoch, values: V) -> &mut BQExpectation<V> {
+        self.expected.entry(epoch).or_insert(values);
+        self
+    }
+
+    fn equals(&mut self, epoch: ChainEpoch, mut q: BitFieldQueue<MemoryBlockstore>) {
+        assert_eq!(self.expected.len() as u64, q.amt.count());
+
+        q.amt
+            .for_each_mut(|epoch, bitfield| {
+                let values = &self.expected[&(epoch as i64)];
+                //println!("{:?}", values);
+                //assert_bitfield_equals(bitfield, values);
+                Ok(())
+            })
+            .unwrap();
+    }
+}
 
 #[test]
 #[ignore = "todo"]
 fn adds_values_to_empty_queue() {
     let h = ActorHarness::new(0);
     let rt = h.new_runtime();
-    let store = rt.store;
-    let cid = Amt::<(), _>::new_with_bit_width(&store, TEST_AMT_BITWIDTH).flush().unwrap();
-    let mut queue = BitFieldQueue::new(&store, &cid, NO_QUANTIZATION).unwrap();
+    let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
 
     let values = [1, 2, 3, 4];
     let epoch = ChainEpoch::from(42);
 
     queue.add_to_queue_values(epoch, values).unwrap();
 
-    let mut bq_expectation: Hamt<_, _, usize> = Hamt::new(&store);
-    //println!("{:?}", bq_expectation);
-    bq_expectation.set_if_absent(epoch.try_into().unwrap(), values).unwrap();
-    //println!("{:?}", bq_expectation.get(&epoch.try_into().unwrap()).unwrap().unwrap());
-    let bq_length = bq_expectation.get(&epoch.try_into().unwrap()).unwrap().unwrap().len();
-    //println!("{:?}", bq_length);
-    //let popped = queue.pop_until(epoch);
-    //println!("{:?}", popped.unwrap().0);
+    let mut expected: HashMap<_, [u64; 4]> = HashMap::new();
+    let mut bq_expectation = BQExpectation { expected: expected };
+    bq_expectation.add(epoch, values).equals(epoch, queue);
     todo!();
 }
 
@@ -46,9 +61,7 @@ fn adds_values_to_empty_queue() {
 fn adds_bitfield_to_empty_queue() {
     let h = ActorHarness::new(0);
     let rt = h.new_runtime();
-    let store = rt.store;
-    let cid = Amt::<(), _>::new_with_bit_width(&store, TEST_AMT_BITWIDTH).flush().unwrap();
-    let mut queue = BitFieldQueue::new(&store, &cid, NO_QUANTIZATION).unwrap();
+    let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
 
     let mut ranges: Vec<Range<u64>> = Vec::new();
     ranges.push(Range { start: 1, end: 4 });
@@ -56,5 +69,27 @@ fn adds_bitfield_to_empty_queue() {
     let epoch = ChainEpoch::from(42);
 
     queue.add_to_queue(epoch, &values).unwrap();
+
+    let mut expected: HashMap<_, BitField> = HashMap::new();
+    let mut bq_expectation = BQExpectation { expected: expected };
+
+    //bq_expectation.add(epoch, values).equals(epoch, queue);
     todo!();
+}
+
+fn empty_bitfield_queue_with_quantizing<'a>(
+    rt: &'a MockRuntime,
+    quant: QuantSpec,
+    bitwidth: u32,
+) -> BitFieldQueue<'a, MemoryBlockstore> {
+    let cid = Amt::<(), _>::new_with_bit_width(&rt.store, bitwidth).flush().unwrap();
+
+    BitFieldQueue::new(&rt.store, &cid, quant).unwrap()
+}
+
+fn empty_bitfield_queue<'a>(
+    rt: &'a MockRuntime,
+    bitwidth: u32,
+) -> BitFieldQueue<'a, MemoryBlockstore> {
+    empty_bitfield_queue_with_quantizing(rt, NO_QUANTIZATION, bitwidth)
 }
