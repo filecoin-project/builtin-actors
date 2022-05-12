@@ -183,7 +183,7 @@ fn prove_sectors_from_batch_pre_commit() {
     let sector_expiration =
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
 
-    let sectors = [
+    let sectors = vec![
         h.make_pre_commit_params(100, precommit_epoch - 1, sector_expiration, vec![]),
         h.make_pre_commit_params(101, precommit_epoch - 1, sector_expiration, vec![1]), // 1 * 32GiB verified deal
         h.make_pre_commit_params(102, precommit_epoch - 1, sector_expiration, vec![2, 3]), // 2 * 16GiB verified deals
@@ -249,7 +249,7 @@ fn prove_sectors_from_batch_pre_commit() {
 
     let precommits = h.pre_commit_sector_batch(
         &mut rt,
-        PreCommitSectorBatchParams { sectors: sectors.to_vec() },
+        PreCommitSectorBatchParams { sectors },
         conf,
         TokenAmount::zero(),
     );
