@@ -45,7 +45,6 @@ fn put_get_and_delete() {
 }
 
 #[test]
-#[ignore = "FIXME: delete_precommitted_sectors doesn't fail on nonexistent sector"]
 fn delete_nonexistent_value_returns_an_error() {
     let h = ActorHarness::new(0);
     let mut rt = h.new_runtime();
