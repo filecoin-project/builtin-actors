@@ -149,7 +149,7 @@ fn prove_single_sector() {
     let quantized_expiration = quant.quantize_up(precommit.info.expiration);
 
     let d_queue = h.collect_deadline_expirations(&rt, &deadline);
-    assert_eq!(d_queue, HashMap::from([(quantized_expiration, vec![p_idx])]));
+    assert_eq!(HashMap::from([(quantized_expiration, vec![p_idx])]), d_queue);
 
     assert_bitfield_equals(&partition.sectors, &[sector_no]);
     assert!(partition.faults.is_empty());
