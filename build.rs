@@ -55,8 +55,8 @@ fn network_name() -> String {
         None
     };
 
-    // Make sure they match if they're both set. Otherwise, pick the one that's set, or fallback on
-    // "default".
+    // Make sure they match if they're both set. Otherwise, pick the one
+    // that's set, or fallback on "mainnet".
     match (feat_network, &env_network) {
         (Some(from_feature), Some(from_env)) => {
             assert_eq!(from_feature, from_env, "different target network configured via the features than via the {} environment variable", NETWORK_ENV);
@@ -64,7 +64,7 @@ fn network_name() -> String {
         }
         (Some(net), None) => net,
         (None, Some(net)) => net.to_str().expect("network name not utf8"),
-        (None, None) => "default",
+        (None, None) => "mainnet",
     }.to_owned()
 }
 
