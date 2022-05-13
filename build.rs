@@ -57,7 +57,7 @@ fn network_name() -> String {
 
     // Make sure they match if they're both set. Otherwise, pick the one that's set, or fallback on
     // "default".
-    match (cfg_network, &env_network) {
+    match (feat_network, &env_network) {
         (Some(from_feature), Some(from_env)) => {
             assert_eq!(from_feature, from_env, "different target network configured via the features than via the {} environment variable", NETWORK_ENV);
             from_feature
