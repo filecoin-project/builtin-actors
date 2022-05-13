@@ -7,7 +7,6 @@ use fvm_sdk as fvm;
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ErrorNumber;
@@ -21,7 +20,9 @@ use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
-use crate::runtime::{ActorCode, ConsensusFault, MessageInfo, Policy, RuntimePolicy, Syscalls};
+use crate::runtime::{
+    ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, RuntimePolicy, Syscalls,
+};
 use crate::{
     actor_error, ActorError, Runtime, SYS_FORBIDDEN, SYS_ILLEGAL_ACTOR, SYS_ILLEGAL_ARGUMENT,
 };
@@ -162,7 +163,7 @@ where
     }
 
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
-        fvm::actor::resolve_builtin_actor_type(code_id)
+        fvm::actor::get_builtin_actor_type(code_id)
     }
 
     fn get_code_cid_for_type(&self, typ: Type) -> Cid {
@@ -181,11 +182,13 @@ where
         // At the moment, we return "illegal argument" if the lookback is exceeded (not possible
         // with the current actors) and panic otherwise (as it indicates that we passed some
         // unexpected bad value to the syscall).
-        fvm::rand::get_chain_randomness(personalization, rand_epoch, entropy).map_err(|e| match e {
-            ErrorNumber::LimitExceeded => {
-                actor_error!(USR_ILLEGAL_ARGUMENT; "randomness lookback exceeded: {}", e)
+        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(USR_ILLEGAL_ARGUMENT; "randomness lookback exceeded: {}", e)
+                }
+                e => panic!("get chain randomness failed with an unexpected error: {}", e),
             }
-            e => panic!("get chain randomness failed with an unexpected error: {}", e),
         })
     }
 
@@ -196,14 +199,14 @@ where
         entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
         // Note: specs-actors treats all failures to get randomness as "fatal" errors. See above.
-        fvm::rand::get_beacon_randomness(personalization, rand_epoch, entropy).map_err(
-            |e| match e {
+        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+            match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(USR_ILLEGAL_ARGUMENT; "randomness lookback exceeded: {}", e)
                 }
                 e => panic!("get chain randomness failed with an unexpected error: {}", e),
-            },
-        )
+            }
+        })
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
