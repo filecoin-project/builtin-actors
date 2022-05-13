@@ -1,4 +1,5 @@
 static NETWORKS: &[(&str, &[&str])] = &[
+    ("default", &["sector-32g", "sector-64g"]),
     ("mainnet", &["sector-32g", "sector-64g"]),
     (
         "caterpillarnet",
