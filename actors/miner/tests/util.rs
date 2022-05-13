@@ -497,8 +497,7 @@ impl ActorHarness {
         conf: &PreCommitBatchConfig,
         base_fee: TokenAmount,
     ) -> Vec<SectorPreCommitOnChainInfo> {
-        let result =
-            self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee).unwrap();
+        let result = self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee).unwrap();
 
         expect_empty(result);
         rt.verify();

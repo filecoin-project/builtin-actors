@@ -163,10 +163,7 @@ fn assert_simple_batch(
             + rt.policy.max_prove_commit_duration[&h.seal_proof_type]
             + rt.policy.expired_pre_commit_clean_up_delay,
     );
-    assert_eq!(
-        HashMap::from([(expected_precommit_expiration, sector_no_as_uints)]),
-        expirations
-    );
+    assert_eq!(HashMap::from([(expected_precommit_expiration, sector_no_as_uints)]), expirations);
 }
 
 mod miner_actor_precommit_batch {
