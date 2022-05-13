@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 #![deny(unused_must_use)] // Force unwrapping Result<_, Err>
 
 use fvm_ipld_blockstore::MemoryBlockstore;
