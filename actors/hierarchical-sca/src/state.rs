@@ -539,6 +539,28 @@ impl State {
         Ok(tp)
     }
 
+    pub fn bottomup_state_transition(&mut self, msg: &StorableMsg) -> anyhow::Result<()> {
+        // Bottom-up messages include the nonce of their message meta. Several messages
+        // will include the same nonce. They need to be applied in order of nonce.
+
+        // As soon as we see a message with the next msgMeta nonce, we increment the nonce
+        // and start accepting the one for the next nonce.
+        if self.applied_bottomup_nonce == u64::MAX && msg.nonce == 0 {
+            self.applied_bottomup_nonce = 0;            
+        } else if self.applied_bottomup_nonce + 1 == msg.nonce {
+            self.applied_bottomup_nonce += 1;
+        };
+
+        if self.applied_bottomup_nonce != msg.nonce {
+            return Err(anyhow!(
+                "the bottom-up message being applied doesn't hold the subsequent nonce: nonce={} applied={}",
+                msg.nonce,
+                self.applied_bottomup_nonce,
+            ));
+        }
+        Ok(())
+    }
+
     /// noop is triggered to notify when a crossMsg fails to be applied successfully.
     pub fn noop_msg(&self) {
         panic!("error committing cross-msg. noop should be returned but not implemented yet");

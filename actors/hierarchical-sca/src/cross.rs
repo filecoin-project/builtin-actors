@@ -97,6 +97,17 @@ impl StorableMsg {
         }
         Ok(HCMsgType::TopDown)
     }
+
+    pub fn apply_type(&self, curr: &SubnetID) -> anyhow::Result<HCMsgType> {
+        let sto = self.to.subnet()?;
+        let sfrom = self.from.subnet()?;
+        if curr.common_parent(&sto) == sfrom.common_parent(&sto)
+            && self.hc_type()? == HCMsgType::BottomUp
+        {
+            return Ok(HCMsgType::BottomUp);
+        }
+        Ok(HCMsgType::TopDown)
+    }
 }
 
 pub fn is_bottomup(from: &SubnetID, to: &SubnetID) -> bool {
