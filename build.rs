@@ -37,24 +37,34 @@ const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";
 fn network_name() -> String {
     let env_network = std::env::var_os(NETWORK_ENV);
 
-    let cfg_network = if cfg!(feature = "caterpillarnet") {
+    let feat_network = if cfg!(feature = "mainnet") {
+        Some("mainnet")
+    } else if cfg!(feature = "caterpillarnet") {
         Some("caterpillarnet")
+    } else if cfg!(feature = "butterflynet") {
+        Some("butterflynet")
+    } else if cfg!(feature = "calibrationnet") {
+        Some("calibrationnet")
     } else if cfg!(feature = "devnet") {
         Some("devnet")
+    } else if cfg!(feature = "testing") {
+        Some("testing")
+    } else if cfg!(feature = "testing-fake-proofs") {
+        Some("testing-fake-proofs")
     } else {
         None
     };
 
-    // Make sure they match if they're both set. Otherwise, pick the one that's set, or fallback on
-    // "default".
-    match (cfg_network, &env_network) {
+    // Make sure they match if they're both set. Otherwise, pick the one
+    // that's set, or fallback on "mainnet".
+    match (feat_network, &env_network) {
         (Some(from_feature), Some(from_env)) => {
             assert_eq!(from_feature, from_env, "different target network configured via the features than via the {} environment variable", NETWORK_ENV);
             from_feature
         }
         (Some(net), None) => net,
         (None, Some(net)) => net.to_str().expect("network name not utf8"),
-        (None, None) => "default",
+        (None, None) => "mainnet",
     }.to_owned()
 }
 
@@ -85,6 +95,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Make sure we re-build if the network name changes.
     println!("cargo:rerun-if-env-changed={}", NETWORK_ENV);
+
+    // Rerun if the source, dependencies, build options, build script _or_ actors have changed. We
+    // need to check if the actors have changed because otherwise, when building in a workspace, we
+    // won't re-run the build script and therefore won't re-compile them.
+    //
+    // This _isn't_ an issue when building as a dependency fetched from crates.io (because the crate
+    // is immutable).
+    for file in ["actors", "Cargo.toml", "Cargo.lock", "src", "build.rs"] {
+        println!("cargo:rerun-if-changed={}", file);
+    }
 
     let rustflags =
         WASM_FEATURES.iter().flat_map(|flag| ["-Ctarget-feature=", *flag, " "]).collect::<String>()

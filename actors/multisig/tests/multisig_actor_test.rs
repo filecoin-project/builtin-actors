@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use fil_actor_multisig::{
     Actor as MultisigActor, ConstructorParams, Method, State, Transaction, TxnID, SIGNERS_MAX,
 };

@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use fil_actor_multisig::TxnIDParams;
 use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,

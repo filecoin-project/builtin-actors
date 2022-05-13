@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use fil_actors_runtime::test_utils::*;
 
 mod util;
