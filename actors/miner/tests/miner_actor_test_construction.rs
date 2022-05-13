@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use std::convert::TryInto;
 
 use fil_actors_runtime::test_utils::*;
