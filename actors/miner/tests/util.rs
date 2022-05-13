@@ -14,9 +14,9 @@ use fil_actor_miner::{
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
     FaultDeclaration, GetControlAddressesReturn, Method,
     MinerConstructorParams as ConstructorParams, Partition, PoStPartition, PowerPair,
-    PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo,
-    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, VestingFunds,
-    WindowedPoSt, CRON_EVENT_PROVING_DEADLINE,
+    PreCommitSectorParams, ProveCommitAggregateParams, ProveCommitSectorParams,
+    RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
+    SubmitWindowedPoStParams, VestingFunds, WindowedPoSt, CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -323,7 +323,7 @@ impl ActorHarness {
         state.recorded_deadline_info(&rt.policy, rt.epoch)
     }
 
-    fn make_pre_commit_params(
+    pub fn make_pre_commit_params(
         &self,
         sector_no: u64,
         challenge: ChainEpoch,
@@ -349,7 +349,7 @@ impl ActorHarness {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192] }
     }
 
-    fn pre_commit_sector(
+    pub fn pre_commit_sector(
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorParams,
@@ -543,6 +543,19 @@ impl ActorHarness {
             .unwrap();
         expect_empty(result);
         rt.verify();
+    }
+
+    #[allow(unused_variables)]
+    pub fn prove_commit_aggregate_sector(
+        &self,
+        runtime: MockRuntime,
+        config: ProveCommitConfig,
+        precommits: Vec<SectorPreCommitOnChainInfo>,
+        params: ProveCommitAggregateParams,
+        base_fee: BigInt,
+    ) {
+        // recieve call to ComputeDataCommittments
+        todo!()
     }
 
     fn confirm_sector_proofs_valid(
@@ -1410,6 +1423,14 @@ impl PreCommitConfig {
             deal_space: None,
         }
     }
+
+    pub fn new(
+        deal_weight: DealWeight,
+        verified_deal_weight: DealWeight,
+        deal_space: Option<SectorSize>,
+    ) -> PreCommitConfig {
+        PreCommitConfig { deal_weight, verified_deal_weight, deal_space }
+    }
 }
 
 pub struct ProveCommitConfig {
@@ -1501,6 +1522,14 @@ pub fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
     match ubf {
         UnvalidatedBitField::Validated(bf) => bf.clone(),
         UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes).unwrap(),
+    }
+}
+
+#[allow(dead_code)]
+pub fn make_prove_commit_aggregate(sector_nos: BitField) -> ProveCommitAggregateParams {
+    ProveCommitAggregateParams {
+        sector_numbers: UnvalidatedBitField::Validated(sector_nos),
+        aggregate_proof: vec![0; 1024],
     }
 }
 
