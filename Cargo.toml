@@ -31,9 +31,14 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 clap = { version = "3.1.8", features = ["derive"] }
 
 [features]
-default = []
+default = [] ## translates to mainnet
+mainnet = []
 caterpillarnet = []
+butterflynet = []
+calibrationnet = []
 devnet = []
+testing = []
+testing-fake-proofs = []
 
 [workspace]
 members = [
@@ -64,7 +69,8 @@ members = [
 
 [profile.wasm]
 inherits = "release"
-panic = "abort"
+# This needs to be unwind, not abort, so that we can handle panics within our panic hook.
+panic = "unwind"
 overflow-checks = true
 lto = "thin"
 opt-level = "z"
