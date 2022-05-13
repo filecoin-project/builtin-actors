@@ -26,6 +26,7 @@ use fil_actor_power::{
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::ActorDowncast;
 use fil_actors_runtime::{
     ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -59,6 +60,7 @@ use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::convert::TryInto;
 
 const RECEIVER_ID: u64 = 1000;
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
@@ -393,9 +395,9 @@ impl ActorHarness {
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorBatchParams,
-        conf: PreCommitBatchConfig,
+        conf: &PreCommitBatchConfig,
         base_fee: TokenAmount,
-    ) -> Vec<SectorPreCommitOnChainInfo> {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
@@ -481,12 +483,23 @@ impl ActorHarness {
             );
         }
 
-        let result = rt
-            .call::<Actor>(
-                Method::PreCommitSectorBatch as u64,
-                &RawBytes::serialize(params.clone()).unwrap(),
-            )
-            .unwrap();
+        let result = rt.call::<Actor>(
+            Method::PreCommitSectorBatch as u64,
+            &RawBytes::serialize(params.clone()).unwrap(),
+        );
+        result
+    }
+
+    pub fn pre_commit_sector_batch_and_get(
+        &self,
+        rt: &mut MockRuntime,
+        params: PreCommitSectorBatchParams,
+        conf: &PreCommitBatchConfig,
+        base_fee: TokenAmount,
+    ) -> Vec<SectorPreCommitOnChainInfo> {
+        let result =
+            self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee).unwrap();
+
         expect_empty(result);
         rt.verify();
 
@@ -1478,6 +1491,28 @@ impl ActorHarness {
             &self.epoch_qa_power_smooth,
             &pwr.qa,
         )
+    }
+
+    pub fn collect_precommit_expirations(
+        &self,
+        rt: &MockRuntime,
+        st: &State,
+    ) -> HashMap<ChainEpoch, Vec<u64>> {
+        let quant = st.quant_spec_every_deadline(&rt.policy);
+        let queue = BitFieldQueue::new(&rt.store, &st.pre_committed_sectors_cleanup, quant)
+            .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))
+            .unwrap();
+        let mut expirations: HashMap<ChainEpoch, Vec<u64>> = HashMap::new();
+        queue
+            .amt
+            .for_each(|epoch, bf| {
+                let expanded: Vec<u64> =
+                    bf.bounded_iter(rt.policy.addressed_sectors_max).unwrap().collect();
+                expirations.insert(epoch.try_into().unwrap(), expanded);
+                Ok(())
+            })
+            .unwrap();
+        expirations
     }
 
     pub fn find_sector(&self, rt: &MockRuntime, sno: SectorNumber) -> (Deadline, Partition) {
