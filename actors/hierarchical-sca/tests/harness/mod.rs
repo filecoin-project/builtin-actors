@@ -1,10 +1,13 @@
+use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::multihash::MultihashDigest;
 use cid::Cid;
 use fil_actors_runtime::test_utils::expect_abort;
 use fil_actors_runtime::Array;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
+use fvm_shared::address::subnet::ROOTNET_ID;
+use fvm_shared::address::{Address, SubnetID};
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -15,16 +18,20 @@ use lazy_static::lazy_static;
 
 use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::{MockRuntime, SUBNET_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID};
+use fil_actors_runtime::test_utils::{
+    MockRuntime, ACCOUNT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, SUBNET_ACTOR_CODE_ID,
+    SYSTEM_ACTOR_CODE_ID,
+};
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, ActorError, BURNT_FUNDS_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    make_map_with_root_and_bitwidth, ActorError, Map, BURNT_FUNDS_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use hierarchical_sca::checkpoint::ChildCheck;
+use hierarchical_sca::ext;
 use hierarchical_sca::{
-    Checkpoint, ConstructorParams, CrossMsgMeta, FundParams, Method, State, Subnet, SubnetID,
-    SubnetIDParam, CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE,
-    MIN_COLLATERAL_AMOUNT, ROOTNET_ID,
+    get_topdown_msg, is_bottomup, Checkpoint, ConstructorParams, CrossMsgArray, CrossMsgMeta,
+    CrossMsgParams, CrossMsgs, FundParams, Method, State, StorableMsg, Subnet,
+    CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT,
 };
 
 use crate::SCAActor;
@@ -32,6 +39,8 @@ use crate::SCAActor;
 lazy_static! {
     pub static ref SUBNET_ONE: Address = Address::new_id(101);
     pub static ref SUBNET_TWO: Address = Address::new_id(202);
+    pub static ref TEST_BLS: Address =
+        Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     pub static ref ACTOR: Address = Address::new_actor("actor".as_bytes());
 }
 
@@ -44,13 +53,17 @@ pub fn new_runtime() -> MockRuntime {
     }
 }
 
-pub fn new_harness() -> Harness {
-    Harness { net_name: ROOTNET_ID.clone() }
+pub fn new_harness(id: SubnetID) -> Harness {
+    Harness { net_name: id }
 }
 
-pub fn setup() -> (Harness, MockRuntime) {
+pub fn setup_root() -> (Harness, MockRuntime) {
+    setup(ROOTNET_ID.clone())
+}
+
+pub fn setup(id: SubnetID) -> (Harness, MockRuntime) {
     let mut rt = new_runtime();
-    let h = new_harness();
+    let h = new_harness(id);
     h.construct(&mut rt);
     (h, rt)
 }
@@ -113,12 +126,11 @@ impl Harness {
             return Ok(());
         }
 
-        let register_ret =
-            SubnetIDParam { id: SubnetID::new(&ROOTNET_ID, *subnet_addr).to_string() };
+        let register_ret = SubnetID::new(&self.net_name, *subnet_addr);
         let ret = rt.call::<SCAActor>(Method::Register as MethodNum, &RawBytes::default()).unwrap();
         rt.verify();
-        let ret: SubnetIDParam = RawBytes::deserialize(&ret).unwrap();
-        assert_eq!(ret.id, register_ret.id);
+        let ret: SubnetID = RawBytes::deserialize(&ret).unwrap();
+        assert_eq!(ret, register_ret);
         Ok(())
     }
 
@@ -265,6 +277,238 @@ impl Harness {
         Ok(())
     }
 
+    pub fn fund(
+        &self,
+        rt: &mut MockRuntime,
+        funder: &Address,
+        id: &SubnetID,
+        code: ExitCode,
+        value: TokenAmount,
+        expected_nonce: u64,
+        expected_circ_sup: &TokenAmount,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *funder);
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+
+        rt.set_value(value.clone());
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(
+                    Method::Fund as MethodNum,
+                    &RawBytes::serialize(id.clone()).unwrap(),
+                ),
+            );
+            rt.verify();
+            return Ok(());
+        }
+
+        rt.expect_send(
+            *funder,
+            ext::account::PUBKEY_ADDRESS_METHOD,
+            RawBytes::default(),
+            TokenAmount::zero(),
+            RawBytes::serialize(*TEST_BLS).unwrap(),
+            ExitCode::OK,
+        );
+        rt.call::<SCAActor>(Method::Fund as MethodNum, &RawBytes::serialize(id.clone()).unwrap())
+            .unwrap();
+        rt.verify();
+
+        let sub = self.get_subnet(rt, id).unwrap();
+        let crossmsgs = CrossMsgArray::load(&sub.top_down_msgs, rt.store()).unwrap();
+        let msg = get_topdown_msg(&crossmsgs, expected_nonce - 1).unwrap().unwrap();
+        assert_eq!(&sub.circ_supply, expected_circ_sup);
+        assert_eq!(sub.nonce, expected_nonce);
+        let from = Address::new_hierarchical(&self.net_name, &TEST_BLS).unwrap();
+        let to = Address::new_hierarchical(&id, &TEST_BLS).unwrap();
+        assert_eq!(msg.from, from);
+        assert_eq!(msg.to, to);
+        assert_eq!(msg.nonce, expected_nonce - 1);
+        assert_eq!(msg.value, value);
+
+        Ok(())
+    }
+
+    pub fn release(
+        &self,
+        rt: &mut MockRuntime,
+        releaser: &Address,
+        code: ExitCode,
+        value: TokenAmount,
+        expected_nonce: u64,
+        prev_meta: &Cid,
+    ) -> Result<Cid, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *releaser);
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+
+        rt.set_value(value.clone());
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(Method::Release as MethodNum, &RawBytes::default()),
+            );
+            rt.verify();
+            return Ok(Cid::default());
+        }
+
+        rt.expect_send(
+            *releaser,
+            ext::account::PUBKEY_ADDRESS_METHOD,
+            RawBytes::default(),
+            TokenAmount::zero(),
+            RawBytes::serialize(*TEST_BLS).unwrap(),
+            ExitCode::OK,
+        );
+        rt.expect_send(
+            *BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            RawBytes::default(),
+            value.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        rt.call::<SCAActor>(Method::Release as MethodNum, &RawBytes::default()).unwrap();
+        rt.verify();
+
+        let st: State = rt.get_state();
+
+        let parent = &self.net_name.parent().unwrap();
+        let from = Address::new_hierarchical(&self.net_name, &BURNT_FUNDS_ACTOR_ADDR).unwrap();
+        let to = Address::new_hierarchical(&parent, &TEST_BLS).unwrap();
+        rt.set_epoch(0);
+        let ch = st.get_window_checkpoint(rt.store(), 0).unwrap();
+        let chmeta_ind = ch.crossmsg_meta_index(&self.net_name, &parent).unwrap();
+        let chmeta = &ch.data.cross_msgs[chmeta_ind];
+
+        let cross_reg = make_map_with_root_and_bitwidth::<_, CrossMsgs>(
+            &st.check_msg_registry,
+            rt.store(),
+            HAMT_BIT_WIDTH,
+        )
+        .unwrap();
+        let meta = get_cross_msgs(&cross_reg, &chmeta.msgs_cid).unwrap().unwrap();
+        let msg = meta.msgs[expected_nonce as usize].clone();
+
+        assert_eq!(meta.msgs.len(), (expected_nonce + 1) as usize);
+        assert_eq!(msg.from, from);
+        assert_eq!(msg.to, to);
+        assert_eq!(msg.nonce, expected_nonce);
+        assert_eq!(msg.value, value);
+
+        if prev_meta != &Cid::default() {
+            match get_cross_msgs(&cross_reg, &prev_meta).unwrap() {
+                Some(_) => panic!("previous meta should have been removed"),
+                None => {}
+            }
+        }
+
+        Ok(chmeta.msgs_cid)
+    }
+
+    pub fn send_cross(
+        &self,
+        rt: &mut MockRuntime,
+        from: &Address,
+        to: &Address,
+        sub: SubnetID,
+        code: ExitCode,
+        value: TokenAmount,
+        nonce: u64,
+        expected_circ_sup: &TokenAmount,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *from);
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+
+        rt.set_value(value.clone());
+
+        let msg = StorableMsg {
+            from: from.clone(),
+            to: to.clone(),
+            nonce: nonce,
+            method: METHOD_SEND,
+            params: RawBytes::default(),
+            value: value.clone(),
+        };
+        let dest = sub.clone();
+        let params = CrossMsgParams { destination: sub, msg: msg };
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(
+                    Method::SendCross as MethodNum,
+                    &RawBytes::serialize(params).unwrap(),
+                ),
+            );
+            rt.verify();
+            return Ok(());
+        }
+
+        rt.expect_send(
+            *from,
+            ext::account::PUBKEY_ADDRESS_METHOD,
+            RawBytes::default(),
+            TokenAmount::zero(),
+            RawBytes::serialize(*TEST_BLS).unwrap(),
+            ExitCode::OK,
+        );
+
+        let is_bu = is_bottomup(&self.net_name, &dest);
+        if is_bu {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                value.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+        rt.call::<SCAActor>(Method::SendCross as MethodNum, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+
+        let st: State = rt.get_state();
+        if is_bu {
+            let from = Address::new_hierarchical(&self.net_name, &TEST_BLS).unwrap();
+            let to = Address::new_hierarchical(&dest, &to).unwrap();
+            rt.set_epoch(0);
+            let ch = st.get_window_checkpoint(rt.store(), 0).unwrap();
+            let chmeta_ind = ch.crossmsg_meta_index(&self.net_name, &dest).unwrap();
+            let chmeta = &ch.data.cross_msgs[chmeta_ind];
+
+            let cross_reg = make_map_with_root_and_bitwidth::<_, CrossMsgs>(
+                &st.check_msg_registry,
+                rt.store(),
+                HAMT_BIT_WIDTH,
+            )
+            .unwrap();
+            let meta = get_cross_msgs(&cross_reg, &chmeta.msgs_cid).unwrap().unwrap();
+            let msg = meta.msgs[nonce as usize].clone();
+
+            assert_eq!(meta.msgs.len(), (nonce + 1) as usize);
+            assert_eq!(msg.from, from);
+            assert_eq!(msg.to, to);
+            assert_eq!(msg.nonce, nonce);
+            assert_eq!(msg.value, value);
+        } else {
+            // top-down
+            let sub = self.get_subnet(rt, &dest.down(&self.net_name).unwrap()).unwrap();
+            let crossmsgs = CrossMsgArray::load(&sub.top_down_msgs, rt.store()).unwrap();
+            let msg = get_topdown_msg(&crossmsgs, nonce - 1).unwrap().unwrap();
+            assert_eq!(&sub.circ_supply, expected_circ_sup);
+            assert_eq!(sub.nonce, nonce);
+            let from = Address::new_hierarchical(&self.net_name, &TEST_BLS).unwrap();
+            let to = Address::new_hierarchical(&dest, &to).unwrap();
+            assert_eq!(msg.from, from);
+            assert_eq!(msg.to, to);
+            assert_eq!(msg.nonce, nonce - 1);
+            assert_eq!(msg.value, value);
+        }
+
+        Ok(())
+    }
+
     pub fn check_state(&self) {
         // TODO: https://github.com/filecoin-project/builtin-actors/issues/44
     }
@@ -303,6 +547,14 @@ pub fn add_msg_meta(
 ) {
     let mh_code = Code::Blake2b256;
     let c = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&rand));
-    let meta = CrossMsgMeta { from: from.clone(), to: to.clone(), msgs_cid: c, nonce: 0, value: value };
+    let meta =
+        CrossMsgMeta { from: from.clone(), to: to.clone(), msgs_cid: c, nonce: 0, value: value };
     ch.append_msgmeta(meta).unwrap();
+}
+
+fn get_cross_msgs<'m, BS: Blockstore>(
+    registry: &'m Map<BS, CrossMsgs>,
+    cid: &Cid,
+) -> anyhow::Result<Option<&'m CrossMsgs>> {
+    registry.get(&cid.to_bytes()).map_err(|e| anyhow!("error getting fross messages: {}", e))
 }

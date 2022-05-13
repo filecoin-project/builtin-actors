@@ -1160,7 +1160,6 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
- "thiserror",
 ]
 
 [[package]]

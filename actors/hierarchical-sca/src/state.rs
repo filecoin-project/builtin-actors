@@ -10,6 +10,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_ipld_hamt::BytesKey;
+use fvm_shared::address::SubnetID;
 use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -21,6 +22,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use super::checkpoint::*;
+use super::cross::*;
 use super::subnet::*;
 use super::types::*;
 
@@ -241,7 +243,7 @@ impl State {
                 let meta = aux.entry(mm.to.clone()).or_insert(vec![mm]);
                 (*meta).push(mm);
             }
-            burn_val += mm.value.clone();
+            burn_val += &mm.value;
             self.release_circ_supply(store, sub, &mm.from, &mm.value)?;
         }
 
@@ -258,7 +260,7 @@ impl State {
     ) -> anyhow::Result<()> {
         for (to, mm) in aux.into_iter() {
             // aggregate values inside msgmeta
-            let value = mm.iter().fold(TokenAmount::zero(), |acc, x| acc + x.value.clone());
+            let value = mm.iter().fold(TokenAmount::zero(), |acc, x| acc + &x.value);
             let metas = mm.into_iter().cloned().collect();
 
             match ch.crossmsg_meta_index(&self.network_name, &to) {
@@ -279,13 +281,60 @@ impl State {
                         HAMT_BIT_WIDTH,
                     )?;
 
-                    let meta_cid = put_msgmeta(&mut cross_reg, n_mt);
-                    msgmeta.value += value.clone();
-                    msgmeta.msgs_cid = meta_cid?;
+                    let meta_cid = put_msgmeta(&mut cross_reg, n_mt)?;
+                    self.check_msg_registry = cross_reg.flush()?;
+                    msgmeta.value += &value;
+                    msgmeta.msgs_cid = meta_cid;
                     ch.append_msgmeta(msgmeta)?;
                 }
             };
         }
+
+        Ok(())
+    }
+
+    /// store a cross message in the current checkpoint for propagation
+    // TODO: We can probably de-duplicate a lot of code from agg_child_msgmeta
+    pub(crate) fn store_msg_in_checkpoint<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        msg: &StorableMsg,
+        curr_epoch: ChainEpoch,
+    ) -> anyhow::Result<()> {
+        let mut ch = self.get_window_checkpoint(store, curr_epoch)?;
+
+        let sto = msg.to.subnet()?;
+        let sfrom = msg.from.subnet()?;
+        match ch.crossmsg_meta_index(&sfrom, &sto) {
+            Some(index) => {
+                let msgmeta = &mut ch.data.cross_msgs[index];
+                let prev_cid = msgmeta.msgs_cid;
+                let m_cid = self.append_msg_to_meta(store, &prev_cid, msg)?;
+                msgmeta.msgs_cid = m_cid;
+                msgmeta.value += &msg.value;
+            }
+            None => {
+                let mut msgmeta = CrossMsgMeta::new(&sfrom, &sto);
+                let mut n_mt = CrossMsgs::new();
+                n_mt.msgs = vec![msg.clone()];
+                let mut cross_reg = make_map_with_root_and_bitwidth::<_, CrossMsgs>(
+                    &self.check_msg_registry,
+                    store,
+                    HAMT_BIT_WIDTH,
+                )?;
+
+                let meta_cid = put_msgmeta(&mut cross_reg, n_mt)?;
+                self.check_msg_registry = cross_reg.flush()?;
+                msgmeta.value += &msg.value;
+                msgmeta.msgs_cid = meta_cid;
+                ch.append_msgmeta(msgmeta)?;
+            }
+        };
+
+        // flush checkpoint
+        self.flush_checkpoint(store, &ch).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error flushing checkpoint")
+        })?;
 
         Ok(())
     }
@@ -310,6 +359,38 @@ impl State {
         };
 
         prev_meta.add_metas(metas)?;
+
+        // if the cid hasn't changed
+        let cid = prev_meta.cid()?;
+        if &cid == meta_cid {
+            return Ok(cid);
+        }
+        // else we persist the new msgmeta
+        self.put_delete_flush_meta(&mut cross_reg, meta_cid, prev_meta)
+    }
+
+    /// append crossmsg to a specific mesasge meta.
+    // TODO: Consider de-duplicating code from append_metas_to_meta
+    // if possible
+    pub(crate) fn append_msg_to_meta<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        meta_cid: &Cid,
+        msg: &StorableMsg,
+    ) -> anyhow::Result<Cid> {
+        let mut cross_reg = make_map_with_root_and_bitwidth::<_, CrossMsgs>(
+            &self.check_msg_registry,
+            store,
+            HAMT_BIT_WIDTH,
+        )?;
+
+        // get previous meta stored
+        let mut prev_meta = match cross_reg.get(&meta_cid.to_bytes())? {
+            Some(m) => m.clone(),
+            None => return Err(anyhow!("no msgmeta found for cid")),
+        };
+
+        prev_meta.add_msg(&msg)?;
 
         // if the cid hasn't changed
         let cid = prev_meta.cid()?;
@@ -387,6 +468,81 @@ impl State {
         self.bottomup_nonce += 1;
         Ok(())
     }
+
+    /// commit topdown messages for their execution in the subnet
+    pub(crate) fn commit_topdown_msg<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        msg: &mut StorableMsg,
+    ) -> anyhow::Result<()> {
+        let sto = msg.to.subnet()?;
+        // let sfrom = msg.from.subnet()?;
+
+        let sub = self
+            .get_subnet(
+                store,
+                match &sto.down(&self.network_name) {
+                    Some(sub) => sub,
+                    None => return Err(anyhow!("couldn't compute the next subnet in route")),
+                },
+            )
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load subnet")
+            })?;
+        match sub {
+            Some(mut sub) => {
+                msg.nonce = sub.nonce;
+                sub.store_topdown_msg(store, &msg)?;
+                sub.nonce += 1;
+                sub.circ_supply += &msg.value;
+                self.flush_subnet(store, &sub)?;
+            }
+            None => {
+                if sto == self.network_name {
+                    return Err(anyhow!("can't direct top-down message to the current subnet"));
+                } else {
+                    self.noop_msg();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// commit bottomup messages for their execution in the subnet
+    pub(crate) fn commit_bottomup_msg<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        msg: &StorableMsg,
+        curr_epoch: ChainEpoch,
+    ) -> anyhow::Result<()> {
+        // store msg in checkpoint for propagation
+        self.store_msg_in_checkpoint(store, &msg, curr_epoch)?;
+        // increment nonce
+        self.nonce += 1;
+
+        Ok(())
+    }
+
+    /// commits a cross-msg for propagation
+    pub(crate) fn send_cross<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        msg: &mut StorableMsg,
+        curr_epoch: ChainEpoch,
+    ) -> anyhow::Result<HCMsgType> {
+        let tp = msg.hc_type()?;
+        match tp {
+            HCMsgType::TopDown => self.commit_topdown_msg(store, msg)?,
+            HCMsgType::BottomUp => self.commit_bottomup_msg(store, msg, curr_epoch)?,
+            _ => return Err(anyhow!("cross-msg is not of the right type")),
+        };
+        Ok(tp)
+    }
+
+    /// noop is triggered to notify when a crossMsg fails to be applied successfully.
+    pub fn noop_msg(&self) {
+        panic!("error committing cross-msg. noop should be returned but not implemented yet");
+    }
 }
 
 pub fn set_subnet<BS: Blockstore>(
@@ -444,5 +600,12 @@ pub fn get_bottomup_msg<'m, BS: Blockstore>(
     crossmsgs: &'m CrossMsgMetaArray<BS>,
     nonce: u64,
 ) -> anyhow::Result<Option<&'m CrossMsgMeta>> {
-    crossmsgs.get(nonce).map_err(|e| anyhow!("failed to load crossmsg meta array: {}", e))
+    crossmsgs.get(nonce).map_err(|e| anyhow!("failed to get crossmsg meta by nonce: {}", e))
+}
+
+pub fn get_topdown_msg<'m, BS: Blockstore>(
+    crossmsgs: &'m CrossMsgArray<BS>,
+    nonce: u64,
+) -> anyhow::Result<Option<&'m StorableMsg>> {
+    crossmsgs.get(nonce).map_err(|e| anyhow!("failed to get msg by nonce: {}", e))
 }

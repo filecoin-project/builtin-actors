@@ -7,7 +7,8 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::actor::builtin::Type;
+use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
+use fvm_shared::address::{Address, SubnetID};
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -18,6 +19,7 @@ use num_traits::FromPrimitive;
 use std::collections::HashMap;
 
 pub use self::checkpoint::{Checkpoint, CrossMsgMeta};
+pub use self::cross::{is_bottomup, CrossMsgs, HCMsgType, StorableMsg};
 pub use self::state::*;
 pub use self::subnet::*;
 pub use self::types::*;
@@ -26,6 +28,7 @@ pub use self::types::*;
 fil_actors_runtime::wasm_trampoline!(Actor);
 
 pub mod checkpoint;
+mod cross;
 #[doc(hidden)]
 pub mod ext;
 mod state;
@@ -43,6 +46,9 @@ pub enum Method {
     ReleaseStake = 4,
     Kill = 5,
     CommitChildCheckpoint = 6,
+    Fund = 7,
+    Release = 8,
+    SendCross = 9,
 }
 
 /// Subnet Coordinator Actor
@@ -65,14 +71,14 @@ impl Actor {
 
     /// Register is called by subnet actors to put the required collateral
     /// and register the subnet to the hierarchy.
-    fn register<BS, RT>(rt: &mut RT) -> Result<SubnetIDParam, ActorError>
+    fn register<BS, RT>(rt: &mut RT) -> Result<SubnetID, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Subnet))?;
         let subnet_addr = rt.message().caller();
-        let mut shid = subnet::SubnetID::default();
+        let mut shid = SubnetID::default();
         rt.transaction(|st: &mut State, rt| {
             shid = SubnetID::new(&st.network_name, subnet_addr);
             let sub = st.get_subnet(rt.store(), &shid).map_err(|e| {
@@ -99,7 +105,7 @@ impl Actor {
             Ok(())
         })?;
 
-        Ok(SubnetIDParam { id: shid.to_string() })
+        Ok(shid)
     }
 
     /// Add stake adds stake to the collateral of a subnet.
@@ -370,6 +376,151 @@ impl Actor {
         }
         Ok(())
     }
+
+    /// Fund injects new funds from an account of the parent chain to a subnet.
+    ///
+    /// This functions receives a transaction with the FILs that want to be injected in the subnet.
+    /// - Funds injected are frozen.
+    /// - A new fund cross-message is created and stored to propagate it to the subnet. It will be
+    /// picked up by miners to include it in the next possible block.
+    /// - The cross-message nonce is updated.
+    fn fund<BS, RT>(rt: &mut RT, params: SubnetID) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        // FIXME: Only supporting cross-messages initiated by signable addresses for
+        // now. Consider supporting also send-cross messages initiated by actors.
+        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        let value = rt.message().value_received();
+        if value <= TokenAmount::zero() {
+            return Err(actor_error!(illegal_argument, "no funds included in fund message"));
+        }
+
+        let sig_addr = resolve_secp_bls(rt, rt.message().caller())?;
+
+        rt.transaction(|st: &mut State, rt| {
+            // Create fund message
+            let mut f_msg = StorableMsg::new_fund_msg(&params, &sig_addr, value).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error creating fund cross-message")
+            })?;
+            // Commit top-down message.
+            st.commit_topdown_msg(rt.store(), &mut f_msg).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error committing top-down message")
+            })?;
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// Release creates a new check message to release funds in parent chain
+    ///
+    /// This function burns the funds that will be released in the current subnet
+    /// and propagates a new checkpoint message to the parent chain to signal
+    /// the amount of funds that can be released for a specific address.
+    fn release<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        // FIXME: Only supporting cross-messages initiated by signable addresses for
+        // now. Consider supporting also send-cross messages initiated by actors.
+        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        let value = rt.message().value_received();
+        if value <= TokenAmount::zero() {
+            return Err(actor_error!(illegal_argument, "no funds included in message"));
+        }
+
+        let sig_addr = resolve_secp_bls(rt, rt.message().caller())?;
+
+        // burn funds that are being released
+        rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), value.clone())?;
+
+        rt.transaction(|st: &mut State, rt| {
+            // Create release message
+            let r_msg = StorableMsg::new_release_msg(&st.network_name, &sig_addr, value, st.nonce)
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "error creating release cross-message",
+                    )
+                })?;
+
+            // Commit bottom-up message.
+            st.commit_bottomup_msg(rt.store(), &r_msg, rt.curr_epoch()).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error committing top-down message")
+            })?;
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// SendCross sends an arbitrary cross-message to other subnet in the hierarchy.
+    ///
+    /// If the message includes any funds they need to be burnt (like in Release)
+    /// before being propagated to the corresponding subnet.
+    /// The circulating supply in each subnet needs to be updated as the message passes through them.
+    ///
+    /// Params expect a raw message without any subnet context (the hierarchical address is
+    /// included in the message by the actor).
+    fn send_cross<BS, RT>(rt: &mut RT, params: CrossMsgParams) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        if params.destination == SubnetID::default() {
+            return Err(actor_error!(
+                illegal_argument,
+                "no destination for cross-message explicitly set"
+            ));
+        }
+        let mut msg = params.msg.clone();
+        let mut tp = HCMsgType::Unknown;
+
+        // FIXME: Only supporting cross-messages initiated by signable addresses for
+        // now. Consider supporting also send-cross messages initiated by actors.
+        let sig_addr = resolve_secp_bls(rt, rt.message().caller())?;
+
+        rt.transaction(|st: &mut State, rt| {
+            if params.destination == st.network_name {
+            return Err(actor_error!(
+                illegal_argument,
+                "destination is the current network, you are better off with a good ol' message, no cross needed"
+            ));
+            }
+            // we disregard the to of the message. the caller is the one set as the from of the
+            // message.
+        msg.to = match Address::new_hierarchical(&params.destination, &msg.to) {
+            Ok(addr) => addr,
+            Err(_) => { return Err(actor_error!(
+                illegal_argument,
+                "error setting hierarchical address in cross-msg to param"
+            ));
+            }
+        };
+        msg.from = match Address::new_hierarchical(&st.network_name, &sig_addr) {
+            Ok(addr) => addr,
+            Err(_) => { return Err(actor_error!(
+                illegal_argument,
+                "error setting hierarchical address in cross-msg from param"
+            ));
+            }
+        };
+        tp = st.send_cross(rt.store(), &mut msg, rt.curr_epoch()).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error committing cross message")
+            })?;
+
+        Ok(())
+        })?;
+
+        if tp == HCMsgType::BottomUp && msg.value > TokenAmount::zero() {
+            rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), msg.value)?;
+        }
+        Ok(())
+    }
 }
 
 impl ActorCode for Actor {
@@ -407,7 +558,37 @@ impl ActorCode for Actor {
                 Self::commit_child_check(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
+            Some(Method::Fund) => {
+                Self::fund(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::Release) => {
+                Self::release(rt)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::SendCross) => {
+                Self::send_cross(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
+}
+
+fn resolve_secp_bls<BS, RT>(rt: &mut RT, raw: Address) -> Result<Address, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    let resolved = rt
+        .resolve_address(&raw)
+        .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
+    let ret = rt.send(
+        resolved,
+        ext::account::PUBKEY_ADDRESS_METHOD,
+        RawBytes::default(),
+        TokenAmount::zero(),
+    )?;
+    let pub_key: Address = cbor::deserialize(&ret, "address response")?;
+    Ok(pub_key)
 }

@@ -1,11 +1,13 @@
+use cid::Cid;
 use fil_actors_runtime::runtime::Runtime;
-use fvm_shared::address::Address;
+use fvm_shared::address::subnet::ROOTNET_ID;
+use fvm_shared::address::{Address, SubnetID};
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use hierarchical_sca::{
-    get_bottomup_msg, subnet, Actor as SCAActor, Checkpoint, CrossMsgMetaArray, State, SubnetID,
+    get_bottomup_msg, subnet, Actor as SCAActor, Checkpoint, CrossMsgMetaArray, State,
     DEFAULT_CHECKPOINT_PERIOD,
 };
 use std::str::FromStr;
@@ -17,14 +19,14 @@ mod harness;
 #[test]
 fn construct() {
     let mut rt = new_runtime();
-    let h = new_harness();
+    let h = new_harness(ROOTNET_ID.clone());
     h.construct_and_verify(&mut rt);
     h.check_state();
 }
 
 #[test]
 fn register_subnet() {
-    let (h, mut rt) = setup();
+    let (h, mut rt) = setup_root();
 
     // Register a subnet with 1FIL collateral
     let mut value = TokenAmount::from(10_u64.pow(18));
@@ -70,7 +72,7 @@ fn register_subnet() {
 
 #[test]
 fn add_stake() {
-    let (h, mut rt) = setup();
+    let (h, mut rt) = setup_root();
 
     // Register a subnet with 1FIL collateral
     let value = TokenAmount::from(10_u64.pow(18));
@@ -89,7 +91,7 @@ fn add_stake() {
     // Add some stake
     h.add_stake(&mut rt, &shid, &value, ExitCode::OK).unwrap();
     let subnet = h.get_subnet(&rt, &shid).unwrap();
-    assert_eq!(subnet.stake, TokenAmount::from(2_i16) * value.clone());
+    assert_eq!(subnet.stake, TokenAmount::from(2_i16) * &value);
 
     // Add to unregistered subnet
     h.add_stake(
@@ -103,7 +105,7 @@ fn add_stake() {
     // Add some more stake
     h.add_stake(&mut rt, &shid, &value, ExitCode::OK).unwrap();
     let subnet = h.get_subnet(&rt, &shid).unwrap();
-    assert_eq!(subnet.stake, TokenAmount::from(3_i16) * value.clone());
+    assert_eq!(subnet.stake, TokenAmount::from(3_i16) * &value);
 
     // Add with zero value
     h.add_stake(&mut rt, &shid, &TokenAmount::zero(), ExitCode::USR_ILLEGAL_ARGUMENT).unwrap();
@@ -111,7 +113,7 @@ fn add_stake() {
 
 #[test]
 fn release_stake() {
-    let (h, mut rt) = setup();
+    let (h, mut rt) = setup_root();
 
     // Register a subnet with 1FIL collateral
     let value = TokenAmount::from(10_u64.pow(18));
@@ -151,10 +153,10 @@ fn release_stake() {
     h.release_stake(&mut rt, &shid, &TokenAmount::zero(), ExitCode::USR_ILLEGAL_ARGUMENT).unwrap();
 
     // Release enough to inactivate
-    rt.set_balance(TokenAmount::from(2_i16) * value.clone());
+    rt.set_balance(TokenAmount::from(2_i16) * &value);
     h.release_stake(&mut rt, &shid, &TokenAmount::from(5u64.pow(17)), ExitCode::OK).unwrap();
     let subnet = h.get_subnet(&rt, &shid).unwrap();
-    assert_eq!(subnet.stake, value.clone() - TokenAmount::from(5u64.pow(17)));
+    assert_eq!(subnet.stake, &value - TokenAmount::from(5u64.pow(17)));
     assert_eq!(subnet.status, subnet::Status::Inactive);
 
     // Not enough funds to release
@@ -168,8 +170,8 @@ fn release_stake() {
 }
 
 #[test]
-fn kill() {
-    let (h, mut rt) = setup();
+fn test_kill() {
+    let (h, mut rt) = setup_root();
 
     // Register a subnet with 1FIL collateral
     let value = TokenAmount::from(10_u64.pow(18));
@@ -194,7 +196,7 @@ fn kill() {
 
 #[test]
 fn checkpoint_commit() {
-    let (h, mut rt) = setup();
+    let (h, mut rt) = setup_root();
 
     // Register a subnet with 1FIL collateral
     let value = TokenAmount::from(10_u64.pow(18));
@@ -276,7 +278,7 @@ fn checkpoint_commit() {
 
 #[test]
 fn checkpoint_crossmsgs() {
-    let (h, mut rt) = setup();
+    let (h, mut rt) = setup_root();
 
     // Register a subnet with 1FIL collateral
     let value = TokenAmount::from(10_u64.pow(18));
@@ -347,4 +349,102 @@ fn checkpoint_crossmsgs() {
     // TODO: Add another checkpoint with cross-messages and include some
     // values to test that the circulating supply is updated correctly.
     // (deferring these tests for when cross-message support is fully implemented).
+}
+
+#[test]
+fn test_fund() {
+    let (h, mut rt) = setup_root();
+
+    // Register a subnet with 1FIL collateral
+    let value = TokenAmount::from(10_u64.pow(18));
+    h.register(&mut rt, &SUBNET_ONE, &value, ExitCode::OK).unwrap();
+
+    let st: State = rt.get_state();
+    assert_eq!(st.total_subnets, 1);
+    let shid = SubnetID::new(&h.net_name, *SUBNET_ONE);
+    let subnet = h.get_subnet(&rt, &shid).unwrap();
+    assert_eq!(subnet.id, shid);
+    assert_eq!(subnet.stake, value);
+    assert_eq!(subnet.circ_supply, TokenAmount::zero());
+    assert_eq!(subnet.status, subnet::Status::Active);
+    h.check_state();
+
+    let funder = Address::new_id(1001);
+    let amount = TokenAmount::from(10_u64.pow(18));
+    h.fund(&mut rt, &funder, &shid, ExitCode::OK, amount.clone(), 1, &amount).unwrap();
+    let funder = Address::new_id(1002);
+    let mut exp_cs = amount.clone() * 2;
+    h.fund(&mut rt, &funder, &shid, ExitCode::OK, amount.clone(), 2, &exp_cs).unwrap();
+    exp_cs += amount.clone();
+    h.fund(&mut rt, &funder, &shid, ExitCode::OK, amount.clone(), 3, &exp_cs).unwrap();
+    // No funds sent
+    h.fund(
+        &mut rt,
+        &funder,
+        &shid,
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        TokenAmount::zero(),
+        3,
+        &exp_cs,
+    )
+    .unwrap();
+
+    // Subnet doesn't exist
+    h.fund(
+        &mut rt,
+        &funder,
+        &SubnetID::new(&h.net_name, *SUBNET_TWO),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        TokenAmount::zero(),
+        3,
+        &exp_cs,
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_release() {
+    let shid = SubnetID::new(&ROOTNET_ID, *SUBNET_ONE);
+    let (h, mut rt) = setup(shid.clone());
+
+    let releaser = Address::new_id(1001);
+    // Release funds
+    let r_amount = TokenAmount::from(5_u64.pow(18));
+    rt.set_balance(2 * r_amount.clone());
+    let prev_cid =
+        h.release(&mut rt, &releaser, ExitCode::OK, r_amount.clone(), 0, &Cid::default()).unwrap();
+    h.release(&mut rt, &releaser, ExitCode::OK, r_amount, 1, &prev_cid).unwrap();
+}
+
+#[test]
+fn test_send_cross() {
+    let shid = SubnetID::new(&ROOTNET_ID, *SUBNET_ONE);
+    let (h, mut rt) = setup(shid.clone());
+
+    let from = Address::new_id(1001);
+    let to = Address::new_id(1002);
+
+    let value = TokenAmount::from(10_u64.pow(18));
+
+    // top-down
+    let reg_value = TokenAmount::from(10_u64.pow(18));
+    h.register(&mut rt, &SUBNET_ONE, &reg_value, ExitCode::OK).unwrap();
+    let sub = SubnetID::from_str("/root/f0101/f0101").unwrap();
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 1, &value).unwrap();
+    let sub = SubnetID::from_str("/root/f0101/f0101").unwrap();
+    let circ_sup = 2 * &value;
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 2, &circ_sup).unwrap();
+    let sub = SubnetID::from_str("/root/f0101/f0101/f01002").unwrap();
+    let circ_sup = circ_sup.clone() + &value;
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 3, &circ_sup).unwrap();
+
+    // bottom-up
+    rt.set_balance(3 * &value);
+    let sub = SubnetID::from_str("/root/f0102/f0101").unwrap();
+    let zero = TokenAmount::zero();
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 0, &zero).unwrap();
+    let sub = SubnetID::from_str("/root/f0102/f0101").unwrap();
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 1, &zero).unwrap();
+    let sub = SubnetID::from_str("/root").unwrap();
+    h.send_cross(&mut rt, &from, &to, sub, ExitCode::OK, value.clone(), 0, &zero).unwrap();
 }
