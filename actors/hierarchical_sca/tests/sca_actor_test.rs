@@ -1,4 +1,8 @@
 use cid::Cid;
+use fil_actor_hierarchical_sca::{
+    get_bottomup_msg, subnet, Actor as SCAActor, Checkpoint, CrossMsgMetaArray, State,
+    DEFAULT_CHECKPOINT_PERIOD,
+};
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_shared::address::subnet::ROOTNET_ID;
@@ -7,10 +11,6 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use hierarchical_sca::{
-    get_bottomup_msg, subnet, Actor as SCAActor, Checkpoint, CrossMsgMetaArray, State,
-    DEFAULT_CHECKPOINT_PERIOD,
-};
 use std::str::FromStr;
 
 use crate::harness::*;

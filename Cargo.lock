@@ -609,6 +609,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_hierarchical_sca"
+version = "8.0.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_runtime",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "indexmap",
+ "integer-encoding",
+ "lazy_static",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_init"
 version = "8.0.0-alpha.1"
 dependencies = [
@@ -1141,26 +1161,6 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-
-[[package]]
-name = "hierarchical-sca"
-version = "8.0.0-alpha.1"
-dependencies = [
- "anyhow",
- "cid",
- "fil_actors_runtime",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "fvm_ipld_hamt",
- "fvm_shared",
- "indexmap",
- "integer-encoding",
- "lazy_static",
- "log",
- "num-derive",
- "num-traits",
- "serde",
-]
 
 [[package]]
 name = "ident_case"
@@ -1741,6 +1741,7 @@ dependencies = [
  "cid",
  "fil_actor_account",
  "fil_actor_cron",
+ "fil_actor_hierarchical_sca",
  "fil_actor_init",
  "fil_actor_market",
  "fil_actor_miner",

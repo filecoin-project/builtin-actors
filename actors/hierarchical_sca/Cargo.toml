@@ -1,5 +1,5 @@
 [package]
-name = "hierarchical-sca"
+name = "fil_actor_hierarchical_sca"
 description = "Subnet Coordinator Actor (SCA) for Hierarchical Consensus"
 version = "8.0.0-alpha.1"
 license = "MIT OR Apache-2.0"
