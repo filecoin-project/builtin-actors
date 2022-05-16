@@ -333,7 +333,8 @@ fn checkpoint_crossmsgs() {
     assert_eq!(commit.epoch(), DEFAULT_CHECKPOINT_PERIOD);
     let child_check = has_childcheck_source(&commit.data.children, &shid).unwrap();
     assert_eq!(&child_check.checks.len(), &1);
-    assert_eq!(has_cid(&child_check.checks, &ch.cid()), true);
+    let prev_cid = ch.cid();
+    assert_eq!(has_cid(&child_check.checks, &prev_cid), true);
 
     let crossmsgs = CrossMsgMetaArray::load(&st.bottomup_msg_meta, rt.store()).unwrap();
     for item in 0..=2 {
@@ -347,9 +348,50 @@ fn checkpoint_crossmsgs() {
         commit.crossmsg_meta(&h.net_name, &to).unwrap();
     }
 
-    // TODO: Add another checkpoint with cross-messages and include some
-    // values to test that the circulating supply is updated correctly.
-    // (deferring these tests for when cross-message support is fully implemented).
+    // funding subnet so it has some funds
+    let funder = Address::new_id(1001);
+    let amount = TokenAmount::from(10_u64.pow(18));
+    h.fund(&mut rt, &funder, &shid, ExitCode::OK, amount.clone(), 1, &amount).unwrap();
+
+    let mut ch = Checkpoint::new(shid.clone(), epoch + 9);
+    ch.data.prev_check = prev_cid;
+    add_msg_meta(
+        &mut ch,
+        &shid,
+        &SubnetID::from_str("/root/f0102/f0101").unwrap(),
+        "rand1".as_bytes().to_vec(),
+        TokenAmount::from(5_u64.pow(18)),
+    );
+    add_msg_meta(
+        &mut ch,
+        &shid,
+        &SubnetID::from_str("/root/f0102/f0102").unwrap(),
+        "rand2".as_bytes().to_vec(),
+        TokenAmount::from(5_u64.pow(18)),
+    );
+    h.commit_child_check(&mut rt, &shid, &ch, ExitCode::OK, 2 * TokenAmount::from(5_u64.pow(18)))
+        .unwrap();
+    let st: State = rt.get_state();
+    let commit = st.get_window_checkpoint(rt.store(), epoch).unwrap();
+    assert_eq!(commit.epoch(), DEFAULT_CHECKPOINT_PERIOD);
+    let child_check = has_childcheck_source(&commit.data.children, &shid).unwrap();
+    assert_eq!(&child_check.checks.len(), &2);
+    assert_eq!(has_cid(&child_check.checks, &ch.cid()), true);
+
+    let crossmsgs = CrossMsgMetaArray::load(&st.bottomup_msg_meta, rt.store()).unwrap();
+    for item in 0..=2 {
+        get_bottomup_msg(&crossmsgs, item).unwrap().unwrap();
+    }
+    for to in vec![
+        SubnetID::from_str("/root/f0102/f0101").unwrap(),
+        SubnetID::from_str("/root/f0102/f0102").unwrap(),
+    ] {
+        // verify that some value has been included in metas.
+        let meta = commit.crossmsg_meta(&h.net_name, &to).unwrap();
+        assert_eq!(true, meta.value > TokenAmount::zero());
+    }
+
+    // TODO: More extensive tests?
 }
 
 #[test]
@@ -478,32 +520,32 @@ fn test_apply_routing() {
     //top-down
     let ff = Address::new_hierarchical(&ROOTNET_ID, &from).unwrap();
     let tt = Address::new_hierarchical(&sub1, &to).unwrap();
-    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 0, 1, false).unwrap();
+    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 0, 1, ExitCode::OK, false).unwrap();
     let tt = Address::new_hierarchical(&sub2, &to).unwrap();
-    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 1, 1, false).unwrap();
+    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 1, 1, ExitCode::OK, false).unwrap();
     let ff =
         Address::new_hierarchical(&SubnetID::from_str("/root/f01/f012").unwrap(), &from).unwrap();
     let tt = Address::new_hierarchical(&sub1, &to).unwrap();
-    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 2, 2, false).unwrap();
+    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 2, 2, ExitCode::OK, false).unwrap();
     // directed to current network
     let tt = Address::new_hierarchical(&shid, &to).unwrap();
-    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 3, 0, false).unwrap();
+    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 3, 0, ExitCode::OK, false).unwrap();
 
     // bottom-up
     let ff = Address::new_hierarchical(&sub1, &from).unwrap();
     let tt = Address::new_hierarchical(&SubnetID::from_str("/root/f0101/f0102/f011").unwrap(), &to)
         .unwrap();
-    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 0, 2, false).unwrap();
+    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 0, 2, ExitCode::OK, false).unwrap();
     let ff = Address::new_hierarchical(&sub2, &from).unwrap();
     let tt = Address::new_hierarchical(&SubnetID::from_str("/root/f0101/f0101/f011").unwrap(), &to)
         .unwrap();
-    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 1, 3, false).unwrap();
+    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 1, 3, ExitCode::OK, false).unwrap();
     // directed to current network
     let ff =
         Address::new_hierarchical(&SubnetID::from_str("/root/f0101/f0102/f011").unwrap(), &from)
             .unwrap();
     let tt = Address::new_hierarchical(&shid, &to).unwrap();
-    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 1, 0, false).unwrap();
+    h.apply_cross_msg(&mut rt, &ff, &tt, value.clone(), 1, 0, ExitCode::OK, false).unwrap();
 }
 
 #[test]
@@ -527,23 +569,48 @@ fn test_apply_msg() {
 
     // Apply fund messages
     for i in 0..5 {
-        h.apply_cross_msg(&mut rt, &funder, &funder, value.clone(), i, i, false).unwrap();
+        h.apply_cross_msg(&mut rt, &funder, &funder, value.clone(), i, i, ExitCode::OK, false)
+            .unwrap();
     }
     // Apply release messages
     let from = Address::new_hierarchical(&shid, &BURNT_FUNDS_ACTOR_ADDR).unwrap();
     // with the same nonce
     for _ in 0..5 {
-        h.apply_cross_msg(&mut rt, &from, &funder, value.clone(), 0, 0, false).unwrap();
+        h.apply_cross_msg(&mut rt, &from, &funder, value.clone(), 0, 0, ExitCode::OK, false)
+            .unwrap();
     }
     // with increasing nonce
     for i in 0..5 {
-        h.apply_cross_msg(&mut rt, &from, &funder, value.clone(), i, i, false).unwrap();
+        h.apply_cross_msg(&mut rt, &from, &funder, value.clone(), i, i, ExitCode::OK, false)
+            .unwrap();
     }
 
-    // TODO: Add tests for failing cases:
-    // - Not subsequent nonce
-    // - Fail message application
-    // - etc.
+    // trying to apply non-subsequent nonce.
+    h.apply_cross_msg(
+        &mut rt,
+        &from,
+        &funder,
+        value.clone(),
+        10,
+        0,
+        ExitCode::USR_ILLEGAL_STATE,
+        false,
+    )
+    .unwrap();
+    // trying already applied nonce
+    h.apply_cross_msg(
+        &mut rt,
+        &from,
+        &funder,
+        value.clone(),
+        0,
+        0,
+        ExitCode::USR_ILLEGAL_STATE,
+        false,
+    )
+    .unwrap();
+
+    // TODO: Trying to release over circulating supply
 }
 
 #[test]

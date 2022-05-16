@@ -517,6 +517,7 @@ impl Harness {
         value: TokenAmount,
         msg_nonce: u64,
         td_nonce: u64,
+        code: ExitCode,
         noop: bool,
     ) -> Result<(), ActorError> {
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, *SYSTEM_ACTOR_ADDR);
@@ -535,6 +536,20 @@ impl Harness {
         let st: State = rt.get_state();
         let sto = params.to.subnet().unwrap();
         let rto = to.raw_addr().unwrap();
+
+        // if expected code is not ok
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(
+                    Method::ApplyMessage as MethodNum,
+                    &RawBytes::serialize(params).unwrap(),
+                ),
+            );
+            rt.verify();
+            return Ok(());
+        }
+
         if params.apply_type(&st.network_name).unwrap() == HCMsgType::BottomUp {
             if sto == st.network_name {
                 rt.expect_send(
@@ -546,6 +561,7 @@ impl Harness {
                     ExitCode::OK,
                 );
             }
+
             rt.call::<SCAActor>(
                 Method::ApplyMessage as MethodNum,
                 &RawBytes::serialize(params).unwrap(),
