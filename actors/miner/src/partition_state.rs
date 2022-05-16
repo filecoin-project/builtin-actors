@@ -711,7 +711,7 @@ impl Partition {
     /// Returns the amount of power newly faulty, or declared recovered but faulty again.
     ///
     /// - Skipped faults that are not in the provided partition triggers an error.
-    /// - Skipped faults that are already declared (but not delcared recovered) are ignored.
+    /// - Skipped faults that are already declared (but not declared recovered) are ignored.
     pub fn record_skipped_faults<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -860,6 +860,14 @@ impl ops::Add for &PowerPair {
     }
 }
 
+impl ops::Add for PowerPair {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        &self + &rhs
+    }
+}
+
 impl ops::AddAssign<&Self> for PowerPair {
     fn add_assign(&mut self, rhs: &Self) {
         *self = &*self + rhs;
@@ -871,6 +879,14 @@ impl ops::Sub for &PowerPair {
 
     fn sub(self, rhs: Self) -> Self::Output {
         PowerPair { raw: &self.raw - &rhs.raw, qa: &self.qa - &rhs.qa }
+    }
+}
+
+impl ops::Sub for PowerPair {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        &self - &rhs
     }
 }
 
