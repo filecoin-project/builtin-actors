@@ -88,6 +88,14 @@ impl StateHarness {
     ) -> anyhow::Result<TokenAmount> {
         self.st.unlock_vested_funds(&self.store, current_epoch)
     }
+
+    pub fn unlock_unvested_funds(
+        &mut self,
+        current_epoch: ChainEpoch,
+        target: &TokenAmount,
+    ) -> anyhow::Result<TokenAmount> {
+        self.st.unlock_unvested_funds(&self.store, current_epoch, target)
+    }
 }
 
 impl StateHarness {
