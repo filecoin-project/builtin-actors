@@ -23,7 +23,7 @@ impl BQExpectation {
         self
     }
 
-    fn equals(&mut self, mut q: BitFieldQueue<MemoryBlockstore>) {
+    fn equals(&mut self, q: &mut BitFieldQueue<MemoryBlockstore>) {
         assert_eq!(self.expected.len() as u64, q.amt.count());
 
         q.amt
@@ -49,7 +49,7 @@ fn adds_values_to_empty_queue() {
 
     let expected: HashMap<_, Vec<u64>> = HashMap::new();
     let mut bq_expectation = BQExpectation { expected };
-    bq_expectation.add(epoch, values.to_vec()).equals(queue);
+    bq_expectation.add(epoch, values.to_vec()).equals(&mut queue);
 }
 
 #[test]
@@ -66,7 +66,9 @@ fn adds_bitfield_to_empty_queue() {
 
     let expected: HashMap<_, Vec<u64>> = HashMap::new();
     let mut bq_expectation = BQExpectation { expected };
-    bq_expectation.add(epoch, ranges[0].clone().map(u64::from).collect::<Vec<u64>>()).equals(queue);
+    bq_expectation
+        .add(epoch, ranges[0].clone().map(u64::from).collect::<Vec<u64>>())
+        .equals(&mut queue);
 }
 
 #[test]
@@ -91,7 +93,169 @@ fn quantizes_added_epochs_according_to_quantization_spec() {
         .add(ChainEpoch::from(3), [0, 2, 3].to_vec())
         .add(ChainEpoch::from(8), [4, 7, 8].to_vec())
         .add(ChainEpoch::from(13), [9].to_vec())
-        .equals(queue);
+        .equals(&mut queue);
+}
+
+#[test]
+fn merges_values_within_same_epoch() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+    let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
+
+    let epoch = ChainEpoch::from(42);
+
+    queue.add_to_queue_values(epoch, [1, 3].to_vec()).unwrap();
+    queue.add_to_queue_values(epoch, [2, 4].to_vec()).unwrap();
+
+    let expected: HashMap<_, Vec<u64>> = HashMap::new();
+    let mut bq_expectation = BQExpectation { expected };
+    bq_expectation.add(epoch, [1, 2, 3, 4].to_vec()).equals(&mut queue);
+}
+
+#[test]
+fn adds_values_to_different_epochs() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+    let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
+
+    let epoch1 = ChainEpoch::from(42);
+    let epoch2 = ChainEpoch::from(93);
+
+    queue.add_to_queue_values(epoch1, [1, 3].to_vec()).unwrap();
+    queue.add_to_queue_values(epoch2, [2, 4].to_vec()).unwrap();
+
+    let expected: HashMap<_, Vec<u64>> = HashMap::new();
+    let mut bq_expectation = BQExpectation { expected };
+    bq_expectation.add(epoch1, [1, 3].to_vec()).add(epoch2, [2, 4].to_vec()).equals(&mut queue);
+}
+
+#[test]
+fn pop_until_from_empty_queue_returns_empty_bitfield() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+    let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
+
+    let next = queue.pop_until(42).unwrap();
+
+    //no values are returned
+    let count = next.0.len();
+    assert_eq!(0, count);
+}
+
+#[test]
+fn pop_until_does_nothing_if_until_parameter_before_first_value() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+    let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
+
+    let epoch1 = ChainEpoch::from(42);
+    let epoch2 = ChainEpoch::from(93);
+
+    queue.add_to_queue_values(epoch1, [1, 3].to_vec()).unwrap();
+    queue.add_to_queue_values(epoch2, [2, 4].to_vec()).unwrap();
+
+    let next = queue.pop_until(epoch1 - 1).unwrap();
+
+    // no values are returned
+    let count = next.0.len();
+    assert_eq!(0, count);
+
+    let expected: HashMap<_, Vec<u64>> = HashMap::new();
+    let mut bq_expectation = BQExpectation { expected };
+    // queue remains the same
+    bq_expectation.add(epoch1, [1, 3].to_vec()).add(epoch2, [2, 4].to_vec()).equals(&mut queue);
+}
+
+#[test]
+fn pop_until_removes_and_returns_entries_before_and_including_target_epoch() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+    let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
+
+    let epoch1 = ChainEpoch::from(42);
+    let epoch2 = ChainEpoch::from(93);
+    let epoch3 = ChainEpoch::from(94);
+    let epoch4 = ChainEpoch::from(204);
+
+    queue.add_to_queue_values(epoch1, [1, 3].to_vec()).unwrap();
+    queue.add_to_queue_values(epoch2, [5].to_vec()).unwrap();
+    queue.add_to_queue_values(epoch3, [6, 7, 8].to_vec()).unwrap();
+    queue.add_to_queue_values(epoch4, [2, 4].to_vec()).unwrap();
+
+    let next = queue.pop_until(epoch2).unwrap();
+
+    // values from first two epochs are returned
+    assert_bitfield_equals(&next.0, &[1, 3, 5]);
+
+    let expected: HashMap<_, Vec<u64>> = HashMap::new();
+    let mut bq_expectation = BQExpectation { expected };
+    // queue only contains remaining values
+    bq_expectation.add(epoch3, [6, 7, 8].to_vec()).add(epoch4, [2, 4].to_vec()).equals(&mut queue);
+
+    // subsequent call to epoch less than next does nothing
+    let next = queue.pop_until(epoch3 - 1).unwrap();
+
+    // no values are returned
+    assert_bitfield_equals(&next.0, &[]);
+
+    let expected: HashMap<_, Vec<u64>> = HashMap::new();
+    let mut bq_expectation = BQExpectation { expected };
+    // queue only contains remaining values
+    bq_expectation.add(epoch3, [6, 7, 8].to_vec()).add(epoch4, [2, 4].to_vec()).equals(&mut queue);
+
+    // popping the rest of the queue gets the rest of the values
+    let next = queue.pop_until(epoch4).unwrap();
+
+    // rest of values are returned
+    assert_bitfield_equals(&next.0, &[2, 4, 6, 7, 8]);
+
+    let expected: HashMap<_, Vec<u64>> = HashMap::new();
+    let mut bq_expectation = BQExpectation { expected };
+    // queue is now empty
+    bq_expectation.equals(&mut queue);
+}
+
+#[test]
+fn cuts_elements() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+    let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
+
+    let epoch1 = ChainEpoch::from(42);
+    let epoch2 = ChainEpoch::from(93);
+
+    queue.add_to_queue_values(epoch1, [1, 2, 3, 4, 99].to_vec()).unwrap();
+    queue.add_to_queue_values(epoch2, [5, 6].to_vec()).unwrap();
+
+    let ranges: Vec<Range<u64>> = vec![
+        Range { start: 2, end: 3 },
+        Range { start: 4, end: 5 },
+        Range { start: 5, end: 6 },
+        Range { start: 6, end: 7 },
+    ];
+    let to_cut = BitField::from_ranges(Ranges::new(ranges.iter().cloned()));
+    queue.cut(&to_cut).unwrap();
+
+    let expected: HashMap<_, Vec<u64>> = HashMap::new();
+    let mut bq_expectation = BQExpectation { expected };
+    // 3 shifts down to 2, 99 down to 95
+    bq_expectation.add(epoch1, [1, 2, 95].to_vec()).equals(&mut queue);
+}
+
+#[test]
+fn adds_empty_bitfield_to_queue() {
+    let h = ActorHarness::new(0);
+    let rt = h.new_runtime();
+    let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
+
+    let epoch = ChainEpoch::from(42);
+
+    queue.add_to_queue(epoch, &BitField::new()).unwrap();
+
+    let expected: HashMap<_, Vec<u64>> = HashMap::new();
+    let mut bq_expectation = BQExpectation { expected };
+    // ensures we don't add an empty entry
+    bq_expectation.equals(&mut queue);
 }
 
 fn empty_bitfield_queue_with_quantizing(
