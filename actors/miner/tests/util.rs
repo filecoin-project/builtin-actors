@@ -1723,7 +1723,7 @@ pub fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
 #[allow(dead_code)]
 pub fn make_prove_commit_aggregate(sector_nos: &BitField) -> ProveCommitAggregateParams {
     ProveCommitAggregateParams {
-        sector_numbers: UnvalidatedBitField::Validated(sector_nos),
+        sector_numbers: UnvalidatedBitField::Validated(sector_nos.clone()),
         aggregate_proof: vec![0; 1024],
     }
 }
