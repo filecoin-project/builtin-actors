@@ -1260,24 +1260,24 @@ impl MessageAccumulator {
     }
 
     /// Adds a message to the accumulator
-    pub fn add(&mut self, msg: &str) {
+    pub fn add(&self, msg: &str) {
         self.msgs.borrow_mut().push(format!("{}{msg}", self.prefix));
     }
 
     /// Adds messages from another accumulator to this one
-    pub fn add_all(&mut self, other: &Self) {
+    pub fn add_all(&self, other: &Self) {
         self.msgs.borrow_mut().extend_from_slice(&other.msgs.borrow());
     }
 
     /// Adds a message if predicate is false
-    pub fn require(&mut self, predicate: bool, msg: &str) {
+    pub fn require(&self, predicate: bool, msg: &str) {
         if !predicate {
             self.add(msg);
         }
     }
 
     /// Adds a message if result is `Err`. Underlying error must be `Display`.
-    pub fn require_no_error<V, E: Display>(&mut self, result: Result<V, E>, msg: &str) {
+    pub fn require_no_error<V, E: Display>(&self, result: Result<V, E>, msg: &str) {
         if let Err(e) = result {
             self.add(&format!("{msg}: {e}"));
         }
@@ -1290,7 +1290,7 @@ mod message_accumulator_test {
 
     #[test]
     fn adds_messages() {
-        let mut acc = MessageAccumulator::default();
+        let acc = MessageAccumulator::default();
         acc.add("Cthulhu");
 
         let msgs = acc.messages();
@@ -1305,7 +1305,7 @@ mod message_accumulator_test {
 
     #[test]
     fn adds_on_predicate() {
-        let mut acc = MessageAccumulator::default();
+        let acc = MessageAccumulator::default();
         acc.require(true, "Cthulhu");
 
         let msgs = acc.messages();
@@ -1322,7 +1322,7 @@ mod message_accumulator_test {
     #[test]
     fn require_no_error() {
         let fiasco: Result<(), String> = Err("fiasco".to_owned());
-        let mut acc = MessageAccumulator::default();
+        let acc = MessageAccumulator::default();
         acc.require_no_error(fiasco, "Cthulhu says");
 
         let msgs = acc.messages();
@@ -1332,10 +1332,10 @@ mod message_accumulator_test {
 
     #[test]
     fn prefixes() {
-        let mut acc = MessageAccumulator::default();
+        let acc = MessageAccumulator::default();
         acc.add("peasant");
 
-        let mut gods_acc = acc.with_prefix("elder god -> ");
+        let gods_acc = acc.with_prefix("elder god -> ");
         gods_acc.add("Cthulhu");
 
         assert_eq!(acc.messages(), vec!["peasant", "elder god -> Cthulhu"]);
@@ -1344,13 +1344,13 @@ mod message_accumulator_test {
 
     #[test]
     fn add_all() {
-        let mut acc1 = MessageAccumulator::default();
+        let acc1 = MessageAccumulator::default();
         acc1.add("Cthulhu");
 
-        let mut acc2 = MessageAccumulator::default();
+        let acc2 = MessageAccumulator::default();
         acc2.add("Azathoth");
 
-        let mut acc3 = MessageAccumulator::default();
+        let acc3 = MessageAccumulator::default();
         acc3.add_all(&acc1);
         acc3.add_all(&acc2);
 

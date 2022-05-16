@@ -310,16 +310,52 @@ impl ActorHarness {
 
         let mut info = Vec::with_capacity(num_sectors);
         for pc in precommits {
-            let sector = self.prove_commit_sector_and_confirm(
-                rt,
-                &pc,
-                self.make_prove_commit_params(pc.info.sector_number),
-                ProveCommitConfig::empty(),
-            );
+            let sector = self
+                .prove_commit_sector_and_confirm(
+                    rt,
+                    &pc,
+                    self.make_prove_commit_params(pc.info.sector_number),
+                    ProveCommitConfig::empty(),
+                )
+                .unwrap();
             info.push(sector);
         }
         rt.reset();
         info
+    }
+
+    pub fn commit_and_prove_sector(
+        &self,
+        rt: &mut MockRuntime,
+        sector_no: SectorNumber,
+        lifetime_periods: i64,
+        deal_ids: Vec<DealID>,
+    ) -> SectorOnChainInfo {
+        let precommit_epoch = rt.epoch;
+        let deadline = self.deadline(rt);
+        let expiration = deadline.period_end() + lifetime_periods * rt.policy.wpost_proving_period;
+
+        // Precommit
+        let pre_commit_params =
+            self.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, deal_ids);
+        let precommit =
+            self.pre_commit_sector(rt, pre_commit_params.clone(), PreCommitConfig::empty(), true);
+
+        self.advance_to_epoch_with_cron(
+            rt,
+            precommit_epoch + rt.policy.pre_commit_challenge_delay + 1,
+        );
+
+        let sector_info = self
+            .prove_commit_sector_and_confirm(
+                rt,
+                &precommit,
+                self.make_prove_commit_params(pre_commit_params.sector_number),
+                ProveCommitConfig::empty(),
+            )
+            .unwrap();
+        rt.reset();
+        sector_info
     }
 
     pub fn get_deadline_info(&self, rt: &MockRuntime) -> DeadlineInfo {
@@ -584,20 +620,20 @@ impl ActorHarness {
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
         cfg: ProveCommitConfig,
-    ) -> SectorOnChainInfo {
+    ) -> Result<SectorOnChainInfo, ActorError> {
         let sector_number = params.sector_number;
-        self.prove_commit_sector(rt, pc, params);
-        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()]);
+        self.prove_commit_sector(rt, pc, params)?;
+        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()])?;
 
-        self.get_sector(rt, sector_number)
+        Ok(self.get_sector(rt, sector_number))
     }
 
-    fn prove_commit_sector(
+    pub fn prove_commit_sector(
         &self,
         rt: &mut MockRuntime,
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
-    ) {
+    ) -> Result<(), ActorError> {
         let commd = make_piece_cid(b"commd");
         let seal_rand = Randomness(vec![1, 2, 3, 4]);
         let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
@@ -651,19 +687,21 @@ impl ActorHarness {
             ExitCode::OK,
         );
         rt.expect_validate_caller_any();
-        let result = rt
-            .call::<Actor>(Method::ProveCommitSector as u64, &RawBytes::serialize(params).unwrap())
-            .unwrap();
+        let result = rt.call::<Actor>(
+            Method::ProveCommitSector as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
         expect_empty(result);
         rt.verify();
+        Ok(())
     }
 
-    fn confirm_sector_proofs_valid(
+    pub fn confirm_sector_proofs_valid(
         &self,
         rt: &mut MockRuntime,
         cfg: ProveCommitConfig,
         pcs: Vec<SectorPreCommitOnChainInfo>,
-    ) {
+    ) -> Result<(), ActorError> {
         self.confirm_sector_proofs_valid_internal(rt, cfg, &pcs);
 
         let mut all_sector_numbers = Vec::new();
@@ -683,9 +721,9 @@ impl ActorHarness {
         rt.call::<Actor>(
             Method::ConfirmSectorProofsValid as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
+        )?;
         rt.verify();
+        Ok(())
     }
 
     fn confirm_sector_proofs_valid_internal(
@@ -1564,7 +1602,7 @@ impl PreCommitConfig {
 
 #[derive(Default, Clone)]
 pub struct ProveCommitConfig {
-    verify_deals_exit: HashMap<SectorNumber, ExitCode>,
+    pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
 }
 
 #[allow(dead_code)]
@@ -1863,7 +1901,7 @@ impl PartitionStateSummary {
         quant: QuantSpec,
         sector_size: SectorSize,
         sectors_map: &SectorsMap,
-        acc: &mut MessageAccumulator,
+        acc: &MessageAccumulator,
     ) -> Self {
         let live = partition.live_sectors();
         let active = partition.active_sectors();
@@ -2058,7 +2096,7 @@ impl ExpirationQueueStateSummary {
         partition_faults: &BitField,
         quant: QuantSpec,
         sector_size: SectorSize,
-        acc: &mut MessageAccumulator,
+        acc: &MessageAccumulator,
     ) -> Self {
         let mut seen_sectors: HashSet<SectorNumber> = HashSet::new();
         let mut all_on_time: Vec<BitField> = Vec::new();
@@ -2070,7 +2108,7 @@ impl ExpirationQueueStateSummary {
 
         let ret = expiration_queue.amt.for_each(|epoch, expiration_set| {
             let epoch = epoch as i64;
-            let mut acc = acc.with_prefix(&format!("expiration epoch {epoch}: "));
+            let acc = acc.with_prefix(&format!("expiration epoch {epoch}: "));
             let quant_up = quant.quantize_up(epoch);
             acc.require(quant_up == epoch, &format!("expiration queue key {epoch} is not quantized, expected {quant_up}"));
 
@@ -2159,13 +2197,13 @@ impl ExpirationQueueStateSummary {
 fn check_early_termination_queue<BS: Blockstore>(
     early_queue: BitFieldQueue<BS>,
     terminated: &BitField,
-    acc: &mut MessageAccumulator,
+    acc: &MessageAccumulator,
 ) -> usize {
     let mut seen: HashSet<u64> = HashSet::new();
     let mut seen_bitfield = BitField::new();
 
     let iter_result = early_queue.amt.for_each(|epoch, bitfield| {
-        let mut acc = acc.with_prefix(&format!("early termination epoch {epoch}: "));
+        let acc = acc.with_prefix(&format!("early termination epoch {epoch}: "));
         for i in bitfield.iter() {
             acc.require(
                 !seen.contains(&i),
@@ -2208,7 +2246,7 @@ fn select_sectors_map(sectors: &SectorsMap, include: &BitField) -> (SectorsMap, 
 fn require_contains_all(
     superset: &BitField,
     subset: &BitField,
-    acc: &mut MessageAccumulator,
+    acc: &MessageAccumulator,
     error_msg: &str,
 ) {
     if !superset.contains_all(subset) {
@@ -2219,7 +2257,7 @@ fn require_contains_all(
 fn require_contains_none(
     superset: &BitField,
     subset: &BitField,
-    acc: &mut MessageAccumulator,
+    acc: &MessageAccumulator,
     error_msg: &str,
 ) {
     if superset.contains_any(subset) {
@@ -2227,7 +2265,7 @@ fn require_contains_none(
     }
 }
 
-fn require_equal(first: &BitField, second: &BitField, acc: &mut MessageAccumulator, msg: &str) {
+fn require_equal(first: &BitField, second: &BitField, acc: &MessageAccumulator, msg: &str) {
     require_contains_all(first, second, acc, msg);
     require_contains_all(second, first, acc, msg);
 }
@@ -2244,48 +2282,216 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     quant: QuantSpec,
     sector_size: SectorSize,
     sectors: &SectorsMap,
-    acc: &mut MessageAccumulator,
+    acc: &MessageAccumulator,
 ) -> DeadlineStateSummary {
     // load linked structures
-    let partitions = if let Ok(partitions) = deadline.partitions_amt(store) {
-        partitions
-    } else {
-        return DeadlineStateSummary::default();
+    let partitions = match deadline.partitions_amt(store) {
+        Ok(partitions) => partitions,
+        Err(e) => {
+            // Hard to do any useful checks.
+            acc.add(&format!("error loading partitions: {e}"));
+            return DeadlineStateSummary::default();
+        }
     };
 
-    //let mut all_sectors = BitField::new();
-    //let mut all_live_sectors: Vec<BitField> = Vec::new();
-    //let mut all_faulty_sectors: Vec<BitField> = Vec::new();
-    //let mut all_recovering_sectors: Vec<BitField> = Vec::new();
-    //let mut all_unproven_sectors: Vec<BitField> = Vec::new();
-    //let mut all_terminated_sectors: Vec<BitField> = Vec::new();
-    //let mut all_live_power = PowerPair::zero();
-    //let mut all_active_power = PowerPair::zero();
-    //let mut all_faulty_power = PowerPair::zero();
+    let mut all_sectors = BitField::new();
+    let mut all_live_sectors: Vec<BitField> = Vec::new();
+    let mut all_faulty_sectors: Vec<BitField> = Vec::new();
+    let mut all_recovering_sectors: Vec<BitField> = Vec::new();
+    let mut all_unproven_sectors: Vec<BitField> = Vec::new();
+    let mut all_terminated_sectors: Vec<BitField> = Vec::new();
+    let mut all_live_power = PowerPair::zero();
+    let mut all_active_power = PowerPair::zero();
+    let mut all_faulty_power = PowerPair::zero();
 
     let mut partition_count = 0;
 
     // check partitions
+    let mut partitions_with_expirations: HashMap<ChainEpoch, Vec<u64>> = HashMap::new();
+    let mut partitions_with_early_terminations = BitField::new();
     partitions
         .for_each(|index, partition| {
             // check sequential partitions
-            assert_eq!(index, partition_count);
+            acc.require(
+                index == partition_count,
+                &format!(
+                    "Non-sequential partitions, expected index {partition_count}, found {index}"
+                ),
+            );
             partition_count += 1;
 
-            let _summary = PartitionStateSummary::check_partition_state_invariants(
+            let acc = acc.with_prefix(&format!("partition {index}"));
+            let summary = PartitionStateSummary::check_partition_state_invariants(
                 partition,
                 store,
                 quant,
                 sector_size,
                 sectors,
-                acc,
+                &acc,
             );
+
+            acc.require(
+                !all_sectors.contains_any(&summary.all_sectors),
+                &format!("duplicate sector in partition {index}"),
+            );
+
+            summary.expiration_epochs.iter().for_each(|&epoch| {
+                partitions_with_expirations.entry(epoch).or_insert(Vec::new()).push(index);
+            });
+
+            if summary.early_termination_count > 0 {
+                partitions_with_early_terminations.set(index);
+            }
+
+            all_sectors = BitField::union([&all_sectors, &summary.all_sectors]);
+            all_live_sectors.push(summary.live_sectors);
+            all_faulty_sectors.push(summary.faulty_sectors);
+            all_recovering_sectors.push(summary.recovering_sectors);
+            all_unproven_sectors.push(summary.unproven_sectors);
+            all_terminated_sectors.push(summary.terminated_sectors);
+            all_live_power += &summary.live_power;
+            all_active_power += &summary.active_power;
+            all_faulty_power += &summary.faulty_power;
 
             Ok(())
         })
         .expect("error iterating partitions");
 
-    // TODO more checks
+    // Check invariants on partitions proven
+    if let Some(last_proof) = deadline.partitions_posted.last() {
+        acc.require(
+            partition_count >= last_proof + 1,
+            &format!("expected at least {} partitions, found {partition_count}", last_proof + 1),
+        );
+        acc.require(
+            deadline.live_sectors > 0,
+            &format!("expected at least one live sector when partitions have been proven"),
+        );
+    }
 
-    DeadlineStateSummary::default()
+    // Check partitions snapshot to make sure we take the snapshot after
+    // dealing with recovering power and unproven power.
+    match deadline.partitions_snapshot_amt(store) {
+        Ok(partition_snapshot) => {
+            let ret = partition_snapshot.for_each(|i, partition| {
+                let acc = acc.with_prefix(&format!("partition snapshot {i}"));
+                acc.require(
+                    partition.recovering_power.is_zero(),
+                    "snapshot partition has recovering power",
+                );
+                acc.require(
+                    partition.recoveries.is_empty(),
+                    "snapshot partition has pending recoveries",
+                );
+                acc.require(
+                    partition.unproven_power.is_zero(),
+                    "snapshot partition has unproven power",
+                );
+                acc.require(
+                    partition.unproven.is_empty(),
+                    "snapshot partition has unproven sectors",
+                );
+
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating partitions snapshot");
+        }
+        Err(e) => acc.add(&format!("error loading partitions snapshot: {e}")),
+    };
+
+    // Check that we don't have any proofs proving partitions that are not in the snapshot.
+    match deadline.optimistic_proofs_amt(store) {
+        Ok(proofs_snapshot) => {
+            if let Ok(partitions_snapshot) = deadline.partitions_snapshot_amt(store) {
+                let ret = proofs_snapshot.for_each(|_, proof| {
+                    for partition in proof.partitions.iter() {
+                        match partitions_snapshot.get(partition) {
+                            Ok(snapshot) => acc.require(
+                                snapshot.is_some(),
+                                "failed to find partition for recorded proof in the snapshot",
+                            ),
+                            Err(e) => acc.add(&format!("error loading partition snapshot: {e}")),
+                        }
+                    }
+                    Ok(())
+                });
+                acc.require_no_error(ret, "error iterating proofs snapshot");
+            }
+        }
+        Err(e) => acc.add(&format!("error loading proofs snapshot: {e}")),
+    };
+
+    // check memoized sector and power values
+    let live_sectors = BitField::union(&all_live_sectors);
+    acc.require(
+        deadline.live_sectors == live_sectors.len(),
+        &format!(
+            "deadline live sectors {} != partitions count {}",
+            deadline.live_sectors,
+            live_sectors.len()
+        ),
+    );
+
+    acc.require(
+        deadline.total_sectors == all_sectors.len(),
+        &format!(
+            "deadline total sectors {} != partitions count {}",
+            deadline.total_sectors,
+            all_sectors.len()
+        ),
+    );
+
+    let faulty_sectors = BitField::union(&all_faulty_sectors);
+    let recovering_sectors = BitField::union(&all_recovering_sectors);
+    let unproven_sectors = BitField::union(&all_unproven_sectors);
+    let terminated_sectors = BitField::union(&all_terminated_sectors);
+
+    acc.require(
+        deadline.faulty_power == all_faulty_power,
+        &format!(
+            "deadline faulty power {:?} != partitions total {all_faulty_power:?}",
+            deadline.faulty_power
+        ),
+    );
+
+    // Validate partition expiration queue contains an entry for each partition and epoch with an expiration.
+    // The queue may be a superset of the partitions that have expirations because we never remove from it.
+    match BitFieldQueue::new(store, &deadline.expirations_epochs, quant) {
+        Ok(expiration_queue) => {
+            for (epoch, expiring_idx) in partitions_with_expirations {
+                match expiration_queue.amt.get(epoch as u64) {
+                    Ok(expiration_bitfield) if expiration_bitfield.is_some() => {
+                        for partition in expiring_idx {
+                            acc.require(expiration_bitfield.unwrap().get(partition), &format!("expected partition {partition} to be present in deadline expiration queue at epoch {epoch}"));
+                        }
+                    }
+                    Ok(_) => acc.add(&format!(
+                        "expected to find partition expiration entry at epoch {epoch}"
+                    )),
+                    Err(e) => acc.add(&format!("error fetching expiration bitfield: {e}")),
+                }
+            }
+        }
+        Err(e) => acc.add(&format!("error loading expiration queue: {e}")),
+    }
+
+    // Validate the early termination queue contains exactly the partitions with early terminations.
+    require_equal(
+        &partitions_with_early_terminations,
+        &deadline.early_terminations,
+        acc,
+        "deadline early terminations doesn't match expected partitions",
+    );
+
+    DeadlineStateSummary {
+        all_sectors,
+        live_sectors,
+        faulty_sectors,
+        recovering_sectors,
+        unproven_sectors,
+        terminated_sectors,
+        live_power: all_live_power,
+        active_power: all_active_power,
+        faulty_power: all_faulty_power,
+    }
 }
