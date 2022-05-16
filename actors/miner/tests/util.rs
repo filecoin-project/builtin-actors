@@ -571,7 +571,12 @@ impl ActorHarness {
         self.get_precommit(rt, params.sector_number)
     }
 
-    fn get_precommit(
+    pub fn has_precommit(&self, rt: &MockRuntime, sector_number: SectorNumber) -> bool {
+        let state = self.get_state(rt);
+        state.get_precommitted_sector(&rt.store, sector_number).unwrap().is_some()
+    }
+
+    pub fn get_precommit(
         &self,
         rt: &mut MockRuntime,
         sector_number: SectorNumber,
