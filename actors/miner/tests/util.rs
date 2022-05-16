@@ -2529,3 +2529,8 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
 pub fn new_power_pair(raw: StoragePower, qa: StoragePower) -> PowerPair {
     PowerPair { raw, qa }
 }
+
+#[allow(dead_code)]
+pub fn new_power_pair_zero() -> PowerPair {
+    PowerPair { raw: BigInt::zero(), qa: BigInt::zero() }
+}

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use fil_actor_miner::{initial_pledge_for_power, qa_power_for_weight};
 use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_bitfield::BitField;
@@ -123,4 +125,31 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     assert!(deadline.partitions_posted.is_empty());
     assert!(deadline.early_terminations.is_empty());
+
+    let quant = st.quant_spec_for_deadline(&rt.policy, dl_idx);
+    let quantized_expiration = quant.quantize_up(expiration);
+
+    let d_queue = actor.collect_deadline_expirations(&mut rt, &deadline);
+    let mut expected_queue = HashMap::new();
+    expected_queue.insert(quantized_expiration, vec![p_idx]);
+    assert_eq!(expected_queue, d_queue);
+
+    assert_eq!(partition.sectors, sector_nos_bf);
+    assert!(partition.faults.is_empty());
+    assert!(partition.recoveries.is_empty());
+    assert!(partition.terminated.is_empty());
+    assert_eq!(ten_sectors_power, partition.live_power);
+    assert_eq!(new_power_pair_zero(), partition.faulty_power);
+    assert_eq!(new_power_pair_zero(), partition.recovering_power);
+
+    let p_queue = actor.collect_partition_expirations(&rt, &partition);
+    let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
+    assert_eq!(entry.on_time_sectors, sector_nos_bf);
+    assert!(entry.early_sectors.is_empty());
+    assert_eq!(ten_sectors_initial_pledge, entry.on_time_pledge);
+    assert_eq!(ten_sectors_power, entry.active_power);
+    assert_eq!(new_power_pair_zero(), entry.faulty_power);
+
+    // expect 10x locked initial pledge of sector to be the same as pledge requirement
+    assert_eq!(ten_sectors_initial_pledge, st.initial_pledge);
 }
