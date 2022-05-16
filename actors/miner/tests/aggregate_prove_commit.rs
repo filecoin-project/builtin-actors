@@ -1,5 +1,5 @@
 use fil_actor_miner::{
-    initial_pledge_for_power, qa_power_for_weight, QUALITY_BASE_MULTIPLIER,
+    initial_pledge_for_power, qa_power_for_weight, PowerPair, QUALITY_BASE_MULTIPLIER,
     VERIFIED_DEAL_WEIGHT_MULTIPLIER,
 };
 use fil_actors_runtime::{runtime::Runtime, test_utils::MockRuntime, EPOCHS_IN_DAY};
@@ -66,6 +66,7 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     // todo: line 1142 in miner commitment_tests.go
 
+    // expect deposit to have been transferred to initial pledges
     assert_eq!(BigInt::zero(), st.pre_commit_deposits);
 
     // The sector is exactly full with verified deals, so expect fully verified power.
@@ -90,4 +91,13 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     // expect new onchain sector
     // todo: line 1161 - 1182
+
+    let sector_power = new_power_pair(BigInt::from(actor.sector_size as i64), qa_power);
+    let ten_sectors_power = new_power_pair(10 * sector_power.raw, 10 * sector_power.qa);
+
+    let dl_idx = 0;
+    let p_idx = 0;
+
+    let (deadline, partition) = actor.get_deadline_and_partition(&rt, dl_idx, p_idx);
+    assert_eq!(10, deadline.live_sectors);
 }

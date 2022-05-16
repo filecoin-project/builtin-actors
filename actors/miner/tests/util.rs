@@ -1720,3 +1720,8 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
 ) -> DeadlineStateSummary {
     todo!()
 }
+
+#[allow(dead_code)]
+pub fn new_power_pair(raw: StoragePower, qa: StoragePower) -> PowerPair {
+    PowerPair { raw, qa }
+}
