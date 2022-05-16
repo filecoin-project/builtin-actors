@@ -693,7 +693,7 @@ fn test_fail_propose_with_threshold_met_and_insufficient_balance() {
         h.propose(&mut rt, chuck, send_value, METHOD_SEND, fake_params),
     );
     rt.reset();
-    h.assert_transactions(&mut rt, vec![]);
+    h.assert_transactions(&rt, vec![]);
 }
 
 #[test]
@@ -725,7 +725,7 @@ fn test_fail_propose_from_non_signer() {
     );
 
     rt.reset();
-    h.assert_transactions(&mut rt, vec![]);
+    h.assert_transactions(&rt, vec![]);
 }
 
 // AddSigner
@@ -1125,7 +1125,7 @@ fn test_swap_signer_removes_approvals() {
 
     // Anne's approval is removed from each tx
     h.assert_transactions(
-        &mut rt,
+        &rt,
         vec![
             (
                 TxnID(0),
@@ -1209,7 +1209,7 @@ fn test_remove_signer_removes_approvals() {
 
     // Anne's approval is removed from each tx
     h.assert_transactions(
-        &mut rt,
+        &rt,
         vec![
             (
                 TxnID(0),
@@ -1406,9 +1406,9 @@ mod approval_tests {
                 TxnID(0),
                 Transaction {
                     to: chuck,
-                    value: send_value.clone(),
+                    value: send_value,
                     method: fake_method,
-                    params: fake_params.clone(),
+                    params: fake_params,
                     approved: vec![anne],
                 },
             )],
@@ -1441,9 +1441,9 @@ mod approval_tests {
                 TxnID(0),
                 Transaction {
                     to: chuck,
-                    value: send_value.clone(),
+                    value: send_value,
                     method: fake_method,
-                    params: fake_params.clone(),
+                    params: fake_params,
                     approved: vec![anne],
                 },
             )],
@@ -1474,9 +1474,9 @@ mod approval_tests {
         let bad_hash = compute_proposal_hash(
             &Transaction {
                 to: chuck,
-                value: send_value.clone(),
+                value: send_value,
                 method: fake_method,
-                params: fake_params.clone(),
+                params: fake_params,
                 approved: vec![bob], //mismatch
             },
             &rt,
@@ -1569,7 +1569,7 @@ mod approval_tests {
         let mut rt = construct_runtime(msig);
         let send_value = TokenAmount::from(10u8);
         let h = util::ActorHarness::new();
-        rt.set_balance(send_value.clone());
+        rt.set_balance(send_value);
         rt.set_received(TokenAmount::zero());
         h.construct_and_verify(&mut rt, 1, 0, 0, signers);
 
@@ -1800,13 +1800,13 @@ mod cancel_tests {
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, RawBytes::default());
+            h.propose_ok(&mut rt, chuck, send_value, fake_method, RawBytes::default());
 
         // anne cancels their tx
         h.cancel(&mut rt, TxnID(0), proposal_hash).unwrap();
 
         // tx should be removed from actor state after cancel
-        h.assert_transactions(&mut rt, vec![]);
+        h.assert_transactions(&rt, vec![]);
     }
 
     #[test]
@@ -2162,7 +2162,7 @@ mod lock_balance_tests {
         h.propose_ok(&mut rt, bob, vested.clone(), METHOD_SEND, RawBytes::default());
 
         // can't spend more
-        rt.set_balance(lock_amount.clone() - vested.clone());
+        rt.set_balance(lock_amount - vested);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
             h.propose(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),

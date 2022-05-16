@@ -5,7 +5,7 @@ use fil_actor_miner::{
     TerminationResult,
 };
 use fil_actors_runtime::runtime::{Policy, Runtime};
-use fil_actors_runtime::test_utils::MockRuntime;
+use fil_actors_runtime::test_utils::{MessageAccumulator, MockRuntime};
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_bitfield::{BitField, MaybeBitField};
 use fvm_ipld_blockstore::Blockstore;
@@ -114,6 +114,7 @@ fn add_sectors(
     assert!(recovery_power.is_zero());
 
     let deadline_state = deadline_state
+        .with_unproven(&[])
         .with_partitions(vec![
             make_bitfield(&[1, 2, 3, 4]),
             make_bitfield(&[5, 6, 7, 8]),
@@ -380,7 +381,7 @@ fn can_pop_early_terminations_in_multiple_steps() {
 
     // Popping early terminations doesn't affect the terminations bitfield.
     deadline_state
-        .with_faults(&[1, 3, 6])
+        .with_terminations(&[1, 3, 6])
         .with_partitions(vec![
             make_bitfield(&[1, 2, 3, 4]),
             make_bitfield(&[5, 6, 7, 8]),
@@ -497,17 +498,16 @@ impl ExpectedDeadlineState {
     fn assert<BS: Blockstore>(
         self,
         store: &BS,
-        _sectors: &[SectorOnChainInfo],
+        sectors: &[SectorOnChainInfo],
         deadline: &Deadline,
     ) -> Self {
-        let (_faults, _recoveries, _terminations, _unproven) =
-            self.check_deadline_invariants(store, deadline);
+        let summary = self.check_deadline_invariants(store, sectors, deadline);
 
-        // TODO uncomment once invariants are implemented
-        //assert_eq!(self.faults, faults);
-        //assert_eq!(self.recovering, recoveries);
-        //assert_eq!(self.terminations, terminations);
-        //assert_eq!(self.unproven, unproven);
+        assert_eq!(self.faults, summary.faulty_sectors);
+        assert_eq!(self.recovering, summary.recovering_sectors);
+        assert_eq!(self.terminations, summary.terminated_sectors);
+        assert_eq!(self.unproven, summary.unproven_sectors);
+        assert_eq!(self.posts, deadline.partitions_posted);
 
         let partitions = deadline.partitions_amt(store).unwrap();
         assert_eq!(self.partition_sectors.len() as u64, partitions.count());
@@ -524,10 +524,22 @@ impl ExpectedDeadlineState {
     // recoveries, terminations, and partition/sector assignments.
     fn check_deadline_invariants<BS: Blockstore>(
         &self,
-        _store: &BS,
-        _deadline: &Deadline,
-    ) -> (BitField, BitField, BitField, BitField) {
-        // TODO
-        (BitField::default(), BitField::default(), BitField::default(), BitField::default())
+        store: &BS,
+        sectors: &[SectorOnChainInfo],
+        deadline: &Deadline,
+    ) -> DeadlineStateSummary {
+        let acc = MessageAccumulator::default();
+        let summary = check_deadline_state_invariants(
+            deadline,
+            store,
+            QUANT_SPEC,
+            SECTOR_SIZE,
+            &sectors_as_map(sectors),
+            &acc,
+        );
+
+        assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+
+        summary
     }
 }
