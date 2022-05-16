@@ -829,7 +829,7 @@ impl ActorHarness {
         }
     }
 
-    fn get_sector(&self, rt: &MockRuntime, sector_number: SectorNumber) -> SectorOnChainInfo {
+    pub fn get_sector(&self, rt: &MockRuntime, sector_number: SectorNumber) -> SectorOnChainInfo {
         let state = self.get_state(rt);
         state.get_sector(&rt.store, sector_number).unwrap().unwrap()
     }

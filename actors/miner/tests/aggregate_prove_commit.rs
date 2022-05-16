@@ -92,7 +92,25 @@ fn valid_precommits_then_aggregate_provecommit() {
     assert_eq!(ten_sectors_initial_pledge, expected_initial_pledge);
 
     // expect new onchain sector
-    // todo: line 1161 - 1182
+    for sector_no in sector_nos_bf.iter() {
+        let sector = actor.get_sector(&rt, SectorNumber::from(sector_no));
+        // expect deal weights to be transferred to on chain info
+        assert_eq!(deal_weight, sector.deal_weight);
+        assert_eq!(BigInt::from(verified_deal_weight), sector.verified_deal_weight);
+
+        // expect activation epoch to be current epoch
+        assert_eq!(rt.epoch, sector.activation);
+
+        // expect initial pledge of sector to be set
+        assert_eq!(expected_initial_pledge, sector.initial_pledge);
+
+        // expect sector to be assigned a deadline/partition
+        let (dlidx, pidx) =
+            st.find_sector(&rt.policy, rt.store(), SectorNumber::from(sector_no)).unwrap();
+        // first ten sectors should be assigned to deadline 0 and partition 0
+        assert_eq!(0, dlidx);
+        assert_eq!(0, pidx);
+    }
 
     let sector_power = new_power_pair(BigInt::from(actor.sector_size as i64), qa_power);
     let ten_sectors_power = new_power_pair(10 * sector_power.raw, 10 * sector_power.qa);
