@@ -3,6 +3,7 @@ use fil_actor_miner::{
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
+use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
@@ -157,7 +158,7 @@ mod miner_actor_test_commitment {
             ExitCode::USR_INSUFFICIENT_FUNDS,
             h.pre_commit_sector_internal(
                 &mut rt,
-                precommit_params.clone(),
+                precommit_params,
                 util::PreCommitConfig::empty(),
                 true,
             ),
@@ -187,7 +188,7 @@ mod miner_actor_test_commitment {
 
         let ret = h.pre_commit_sector_internal(
             &mut rt,
-            precommit_params.clone(),
+            precommit_params,
             util::PreCommitConfig {
                 deal_weight: BigInt::default(),
                 verified_deal_weight: BigInt::default(),
@@ -229,7 +230,7 @@ mod miner_actor_test_commitment {
 
         h.pre_commit_sector_internal(
             &mut rt,
-            precommit_params.clone(),
+            precommit_params,
             util::PreCommitConfig::default(),
             true,
         )
@@ -511,31 +512,28 @@ mod miner_actor_test_commitment {
         }
 
         // Try to precommit with an active consensus fault
-        // {
-        //     let st: State = rt.get_state();
-        //     let fault = ConsensusFault {
-        //         target: h.receiver,
-        //         epoch: rt.epoch - 1,
-        //         fault_type: ConsensusFaultType::DoubleForkMining,
-        //     };
-        //     h.report_consensus_fault(&mut rt, fault).unwrap();
-        //     let precommit_params =
-        //         h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-        //     let ret = h.pre_commit_sector_internal(
-        //         &mut rt,
-        //         precommit_params,
-        //         util::PreCommitConfig::default(),
-        //         false,
-        //     );
-        //     expect_abort_contains_message(
-        //         ExitCode::USR_FORBIDDEN,
-        //         "active consensus fault",
-        //         ret,
-        //     );
-        //     // reset state back to normal
-        //     rt.replace_state(&st);
-        //     rt.reset();
-        // }
+        {
+            let st: State = rt.get_state();
+            let fault = ConsensusFault {
+                target: h.receiver,
+                epoch: rt.epoch - 1,
+                fault_type: ConsensusFaultType::DoubleForkMining,
+            };
+            let test_addr = Address::new_actor(b"satoshi");
+            h.report_consensus_fault(&mut rt, test_addr, Some(fault));
+            let precommit_params =
+                h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
+            let ret = h.pre_commit_sector_internal(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                false,
+            );
+            expect_abort_contains_message(ExitCode::USR_FORBIDDEN, "active consensus fault", ret);
+            // reset state back to normal
+            rt.replace_state(&st);
+            rt.reset();
+        }
     }
 
     #[test]
@@ -637,12 +635,7 @@ mod miner_actor_test_commitment {
             );
             rt.reset();
             precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-            h.pre_commit_sector(
-                &mut rt,
-                precommit_params.clone(),
-                util::PreCommitConfig::default(),
-                true,
-            );
+            h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
         }
 
         util::check_state_invariants(&rt);

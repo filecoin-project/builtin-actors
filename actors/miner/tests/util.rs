@@ -7,12 +7,13 @@ use fil_actor_market::{
     VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::{
-    initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
-    pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
-    ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams,
-    ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
-    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
-    DisputeWindowedPoStParams, FaultDeclaration, GetControlAddressesReturn, Method,
+    consensus_fault_penalty, initial_pledge_for_power, locked_reward_from_reward,
+    new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
+    qa_power_for_weight, reward_for_consensus_slash_report, Actor, ApplyRewardParams,
+    BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams, ConfirmSectorProofsParams,
+    CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
+    DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
+    FaultDeclaration, GetControlAddressesReturn, Method,
     MinerConstructorParams as ConstructorParams, Partition, PoStPartition, PowerPair,
     PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration,
     ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
@@ -55,6 +56,8 @@ use fvm_shared::METHOD_SEND;
 use cid::Cid;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
+
+use num_traits::Zero;
 
 use rand::prelude::*;
 
@@ -1403,11 +1406,73 @@ impl ActorHarness {
     pub fn report_consensus_fault(
         &self,
         rt: &mut MockRuntime,
-        fault: ConsensusFault,
-    ) -> Result<RawBytes, ActorError> {
+        from: Address,
+        fault: Option<ConsensusFault>,
+    ) {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from);
+        rt.expect_validate_caller_type(CALLER_TYPES_SIGNABLE.to_vec());
         let params =
             ReportConsensusFaultParams { header1: vec![], header2: vec![], header_extra: vec![] };
-        rt.call::<Actor>(Method::ReportConsensusFault as u64, &RawBytes::serialize(params).unwrap())
+
+        if fault.is_some() {
+            rt.expect_verify_consensus_fault(
+                params.header1.clone(),
+                params.header2.clone(),
+                params.header_extra.clone(),
+                fault,
+                ExitCode::OK,
+            );
+        } else {
+            rt.expect_verify_consensus_fault(
+                params.header1.clone(),
+                params.header2.clone(),
+                params.header_extra.clone(),
+                None,
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+            );
+        }
+
+        let current_reward = ThisEpochRewardReturn {
+            this_epoch_baseline_power: self.baseline_power.clone(),
+            this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
+        };
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            RewardMethod::ThisEpochReward as u64,
+            RawBytes::default(),
+            TokenAmount::zero(),
+            RawBytes::serialize(current_reward).unwrap(),
+            ExitCode::OK,
+        );
+
+        let this_epoch_reward = self.epoch_reward_smooth.estimate();
+        let penalty_total = consensus_fault_penalty(this_epoch_reward.clone());
+        let reward_total = reward_for_consensus_slash_report(&this_epoch_reward);
+        rt.expect_send(
+            from,
+            METHOD_SEND,
+            RawBytes::default(),
+            reward_total.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // pay fault fee
+        let to_burn = penalty_total - reward_total;
+        rt.expect_send(
+            *BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            RawBytes::default(),
+            to_burn,
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        let _ = rt.call::<Actor>(
+            Method::ReportConsensusFault as u64,
+            &RawBytes::serialize(params).unwrap(),
+        );
+        rt.verify();
     }
 }
 
