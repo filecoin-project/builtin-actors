@@ -57,7 +57,7 @@ fn valid_precommits_then_aggregate_provecommit() {
         &rt,
         ProveCommitConfig::empty(),
         precommits,
-        make_prove_commit_aggregate(sector_nos_bf),
+        make_prove_commit_aggregate(&sector_nos_bf),
         BigInt::zero(),
     );
 
@@ -65,6 +65,15 @@ fn valid_precommits_then_aggregate_provecommit() {
     let st = actor.get_state(&rt);
 
     // todo: line 1142 in miner commitment_tests.go
+    // require.NoError(t, sectorNosBf.ForEach(func(sectorNo uint64) error {
+    // 	_, found, err := st.GetPrecommittedSector(rt.AdtStore(), abi.SectorNumber(sectorNo))
+    // 	require.False(t, found)
+    // 	return err
+    // }))
+
+    for sector_no in sector_nos_bf.iter() {
+        let found = st.get_precommitted_sector(rt.store(), SectorNumber::from(sector_no)).unwrap();
+    }
 
     // expect deposit to have been transferred to initial pledges
     assert_eq!(BigInt::zero(), st.pre_commit_deposits);
@@ -100,4 +109,7 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     let (deadline, partition) = actor.get_deadline_and_partition(&rt, dl_idx, p_idx);
     assert_eq!(10, deadline.live_sectors);
+
+    assert!(deadline.partitions_posted.is_empty());
+    assert!(deadline.early_terminations.is_empty());
 }
