@@ -24,7 +24,7 @@ fil_actor_init = { version = "7.3.0", path = "./actors/init" }
 fil_actors_runtime = { version = "7.3.0", path = "./actors/runtime" }
 
 [build-dependencies]
-fil_actor_bundler = "3.0.2"
+fil_actor_bundler = "3.0.3"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
 [dependencies]
@@ -48,7 +48,7 @@ members = [
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
 ## (Valid while FVM modules aren't published to crates.io)
-[patch."https://github.com/filecoin-project/ref-fvm"]
+#[patch."https://github.com/filecoin-project/ref-fvm"]
 #fvm_shared = { path = "../ref-fvm/shared" }
 #fvm_sdk = { path = "../ref-fvm/sdk" }
 #fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }

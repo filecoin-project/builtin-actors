@@ -16,7 +16,6 @@ use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -29,7 +28,9 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
-use crate::runtime::{ActorCode, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls};
+use crate::runtime::{
+    ActorCode, DomainSeparationTag, MessageInfo, Policy, Runtime, RuntimePolicy, Syscalls,
+};
 use crate::{actor_error, ActorError, SYS_FORBIDDEN, SYS_ILLEGAL_ACTOR};
 
 lazy_static! {

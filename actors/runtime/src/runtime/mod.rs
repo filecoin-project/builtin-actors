@@ -8,7 +8,6 @@ use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -34,6 +33,9 @@ mod actor_blockstore;
 
 mod policy;
 pub use self::policy::*;
+
+mod randomness;
+pub use randomness::DomainSeparationTag;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
