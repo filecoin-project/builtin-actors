@@ -169,17 +169,46 @@ impl Default for Policy {
             max_aggregated_proof_size: policy_constants::MAX_AGGREGATED_PROOF_SIZE,
             max_replica_update_proof_size: policy_constants::MAX_REPLICA_UPDATE_PROOF_SIZE,
             max_prove_commit_duration: HashMap::from([
-                (RegisteredSealProof::StackedDRG32GiBV1, EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY), // PARAM_SPEC
-                (RegisteredSealProof::StackedDRG2KiBV1, EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY),
-                (RegisteredSealProof::StackedDRG8MiBV1, EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY),
-                (RegisteredSealProof::StackedDRG512MiBV1, EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY),
-                (RegisteredSealProof::StackedDRG64GiBV1, EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY),
-
-                (RegisteredSealProof::StackedDRG32GiBV1P1, 30*EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY), // PARAM_SPEC
-                (RegisteredSealProof::StackedDRG2KiBV1P1, 30*EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY),
-                (RegisteredSealProof::StackedDRG8MiBV1P1, 30*EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY),
-                (RegisteredSealProof::StackedDRG512MiBV1P1, 30*EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY),
-                (RegisteredSealProof::StackedDRG64GiBV1P1, 30*EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY),
+                (
+                    RegisteredSealProof::StackedDRG32GiBV1,
+                    EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
+                ), // PARAM_SPEC
+                (
+                    RegisteredSealProof::StackedDRG2KiBV1,
+                    EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
+                ),
+                (
+                    RegisteredSealProof::StackedDRG8MiBV1,
+                    EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
+                ),
+                (
+                    RegisteredSealProof::StackedDRG512MiBV1,
+                    EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
+                ),
+                (
+                    RegisteredSealProof::StackedDRG64GiBV1,
+                    EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
+                ),
+                (
+                    RegisteredSealProof::StackedDRG32GiBV1P1,
+                    30 * EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
+                ), // PARAM_SPEC
+                (
+                    RegisteredSealProof::StackedDRG2KiBV1P1,
+                    30 * EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
+                ),
+                (
+                    RegisteredSealProof::StackedDRG8MiBV1P1,
+                    30 * EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
+                ),
+                (
+                    RegisteredSealProof::StackedDRG512MiBV1P1,
+                    30 * EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
+                ),
+                (
+                    RegisteredSealProof::StackedDRG64GiBV1P1,
+                    30 * EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
+                ),
             ]),
             pre_commit_sector_batch_max_size: policy_constants::PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
             prove_replica_updates_max_size: policy_constants::PROVE_REPLICA_UPDATES_MAX_SIZE,
