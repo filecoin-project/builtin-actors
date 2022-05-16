@@ -1,6 +1,8 @@
+#![allow(dead_code)]
 use fil_actor_miner::MinerInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::State;
+use fil_actor_miner::VestingFunds;
 use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
@@ -67,5 +69,12 @@ impl StateHarness {
 
     pub fn has_precommit(&self, sector_number: SectorNumber) -> bool {
         self.st.get_precommitted_sector(&self.store, sector_number).unwrap().is_some()
+    }
+}
+
+impl StateHarness {
+    pub fn vesting_funds_store_empty(&self) -> bool {
+        let vesting = self.store.get_cbor::<VestingFunds>(&self.st.vesting_funds).unwrap().unwrap();
+        vesting.funds.is_empty()
     }
 }

@@ -1,20 +1,10 @@
-use fil_actor_market::SectorWeights;
-use fil_actor_miner::PreCommitSectorBatchParams;
 use fil_actor_miner::VestSpec;
-use fil_actor_miner::{
-    initial_pledge_for_power, pre_commit_deposit_for_power, qa_power_for_weight, PowerPair,
-};
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::DealWeight;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::StoragePower;
-use fvm_shared::sector::MAX_SECTOR_NUMBER;
-use std::collections::HashMap;
 
-mod util;
-use util::*;
+mod state_harness;
+use state_harness::*;
 
 struct TestCase {
     desc: &'static str,
@@ -129,7 +119,6 @@ fn test_vesting() {
             period_start: 1,
             // start epoch is at 11 instead of 10 so vepocs are shifted by one from above case
             vepocs: vec![0, 0, 0, 20, 0, 20, 0, 20, 0, 20, 0, 20],
-            // vepocs: vec![0, 0, 0, 0, 30, 0, 20, 0, 20, 0, 20, 0, 10],
         },
         TestCase {
             desc: "vest funds with proving period start > quantization unit",
@@ -155,50 +144,28 @@ fn test_vesting() {
             period_start: 0,
         },
     ];
-    for (nth, tc) in tests.iter().enumerate() {
-        let h = ActorHarness::new(tc.period_start);
-        let mut rt = h.new_runtime();
-        h.construct_and_verify(&mut rt);
-        rt.set_epoch(tc.period_start);
+    for tc in tests {
+        println!("Testing: {}", tc.desc);
+        let mut h = StateHarness::new(tc.period_start);
 
         let vest_start = tc.period_start + vest_start_delay;
 
-        let mut st = h.get_state(&rt);
-        st.add_locked_funds(&rt.store, vest_start, &TokenAmount::from(vest_sum), &tc.vspec)
+        h.st.add_locked_funds(&h.store, vest_start, &TokenAmount::from(vest_sum), &tc.vspec)
             .unwrap();
-        assert_eq!(TokenAmount::from(vest_sum), st.locked_funds);
+        assert_eq!(TokenAmount::from(vest_sum), h.st.locked_funds);
 
         let mut total_vested = 0;
         for (e, &v) in tc.vepocs.iter().enumerate() {
-            dbg!(nth, tc.desc, e, v);
             assert_eq!(
                 TokenAmount::from(v),
-                st.unlock_vested_funds(&rt.store, vest_start + e as ChainEpoch).unwrap()
+                h.st.unlock_vested_funds(&h.store, vest_start + e as ChainEpoch).unwrap()
             );
+            total_vested += v;
+            assert_eq!(TokenAmount::from(vest_sum - total_vested), h.st.locked_funds);
         }
+
+        assert_eq!(vest_sum, total_vested);
+        assert!(h.vesting_funds_store_empty());
+        assert!(h.st.locked_funds.is_zero());
     }
 }
-/*
-
-    }
-    for _, tc := range testcase {
-        t.Run(tc.desc, func(t *testing.T) {
-            harness := constructStateHarness(t, tc.periodStart)
-            vestStart := tc.periodStart + vestStartDelay
-
-            harness.addLockedFunds(vestStart, abi.NewTokenAmount(vestSum), tc.vspec)
-            assert.Equal(t, abi.NewTokenAmount(vestSum), harness.s.LockedFunds)
-
-            var totalVested int64
-            for e, v := range tc.vepocs {
-                assert.Equal(t, abi.NewTokenAmount(v), harness.unlockVestedFunds(vestStart+abi.ChainEpoch(e)))
-                totalVested += v
-                assert.Equal(t, vestSum-totalVested, harness.s.LockedFunds.Int64())
-            }
-
-            assert.Equal(t, abi.NewTokenAmount(vestSum), abi.NewTokenAmount(totalVested))
-            assert.True(t, harness.vestingFundsStoreEmpty())
-            assert.Zero(t, harness.s.LockedFunds.Int64())
-        })
-    }
-} */
