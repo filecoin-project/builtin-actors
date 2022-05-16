@@ -55,7 +55,7 @@ fn delete_nonexistent_value_returns_an_error() {
 }
 
 #[test]
-fn get_nonexistent_value_returns_false() {
+fn has_nonexistent_value_returns_false() {
     let h = ActorHarness::new(0);
     let mut rt = h.new_runtime();
     h.construct_and_verify(&mut rt);
