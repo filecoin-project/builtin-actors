@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::Multimap;
+use fil_actors_runtime::{parse_uint_key, u64_key, Multimap};
 use fvm_ipld_amt::Amt;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::address::Address;
@@ -67,4 +67,11 @@ fn remove_all() {
     assert!(mm.get::<u64>(&addr2.to_bytes()).unwrap().is_some());
     mm.remove_all(&addr2.to_bytes()).unwrap();
     assert_eq!(mm.get::<u64>(&addr2.to_bytes()).unwrap(), None);
+}
+
+#[test]
+fn varint_key() {
+    let k = u64_key(1);
+    let out = parse_uint_key(&k).unwrap();
+    assert_eq!(1, out);
 }

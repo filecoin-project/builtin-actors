@@ -1095,4 +1095,218 @@ mod cron_batch_proof_verifies_tests {
         rt.verify();
         h.check_state();
     }
+
+    #[test]
+    fn skips_verify_if_miner_has_no_claim() {
+        let (mut h, mut rt) = setup();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
+
+        let info = create_basic_seal_info(1);
+
+        h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info).unwrap();
+
+        h.delete_claim(&mut rt, &MINER_1);
+
+        let infos = vec![];
+
+        let confirmed_sectors = vec![];
+
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
+
+        h.check_state();
+    }
+
+    #[test]
+    fn success_with_multiple_miners_and_multiple_confirmed_sectors_and_assert_expected_power() {
+        let miner1 = Address::new_id(101);
+
+        // TODO: shares an id with constant `OWNER`
+        // this is a known issue however the ordering of the values
+        // are vital for this test and have been left as such
+        let miner2 = Address::new_id(102);
+        let miner3 = Address::new_id(103);
+        let miner4 = Address::new_id(104);
+
+        let info1 = create_basic_seal_info(1);
+        let info2 = create_basic_seal_info(2);
+        let info3 = create_basic_seal_info(3);
+        let info4 = create_basic_seal_info(101);
+        let info5 = create_basic_seal_info(200);
+        let info6 = create_basic_seal_info(201);
+        let info7 = create_basic_seal_info(300);
+        let info8 = create_basic_seal_info(301);
+
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner1).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner2).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner3).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner4).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner1, info1.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner1, info2.clone()).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner2, info3.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner2, info4.clone()).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner3, info5.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner3, info6.clone()).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner4, info7.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner4, info8.clone()).unwrap();
+
+        // TODO Because read order of keys in a multi-map is not as per insertion order,
+        // we have to move around the expected sends
+        let confirmed_sectors = vec![
+            ConfirmedSectorSend {
+                miner: MINER_1,
+                sector_nums: vec![info1.sector_id.number, info2.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner3,
+                sector_nums: vec![info5.sector_id.number, info6.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner4,
+                sector_nums: vec![info7.sector_id.number, info8.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner2,
+                sector_nums: vec![info3.sector_id.number, info4.sector_id.number],
+            },
+        ];
+
+        let infos = vec![info1, info2, info5, info6, info7, info8, info3, info4];
+
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
+        h.check_state();
+    }
+
+    #[test]
+    fn success_when_no_confirmed_sector() {
+        let (h, mut rt) = setup();
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), vec![], vec![]);
+        h.check_state();
+    }
+}
+
+#[cfg(test)]
+mod submit_porep_for_bulk_verify_tests {
+    use super::*;
+
+    use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
+    use fil_actor_power::{
+        ERR_TOO_MANY_PROVE_COMMITS, MAX_MINER_PROVE_COMMITS_PER_EPOCH,
+        PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
+    };
+    use fil_actors_runtime::shared::HAMT_BIT_WIDTH;
+    use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
+    use fil_actors_runtime::Multimap;
+    use fvm_shared::sector::{InteractiveSealRandomness, SealRandomness, SealVerifyInfo, SectorID};
+
+    const MINER: Address = Address::new_id(101);
+    const OWNER: Address = Address::new_id(101);
+
+    #[test]
+    fn registers_porep_and_charges_gas() {
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER).unwrap();
+
+        let comm_r = make_sealed_cid("commR".as_bytes());
+        let comm_d = make_piece_cid("commD".as_bytes());
+
+        let info = SealVerifyInfo {
+            registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1,
+            deal_ids: Vec::new(),
+            randomness: SealRandomness::default(),
+            interactive_randomness: InteractiveSealRandomness::default(),
+            proof: Vec::new(),
+            sealed_cid: comm_r,
+            unsealed_cid: comm_d,
+            sector_id: SectorID { number: 0, ..Default::default() },
+        };
+
+        h.submit_porep_for_bulk_verify(&mut rt, MINER, info).unwrap();
+        rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL);
+        let st: State = rt.get_state();
+        let store = &rt.store;
+        assert!(st.proof_validation_batch.is_some());
+        let mmap = Multimap::from_root(
+            store,
+            st.proof_validation_batch.as_ref().unwrap(),
+            HAMT_BIT_WIDTH,
+            PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
+        )
+        .unwrap();
+        let arr = mmap.get::<SealVerifyInfo>(&MINER.to_bytes()).unwrap();
+        let found = arr.unwrap();
+        assert_eq!(1_u64, found.count());
+        let sealed_cid = found.get(0).unwrap().unwrap().sealed_cid;
+        assert_eq!(comm_r, sealed_cid);
+        h.check_state();
+    }
+
+    #[test]
+    fn aborts_when_too_many_poreps() {
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER).unwrap();
+
+        fn create_basic_seal_info(id: u64) -> SealVerifyInfo {
+            SealVerifyInfo {
+                registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1,
+                deal_ids: Vec::new(),
+                randomness: SealRandomness::default(),
+                interactive_randomness: InteractiveSealRandomness::default(),
+                proof: Vec::new(),
+                sealed_cid: make_sealed_cid(format!("CommR-{id}").as_bytes()),
+                unsealed_cid: make_piece_cid(format!("CommD-{id}").as_bytes()),
+                sector_id: SectorID { number: id, ..Default::default() },
+            }
+        }
+
+        // Adding MAX_MINER_PROVE_COMMITS_PER_EPOCH works without error
+        for i in 0..MAX_MINER_PROVE_COMMITS_PER_EPOCH {
+            h.submit_porep_for_bulk_verify(&mut rt, MINER, create_basic_seal_info(i)).unwrap();
+        }
+
+        expect_abort(
+            ERR_TOO_MANY_PROVE_COMMITS,
+            h.submit_porep_for_bulk_verify(
+                &mut rt,
+                MINER,
+                create_basic_seal_info(MAX_MINER_PROVE_COMMITS_PER_EPOCH),
+            ),
+        );
+
+        // Gas only charged for successful submissions
+        rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL * MAX_MINER_PROVE_COMMITS_PER_EPOCH as i64);
+    }
+
+    #[test]
+    fn aborts_when_miner_has_no_claim() {
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER).unwrap();
+
+        let comm_r = make_sealed_cid("commR".as_bytes());
+        let comm_d = make_piece_cid("commD".as_bytes());
+
+        let info = SealVerifyInfo {
+            registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1,
+            deal_ids: Vec::new(),
+            randomness: SealRandomness::default(),
+            interactive_randomness: InteractiveSealRandomness::default(),
+            proof: Vec::new(),
+            sealed_cid: comm_r,
+            unsealed_cid: comm_d,
+            sector_id: SectorID { number: 0, ..Default::default() },
+        };
+
+        // delete miner
+        h.delete_claim(&mut rt, &MINER);
+
+        expect_abort(ExitCode::USR_FORBIDDEN, h.submit_porep_for_bulk_verify(&mut rt, MINER, info));
+    }
 }
