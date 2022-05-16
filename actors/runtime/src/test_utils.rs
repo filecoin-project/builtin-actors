@@ -52,7 +52,8 @@ lazy_static! {
     pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/multisig");
     pub static ref REWARD_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/reward");
     pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/verifiedregistry");
-    pub static ref SUBNET_ACTOR_CODE_ID: Cid = make_builtin(b"fil/testsubnet");
+    pub static ref SCA_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/sca");
+    pub static ref SUBNET_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/subnet");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -66,6 +67,7 @@ lazy_static! {
         map.insert(*MULTISIG_ACTOR_CODE_ID, Type::Multisig);
         map.insert(*REWARD_ACTOR_CODE_ID, Type::Reward);
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
+        map.insert(*SCA_ACTOR_CODE_ID, Type::SCA);
         map.insert(*SUBNET_ACTOR_CODE_ID, Type::Subnet);
         map
     };
@@ -81,6 +83,7 @@ lazy_static! {
         (Type::Multisig, *MULTISIG_ACTOR_CODE_ID),
         (Type::Reward, *REWARD_ACTOR_CODE_ID),
         (Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID),
+        (Type::SCA, *SCA_ACTOR_CODE_ID),
     ]
     .into_iter()
     .collect();

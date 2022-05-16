@@ -16,6 +16,13 @@ use fvm_shared::MethodNum;
 use fvm_shared::METHOD_SEND;
 use lazy_static::lazy_static;
 
+use fil_actor_hierarchical_sca::checkpoint::ChildCheck;
+use fil_actor_hierarchical_sca::ext;
+use fil_actor_hierarchical_sca::{
+    get_topdown_msg, is_bottomup, Checkpoint, ConstructorParams, CrossMsgArray, CrossMsgMeta,
+    CrossMsgParams, CrossMsgs, FundParams, HCMsgType, Method, State, StorableMsg, Subnet,
+    CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT,
+};
 use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::{
@@ -25,13 +32,6 @@ use fil_actors_runtime::test_utils::{
 use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, ActorError, Map, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     SCA_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-};
-use hierarchical_sca::checkpoint::ChildCheck;
-use hierarchical_sca::ext;
-use hierarchical_sca::{
-    get_topdown_msg, is_bottomup, Checkpoint, ConstructorParams, CrossMsgArray, CrossMsgMeta,
-    CrossMsgParams, CrossMsgs, FundParams, HCMsgType, Method, State, StorableMsg, Subnet,
-    CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT,
 };
 
 use crate::SCAActor;
