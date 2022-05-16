@@ -19,6 +19,8 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     let actor = ActorHarness::new(period_offset);
     let mut rt = actor.new_runtime();
+    let balance = BigInt::from(1_000_000u64) * BigInt::from(10u64.pow(17));
+    rt.add_balance(balance);
     let precommit_epoch = period_offset + 1;
     rt.set_epoch(precommit_epoch);
     actor.construct_and_verify(&mut rt);
