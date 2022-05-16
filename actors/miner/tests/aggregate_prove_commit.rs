@@ -58,7 +58,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     rt.set_balance(BigInt::from(1000u64) * BigInt::from(1u64.pow(18)));
 
     actor.prove_commit_aggregate_sector(
-        &rt,
+        &mut rt,
         ProveCommitConfig::empty(),
         precommits,
         make_prove_commit_aggregate(&sector_nos_bf),
@@ -92,7 +92,7 @@ fn valid_precommits_then_aggregate_provecommit() {
         &actor.epoch_qa_power_smooth,
         &rt.total_fil_circ_supply(),
     );
-    let ten_sectors_initial_pledge = BigInt::from(10) * expected_initial_pledge.clone();
+    let ten_sectors_initial_pledge = BigInt::from(10i32) * expected_initial_pledge.clone();
     assert_eq!(ten_sectors_initial_pledge, expected_initial_pledge);
 
     // expect new onchain sector

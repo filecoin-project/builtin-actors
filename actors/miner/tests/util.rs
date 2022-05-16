@@ -699,14 +699,35 @@ impl ActorHarness {
     #[allow(unused_variables)]
     pub fn prove_commit_aggregate_sector(
         &self,
-        runtime: &MockRuntime,
+        runtime: &mut MockRuntime,
         config: ProveCommitConfig,
         precommits: Vec<SectorPreCommitOnChainInfo>,
         params: ProveCommitAggregateParams,
         base_fee: BigInt,
     ) {
         // recieve call to ComputeDataCommittments
-        todo!()
+        let mut comm_ds = Vec::new();
+        let mut cdc_inputs = Vec::new();
+        for (i, precommit) in precommits.iter().enumerate() {
+            let sector_data = SectorDataSpec {
+                deal_ids: precommit.info.deal_ids.clone(),
+                sector_type: precommit.info.seal_proof,
+            };
+            cdc_inputs.push(sector_data);
+            let comm_d = make_piece_cid(format!("commd-{}", i).as_bytes());
+            comm_ds.push(comm_d);
+        }
+        let cdc_params = ComputeDataCommitmentParams { inputs: cdc_inputs };
+        let cdc_ret = ComputeDataCommitmentReturn { commds: comm_ds };
+        runtime.expect_send(
+            *STORAGE_MARKET_ACTOR_ADDR,
+            MarketMethod::ComputeDataCommitment as u64,
+            RawBytes::serialize(cdc_params).unwrap(),
+            BigInt::zero(),
+            RawBytes::serialize(cdc_ret).unwrap(),
+            ExitCode::OK,
+        );
+        self.expect_query_network_info(runtime);
     }
 
     pub fn confirm_sector_proofs_valid(
