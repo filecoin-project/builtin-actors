@@ -75,6 +75,7 @@ mod compute_data_commitment {
             .deserialize()
             .unwrap();
 
+        assert_eq!(ret.commds.len(), 1);
         assert_eq!(c, ret.commds[0]);
 
         rt.verify();
@@ -109,6 +110,7 @@ mod compute_data_commitment {
             .deserialize()
             .unwrap();
 
+        assert_eq!(ret.commds.len(), 1);
         assert_eq!(c, ret.commds[0]);
 
         rt.verify();
@@ -182,6 +184,8 @@ mod compute_data_commitment {
             .unwrap()
             .deserialize()
             .unwrap();
+
+        assert_eq!(ret.commds.len(), 2);
         assert_eq!(c1, ret.commds[0]);
         assert_eq!(c2, ret.commds[1]);
 
