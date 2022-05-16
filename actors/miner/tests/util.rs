@@ -548,7 +548,7 @@ impl ActorHarness {
     #[allow(unused_variables)]
     pub fn prove_commit_aggregate_sector(
         &self,
-        runtime: MockRuntime,
+        runtime: &MockRuntime,
         config: ProveCommitConfig,
         precommits: Vec<SectorPreCommitOnChainInfo>,
         params: ProveCommitAggregateParams,

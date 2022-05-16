@@ -1,4 +1,8 @@
-use fil_actors_runtime::{test_utils::MockRuntime, EPOCHS_IN_DAY};
+use fil_actor_miner::{
+    initial_pledge_for_power, qa_power_for_weight, QUALITY_BASE_MULTIPLIER,
+    VERIFIED_DEAL_WEIGHT_MULTIPLIER,
+};
+use fil_actors_runtime::{runtime::Runtime, test_utils::MockRuntime, EPOCHS_IN_DAY};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{bigint::BigInt, clock::ChainEpoch, sector::SectorNumber};
 
@@ -50,7 +54,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     rt.set_balance(BigInt::from(1000u64) * BigInt::from(1u64.pow(18)));
 
     actor.prove_commit_aggregate_sector(
-        rt,
+        &rt,
         ProveCommitConfig::empty(),
         precommits,
         make_prove_commit_aggregate(sector_nos_bf),
@@ -60,5 +64,30 @@ fn valid_precommits_then_aggregate_provecommit() {
     // expect precommits to have been removed
     let st = actor.get_state(&rt);
 
-    assert_eq!(BigInt::zero(),)
+    // todo: line 1142 in miner commitment_tests.go
+
+    assert_eq!(BigInt::zero(), st.pre_commit_deposits);
+
+    // The sector is exactly full with verified deals, so expect fully verified power.
+    // todo: lazy_static! with big ints does not play well with casts
+    let expected_power = BigInt::from(actor.sector_size as i64) * (100 / 10);
+    let qa_power = qa_power_for_weight(
+        actor.sector_size,
+        expiration - rt.epoch,
+        &deal_weight,
+        &BigInt::from(verified_deal_weight),
+    );
+    assert_eq!(expected_power, qa_power);
+    let expected_initial_pledge = initial_pledge_for_power(
+        &qa_power,
+        &actor.baseline_power,
+        &actor.epoch_reward_smooth,
+        &actor.epoch_qa_power_smooth,
+        &rt.total_fil_circ_supply(),
+    );
+    let ten_sectors_initial_pledge = BigInt::from(10) * expected_initial_pledge.clone();
+    assert_eq!(ten_sectors_initial_pledge, expected_initial_pledge);
+
+    // expect new onchain sector
+    // todo: line 1161 - 1182
 }
