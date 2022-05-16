@@ -17,3 +17,10 @@ pub struct AwardBlockRewardParams {
 }
 
 pub use fvm_shared::reward::ThisEpochRewardReturn;
+
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+pub struct FundingParams {
+    #[serde(with = "bigint_ser")]
+    pub value: TokenAmount,
+    pub addr: Address,
+}

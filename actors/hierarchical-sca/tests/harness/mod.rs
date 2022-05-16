@@ -23,14 +23,14 @@ use fil_actors_runtime::test_utils::{
     SYSTEM_ACTOR_CODE_ID,
 };
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, ActorError, Map, BURNT_FUNDS_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    make_map_with_root_and_bitwidth, ActorError, Map, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    SCA_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use hierarchical_sca::checkpoint::ChildCheck;
 use hierarchical_sca::ext;
 use hierarchical_sca::{
     get_topdown_msg, is_bottomup, Checkpoint, ConstructorParams, CrossMsgArray, CrossMsgMeta,
-    CrossMsgParams, CrossMsgs, FundParams, Method, State, StorableMsg, Subnet,
+    CrossMsgParams, CrossMsgs, FundParams, HCMsgType, Method, State, StorableMsg, Subnet,
     CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT,
 };
 
@@ -38,7 +38,7 @@ use crate::SCAActor;
 
 lazy_static! {
     pub static ref SUBNET_ONE: Address = Address::new_id(101);
-    pub static ref SUBNET_TWO: Address = Address::new_id(202);
+    pub static ref SUBNET_TWO: Address = Address::new_id(102);
     pub static ref TEST_BLS: Address =
         Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     pub static ref ACTOR: Address = Address::new_actor("actor".as_bytes());
@@ -506,6 +506,112 @@ impl Harness {
             assert_eq!(msg.value, value);
         }
 
+        Ok(())
+    }
+
+    pub fn apply_cross_msg(
+        &self,
+        rt: &mut MockRuntime,
+        from: &Address,
+        to: &Address,
+        value: TokenAmount,
+        msg_nonce: u64,
+        td_nonce: u64,
+        code: ExitCode,
+        noop: bool,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, *SYSTEM_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+
+        rt.set_balance(value.clone());
+        let params = StorableMsg {
+            to: to.clone(),
+            from: from.clone(),
+            method: METHOD_SEND,
+            value: value.clone(),
+            params: RawBytes::default(),
+            nonce: msg_nonce,
+        };
+
+        let st: State = rt.get_state();
+        let sto = params.to.subnet().unwrap();
+        let rto = to.raw_addr().unwrap();
+
+        // if expected code is not ok
+        if code != ExitCode::OK {
+            expect_abort(
+                code,
+                rt.call::<SCAActor>(
+                    Method::ApplyMessage as MethodNum,
+                    &RawBytes::serialize(params).unwrap(),
+                ),
+            );
+            rt.verify();
+            return Ok(());
+        }
+
+        if params.apply_type(&st.network_name).unwrap() == HCMsgType::BottomUp {
+            if sto == st.network_name {
+                rt.expect_send(
+                    rto,
+                    METHOD_SEND,
+                    RawBytes::default(),
+                    params.value.clone(),
+                    RawBytes::default(),
+                    ExitCode::OK,
+                );
+            }
+
+            rt.call::<SCAActor>(
+                Method::ApplyMessage as MethodNum,
+                &RawBytes::serialize(params).unwrap(),
+            )?;
+            rt.verify();
+            let st: State = rt.get_state();
+            assert_eq!(st.applied_bottomup_nonce, msg_nonce);
+        } else {
+            let rew_params =
+                ext::reward::FundingParams { addr: *SCA_ACTOR_ADDR, value: params.value.clone() };
+            rt.expect_send(
+                *REWARD_ACTOR_ADDR,
+                ext::reward::EXTERNAL_FUNDING_METHOD,
+                RawBytes::serialize(rew_params).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+            if sto == st.network_name {
+                rt.expect_send(
+                    rto,
+                    METHOD_SEND,
+                    RawBytes::default(),
+                    params.value.clone(),
+                    RawBytes::default(),
+                    ExitCode::OK,
+                );
+            }
+            rt.call::<SCAActor>(
+                Method::ApplyMessage as MethodNum,
+                &RawBytes::serialize(params).unwrap(),
+            )?;
+            rt.verify();
+            let st: State = rt.get_state();
+            assert_eq!(st.applied_topdown_nonce, msg_nonce + 1);
+
+            if sto != st.network_name {
+                let sub = self.get_subnet(rt, &sto.down(&self.net_name).unwrap()).unwrap();
+                let crossmsgs = CrossMsgArray::load(&sub.top_down_msgs, rt.store()).unwrap();
+                let msg = get_topdown_msg(&crossmsgs, td_nonce).unwrap().unwrap();
+                assert_eq!(&msg.from, from);
+                assert_eq!(&msg.to, to);
+                assert_eq!(msg.nonce, td_nonce);
+                assert_eq!(msg.value, value);
+            }
+        }
+
+        if noop {
+            panic!("TODO: Not implemented yet");
+        }
         Ok(())
     }
 

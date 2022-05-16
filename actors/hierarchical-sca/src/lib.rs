@@ -1,9 +1,9 @@
 // Copyright 2019-2022 ConsensusLab
 // SPDX-License-Identifier: Apache-2.0, MIT
-
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    SCA_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -49,6 +49,7 @@ pub enum Method {
     Fund = 7,
     Release = 8,
     SendCross = 9,
+    ApplyMessage = 10,
 }
 
 /// Subnet Coordinator Actor
@@ -521,6 +522,111 @@ impl Actor {
         }
         Ok(())
     }
+
+    /// ApplyMessage triggers the execution of a cross-subnet message validated through the consensus.
+    ///
+    /// This function can only be triggered using `ApplyImplicitMessage`, and the source needs to
+    /// be the SystemActor. Cross messages are applied similarly to how rewards are applied once
+    /// a block has been validated. This function:
+    /// - Determines the type of cross-message.
+    /// - Performs the corresponding state changes.
+    /// - And updated the latest nonce applied for future checks.
+    fn apply_msg<BS, RT>(rt: &mut RT, params: StorableMsg) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+
+        // FIXME: We just need the state to check the current network name, but we are
+        // picking up the whole state. Is it more efficient in terms of performance and
+        // gas usage to check how to apply the message (b-u or t-p) inside rt.transaction?
+        let st: State = rt.state()?;
+        let mut msg = params.clone();
+        let rto = match msg.to.raw_addr() {
+            Ok(to) => to,
+            Err(_) => {
+                return Err(actor_error!(illegal_argument, "error getting raw address from msg"))
+            }
+        };
+        let sto = match msg.to.subnet() {
+            Ok(to) => to,
+            Err(_) => return Err(actor_error!(illegal_argument, "error getting subnet from msg")),
+        };
+        match msg.apply_type(&st.network_name) {
+            Ok(HCMsgType::BottomUp) => {
+                // perform state transition
+                rt.transaction(|st: &mut State, rt| {
+                    st.bottomup_state_transition(&msg).map_err(|e| {
+                        e.downcast_default(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            "failed applying bottomup message",
+                        )
+                    })?;
+                    if sto != st.network_name {
+                        st.commit_topdown_msg(rt.store(), &mut msg).map_err(|e| {
+                            e.downcast_default(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "error committing topdown messages",
+                            )
+                        })?;
+                    }
+                    Ok(())
+                })?;
+                // if directed to current network, execute message.
+                if sto == st.network_name {
+                    // FIXME: Should we handle return in some way?
+                    let _ = rt.send(rto, msg.method, msg.params, msg.value)?;
+                }
+            }
+            Ok(HCMsgType::TopDown) => {
+                // Mint funds for SCA so it can direct them accordingly as part of the message.
+                let params =
+                    ext::reward::FundingParams { addr: *SCA_ACTOR_ADDR, value: msg.value.clone() };
+                rt.send(
+                    *REWARD_ACTOR_ADDR,
+                    ext::reward::EXTERNAL_FUNDING_METHOD,
+                    RawBytes::serialize(params)?,
+                    TokenAmount::zero(),
+                )?;
+
+                rt.transaction(|st: &mut State, rt| {
+                    // perform nonce state transition
+                    if st.applied_topdown_nonce != msg.nonce {
+                        return Err(actor_error!(
+                            illegal_state,
+                            "the top-down message being applied doesn't hold the subsequent nonce"
+                        ));
+                    }
+                    st.applied_topdown_nonce += 1;
+                    // if not directed to subnet go down.
+                    if sto != st.network_name {
+                        st.commit_topdown_msg(rt.store(), &mut msg).map_err(|e| {
+                            e.downcast_default(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "error committing top-down message while applying it",
+                            )
+                        })?;
+                    }
+                    Ok(())
+                })?;
+
+                // if directed to the current network propagate the message
+                if sto == st.network_name {
+                    // FIXME: Should we handle return in some way?
+                    let _ = rt.send(rto, msg.method, msg.params, msg.value)?;
+                }
+            }
+            _ => {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "cross-message to apply dosen't have the right type"
+                ));
+            }
+        };
+
+        Ok(())
+    }
 }
 
 impl ActorCode for Actor {
@@ -568,6 +674,10 @@ impl ActorCode for Actor {
             }
             Some(Method::SendCross) => {
                 Self::send_cross(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::ApplyMessage) => {
+                Self::apply_msg(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

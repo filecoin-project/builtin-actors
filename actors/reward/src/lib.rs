@@ -8,6 +8,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::actor::builtin::Type;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{Integer, Sign};
 use fvm_shared::econ::TokenAmount;
@@ -46,6 +47,7 @@ pub enum Method {
     AwardBlockReward = 2,
     ThisEpochReward = 3,
     UpdateNetworkKPI = 4,
+    ExternalFunding = 5,
 }
 
 /// Reward Actor
@@ -227,6 +229,29 @@ impl Actor {
         })?;
         Ok(())
     }
+
+    /// ExternalFunding sends to an address funding coming from another subnet.
+    /// This is used as part of hierarchical consensus to orchestrate the minting and burning
+    /// dance between the subnets exchanging cross-messages
+    fn external_funding<BS, RT>(rt: &mut RT, params: FundingParams) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        // NOTE: The reward actor in subnets should give no reward to miners, so much of this actor will be
+        // simplified, giving "infinite" balance to this actor won't mess up with FIL's circulating supply because
+        // the only way to move funds from here is by externally funding.
+        rt.validate_immediate_caller_type(std::iter::once(&Type::SCA))?;
+        if params.value > rt.current_balance() {
+            return Err(actor_error!(illegal_state, "fatal error: reward actor balance below the value that needs to be minted for subnet"));
+        }
+
+        let addr = rt
+            .resolve_address(&params.addr)
+            .ok_or_else(|| actor_error!(not_found, "failed to resolve given owner address"))?;
+        rt.send(addr, METHOD_SEND, RawBytes::default(), params.value)?;
+        Ok(())
+    }
 }
 
 impl ActorCode for Actor {
@@ -256,6 +281,10 @@ impl ActorCode for Actor {
             Some(Method::UpdateNetworkKPI) => {
                 let param: Option<BigIntDe> = cbor::deserialize_params(params)?;
                 Self::update_network_kpi(rt, param.map(|v| v.0))?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::ExternalFunding) => {
+                Self::external_funding(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
