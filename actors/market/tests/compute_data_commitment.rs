@@ -85,10 +85,8 @@ mod compute_data_commitment {
     #[test]
     fn success_on_empty_piece_info() {
         let mut rt = setup();
-        let input = SectorDataSpec {
-            deal_ids: vec![],
-            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-        };
+        let input =
+            SectorDataSpec { deal_ids: vec![], sector_type: RegisteredSealProof::StackedDRG8MiBV1 };
         let param = ComputeDataCommitmentParams { inputs: vec![input] };
 
         let c = make_piece_cid("UnsealedEmpty".as_bytes());
