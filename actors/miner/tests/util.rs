@@ -736,15 +736,26 @@ impl ActorHarness {
 
         for precommit in precommits.iter() {
             let seal_rand = vec![1, 2, 3, 4];
-            seal_rands.push(seal_rand);
+            seal_rands.push(seal_rand.clone());
             let seal_int_rand = vec![5, 6, 7, 8];
-            seal_int_rands.push(seal_int_rand);
+            seal_int_rands.push(seal_int_rand.clone());
             let interactive_epoch =
                 precommit.pre_commit_epoch + runtime.policy.pre_commit_challenge_delay;
 
             let receiver = runtime.receiver;
             assert!(receiver.marshal_cbor().is_ok());
-            runtime.expect_get_randomness_from_tickets();
+            runtime.expect_get_randomness_from_tickets(
+                DomainSeparationTag::SealRandomness,
+                precommit.info.seal_rand_epoch,
+                vec![],
+                Randomness(seal_rand),
+            );
+            runtime.expect_get_randomness_from_tickets(
+                DomainSeparationTag::InteractiveSealChallengeSeed,
+                interactive_epoch,
+                vec![],
+                Randomness(seal_int_rand),
+            );
         }
     }
 
