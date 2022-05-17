@@ -117,7 +117,6 @@ mod compute_data_commitment {
         check_state(&rt);
     }
 
-    #[ignore]
     #[test]
     fn success_with_multiple_sector_commitments() {
         let start_epoch = 10;
@@ -146,11 +145,11 @@ mod compute_data_commitment {
             inputs: vec![
                 SectorDataSpec {
                     deal_ids: vec![],
-                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+                    sector_type: RegisteredSealProof::StackedDRG512MiBV1,
                 },
                 SectorDataSpec {
                     deal_ids: vec![deal_id1, deal_id2],
-                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+                    sector_type: RegisteredSealProof::StackedDRG512MiBV1,
                 },
             ],
         };
@@ -162,13 +161,13 @@ mod compute_data_commitment {
         let c2 = make_piece_cid("UnsealedSector2".as_bytes());
 
         rt.expect_compute_unsealed_sector_cid(
-            RegisteredSealProof::StackedDRG8MiBV1,
+            RegisteredSealProof::StackedDRG512MiBV1,
             vec![],
             c1,
             ExitCode::OK,
         );
         rt.expect_compute_unsealed_sector_cid(
-            RegisteredSealProof::StackedDRG8MiBV1,
+            RegisteredSealProof::StackedDRG512MiBV1,
             vec![p1, p2],
             c2,
             ExitCode::OK,

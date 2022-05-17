@@ -146,7 +146,7 @@ pub struct Expectations {
     pub expect_verify_sigs: VecDeque<ExpectedVerifySig>,
     pub expect_verify_seal: Option<ExpectVerifySeal>,
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
-    pub expect_compute_unsealed_sector_cid: Option<ExpectComputeUnsealedSectorCid>,
+    pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
     pub expect_get_randomness_tickets: Option<ExpectRandomness>,
     pub expect_get_randomness_beacon: Option<ExpectRandomness>,
@@ -204,8 +204,9 @@ impl Expectations {
             self.expect_verify_post
         );
         assert!(
-            self.expect_compute_unsealed_sector_cid.is_none(),
-            "expect_compute_unsealed_sector_cid not received",
+            self.expect_compute_unsealed_sector_cid.is_empty(),
+            "expect_compute_unsealed_sector_cid: {:?}, not received",
+            self.expect_compute_unsealed_sector_cid
         );
         assert!(
             self.expect_verify_consensus_fault.is_none(),
@@ -497,7 +498,7 @@ impl MockRuntime {
         exit_code: ExitCode,
     ) {
         let exp = ExpectComputeUnsealedSectorCid { reg, pieces, cid, exit_code };
-        self.expectations.borrow_mut().expect_compute_unsealed_sector_cid = Some(exp);
+        self.expectations.borrow_mut().expect_compute_unsealed_sector_cid.push_back(exp);
     }
 
     #[allow(dead_code)]
@@ -1045,7 +1046,7 @@ impl Primitives for MockRuntime {
             .expectations
             .borrow_mut()
             .expect_compute_unsealed_sector_cid
-            .take()
+            .pop_front()
             .expect("Unexpected syscall to ComputeUnsealedSectorCID");
 
         assert_eq!(exp.reg, reg, "Unexpected compute_unsealed_sector_cid : reg mismatch");
