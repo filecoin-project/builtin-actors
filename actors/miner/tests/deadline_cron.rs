@@ -1,8 +1,14 @@
+use fil_actor_miner::power_for_sectors;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use std::ops::Neg;
 
 mod util;
 use crate::util::*;
+
+// an expriration ~10 days greater than effective min expiration taking into account 30 days max
+// between pre and prove commit
+const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
 const PERIOD_OFFSET: ChainEpoch = 100;
 const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
@@ -26,45 +32,52 @@ fn cron_on_inactive_state() {
     check_state_invariants(&rt);
 }
 
-// 	t.Run("sector expires", func(t *testing.T) {
-// 		rt := builder.Build(t)
-// 		actor.constructAndVerify(rt)
+#[test]
+fn sector_expires() {
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    h.construct_and_verify(&mut rt);
 
-// 		sectors := actor.commitAndProveSectors(rt, 1, defaultSectorExpiration, nil, true)
-// 		// advance cron to activate power.
-// 		advanceAndSubmitPoSts(rt, actor, sectors...)
-// 		activePower := miner.PowerForSectors(actor.sectorSize, sectors)
+    let sectors =
+        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+    // advance cron to activate power.
+    h.advance_and_submit_posts(&mut rt, &sectors);
+    let active_power = power_for_sectors(h.sector_size, &sectors);
 
-// 		st := getState(rt)
-// 		initialPledge := st.InitialPledge
-// 		expirationRaw := sectors[0].Expiration
-// 		assert.True(t, st.DeadlineCronActive)
+    let mut st = h.get_state(&rt);
+    let initial_pledge = &st.initial_pledge;
+    let expiration_raw = sectors[0].expiration;
+    assert!(st.deadline_cron_active);
 
-// 		// setup state to simulate moving forward all the way to expiry
+    // setup state to simulate moving forward all the way to expiry
 
-// 		dlIdx, _, err := st.FindSector(rt.AdtStore(), sectors[0].SectorNumber)
-// 		require.NoError(t, err)
-// 		expQuantSpec := st.QuantSpecForDeadline(dlIdx)
-// 		expiration := expQuantSpec.QuantizeUp(expirationRaw)
-// 		remainingEpochs := expiration - st.ProvingPeriodStart
-// 		remainingPeriods := remainingEpochs/miner.WPoStProvingPeriod + 1
-// 		st.ProvingPeriodStart += remainingPeriods * miner.WPoStProvingPeriod
-// 		st.CurrentDeadline = dlIdx
-// 		rt.ReplaceState(st)
+    let (dl_idx, _) = st.find_sector(&rt.policy, &rt.store, sectors[0].sector_number).unwrap();
+    let exp_quant_spec = st.quant_spec_for_deadline(&rt.policy, dl_idx);
+    let expiration = exp_quant_spec.quantize_up(expiration_raw);
+    let remaining_epoch = expiration - st.proving_period_start;
+    let remaining_period = remaining_epoch / rt.policy.wpost_proving_period + 1;
+    st.proving_period_start += remaining_period * rt.policy.wpost_proving_period;
+    st.current_deadline = dl_idx;
+    rt.replace_state(&st);
 
-// 		// Advance to expiration epoch and expect expiration during cron
-// 		rt.SetEpoch(expiration)
-// 		powerDelta := activePower.Neg()
-// 		// because we skip forward in state the sector is detected faulty, no penalty
-// 		advanceDeadline(rt, actor, &cronConfig{
-// 			noEnrollment:              true, // the last power has expired so we expect cron to go inactive
-// 			expiredSectorsPowerDelta:  &powerDelta,
-// 			expiredSectorsPledgeDelta: initialPledge.Neg(),
-// 		})
-// 		st = getState(rt)
-// 		assert.False(t, st.DeadlineCronActive)
-// 		actor.checkState(rt)
-// 	})
+    // Advance to expiration epoch and expect expiration during cron
+    rt.set_epoch(expiration);
+    let power_delta = active_power.neg();
+    // because we skip forward in state the sector is detected faulty, no penalty
+    h.advance_deadline(
+        &mut rt,
+        CronConfig {
+            no_enrollment: true,
+            expired_sectors_power_delta: Some(power_delta),
+            expired_sectors_pledge_delta: initial_pledge.neg(),
+            ..CronConfig::default()
+        },
+    );
+    let st = h.get_state(&rt);
+    assert!(!st.deadline_cron_active);
+    check_state_invariants(&rt);
+}
 
 // 	t.Run("sector expires and repays fee debt", func(t *testing.T) {
 // 		rt := builder.Build(t)

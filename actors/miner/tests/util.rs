@@ -862,7 +862,7 @@ impl ActorHarness {
         state.deadline_info(&rt.policy, rt.epoch)
     }
 
-    fn on_deadline_cron(&self, rt: &mut MockRuntime, cfg: CronConfig) {
+    pub fn on_deadline_cron(&self, rt: &mut MockRuntime, cfg: CronConfig) {
         let state = self.get_state(rt);
         rt.expect_validate_caller_addr(vec![*STORAGE_POWER_ACTOR_ADDR]);
 
@@ -1618,16 +1618,17 @@ pub struct PreCommitBatchConfig {
     pub first_for_miner: bool,
 }
 
+#[derive(Default)]
 pub struct CronConfig {
-    no_enrollment: bool, // true if expect not to continue enrollment false otherwise
-    expected_enrollment: ChainEpoch,
-    detected_faults_power_delta: Option<PowerPair>,
-    expired_sectors_power_delta: Option<PowerPair>,
-    expired_sectors_pledge_delta: TokenAmount,
-    continued_faults_penalty: TokenAmount, // Expected amount burnt to pay continued fault penalties.
-    expired_precommit_penalty: TokenAmount, // Expected amount burnt to pay for expired precommits
-    repaid_fee_debt: TokenAmount,          // Expected amount burnt to repay fee debt.
-    penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds.
+    pub no_enrollment: bool, // true if expect not to continue enrollment false otherwise
+    pub expected_enrollment: ChainEpoch,
+    pub detected_faults_power_delta: Option<PowerPair>,
+    pub expired_sectors_power_delta: Option<PowerPair>,
+    pub expired_sectors_pledge_delta: TokenAmount,
+    pub continued_faults_penalty: TokenAmount, // Expected amount burnt to pay continued fault penalties.
+    pub expired_precommit_penalty: TokenAmount, // Expected amount burnt to pay for expired precommits
+    pub repaid_fee_debt: TokenAmount,           // Expected amount burnt to repay fee debt.
+    pub penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds.
 }
 
 #[allow(dead_code)]
