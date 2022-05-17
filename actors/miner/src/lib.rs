@@ -618,8 +618,16 @@ impl Actor {
                             "failed to load sectors for post verification",
                         )
                     })?;
-                verify_windowed_post(rt, current_deadline.challenge, &sector_infos, params.proofs)
-                    .map_err(|e| e.wrap("window post failed"))?;
+                if !verify_windowed_post(
+                    rt,
+                    current_deadline.challenge,
+                    &sector_infos,
+                    params.proofs,
+                )
+                .map_err(|e| e.wrap("window post failed"))?
+                {
+                    return Err(actor_error!(illegal_argument, "invalid post was submitted"));
+                }
             }
 
             let deadline_idx = params.deadline;
@@ -1071,7 +1079,7 @@ impl Actor {
             let mut new_sectors = vec![SectorOnChainInfo::default()];
             for &dl_idx in deadlines_to_load.iter() {
                 let mut deadline = deadlines
-                    .load_deadline(rt.policy(),rt.store(), dl_idx)
+                    .load_deadline(rt.policy(), rt.store(), dl_idx)
                     .map_err(|e|
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
@@ -1088,7 +1096,7 @@ impl Actor {
                         )
                     )?;
 
-                let quant = state.quant_spec_for_deadline(rt.policy(),dl_idx);
+                let quant = state.quant_spec_for_deadline(rt.policy(), dl_idx);
 
                 for with_details in &decls_by_deadline[&dl_idx] {
                     let update_proof_type = with_details.sector_info.seal_proof
@@ -1290,7 +1298,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
 
-            BitField::try_from_bits(succeeded).map_err(|_|{
+            BitField::try_from_bits(succeeded).map_err(|_| {
                 actor_error!(illegal_argument; "invalid sector number")
             })
         })?;
@@ -1729,10 +1737,10 @@ impl Actor {
 
                 // Calculate pre-commit cleanup
                 let msd = max_prove_commit_duration(rt.policy(), precommit.seal_proof)
-                .ok_or_else(|| actor_error!(illegal_argument, "no max seal duration set for proof type: {}", i64::from(precommit.seal_proof)))?;
+                    .ok_or_else(|| actor_error!(illegal_argument, "no max seal duration set for proof type: {}", i64::from(precommit.seal_proof)))?;
                 // PreCommitCleanUpDelay > 0 here is critical for the batch verification of proofs. Without it, if a proof arrived exactly on the
-			    // due epoch, ProveCommitSector would accept it, then the expiry event would remove it, and then
-			    // ConfirmSectorProofsValid would fail to find it.
+                // due epoch, ProveCommitSector would accept it, then the expiry event would remove it, and then
+                // ConfirmSectorProofsValid would fail to find it.
                 let clean_up_bound = curr_epoch + msd + rt.policy().expired_pre_commit_clean_up_delay;
                 clean_up_events.push((clean_up_bound, precommit.sector_number));
             }
