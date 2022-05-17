@@ -258,7 +258,7 @@ impl Default for MockRuntime {
             caller: Address::new_id(0),
             caller_type: Default::default(),
             value_received: Default::default(),
-            hash_func: Box::new(|_| [0u8; 32]),
+            hash_func: Box::new(|data| blake2b_256(data)),
             network_version: NetworkVersion::V0,
             state: Default::default(),
             balance: Default::default(),
@@ -1027,7 +1027,7 @@ impl Primitives for MockRuntime {
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
-        blake2b_256(data)
+        (*self.hash_func)(data)
     }
     fn compute_unsealed_sector_cid(
         &self,
