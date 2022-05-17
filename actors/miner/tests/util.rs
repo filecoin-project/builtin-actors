@@ -6,7 +6,11 @@ use fil_actor_market::{
     Method as MarketMethod, SectorDataSpec, SectorDeals, SectorWeights,
     VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
-use fil_actor_miner::{aggregate_pre_commit_network_fee, ProveCommitAggregateParams};
+use fil_actor_miner::Method as MinerMethod;
+use fil_actor_miner::{
+    aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
+    ProveCommitAggregateParams,
+};
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
@@ -48,9 +52,8 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
-    InteractiveSealRandomness, PoStProof, RegisteredPoStProof, RegisteredSealProof, SealRandomness,
-    SealVerifyInfo, SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower,
-    WindowPoStVerifyInfo,
+    AggregateSealVerifyInfo, PoStProof, RegisteredPoStProof, RegisteredSealProof, SealVerifyInfo,
+    SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::METHOD_SEND;
@@ -719,7 +722,7 @@ impl ActorHarness {
             comm_ds.push(comm_d);
         }
         let cdc_params = ComputeDataCommitmentParams { inputs: cdc_inputs };
-        let cdc_ret = ComputeDataCommitmentReturn { commds: comm_ds };
+        let cdc_ret = ComputeDataCommitmentReturn { commds: comm_ds.clone() };
         runtime.expect_send(
             *STORAGE_MARKET_ACTOR_ADDR,
             MarketMethod::ComputeDataCommitment as u64,
@@ -735,9 +738,9 @@ impl ActorHarness {
         let mut seal_int_rands = Vec::new();
 
         for precommit in precommits.iter() {
-            let seal_rand = vec![1, 2, 3, 4];
+            let seal_rand = Randomness(vec![1, 2, 3, 4]);
             seal_rands.push(seal_rand.clone());
-            let seal_int_rand = vec![5, 6, 7, 8];
+            let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
             seal_int_rands.push(seal_int_rand.clone());
             let interactive_epoch =
                 precommit.pre_commit_epoch + runtime.policy.pre_commit_challenge_delay;
@@ -748,15 +751,56 @@ impl ActorHarness {
                 DomainSeparationTag::SealRandomness,
                 precommit.info.seal_rand_epoch,
                 vec![],
-                Randomness(seal_rand),
+                Randomness(seal_rand.0),
             );
             runtime.expect_get_randomness_from_tickets(
                 DomainSeparationTag::InteractiveSealChallengeSeed,
                 interactive_epoch,
                 vec![],
-                Randomness(seal_int_rand),
+                Randomness(seal_int_rand.0),
             );
         }
+
+        // verify syscall
+        let mut svis = Vec::new();
+        for (i, precommit) in precommits.iter().enumerate() {
+            svis.push(AggregateSealVerifyInfo {
+                sector_number: precommit.info.sector_number,
+                randomness: seal_rands.get(i).cloned().unwrap(),
+                interactive_randomness: seal_int_rands.get(i).cloned().unwrap(),
+                sealed_cid: precommit.info.sealed_cid,
+                unsealed_cid: comm_ds[i],
+            })
+        }
+        let actor_id = runtime.miner.id().unwrap();
+        runtime.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone(), Ok(()));
+
+        // confirm sector proofs valid
+        self.confirm_sector_proofs_valid_internal(runtime, config, &precommits);
+
+        // burn network fee
+        let expected_fee = aggregate_prove_commit_network_fee(precommits.len() as i64, &base_fee);
+        runtime.expect_send(
+            *BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            RawBytes::default(),
+            expected_fee,
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        runtime.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        let mut addrs = self.control_addrs.clone();
+        addrs.push(self.owner);
+        addrs.push(self.worker);
+        runtime.expect_validate_caller_addr(addrs);
+        runtime
+            .call::<Actor>(
+                MinerMethod::ProveCommitAggregate as u64,
+                &RawBytes::serialize(params).unwrap(),
+            )
+            .unwrap();
+        runtime.verify();
     }
 
     pub fn confirm_sector_proofs_valid(
