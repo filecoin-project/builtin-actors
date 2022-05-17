@@ -796,6 +796,7 @@ dependencies = [
  "rand",
  "serde",
  "serde_repr",
+ "sha2",
  "thiserror",
  "unsigned-varint",
 ]
