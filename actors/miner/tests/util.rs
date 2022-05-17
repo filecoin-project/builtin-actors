@@ -36,7 +36,7 @@ use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
-use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
+use fvm_ipld_encoding::{BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
@@ -48,8 +48,9 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
-    PoStProof, RegisteredPoStProof, RegisteredSealProof, SealVerifyInfo, SectorID, SectorInfo,
-    SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
+    InteractiveSealRandomness, PoStProof, RegisteredPoStProof, RegisteredSealProof, SealRandomness,
+    SealVerifyInfo, SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower,
+    WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::METHOD_SEND;
@@ -728,6 +729,23 @@ impl ActorHarness {
             ExitCode::OK,
         );
         self.expect_query_network_info(runtime);
+
+        // expect randomness queries for provided precommits
+        let mut seal_rands = Vec::new();
+        let mut seal_int_rands = Vec::new();
+
+        for precommit in precommits.iter() {
+            let seal_rand = vec![1, 2, 3, 4];
+            seal_rands.push(seal_rand);
+            let seal_int_rand = vec![5, 6, 7, 8];
+            seal_int_rands.push(seal_int_rand);
+            let interactive_epoch =
+                precommit.pre_commit_epoch + runtime.policy.pre_commit_challenge_delay;
+
+            let receiver = runtime.receiver;
+            assert!(receiver.marshal_cbor().is_ok());
+            runtime.expect_get_randomness_from_tickets();
+        }
     }
 
     pub fn confirm_sector_proofs_valid(
