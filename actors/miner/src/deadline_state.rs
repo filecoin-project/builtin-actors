@@ -645,10 +645,8 @@ impl Deadline {
             )?
             .collect();
 
-        if to_remove_set.is_empty() {}
-
         if let Some(&max_partition) = to_remove_set.iter().max() {
-            if max_partition > partition_count {
+            if max_partition >= partition_count {
                 return Err(
                     actor_error!(USR_ILLEGAL_ARGUMENT; "partition index {} out of range [0, {})", max_partition, partition_count).into()
                 );
