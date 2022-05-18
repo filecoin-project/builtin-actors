@@ -360,7 +360,10 @@ impl State {
         )?;
 
         for &sector_num in sector_nums {
-            precommitted.delete(&u64_key(sector_num))?;
+            let prev_entry = precommitted.delete(&u64_key(sector_num))?;
+            if prev_entry.is_none() {
+                return Err(format!("sector {} doesn't exist", sector_num).into());
+            }
         }
 
         self.pre_committed_sectors = precommitted.flush()?;
