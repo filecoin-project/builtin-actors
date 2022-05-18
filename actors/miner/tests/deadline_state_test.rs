@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, convert::TryInto, iter::FromIterator};
+use std::collections::{BTreeSet, HashMap};
 
 use fil_actor_miner::{
     power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, SectorOnChainInfo,
@@ -6,9 +6,12 @@ use fil_actor_miner::{
 };
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::{MessageAccumulator, MockRuntime};
+use fil_actors_runtime::ActorError;
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;
-use fvm_ipld_bitfield::{BitField, MaybeBitField};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::error::ExitCode;
 use fvm_shared::{clock::QuantSpec, sector::SectorSize};
 
 mod util;
@@ -136,23 +139,14 @@ fn add_then_terminate(
 ) -> (ExpectedDeadlineState, Vec<SectorOnChainInfo>) {
     let (deadline_state, sectors) = add_sectors(rt, deadline, prove);
 
-    let store = rt.store();
-    let sectors_array = sectors_array(rt, store, sectors.to_owned());
-    let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(make_bitfield(&[1, 3]))).unwrap();
-    partition_sector_map.add(1, UnvalidatedBitField::Validated(make_bitfield(&[6]))).unwrap();
-
-    let removed_power = deadline
-        .terminate_sectors(
-            &Policy::default(),
-            store,
-            &sectors_array,
-            15,
-            &mut partition_sector_map,
-            SECTOR_SIZE,
-            QUANT_SPEC,
-        )
-        .unwrap();
+    let removed_power = terminate_sectors(
+        rt,
+        deadline,
+        15,
+        sectors.to_owned(),
+        HashMap::from([(0, make_bitfield(&[1, 3])), (1, make_bitfield(&[6]))]),
+    )
+    .unwrap();
 
     let (expected_power, unproven) = if prove {
         (sector_power(&[1, 3, 6]), vec![])
@@ -170,7 +164,7 @@ fn add_then_terminate(
             make_bitfield(&[5, 6, 7, 8]),
             make_bitfield(&[9]),
         ])
-        .assert(store, &sectors, deadline);
+        .assert(rt.store(), &sectors, deadline);
 
     (deadline_state, sectors)
 }
@@ -189,6 +183,7 @@ fn add_then_terminate_then_pop_early(
     assert!(!has_more);
     assert_eq!(2, early_terminations.partitions_processed);
     assert_eq!(3, early_terminations.sectors_processed);
+    assert_eq!(1, early_terminations.sectors.len());
 
     assert_bitfield_equals(early_terminations.sectors.get(&15).unwrap(), &[1, 3, 6]);
 
@@ -390,6 +385,279 @@ fn can_pop_early_terminations_in_multiple_steps() {
         .assert(store, &sectors, &deadline);
 }
 
+#[test]
+fn cannot_remove_missing_partition() {
+    let (_, rt) = setup();
+    let mut deadline = Deadline::new(rt.store()).unwrap();
+
+    add_then_terminate_then_remove_partition(&rt, &mut deadline);
+    assert!(deadline.remove_partitions(rt.store(), &make_bitfield(&[2]), QUANT_SPEC).is_err());
+}
+
+#[test]
+fn removing_no_partitions_does_nothing() {
+    let (_, rt) = setup();
+    let mut deadline = Deadline::new(rt.store()).unwrap();
+
+    let (deadline_state, sectors) = add_then_terminate_then_pop_early(&rt, &mut deadline);
+    let (live, dead, removed_power) = deadline
+        .remove_partitions(rt.store(), &make_bitfield(&[]), QUANT_SPEC)
+        .expect("should not have failed to remove partitions");
+
+    assert!(removed_power.is_zero());
+    assert!(live.is_empty());
+    assert!(dead.is_empty());
+
+    // Popping early terminations doesn't affect the terminations bitfield.
+    deadline_state
+        .with_terminations(&[1, 3, 6])
+        .with_partitions(vec![
+            make_bitfield(&[1, 2, 3, 4]),
+            make_bitfield(&[5, 6, 7, 8]),
+            make_bitfield(&[9]),
+        ])
+        .assert(rt.store(), &sectors, &deadline);
+}
+
+#[test]
+fn fails_to_remove_partitions_with_faulty_sectors() {
+    let (_, rt) = setup();
+    let mut deadline = Deadline::new(rt.store()).unwrap();
+
+    add_then_mark_faulty(&rt, &mut deadline, false);
+
+    // Try to remove a partition with faulty sectors.
+    assert!(deadline.remove_partitions(rt.store(), &make_bitfield(&[1]), QUANT_SPEC).is_err());
+}
+
+#[test]
+fn terminate_proven_and_faulty() {
+    let (_, rt) = setup();
+    let mut deadline = Deadline::new(rt.store()).unwrap();
+
+    let (deadline_state, sectors) = add_then_mark_faulty(&rt, &mut deadline, true); // 1,5,6 faulty
+
+    let removed_power = terminate_sectors(
+        &rt,
+        &mut deadline,
+        15,
+        sectors.to_owned(),
+        HashMap::from([(0, make_bitfield(&[1, 3])), (1, make_bitfield(&[6]))]),
+    )
+    .unwrap();
+
+    // Sector 3 active, 1, 6 faulty
+    let expected_power_loss =
+        power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors, &make_bitfield(&[3])));
+    assert_eq!(
+        expected_power_loss, removed_power,
+        "deadline state to remove power for terminated sectors"
+    );
+
+    deadline_state
+        .with_terminations(&[1, 3, 6])
+        .with_faults(&[5])
+        .with_partitions(vec![
+            make_bitfield(&[1, 2, 3, 4]),
+            make_bitfield(&[5, 6, 7, 8]),
+            make_bitfield(&[9]),
+        ])
+        .assert(rt.store(), &sectors, &deadline);
+}
+
+fn terminate_sectors(
+    rt: &MockRuntime,
+    deadline: &mut Deadline,
+    epoch: ChainEpoch,
+    sectors: Vec<SectorOnChainInfo>,
+    partition_sectors: HashMap<u64, BitField>,
+) -> anyhow::Result<PowerPair> {
+    let store = rt.store();
+    let sectors_array = sectors_array(rt, &store, sectors);
+
+    let mut partition_sector_map = PartitionSectorMap::default();
+    for (partition, sectors) in partition_sectors {
+        partition_sector_map.add(partition, UnvalidatedBitField::Validated(sectors)).unwrap();
+    }
+
+    deadline.terminate_sectors(
+        &Policy::default(),
+        &store,
+        &sectors_array,
+        epoch,
+        &mut partition_sector_map,
+        SECTOR_SIZE,
+        QUANT_SPEC,
+    )
+}
+
+#[test]
+fn terminate_unproven_and_faulty() {
+    let (_, rt) = setup();
+    let mut deadline = Deadline::new(rt.store()).unwrap();
+
+    let (deadline_state, sectors) = add_then_mark_faulty(&rt, &mut deadline, false); // 1,5,6 faulty
+
+    let removed_power = terminate_sectors(
+        &rt,
+        &mut deadline,
+        15,
+        sectors.to_owned(),
+        HashMap::from([(0, make_bitfield(&[1, 3])), (1, make_bitfield(&[6]))]),
+    )
+    .unwrap();
+
+    // sector 3 unproven, 1, 6 faulty
+    assert!(removed_power.is_zero(), "should remove no power");
+
+    deadline_state
+        .with_terminations(&[1, 3, 6])
+        .with_faults(&[5])
+        .with_unproven(&[2, 4, 7, 8, 9]) // not 1, 3, 5, & 6
+        .with_partitions(vec![
+            make_bitfield(&[1, 2, 3, 4]),
+            make_bitfield(&[5, 6, 7, 8]),
+            make_bitfield(&[9]),
+        ])
+        .assert(rt.store(), &sectors, &deadline);
+}
+
+#[test]
+fn fails_to_terminate_missing_sector() {
+    let (_, rt) = setup();
+    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, false); // 1,5,6 faulty
+
+    let ret = terminate_sectors(
+        &rt,
+        &mut deadline,
+        15,
+        sectors,
+        HashMap::from([(0, make_bitfield(&[6]))]),
+    );
+
+    assert!(ret.is_err());
+    let err = ret
+        .err()
+        .expect("can only terminate live sectors")
+        .downcast::<ActorError>()
+        .expect("Invalid error");
+    assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+}
+
+#[test]
+fn fails_to_terminate_missing_partition() {
+    let (_, rt) = setup();
+    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, false); // 1,5,6 faulty
+
+    let ret = terminate_sectors(
+        &rt,
+        &mut deadline,
+        15,
+        sectors,
+        HashMap::from([(4, make_bitfield(&[6]))]),
+    );
+
+    assert!(ret.is_err());
+    let err = ret
+        .err()
+        .expect("can only terminate existing partitions")
+        .downcast::<ActorError>()
+        .expect("Invalid error");
+    assert_eq!(err.exit_code(), ExitCode::USR_NOT_FOUND);
+}
+
+#[test]
+fn fails_to_terminate_already_terminated_sector() {
+    let (_, rt) = setup();
+    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let (_, sectors) = add_then_terminate(&rt, &mut deadline, false); // terminates 1,3,6
+
+    let ret = terminate_sectors(
+        &rt,
+        &mut deadline,
+        15,
+        sectors,
+        HashMap::from([(0, make_bitfield(&[1, 2]))]),
+    );
+
+    assert!(ret.is_err());
+    let err = ret
+        .err()
+        .expect("cannot terminate already terminated sector")
+        .downcast::<ActorError>()
+        .expect("Invalid error");
+    assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+}
+
+#[test]
+fn faulty_sectors_expire() {
+    let (_, rt) = setup();
+    let mut deadline = Deadline::new(rt.store()).unwrap();
+
+    // mark sectors 5&6 faulty, expiring at epoch 9
+    let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, true);
+
+    // we expect all sectors but 7 to have expired at this point
+    let expired = deadline
+        .pop_expired_sectors(rt.store(), 9, QUANT_SPEC)
+        .expect("failed to pop expired sectors");
+
+    assert_bitfield_equals(&expired.on_time_sectors, &[1, 2, 3, 4, 5, 8, 9]);
+    assert_bitfield_equals(&expired.early_sectors, &[6]);
+
+    deadline_state()
+        .with_terminations(&[1, 2, 3, 4, 5, 6, 8, 9])
+        .with_faults(&[])
+        .with_partitions(vec![
+            make_bitfield(&[1, 2, 3, 4]),
+            make_bitfield(&[5, 6, 7, 8]),
+            make_bitfield(&[9]),
+        ])
+        .assert(rt.store(), &sectors, &deadline);
+
+    // check early terminations
+    let (early_terminations, has_more) = deadline
+        .pop_early_terminations(rt.store(), 100, 100)
+        .expect("failed to pop early_terminations");
+    assert!(!has_more);
+    assert_eq!(early_terminations.partitions_processed, 1);
+    assert_eq!(early_terminations.sectors_processed, 1);
+    assert_eq!(early_terminations.sectors.len(), 1);
+    assert_bitfield_equals(early_terminations.sectors.get(&9).unwrap(), &[6]);
+
+    // popping early_terminations doesn't affect the terminations bitfield
+    deadline_state()
+        .with_terminations(&[1, 2, 3, 4, 5, 6, 8, 9])
+        .with_faults(&[])
+        .with_partitions(vec![
+            make_bitfield(&[1, 2, 3, 4]),
+            make_bitfield(&[5, 6, 7, 8]),
+            make_bitfield(&[9]),
+        ])
+        .assert(rt.store(), &sectors, &deadline);
+}
+
+#[test]
+fn cannot_pop_expired_sectors_before_proving() {
+    let (_, rt) = setup();
+    let mut deadline = Deadline::new(rt.store()).unwrap();
+
+    // add sectors, but don't prove
+    add_sectors(&rt, &mut deadline, false);
+
+    // try to pop some expirations
+    let ret = deadline.pop_expired_sectors(rt.store(), 9, QUANT_SPEC);
+    assert!(ret.is_err());
+    let err = ret.err().expect("cannot pop expired sectors from a partition with unproven sectors");
+
+    assert!(err
+        .to_string()
+        .to_lowercase()
+        .contains("cannot pop expired sectors from a partition with unproven sectors"));
+}
+
 fn deadline_state() -> ExpectedDeadlineState {
     ExpectedDeadlineState {
         quant: QUANT_SPEC,
@@ -405,7 +673,7 @@ fn sector_power(sector_numbers: &[u64]) -> PowerPair {
 }
 
 fn make_bitfield(sector_numbers: &[u64]) -> BitField {
-    MaybeBitField::from_iter(sector_numbers.iter().copied()).try_into().unwrap()
+    BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
 }
 
 fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
