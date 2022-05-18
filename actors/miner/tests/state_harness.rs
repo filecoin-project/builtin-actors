@@ -1,12 +1,16 @@
+#![allow(dead_code)]
 use fil_actor_miner::MinerInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::{BitFieldQueue, State};
+use fil_actor_miner::VestSpec;
+use fil_actor_miner::VestingFunds;
 use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
 use multihash::Code::Blake2b256;
@@ -96,5 +100,38 @@ impl StateHarness {
     #[allow(dead_code)]
     pub fn quant_spec_every_deadline(&self, policy: &Policy) -> QuantSpec {
         self.st.quant_spec_every_deadline(policy)
+    }
+
+    #[allow(dead_code)]
+    pub fn add_locked_funds(
+        &mut self,
+        current_epoch: ChainEpoch,
+        vesting_sum: &TokenAmount,
+        spec: &VestSpec,
+    ) -> anyhow::Result<TokenAmount> {
+        self.st.add_locked_funds(&self.store, current_epoch, vesting_sum, spec)
+    }
+
+    #[allow(dead_code)]
+    pub fn unlock_vested_funds(
+        &mut self,
+        current_epoch: ChainEpoch,
+    ) -> anyhow::Result<TokenAmount> {
+        self.st.unlock_vested_funds(&self.store, current_epoch)
+    }
+
+    #[allow(dead_code)]
+    pub fn unlock_unvested_funds(
+        &mut self,
+        current_epoch: ChainEpoch,
+        target: &TokenAmount,
+    ) -> anyhow::Result<TokenAmount> {
+        self.st.unlock_unvested_funds(&self.store, current_epoch, target)
+    }
+
+    #[allow(dead_code)]
+    pub fn vesting_funds_store_empty(&self) -> bool {
+        let vesting = self.store.get_cbor::<VestingFunds>(&self.st.vesting_funds).unwrap().unwrap();
+        vesting.funds.is_empty()
     }
 }
