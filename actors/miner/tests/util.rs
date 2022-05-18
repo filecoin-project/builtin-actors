@@ -757,7 +757,7 @@ impl ActorHarness {
                 DomainSeparationTag::InteractiveSealChallengeSeed,
                 interactive_epoch,
                 buf,
-                Randomness(seal_int_rand.0),
+                seal_int_rand,
             );
         }
 
