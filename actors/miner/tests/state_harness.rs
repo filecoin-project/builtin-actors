@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 use fil_actor_miner::MinerInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
-use fil_actor_miner::{BitFieldQueue, State};
 use fil_actor_miner::VestSpec;
 use fil_actor_miner::VestingFunds;
+use fil_actor_miner::{BitFieldQueue, State};
 use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
