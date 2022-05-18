@@ -507,7 +507,7 @@ fn terminate_unproven_and_faulty() {
     )
     .unwrap();
 
-    // Sector 3 active, 1, 6 faulty
+    // sector 3 unproven, 1, 6 faulty
     assert!(removed_power.is_zero(), "should remove no power");
 
     deadline_state
