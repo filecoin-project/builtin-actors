@@ -1,6 +1,6 @@
 use fil_actor_miner::MinerInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
-use fil_actor_miner::State;
+use fil_actor_miner::{BitFieldQueue, State};
 use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
@@ -8,7 +8,7 @@ use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::{clock::ChainEpoch, sector::RegisteredPoStProof};
+use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
 use multihash::Code::Blake2b256;
 
 pub struct StateHarness {
@@ -44,9 +44,7 @@ impl StateHarness {
         let st = State::new(policy, &store, info_cid, period_boundary, 0).unwrap();
         StateHarness { st, store }
     }
-}
 
-impl StateHarness {
     pub fn put_precommitted_sectors(
         &mut self,
         precommits: Vec<SectorPreCommitOnChainInfo>,
@@ -67,5 +65,27 @@ impl StateHarness {
 
     pub fn has_precommit(&self, sector_number: SectorNumber) -> bool {
         self.st.get_precommitted_sector(&self.store, sector_number).unwrap().is_some()
+    }
+
+    pub fn load_pre_commit_clean_ups<'db>(
+        &'db self,
+        policy: &Policy,
+    ) -> BitFieldQueue<'db, MemoryBlockstore> {
+        let quant = self.st.quant_spec_every_deadline(policy);
+        let queue =
+            BitFieldQueue::new(&self.store, &self.st.pre_committed_sectors_cleanup, quant).unwrap();
+        queue
+    }
+
+    pub fn add_pre_commit_clean_ups(
+        &mut self,
+        policy: &Policy,
+        cleanup_events: Vec<(ChainEpoch, u64)>,
+    ) -> anyhow::Result<()> {
+        self.st.add_pre_commit_clean_ups(policy, &self.store, cleanup_events)
+    }
+
+    pub fn quant_spec_every_deadline(&self, policy: &Policy) -> QuantSpec {
+        self.st.quant_spec_every_deadline(policy)
     }
 }
