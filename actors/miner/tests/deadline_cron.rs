@@ -1,5 +1,6 @@
-use fil_actor_miner::Deadline;
-use fil_actor_miner::{pledge_penalty_for_continued_fault, power_for_sectors, SectorOnChainInfo};
+use fil_actor_miner::{
+    pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair, SectorOnChainInfo,
+};
 use fil_actors_runtime::test_utils::MessageAccumulator;
 use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_bitfield::BitField;
@@ -232,47 +233,53 @@ fn detects_and_penalizes_faults() {
     check_state_invariants(&rt);
 }
 
-// 	t.Run("test cron run trigger faults", func(t *testing.T) {
-// 		rt := builder.Build(t)
-// 		actor.constructAndVerify(rt)
+#[test]
+fn test_cron_run_trigger_faults() {
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    h.construct_and_verify(&mut rt);
 
-// 		// add lots of funds so we can pay penalties without going into debt
-// 		actor.applyRewards(rt, bigRewards, big.Zero())
+    // add lots of funds so we can pay penalties without going into debt
+    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::zero());
 
-// 		// create enough sectors that one will be in a different partition
-// 		allSectors := actor.commitAndProveSectors(rt, 1, defaultSectorExpiration, nil, true)
+    // create enough sectors that one will be in a different partition
+    let all_sectors =
+        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
 
-// 		// advance cron to activate power.
-// 		advanceAndSubmitPoSts(rt, actor, allSectors...)
+    // advance cron to activate power.
+    h.advance_and_submit_posts(&mut rt, &all_sectors);
 
-// 		st := getState(rt)
-// 		dlIdx, _, err := st.FindSector(rt.AdtStore(), allSectors[0].SectorNumber)
-// 		require.NoError(t, err)
+    let st = h.get_state(&rt);
+    let (dl_idx, _) = st.find_sector(&rt.policy, &rt.store, all_sectors[0].sector_number).unwrap();
 
-// 		// advance to deadline prior to first
-// 		dlinfo := actor.deadline(rt)
-// 		for dlinfo.Index != dlIdx {
-// 			dlinfo = advanceDeadline(rt, actor, &cronConfig{})
-// 		}
+    // advance to deadline prior to first
+    let mut dl_info = h.deadline(&rt);
+    while dl_info.index != dl_idx {
+        dl_info = h.advance_deadline(&mut rt, CronConfig::default());
+    }
 
-// 		rt.SetEpoch(dlinfo.Last())
+    rt.set_epoch(dl_info.last());
 
-// 		// run cron and expect all sectors to be detected as faults (no penalty)
-// 		pwr := miner.PowerForSectors(actor.sectorSize, allSectors)
+    // run cron and expect all sectors to be detected as faults (no penalty)
+    let pwr = power_for_sectors(h.sector_size, &all_sectors);
 
-// 		// power for sectors is removed
-// 		powerDeltaClaim := miner.NewPowerPair(pwr.Raw.Neg(), pwr.QA.Neg())
+    // power for sectors is removed
+    let power_delta_claim = PowerPair { raw: pwr.raw.neg(), qa: pwr.qa.neg() };
 
-// 		// expect next cron to be one deadline period after expected cron for this deadline
-// 		nextCron := dlinfo.Last() + miner.WPoStChallengeWindow
+    // expect next cron to be one deadline period after expected cron for this deadline
+    let next_cron = dl_info.last() + rt.policy.wpost_challenge_window;
 
-// 		actor.onDeadlineCron(rt, &cronConfig{
-// 			expectedEnrollment:       nextCron,
-// 			detectedFaultsPowerDelta: &powerDeltaClaim,
-// 		})
-// 		actor.checkState(rt)
-// 	})
-// }
+    h.on_deadline_cron(
+        &mut rt,
+        CronConfig {
+            expected_enrollment: next_cron,
+            detected_faults_power_delta: Some(power_delta_claim),
+            ..CronConfig::default()
+        },
+    );
+    check_state_invariants(&rt);
+}
 
 fn sector_info_as_bitfield(sectors: &[SectorOnChainInfo]) -> BitField {
     let mut bf = BitField::new();
