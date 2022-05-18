@@ -96,3 +96,10 @@ impl StateHarness {
         vesting.funds.is_empty()
     }
 }
+
+impl StateHarness {
+    pub fn vesting_funds_store_empty(&self) -> bool {
+        let vesting = self.store.get_cbor::<VestingFunds>(&self.st.vesting_funds).unwrap().unwrap();
+        vesting.funds.is_empty()
+    }
+}
