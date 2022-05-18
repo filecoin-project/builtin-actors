@@ -746,17 +746,17 @@ impl ActorHarness {
                 precommit.pre_commit_epoch + runtime.policy.pre_commit_challenge_delay;
 
             let receiver = runtime.receiver;
-            assert!(receiver.marshal_cbor().is_ok());
+            let buf = receiver.marshal_cbor().unwrap();
             runtime.expect_get_randomness_from_tickets(
                 DomainSeparationTag::SealRandomness,
                 precommit.info.seal_rand_epoch,
-                vec![],
-                Randomness(seal_rand.0),
+                buf.clone(),
+                seal_rand,
             );
-            runtime.expect_get_randomness_from_tickets(
+            runtime.expect_get_randomness_from_beacon(
                 DomainSeparationTag::InteractiveSealChallengeSeed,
                 interactive_epoch,
-                vec![],
+                buf,
                 Randomness(seal_int_rand.0),
             );
         }
@@ -791,8 +791,8 @@ impl ActorHarness {
 
         runtime.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let mut addrs = self.control_addrs.clone();
-        addrs.push(self.owner);
         addrs.push(self.worker);
+        addrs.push(self.owner);
         runtime.expect_validate_caller_addr(addrs);
         runtime
             .call::<Actor>(
