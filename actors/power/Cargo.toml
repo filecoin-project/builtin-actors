@@ -31,6 +31,7 @@ fvm_ipld_encoding = "0.2.0"
 
 [dev-dependencies]
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features = ["test_utils", "sector-default"] }
+fil_actor_reward = { version = "8.0.0-alpha.1", path = "../reward" }
 [features]
 fil-actor = []
 
