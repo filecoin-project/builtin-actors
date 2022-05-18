@@ -1,11 +1,9 @@
 use fil_actor_power::ext::init::{ExecParams, EXEC_METHOD};
 use fil_actor_power::ext::miner::MinerConstructorParams;
-use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID,
-    CALLER_TYPES_SIGNABLE, MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, CALLER_TYPES_SIGNABLE,
+    MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
@@ -13,7 +11,6 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use num_traits::Zero;
 use std::ops::Neg;
@@ -1271,37 +1268,9 @@ mod cron_batch_proof_verifies_tests {
             h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info.clone()).unwrap()
         });
 
-        let cs = ConfirmedSectorSend {
-            miner: MINER_1,
-            sector_nums: vec![
-                infos[0].sector_id.number,
-                infos[1].sector_id.number,
-                infos[2].sector_id.number,
-            ],
-        };
-
         h.expect_query_network_info(&mut rt);
 
-        let state: State = rt.get_state();
-
-        // expect sends for confirmed sectors
-        let params = ConfirmSectorProofsParams {
-            sectors: cs.sector_nums,
-            reward_smoothed: h.this_epoch_reward_smoothed.clone(),
-            reward_baseline_power: h.this_epoch_baseline_power().clone(),
-            quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
-        };
-
-        rt.expect_send(
-            cs.miner,
-            CONFIRM_SECTOR_PROOFS_VALID_METHOD,
-            RawBytes::serialize(params).unwrap(),
-            TokenAmount::from(0u8),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-
-        rt.expect_batch_verify_seals(infos.clone(), Ok(batch_verify_default_output(&infos)));
+        rt.expect_batch_verify_seals(infos.clone(), Err(anyhow::Error::msg("fail")));
         rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
 
         // expect power sends to reward actor
