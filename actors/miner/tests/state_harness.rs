@@ -17,10 +17,12 @@ pub struct StateHarness {
 }
 
 impl StateHarness {
+    #[allow(dead_code)]
     pub fn new(period_boundary: ChainEpoch) -> Self {
         Self::new_with_policy(&Policy::default(), period_boundary)
     }
 
+    #[allow(dead_code)]
     pub fn new_with_policy(policy: &Policy, period_boundary: ChainEpoch) -> Self {
         // store init
         let store = MemoryBlockstore::default();
@@ -45,6 +47,7 @@ impl StateHarness {
         StateHarness { st, store }
     }
 
+    #[allow(dead_code)]
     pub fn put_precommitted_sectors(
         &mut self,
         precommits: Vec<SectorPreCommitOnChainInfo>,
@@ -52,6 +55,7 @@ impl StateHarness {
         self.st.put_precommitted_sectors(&self.store, precommits)
     }
 
+    #[allow(dead_code)]
     pub fn delete_precommitted_sectors(
         &mut self,
         sector_nums: &[SectorNumber],
@@ -59,14 +63,17 @@ impl StateHarness {
         self.st.delete_precommitted_sectors(&self.store, sector_nums)
     }
 
+    #[allow(dead_code)]
     pub fn get_precommit(&self, sector_number: SectorNumber) -> SectorPreCommitOnChainInfo {
         self.st.get_precommitted_sector(&self.store, sector_number).unwrap().unwrap()
     }
 
+    #[allow(dead_code)]
     pub fn has_precommit(&self, sector_number: SectorNumber) -> bool {
         self.st.get_precommitted_sector(&self.store, sector_number).unwrap().is_some()
     }
 
+    #[allow(dead_code)]
     pub fn load_pre_commit_clean_ups<'db>(
         &'db self,
         policy: &Policy,
@@ -77,6 +84,7 @@ impl StateHarness {
         queue
     }
 
+    #[allow(dead_code)]
     pub fn add_pre_commit_clean_ups(
         &mut self,
         policy: &Policy,
@@ -85,6 +93,7 @@ impl StateHarness {
         self.st.add_pre_commit_clean_ups(policy, &self.store, cleanup_events)
     }
 
+    #[allow(dead_code)]
     pub fn quant_spec_every_deadline(&self, policy: &Policy) -> QuantSpec {
         self.st.quant_spec_every_deadline(policy)
     }
