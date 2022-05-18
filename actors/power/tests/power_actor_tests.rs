@@ -1218,7 +1218,7 @@ mod cron_batch_proof_verifies_tests {
             sector_nums: vec![infos[0].sector_id.number, infos[2].sector_id.number],
         };
 
-        expect_query_network_info(&mut rt, &h);
+        h.expect_query_network_info(&mut rt);
 
         let state: State = rt.get_state();
 
@@ -1280,7 +1280,7 @@ mod cron_batch_proof_verifies_tests {
             ],
         };
 
-        expect_query_network_info(&mut rt, &h);
+        h.expect_query_network_info(&mut rt);
 
         let state: State = rt.get_state();
 
@@ -1440,20 +1440,4 @@ mod submit_porep_for_bulk_verify_tests {
 
         expect_abort(ExitCode::USR_FORBIDDEN, h.submit_porep_for_bulk_verify(&mut rt, MINER, info));
     }
-}
-
-fn expect_query_network_info(rt: &mut MockRuntime, h: &Harness) {
-    let current_reward = ThisEpochRewardReturn {
-        this_epoch_reward_smoothed: h.this_epoch_reward_smoothed.clone(),
-        this_epoch_baseline_power: h.this_epoch_baseline_power().to_owned(),
-    };
-
-    rt.expect_send(
-        *REWARD_ACTOR_ADDR,
-        RewardMethod::ThisEpochReward as u64,
-        RawBytes::default(),
-        TokenAmount::zero(),
-        RawBytes::serialize(current_reward).unwrap(),
-        ExitCode::OK,
-    );
 }
