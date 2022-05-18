@@ -1270,7 +1270,7 @@ mod cron_batch_proof_verifies_tests {
 
         h.expect_query_network_info(&mut rt);
 
-        rt.expect_batch_verify_seals(infos.clone(), Err(anyhow::Error::msg("fail")));
+        rt.expect_batch_verify_seals(infos, Err(anyhow::Error::msg("fail")));
         rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
 
         // expect power sends to reward actor
