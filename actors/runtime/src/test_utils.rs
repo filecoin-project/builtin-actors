@@ -258,7 +258,7 @@ impl Default for MockRuntime {
             caller: Address::new_id(0),
             caller_type: Default::default(),
             value_received: Default::default(),
-            hash_func: Box::new(|data| blake2b_256(data)),
+            hash_func: Box::new(blake2b_256),
             network_version: NetworkVersion::V0,
             state: Default::default(),
             balance: Default::default(),
