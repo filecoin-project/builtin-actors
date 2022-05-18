@@ -2495,3 +2495,137 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
         faulty_power: all_faulty_power,
     }
 }
+
+// Helper type for validating deadline state.
+//
+// All methods take the state by value so one can (and should) construct a
+// sane base-state.
+
+pub fn new_bitfield(sector_numbers: &[u64]) -> BitField {
+    BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
+}
+
+pub struct ExpectedDeadlineState {
+    pub quant: QuantSpec,
+    #[allow(dead_code)]
+    pub sector_size: SectorSize,
+    #[allow(dead_code)]
+    pub partition_size: u64,
+    #[allow(dead_code)]
+    pub sectors: Vec<SectorOnChainInfo>,
+    pub faults: BitField,
+    pub recovering: BitField,
+    pub terminations: BitField,
+    pub unproven: BitField,
+    pub posts: BitField,
+    pub partition_sectors: Vec<BitField>,
+}
+
+impl Default for ExpectedDeadlineState {
+    fn default() -> Self {
+        Self {
+            quant: QuantSpec { offset: 0, unit: 0 },
+            sector_size: SectorSize::_32GiB,
+            partition_size: 0,
+            sectors: vec![],
+            faults: BitField::default(),
+            recovering: BitField::default(),
+            terminations: BitField::default(),
+            unproven: BitField::default(),
+            posts: BitField::default(),
+            partition_sectors: vec![],
+        }
+    }
+}
+
+impl ExpectedDeadlineState {
+    #[allow(dead_code)]
+    pub fn with_quant_spec(mut self, quant: QuantSpec) -> Self {
+        self.quant = quant;
+        self
+    }
+
+    pub fn with_faults(mut self, faults: &[u64]) -> Self {
+        self.faults = new_bitfield(faults);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_recovering(mut self, recovering: &[u64]) -> Self {
+        self.recovering = new_bitfield(recovering);
+        self
+    }
+
+    pub fn with_terminations(mut self, terminations: &[u64]) -> Self {
+        self.terminations = new_bitfield(terminations);
+        self
+    }
+
+    pub fn with_unproven(mut self, unproven: &[u64]) -> Self {
+        self.unproven = new_bitfield(unproven);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_posts(mut self, posts: &[u64]) -> Self {
+        self.posts = new_bitfield(posts);
+        self
+    }
+
+    pub fn with_partitions(mut self, partitions: Vec<BitField>) -> Self {
+        self.partition_sectors = partitions;
+        self
+    }
+
+    // Assert that the deadline's state matches the expected state.
+    pub fn assert<BS: Blockstore>(
+        self,
+        store: &BS,
+        sectors: &[SectorOnChainInfo],
+        deadline: &Deadline,
+    ) -> Self {
+        let summary = self.check_deadline_invariants(store, sectors, deadline);
+
+        assert_eq!(self.faults, summary.faulty_sectors);
+        assert_eq!(self.recovering, summary.recovering_sectors);
+        assert_eq!(self.terminations, summary.terminated_sectors);
+        assert_eq!(self.unproven, summary.unproven_sectors);
+        assert_eq!(self.posts, deadline.partitions_posted);
+
+        let partitions = deadline.partitions_amt(store).unwrap();
+        assert_eq!(self.partition_sectors.len() as u64, partitions.count());
+
+        for (i, partition_sectors) in self.partition_sectors.iter().enumerate() {
+            let partitions = partitions.get(i as u64).unwrap().unwrap();
+            assert_eq!(partition_sectors, &partitions.sectors);
+        }
+
+        self
+    }
+
+    // check the deadline's invariants, returning all contained sectors, faults,
+    // recoveries, terminations, and partition/sector assignments.
+    pub fn check_deadline_invariants<BS: Blockstore>(
+        &self,
+        store: &BS,
+        sectors: &[SectorOnChainInfo],
+        deadline: &Deadline,
+    ) -> DeadlineStateSummary {
+        let acc = MessageAccumulator::default();
+        let summary = check_deadline_state_invariants(
+            deadline,
+            store,
+            QUANT_SPEC,
+            SECTOR_SIZE,
+            &sectors_as_map(sectors),
+            &acc,
+        );
+
+        assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+
+        summary
+    }
+}
+
+pub const SECTOR_SIZE: SectorSize = SectorSize::_32GiB;
+pub const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };

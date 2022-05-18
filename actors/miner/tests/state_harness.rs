@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 use fil_actor_miner::MinerInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
-use fil_actor_miner::State;
 use fil_actor_miner::VestSpec;
 use fil_actor_miner::VestingFunds;
+use fil_actor_miner::{BitFieldQueue, State, SectorOnChainInfo};
 use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
@@ -11,9 +11,11 @@ use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::SectorNumber;
-use fvm_shared::{clock::ChainEpoch, sector::RegisteredPoStProof};
+use fvm_shared::sector::{SectorSize, SectorNumber};
+use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
 use multihash::Code::Blake2b256;
+
+use fil_actors_runtime::test_utils::*;
 
 pub struct StateHarness {
     pub st: State,
@@ -51,6 +53,24 @@ impl StateHarness {
 }
 
 impl StateHarness {
+    pub fn new_runtime(&self) -> MockRuntime {
+        let mut rt = MockRuntime::default();
+
+        // rt.policy.valid_post_proof_type.insert(self.window_post_proof_type);
+        // rt.policy.valid_pre_commit_proof_type.insert(self.seal_proof_type);
+
+        // rt.receiver = self.receiver;
+        // rt.actor_code_cids.insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
+        // rt.actor_code_cids.insert(self.worker, *ACCOUNT_ACTOR_CODE_ID);
+        // for addr in &self.control_addrs {
+        //     rt.actor_code_cids.insert(*addr, *ACCOUNT_ACTOR_CODE_ID);
+        // }
+
+        // rt.hash_func = fixed_hasher(self.period_offset);
+
+        rt
+    }
+
     pub fn put_precommitted_sectors(
         &mut self,
         precommits: Vec<SectorPreCommitOnChainInfo>,
@@ -102,5 +122,26 @@ impl StateHarness {
     pub fn vesting_funds_store_empty(&self) -> bool {
         let vesting = self.store.get_cbor::<VestingFunds>(&self.st.vesting_funds).unwrap().unwrap();
         vesting.funds.is_empty()
+    }
+
+    pub fn assign_sectors_to_deadlines(
+        &mut self,
+        policy: &Policy,
+        epoch: ChainEpoch,
+        mut sectors: Vec<SectorOnChainInfo>,
+        partition_size: u64,
+        sector_size: SectorSize,
+    ) {
+        self
+            .st
+            .assign_sectors_to_deadlines(
+                policy,
+                &self.store,
+                epoch,
+                sectors,
+                partition_size,
+                sector_size,
+            )
+            .unwrap();
     }
 }
