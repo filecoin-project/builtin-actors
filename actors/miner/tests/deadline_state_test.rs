@@ -690,6 +690,7 @@ fn post_all_the_things() {
         )
         .unwrap();
     assert_bitfield_equals(&post_result1.sectors, &[1, 2, 3, 4, 5, 6, 7, 8]);
+    assert!(post_result1.ignored_sectors.is_empty());
     assert_eq!(post_result1.new_faulty_power, PowerPair::zero());
     assert_eq!(post_result1.retracted_recovery_power, PowerPair::zero());
     assert_eq!(post_result1.recovered_power, PowerPair::zero());
@@ -761,7 +762,7 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
     let mut deadline = Deadline::new(rt.store()).unwrap();
     let fault_expiration_epoch = 13;
 
-    // Marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty.
+    // Adds sectors 1-9 then marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty
     add_then_mark_faulty(&rt, &mut deadline, true);
 
     // add an inactive sector
@@ -1018,7 +1019,7 @@ fn retract_recoveries() {
     let mut deadline = Deadline::new(rt.store()).unwrap();
     let fault_expiration_epoch = 13;
 
-    // Marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty.
+    // Adds sectors 1-9 then marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, true);
 
     let mut sectors_array = sectors_array(&rt, rt.store(), sectors.to_owned());
@@ -1100,7 +1101,7 @@ fn retract_recoveries() {
     // we recovered 6
     assert_eq!(post_result.recovered_power, sector_power(&[6]));
 
-    // first two partitions should be posted
+    // first three partitions should be posted
     deadline_state()
         .with_posts(&[0, 1, 2])
         .with_faults(&[1, 5])
@@ -1169,7 +1170,7 @@ fn cannot_declare_faults_recovered_in_missing_partitions() {
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, true);
     let sectors_array = sectors_array(&rt, rt.store(), sectors);
 
-    // declare sectors 1 & 6 faulty
+    // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
     partition_sector_map.add(0, UnvalidatedBitField::Validated(make_bitfield(&[1]))).unwrap();
     partition_sector_map.add(4, UnvalidatedBitField::Validated(make_bitfield(&[6]))).unwrap();

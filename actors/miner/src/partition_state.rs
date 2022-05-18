@@ -223,7 +223,7 @@ impl Partition {
 
         let sector_numbers = sector_numbers
             .validate()
-            .map_err(|e| anyhow!("failed to intersect sectors with recoveries: {}", e))?;
+            .map_err(|e| anyhow!("failed to validate sector_numbers: {}", e))?;
 
         // Split declarations into declarations of new faults, and retraction of declared recoveries.
         let retracted_recoveries = &self.recoveries & sector_numbers;
