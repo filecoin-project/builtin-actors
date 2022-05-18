@@ -20,12 +20,13 @@ fn unlock_unvested_funds_leaving_bucket_with_non_zero_tokens() {
     let amount_unlocked = h.unlock_unvested_funds(vest_start, &TokenAmount::from(39)).unwrap();
     assert_eq!(TokenAmount::from(39), amount_unlocked);
 
+    // no vested funds available to unlock until strictly after first vesting epoch
     assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start).unwrap());
     assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start + 1).unwrap());
 
     // expected to be zero due to unlocking of UNvested funds
     assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start + 2).unwrap());
-    // expected to be non-zero due to unlocking of UNvested funds
+    // expected to be partially unlocked already du to unlocking of UNvested funds
     assert_eq!(TokenAmount::from(1), h.unlock_vested_funds(vest_start + 3).unwrap());
 
     assert_eq!(TokenAmount::from(20), h.unlock_vested_funds(vest_start + 4).unwrap());
