@@ -64,6 +64,7 @@ use multihash::MultihashDigest;
 use num_traits::sign::Signed;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ops::Neg;
 
 const RECEIVER_ID: u64 = 1000;
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
