@@ -15,8 +15,6 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 fil_actors_runtime = { version = "7.4.0", path = "../runtime" }
-fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.2.0"
 fvm_ipld_hamt = "0.5.1"
 fvm_shared = { version = "0.7.0", default-features = false }
 bitfield = { version = "0.5.2", package = "fvm_ipld_bitfield" }
@@ -28,6 +26,9 @@ serde_tuple = "0.5.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 log = "0.4.14"
 anyhow = "1.0.56"
+fvm_ipld_blockstore = "0.1.1"
+fvm_ipld_encoding = "0.2.1"
+libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 
 [dev-dependencies]
 fil_actors_runtime = { version = "7.4.0", path = "../runtime", features = ["test_utils", "sector-default"] }

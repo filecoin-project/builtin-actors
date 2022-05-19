@@ -7,11 +7,24 @@ use fil_actor_miner::{
     Actor, ChangeMultiaddrsParams, ChangePeerIDParams, GetControlAddressesReturn, Method,
     MinerConstructorParams as ConstructorParams, State,
 };
+use fil_actor_power::{
+    CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
+};
+use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
+use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime};
+use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{
+    ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+};
+use fvm_shared::bigint::Zero;
 
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::ChainEpoch;
+use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
+use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{
