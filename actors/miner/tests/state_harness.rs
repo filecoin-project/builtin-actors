@@ -144,4 +144,34 @@ impl StateHarness {
             )
             .unwrap();
     }
+
+    #[allow(dead_code)]
+    pub fn load_pre_commit_clean_ups<'db>(
+        &'db self,
+        policy: &Policy,
+    ) -> BitFieldQueue<'db, MemoryBlockstore> {
+        let quant = self.st.quant_spec_every_deadline(policy);
+        let queue =
+            BitFieldQueue::new(&self.store, &self.st.pre_committed_sectors_cleanup, quant).unwrap();
+        queue
+    }
+
+    #[allow(dead_code)]
+    pub fn add_pre_commit_clean_ups(
+        &mut self,
+        policy: &Policy,
+        cleanup_events: Vec<(ChainEpoch, u64)>,
+    ) -> anyhow::Result<()> {
+        self.st.add_pre_commit_clean_ups(policy, &self.store, cleanup_events)
+    }
+
+    #[allow(dead_code)]
+    pub fn quant_spec_every_deadline(&self, policy: &Policy) -> QuantSpec {
+        self.st.quant_spec_every_deadline(policy)
+    }
+
+    #[allow(dead_code)]
+    pub fn quant_spec_for_deadline(&self, policy: &Policy, deadline_idx: u64) -> QuantSpec {
+        self.st.quant_spec_for_deadline(policy, deadline_idx)
+    }
 }

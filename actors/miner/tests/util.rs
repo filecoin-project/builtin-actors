@@ -58,7 +58,7 @@ use cid::Cid;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 const RECEIVER_ID: u64 = 1000;
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
@@ -2243,6 +2243,16 @@ fn select_sectors_map(sectors: &SectorsMap, include: &BitField) -> (SectorsMap, 
     (included, missing)
 }
 
+pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
+    let mut to_include: BTreeSet<_> = field.iter().collect();
+    let included =
+        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
+
+    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
+
+    included
+}
+
 fn require_contains_all(
     superset: &BitField,
     subset: &BitField,
@@ -2629,3 +2639,13 @@ impl ExpectedDeadlineState {
 
 pub const SECTOR_SIZE: SectorSize = SectorSize::_32GiB;
 pub const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
+
+/// Create a bitfield with count bits set, starting at "start".
+pub fn seq(start: u64, count: u64) -> BitField {
+    // TODO: optimize this?
+    let mut bf = BitField::new();
+    for i in start..(start+count) {
+        bf.set(i);
+    }
+    bf
+}

@@ -1200,13 +1200,3 @@ fn deadline_state() -> ExpectedDeadlineState {
 fn sector_power(sector_numbers: &[u64]) -> PowerPair {
     power_for_sectors(SECTOR_SIZE, &select_sectors(&all_sectors(), &new_bitfield(sector_numbers)))
 }
-
-fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
-    let mut to_include: BTreeSet<_> = field.iter().collect();
-    let included =
-        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
-
-    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
-
-    included
-}
