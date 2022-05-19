@@ -60,10 +60,10 @@ fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precomm
 
     epoch = cron_ctrl.pre_commit_start_cron_expire_stop_cron(&h, &mut rt, epoch);
     // Advance some epochs to fall several pp out of date, then precommit again reenrolling cron
-    epoch = epoch + 200 * rt.policy.wpost_proving_period;
+    epoch += 200 * rt.policy.wpost_proving_period;
     epoch = cron_ctrl.pre_commit_start_cron_expire_stop_cron(&h, &mut rt, epoch);
     // Stay within the same deadline but advance an epoch
-    epoch = epoch + 1;
+    epoch += 1;
     cron_ctrl.pre_commit_to_start_cron(&h, &mut rt, epoch);
 }
 
