@@ -1595,7 +1595,7 @@ impl ActorHarness {
                 RawBytes::default(),
                 ExitCode::OK,
             );
-            pledge_delta -= expected_fee;
+            pledge_delta = expected_fee.neg();
         }
 
         // notify change to initial pledge
