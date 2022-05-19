@@ -25,7 +25,7 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 log = "0.4.14"
 anyhow = "1.0.56"
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.2.0"
+fvm_ipld_encoding = "0.2.1"
 libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 
 [dev-dependencies]
