@@ -58,7 +58,6 @@ use cid::Cid;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 const RECEIVER_ID: u64 = 1000;
@@ -1044,20 +1043,21 @@ impl ActorHarness {
             }
         }
 
-        if cfg.expected_power_delta.is_some() {
-            let power_delta = cfg.expected_power_delta.unwrap();
-            let claim = UpdateClaimedPowerParams {
-                raw_byte_delta: power_delta.raw,
-                quality_adjusted_delta: power_delta.qa,
-            };
-            rt.expect_send(
-                *STORAGE_POWER_ACTOR_ADDR,
-                PowerMethod::UpdateClaimedPower as u64,
-                RawBytes::serialize(claim).unwrap(),
-                TokenAmount::from(0u8),
-                RawBytes::default(),
-                ExitCode::OK,
-            );
+        if let Some(power_delta) = cfg.expected_power_delta {
+            if !power_delta.is_zero() {
+                let claim = UpdateClaimedPowerParams {
+                    raw_byte_delta: power_delta.raw,
+                    quality_adjusted_delta: power_delta.qa,
+                };
+                rt.expect_send(
+                    *STORAGE_POWER_ACTOR_ADDR,
+                    PowerMethod::UpdateClaimedPower as u64,
+                    RawBytes::serialize(claim).unwrap(),
+                    TokenAmount::from(0u8),
+                    RawBytes::default(),
+                    ExitCode::OK,
+                );
+            }
         }
 
         rt.call::<Actor>(Method::SubmitWindowedPoSt as u64, &RawBytes::serialize(params).unwrap())
@@ -2497,16 +2497,22 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     }
 }
 
+#[allow(dead_code)]
 pub struct CronControl {
-    pub rt: RefCell<MockRuntime>,
-    pub h: RefCell<ActorHarness>,
     pub pre_commit_num: u64,
 }
 
+#[allow(dead_code)]
 impl CronControl {
-    pub fn require_cron_inactive(&self) {
-        let st = self.h.asref().get_state(&self.rt);
+    pub fn require_cron_inactive(&self, h: &ActorHarness, rt: &MockRuntime) {
+        let st = h.get_state(&rt);
         assert!(!st.deadline_cron_active); // No cron running now
         assert!(!st.continue_deadline_cron()); // No reason to cron now, state inactive
+    }
+
+    pub fn require_cron_active(&self, h: &ActorHarness, rt: &MockRuntime) {
+        let st = h.get_state(rt);
+        assert!(st.deadline_cron_active);
+        assert!(st.continue_deadline_cron());
     }
 }
