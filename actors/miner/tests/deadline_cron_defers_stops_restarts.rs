@@ -58,19 +58,8 @@ fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precomm
     let mut cron_ctrl = CronControl::default();
 
     let epoch = cron_ctrl.pre_commit_start_cron_expire_stop_cron(&h, &mut rt, epoch);
-    cron_ctrl.pre_commit_to_start_cron(epoch);
+    cron_ctrl.pre_commit_to_start_cron(&h, &mut rt, epoch);
 }
-// 	t.Run("cron enrolls on precommit, expires on pcd expiration, re-enrolls on new precommit immediately", func(t *testing.T) {
-// 		rt := builder.Build(t)
-// 		epoch := periodOffset + 1
-// 		rt.SetEpoch(epoch)
-// 		actor.constructAndVerify(rt)
-// 		cronCtrl := newCronControl(rt, actor)
-
-// 		epoch = cronCtrl.preCommitStartCronExpireStopCron(t, epoch)
-// 		cronCtrl.preCommitToStartCron(t, epoch)
-// 	})
-
 // 	t.Run("cron enrolls on precommit, expires on pcd expiration, re-enrolls on new precommit after falling out of date", func(t *testing.T) {
 // 		rt := builder.Build(t)
 // 		epoch := periodOffset + 1

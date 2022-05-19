@@ -2602,8 +2602,8 @@ impl CronControl {
         h: &ActorHarness,
         rt: &mut MockRuntime,
         start_epoch: ChainEpoch,
-    ) {
+    ) -> ChainEpoch {
         let clean_up_epoch = self.pre_commit_to_start_cron(h, rt, start_epoch);
-        self.expire_pre_commit_stop_cron(h, rt, start_epoch, clean_up_epoch);
+        self.expire_pre_commit_stop_cron(h, rt, start_epoch, clean_up_epoch)
     }
 }
