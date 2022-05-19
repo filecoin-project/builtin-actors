@@ -1585,7 +1585,7 @@ impl ActorHarness {
         self.expect_query_network_info(rt);
 
         let mut pledge_delta = BigInt::zero();
-        if BigInt::zero() < expected_fee {
+        if expected_fee.is_positive() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
