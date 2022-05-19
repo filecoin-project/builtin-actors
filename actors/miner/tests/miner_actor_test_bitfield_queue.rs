@@ -1,12 +1,12 @@
 use fil_actor_miner::BitFieldQueue;
 use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_amt::Amt;
-use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::BitField;
+use fvm_ipld_bitfield::MaybeBitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use std::collections::HashMap;
-use std::ops::Range;
+use std::iter::FromIterator;
 
 mod util;
 use util::*;
@@ -58,7 +58,7 @@ fn adds_bitfield_to_empty_queue() {
     let rt = h.new_runtime();
     let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
 
-    let values = BitField::try_from_bits(vec![1, 2, 3, 4, 5]).unwrap();
+    let values = BitField::try_from_bits(vec![1, 2, 3, 4]).unwrap();
     let epoch = ChainEpoch::from(42);
 
     queue.add_to_queue(epoch, &values).unwrap();
@@ -224,8 +224,7 @@ fn cuts_elements() {
     queue.add_to_queue_values(epoch1, [1, 2, 3, 4, 99].to_vec()).unwrap();
     queue.add_to_queue_values(epoch2, [5, 6].to_vec()).unwrap();
 
-    let ranges: Vec<Range<u64>> = vec![Range { start: 2, end: 3 }, Range { start: 4, end: 7 }];
-    let to_cut = BitField::from_ranges(Ranges::new(ranges.iter().cloned()));
+    let to_cut = MaybeBitField::from_iter([2, 4, 5, 6]).unwrap();
     queue.cut(&to_cut).unwrap();
 
     let mut bq_expectation = BQExpectation::default();
