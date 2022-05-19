@@ -7,6 +7,7 @@ use fil_actor_market::{
     VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::aggregate_pre_commit_network_fee;
+use fil_actor_miner::max_prove_commit_duration;
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
@@ -62,6 +63,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 const RECEIVER_ID: u64 = 1000;
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
+
+// an expriration ~10 days greater than effective min expiration taking into account 30 days max
+// between pre and prove commit
+const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
 #[allow(dead_code)]
 pub fn setup() -> (ActorHarness, MockRuntime) {
@@ -2498,6 +2503,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
 }
 
 #[allow(dead_code)]
+#[derive(Clone, Copy, Default)]
 pub struct CronControl {
     pub pre_commit_num: u64,
 }
@@ -2514,5 +2520,90 @@ impl CronControl {
         let st = h.get_state(rt);
         assert!(st.deadline_cron_active);
         assert!(st.continue_deadline_cron());
+    }
+
+    // Start cron by precommitting at preCommitEpoch, return clean up epoch.
+    // Verifies that cron is not started, precommit is run and cron is enrolled.
+    // Returns epoch at which precommit is scheduled for clean up and removed from state by cron.
+    pub fn pre_commit_to_start_cron(
+        &mut self,
+        h: &ActorHarness,
+        rt: &mut MockRuntime,
+        pre_commit_epoch: ChainEpoch,
+    ) -> ChainEpoch {
+        rt.set_epoch(pre_commit_epoch);
+        let st = h.get_state(rt);
+        self.require_cron_inactive(h, rt);
+
+        let dlinfo = new_deadline_info_from_offset_and_epoch(
+            &rt.policy,
+            st.proving_period_start,
+            pre_commit_epoch,
+        ); // actor.deadline might be out of date
+        let sector_no = self.pre_commit_num;
+        self.pre_commit_num += 1;
+        let expiration =
+            dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
+        let precommit_params =
+            h.make_pre_commit_params(sector_no, pre_commit_epoch - 1, expiration, vec![]);
+        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::empty(), true);
+
+        // PCD != 0 so cron must be active
+        self.require_cron_active(h, rt);
+
+        let clean_up_epoch = pre_commit_epoch
+            + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
+            + rt.policy.expired_pre_commit_clean_up_delay;
+        clean_up_epoch
+    }
+
+    // Stop cron by advancing to the preCommit clean up epoch.
+    // Assumes no proved sectors, no vesting funds.
+    // Verifies cron runs until clean up, PCD burnt and cron discontinued during last deadline
+    // Return open of first deadline after expiration.
+    fn expire_pre_commit_stop_cron(
+        &self,
+        h: &ActorHarness,
+        rt: &mut MockRuntime,
+        start_epoch: ChainEpoch,
+        clean_up_epoch: ChainEpoch,
+    ) -> ChainEpoch {
+        self.require_cron_active(h, rt);
+        let st = h.get_state(rt);
+
+        let mut dlinfo = new_deadline_info_from_offset_and_epoch(
+            &rt.policy,
+            st.proving_period_start,
+            start_epoch,
+        ); // actor.deadline might be out of date
+        while dlinfo.open <= clean_up_epoch {
+            // PCDs are quantized to be burnt on the *next* new deadline after the one they are cleaned up in
+            // asserts cron is rescheduled
+            dlinfo = h.advance_deadline(rt, CronConfig::empty());
+        }
+        // We expect PCD burnt and cron not rescheduled here.
+        rt.set_epoch(dlinfo.last());
+        h.on_deadline_cron(
+            rt,
+            CronConfig {
+                no_enrollment: true,
+                expired_precommit_penalty: st.pre_commit_deposits,
+                ..CronConfig::empty()
+            },
+        );
+        rt.set_epoch(dlinfo.next_open());
+
+        self.require_cron_inactive(h, rt);
+        rt.epoch
+    }
+
+    pub fn pre_commit_start_cron_expire_stop_cron(
+        &mut self,
+        h: &ActorHarness,
+        rt: &mut MockRuntime,
+        start_epoch: ChainEpoch,
+    ) {
+        let clean_up_epoch = self.pre_commit_to_start_cron(h, rt, start_epoch);
+        self.expire_pre_commit_stop_cron(h, rt, start_epoch, clean_up_epoch);
     }
 }
