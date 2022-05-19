@@ -23,45 +23,29 @@ const BIG_REWARDS: u128 = 1_000 * 1e18 as u128;
 
 #[test]
 fn cron_enrolls_on_precommit_prove_commits_and_continues_enrolling() {
-    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
     rt.set_balance(TokenAmount::from(BIG_BALANCE));
     h.construct_and_verify(&mut rt);
 
-    let mut cron_ctrl = CronControl { rt, h, pre_commit_num: 0 };
+    let cron_ctrl = CronControl { pre_commit_num: 0 };
     let long_expiration = 500;
 
-    cron_ctrl.require_cron_inactive();
-    let sectors =
-        cron_ctrl.h.commit_and_prove_sectors(&mut cron_ctrl.rt, 1, long_expiration, vec![], true);
+    cron_ctrl.require_cron_inactive(&h, &rt);
+    let sectors = h.commit_and_prove_sectors(&mut rt, 1, long_expiration, vec![], true);
+    cron_ctrl.require_cron_active(&h, &rt);
+
+    // advance cron to activate power.
+    h.advance_and_submit_posts(&mut rt, &sectors);
+    // advance 499 days of deadline (1 before expiration occurrs)
+    // this asserts that cron continues to enroll within advanceAndSubmitPoSt
+    for i in 0..499 {
+        h.advance_and_submit_posts(&mut rt, &sectors);
+    }
+    check_state_invariants(&rt);
+    let st = h.get_state(&rt);
+    assert!(st.deadline_cron_active);
 }
-// func TestDeadlineCronDefersStopsRestarts(t *testing.T) {
-// 	periodOffset := abi.ChainEpoch(100)
-// 	actor := newHarness(t, periodOffset)
-// 	builder := builderForHarness(actor).
-// 		WithBalance(bigBalance, big.Zero())
-
-// 	t.Run("cron enrolls on precommit, prove commits and continues enrolling", func(t *testing.T) {
-// 		rt := builder.Build(t)
-// 		actor.constructAndVerify(rt)
-// 		cronCtrl := newCronControl(rt, actor)
-// 		longExpiration := uint64(500)
-
-// 		cronCtrl.requireCronInactive(t)
-// 		sectors := actor.commitAndProveSectors(rt, 1, longExpiration, nil, true)
-// 		cronCtrl.requireCronActive(t)
-
-// 		// advance cron to activate power.
-// 		advanceAndSubmitPoSts(rt, actor, sectors...)
-// 		// advance 499 days of deadline (1 before expiration occurrs)
-// 		// this asserts that cron continues to enroll within advanceAndSubmitPoSt
-// 		for i := 0; i < 499; i++ {
-// 			advanceAndSubmitPoSts(rt, actor, sectors...)
-// 		}
-// 		actor.checkState(rt)
-// 		st := getState(rt)
-// 		assert.True(t, st.DeadlineCronActive)
-// 	})
 
 // 	t.Run("cron enrolls on precommit, expires on pcd expiration, re-enrolls on new precommit immediately", func(t *testing.T) {
 // 		rt := builder.Build(t)
