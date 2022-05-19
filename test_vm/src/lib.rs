@@ -13,7 +13,8 @@ use fil_actor_system::{Actor as SystemActor, State as SystemState};
 use fil_actor_verifreg::{Actor as VerifregActor, State as VerifRegState};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{
-    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier,
+    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
+    Verifier,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
@@ -30,7 +31,6 @@ use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;

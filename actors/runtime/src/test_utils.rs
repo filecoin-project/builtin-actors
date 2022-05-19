@@ -19,7 +19,6 @@ use fvm_shared::clock::ChainEpoch;
 
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -38,7 +37,8 @@ use multihash::MultihashDigest;
 use rand::prelude::*;
 
 use crate::runtime::{
-    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier,
+    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
+    Verifier,
 };
 use crate::{actor_error, ActorError};
 
