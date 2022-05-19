@@ -1670,6 +1670,22 @@ impl ActorHarness {
 
         (-sector_power, pledge_delta)
     }
+
+    pub fn change_peer_id(&self, rt: &mut MockRuntime, new_id: Vec<u8>) {
+        let params = ChangePeerIDParams { new_id: new_id.to_owned() };
+
+        rt.expect_validate_caller_addr(self.caller_addrs());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        rt.call::<Actor>(Method::ChangePeerID as u64, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+
+        let state: State = rt.get_state();
+        let info = state.get_info(rt.store()).unwrap();
+
+        assert_eq!(new_id, info.peer_id);
+    }
 }
 
 #[allow(dead_code)]
