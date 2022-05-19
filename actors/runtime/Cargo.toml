@@ -35,6 +35,9 @@ multihash = { version = "0.16.1", default-features = false }
 rand = "0.8.5"
 serde_repr = "0.1.8"
 
+[dependencies.sha2]
+version = "0.10"
+
 [dev-dependencies]
 derive_builder = "0.10.2"
 hex = "0.4.3"
