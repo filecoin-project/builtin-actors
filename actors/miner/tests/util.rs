@@ -3,10 +3,14 @@
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
     ActivateDealsParams, ComputeDataCommitmentParams, ComputeDataCommitmentReturn,
-    Method as MarketMethod, SectorDataSpec, SectorDeals, SectorWeights,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDataSpec, SectorDeals,
+    SectorWeights, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
-use fil_actor_miner::aggregate_pre_commit_network_fee;
+use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
+use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
+use fil_actor_miner::{
+    aggregate_pre_commit_network_fee, TerminateSectorsParams, TerminationDeclaration,
+};
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
@@ -24,7 +28,7 @@ use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
@@ -62,6 +66,14 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 const RECEIVER_ID: u64 = 1000;
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
+
+// A reward amount for use in tests where the vesting amount wants to be large enough to cover penalties.
+#[allow(dead_code)]
+pub const BIG_REWARDS: u128 = 10u128.pow(24);
+
+// an expriration ~10 days greater than effective min expiration taking into account 30 days max between pre and prove commit
+#[allow(dead_code)]
+pub const DEFAULT_SECTOR_EXPIRATION: u64 = 220;
 
 #[allow(dead_code)]
 pub fn setup() -> (ActorHarness, MockRuntime) {
@@ -1550,6 +1562,111 @@ impl ActorHarness {
             })
             .unwrap();
         expirations
+    }
+
+    pub fn terminate_sectors(
+        &self,
+        rt: &mut MockRuntime,
+        sectors: &BitField,
+        expected_fee: TokenAmount,
+    ) -> (PowerPair, TokenAmount) {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let mut deal_ids: Vec<DealID> = Vec::new();
+        let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
+
+        for sector in sectors.iter() {
+            let sector = self.get_sector(rt, sector);
+            deal_ids.extend(sector.deal_ids.iter());
+            sector_infos.push(sector);
+        }
+
+        self.expect_query_network_info(rt);
+
+        let mut pledge_delta = BigInt::zero();
+        if BigInt::zero() < expected_fee {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_fee.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+            pledge_delta -= expected_fee;
+        }
+
+        // notify change to initial pledge
+        for sector_info in &sector_infos {
+            pledge_delta -= sector_info.initial_pledge.to_owned();
+        }
+
+        if !pledge_delta.is_zero() {
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_PLEDGE_TOTAL_METHOD,
+                RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
+                BigInt::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        if !deal_ids.is_empty() {
+            let max_length = 8192;
+            let size = deal_ids.len().min(max_length);
+            let params = OnMinerSectorsTerminateParams {
+                epoch: rt.epoch,
+                deal_ids: deal_ids[0..size].to_owned(),
+            };
+            rt.expect_send(
+                *STORAGE_MARKET_ACTOR_ADDR,
+                ON_MINER_SECTORS_TERMINATE_METHOD,
+                RawBytes::serialize(params).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let sector_power = power_for_sectors(self.sector_size, &sector_infos);
+        let params = UpdateClaimedPowerParams {
+            raw_byte_delta: -sector_power.raw.clone(),
+            quality_adjusted_delta: -sector_power.qa.clone(),
+        };
+        rt.expect_send(
+            *STORAGE_POWER_ACTOR_ADDR,
+            UPDATE_CLAIMED_POWER_METHOD,
+            RawBytes::serialize(params).unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // create declarations
+        let state: State = rt.get_state();
+        let deadlines = state.load_deadlines(rt.store()).unwrap();
+
+        let mut terminations: Vec<TerminationDeclaration> = Vec::new();
+
+        let policy = Policy::default();
+        for sector in sectors.iter() {
+            let (deadline, partition) = deadlines.find_sector(&policy, rt.store(), sector).unwrap();
+            terminations.push(TerminationDeclaration {
+                sectors: make_bitfield(&[sector]),
+                deadline,
+                partition,
+            });
+        }
+
+        let params = TerminateSectorsParams { terminations };
+
+        rt.call::<Actor>(Method::TerminateSectors as u64, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+
+        (-sector_power, pledge_delta)
     }
 }
 
