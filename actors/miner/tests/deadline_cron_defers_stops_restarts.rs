@@ -1,25 +1,11 @@
-use fil_actor_miner::{
-    pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair, SectorOnChainInfo,
-};
-use fil_actors_runtime::test_utils::MessageAccumulator;
-use fil_actors_runtime::test_utils::MockRuntime;
-use fvm_ipld_bitfield::BitField;
-use fvm_shared::bigint::Zero;
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::SectorSize;
-use std::ops::Neg;
 
 mod util;
-use crate::util::*;
-
-// an expriration ~10 days greater than effective min expiration taking into account 30 days max
-// between pre and prove commit
-const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
+use util::*;
 
 const PERIOD_OFFSET: ChainEpoch = 100;
 const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
-const BIG_REWARDS: u128 = 1_000 * 1e18 as u128;
 
 #[test]
 fn cron_enrolls_on_precommit_prove_commits_and_continues_enrolling() {
@@ -39,7 +25,7 @@ fn cron_enrolls_on_precommit_prove_commits_and_continues_enrolling() {
     h.advance_and_submit_posts(&mut rt, &sectors);
     // advance 499 days of deadline (1 before expiration occurrs)
     // this asserts that cron continues to enroll within advanceAndSubmitPoSt
-    for i in 0..499 {
+    for _ in 0..499 {
         h.advance_and_submit_posts(&mut rt, &sectors);
     }
     check_state_invariants(&rt);
@@ -49,7 +35,7 @@ fn cron_enrolls_on_precommit_prove_commits_and_continues_enrolling() {
 
 #[test]
 fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precommit_immediately() {
-    let mut h = ActorHarness::new(PERIOD_OFFSET);
+    let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
     rt.set_balance(TokenAmount::from(BIG_BALANCE));
     let epoch = PERIOD_OFFSET + 1;
@@ -60,30 +46,37 @@ fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precomm
     let epoch = cron_ctrl.pre_commit_start_cron_expire_stop_cron(&h, &mut rt, epoch);
     cron_ctrl.pre_commit_to_start_cron(&h, &mut rt, epoch);
 }
-// 	t.Run("cron enrolls on precommit, expires on pcd expiration, re-enrolls on new precommit after falling out of date", func(t *testing.T) {
-// 		rt := builder.Build(t)
-// 		epoch := periodOffset + 1
-// 		rt.SetEpoch(epoch)
-// 		actor.constructAndVerify(rt)
-// 		cronCtrl := newCronControl(rt, actor)
 
-// 		epoch = cronCtrl.preCommitStartCronExpireStopCron(t, epoch)
-// 		// Advance some epochs to fall several pp out of date, then precommit again reenrolling cron
-// 		epoch = epoch + 200*miner.WPoStProvingPeriod
-// 		epoch = cronCtrl.preCommitStartCronExpireStopCron(t, epoch)
-// 		// Stay within the same deadline but advance an epoch
-// 		epoch = epoch + 1
-// 		cronCtrl.preCommitToStartCron(t, epoch)
-// 	})
+#[test]
+fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precommit_after_falling_out_of_date(
+) {
+    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    let mut epoch = PERIOD_OFFSET + 1;
+    rt.set_epoch(epoch);
+    h.construct_and_verify(&mut rt);
+    let mut cron_ctrl = CronControl::default();
 
-// 	t.Run("enroll, pcd expire, re-enroll x 3", func(t *testing.T) {
-// 		rt := builder.Build(t)
-// 		epoch := periodOffset + 1
-// 		rt.SetEpoch(epoch)
-// 		actor.constructAndVerify(rt)
-// 		cronCtrl := newCronControl(rt, actor)
-// 		for i := 0; i < 3; i++ {
-// 			epoch = cronCtrl.preCommitStartCronExpireStopCron(t, epoch) + 42
-// 		}
-// 	})
-// }
+    epoch = cron_ctrl.pre_commit_start_cron_expire_stop_cron(&h, &mut rt, epoch);
+    // Advance some epochs to fall several pp out of date, then precommit again reenrolling cron
+    epoch = epoch + 200 * rt.policy.wpost_proving_period;
+    epoch = cron_ctrl.pre_commit_start_cron_expire_stop_cron(&h, &mut rt, epoch);
+    // Stay within the same deadline but advance an epoch
+    epoch = epoch + 1;
+    cron_ctrl.pre_commit_to_start_cron(&h, &mut rt, epoch);
+}
+
+#[test]
+fn enroll_pcd_expire_re_enroll_x_3() {
+    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    let mut epoch = PERIOD_OFFSET + 1;
+    rt.set_epoch(epoch);
+    h.construct_and_verify(&mut rt);
+    let mut cron_ctrl = CronControl::default();
+    for _ in 1..3 {
+        epoch = cron_ctrl.pre_commit_start_cron_expire_stop_cron(&h, &mut rt, epoch) + 42;
+    }
+}
