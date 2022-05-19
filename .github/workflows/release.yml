@@ -1,11 +1,8 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - 'master'
-      - 'release/**'
-      - 'experimental/**'
+  release:
+    types: [created]
 
 env:
   RUSTFLAGS: -Dwarnings
@@ -36,7 +33,7 @@ jobs:
     - name: Publishing release and uploading bundle to GitHub
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_SHA: ${{ github.sha }}
+        GITHUB_TAG: ${{ github.event.release.tag }}
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
         ./scripts/publish-release.sh
