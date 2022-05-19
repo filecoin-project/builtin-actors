@@ -58,6 +58,7 @@ use cid::Cid;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 const RECEIVER_ID: u64 = 1000;
@@ -2493,5 +2494,19 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
         live_power: all_live_power,
         active_power: all_active_power,
         faulty_power: all_faulty_power,
+    }
+}
+
+pub struct CronControl {
+    pub rt: RefCell<MockRuntime>,
+    pub h: RefCell<ActorHarness>,
+    pub pre_commit_num: u64,
+}
+
+impl CronControl {
+    pub fn require_cron_inactive(&self) {
+        let st = self.h.asref().get_state(&self.rt);
+        assert!(!st.deadline_cron_active); // No cron running now
+        assert!(!st.continue_deadline_cron()); // No reason to cron now, state inactive
     }
 }
