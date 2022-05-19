@@ -58,7 +58,7 @@ fn adds_bitfield_to_empty_queue() {
     let rt = h.new_runtime();
     let mut queue = empty_bitfield_queue(&rt, TEST_AMT_BITWIDTH);
 
-    let values = BitField::from_ranges(Ranges::new([1..5]));
+    let values = BitField::try_from_bits(vec![1, 2, 3, 4, 5]).unwrap();
     let epoch = ChainEpoch::from(42);
 
     queue.add_to_queue(epoch, &values).unwrap();
@@ -130,7 +130,7 @@ fn pop_until_from_empty_queue_returns_empty_bitfield() {
 
     let (next, modified) = queue.pop_until(42).unwrap();
 
-    //no values are returned
+    // no values are returned
     let count = next.len();
     assert_eq!(0, count);
     // modified is false
@@ -151,7 +151,7 @@ fn pop_until_does_nothing_if_until_parameter_before_first_value() {
 
     let (next, modified) = queue.pop_until(epoch1 - 1).unwrap();
 
-    //no values are returned
+    // no values are returned
     let count = next.len();
     assert_eq!(0, count);
     // modified is false
