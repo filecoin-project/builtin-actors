@@ -73,10 +73,10 @@ mod sector_assignment {
 
         let sectors_array = sectors_arr(&h.store, sector_infos.clone());
 
-        let mut deadlines = h.st.load_deadlines(&h.store).unwrap();
+        let deadlines = h.st.load_deadlines(&h.store).unwrap();
 
         deadlines
-            .for_each(&policy, &h.store, |dl_idx: u64, mut dl: Deadline| {
+            .for_each(&policy, &h.store, |dl_idx: u64, dl: Deadline| {
                 let dl_state = ExpectedDeadlineState {
                     sector_size,
                     partition_size: partition_sectors,
@@ -108,21 +108,21 @@ mod sector_assignment {
 
                     // dl_state.with_quant_spec(quant_spec)
                     //     .with_unproven(&all_sector_numbers)
-                    //     .with_partitions(partitions)
+                    //     .with_partitions(partitions.clone())
                     //     .assert(&h.store, &sector_infos.clone(), &dl);
 
                     // Now make sure proving activates power.
 
-                    let result = dl
-                        .record_proven_sectors(
-                            &h.store,
-                            &sectors_array,
-                            SECTOR_SIZE,
-                            QUANT_SPEC,
-                            0,
-                            &mut post_partitions,
-                        )
-                        .unwrap();
+                    // let result = dl
+                    //     .record_proven_sectors(
+                    //         &h.store,
+                    //         &sectors_array,
+                    //         SECTOR_SIZE,
+                    //         QUANT_SPEC,
+                    //         0,
+                    //         &mut post_partitions,
+                    //     )
+                    //     .unwrap();
 
                     // let expected_power_delta = power_for_sectors(sector_size, &select_sectors(&sector_infos, &all_sector_bf));
 
