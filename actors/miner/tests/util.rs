@@ -21,8 +21,8 @@ use fil_actor_miner::{
     GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
     PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
     ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt,
-    CRON_EVENT_PROVING_DEADLINE,
+    Sectors, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
+    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -1684,6 +1684,55 @@ impl ActorHarness {
         let info = state.get_info(rt.store()).unwrap();
 
         assert_eq!(new_id, info.peer_id);
+    }
+
+    pub fn withdraw_funds(
+        &self,
+        rt: &mut MockRuntime,
+        amount_requested: &TokenAmount,
+        expected_withdrawn: &TokenAmount,
+        expected_debt_repaid: &TokenAmount,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+        rt.expect_validate_caller_addr(vec![self.owner]);
+
+        rt.expect_send(
+            self.owner,
+            METHOD_SEND,
+            RawBytes::default(),
+            expected_withdrawn.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        if expected_debt_repaid > &TokenAmount::zero() {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_debt_repaid.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+        let ret = rt
+            .call::<Actor>(
+                Method::WithdrawBalance as u64,
+                &RawBytes::serialize(WithdrawBalanceParams {
+                    amount_requested: amount_requested.clone(),
+                })
+                .unwrap(),
+            )?
+            .deserialize::<WithdrawBalanceReturn>()
+            .unwrap();
+        let withdrawn = ret.amount_withdrawn;
+        rt.verify();
+
+        assert_eq!(
+            expected_withdrawn, &withdrawn,
+            "return value indicates {} withdrawn but expected {}",
+            withdrawn, expected_withdrawn
+        );
+        Ok(())
     }
 }
 
