@@ -8,7 +8,6 @@ use fil_actor_market::{
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
-use fil_actor_miner::max_prove_commit_duration;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, qa_power_for_sector, ChangeWorkerAddressParams,
     ExtendSectorExpirationParams,
@@ -26,6 +25,7 @@ use fil_actor_miner::{
     Sectors, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
     WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
 };
+use fil_actor_miner::{max_prove_commit_duration, CompactPartitionsParams};
 use fil_actor_miner::{CheckSectorProvenParams, TerminateSectorsParams, TerminationDeclaration};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -858,7 +858,7 @@ impl ActorHarness {
         state.get_sector(&rt.store, sector_number).unwrap().unwrap()
     }
 
-    fn advance_to_epoch_with_cron(&self, rt: &mut MockRuntime, epoch: ChainEpoch) {
+    pub fn advance_to_epoch_with_cron(&self, rt: &mut MockRuntime, epoch: ChainEpoch) {
         let mut deadline = self.get_deadline_info(rt);
         while deadline.last() < epoch {
             self.advance_deadline(rt, CronConfig::empty());
@@ -1927,6 +1927,25 @@ impl ActorHarness {
         rt.verify();
         Ok(ret)
     }
+
+    pub fn compact_partitions(
+        &self,
+        rt: &mut MockRuntime,
+        deadline: u64,
+        partition: BitField,
+    ) -> Result<(), ActorError> {
+        let params = CompactPartitionsParams {
+            deadline,
+            partitions: UnvalidatedBitField::Validated(partition),
+        };
+
+        rt.expect_validate_caller_addr(self.caller_addrs());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        rt.call::<Actor>(Method::CompactPartitions as u64, &RawBytes::serialize(params).unwrap())?;
+        rt.verify();
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]
@@ -2985,4 +3004,9 @@ impl CronControl {
         let clean_up_epoch = self.pre_commit_to_start_cron(h, rt, start_epoch);
         self.expire_pre_commit_stop_cron(h, rt, start_epoch, clean_up_epoch)
     }
+}
+
+#[allow(dead_code)]
+pub fn bitfield_from_slice(sector_numbers: &[u64]) -> BitField {
+    BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
 }
