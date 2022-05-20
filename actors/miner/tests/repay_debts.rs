@@ -10,7 +10,7 @@ const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 const PERIOD_OFFSET: ChainEpoch = 100;
 
 #[test]
-fn repay_with_no_avaialable_funds_does_nothing() {
+fn repay_with_no_available_funds_does_nothing() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
     h.construct_and_verify(&mut rt);
