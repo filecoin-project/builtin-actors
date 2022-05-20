@@ -55,15 +55,14 @@ mod sector_assignment {
 
         let partitions_per_deadline: u64 = 3;
         let num_sectors = partition_sectors * open_dealines * partitions_per_deadline;
-        let mut sector_infos = vec![SectorOnChainInfo::default(); num_sectors as usize];
-        for (i, si) in sector_infos.iter_mut().enumerate() {
-            *si = new_sector_on_chain_info(
+        let sector_infos: Vec<SectorOnChainInfo> = (0..num_sectors).map(|i| {
+            new_sector_on_chain_info(
                 i as u64,
                 make_sealed_cid("{i}".as_bytes()),
                 TokenAmount::from(1u8),
                 0,
-            );
-        }
+            )
+        }).collect();
 
         let mut dl_state = ExpectedDeadlineState {
             sector_size,
@@ -132,7 +131,6 @@ mod sector_assignment {
                     assert_eq!(result.recovered_power, PowerPair::zero());
                     assert_eq!(result.retracted_recovery_power, PowerPair::zero());
                 }
-
                 Ok(())
             })
             .unwrap();
