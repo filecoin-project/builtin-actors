@@ -9,8 +9,8 @@ use fil_actor_market::{
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, CheckSectorProvenParams, TerminateSectorsParams,
-    TerminationDeclaration,
+    aggregate_pre_commit_network_fee, ChangeWorkerAddressParams, CheckSectorProvenParams,
+    TerminateSectorsParams, TerminationDeclaration,
 };
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
@@ -59,6 +59,7 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::METHOD_SEND;
 
 use cid::Cid;
+use itertools::Itertools;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 use num_traits::sign::Signed;
@@ -1696,6 +1697,56 @@ impl ActorHarness {
         rt.expect_validate_caller_any();
         rt.call::<Actor>(Method::CheckSectorProven as u64, &RawBytes::serialize(params).unwrap())?;
         rt.verify();
+        Ok(())
+    }
+
+    pub fn change_worker_address(
+        &self,
+        rt: &mut MockRuntime,
+        new_worker: Address,
+        new_control_addresses: Vec<Address>,
+    ) -> Result<(), ActorError> {
+        rt.set_address_actor_type(new_worker.clone(), *ACCOUNT_ACTOR_CODE_ID);
+
+        let params = ChangeWorkerAddressParams {
+            new_worker: new_worker.clone(),
+            new_control_addresses: new_control_addresses.clone(),
+        };
+        rt.expect_send(
+            new_worker,
+            AccountMethod::PubkeyAddress as u64,
+            RawBytes::default(),
+            TokenAmount::zero(),
+            RawBytes::serialize(self.worker_key).unwrap(),
+            ExitCode::OK,
+        );
+
+        rt.expect_validate_caller_addr(vec![self.owner]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+        rt.call::<Actor>(
+            Method::ChangeWorkerAddress as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        rt.verify();
+
+        let state: State = rt.get_state();
+        let info = state.get_info(rt.store()).unwrap();
+
+        let control_addresses = new_control_addresses
+            .iter()
+            .map(|address| rt.get_id_address(&address).unwrap())
+            .collect_vec();
+        assert_eq!(control_addresses, info.control_addresses);
+
+        Ok(())
+    }
+
+    pub fn confirm_update_worker_key(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
+        rt.expect_validate_caller_addr(vec![self.owner]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+        rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, &RawBytes::default())?;
+        rt.verify();
+
         Ok(())
     }
 }
