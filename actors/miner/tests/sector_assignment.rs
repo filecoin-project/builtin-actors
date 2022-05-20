@@ -68,16 +68,15 @@ mod sector_assignment {
 
         let policy = Policy::default();
         let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
-        let rt = h.new_runtime();
 
         h.assign_sectors_to_deadlines(&policy, 0, sector_infos.clone(), partition_sectors, sector_size);
 
-        let sectors_array = sectors_array(&rt, &h.store, sector_infos.clone());
+        let sectors_array = sectors_arr(&h.store, sector_infos.clone());
 
-        let mut deadlines = h.st.load_deadlines(&rt.store).unwrap();
+        let mut deadlines = h.st.load_deadlines(&h.store).unwrap();
 
         deadlines
-            .for_each(&policy, &rt.store, |dl_idx: u64, mut dl: Deadline| {
+            .for_each(&policy, &h.store, |dl_idx: u64, mut dl: Deadline| {
                 let dl_state = ExpectedDeadlineState {
                     sector_size,
                     partition_size: partition_sectors,
@@ -116,7 +115,7 @@ mod sector_assignment {
 
                     let result = dl
                         .record_proven_sectors(
-                            &rt.store,
+                            &h.store,
                             &sectors_array,
                             SECTOR_SIZE,
                             QUANT_SPEC,

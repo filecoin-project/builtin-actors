@@ -31,6 +31,8 @@ use fil_actors_runtime::{
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_shared::bigint::Zero;
+use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_ipld_amt::Amt;
 
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_ipld_blockstore::Blockstore;
@@ -1860,6 +1862,18 @@ pub fn sectors_array<'a, BS: Blockstore>(
 ) -> Sectors<'a, BS> {
     let state: State = rt.get_state();
     let mut sectors = Sectors::load(store, &state.sectors).unwrap();
+    sectors.store(sectors_info).unwrap();
+    sectors
+}
+
+#[allow(dead_code)]
+pub fn sectors_arr<'a, BS: Blockstore>(
+    store: &'a BS,
+    sectors_info: Vec<SectorOnChainInfo>,
+) -> Sectors<'a, BS> {
+    let empty_array =
+        Amt::<SectorOnChainInfo, _>::new_with_bit_width(&store, HAMT_BIT_WIDTH).flush().unwrap();
+    let mut sectors = Sectors::load(store, &empty_array).unwrap();
     sectors.store(sectors_info).unwrap();
     sectors
 }
