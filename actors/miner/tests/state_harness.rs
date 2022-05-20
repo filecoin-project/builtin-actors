@@ -3,15 +3,16 @@ use fil_actor_miner::MinerInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::VestSpec;
 use fil_actor_miner::VestingFunds;
-use fil_actor_miner::{BitFieldQueue, State, SectorOnChainInfo};
-use fil_actors_runtime::runtime::Policy;
+use fil_actor_miner::{BitFieldQueue, CollisionPolicy, SectorOnChainInfo, State};
+use fil_actors_runtime::{runtime::Policy, ActorError};
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::{SectorSize, SectorNumber};
+use fvm_shared::sector::{SectorNumber, SectorSize};
 use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
 use multihash::Code::Blake2b256;
 
@@ -132,8 +133,7 @@ impl StateHarness {
         partition_size: u64,
         sector_size: SectorSize,
     ) {
-        self
-            .st
+        self.st
             .assign_sectors_to_deadlines(
                 policy,
                 &self.store,
@@ -173,5 +173,25 @@ impl StateHarness {
     #[allow(dead_code)]
     pub fn quant_spec_for_deadline(&self, policy: &Policy, deadline_idx: u64) -> QuantSpec {
         self.st.quant_spec_for_deadline(policy, deadline_idx)
+    }
+
+    #[allow(dead_code)]
+    pub fn allocate(&mut self, sector_numbers: &[u64]) -> Result<(), ActorError> {
+        self.st.allocate_sector_numbers(
+            &self.store,
+            &BitField::try_from_bits(sector_numbers.iter().copied()).unwrap(),
+            CollisionPolicy::DenyCollisions,
+        )
+    }
+
+    #[allow(dead_code)]
+    pub fn mask(&mut self, ns: &BitField) -> Result<(), ActorError> {
+        self.st.allocate_sector_numbers(&self.store, ns, CollisionPolicy::AllowCollisions)
+    }
+
+    #[allow(dead_code)]
+    pub fn expect(&mut self, expected: &BitField) {
+        let b: BitField = self.store.get_cbor(&self.st.allocated_sectors).unwrap().unwrap();
+        assert_eq!(&b, expected);
     }
 }

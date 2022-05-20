@@ -30,10 +30,11 @@ use fil_actors_runtime::{
     ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
+use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
 use fvm_shared::HAMT_BIT_WIDTH;
-use fvm_ipld_amt::Amt;
 
+use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
@@ -2656,10 +2657,6 @@ pub const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
 
 /// Create a bitfield with count bits set, starting at "start".
 pub fn seq(start: u64, count: u64) -> BitField {
-    // TODO: optimize this?
-    let mut bf = BitField::new();
-    for i in start..(start+count) {
-        bf.set(i);
-    }
-    bf
+    let ranges = Ranges::new([start..(start + count)]);
+    BitField::from_ranges(ranges)
 }

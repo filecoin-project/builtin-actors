@@ -2,18 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actor_miner::{power_for_sectors, SectorOnChainInfo, BitFieldQueue, Deadline, PowerPair, PoStPartition};
-use fil_actors_runtime::{
-    test_utils::{make_sealed_cid},
-    runtime::Policy,
+use fil_actor_miner::{
+    power_for_sectors, BitFieldQueue, Deadline, PoStPartition, PowerPair, SectorOnChainInfo,
 };
+use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::sector::SectorNumber;
 
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_shared::error::ExitCode;
+use fvm_shared::sector::MAX_SECTOR_NUMBER;
 
 use std::collections::BTreeMap;
 
@@ -57,19 +59,27 @@ mod sector_assignment {
 
         let partitions_per_deadline: u64 = 3;
         let num_sectors = partition_sectors * open_deadlines * partitions_per_deadline;
-        let sector_infos: Vec<SectorOnChainInfo> = (0..num_sectors).map(|i| {
-            new_sector_on_chain_info(
-                i as u64,
-                make_sealed_cid("{i}".as_bytes()),
-                TokenAmount::from(1u8),
-                0,
-            )
-        }).collect();
+        let sector_infos: Vec<SectorOnChainInfo> = (0..num_sectors)
+            .map(|i| {
+                new_sector_on_chain_info(
+                    i as u64,
+                    make_sealed_cid("{i}".as_bytes()),
+                    TokenAmount::from(1u8),
+                    0,
+                )
+            })
+            .collect();
 
         let policy = Policy::default();
         let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
 
-        h.assign_sectors_to_deadlines(&policy, 0, sector_infos.clone(), partition_sectors, sector_size);
+        h.assign_sectors_to_deadlines(
+            &policy,
+            0,
+            sector_infos.clone(),
+            partition_sectors,
+            sector_size,
+        );
 
         let sectors_array = sectors_arr(&h.store, sector_infos.clone());
 
@@ -87,8 +97,11 @@ mod sector_assignment {
                 let quant_spec = h.quant_spec_for_deadline(&policy, dl_idx);
                 // deadlines 0 & 1 are closed for assignment right now.
                 if dl_idx < 2 {
-                    dl_state.with_quant_spec(quant_spec)
-                        .assert(&h.store, &sector_infos.clone(), &dl);
+                    dl_state.with_quant_spec(quant_spec).assert(
+                        &h.store,
+                        &sector_infos.clone(),
+                        &dl,
+                    );
                     return Ok(());
                 }
 
@@ -103,7 +116,7 @@ mod sector_assignment {
                         skipped: UnvalidatedBitField::Validated(BitField::new()),
                     });
                     let all_sector_bf = BitField::union(&partitions);
-                    let all_sector_numbers: Vec<u64>=
+                    let all_sector_numbers: Vec<u64> =
                         all_sector_bf.bounded_iter(num_sectors).unwrap().collect();
 
                     // dl_state.with_quant_spec(quant_spec)
@@ -138,5 +151,99 @@ mod sector_assignment {
             .unwrap();
 
         // Now prove and activate/check power.
+    }
+}
+
+mod sector_number_allocation {
+    use super::*;
+
+    #[test]
+    fn batch_allocation() {
+        let policy = Policy::default();
+        let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
+        h.allocate(&[1, 2, 3]).unwrap();
+        h.allocate(&[4, 5, 6]).unwrap();
+        h.expect(&new_bitfield(&[1, 2, 3, 4, 5, 6]));
+    }
+
+    #[test]
+    fn repeat_allocation_rejected() {
+        let policy = Policy::default();
+        let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
+        h.allocate(&[1]).unwrap();
+        assert!(h.allocate(&[1]).is_err());
+        h.expect(&new_bitfield(&[1]));
+    }
+
+    #[test]
+    fn overlapping_batch_rejected() {
+        let policy = Policy::default();
+        let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
+        h.allocate(&[1, 2, 3]).unwrap();
+        assert!(h.allocate(&[3, 4, 5]).is_err());
+        h.expect(&new_bitfield(&[1, 2, 3]));
+    }
+
+    #[test]
+    fn batch_masking() {
+        let policy = Policy::default();
+        let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
+        h.allocate(&[1]).unwrap();
+
+        h.mask(&new_bitfield(&[0, 1, 2, 3])).unwrap();
+        h.expect(&new_bitfield(&[0, 1, 2, 3]));
+
+        assert!(h.allocate(&[0]).is_err());
+        assert!(h.allocate(&[3]).is_err());
+        h.allocate(&[4]).unwrap();
+        h.expect(&new_bitfield(&[0, 1, 2, 3, 4]));
+    }
+
+    #[test]
+    fn range_limits() {
+        let policy = Policy::default();
+        let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
+
+        h.allocate(&[0]).unwrap();
+        h.allocate(&[MAX_SECTOR_NUMBER]).unwrap();
+        h.expect(&new_bitfield(&[0, MAX_SECTOR_NUMBER]));
+    }
+
+    #[test]
+    fn mask_range_limits() {
+        let policy = Policy::default();
+        let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
+
+        h.mask(&new_bitfield(&[0])).unwrap();
+        h.mask(&new_bitfield(&[MAX_SECTOR_NUMBER])).unwrap();
+        h.expect(&new_bitfield(&[0, MAX_SECTOR_NUMBER]));
+    }
+
+    #[test]
+    fn compaction_with_mask() {
+        let policy = Policy::default();
+        let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
+
+        // Allocate widely-spaced numbers to consume the run-length encoded bytes quickly,
+        // until the limit is reached.
+        let mut limit_reached = false;
+        for i in 0..std::u64::MAX {
+            let (number, ovf) = (i + 1).overflowing_shl(50);
+            let res = h.allocate(&[0]);
+            if res.is_err() {
+                // We failed, yay!
+                limit_reached = true;
+                expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, res);
+
+                // mask half the sector ranges.
+                let to_mask = seq(0, number / 2);
+                h.mask(&to_mask).unwrap();
+
+                // try again
+                h.allocate(&[number]).unwrap();
+                break;
+            }
+        }
+        assert!(limit_reached);
     }
 }
