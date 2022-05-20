@@ -1,16 +1,13 @@
 [package]
 name = "fil_actors_runtime"
 description = "System actors for the Filecoin protocol"
-version = "7.4.0"
+version = "7.5.0"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
 repository = "https://github.com/filecoin-project/builtin-actors"
 
 [dependencies]
-blake2b_simd = "1.0.0"
-fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.2.0"
 fvm_ipld_hamt = "0.5.1"
 fvm_ipld_amt = { version = "0.4.1", features = ["go-interop"] }
 fvm_shared = { version = "0.7.0", default-features = false }
@@ -31,10 +28,15 @@ thiserror = "1.0.30"
 getrandom = { version = "0.2.5", features = ["js"] }
 hex = { version = "0.4.3", optional = true }
 anyhow = "1.0.56"
+blake2b_simd = "1.0"
+fvm_ipld_blockstore = "0.1.1"
+fvm_ipld_encoding = "0.2.1"
+multihash = { version = "0.16.1", default-features = false }
+rand = "0.8.5"
 serde_repr = "0.1.8"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-fvm_sdk = "0.7.0"
+fvm_sdk = "1.0.0-rc.1"
 
 [dev-dependencies]
 derive_builder = "0.10.2"
