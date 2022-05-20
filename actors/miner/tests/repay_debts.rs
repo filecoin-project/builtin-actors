@@ -83,8 +83,7 @@ fn pay_debt_partially_from_vested_funds() {
 
     // introduce fee debt
     let mut st = h.get_state(&rt);
-    let fee_debt: TokenAmount = 4 * TokenAmount::from(BIG_BALANCE);
-    st.fee_debt = fee_debt.clone();
+    st.fee_debt = 4 * TokenAmount::from(BIG_BALANCE);
     rt.replace_state(&st);
 
     // send 1 FIL and repay all debt from vesting funds and balance
