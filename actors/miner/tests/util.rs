@@ -1732,6 +1732,46 @@ impl ActorHarness {
         assert_eq!(new_id, info.peer_id);
     }
 
+    pub fn repay_debts(
+        &self,
+        rt: &mut MockRuntime,
+        value: &TokenAmount,
+        expected_repaid_from_vest: &TokenAmount,
+        expected_repaid_from_balance: &TokenAmount,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        rt.add_balance(value.clone());
+        rt.set_received(value.clone());
+        if expected_repaid_from_vest > &TokenAmount::zero() {
+            let pledge_delta = expected_repaid_from_vest.neg();
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                PowerMethod::UpdatePledgeTotal as u64,
+                RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let total_repaid = expected_repaid_from_vest + expected_repaid_from_balance;
+        if total_repaid > TokenAmount::zero() {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                total_repaid.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+        let result = rt.call::<Actor>(Method::RepayDebt as u64, &RawBytes::default())?;
+        expect_empty(result);
+        Ok(())
+    }
+
     pub fn withdraw_funds(
         &self,
         rt: &mut MockRuntime,
