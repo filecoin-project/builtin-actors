@@ -1737,6 +1737,9 @@ impl ActorHarness {
             withdrawn, expected_withdrawn
         );
 
+        Ok(())
+    }
+
     pub fn check_sector_proven(
         &self,
         rt: &mut MockRuntime,
