@@ -51,6 +51,7 @@ impl StateHarness {
 }
 
 impl StateHarness {
+    #[allow(dead_code)]
     pub fn put_precommitted_sectors(
         &mut self,
         precommits: Vec<SectorPreCommitOnChainInfo>,
@@ -58,6 +59,7 @@ impl StateHarness {
         self.st.put_precommitted_sectors(&self.store, precommits)
     }
 
+    #[allow(dead_code)]
     pub fn delete_precommitted_sectors(
         &mut self,
         sector_nums: &[SectorNumber],
@@ -65,10 +67,12 @@ impl StateHarness {
         self.st.delete_precommitted_sectors(&self.store, sector_nums)
     }
 
+    #[allow(dead_code)]
     pub fn get_precommit(&self, sector_number: SectorNumber) -> SectorPreCommitOnChainInfo {
         self.st.get_precommitted_sector(&self.store, sector_number).unwrap().unwrap()
     }
 
+    #[allow(dead_code)]
     pub fn has_precommit(&self, sector_number: SectorNumber) -> bool {
         self.st.get_precommitted_sector(&self.store, sector_number).unwrap().is_some()
     }
@@ -87,6 +91,14 @@ impl StateHarness {
         current_epoch: ChainEpoch,
     ) -> anyhow::Result<TokenAmount> {
         self.st.unlock_vested_funds(&self.store, current_epoch)
+    }
+
+    pub fn unlock_unvested_funds(
+        &mut self,
+        current_epoch: ChainEpoch,
+        target: &TokenAmount,
+    ) -> anyhow::Result<TokenAmount> {
+        self.st.unlock_unvested_funds(&self.store, current_epoch, target)
     }
 }
 
