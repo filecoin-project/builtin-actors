@@ -6,7 +6,6 @@ use fil_actor_market::{
     Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDataSpec, SectorDeals,
     SectorWeights, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
-use fil_actor_miner::aggregate_pre_commit_network_fee;
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
 use fil_actor_miner::max_prove_commit_duration;
@@ -2739,7 +2738,7 @@ impl CronControl {
         let sector_no = self.pre_commit_num;
         self.pre_commit_num += 1;
         let expiration =
-            dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
+            dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION as i64 * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
         let precommit_params =
             h.make_pre_commit_params(sector_no, pre_commit_epoch - 1, expiration, vec![]);
         h.pre_commit_sector(rt, precommit_params, PreCommitConfig::empty(), true);
