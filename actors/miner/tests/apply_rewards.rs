@@ -92,7 +92,7 @@ fn penalty_is_burnt() {
     h.construct_and_verify(&mut rt);
 
     let rwd = TokenAmount::from(600_000);
-    let penalty = TokenAmount::from(300_00);
+    let penalty = TokenAmount::from(300_000);
     rt.add_balance(rwd.clone());
     h.apply_rewards(&mut rt, rwd.clone(), penalty.clone());
 
