@@ -2791,7 +2791,7 @@ impl CronControl {
             dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION as i64 * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
         let precommit_params =
             h.make_pre_commit_params(sector_no, pre_commit_epoch - 1, expiration, vec![]);
-        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::empty(), true);
+        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::empty(), true).unwrap();
 
         // PCD != 0 so cron must be active
         self.require_cron_active(h, rt);
