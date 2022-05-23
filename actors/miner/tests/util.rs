@@ -295,7 +295,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         num_sectors: usize,
         lifetime_periods: u64,
-        deal_ids: Vec<DealID>, // TODO: this should be Vec<Vec<DealID>>
+        deal_ids: Vec<Vec<DealID>>,
         first: bool,
     ) -> Vec<SectorOnChainInfo> {
         let precommit_epoch = rt.epoch;
@@ -306,10 +306,8 @@ impl ActorHarness {
         let mut precommits = Vec::with_capacity(num_sectors);
         for i in 0..num_sectors {
             let sector_no = self.next_sector_no;
-            let mut sector_deal_ids = vec![];
-            if !deal_ids.is_empty() {
-                sector_deal_ids.push(deal_ids[i]);
-            }
+            let sector_deal_ids =
+                deal_ids.get(i).and_then(|ids| Some(ids.clone())).unwrap_or_default();
             let params = self.make_pre_commit_params(
                 sector_no,
                 precommit_epoch - 1,
@@ -1551,7 +1549,7 @@ impl ActorHarness {
         self.get_deadline_and_partition(rt, dlidx, pidx)
     }
 
-    fn current_deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
+    pub fn current_deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
         let state = self.get_state(rt);
         state.deadline_info(&rt.policy, rt.epoch)
     }

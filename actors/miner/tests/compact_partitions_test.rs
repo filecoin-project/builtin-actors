@@ -60,7 +60,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
         &mut rt,
         4,
         DEFAULT_SECTOR_EXPIRATION,
-        vec![10, 20, 30, 40],
+        vec![vec![10], vec![20], vec![30], vec![40]],
         true,
     );
 
@@ -126,8 +126,13 @@ fn fail_to_compact_partitions_with_faults() {
     rt.set_epoch(200);
 
     // create 2 sectors in partition 0
-    let sectors_info =
-        h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![10, 20], true);
+    let sectors_info = h.commit_and_prove_sectors(
+        &mut rt,
+        2,
+        DEFAULT_SECTOR_EXPIRATION,
+        vec![vec![10], vec![20]],
+        true,
+    );
     h.advance_and_submit_posts(&mut rt, &sectors_info);
 
     // fault sector 1
@@ -160,7 +165,13 @@ fn fails_to_compact_partitions_with_unproven_sectors() {
     rt.set_epoch(deadline_epoch);
 
     // create 2 sectors in partition 0
-    h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![10, 20], true);
+    h.commit_and_prove_sectors(
+        &mut rt,
+        2,
+        DEFAULT_SECTOR_EXPIRATION,
+        vec![vec![10], vec![20]],
+        true,
+    );
 
     // Wait WPoStProofChallengePeriod epochs so we can compact the sector.
     let target_epoch = rt.epoch + rt.policy().wpost_dispute_window;
@@ -176,7 +187,7 @@ fn fails_to_compact_partitions_with_unproven_sectors() {
 }
 
 #[test]
-fn fails_if_deadline_is_equal_to_wpost_period_deadlines() {
+fn fails_if_deadline_out_of_range() {
     let (h, mut rt) = setup();
     let w_post_period_deadlines = rt.policy().wpost_period_deadlines;
     let result = h.compact_partitions(&mut rt, w_post_period_deadlines, BitField::default());
@@ -193,6 +204,8 @@ fn fails_if_deadline_is_equal_to_wpost_period_deadlines() {
 fn fails_if_deadline_is_open_for_challenging() {
     let (h, mut rt) = setup();
     rt.set_epoch(PERIOD_OFFSET);
+    assert_eq!(h.current_deadline(&rt).index, 0);
+
     let result = h.compact_partitions(&mut rt, 0, BitField::default());
     expect_abort(ExitCode::USR_FORBIDDEN, result);
 
@@ -203,7 +216,8 @@ fn fails_if_deadline_is_open_for_challenging() {
 fn fails_if_deadline_is_next_up_to_be_challenged() {
     let (h, mut rt) = setup();
     rt.set_epoch(PERIOD_OFFSET);
-    let result = h.compact_partitions(&mut rt, 1, BitField::default());
+    let current_deadline = h.current_deadline(&rt).index;
+    let result = h.compact_partitions(&mut rt, current_deadline + 1, BitField::default());
     expect_abort(ExitCode::USR_FORBIDDEN, result);
 
     check_state_invariants(&rt);
@@ -213,7 +227,8 @@ fn fails_if_deadline_is_next_up_to_be_challenged() {
 fn deadline_after_next_deadline_should_still_be_open_for_compaction() {
     let (h, mut rt) = setup();
     rt.set_epoch(PERIOD_OFFSET);
-    h.compact_partitions(&mut rt, 3, BitField::default()).unwrap();
+    let current_deadline = h.current_deadline(&rt).index;
+    h.compact_partitions(&mut rt, current_deadline + 2, BitField::default()).unwrap();
     check_state_invariants(&rt);
 }
 
@@ -221,6 +236,7 @@ fn deadline_after_next_deadline_should_still_be_open_for_compaction() {
 fn deadlines_challenged_last_proving_period_should_still_be_in_dispute_window() {
     let (h, mut rt) = setup();
     rt.set_epoch(PERIOD_OFFSET);
+    // (curr_deadline - 1) % wpost_period_deadlines
     let last_proving_period = rt.policy().wpost_period_deadlines - 1;
     let result = h.compact_partitions(&mut rt, last_proving_period, BitField::default());
     expect_abort(ExitCode::USR_FORBIDDEN, result);
