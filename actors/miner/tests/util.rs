@@ -32,6 +32,7 @@ use fil_actor_power::{
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::ActorDowncast;
 use fil_actors_runtime::{
     ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -66,6 +67,7 @@ use multihash::MultihashDigest;
 use num_traits::sign::Signed;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::convert::TryInto;
 use std::ops::Neg;
 
 const RECEIVER_ID: u64 = 1000;
@@ -313,8 +315,12 @@ impl ActorHarness {
                 expiration,
                 sector_deal_ids,
             );
-            let precommit =
-                self.pre_commit_sector(rt, params, PreCommitConfig::empty(), first && i == 0);
+            let precommit = self.pre_commit_sector_and_get(
+                rt,
+                params,
+                PreCommitConfig::empty(),
+                first && i == 0,
+            );
             precommits.push(precommit);
             self.next_sector_no += 1;
         }
@@ -354,8 +360,12 @@ impl ActorHarness {
         // Precommit
         let pre_commit_params =
             self.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, deal_ids);
-        let precommit =
-            self.pre_commit_sector(rt, pre_commit_params.clone(), PreCommitConfig::empty(), true);
+        let precommit = self.pre_commit_sector_and_get(
+            rt,
+            pre_commit_params.clone(),
+            PreCommitConfig::empty(),
+            true,
+        );
 
         self.advance_to_epoch_with_cron(
             rt,
@@ -515,7 +525,7 @@ impl ActorHarness {
         params: PreCommitSectorParams,
         conf: PreCommitConfig,
         first: bool,
-    ) -> SectorPreCommitOnChainInfo {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
         self.expect_query_network_info(rt);
@@ -575,13 +585,23 @@ impl ActorHarness {
             );
         }
 
-        let result = rt
-            .call::<Actor>(
-                Method::PreCommitSector as u64,
-                &RawBytes::serialize(params.clone()).unwrap(),
-            )
-            .unwrap();
-        expect_empty(result);
+        let result = rt.call::<Actor>(
+            Method::PreCommitSector as u64,
+            &RawBytes::serialize(params.clone()).unwrap(),
+        );
+        result
+    }
+
+    pub fn pre_commit_sector_and_get(
+        &self,
+        rt: &mut MockRuntime,
+        params: PreCommitSectorParams,
+        conf: PreCommitConfig,
+        first: bool,
+    ) -> SectorPreCommitOnChainInfo {
+        let result = self.pre_commit_sector(rt, params.clone(), conf, first);
+
+        expect_empty(result.unwrap());
         rt.verify();
 
         self.get_precommit(rt, params.sector_number)
@@ -1502,6 +1522,28 @@ impl ActorHarness {
         )
     }
 
+    pub fn collect_precommit_expirations(
+        &self,
+        rt: &MockRuntime,
+        st: &State,
+    ) -> HashMap<ChainEpoch, Vec<u64>> {
+        let quant = st.quant_spec_every_deadline(&rt.policy);
+        let queue = BitFieldQueue::new(&rt.store, &st.pre_committed_sectors_cleanup, quant)
+            .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))
+            .unwrap();
+        let mut expirations: HashMap<ChainEpoch, Vec<u64>> = HashMap::new();
+        queue
+            .amt
+            .for_each(|epoch, bf| {
+                let expanded: Vec<u64> =
+                    bf.bounded_iter(rt.policy.addressed_sectors_max).unwrap().collect();
+                expirations.insert(epoch.try_into().unwrap(), expanded);
+                Ok(())
+            })
+            .unwrap();
+        expirations
+    }
+
     pub fn find_sector(&self, rt: &MockRuntime, sno: SectorNumber) -> (Deadline, Partition) {
         let state = self.get_state(rt);
         let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sno).unwrap();
@@ -1846,6 +1888,14 @@ impl PreCommitConfig {
             deal_weight: DealWeight::from(0),
             verified_deal_weight: DealWeight::from(0),
             deal_space: None,
+        }
+    }
+
+    pub fn default() -> PreCommitConfig {
+        PreCommitConfig {
+            deal_weight: DealWeight::from(0),
+            verified_deal_weight: DealWeight::from(0),
+            deal_space: Some(SectorSize::_2KiB),
         }
     }
 }
@@ -2791,7 +2841,7 @@ impl CronControl {
             dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION as i64 * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
         let precommit_params =
             h.make_pre_commit_params(sector_no, pre_commit_epoch - 1, expiration, vec![]);
-        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::empty(), true);
+        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::empty(), true).unwrap();
 
         // PCD != 0 so cron must be active
         self.require_cron_active(h, rt);
