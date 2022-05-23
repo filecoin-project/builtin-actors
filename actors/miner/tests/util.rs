@@ -39,6 +39,9 @@ use fil_actors_runtime::{
 };
 use fvm_shared::bigint::Zero;
 
+use fil_actor_miner::consensus_fault_penalty;
+use fil_actor_miner::reward_for_consensus_slash_report;
+use fil_actor_miner::ReportConsensusFaultParams;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
@@ -49,6 +52,7 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -59,10 +63,6 @@ use fvm_shared::sector::{
 };
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::METHOD_SEND;
-use fvm_shared::consensus::ConsensusFault;
-use fil_actor_miner::ReportConsensusFaultParams;
-use fil_actor_miner::consensus_fault_penalty;
-use fil_actor_miner::reward_for_consensus_slash_report;
 
 use cid::Cid;
 use itertools::Itertools;

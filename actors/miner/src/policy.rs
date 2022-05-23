@@ -49,10 +49,7 @@ pub fn is_sealed_sector(c: &Cid) -> bool {
 }
 
 /// List of proof types which can be used when creating new miner actors
-pub fn can_pre_commit_seal_proof(
-    policy: &Policy,
-    proof: RegisteredSealProof,
-) -> bool {
+pub fn can_pre_commit_seal_proof(policy: &Policy, proof: RegisteredSealProof) -> bool {
     policy.valid_pre_commit_proof_type.contains(&proof)
 }
 

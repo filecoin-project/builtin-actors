@@ -1,18 +1,19 @@
 use fil_actor_miner::{
-    max_prove_commit_duration, pre_commit_deposit_for_power, qa_power_for_weight, DeadlineInfo, State, VestSpec,
+    max_prove_commit_duration, pre_commit_deposit_for_power, qa_power_for_weight, DeadlineInfo,
+    State, VestSpec,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::address::Address;
-use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
 
-use num_traits::{FromPrimitive, Zero};
+use num_traits::Zero;
 
 use std::collections::HashMap;
 
@@ -403,7 +404,8 @@ mod miner_actor_test_commitment {
             rt.set_epoch(precommit_epoch);
             let expiration = deadline.period_end()
                 + rt.policy.wpost_proving_period
-                * (rt.policy.max_sector_expiration_extension / rt.policy.wpost_proving_period + 1);
+                    * (rt.policy.max_sector_expiration_extension / rt.policy.wpost_proving_period
+                        + 1);
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
             let ret = h.pre_commit_sector(
@@ -601,7 +603,12 @@ mod miner_actor_test_commitment {
                 expiration,
                 make_deal_ids(limit),
             );
-            h.pre_commit_sector_and_get(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
+            h.pre_commit_sector_and_get(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                true,
+            );
             util::check_state_invariants(&rt);
         }
     }
@@ -643,6 +650,11 @@ mod miner_actor_test_commitment {
         let precommit_params =
             h.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, vec![1]);
         // The below call expects no pledge delta.
-        h.pre_commit_sector_and_get(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
+        h.pre_commit_sector_and_get(
+            &mut rt,
+            precommit_params,
+            util::PreCommitConfig::default(),
+            true,
+        );
     }
 }
