@@ -148,7 +148,7 @@ pub struct Expectations {
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
-    pub expect_get_randomness_tickets: Vec<ExpectRandomness>,
+    pub expect_get_randomness_tickets: VecDeque<ExpectRandomness>,
     pub expect_get_randomness_beacon: Option<ExpectRandomness>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
@@ -578,7 +578,7 @@ impl MockRuntime {
         out: Randomness,
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_randomness_tickets = vec![a];
+        self.expectations.borrow_mut().expect_get_randomness_tickets = VecDeque::from([a]);
     }
 
     #[allow(dead_code)]
@@ -772,9 +772,9 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
-        let tickets = self.expectations.borrow_mut().expect_get_randomness_tickets.clone();
+        let mut tickets = self.expectations.borrow_mut().expect_get_randomness_tickets.clone();
 
-        let expected = tickets.first().expect("unexpected call to get_randomness_from_tickets");
+        let expected = tickets.pop_front().expect("unexpected call to get_randomness_from_tickets");
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
         assert_eq!(
