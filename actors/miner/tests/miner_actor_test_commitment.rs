@@ -478,7 +478,7 @@ mod miner_actor_test_commitment {
 
         // Deals too large for sector
         {
-            let deal_weight = TokenAmount::from(32u32 << 30) * (expiration - rt.epoch);
+            let deal_weight = BigInt::from(32u32 << 30) * (expiration - rt.epoch);
             let precommit_params =
                 h.make_pre_commit_params(0, challenge_epoch, expiration, vec![1]);
             let ret = h.pre_commit_sector(
