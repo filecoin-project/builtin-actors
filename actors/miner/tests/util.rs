@@ -8,22 +8,20 @@ use fil_actor_market::{
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
-use fil_actor_miner::max_prove_commit_duration;
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, ChangeWorkerAddressParams, CheckSectorProvenParams,
-    TerminateSectorsParams, TerminationDeclaration,
-};
-use fil_actor_miner::{
-    initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
-    pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
-    ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams,
+    aggregate_pre_commit_network_fee, consensus_fault_penalty, initial_pledge_for_power,
+    locked_reward_from_reward, max_prove_commit_duration, new_deadline_info_from_offset_and_epoch,
+    pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight,
+    reward_for_consensus_slash_report, Actor, ApplyRewardParams, BitFieldQueue,
+    ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams,
     ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
     DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
     DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, FaultDeclaration,
     GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
     PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
-    ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
+    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
+    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
+    TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
     WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_power::{
@@ -39,9 +37,6 @@ use fil_actors_runtime::{
 };
 use fvm_shared::bigint::Zero;
 
-use fil_actor_miner::consensus_fault_penalty;
-use fil_actor_miner::reward_for_consensus_slash_report;
-use fil_actor_miner::ReportConsensusFaultParams;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
