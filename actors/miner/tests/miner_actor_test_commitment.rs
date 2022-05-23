@@ -402,9 +402,28 @@ mod miner_actor_test_commitment {
         {
             rt.set_epoch(precommit_epoch);
             let expiration = deadline.period_end()
-                + DEFAULT_SECTOR_EXPIRATION
-                    * (rt.policy.max_sector_expiration_extension / rt.policy.wpost_proving_period
-                        + 1);
+                + rt.policy.wpost_proving_period
+                * (rt.policy.max_sector_expiration_extension / rt.policy.wpost_proving_period + 1);
+            let precommit_params =
+                h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
+            let ret = h.pre_commit_sector(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                false,
+            );
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "invalid expiration",
+                ret,
+            );
+            rt.reset();
+        }
+
+        // Errors when expiry too far in the future (bis)
+        {
+            rt.set_epoch(precommit_epoch);
+            let expiration = rt.epoch + rt.policy.max_sector_expiration_extension + 1;
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
             let ret = h.pre_commit_sector(
