@@ -8,9 +8,6 @@ use fil_actor_market::{
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
-use fil_actor_miner::testing::{
-    check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
-};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
@@ -42,6 +39,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
+use fvm_shared::consensus::ConsensusFault;
 
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -55,7 +53,6 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::QuantSpec;
 use fvm_shared::clock::{ChainEpoch, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
-use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -73,11 +70,15 @@ use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 use num_traits::sign::Signed;
 
+use fil_actor_miner::testing::{
+    check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
+};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::ops::Neg;
 
 const RECEIVER_ID: u64 = 1000;
+
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
 
 // A reward amount for use in tests where the vesting amount wants to be large enough to cover penalties.
@@ -2276,14 +2277,18 @@ pub struct PreCommitBatchConfig {
 
 #[derive(Default)]
 pub struct CronConfig {
-    pub no_enrollment: bool, // true if expect not to continue enrollment false otherwise
+    pub no_enrollment: bool,
+    // true if expect not to continue enrollment false otherwise
     pub expected_enrollment: ChainEpoch,
     pub detected_faults_power_delta: Option<PowerPair>,
     pub expired_sectors_power_delta: Option<PowerPair>,
     pub expired_sectors_pledge_delta: TokenAmount,
-    pub continued_faults_penalty: TokenAmount, // Expected amount burnt to pay continued fault penalties.
-    pub expired_precommit_penalty: TokenAmount, // Expected amount burnt to pay for expired precommits
-    pub repaid_fee_debt: TokenAmount,           // Expected amount burnt to repay fee debt.
+    pub continued_faults_penalty: TokenAmount,
+    // Expected amount burnt to pay continued fault penalties.
+    pub expired_precommit_penalty: TokenAmount,
+    // Expected amount burnt to pay for expired precommits
+    pub repaid_fee_debt: TokenAmount,
+    // Expected amount burnt to repay fee debt.
     pub penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds.
 }
 

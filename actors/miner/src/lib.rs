@@ -4104,7 +4104,7 @@ pub fn power_for_sectors(sector_size: SectorSize, sectors: &[SectorOnChainInfo])
     PowerPair { raw: BigInt::from(sector_size as u64) * BigInt::from(sectors.len()), qa }
 }
 
-fn get_miner_info<BS>(store: &BS, state: &State) -> Result<MinerInfo, ActorError>
+pub fn get_miner_info<BS>(store: &BS, state: &State) -> Result<MinerInfo, ActorError>
 where
     BS: Blockstore,
 {
