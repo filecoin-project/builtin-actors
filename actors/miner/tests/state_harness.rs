@@ -108,7 +108,7 @@ impl StateHarness {
     }
 
     pub fn put_sector(&mut self, sector: &SectorOnChainInfo) {
-        self.st.put_sectors(&self.store, vec![sector]).unwrap();
+        self.st.put_sectors(&self.store, vec![sector.clone()]).unwrap();
     }
 
     pub fn get_sector(&self, sector_number: SectorNumber) -> SectorOnChainInfo {

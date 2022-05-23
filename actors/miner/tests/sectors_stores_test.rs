@@ -13,7 +13,6 @@ use num_traits::Zero;
 mod state_harness;
 mod util;
 use state_harness::*;
-use util::*;
 
 #[test]
 fn put_get_and_delete() {
@@ -61,7 +60,7 @@ fn new_sector_on_chain_info(
         deal_ids: vec![],
         activation,
         expiration: ChainEpoch::from(1),
-        deal_weight: weight,
+        deal_weight: weight.clone(),
         verified_deal_weight: weight,
         initial_pledge: TokenAmount::from(0),
         expected_day_reward: TokenAmount::from(0),
