@@ -17,7 +17,7 @@ use std::collections::HashMap;
 mod util;
 use util::*;
 
-// an expriration ~10 days greater than effective min expiration taking into account 30 days max
+// an expiration ~10 days greater than effective min expiration taking into account 30 days max
 // between pre and prove commit
 const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
