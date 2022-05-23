@@ -233,7 +233,7 @@ mod sector_number_allocation {
             if res.is_err() {
                 // We failed, yay!
                 limit_reached = true;
-                expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, res);
+                expect_abort(ExitCode::USR_SERIALIZATION, res);
 
                 // mask half the sector ranges.
                 let to_mask = seq(0, number / 2);
