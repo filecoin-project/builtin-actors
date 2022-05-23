@@ -229,7 +229,7 @@ mod sector_number_allocation {
         let mut limit_reached = false;
         for i in 0..std::u64::MAX {
             let (number, ovf) = (i + 1).overflowing_shl(50);
-            let res = h.allocate(&[0]);
+            let res = h.allocate(&[number]);
             if res.is_err() {
                 // We failed, yay!
                 limit_reached = true;
