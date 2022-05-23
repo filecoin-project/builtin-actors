@@ -1,4 +1,6 @@
-use fil_actor_miner::{pre_commit_deposit_for_power, qa_power_for_weight, State};
+use fil_actor_miner::{
+    max_prove_commit_duration, pre_commit_deposit_for_power, qa_power_for_weight, State,
+};
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -93,7 +95,7 @@ fn assert_simple_pre_commit(
     let expirations = h.collect_precommit_expirations(&rt, &st);
     let expected_precommit_expiration = st.quant_spec_every_deadline(&rt.policy).quantize_up(
         precommit_epoch
-            + rt.policy.max_prove_commit_duration[&h.seal_proof_type]
+            + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
             + rt.policy.expired_pre_commit_clean_up_delay,
     );
     assert_eq!(HashMap::from([(expected_precommit_expiration, vec![sector_number])]), expirations);

@@ -22,9 +22,6 @@ pub struct Policy {
     /// Maximum total replica update proof size.
     pub max_replica_update_proof_size: usize,
 
-    /// Maximum delay to allow between sector pre-commit and subsequent proof.
-    /// The allowable delay depends on seal proof algorithm.
-    pub max_prove_commit_duration: HashMap<RegisteredSealProof, ChainEpoch>,
     /// The maximum number of sector pre-commitments in a single batch.
     /// 32 sectors per epoch would support a single miner onboarding 1EiB of 32GiB sectors in 1 year.
     pub pre_commit_sector_batch_max_size: usize,
@@ -165,48 +162,6 @@ impl Default for Policy {
             min_aggregated_sectors: policy_constants::MIN_AGGREGATED_SECTORS,
             max_aggregated_proof_size: policy_constants::MAX_AGGREGATED_PROOF_SIZE,
             max_replica_update_proof_size: policy_constants::MAX_REPLICA_UPDATE_PROOF_SIZE,
-            max_prove_commit_duration: HashMap::from([
-                (
-                    RegisteredSealProof::StackedDRG32GiBV1,
-                    EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
-                ), // PARAM_SPEC
-                (
-                    RegisteredSealProof::StackedDRG2KiBV1,
-                    EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
-                ),
-                (
-                    RegisteredSealProof::StackedDRG8MiBV1,
-                    EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
-                ),
-                (
-                    RegisteredSealProof::StackedDRG512MiBV1,
-                    EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
-                ),
-                (
-                    RegisteredSealProof::StackedDRG64GiBV1,
-                    EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
-                ),
-                (
-                    RegisteredSealProof::StackedDRG32GiBV1P1,
-                    30 * EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
-                ), // PARAM_SPEC
-                (
-                    RegisteredSealProof::StackedDRG2KiBV1P1,
-                    30 * EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
-                ),
-                (
-                    RegisteredSealProof::StackedDRG8MiBV1P1,
-                    30 * EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
-                ),
-                (
-                    RegisteredSealProof::StackedDRG512MiBV1P1,
-                    30 * EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
-                ),
-                (
-                    RegisteredSealProof::StackedDRG64GiBV1P1,
-                    30 * EPOCHS_IN_DAY + policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
-                ),
-            ]),
             pre_commit_sector_batch_max_size: policy_constants::PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
             prove_replica_updates_max_size: policy_constants::PROVE_REPLICA_UPDATES_MAX_SIZE,
             expired_pre_commit_clean_up_delay: policy_constants::EXPIRED_PRE_COMMIT_CLEAN_UP_DELAY,
