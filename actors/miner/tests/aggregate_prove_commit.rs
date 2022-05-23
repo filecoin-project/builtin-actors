@@ -46,8 +46,9 @@ fn valid_precommits_then_aggregate_provecommit() {
             actor.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, vec![1]);
         let config =
             PreCommitConfig::new(deal_weight.clone(), BigInt::from(verified_deal_weight), None);
-        let precommit = actor.pre_commit_sector(&mut rt, precommit_params, config, i == 0);
-        precommits.push(precommit);
+        let precommit = actor.pre_commit_sector(&mut rt, precommit_params, config, i == 0).unwrap();
+        let on_chain_info = precommit.deserialize().unwrap();
+        precommits.push(on_chain_info);
     }
 
     // todo: flush map to run to match partition state
