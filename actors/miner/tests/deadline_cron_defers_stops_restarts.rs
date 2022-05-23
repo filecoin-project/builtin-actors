@@ -14,7 +14,7 @@ fn cron_enrolls_on_precommit_prove_commits_and_continues_enrolling() {
     rt.set_balance(TokenAmount::from(BIG_BALANCE));
     h.construct_and_verify(&mut rt);
 
-    let cron_ctrl = CronControl { pre_commit_num: 0 };
+    let cron_ctrl = CronControl::default();
     let long_expiration = 500;
 
     cron_ctrl.require_cron_inactive(&h, &rt);
