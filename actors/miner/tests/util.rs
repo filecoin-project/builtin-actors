@@ -6,7 +6,9 @@ use fil_actor_market::{
     Method as MarketMethod, SectorDataSpec, SectorDeals, SectorWeights,
     VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
-use fil_actor_miner::aggregate_pre_commit_network_fee;
+use fil_actor_miner::{
+    aggregate_pre_commit_network_fee, consensus_fault_penalty, reward_for_consensus_slash_report,
+};
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
@@ -16,9 +18,9 @@ use fil_actor_miner::{
     DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, FaultDeclaration,
     GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
     PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
-    ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt,
-    CRON_EVENT_PROVING_DEADLINE,
+    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
+    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, VestingFunds,
+    WindowedPoSt, CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -42,6 +44,7 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -1446,7 +1449,7 @@ impl ActorHarness {
         pidx: u64,
         recovery_sectors: BitField,
         expected_debt_repaid: TokenAmount,
-    ) {
+    ) -> Result<(), ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
@@ -1471,9 +1474,9 @@ impl ActorHarness {
         rt.call::<Actor>(
             Method::DeclareFaultsRecovered as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
+        )?;
         rt.verify();
+        Ok(())
     }
 
     pub fn continued_fault_penalty(&self, sectors: &[SectorOnChainInfo]) -> TokenAmount {
@@ -1551,6 +1554,69 @@ impl ActorHarness {
             .unwrap();
         expirations
     }
+
+    pub fn report_consensus_fault(
+        &self,
+        rt: &mut MockRuntime,
+        from: Address,
+        fault: Option<ConsensusFault>,
+    ) -> Result<(), ActorError> {
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from);
+        let params =
+            ReportConsensusFaultParams { header1: vec![], header2: vec![], header_extra: vec![] };
+
+        rt.expect_verify_consensus_fault(
+            params.header1.clone(),
+            params.header2.clone(),
+            params.header_extra.clone(),
+            fault,
+            ExitCode::OK,
+        );
+
+        let current_reward = ThisEpochRewardReturn {
+            this_epoch_baseline_power: self.baseline_power.clone(),
+            this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
+        };
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            RewardMethod::ThisEpochReward as u64,
+            RawBytes::default(),
+            TokenAmount::from(0u8),
+            RawBytes::serialize(current_reward).unwrap(),
+            ExitCode::OK,
+        );
+        let this_epoch_reward = self.epoch_reward_smooth.estimate();
+        let penalty_total = consensus_fault_penalty(this_epoch_reward.clone());
+        let reward_total = reward_for_consensus_slash_report(&this_epoch_reward);
+        rt.expect_send(
+            from,
+            METHOD_SEND,
+            RawBytes::default(),
+            reward_total.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // pay fault fee
+        let to_burn = &penalty_total - &reward_total;
+        rt.expect_send(
+            *BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            RawBytes::default(),
+            to_burn,
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        let result = rt.call::<Actor>(
+            Method::ReportConsensusFault as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        expect_empty(result);
+        rt.verify();
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]
@@ -1618,16 +1684,17 @@ pub struct PreCommitBatchConfig {
     pub first_for_miner: bool,
 }
 
+#[derive(Default)]
 pub struct CronConfig {
-    no_enrollment: bool, // true if expect not to continue enrollment false otherwise
-    expected_enrollment: ChainEpoch,
-    detected_faults_power_delta: Option<PowerPair>,
-    expired_sectors_power_delta: Option<PowerPair>,
-    expired_sectors_pledge_delta: TokenAmount,
-    continued_faults_penalty: TokenAmount, // Expected amount burnt to pay continued fault penalties.
-    expired_precommit_penalty: TokenAmount, // Expected amount burnt to pay for expired precommits
-    repaid_fee_debt: TokenAmount,          // Expected amount burnt to repay fee debt.
-    penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds.
+    pub no_enrollment: bool, // true if expect not to continue enrollment false otherwise
+    pub expected_enrollment: ChainEpoch,
+    pub detected_faults_power_delta: Option<PowerPair>,
+    pub expired_sectors_power_delta: Option<PowerPair>,
+    pub expired_sectors_pledge_delta: TokenAmount,
+    pub continued_faults_penalty: TokenAmount, // Expected amount burnt to pay continued fault penalties.
+    pub expired_precommit_penalty: TokenAmount, // Expected amount burnt to pay for expired precommits
+    pub repaid_fee_debt: TokenAmount,           // Expected amount burnt to repay fee debt.
+    pub penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds.
 }
 
 #[allow(dead_code)]
