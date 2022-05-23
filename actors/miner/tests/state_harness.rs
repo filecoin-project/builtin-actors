@@ -1,10 +1,12 @@
 #![allow(dead_code)]
 use fil_actor_miner::MinerInfo;
+use fil_actor_miner::SectorOnChainInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::State;
 use fil_actor_miner::VestSpec;
 use fil_actor_miner::VestingFunds;
 use fil_actors_runtime::runtime::Policy;
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::CborStore;
@@ -99,6 +101,27 @@ impl StateHarness {
         target: &TokenAmount,
     ) -> anyhow::Result<TokenAmount> {
         self.st.unlock_unvested_funds(&self.store, current_epoch, target)
+    }
+
+    pub fn has_sector_number(&self, sector_no: SectorNumber) -> bool {
+        self.st.has_sector_number(&self.store, sector_no).unwrap()
+    }
+
+    pub fn put_sector(&mut self, sector: &SectorOnChainInfo) {
+        self.st.put_sectors(&self.store, vec![sector]).unwrap();
+    }
+
+    pub fn get_sector(&self, sector_number: SectorNumber) -> SectorOnChainInfo {
+        self.st.get_sector(&self.store, sector_number).unwrap().unwrap()
+    }
+
+    // makes a bit field from the passed sector numbers
+    pub fn delete_sectors(&mut self, sector_numbers: Vec<u64>) {
+        let mut bf = BitField::new();
+        for b in sector_numbers.iter() {
+            bf.set(*b);
+        }
+        self.st.delete_sectors(&self.store, &bf).unwrap();
     }
 }
 
