@@ -6,14 +6,14 @@ use fil_actor_market::{
     Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDataSpec, SectorDeals,
     SectorWeights, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
+use fil_actor_miner::aggregate_pre_commit_network_fee;
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
+use fil_actor_miner::max_prove_commit_duration;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, ChangeWorkerAddressParams, CheckSectorProvenParams,
     TerminateSectorsParams, TerminationDeclaration,
 };
-use fil_actor_miner::aggregate_pre_commit_network_fee;
-use fil_actor_miner::max_prove_commit_duration;
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
