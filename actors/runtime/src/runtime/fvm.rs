@@ -19,6 +19,8 @@ use fvm_shared::sector::{
 };
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
+#[cfg(feature = "fake-proofs")]
+use sha2::{Digest, Sha256};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::{
@@ -444,15 +446,26 @@ where
     }
 
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
-        if verify_info.proofs.len() == 0 {
-            return Err(Error::msg("[fake-post-validation] No winning post proof given"));
+        let mut info = verify_info.clone();
+        if info.proofs.len() != 1 {
+            return Err(Error::msg("expected 1 proof entry"));
         }
 
-        if &verify_info.proofs[0].proof_bytes == b"valid proof" {
+        info.randomness.0[31] &= 0x3f;
+        let mut hasher = Sha256::new();
+
+        hasher.update(info.randomness.0);
+        for si in info.challenged_sectors {
+            hasher.update(RawBytes::serialize(si)?.bytes());
+        }
+
+        let expected_proof = hasher.finalize();
+
+        if *verify_info.proofs[0].proof_bytes.as_slice() == expected_proof[..] {
             return Ok(());
         }
 
-        Err(Error::msg("[fake-post-validation] winning post was invalid"))
+        Err(Error::msg("[fake-post-validation] window post was invalid"))
     }
 
     fn verify_consensus_fault(
