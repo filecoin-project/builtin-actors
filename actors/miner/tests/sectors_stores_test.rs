@@ -1,6 +1,7 @@
 use cid::Cid;
 use fil_actor_miner::SectorOnChainInfo;
 use fil_actors_runtime::test_utils::*;
+use fvm_ipld_bitfield::BitField;
 use fvm_shared::{
     bigint::BigInt,
     clock::ChainEpoch,
@@ -44,6 +45,25 @@ fn put_get_and_delete() {
 
     h.delete_sectors(vec![sector_no as u64]);
     assert!(!h.has_sector_number(sector_no));
+}
+
+#[test]
+fn delete_nonexistent_value_returns_an_error() {
+    let mut h = StateHarness::new(ChainEpoch::from(0));
+
+    let sector_no = SectorNumber::from(1u64);
+    let mut bf = BitField::new();
+    bf.set(sector_no as u64);
+
+    assert!(h.st.delete_sectors(&h.store, &bf).is_err());
+}
+
+#[test]
+fn get_nonexistent_value_returns_false() {
+    let h = StateHarness::new(ChainEpoch::from(0));
+
+    let sector_number = SectorNumber::from(1u64);
+    assert!(!h.has_sector_number(sector_number as u64));
 }
 
 // returns a unique SectorOnChainInfo with each invocation with SectorNumber set to `sectorNo`.
