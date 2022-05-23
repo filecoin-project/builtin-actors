@@ -1013,7 +1013,14 @@ mod cron_tests {
 #[cfg(test)]
 mod cron_batch_proof_verifies_tests {
     use super::*;
-    use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
+    use fil_actor_power::ext::{
+        miner::{ConfirmSectorProofsParams, CONFIRM_SECTOR_PROOFS_VALID_METHOD},
+        reward::UPDATE_NETWORK_KPI,
+    };
+    use fil_actors_runtime::{
+        test_utils::{make_piece_cid, make_sealed_cid, CRON_ACTOR_CODE_ID},
+        CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    };
     use fvm_shared::{
         bigint::BigInt,
         sector::{InteractiveSealRandomness, SealRandomness, SealVerifyInfo, SectorID},
@@ -1094,6 +1101,192 @@ mod cron_batch_proof_verifies_tests {
 
         rt.verify();
         h.check_state();
+    }
+
+    #[test]
+    fn skips_verify_if_miner_has_no_claim() {
+        let (mut h, mut rt) = setup();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
+
+        let info = create_basic_seal_info(1);
+
+        h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info).unwrap();
+
+        h.delete_claim(&mut rt, &MINER_1);
+
+        let infos = vec![];
+
+        let confirmed_sectors = vec![];
+
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
+
+        h.check_state();
+    }
+
+    #[test]
+    fn success_with_multiple_miners_and_multiple_confirmed_sectors_and_assert_expected_power() {
+        let miner1 = Address::new_id(101);
+
+        // TODO: shares an id with constant `OWNER`
+        // this is a known issue however the ordering of the values
+        // are vital for this test and have been left as such
+        let miner2 = Address::new_id(102);
+        let miner3 = Address::new_id(103);
+        let miner4 = Address::new_id(104);
+
+        let info1 = create_basic_seal_info(1);
+        let info2 = create_basic_seal_info(2);
+        let info3 = create_basic_seal_info(3);
+        let info4 = create_basic_seal_info(101);
+        let info5 = create_basic_seal_info(200);
+        let info6 = create_basic_seal_info(201);
+        let info7 = create_basic_seal_info(300);
+        let info8 = create_basic_seal_info(301);
+
+        let (mut h, mut rt) = setup();
+
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner1).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner2).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner3).unwrap();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, miner4).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner1, info1.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner1, info2.clone()).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner2, info3.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner2, info4.clone()).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner3, info5.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner3, info6.clone()).unwrap();
+
+        h.submit_porep_for_bulk_verify(&mut rt, miner4, info7.clone()).unwrap();
+        h.submit_porep_for_bulk_verify(&mut rt, miner4, info8.clone()).unwrap();
+
+        // TODO Because read order of keys in a multi-map is not as per insertion order,
+        // we have to move around the expected sends
+        let confirmed_sectors = vec![
+            ConfirmedSectorSend {
+                miner: MINER_1,
+                sector_nums: vec![info1.sector_id.number, info2.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner3,
+                sector_nums: vec![info5.sector_id.number, info6.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner4,
+                sector_nums: vec![info7.sector_id.number, info8.sector_id.number],
+            },
+            ConfirmedSectorSend {
+                miner: miner2,
+                sector_nums: vec![info3.sector_id.number, info4.sector_id.number],
+            },
+        ];
+
+        let infos = vec![info1, info2, info5, info6, info7, info8, info3, info4];
+
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
+        h.check_state();
+    }
+
+    #[test]
+    fn success_when_no_confirmed_sector() {
+        let (h, mut rt) = setup();
+        h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), vec![], vec![]);
+
+        h.check_state();
+    }
+
+    #[test]
+    fn verification_for_one_sector_fails_but_others_succeeds_for_a_miner() {
+        let (mut h, mut rt) = setup();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
+
+        let infos: Vec<_> = (1..=3).map(create_basic_seal_info).collect();
+        infos.iter().for_each(|info| {
+            h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info.clone()).unwrap()
+        });
+
+        let res = Ok(vec![true, false, true]);
+
+        // send will only be for the first and third sector as the middle sector will fail verification
+        let cs = ConfirmedSectorSend {
+            miner: MINER_1,
+            sector_nums: vec![infos[0].sector_id.number, infos[2].sector_id.number],
+        };
+
+        h.expect_query_network_info(&mut rt);
+
+        let state: State = rt.get_state();
+
+        // expect sends for confirmed sectors
+        let params = ConfirmSectorProofsParams {
+            sectors: cs.sector_nums,
+            reward_smoothed: h.this_epoch_reward_smoothed.clone(),
+            reward_baseline_power: h.this_epoch_baseline_power().clone(),
+            quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
+        };
+
+        rt.expect_send(
+            cs.miner,
+            CONFIRM_SECTOR_PROOFS_VALID_METHOD,
+            RawBytes::serialize(params).unwrap(),
+            TokenAmount::from(0u8),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        rt.expect_batch_verify_seals(infos, res);
+
+        // expect power sends to reward actor
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            UPDATE_NETWORK_KPI,
+            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            TokenAmount::from(0u8),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+
+        rt.set_epoch(0);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+
+        rt.verify();
+    }
+
+    #[test]
+    fn cron_tick_does_not_fail_if_batch_verify_seals_fails() {
+        let (mut h, mut rt) = setup();
+        h.create_miner_basic(&mut rt, OWNER, OWNER, MINER_1).unwrap();
+
+        let infos: Vec<_> = (1..=3).map(create_basic_seal_info).collect();
+        infos.iter().for_each(|info| {
+            h.submit_porep_for_bulk_verify(&mut rt, MINER_1, info.clone()).unwrap()
+        });
+
+        h.expect_query_network_info(&mut rt);
+
+        rt.expect_batch_verify_seals(infos, Err(anyhow::Error::msg("fail")));
+        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+
+        // expect power sends to reward actor
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            UPDATE_NETWORK_KPI,
+            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            BigInt::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+        rt.set_epoch(0);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.verify();
     }
 }
 

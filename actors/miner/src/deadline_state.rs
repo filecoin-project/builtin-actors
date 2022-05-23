@@ -102,7 +102,7 @@ impl Deadlines {
 }
 
 /// Deadline holds the state for all sectors due at a specific deadline.
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, Serialize_tuple, Deserialize_tuple)]
 pub struct Deadline {
     /// Partitions in this deadline, in order.
     /// The keys of this AMT are always sequential integers beginning with zero.
@@ -639,10 +639,8 @@ impl Deadline {
             .ok_or_else(|| actor_error!(illegal_argument; "partitions to remove exceeds total"))?
             .collect();
 
-        if to_remove_set.is_empty() {}
-
         if let Some(&max_partition) = to_remove_set.iter().max() {
-            if max_partition > partition_count {
+            if max_partition >= partition_count {
                 return Err(
                     actor_error!(illegal_argument; "partition index {} out of range [0, {})", max_partition, partition_count).into()
                 );

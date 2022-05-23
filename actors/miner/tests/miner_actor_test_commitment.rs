@@ -1,12 +1,12 @@
 use fil_actor_miner::{
-    pre_commit_deposit_for_power, qa_power_for_weight, DeadlineInfo, State, VestSpec,
+    max_prove_commit_duration, pre_commit_deposit_for_power, qa_power_for_weight, DeadlineInfo, State, VestSpec,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::address::Address;
+use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -56,7 +56,7 @@ fn assert_simple_pre_commit(
 
     let precommit_params =
         h.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, deal_ids.to_vec());
-    let precommit = h.pre_commit_sector(
+    let precommit = h.pre_commit_sector_and_get(
         &mut rt,
         precommit_params.clone(),
         util::PreCommitConfig {
@@ -99,7 +99,7 @@ fn assert_simple_pre_commit(
     let expirations = h.collect_precommit_expirations(&rt, &st);
     let expected_precommit_expiration = st.quant_spec_every_deadline(&rt.policy).quantize_up(
         precommit_epoch
-            + rt.policy.max_prove_commit_duration[&h.seal_proof_type]
+            + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
             + rt.policy.expired_pre_commit_clean_up_delay,
     );
     assert_eq!(HashMap::from([(expected_precommit_expiration, vec![sector_number])]), expirations);
@@ -156,12 +156,7 @@ mod miner_actor_test_commitment {
 
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.pre_commit_sector_internal(
-                &mut rt,
-                precommit_params,
-                util::PreCommitConfig::empty(),
-                true,
-            ),
+            h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::empty(), true),
         );
         util::check_state_invariants(&rt);
     }
@@ -186,7 +181,7 @@ mod miner_actor_test_commitment {
 
         let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
 
-        let ret = h.pre_commit_sector_internal(
+        let ret = h.pre_commit_sector(
             &mut rt,
             precommit_params,
             util::PreCommitConfig {
@@ -228,13 +223,8 @@ mod miner_actor_test_commitment {
 
         let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
 
-        h.pre_commit_sector_internal(
-            &mut rt,
-            precommit_params,
-            util::PreCommitConfig::default(),
-            true,
-        )
-        .unwrap();
+        h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true)
+            .unwrap();
         let st: State = rt.get_state();
         assert_eq!(TokenAmount::zero(), st.fee_debt);
         util::check_state_invariants(&rt);
@@ -268,14 +258,14 @@ mod miner_actor_test_commitment {
         {
             let precommit_params =
                 h.make_pre_commit_params(101, challenge_epoch, expiration, vec![]);
-            h.pre_commit_sector(
+            h.pre_commit_sector_and_get(
                 &mut rt,
                 precommit_params.clone(),
                 util::PreCommitConfig::default(),
                 false,
             );
             // Duplicate pre-commit sector ID
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -293,7 +283,7 @@ mod miner_actor_test_commitment {
                 expiration,
                 vec![],
             );
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -308,7 +298,7 @@ mod miner_actor_test_commitment {
             let mut precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
             precommit_params.sealed_cid = make_cid("Random Data".as_bytes(), 0);
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -327,7 +317,7 @@ mod miner_actor_test_commitment {
             let mut precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
             precommit_params.seal_proof = RegisteredSealProof::StackedDRG8MiBV1;
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -344,7 +334,7 @@ mod miner_actor_test_commitment {
         // Expires at current epoch
         {
             let precommit_params = h.make_pre_commit_params(102, challenge_epoch, rt.epoch, vec![]);
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -362,7 +352,7 @@ mod miner_actor_test_commitment {
         {
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, rt.epoch - 1, vec![]);
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -381,7 +371,7 @@ mod miner_actor_test_commitment {
             let early_expiration = rt.policy.min_sector_expiration - EPOCHS_IN_DAY;
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, early_expiration, vec![]);
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -399,7 +389,7 @@ mod miner_actor_test_commitment {
                 - 1;
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -418,7 +408,7 @@ mod miner_actor_test_commitment {
                         + 1);
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -440,7 +430,7 @@ mod miner_actor_test_commitment {
                 expiration,
                 vec![],
             );
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -458,7 +448,7 @@ mod miner_actor_test_commitment {
                 - 1;
             let precommit_params =
                 h.make_pre_commit_params(102, too_old_challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -473,7 +463,7 @@ mod miner_actor_test_commitment {
             let deal_weight = TokenAmount::from(32u32 << 30) * (expiration - rt.epoch);
             let precommit_params =
                 h.make_pre_commit_params(0, challenge_epoch, expiration, vec![1]);
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig {
@@ -494,7 +484,7 @@ mod miner_actor_test_commitment {
             rt.replace_state(&st);
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -523,7 +513,7 @@ mod miner_actor_test_commitment {
             h.report_consensus_fault(&mut rt, test_addr, Some(fault));
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -573,7 +563,7 @@ mod miner_actor_test_commitment {
                 expiration,
                 make_deal_ids(limit + 1),
             );
-            let ret = h.pre_commit_sector_internal(
+            let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
@@ -593,7 +583,7 @@ mod miner_actor_test_commitment {
                 expiration,
                 make_deal_ids(limit),
             );
-            h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
+            h.pre_commit_sector_and_get(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
             util::check_state_invariants(&rt);
         }
     }
@@ -626,7 +616,7 @@ mod miner_actor_test_commitment {
             precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1;
             expect_abort(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                h.pre_commit_sector_internal(
+                h.pre_commit_sector(
                     &mut rt,
                     precommit_params.clone(),
                     util::PreCommitConfig::default(),
@@ -635,7 +625,7 @@ mod miner_actor_test_commitment {
             );
             rt.reset();
             precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-            h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
+            h.pre_commit_sector_and_get(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
         }
 
         util::check_state_invariants(&rt);
@@ -678,6 +668,6 @@ mod miner_actor_test_commitment {
         let precommit_params =
             h.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, vec![1]);
         // The below call expects no pledge delta.
-        h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
+        h.pre_commit_sector_and_get(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
     }
 }

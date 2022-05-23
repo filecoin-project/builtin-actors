@@ -4,6 +4,8 @@
 use core::fmt;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::fmt::Display;
+use std::rc::Rc;
 
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
@@ -17,7 +19,6 @@ use fvm_shared::clock::ChainEpoch;
 
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -36,7 +37,8 @@ use multihash::MultihashDigest;
 use rand::prelude::*;
 
 use crate::runtime::{
-    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier,
+    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
+    Verifier,
 };
 use crate::{actor_error, ActorError};
 
@@ -144,7 +146,7 @@ pub struct Expectations {
     pub expect_verify_sigs: VecDeque<ExpectedVerifySig>,
     pub expect_verify_seal: Option<ExpectVerifySeal>,
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
-    pub expect_compute_unsealed_sector_cid: Option<ExpectComputeUnsealedSectorCid>,
+    pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
     pub expect_get_randomness_tickets: Option<ExpectRandomness>,
     pub expect_get_randomness_beacon: Option<ExpectRandomness>,
@@ -202,8 +204,9 @@ impl Expectations {
             self.expect_verify_post
         );
         assert!(
-            self.expect_compute_unsealed_sector_cid.is_none(),
-            "expect_compute_unsealed_sector_cid not received",
+            self.expect_compute_unsealed_sector_cid.is_empty(),
+            "expect_compute_unsealed_sector_cid: {:?}, not received",
+            self.expect_compute_unsealed_sector_cid
         );
         assert!(
             self.expect_verify_consensus_fault.is_none(),
@@ -256,7 +259,7 @@ impl Default for MockRuntime {
             caller: Address::new_id(0),
             caller_type: Default::default(),
             value_received: Default::default(),
-            hash_func: Box::new(|_| [0u8; 32]),
+            hash_func: Box::new(blake2b_256),
             network_version: NetworkVersion::V0,
             state: Default::default(),
             balance: Default::default(),
@@ -491,8 +494,15 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
-    pub fn expect_compute_unsealed_sector_cid(&self, exp: ExpectComputeUnsealedSectorCid) {
-        self.expectations.borrow_mut().expect_compute_unsealed_sector_cid = Some(exp);
+    pub fn expect_compute_unsealed_sector_cid(
+        &self,
+        reg: RegisteredSealProof,
+        pieces: Vec<PieceInfo>,
+        cid: Cid,
+        exit_code: ExitCode,
+    ) {
+        let exp = ExpectComputeUnsealedSectorCid { reg, pieces, cid, exit_code };
+        self.expectations.borrow_mut().expect_compute_unsealed_sector_cid.push_back(exp);
     }
 
     #[allow(dead_code)]
@@ -1029,7 +1039,7 @@ impl Primitives for MockRuntime {
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
-        blake2b_256(data)
+        (*self.hash_func)(data)
     }
     fn compute_unsealed_sector_cid(
         &self,
@@ -1040,7 +1050,7 @@ impl Primitives for MockRuntime {
             .expectations
             .borrow_mut()
             .expect_compute_unsealed_sector_cid
-            .take()
+            .pop_front()
             .expect("Unexpected syscall to ComputeUnsealedSectorCID");
 
         assert_eq!(exp.reg, reg, "Unexpected compute_unsealed_sector_cid : reg mismatch");
@@ -1233,4 +1243,129 @@ pub fn new_bls_addr(s: u8) -> Address {
     let mut key = [0u8; 48];
     rng.fill_bytes(&mut key);
     Address::new_bls(&key).unwrap()
+}
+
+/// Accumulates a sequence of messages (e.g. validation failures).
+#[derive(Default)]
+pub struct MessageAccumulator {
+    /// Accumulated messages.
+    /// This is a `Rc<RefCell>` to support accumulators derived from `with_prefix()` accumulating to
+    /// the same underlying collection.
+    msgs: Rc<RefCell<Vec<String>>>,
+    /// Optional prefix to all new messages, e.g. describing higher level context.
+    prefix: String,
+}
+
+impl MessageAccumulator {
+    /// Returns a new accumulator backed by the same collection, that will prefix each new message with
+    /// a formatted string.
+    pub fn with_prefix(&self, prefix: &str) -> Self {
+        MessageAccumulator { msgs: self.msgs.clone(), prefix: self.prefix.to_owned() + prefix }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.msgs.borrow().is_empty()
+    }
+
+    pub fn messages(&self) -> Vec<String> {
+        self.msgs.borrow().to_owned()
+    }
+
+    /// Adds a message to the accumulator
+    pub fn add(&self, msg: &str) {
+        self.msgs.borrow_mut().push(format!("{}{msg}", self.prefix));
+    }
+
+    /// Adds messages from another accumulator to this one
+    pub fn add_all(&self, other: &Self) {
+        self.msgs.borrow_mut().extend_from_slice(&other.msgs.borrow());
+    }
+
+    /// Adds a message if predicate is false
+    pub fn require(&self, predicate: bool, msg: &str) {
+        if !predicate {
+            self.add(msg);
+        }
+    }
+
+    /// Adds a message if result is `Err`. Underlying error must be `Display`.
+    pub fn require_no_error<V, E: Display>(&self, result: Result<V, E>, msg: &str) {
+        if let Err(e) = result {
+            self.add(&format!("{msg}: {e}"));
+        }
+    }
+}
+
+#[cfg(test)]
+mod message_accumulator_test {
+    use super::*;
+
+    #[test]
+    fn adds_messages() {
+        let acc = MessageAccumulator::default();
+        acc.add("Cthulhu");
+
+        let msgs = acc.messages();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs, vec!["Cthulhu"]);
+
+        acc.add("Azathoth");
+        let msgs = acc.messages();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs, vec!["Cthulhu", "Azathoth"]);
+    }
+
+    #[test]
+    fn adds_on_predicate() {
+        let acc = MessageAccumulator::default();
+        acc.require(true, "Cthulhu");
+
+        let msgs = acc.messages();
+        assert_eq!(msgs.len(), 0);
+        assert!(acc.is_empty());
+
+        acc.require(false, "Azathoth");
+        let msgs = acc.messages();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs, vec!["Azathoth"]);
+        assert!(!acc.is_empty());
+    }
+
+    #[test]
+    fn require_no_error() {
+        let fiasco: Result<(), String> = Err("fiasco".to_owned());
+        let acc = MessageAccumulator::default();
+        acc.require_no_error(fiasco, "Cthulhu says");
+
+        let msgs = acc.messages();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs, vec!["Cthulhu says: fiasco"]);
+    }
+
+    #[test]
+    fn prefixes() {
+        let acc = MessageAccumulator::default();
+        acc.add("peasant");
+
+        let gods_acc = acc.with_prefix("elder god -> ");
+        gods_acc.add("Cthulhu");
+
+        assert_eq!(acc.messages(), vec!["peasant", "elder god -> Cthulhu"]);
+        assert_eq!(gods_acc.messages(), vec!["peasant", "elder god -> Cthulhu"]);
+    }
+
+    #[test]
+    fn add_all() {
+        let acc1 = MessageAccumulator::default();
+        acc1.add("Cthulhu");
+
+        let acc2 = MessageAccumulator::default();
+        acc2.add("Azathoth");
+
+        let acc3 = MessageAccumulator::default();
+        acc3.add_all(&acc1);
+        acc3.add_all(&acc2);
+
+        assert_eq!(acc3.messages(), vec!["Cthulhu", "Azathoth"]);
+    }
 }

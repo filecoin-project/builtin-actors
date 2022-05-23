@@ -1,11 +1,11 @@
 #![allow(clippy::all)]
 
 use fil_actor_miner as miner;
+use fil_actors_runtime::runtime::DomainSeparationTag;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;

@@ -16,7 +16,7 @@ pub use deadline_info::*;
 pub use deadline_state::*;
 pub use deadlines::*;
 pub use expiration_queue::*;
-use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
+use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -28,8 +28,6 @@ use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::randomness::DomainSeparationTag::WindowedPoStChallengeSeed;
-use fvm_shared::crypto::randomness::*;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 // The following errors are particular cases of illegal state.
@@ -3761,8 +3759,11 @@ where
 
     // Regenerate challenge randomness, which must match that generated for the proof.
     let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
-    let randomness: PoStRandomness =
-        rt.get_randomness_from_beacon(WindowedPoStChallengeSeed, challenge_epoch, &entropy)?;
+    let randomness: PoStRandomness = rt.get_randomness_from_beacon(
+        DomainSeparationTag::WindowedPoStChallengeSeed,
+        challenge_epoch,
+        &entropy,
+    )?;
 
     let challenged_sectors = sectors
         .iter()
@@ -4623,3 +4624,6 @@ impl ActorCode for Actor {
         }
     }
 }
+
+#[cfg(test)]
+mod internal_tests;

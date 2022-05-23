@@ -53,6 +53,30 @@ publish:
 bundle: deps-build
 	cargo run -- -o output/builtin-actors.car
 
+# Create all canonical network bundles
+all-bundles: bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet bundle-devnet bundle-testing bundle-testing
+
+bundle-mainnet: deps-build
+	BUILD_FIL_NETWORK=mainnet cargo run -- -o output/builtin-actors-mainnet.car
+
+bundle-caterpillarnet: deps-build
+	BUILD_FIL_NETWORK=caterpillarnet cargo run -- -o output/builtin-actors-caterpillarnet.car
+
+bundle-butterflynet: deps-build
+	BUILD_FIL_NETWORK=butterflynet cargo run -- -o output/builtin-actors-butterflynet.car
+
+bundle-calibrationnet: deps-build
+	BUILD_FIL_NETWORK=calibrationnet cargo run -- -o output/builtin-actors-calibrationnet.car
+
+bundle-devnet: deps-build
+	BUILD_FIL_NETWORK=devnet cargo run -- -o output/builtin-actors-devnet.car
+
+bundle-testing: deps-build
+	BUILD_FIL_NETWORK=testing cargo run -- -o output/builtin-actors-testing.car
+	BUILD_FIL_NETWORK=testing-fake-proofs cargo run -- -o output/builtin-actors-testing-fake-proofs.car
+
+.PHONY: all-bundles bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet bundle-devnet bundle-testing
+
 # Check if the working tree is clean.
 check-clean:
 	@git diff --quiet || { \
