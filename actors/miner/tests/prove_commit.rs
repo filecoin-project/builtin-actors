@@ -59,7 +59,7 @@ fn prove_single_sector() {
         PreCommitConfig {
             deal_weight: deal_weight.clone(),
             verified_deal_weight: verified_deal_weight.clone(),
-            deal_space: None,
+            deal_space: 0,
         },
         true,
     );

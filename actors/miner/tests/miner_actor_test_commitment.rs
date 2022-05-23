@@ -61,7 +61,7 @@ fn assert_simple_pre_commit(
         util::PreCommitConfig {
             deal_weight: BigInt::from(deal_weight),
             verified_deal_weight: BigInt::from(verified_deal_weight),
-            deal_space: SectorSize::from_u64(deal_space),
+            deal_space,
         },
         true,
     );
@@ -186,7 +186,7 @@ mod miner_actor_test_commitment {
             util::PreCommitConfig {
                 deal_weight: BigInt::default(),
                 verified_deal_weight: BigInt::default(),
-                deal_space: Some(SectorSize::_64GiB),
+                deal_space: h.sector_size as u64 + 1,
             },
             true,
         );
@@ -487,7 +487,7 @@ mod miner_actor_test_commitment {
                 util::PreCommitConfig {
                     deal_weight,
                     verified_deal_weight: BigInt::zero(),
-                    deal_space: Some(SectorSize::_64GiB),
+                    deal_space: h.sector_size as u64 + 1,
                 },
                 false,
             );

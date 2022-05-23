@@ -543,7 +543,7 @@ impl ActorHarness {
             };
             let vdreturn = VerifyDealsForActivationReturn {
                 sectors: vec![SectorWeights {
-                    deal_space: conf.deal_space.map(|s| s as u64).unwrap_or(0),
+                    deal_space: conf.deal_space,
                     deal_weight: conf.deal_weight,
                     verified_deal_weight: conf.verified_deal_weight,
                 }],
@@ -1994,7 +1994,7 @@ impl PoStConfig {
 pub struct PreCommitConfig {
     pub deal_weight: DealWeight,
     pub verified_deal_weight: DealWeight,
-    pub deal_space: Option<SectorSize>,
+    pub deal_space: u64,
 }
 
 #[allow(dead_code)]
@@ -2003,7 +2003,7 @@ impl PreCommitConfig {
         PreCommitConfig {
             deal_weight: DealWeight::from(0),
             verified_deal_weight: DealWeight::from(0),
-            deal_space: None,
+            deal_space: 0,
         }
     }
 
@@ -2011,7 +2011,7 @@ impl PreCommitConfig {
         PreCommitConfig {
             deal_weight: DealWeight::from(0),
             verified_deal_weight: DealWeight::from(0),
-            deal_space: Some(SectorSize::_2KiB),
+            deal_space: 0,
         }
     }
 }
