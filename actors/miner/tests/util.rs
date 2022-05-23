@@ -9,7 +9,8 @@ use fil_actor_market::{
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, TerminateSectorsParams, TerminationDeclaration,
+    aggregate_pre_commit_network_fee, CheckSectorProvenParams, TerminateSectorsParams,
+    TerminationDeclaration,
 };
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
@@ -1684,6 +1685,18 @@ impl ActorHarness {
         let info = state.get_info(rt.store()).unwrap();
 
         assert_eq!(new_id, info.peer_id);
+    }
+
+    pub fn check_sector_proven(
+        &self,
+        rt: &mut MockRuntime,
+        sector_number: SectorNumber,
+    ) -> Result<(), ActorError> {
+        let params = CheckSectorProvenParams { sector_number };
+        rt.expect_validate_caller_any();
+        rt.call::<Actor>(Method::CheckSectorProven as u64, &RawBytes::serialize(params).unwrap())?;
+        rt.verify();
+        Ok(())
     }
 }
 
