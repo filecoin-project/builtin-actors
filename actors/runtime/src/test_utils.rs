@@ -423,10 +423,6 @@ impl MockRuntime {
         self.actor_code_cids.insert(address, actor_type);
     }
 
-    pub fn set_network_version(&mut self, version: NetworkVersion) {
-        self.network_version = version;
-    }
-
     pub fn get_id_address(&self, address: &Address) -> Option<Address> {
         if address.protocol() == Protocol::ID {
             return Some(*address);

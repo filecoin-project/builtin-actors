@@ -1572,7 +1572,7 @@ impl Actor {
             }
             sector_numbers.set(precommit.sector_number);
 
-            if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof, rt.network_version()) {
+            if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof) {
                 return Err(actor_error!(
                     illegal_argument,
                     "unsupported seal proof type {}",
