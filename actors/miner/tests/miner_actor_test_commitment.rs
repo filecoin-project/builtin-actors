@@ -384,7 +384,7 @@ mod miner_actor_test_commitment {
         {
             let expiration = rt.epoch
                 + rt.policy.min_sector_expiration
-                + rt.policy.max_prove_commit_duration[&h.seal_proof_type]
+                + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
                 - 1;
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
@@ -462,7 +462,7 @@ mod miner_actor_test_commitment {
         {
             let too_old_challenge_epoch = precommit_epoch
                 - rt.policy.chain_finality
-                - rt.policy.max_prove_commit_duration[&h.seal_proof_type]
+                - max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
                 - 1;
             let precommit_params =
                 h.make_pre_commit_params(102, too_old_challenge_epoch, expiration, vec![]);
