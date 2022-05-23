@@ -59,7 +59,10 @@ fn does_nothing_before_the_effective_date() {
     let info = state.get_info(rt.store()).unwrap();
 
     assert_eq!(info.worker, h.worker);
-    assert!(info.pending_worker_key.is_some());
+
+    let pending_worker_key = info.pending_worker_key.unwrap();
+    assert_eq!(pending_worker_key.new_worker, NEW_WORKER);
+    assert_eq!(pending_worker_key.effective_at, effective_epoch);
 
     check_state_invariants(&rt);
 }
