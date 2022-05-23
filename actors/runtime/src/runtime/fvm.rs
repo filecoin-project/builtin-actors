@@ -4,11 +4,10 @@ use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{to_vec, Cbor, CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
-use fvm_sdk::message::NO_DATA_BLOCK_ID;
+use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
@@ -20,10 +19,13 @@ use fvm_shared::sector::{
 };
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
+#[cfg(feature = "fake-proofs")]
+use sha2::{Digest, Sha256};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::{
-    ActorCode, ConsensusFault, MessageInfo, Policy, Primitives, RuntimePolicy, Verifier,
+    ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
+    Verifier,
 };
 use crate::{actor_error, ActorError, Runtime};
 
@@ -160,7 +162,7 @@ where
     }
 
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
-        fvm::actor::resolve_builtin_actor_type(code_id)
+        fvm::actor::get_builtin_actor_type(code_id)
     }
 
     fn get_code_cid_for_type(&self, typ: Type) -> Cid {
@@ -179,11 +181,13 @@ where
         // At the moment, we return "illegal argument" if the lookback is exceeded (not possible
         // with the current actors) and panic otherwise (as it indicates that we passed some
         // unexpected bad value to the syscall).
-        fvm::rand::get_chain_randomness(personalization, rand_epoch, entropy).map_err(|e| match e {
-            ErrorNumber::LimitExceeded => {
-                actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                }
+                e => panic!("get chain randomness failed with an unexpected error: {}", e),
             }
-            e => panic!("get chain randomness failed with an unexpected error: {}", e),
         })
     }
 
@@ -194,14 +198,14 @@ where
         entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
         // Note: specs-actors treats all failures to get randomness as "fatal" errors. See above.
-        fvm::rand::get_beacon_randomness(personalization, rand_epoch, entropy).map_err(
-            |e| match e {
+        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+            match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
                 e => panic!("get chain randomness failed with an unexpected error: {}", e),
-            },
-        )
+            }
+        })
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
@@ -442,15 +446,26 @@ where
     }
 
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
-        if verify_info.proofs.len() == 0 {
-            return Err(Error::msg("[fake-post-validation] No winning post proof given"));
+        let mut info = verify_info.clone();
+        if info.proofs.len() != 1 {
+            return Err(Error::msg("expected 1 proof entry"));
         }
 
-        if &verify_info.proofs[0].proof_bytes == b"valid proof" {
+        info.randomness.0[31] &= 0x3f;
+        let mut hasher = Sha256::new();
+
+        hasher.update(info.randomness.0);
+        for si in info.challenged_sectors {
+            hasher.update(RawBytes::serialize(si)?.bytes());
+        }
+
+        let expected_proof = hasher.finalize();
+
+        if *verify_info.proofs[0].proof_bytes.as_slice() == expected_proof[..] {
             return Ok(());
         }
 
-        Err(Error::msg("[fake-post-validation] winning post was invalid"))
+        Err(Error::msg("[fake-post-validation] window post was invalid"))
     }
 
     fn verify_consensus_fault(
