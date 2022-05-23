@@ -1704,7 +1704,7 @@ impl ActorHarness {
             RawBytes::default(),
             ExitCode::OK,
         );
-        if expected_debt_repaid > &TokenAmount::zero() {
+        if expected_debt_repaid.is_positive() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
