@@ -1889,7 +1889,7 @@ impl ActorHarness {
         &self,
         rt: &mut MockRuntime,
         mut params: ExtendSectorExpirationParams,
-    ) -> Result<(), ActorError> {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
@@ -1919,13 +1919,13 @@ impl ActorHarness {
             );
         }
 
-        rt.call::<Actor>(
+        let ret = rt.call::<Actor>(
             Method::ExtendSectorExpiration as u64,
             &RawBytes::serialize(params).unwrap(),
         )?;
 
         rt.verify();
-        Ok(())
+        Ok(ret)
     }
 }
 
