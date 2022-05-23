@@ -251,6 +251,12 @@ impl Default for Policy {
                 RegisteredPoStProof::StackedDRGWindow64GiBV1,
             ]),
             valid_pre_commit_proof_type: HashSet::<RegisteredSealProof>::from([
+                #[cfg(feature = "sector-2k")]
+                RegisteredSealProof::StackedDRG2KiBV1P1,
+                #[cfg(feature = "sector-8m")]
+                RegisteredSealProof::StackedDRG8MiBV1P1,
+                #[cfg(feature = "sector-512m")]
+                RegisteredSealProof::StackedDRG512MiBV1P1,
                 #[cfg(feature = "sector-32g")]
                 RegisteredSealProof::StackedDRG32GiBV1P1,
                 #[cfg(feature = "sector-64g")]
