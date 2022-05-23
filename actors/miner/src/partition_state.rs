@@ -223,7 +223,7 @@ impl Partition {
 
         let sector_numbers = sector_numbers
             .validate()
-            .map_err(|e| anyhow!("failed to intersect sectors with recoveries: {}", e))?;
+            .map_err(|e| anyhow!("failed to validate sector_numbers: {}", e))?;
 
         // Split declarations into declarations of new faults, and retraction of declared recoveries.
         let retracted_recoveries = &self.recoveries & sector_numbers;
@@ -250,6 +250,16 @@ impl Partition {
         } else {
             Default::default()
         };
+
+        // remove faulty recoveries from state
+        let retracted_recovery_sectors = sectors
+            .load_sector(&retracted_recoveries)
+            .map_err(|e| e.wrap("failed to load recovery sectors"))?;
+        if !retracted_recovery_sectors.is_empty() {
+            let retracted_recovery_power =
+                power_for_sectors(sector_size, &retracted_recovery_sectors);
+            self.remove_recoveries(&retracted_recoveries, &retracted_recovery_power);
+        }
 
         // check invariants
         self.validate_state()?;

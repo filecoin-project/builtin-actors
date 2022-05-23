@@ -3,10 +3,15 @@
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
     ActivateDealsParams, ComputeDataCommitmentParams, ComputeDataCommitmentReturn,
-    Method as MarketMethod, SectorDataSpec, SectorDeals, SectorWeights,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDataSpec, SectorDeals,
+    SectorWeights, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
-use fil_actor_miner::aggregate_pre_commit_network_fee;
+use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
+use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
+use fil_actor_miner::{
+    aggregate_pre_commit_network_fee, ChangeWorkerAddressParams, CheckSectorProvenParams,
+    TerminateSectorsParams, TerminationDeclaration,
+};
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
@@ -24,7 +29,7 @@ use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
@@ -42,7 +47,6 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
-use fvm_shared::crypto::randomness::DomainSeparationTag;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -55,13 +59,24 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::METHOD_SEND;
 
 use cid::Cid;
+use itertools::Itertools;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
+use num_traits::sign::Signed;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ops::Neg;
 
 const RECEIVER_ID: u64 = 1000;
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
+
+// A reward amount for use in tests where the vesting amount wants to be large enough to cover penalties.
+#[allow(dead_code)]
+pub const BIG_REWARDS: u128 = 10u128.pow(24);
+
+// an expriration ~10 days greater than effective min expiration taking into account 30 days max between pre and prove commit
+#[allow(dead_code)]
+pub const DEFAULT_SECTOR_EXPIRATION: u64 = 220;
 
 #[allow(dead_code)]
 pub fn setup() -> (ActorHarness, MockRuntime) {
@@ -1550,6 +1565,189 @@ impl ActorHarness {
             })
             .unwrap();
         expirations
+    }
+
+    pub fn terminate_sectors(
+        &self,
+        rt: &mut MockRuntime,
+        sectors: &BitField,
+        expected_fee: TokenAmount,
+    ) -> (PowerPair, TokenAmount) {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let mut deal_ids: Vec<DealID> = Vec::new();
+        let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
+
+        for sector in sectors.iter() {
+            let sector = self.get_sector(rt, sector);
+            deal_ids.extend(sector.deal_ids.iter());
+            sector_infos.push(sector);
+        }
+
+        self.expect_query_network_info(rt);
+
+        let mut pledge_delta = BigInt::zero();
+        if expected_fee.is_positive() {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_fee.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+            pledge_delta = expected_fee.neg();
+        }
+
+        // notify change to initial pledge
+        for sector_info in &sector_infos {
+            pledge_delta -= sector_info.initial_pledge.to_owned();
+        }
+
+        if !pledge_delta.is_zero() {
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_PLEDGE_TOTAL_METHOD,
+                RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
+                BigInt::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        if !deal_ids.is_empty() {
+            let max_length = 8192;
+            let size = deal_ids.len().min(max_length);
+            let params = OnMinerSectorsTerminateParams {
+                epoch: rt.epoch,
+                deal_ids: deal_ids[0..size].to_owned(),
+            };
+            rt.expect_send(
+                *STORAGE_MARKET_ACTOR_ADDR,
+                ON_MINER_SECTORS_TERMINATE_METHOD,
+                RawBytes::serialize(params).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let sector_power = power_for_sectors(self.sector_size, &sector_infos);
+        let params = UpdateClaimedPowerParams {
+            raw_byte_delta: -sector_power.raw.clone(),
+            quality_adjusted_delta: -sector_power.qa.clone(),
+        };
+        rt.expect_send(
+            *STORAGE_POWER_ACTOR_ADDR,
+            UPDATE_CLAIMED_POWER_METHOD,
+            RawBytes::serialize(params).unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // create declarations
+        let state: State = rt.get_state();
+        let deadlines = state.load_deadlines(rt.store()).unwrap();
+
+        let mut terminations: Vec<TerminationDeclaration> = Vec::new();
+
+        let policy = Policy::default();
+        for sector in sectors.iter() {
+            let (deadline, partition) = deadlines.find_sector(&policy, rt.store(), sector).unwrap();
+            terminations.push(TerminationDeclaration {
+                sectors: make_bitfield(&[sector]),
+                deadline,
+                partition,
+            });
+        }
+
+        let params = TerminateSectorsParams { terminations };
+
+        rt.call::<Actor>(Method::TerminateSectors as u64, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+
+        (-sector_power, pledge_delta)
+    }
+
+    pub fn change_peer_id(&self, rt: &mut MockRuntime, new_id: Vec<u8>) {
+        let params = ChangePeerIDParams { new_id: new_id.to_owned() };
+
+        rt.expect_validate_caller_addr(self.caller_addrs());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        rt.call::<Actor>(Method::ChangePeerID as u64, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+
+        let state: State = rt.get_state();
+        let info = state.get_info(rt.store()).unwrap();
+
+        assert_eq!(new_id, info.peer_id);
+    }
+
+    pub fn check_sector_proven(
+        &self,
+        rt: &mut MockRuntime,
+        sector_number: SectorNumber,
+    ) -> Result<(), ActorError> {
+        let params = CheckSectorProvenParams { sector_number };
+        rt.expect_validate_caller_any();
+        rt.call::<Actor>(Method::CheckSectorProven as u64, &RawBytes::serialize(params).unwrap())?;
+        rt.verify();
+        Ok(())
+    }
+
+    pub fn change_worker_address(
+        &self,
+        rt: &mut MockRuntime,
+        new_worker: Address,
+        new_control_addresses: Vec<Address>,
+    ) -> Result<(), ActorError> {
+        rt.set_address_actor_type(new_worker.clone(), *ACCOUNT_ACTOR_CODE_ID);
+
+        let params = ChangeWorkerAddressParams {
+            new_worker: new_worker.clone(),
+            new_control_addresses: new_control_addresses.clone(),
+        };
+        rt.expect_send(
+            new_worker,
+            AccountMethod::PubkeyAddress as u64,
+            RawBytes::default(),
+            TokenAmount::zero(),
+            RawBytes::serialize(self.worker_key).unwrap(),
+            ExitCode::OK,
+        );
+
+        rt.expect_validate_caller_addr(vec![self.owner]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+        rt.call::<Actor>(
+            Method::ChangeWorkerAddress as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        rt.verify();
+
+        let state: State = rt.get_state();
+        let info = state.get_info(rt.store()).unwrap();
+
+        let control_addresses = new_control_addresses
+            .iter()
+            .map(|address| rt.get_id_address(&address).unwrap())
+            .collect_vec();
+        assert_eq!(control_addresses, info.control_addresses);
+
+        Ok(())
+    }
+
+    pub fn confirm_update_worker_key(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
+        rt.expect_validate_caller_addr(vec![self.owner]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+        rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, &RawBytes::default())?;
+        rt.verify();
+
+        Ok(())
     }
 }
 
