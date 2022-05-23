@@ -8,8 +8,10 @@ use fil_actor_market::{
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
+use fil_actor_miner::max_prove_commit_duration;
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, TerminateSectorsParams, TerminationDeclaration,
+    aggregate_pre_commit_network_fee, ChangeWorkerAddressParams, CheckSectorProvenParams,
+    TerminateSectorsParams, TerminationDeclaration,
 };
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
@@ -58,6 +60,7 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::METHOD_SEND;
 
 use cid::Cid;
+use itertools::Itertools;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 use num_traits::sign::Signed;
@@ -875,7 +878,7 @@ impl ActorHarness {
         state.deadline_info(&rt.policy, rt.epoch)
     }
 
-    fn on_deadline_cron(&self, rt: &mut MockRuntime, cfg: CronConfig) {
+    pub fn on_deadline_cron(&self, rt: &mut MockRuntime, cfg: CronConfig) {
         let state = self.get_state(rt);
         rt.expect_validate_caller_addr(vec![*STORAGE_POWER_ACTOR_ADDR]);
 
@@ -1056,20 +1059,21 @@ impl ActorHarness {
             }
         }
 
-        if cfg.expected_power_delta.is_some() {
-            let power_delta = cfg.expected_power_delta.unwrap();
-            let claim = UpdateClaimedPowerParams {
-                raw_byte_delta: power_delta.raw,
-                quality_adjusted_delta: power_delta.qa,
-            };
-            rt.expect_send(
-                *STORAGE_POWER_ACTOR_ADDR,
-                PowerMethod::UpdateClaimedPower as u64,
-                RawBytes::serialize(claim).unwrap(),
-                TokenAmount::from(0u8),
-                RawBytes::default(),
-                ExitCode::OK,
-            );
+        if let Some(power_delta) = cfg.expected_power_delta {
+            if !power_delta.is_zero() {
+                let claim = UpdateClaimedPowerParams {
+                    raw_byte_delta: power_delta.raw,
+                    quality_adjusted_delta: power_delta.qa,
+                };
+                rt.expect_send(
+                    *STORAGE_POWER_ACTOR_ADDR,
+                    PowerMethod::UpdateClaimedPower as u64,
+                    RawBytes::serialize(claim).unwrap(),
+                    TokenAmount::from(0u8),
+                    RawBytes::default(),
+                    ExitCode::OK,
+                );
+            }
         }
 
         rt.call::<Actor>(Method::SubmitWindowedPoSt as u64, &RawBytes::serialize(params).unwrap())
@@ -1732,6 +1736,66 @@ impl ActorHarness {
             "return value indicates {} withdrawn but expected {}",
             withdrawn, expected_withdrawn
         );
+
+    pub fn check_sector_proven(
+        &self,
+        rt: &mut MockRuntime,
+        sector_number: SectorNumber,
+    ) -> Result<(), ActorError> {
+        let params = CheckSectorProvenParams { sector_number };
+        rt.expect_validate_caller_any();
+        rt.call::<Actor>(Method::CheckSectorProven as u64, &RawBytes::serialize(params).unwrap())?;
+        rt.verify();
+        Ok(())
+    }
+
+    pub fn change_worker_address(
+        &self,
+        rt: &mut MockRuntime,
+        new_worker: Address,
+        new_control_addresses: Vec<Address>,
+    ) -> Result<(), ActorError> {
+        rt.set_address_actor_type(new_worker.clone(), *ACCOUNT_ACTOR_CODE_ID);
+
+        let params = ChangeWorkerAddressParams {
+            new_worker: new_worker.clone(),
+            new_control_addresses: new_control_addresses.clone(),
+        };
+        rt.expect_send(
+            new_worker,
+            AccountMethod::PubkeyAddress as u64,
+            RawBytes::default(),
+            TokenAmount::zero(),
+            RawBytes::serialize(self.worker_key).unwrap(),
+            ExitCode::OK,
+        );
+
+        rt.expect_validate_caller_addr(vec![self.owner]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+        rt.call::<Actor>(
+            Method::ChangeWorkerAddress as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        rt.verify();
+
+        let state: State = rt.get_state();
+        let info = state.get_info(rt.store()).unwrap();
+
+        let control_addresses = new_control_addresses
+            .iter()
+            .map(|address| rt.get_id_address(&address).unwrap())
+            .collect_vec();
+        assert_eq!(control_addresses, info.control_addresses);
+
+        Ok(())
+    }
+
+    pub fn confirm_update_worker_key(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
+        rt.expect_validate_caller_addr(vec![self.owner]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+        rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, &RawBytes::default())?;
+        rt.verify();
+
         Ok(())
     }
 }
@@ -2677,5 +2741,111 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
         live_power: all_live_power,
         active_power: all_active_power,
         faulty_power: all_faulty_power,
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Default)]
+pub struct CronControl {
+    pub pre_commit_num: u64,
+}
+
+#[allow(dead_code)]
+impl CronControl {
+    pub fn require_cron_inactive(&self, h: &ActorHarness, rt: &MockRuntime) {
+        let st = h.get_state(&rt);
+        assert!(!st.deadline_cron_active); // No cron running now
+        assert!(!st.continue_deadline_cron()); // No reason to cron now, state inactive
+    }
+
+    pub fn require_cron_active(&self, h: &ActorHarness, rt: &MockRuntime) {
+        let st = h.get_state(rt);
+        assert!(st.deadline_cron_active);
+        assert!(st.continue_deadline_cron());
+    }
+
+    // Start cron by precommitting at preCommitEpoch, return clean up epoch.
+    // Verifies that cron is not started, precommit is run and cron is enrolled.
+    // Returns epoch at which precommit is scheduled for clean up and removed from state by cron.
+    pub fn pre_commit_to_start_cron(
+        &mut self,
+        h: &ActorHarness,
+        rt: &mut MockRuntime,
+        pre_commit_epoch: ChainEpoch,
+    ) -> ChainEpoch {
+        rt.set_epoch(pre_commit_epoch);
+        let st = h.get_state(rt);
+        self.require_cron_inactive(h, rt);
+
+        let dlinfo = new_deadline_info_from_offset_and_epoch(
+            &rt.policy,
+            st.proving_period_start,
+            pre_commit_epoch,
+        ); // actor.deadline might be out of date
+        let sector_no = self.pre_commit_num;
+        self.pre_commit_num += 1;
+        let expiration =
+            dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION as i64 * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
+        let precommit_params =
+            h.make_pre_commit_params(sector_no, pre_commit_epoch - 1, expiration, vec![]);
+        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::empty(), true);
+
+        // PCD != 0 so cron must be active
+        self.require_cron_active(h, rt);
+
+        let clean_up_epoch = pre_commit_epoch
+            + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
+            + rt.policy.expired_pre_commit_clean_up_delay;
+        clean_up_epoch
+    }
+
+    // Stop cron by advancing to the preCommit clean up epoch.
+    // Assumes no proved sectors, no vesting funds.
+    // Verifies cron runs until clean up, PCD burnt and cron discontinued during last deadline
+    // Return open of first deadline after expiration.
+    fn expire_pre_commit_stop_cron(
+        &self,
+        h: &ActorHarness,
+        rt: &mut MockRuntime,
+        start_epoch: ChainEpoch,
+        clean_up_epoch: ChainEpoch,
+    ) -> ChainEpoch {
+        self.require_cron_active(h, rt);
+        let st = h.get_state(rt);
+
+        let mut dlinfo = new_deadline_info_from_offset_and_epoch(
+            &rt.policy,
+            st.proving_period_start,
+            start_epoch,
+        ); // actor.deadline might be out of date
+        while dlinfo.open <= clean_up_epoch {
+            // PCDs are quantized to be burnt on the *next* new deadline after the one they are cleaned up in
+            // asserts cron is rescheduled
+            dlinfo = h.advance_deadline(rt, CronConfig::empty());
+        }
+        // We expect PCD burnt and cron not rescheduled here.
+        rt.set_epoch(dlinfo.last());
+        h.on_deadline_cron(
+            rt,
+            CronConfig {
+                no_enrollment: true,
+                expired_precommit_penalty: st.pre_commit_deposits,
+                ..CronConfig::empty()
+            },
+        );
+        rt.set_epoch(dlinfo.next_open());
+
+        self.require_cron_inactive(h, rt);
+        rt.epoch
+    }
+
+    pub fn pre_commit_start_cron_expire_stop_cron(
+        &mut self,
+        h: &ActorHarness,
+        rt: &mut MockRuntime,
+        start_epoch: ChainEpoch,
+    ) -> ChainEpoch {
+        let clean_up_epoch = self.pre_commit_to_start_cron(h, rt, start_epoch);
+        self.expire_pre_commit_stop_cron(h, rt, start_epoch, clean_up_epoch)
     }
 }
