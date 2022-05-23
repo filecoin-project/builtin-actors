@@ -89,9 +89,9 @@ fn pay_debt_partially_from_vested_funds() {
     // send 1 FIL and repay all debt from vesting funds and balance
     h.repay_debts(
         &mut rt,
-        &TokenAmount::from(BIG_BALANCE),
-        &amount_locked,
-        &TokenAmount::from(BIG_BALANCE),
+        &TokenAmount::from(BIG_BALANCE), // send 1 FIL
+        &amount_locked,                  // 3 FIL comes from vesting funds
+        &TokenAmount::from(BIG_BALANCE), // 1 FIL sent from balance
     )
     .unwrap();
 
