@@ -156,7 +156,7 @@ mod miner_actor_test_commitment {
 
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::empty(), true),
+            h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true),
         );
         util::check_state_invariants(&rt);
     }
