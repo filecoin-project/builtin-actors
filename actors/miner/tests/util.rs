@@ -878,7 +878,7 @@ impl ActorHarness {
         state.deadline_info(&rt.policy, rt.epoch)
     }
 
-    fn on_deadline_cron(&self, rt: &mut MockRuntime, cfg: CronConfig) {
+    pub fn on_deadline_cron(&self, rt: &mut MockRuntime, cfg: CronConfig) {
         let state = self.get_state(rt);
         rt.expect_validate_caller_addr(vec![*STORAGE_POWER_ACTOR_ADDR]);
 
