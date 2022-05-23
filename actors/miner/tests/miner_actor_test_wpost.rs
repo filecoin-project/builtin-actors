@@ -1,6 +1,7 @@
 #![allow(clippy::all)]
 
 use fil_actor_miner as miner;
+use fil_actor_miner::PowerPair;
 use fil_actors_runtime::runtime::DomainSeparationTag;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_bitfield::BitField;
@@ -13,6 +14,7 @@ use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::sector::RegisteredSealProof;
 
 mod util;
+
 use util::*;
 
 // an expiration ~10 days greater than effective min expiration taking into account 30 days max
@@ -1143,4 +1145,77 @@ fn can_dispute_test_after_proving_period_changes() {
     );
 
     h.dispute_window_post(&mut rt, &target_dlinfo, 0, &target_sectors, Some(post_dispute_result));
+}
+
+#[test]
+fn bad_post_fails_when_verified() {
+    let period_offset = ChainEpoch::from(100);
+    let precommit_epoch = ChainEpoch::from(1);
+
+    let mut h = ActorHarness::new(period_offset);
+    h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
+
+    let mut rt = h.new_runtime();
+    rt.epoch = precommit_epoch;
+    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+
+    h.construct_and_verify(&mut rt);
+
+    let infos = h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let power_for_sectors =
+        &miner::power_for_sectors(h.sector_size, &vec![infos[0].clone(), infos[1].clone()]);
+
+    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
+
+    let state = h.get_state(&rt);
+    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
+    let (dlidx2, pidx2) = state.find_sector(&rt.policy, &rt.store, infos[1].sector_number).unwrap();
+    assert_eq!(dlidx, dlidx2);
+    assert_eq!(pidx, pidx2);
+
+    // Become faulty
+
+    h.advance_to_deadline(&mut rt, dlidx);
+    h.advance_deadline(&mut rt, CronConfig::empty());
+    h.advance_to_deadline(&mut rt, dlidx);
+
+    let fault_fee = h.continued_fault_penalty(&vec![infos[0].clone(), infos[1].clone()]);
+    h.advance_deadline(
+        &mut rt,
+        CronConfig::with_detected_faults_power_delta_and_continued_faults_penalty(
+            &PowerPair::zero(),
+            fault_fee,
+        ),
+    );
+
+    // Promise to recover
+
+    let mut bf = BitField::new();
+    bf.set(infos[0].sector_number);
+    bf.set(infos[1].sector_number);
+    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8));
+
+    // Now submit a PoSt, but a BAD one
+    let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
+
+    let partition = miner::PoStPartition { index: pidx, skipped: make_bitfield(&[]) };
+    let mut post_config = PoStConfig::with_expected_power_delta(power_for_sectors);
+    // this makes the PoSt BAD
+    post_config.verification_exit = Some(ExitCode::USR_ILLEGAL_ARGUMENT);
+
+    let params = miner::SubmitWindowedPoStParams {
+        deadline: dlidx,
+        partitions: vec![partition],
+        proofs: make_post_proofs(h.window_post_proof_type),
+        chain_commit_epoch: dlinfo.challenge,
+        chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+    };
+    let result = h.submit_window_post_raw(&mut rt, &dlinfo, infos, params, post_config);
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "invalid post was submitted",
+        result,
+    );
+
+    check_state_invariants(&rt);
 }
