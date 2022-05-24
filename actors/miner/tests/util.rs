@@ -3010,16 +3010,16 @@ pub fn bitfield_from_slice(sector_numbers: &[u64]) -> BitField {
 }
 
 #[derive(Default, Clone)]
-pub struct BitfieldQueueExpectation {
+pub struct BitFieldQueueExpectation {
     pub expected: BTreeMap<ChainEpoch, Vec<u64>>,
 }
 
-impl BitfieldQueueExpectation {
+impl BitFieldQueueExpectation {
     #[allow(dead_code)]
     pub fn add(&self, epoch: ChainEpoch, values: &[u64]) -> Self {
         let mut expected = self.expected.clone();
         let _ = expected.insert(epoch, values.to_vec());
-        BitfieldQueueExpectation { expected }
+        Self { expected }
     }
 
     #[allow(dead_code)]

@@ -23,7 +23,7 @@ fn adds_values_to_empty_queue() {
 
     queue.add_to_queue_values(epoch, values).unwrap();
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     bq_expectation.add(epoch, &values).equals(&queue);
 }
 
@@ -38,7 +38,7 @@ fn adds_bitfield_to_empty_queue() {
 
     queue.add_to_queue(epoch, &BitField::try_from_bits(values).unwrap()).unwrap();
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     bq_expectation.add(epoch, &values).equals(&queue);
 }
 
@@ -57,7 +57,7 @@ fn quantizes_added_epochs_according_to_quantization_spec() {
         queue.add_to_queue_values(val as i64, [val]).unwrap();
     }
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     // expect values to only be set on quantization boundaries
     bq_expectation
         .add(ChainEpoch::from(3), &[0, 2, 3])
@@ -77,7 +77,7 @@ fn merges_values_within_same_epoch() {
     queue.add_to_queue_values(epoch, [1, 3].to_vec()).unwrap();
     queue.add_to_queue_values(epoch, [2, 4].to_vec()).unwrap();
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     bq_expectation.add(epoch, &[1, 2, 3, 4]).equals(&queue);
 }
 
@@ -93,7 +93,7 @@ fn adds_values_to_different_epochs() {
     queue.add_to_queue_values(epoch1, [1, 3].to_vec()).unwrap();
     queue.add_to_queue_values(epoch2, [2, 4].to_vec()).unwrap();
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     bq_expectation.add(epoch1, &[1, 3]).add(epoch2, &[2, 4]).equals(&queue);
 }
 
@@ -132,7 +132,7 @@ fn pop_until_does_nothing_if_until_parameter_before_first_value() {
     // modified is false
     assert!(!modified);
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     // queue remains the same
     bq_expectation.add(epoch1, &[1, 3]).add(epoch2, &[2, 4]).equals(&queue);
 }
@@ -160,7 +160,7 @@ fn pop_until_removes_and_returns_entries_before_and_including_target_epoch() {
     // values from first two epochs are returned
     assert_bitfield_equals(&next, &[1, 3, 5]);
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     // queue only contains remaining values
     bq_expectation.add(epoch3, &[6, 7, 8]).add(epoch4, &[2, 4]).equals(&queue);
 
@@ -171,7 +171,7 @@ fn pop_until_removes_and_returns_entries_before_and_including_target_epoch() {
     // no values are returned
     assert_bitfield_equals(&next, &[]);
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     // queue only contains remaining values
     bq_expectation.add(epoch3, &[6, 7, 8]).add(epoch4, &[2, 4]).equals(&queue);
 
@@ -182,7 +182,7 @@ fn pop_until_removes_and_returns_entries_before_and_including_target_epoch() {
     // rest of values are returned
     assert_bitfield_equals(&next, &[2, 4, 6, 7, 8]);
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     // queue is now empty
     bq_expectation.equals(&queue);
 }
@@ -202,7 +202,7 @@ fn cuts_elements() {
     let to_cut = MaybeBitField::from_iter([2, 4, 5, 6]).unwrap();
     queue.cut(&to_cut).unwrap();
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     // 3 shifts down to 2, 99 down to 95
     bq_expectation.add(epoch1, &[1, 2, 95]).equals(&queue);
 }
@@ -217,7 +217,7 @@ fn adds_empty_bitfield_to_queue() {
 
     queue.add_to_queue(epoch, &BitField::new()).unwrap();
 
-    let bq_expectation = BitfieldQueueExpectation::default();
+    let bq_expectation = BitFieldQueueExpectation::default();
     // ensures we don't add an empty entry
     bq_expectation.equals(&queue);
 }

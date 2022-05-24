@@ -23,17 +23,17 @@ mod add_precommit_expiry {
         h.add_pre_commit_clean_ups(&policy, Vec::from([(100, 1)])).unwrap();
 
         let quant = h.quant_spec_every_deadline(&policy);
-        BitfieldQueueExpectation::default()
+        BitFieldQueueExpectation::default()
             .add(quant.quantize_up(100), &[1])
             .equals(&h.load_pre_commit_clean_ups(&policy));
 
         h.add_pre_commit_clean_ups(&policy, Vec::from([(100, 2)])).unwrap();
-        BitfieldQueueExpectation::default()
+        BitFieldQueueExpectation::default()
             .add(quant.quantize_up(100), &[1, 2])
             .equals(&h.load_pre_commit_clean_ups(&policy));
 
         h.add_pre_commit_clean_ups(&policy, Vec::from([(200, 3)])).unwrap();
-        BitfieldQueueExpectation::default()
+        BitFieldQueueExpectation::default()
             .add(quant.quantize_up(100), &[1, 2])
             .add(quant.quantize_up(200), &[3])
             .equals(&h.load_pre_commit_clean_ups(&policy));
@@ -47,7 +47,7 @@ mod add_precommit_expiry {
         h.add_pre_commit_clean_ups(&policy, Vec::from([(100, 1), (200, 2), (200, 3)])).unwrap();
 
         let quant = h.quant_spec_every_deadline(&policy);
-        BitfieldQueueExpectation::default()
+        BitFieldQueueExpectation::default()
             .add(quant.quantize_up(100), &[1])
             .add(quant.quantize_up(200), &[2, 3])
             .equals(&h.load_pre_commit_clean_ups(&policy));
@@ -62,7 +62,7 @@ mod add_precommit_expiry {
             ]),
         )
         .unwrap();
-        BitfieldQueueExpectation::default()
+        BitFieldQueueExpectation::default()
             .add(quant.quantize_up(100), &[1])
             .add(quant.quantize_up(200), &[2, 3, 4])
             .add(quant.quantize_up(300), &[5, 6])
