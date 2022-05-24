@@ -13,8 +13,8 @@ if [ -z "$GITHUB_TOKEN" ]; then
 fi
 
 # make sure we have a release tag set
-if [ -z "$GITHUB_TAG" ]; then
-    die "no GITHUB_TAG"
+if [ -z "$GITHUB_REF" ]; then
+    die "no GITHUB_REF"
 fi
 
 # make sure we have a target set
@@ -28,7 +28,8 @@ release_target=builtin-actors-${BUILD_FIL_NETWORK}.car
 release_target_hash=builtin-actors-${BUILD_FIL_NETWORK}.sha256
 release_file=output/$release_target
 release_file_hash=output/$release_target_hash
-release_tag="${GITHUB_TAG}"
+# the ref is of the form refs/tags/<tag>; drop the prefix to get the actual release tag
+release_tag="${GITHUB_REF:10}"
 
 # prepare artifacts
 pushd output
