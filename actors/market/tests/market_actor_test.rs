@@ -34,6 +34,7 @@ use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_traits::FromPrimitive;
 
 mod harness;
+
 use harness::*;
 
 #[test]
@@ -58,7 +59,7 @@ fn simple_construction() {
 
     assert_eq!(
         RawBytes::default(),
-        rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default(),).unwrap()
+        rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default()).unwrap()
     );
 
     rt.verify();
@@ -1534,7 +1535,7 @@ fn market_actor_deals() {
     );
 
     // Same deal with a different label should work
-    deal_proposal.label = "Cthulhu".to_owned();
+    deal_proposal.label = Label::String("Cthulhu".to_owned());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(&mut rt, &miner_addresses, &[deal_proposal]);
     check_state(&rt);
@@ -1560,12 +1561,12 @@ fn max_deal_label_size() {
         generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, 1, 200 * EPOCHS_IN_DAY);
 
     // DealLabel at max size should work.
-    deal_proposal.label = "s".repeat(DEAL_MAX_LABEL_SIZE);
+    deal_proposal.label = Label::String("s".repeat(DEAL_MAX_LABEL_SIZE));
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(&mut rt, &miner_addresses, &[deal_proposal.clone()]);
 
     // over max should fail
-    deal_proposal.label = "s".repeat(DEAL_MAX_LABEL_SIZE + 1);
+    deal_proposal.label = Label::String("s".repeat(DEAL_MAX_LABEL_SIZE + 1));
     publish_deals_expect_abort(
         &mut rt,
         &miner_addresses,
