@@ -3008,3 +3008,38 @@ impl CronControl {
 pub fn bitfield_from_slice(sector_numbers: &[u64]) -> BitField {
     BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
 }
+
+#[derive(Default, Clone)]
+pub struct BitfieldQueueExpectation {
+    pub expected: BTreeMap<ChainEpoch, Vec<u64>>,
+}
+
+impl BitfieldQueueExpectation {
+    #[allow(dead_code)]
+    pub fn add(&self, epoch: ChainEpoch, values: &[u64]) -> Self {
+        let mut expected = self.expected.clone();
+        let _ = expected.insert(epoch, values.to_vec());
+        BitfieldQueueExpectation { expected }
+    }
+
+    #[allow(dead_code)]
+    pub fn equals<BS: Blockstore>(&self, queue: &BitFieldQueue<BS>) {
+        // ensure cached changes are ready to be iterated
+
+        let length = queue.amt.count();
+        assert_eq!(self.expected.len(), length as usize);
+
+        queue
+            .amt
+            .for_each(|epoch, bf| {
+                let values = self
+                    .expected
+                    .get(&(epoch as i64))
+                    .unwrap_or_else(|| panic!("expected entry at epoch {}", epoch));
+
+                assert_bitfield_equals(bf, values);
+                Ok(())
+            })
+            .unwrap();
+    }
+}
