@@ -644,7 +644,12 @@ mod miner_actor_test_commitment {
             );
             rt.reset();
             precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-            h.pre_commit_sector_and_get(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
+            h.pre_commit_sector_and_get(
+                &mut rt,
+                precommit_params,
+                util::PreCommitConfig::default(),
+                true,
+            );
         }
 
         util::check_state_invariants(&rt);
