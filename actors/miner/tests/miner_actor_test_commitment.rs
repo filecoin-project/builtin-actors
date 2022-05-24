@@ -614,6 +614,43 @@ mod miner_actor_test_commitment {
     }
 
     #[test]
+    fn precommit_checks_seal_proof_version() {
+        let period_offset = ChainEpoch::from(100);
+
+        let h = ActorHarness::new(period_offset);
+        let mut rt = h.new_runtime();
+        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_received(TokenAmount::zero());
+
+        h.construct_and_verify(&mut rt);
+        let precommit_epoch = period_offset + 1;
+        rt.set_epoch(precommit_epoch);
+        let deadline = h.deadline(&rt);
+        let challenge_epoch = precommit_epoch - 1;
+        let expiration =
+            deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
+        {
+            let mut precommit_params =
+                h.make_pre_commit_params(104, challenge_epoch, expiration, vec![]);
+            precommit_params.seal_proof = RegisteredSealProof::StackedDRG2KiBV1;
+            expect_abort(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                h.pre_commit_sector(
+                    &mut rt,
+                    precommit_params.clone(),
+                    util::PreCommitConfig::default(),
+                    true,
+                ),
+            );
+            rt.reset();
+            precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+            h.pre_commit_sector_and_get(&mut rt, precommit_params, util::PreCommitConfig::default(), true);
+        }
+
+        util::check_state_invariants(&rt);
+    }
+
+    #[test]
     fn precommit_does_not_vest_funds() {
         let period_offset = ChainEpoch::from(100);
 
