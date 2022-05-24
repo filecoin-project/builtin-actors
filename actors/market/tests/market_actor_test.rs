@@ -11,7 +11,7 @@ use fil_actor_market::{
 use fil_actor_verifreg::UseBytesParams;
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -35,6 +35,14 @@ use num_traits::FromPrimitive;
 
 mod harness;
 use harness::*;
+
+#[test]
+fn test_remove_all_error() {
+    let market_actor = Address::new_id(100);
+    let rt = MockRuntime { receiver: market_actor, ..Default::default() };
+
+    SetMultimap::new(&rt.store()).remove_all(42).expect("expected no error");
+}
 
 // TODO add array stuff
 #[test]
