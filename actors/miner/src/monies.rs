@@ -24,7 +24,7 @@ const PRE_COMMIT_DEPOSIT_FACTOR: u64 = 20;
 
 /// Projection period of expected sector block rewards for storage pledge required to commit a sector.
 /// This pledge is lost if a sector is terminated before its full committed lifetime.
-const INITIAL_PLEDGE_FACTOR: u64 = 20;
+pub const INITIAL_PLEDGE_FACTOR: u64 = 20;
 
 pub const PRE_COMMIT_DEPOSIT_PROJECTION_PERIOD: i64 =
     (PRE_COMMIT_DEPOSIT_FACTOR as ChainEpoch) * EPOCHS_IN_DAY;
@@ -35,8 +35,8 @@ lazy_static! {
     static ref LOCK_TARGET_FACTOR_NUM: BigInt = BigInt::from(3);
     static ref LOCK_TARGET_FACTOR_DENOM: BigInt = BigInt::from(10);
 
-    static ref TERMINATION_REWARD_FACTOR_NUM: BigInt = BigInt::from(1);
-    static ref TERMINATION_REWARD_FACTOR_DENOM: BigInt = BigInt::from(2);
+    pub static ref TERMINATION_REWARD_FACTOR_NUM: BigInt = BigInt::from(1);
+    pub static ref TERMINATION_REWARD_FACTOR_DENOM: BigInt = BigInt::from(2);
 
     // * go impl has 75/100 but this is just simplified
     static ref LOCKED_REWARD_FACTOR_NUM: BigInt = BigInt::from(3);
