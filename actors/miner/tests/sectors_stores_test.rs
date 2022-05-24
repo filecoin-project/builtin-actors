@@ -66,6 +66,39 @@ fn get_nonexistent_value_returns_false() {
     assert!(!h.has_sector_number(sector_number as u64));
 }
 
+#[test]
+fn iterate_and_delete_multiple_sectors() {
+    let mut h = StateHarness::new(ChainEpoch::from(0));
+
+    // set of sectors, the larger numbers here are not significant
+    let sector_nos = vec![100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
+
+    // put all the sectors in the store
+    for (i, s) in sector_nos.iter().enumerate() {
+        h.put_sector(&new_sector_on_chain_info(
+            SectorNumber::from(*s as u64),
+            make_sealed_cid(format!("{}", i).as_bytes()),
+            BigInt::from(i),
+            ChainEpoch::from(i as i64),
+        ))
+    }
+
+    let mut sector_no_idx = 0;
+    h.st.for_each_sector(&h.store, |si| {
+        assert_eq!(sector_nos[sector_no_idx], si.sector_number);
+        sector_no_idx += 1;
+        Ok(())
+    })
+    .unwrap();
+
+    // ensure we iterated over the expected number of sectors
+    assert_eq!(sector_nos.len(), sector_no_idx);
+    h.delete_sectors(sector_nos.clone());
+    for s in sector_nos {
+        assert!(!h.has_sector_number(s));
+    }
+}
+
 // returns a unique SectorOnChainInfo with each invocation with SectorNumber set to `sectorNo`.
 fn new_sector_on_chain_info(
     sector_no: SectorNumber,
