@@ -13,8 +13,8 @@ if [ -z "$GITHUB_TOKEN" ]; then
 fi
 
 # make sure we have a release tag set
-if [ -z "$GITHUB_SHA" ]; then
-    die "no GITHUB_SHA"
+if [ -z "$GITHUB_REF" ]; then
+    die "no GITHUB_REF"
 fi
 
 # make sure we have a target set
@@ -28,7 +28,8 @@ release_target=builtin-actors-${BUILD_FIL_NETWORK}.car
 release_target_hash=builtin-actors-${BUILD_FIL_NETWORK}.sha256
 release_file=output/$release_target
 release_file_hash=output/$release_target_hash
-release_tag="${GITHUB_SHA:0:16}"
+# the ref is of the form refs/tags/<tag>; drop the prefix to get the actual release tag
+release_tag="${GITHUB_REF:10}"
 
 # prepare artifacts
 pushd output
@@ -48,24 +49,8 @@ __release_response=`
 `
 __release_id=`echo $__release_response | jq '.id'`
 if [ "$__release_id" = "null" ]; then
-    echo "creating release $release_tag"
-    release_data="{
-      \"tag_name\": \"$release_tag\",
-      \"target_commitish\": \"$GITHUB_SHA\",
-      \"name\": \"$release_tag\",
-      \"body\": \"\"
-      }"
-
-    __release_response=`
-      curl \
-       --request POST \
-       --header "Authorization: token $GITHUB_TOKEN" \
-       --header "Content-Type: application/json" \
-       --data "$release_data" \
-       "https://api.github.com/repos/$ORG/$REPO/releases"
-     `
-else
-    echo "release $release_tag already exists"
+    echo "release $release_tag does not exist"
+    exit 1
 fi
 
 __release_upload_url=`echo $__release_response | jq -r '.upload_url' | cut -d'{' -f1`
