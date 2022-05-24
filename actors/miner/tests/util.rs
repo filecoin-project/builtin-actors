@@ -11,18 +11,19 @@ use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOT
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, consensus_fault_penalty, initial_pledge_for_power,
     locked_reward_from_reward, max_prove_commit_duration, new_deadline_info_from_offset_and_epoch,
-    pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight,
-    reward_for_consensus_slash_report, Actor, ApplyRewardParams, BitFieldQueue,
-    ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams,
-    ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
-    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
-    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, FaultDeclaration,
-    GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
-    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
-    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
-    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
-    TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
-    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
+    pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_sector,
+    qa_power_for_weight, reward_for_consensus_slash_report, Actor, ApplyRewardParams,
+    BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams,
+    CheckSectorProvenParams, CompactPartitionsParams, ConfirmSectorProofsParams, CronEventPayload,
+    Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams, DeclareFaultsRecoveredParams,
+    DeferredCronEventParams, DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet,
+    ExtendSectorExpirationParams, FaultDeclaration, GetControlAddressesReturn, Method,
+    MinerConstructorParams as ConstructorParams, Partition, PoStPartition, PowerPair,
+    PreCommitSectorBatchParams, PreCommitSectorParams, ProveCommitSectorParams,
+    RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo,
+    Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
+    VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
+    CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -37,7 +38,7 @@ use fil_actors_runtime::{
 };
 use fvm_shared::bigint::Zero;
 
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
@@ -293,7 +294,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         num_sectors: usize,
         lifetime_periods: u64,
-        deal_ids: Vec<DealID>, // TODO: this should be Vec<Vec<DealID>>
+        deal_ids: Vec<Vec<DealID>>,
         first: bool,
     ) -> Vec<SectorOnChainInfo> {
         let precommit_epoch = rt.epoch;
@@ -304,10 +305,8 @@ impl ActorHarness {
         let mut precommits = Vec::with_capacity(num_sectors);
         for i in 0..num_sectors {
             let sector_no = self.next_sector_no;
-            let mut sector_deal_ids = vec![];
-            if !deal_ids.is_empty() {
-                sector_deal_ids.push(deal_ids[i]);
-            }
+            let sector_deal_ids =
+                deal_ids.get(i).and_then(|ids| Some(ids.clone())).unwrap_or_default();
             let params = self.make_pre_commit_params(
                 sector_no,
                 precommit_epoch - 1,
@@ -851,12 +850,12 @@ impl ActorHarness {
         }
     }
 
-    fn get_sector(&self, rt: &MockRuntime, sector_number: SectorNumber) -> SectorOnChainInfo {
+    pub fn get_sector(&self, rt: &MockRuntime, sector_number: SectorNumber) -> SectorOnChainInfo {
         let state = self.get_state(rt);
         state.get_sector(&rt.store, sector_number).unwrap().unwrap()
     }
 
-    fn advance_to_epoch_with_cron(&self, rt: &mut MockRuntime, epoch: ChainEpoch) {
+    pub fn advance_to_epoch_with_cron(&self, rt: &mut MockRuntime, epoch: ChainEpoch) {
         let mut deadline = self.get_deadline_info(rt);
         while deadline.last() < epoch {
             self.advance_deadline(rt, CronConfig::empty());
@@ -1549,7 +1548,7 @@ impl ActorHarness {
         self.get_deadline_and_partition(rt, dlidx, pidx)
     }
 
-    fn current_deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
+    pub fn current_deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
         let state = self.get_state(rt);
         state.deadline_info(&rt.policy, rt.epoch)
     }
@@ -1952,6 +1951,68 @@ impl ActorHarness {
         rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, &RawBytes::default())?;
         rt.verify();
 
+        Ok(())
+    }
+
+    pub fn extend_sectors(
+        &self,
+        rt: &mut MockRuntime,
+        mut params: ExtendSectorExpirationParams,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let mut qa_delta = BigInt::zero();
+        for extension in params.extensions.iter_mut() {
+            for sector_nr in extension.sectors.validate().unwrap().iter() {
+                let sector = self.get_sector(&rt, sector_nr);
+                let mut new_sector = sector.clone();
+                new_sector.expiration = extension.new_expiration;
+                qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
+                    - qa_power_for_sector(self.sector_size, &sector);
+            }
+        }
+
+        if !qa_delta.is_zero() {
+            let params = UpdateClaimedPowerParams {
+                raw_byte_delta: BigInt::zero(),
+                quality_adjusted_delta: qa_delta,
+            };
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_CLAIMED_POWER_METHOD,
+                RawBytes::serialize(params).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let ret = rt.call::<Actor>(
+            Method::ExtendSectorExpiration as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+
+        rt.verify();
+        Ok(ret)
+    }
+
+    pub fn compact_partitions(
+        &self,
+        rt: &mut MockRuntime,
+        deadline: u64,
+        partition: BitField,
+    ) -> Result<(), ActorError> {
+        let params = CompactPartitionsParams {
+            deadline,
+            partitions: UnvalidatedBitField::Validated(partition),
+        };
+
+        rt.expect_validate_caller_addr(self.caller_addrs());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        rt.call::<Actor>(Method::CompactPartitions as u64, &RawBytes::serialize(params).unwrap())?;
+        rt.verify();
         Ok(())
     }
 }
@@ -2994,4 +3055,9 @@ impl CronControl {
         let clean_up_epoch = self.pre_commit_to_start_cron(h, rt, start_epoch);
         self.expire_pre_commit_stop_cron(h, rt, start_epoch, clean_up_epoch)
     }
+}
+
+#[allow(dead_code)]
+pub fn bitfield_from_slice(sector_numbers: &[u64]) -> BitField {
+    BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
 }
