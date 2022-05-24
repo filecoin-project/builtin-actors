@@ -152,6 +152,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     j1.join().unwrap();
     j2.join().unwrap();
 
+    let result = child.wait().expect("failed to wait for build to finish");
+    if !result.success() {
+        return Err("actor build failed".into());
+    }
+
     let dst = Path::new(&out_dir).join("bundle.car");
     let mut bundler = Bundler::new(&dst);
     for (pkg, id) in ACTORS {
