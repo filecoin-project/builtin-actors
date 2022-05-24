@@ -106,22 +106,19 @@ fn assert_simple_batch(
         expect_abort_contains_message(
             exit_code,
             error_str,
-            (|| {
-                h.pre_commit_sector_batch(
-                    &mut rt,
-                    PreCommitSectorBatchParams { sectors },
-                    &conf,
-                    base_fee,
-                )?;
-
-                // State untouched.
-                let st: State = rt.get_state();
-                assert!(st.pre_commit_deposits.is_zero());
-                let expirations = h.collect_precommit_expirations(&rt, &st);
-                assert!(expirations.is_empty());
-                Ok(())
-            })(),
+            h.pre_commit_sector_batch(
+                &mut rt,
+                PreCommitSectorBatchParams { sectors },
+                &conf,
+                base_fee,
+            ),
         );
+
+        // State untouched.
+        let st: State = rt.get_state();
+        assert!(st.pre_commit_deposits.is_zero());
+        let expirations = h.collect_precommit_expirations(&rt, &st);
+        assert!(expirations.is_empty());
         return;
     }
     let precommits = h.pre_commit_sector_batch_and_get(
