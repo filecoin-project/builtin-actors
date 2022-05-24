@@ -578,7 +578,7 @@ impl MockRuntime {
         out: Randomness,
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_randomness_tickets = VecDeque::from([a]);
+        self.expectations.borrow_mut().expect_get_randomness_tickets.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -772,9 +772,12 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
-        let mut tickets = self.expectations.borrow_mut().expect_get_randomness_tickets.clone();
-
-        let expected = tickets.pop_front().expect("unexpected call to get_randomness_from_tickets");
+        let expected = self
+            .expectations
+            .borrow_mut()
+            .expect_get_randomness_tickets
+            .pop_front()
+            .expect("unexpected call to get_randomness_from_tickets");
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
         assert_eq!(
@@ -793,7 +796,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             expected.entropy, entropy
         );
 
-        Ok(expected.out.clone())
+        Ok(expected.out)
     }
 
     fn get_randomness_from_beacon(
