@@ -33,7 +33,7 @@ jobs:
     - name: Publishing release and uploading bundle to GitHub
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_TAG: ${{ github.event.release.tag }}
+        GITHUB_TAG: ${{ github.ref }}
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
         ./scripts/publish-release.sh
