@@ -20,7 +20,8 @@ fn setup() -> (ActorHarness, MockRuntime) {
 fn successfully_check_sector_is_proven() {
     let (mut h, mut rt) = setup();
 
-    let sectors = h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![10], true);
+    let sectors =
+        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![vec![10]], true);
     h.check_sector_proven(&mut rt, sectors[0].sector_number).unwrap();
 
     check_state_invariants(&rt);
