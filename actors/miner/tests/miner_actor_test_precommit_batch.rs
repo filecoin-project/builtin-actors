@@ -175,8 +175,13 @@ mod miner_actor_precommit_batch {
     }
 
     #[test]
-    fn max_sectors() {
+    fn thirty_two_sectors() {
         assert_simple_batch(32, TokenAmount::zero(), TokenAmount::zero(), &[], ExitCode::OK, "");
+    }
+
+    #[test]
+    fn max_sectors() {
+        assert_simple_batch(256, TokenAmount::zero(), TokenAmount::zero(), &[], ExitCode::OK, "");
     }
 
     #[test]
