@@ -1,7 +1,7 @@
 use fil_actor_market::SectorWeights;
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, pre_commit_deposit_for_power, qa_power_for_weight,
-    PreCommitSectorBatchParams, SectorPreCommitInfo, State,
+    aggregate_pre_commit_network_fee, max_prove_commit_duration, pre_commit_deposit_for_power,
+    qa_power_for_weight, PreCommitSectorBatchParams, SectorPreCommitInfo, State,
 };
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::bigint::BigInt;
@@ -160,7 +160,7 @@ fn assert_simple_batch(
     let expirations = h.collect_precommit_expirations(&rt, &st);
     let expected_precommit_expiration = st.quant_spec_every_deadline(&rt.policy).quantize_up(
         precommit_epoch
-            + rt.policy.max_prove_commit_duration[&h.seal_proof_type]
+            + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
             + rt.policy.expired_pre_commit_clean_up_delay,
     );
     assert_eq!(HashMap::from([(expected_precommit_expiration, sector_no_as_uints)]), expirations);
