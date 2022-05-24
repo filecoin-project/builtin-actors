@@ -3,6 +3,7 @@ use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration, pre_commit_deposit_for_power,
     qa_power_for_weight, PreCommitSectorBatchParams, SectorPreCommitInfo, State,
 };
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -227,7 +228,7 @@ mod miner_actor_precommit_batch {
     #[test]
     fn too_many_sectors() {
         assert_simple_batch(
-            257,
+            Policy::default().pre_commit_sector_batch_max_size + 1,
             TokenAmount::zero(),
             TokenAmount::zero(),
             &[],
