@@ -301,19 +301,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "chrono"
-version = "0.4.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
-dependencies = [
- "libc",
- "num-integer",
- "num-traits",
- "time",
- "winapi",
-]
-
-[[package]]
 name = "cid"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -568,7 +555,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "num-derive",
  "num-traits",
  "serde",
@@ -588,7 +575,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_car",
  "fvm_ipld_encoding",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "serde",
  "serde_ipld_dagcbor",
  "serde_json",
@@ -601,7 +588,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "log",
  "num-derive",
  "num-traits",
@@ -618,7 +605,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
- "fvm_shared 0.6.1",
+ "fvm_shared",
  "indexmap",
  "integer-encoding",
  "lazy_static",
@@ -638,7 +625,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "log",
  "num-derive",
  "num-traits",
@@ -660,7 +647,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "libipld-core",
  "log",
  "multihash",
@@ -686,7 +673,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "itertools",
  "lazy_static",
  "log",
@@ -707,7 +694,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "indexmap",
  "integer-encoding",
  "num-derive",
@@ -726,7 +713,7 @@ dependencies = [
  "fvm_ipld_amt",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "num-derive",
  "num-traits",
  "serde",
@@ -743,7 +730,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "indexmap",
  "integer-encoding",
  "lazy_static",
@@ -760,7 +747,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "lazy_static",
  "log",
  "num",
@@ -778,7 +765,7 @@ dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "num-derive",
  "num-traits",
  "serde",
@@ -794,7 +781,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "lazy_static",
  "num-derive",
  "num-traits",
@@ -816,7 +803,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_sdk",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "getrandom",
  "hex",
  "indexmap",
@@ -1066,42 +1053,11 @@ version = "1.0.0-rc.1"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "lazy_static",
  "log",
  "num-traits",
  "thiserror",
-]
-
-[[package]]
-name = "fvm_shared"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e72a96c891b1fe9317a1501ee8fd70b27391f42bf4d7fe372a4721892730c87b"
-dependencies = [
- "anyhow",
- "bimap",
- "blake2b_simd",
- "byteorder",
- "chrono",
- "cid",
- "cs_serde_bytes",
- "data-encoding",
- "data-encoding-macro",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "lazy_static",
- "log",
- "multihash",
- "num-bigint",
- "num-derive",
- "num-integer",
- "num-traits",
- "serde",
- "serde_repr",
- "serde_tuple",
- "thiserror",
- "unsigned-varint",
 ]
 
 [[package]]
@@ -1787,7 +1743,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
- "fvm_shared 0.7.0",
+ "fvm_shared",
  "indexmap",
  "lazy_static",
  "log",
@@ -1821,16 +1777,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "time"
-version = "0.1.43"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca8a50ef2360fbd1eeb0ecd46795a87a19024eb4b53c5dc916ca1fd95fe62438"
-dependencies = [
- "libc",
- "winapi",
 ]
 
 [[package]]
