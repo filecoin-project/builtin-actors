@@ -113,6 +113,7 @@ fn assert_simple_batch(
                 base_fee,
             ),
         );
+        rt.reset();
 
         // State untouched.
         let st: State = rt.get_state();
@@ -282,6 +283,7 @@ mod miner_actor_precommit_batch {
                 BigInt::zero(),
             ),
         );
+        rt.reset();
     }
 
     #[test]
@@ -316,5 +318,6 @@ mod miner_actor_precommit_batch {
                 BigInt::zero(),
             ),
         );
+        rt.reset();
     }
 }
