@@ -1968,9 +1968,14 @@ impl ActorHarness {
         let ret = rt.call::<Actor>(
             Method::ChangeOwnerAddress as u64,
             &RawBytes::serialize(new_address).unwrap(),
-        )?;
-        rt.verify();
-        Ok(ret)
+        );
+
+        if ret.is_ok() {
+            rt.verify();
+        } else {
+            rt.reset();
+        }
+        ret
     }
 }
 
