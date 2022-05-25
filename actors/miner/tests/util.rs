@@ -18,12 +18,12 @@ use fil_actor_miner::{
     Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams, DeclareFaultsRecoveredParams,
     DeferredCronEventParams, DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet,
     ExtendSectorExpirationParams, FaultDeclaration, GetControlAddressesReturn, Method,
-    MinerConstructorParams as ConstructorParams, Partition, PoStPartition, PowerPair,
+    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PoStPartition, PowerPair,
     PreCommitSectorBatchParams, PreCommitSectorParams, ProveCommitSectorParams,
     RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo,
     Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
     VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
-    CRON_EVENT_PROVING_DEADLINE, MinerInfo,
+    CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
