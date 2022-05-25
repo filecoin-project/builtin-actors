@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 use fil_actor_miner::MinerInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
-use fil_actor_miner::State;
 use fil_actor_miner::VestSpec;
 use fil_actor_miner::VestingFunds;
+use fil_actor_miner::{BitFieldQueue, State};
 use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
@@ -12,7 +12,7 @@ use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::{clock::ChainEpoch, sector::RegisteredPoStProof};
+use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
 use multihash::Code::Blake2b256;
 
 pub struct StateHarness {
@@ -21,10 +21,12 @@ pub struct StateHarness {
 }
 
 impl StateHarness {
+    #[allow(dead_code)]
     pub fn new(period_boundary: ChainEpoch) -> Self {
         Self::new_with_policy(&Policy::default(), period_boundary)
     }
 
+    #[allow(dead_code)]
     pub fn new_with_policy(policy: &Policy, period_boundary: ChainEpoch) -> Self {
         // store init
         let store = MemoryBlockstore::default();
@@ -48,9 +50,7 @@ impl StateHarness {
         let st = State::new(policy, &store, info_cid, period_boundary, 0).unwrap();
         StateHarness { st, store }
     }
-}
 
-impl StateHarness {
     #[allow(dead_code)]
     pub fn put_precommitted_sectors(
         &mut self,
@@ -77,6 +77,32 @@ impl StateHarness {
         self.st.get_precommitted_sector(&self.store, sector_number).unwrap().is_some()
     }
 
+    #[allow(dead_code)]
+    pub fn load_pre_commit_clean_ups<'db>(
+        &'db self,
+        policy: &Policy,
+    ) -> BitFieldQueue<'db, MemoryBlockstore> {
+        let quant = self.st.quant_spec_every_deadline(policy);
+        let queue =
+            BitFieldQueue::new(&self.store, &self.st.pre_committed_sectors_cleanup, quant).unwrap();
+        queue
+    }
+
+    #[allow(dead_code)]
+    pub fn add_pre_commit_clean_ups(
+        &mut self,
+        policy: &Policy,
+        cleanup_events: Vec<(ChainEpoch, u64)>,
+    ) -> anyhow::Result<()> {
+        self.st.add_pre_commit_clean_ups(policy, &self.store, cleanup_events)
+    }
+
+    #[allow(dead_code)]
+    pub fn quant_spec_every_deadline(&self, policy: &Policy) -> QuantSpec {
+        self.st.quant_spec_every_deadline(policy)
+    }
+
+    #[allow(dead_code)]
     pub fn add_locked_funds(
         &mut self,
         current_epoch: ChainEpoch,
@@ -86,6 +112,7 @@ impl StateHarness {
         self.st.add_locked_funds(&self.store, current_epoch, vesting_sum, spec)
     }
 
+    #[allow(dead_code)]
     pub fn unlock_vested_funds(
         &mut self,
         current_epoch: ChainEpoch,
@@ -93,6 +120,7 @@ impl StateHarness {
         self.st.unlock_vested_funds(&self.store, current_epoch)
     }
 
+    #[allow(dead_code)]
     pub fn unlock_unvested_funds(
         &mut self,
         current_epoch: ChainEpoch,
@@ -100,9 +128,8 @@ impl StateHarness {
     ) -> anyhow::Result<TokenAmount> {
         self.st.unlock_unvested_funds(&self.store, current_epoch, target)
     }
-}
 
-impl StateHarness {
+    #[allow(dead_code)]
     pub fn vesting_funds_store_empty(&self) -> bool {
         let vesting = self.store.get_cbor::<VestingFunds>(&self.st.vesting_funds).unwrap().unwrap();
         vesting.funds.is_empty()
