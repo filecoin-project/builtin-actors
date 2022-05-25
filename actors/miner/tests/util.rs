@@ -16,13 +16,14 @@ use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
     ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams,
-    ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
-    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
-    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, FaultDeclaration,
-    GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
-    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
-    ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
+    CompactSectorNumbersParams, ConfirmSectorProofsParams, CronEventPayload, Deadline,
+    DeadlineInfo, Deadlines, DeclareFaultsParams, DeclareFaultsRecoveredParams,
+    DeferredCronEventParams, DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet,
+    FaultDeclaration, GetControlAddressesReturn, Method,
+    MinerConstructorParams as ConstructorParams, Partition, PoStPartition, PowerPair,
+    PreCommitSectorBatchParams, PreCommitSectorParams, ProveCommitSectorParams,
+    RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
+    SubmitWindowedPoStParams, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
     WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
 };
 use fil_actor_miner::{max_prove_commit_duration, CompactPartitionsParams};
@@ -381,6 +382,26 @@ impl ActorHarness {
             .unwrap();
         rt.reset();
         sector_info
+    }
+
+    pub fn compact_sector_numbers_raw(
+        &self,
+        rt: &mut MockRuntime,
+        addr: Address,
+        bf: BitField,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let params =
+            CompactSectorNumbersParams { mask_sector_numbers: UnvalidatedBitField::Validated(bf) };
+
+        rt.call::<Actor>(Method::CompactSectorNumbers as u64, &RawBytes::serialize(params).unwrap())
+    }
+
+    pub fn compact_sector_numbers(&self, rt: &mut MockRuntime, addr: Address, bf: BitField) {
+        self.compact_sector_numbers_raw(rt, addr, bf).unwrap();
+        rt.verify();
     }
 
     pub fn get_deadline_info(&self, rt: &MockRuntime) -> DeadlineInfo {
