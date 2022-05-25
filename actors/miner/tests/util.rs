@@ -10,7 +10,7 @@ use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, qa_power_for_sector, ChangeWorkerAddressParams,
-    ExtendSectorExpirationParams,
+    ExtendSectorExpirationParams, MinerInfo,
 };
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
@@ -1848,7 +1848,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         new_worker: Address,
         new_control_addresses: Vec<Address>,
-    ) -> Result<(), ActorError> {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_address_actor_type(new_worker.clone(), *ACCOUNT_ACTOR_CODE_ID);
 
         let params = ChangeWorkerAddressParams {
@@ -1866,10 +1866,16 @@ impl ActorHarness {
 
         rt.expect_validate_caller_addr(vec![self.owner]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
-        rt.call::<Actor>(
+        let ret = rt.call::<Actor>(
             Method::ChangeWorkerAddress as u64,
             &RawBytes::serialize(params).unwrap(),
-        )?;
+        );
+
+        if ret.is_err() {
+            rt.reset();
+            return ret;
+        }
+
         rt.verify();
 
         let state: State = rt.get_state();
@@ -1881,7 +1887,7 @@ impl ActorHarness {
             .collect_vec();
         assert_eq!(control_addresses, info.control_addresses);
 
-        Ok(())
+        ret
     }
 
     pub fn confirm_update_worker_key(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
@@ -1953,6 +1959,39 @@ impl ActorHarness {
         rt.call::<Actor>(Method::CompactPartitions as u64, &RawBytes::serialize(params).unwrap())?;
         rt.verify();
         Ok(())
+    }
+
+    pub fn get_info(&self, rt: &MockRuntime) -> MinerInfo {
+        let state: State = rt.get_state();
+        state.get_info(rt.store()).unwrap()
+    }
+
+    pub fn change_owner_address(
+        &self,
+        rt: &mut MockRuntime,
+        new_address: Address,
+    ) -> Result<RawBytes, ActorError> {
+        let expected = if rt.caller == self.owner {
+            self.owner
+        } else {
+            if let Some(pending_owner) = self.get_info(rt).pending_owner_address {
+                pending_owner
+            } else {
+                self.owner
+            }
+        };
+        rt.expect_validate_caller_addr(vec![expected]);
+        let ret = rt.call::<Actor>(
+            Method::ChangeOwnerAddress as u64,
+            &RawBytes::serialize(new_address).unwrap(),
+        );
+
+        if ret.is_ok() {
+            rt.verify();
+        } else {
+            rt.reset();
+        }
+        ret
     }
 }
 
@@ -3017,4 +3056,39 @@ impl CronControl {
 #[allow(dead_code)]
 pub fn bitfield_from_slice(sector_numbers: &[u64]) -> BitField {
     BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
+}
+
+#[derive(Default, Clone)]
+pub struct BitFieldQueueExpectation {
+    pub expected: BTreeMap<ChainEpoch, Vec<u64>>,
+}
+
+impl BitFieldQueueExpectation {
+    #[allow(dead_code)]
+    pub fn add(&self, epoch: ChainEpoch, values: &[u64]) -> Self {
+        let mut expected = self.expected.clone();
+        let _ = expected.insert(epoch, values.to_vec());
+        Self { expected }
+    }
+
+    #[allow(dead_code)]
+    pub fn equals<BS: Blockstore>(&self, queue: &BitFieldQueue<BS>) {
+        // ensure cached changes are ready to be iterated
+
+        let length = queue.amt.count();
+        assert_eq!(self.expected.len(), length as usize);
+
+        queue
+            .amt
+            .for_each(|epoch, bf| {
+                let values = self
+                    .expected
+                    .get(&(epoch as i64))
+                    .unwrap_or_else(|| panic!("expected entry at epoch {}", epoch));
+
+                assert_bitfield_equals(bf, values);
+                Ok(())
+            })
+            .unwrap();
+    }
 }
