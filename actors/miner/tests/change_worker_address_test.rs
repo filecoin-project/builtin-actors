@@ -46,9 +46,12 @@ fn successfully_change_only_the_worker_address() {
     assert_eq!(pending_worker_key.new_worker, new_worker);
     assert_eq!(pending_worker_key.effective_at, effective_epoch);
 
-    // change if current epoch is less than effective epoch
+    // no change if current epoch is less than effective epoch
     let deadline = h.deadline(&rt);
     rt.set_epoch(deadline.period_end());
+    assert!(deadline.period_end() < effective_epoch);
+
+    h.confirm_update_worker_key(&mut rt).unwrap();
 
     let info = h.get_info(&rt);
     assert_eq!(info.pending_worker_key.unwrap().new_worker, new_worker);
@@ -122,6 +125,7 @@ fn successfully_resolve_and_change_only_control_addresses() {
     let info = h.get_info(&rt);
     assert_eq!(h.worker, info.worker);
     assert!(info.pending_worker_key.is_none());
+    assert_eq!(info.control_addresses, vec![control_address_1, control_address_2]);
 
     check_state_invariants(&rt);
 }
@@ -205,11 +209,24 @@ fn fails_if_unable_to_resolve_worker_address() {
 }
 
 #[test]
-fn fails_if_worker_public_key_is_not_bls() {
+fn fails_if_worker_public_key_is_not_bls_but_id() {
     let (mut h, mut rt) = setup();
 
     let new_worker = Address::new_id(999);
     h.worker_key = Address::new_id(505);
+
+    let result = h.change_worker_address(&mut rt, new_worker, vec![]);
+    expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
+
+    check_state_invariants(&rt);
+}
+
+#[test]
+fn fails_if_worker_public_key_is_not_bls_but_secp() {
+    let (mut h, mut rt) = setup();
+
+    let new_worker = Address::new_id(999);
+    h.worker_key = Address::new_secp256k1(&[0x42; 65]).unwrap();
 
     let result = h.change_worker_address(&mut rt, new_worker, vec![]);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
