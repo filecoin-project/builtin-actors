@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use fil_actor_miner::TerminationResult;
 use fvm_ipld_bitfield::BitField;
+use fvm_shared::clock::ChainEpoch;
 
 #[test]
 fn test_termination_result() {
@@ -87,4 +88,25 @@ fn test_termination_result() {
     assert_eq!(expected.sectors_processed, result.sectors_processed);
     assert_eq!(expected.partitions_processed, result.partitions_processed);
     assert_eq!(expected.sectors.len(), result.sectors.len());
+
+    let mut expected_epoch = ChainEpoch::from(0);
+    result.iter().for_each(|(epoch, _actual_bf)| {
+        assert_eq!(expected_epoch, epoch);
+        expected_epoch += 1;
+        let _expected_bf = expected.sectors.get(&epoch).unwrap();
+        // todo: bitfield.all(1000)
+        // expectedNos, err := expectedBf.All(1000)
+        // require.NoError(t, err)
+        // actualNos, err := actualBf.All(1000)
+        // require.NoError(t, err)
+        // require.Equal(t, expectedNos, actualNos)
+        // return nil
+    });
+
+    // partitions = 2, sectors = 9
+    assert!(!result.below_limit(2, 9));
+    assert!(!result.below_limit(3, 9));
+    assert!(!result.below_limit(3, 8));
+    assert!(!result.below_limit(2, 10));
+    assert!(result.below_limit(3, 10));
 }
