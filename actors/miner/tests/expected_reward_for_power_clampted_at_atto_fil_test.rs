@@ -21,7 +21,7 @@ fn expected_zero_valued_br_clamped_at_1_attofil() {
         &zero_qa_power,
         1,
     );
-    assert_eq!(br_clamped, BigInt::from(1));
+    assert_eq!(BigInt::from(1), br_clamped);
 }
 
 #[test]
@@ -39,5 +39,5 @@ fn expected_negative_value_br_clamped_at_1_atto_fil() {
         &qa_sector_power,
         4,
     );
-    assert_eq!(four_br_clamped, BigInt::from(1));
+    assert_eq!(BigInt::from(1), four_br_clamped);
 }
