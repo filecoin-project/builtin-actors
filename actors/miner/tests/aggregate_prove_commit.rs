@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use fil_actor_miner::{initial_pledge_for_power, qa_power_for_weight};
+use fil_actor_miner::{
+    initial_pledge_for_power, qa_power_for_weight, QUALITY_BASE_MULTIPLIER,
+    VERIFIED_DEAL_WEIGHT_MULTIPLIER,
+};
 use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{bigint::BigInt, clock::ChainEpoch, sector::SectorNumber};
@@ -19,7 +22,7 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     let actor = ActorHarness::new(period_offset);
     let mut rt = actor.new_runtime();
-    let balance = BigInt::from(1_000_000u64) * BigInt::from(10u64.pow(17));
+    let balance = BigInt::from(1_000_000u64) * BigInt::from(10u64.pow(18));
     rt.add_balance(balance);
     let precommit_epoch = period_offset + 1;
     rt.set_epoch(precommit_epoch);
@@ -55,7 +58,7 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
-    rt.set_balance(BigInt::from(1000u64) * BigInt::from(1u64.pow(18)));
+    rt.set_balance(BigInt::from(1000u64) * BigInt::from(10u64.pow(18)));
 
     actor.prove_commit_aggregate_sector(
         &mut rt,
@@ -76,8 +79,8 @@ fn valid_precommits_then_aggregate_provecommit() {
     assert_eq!(BigInt::zero(), st.pre_commit_deposits);
 
     // The sector is exactly full with verified deals, so expect fully verified power.
-    // todo: lazy_static! with big ints does not play well with casts
-    let expected_power = BigInt::from(actor.sector_size as i64) * (100 / 10);
+    let expected_power = BigInt::from(actor.sector_size as i64)
+        * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
     let qa_power = qa_power_for_weight(
         actor.sector_size,
         expiration - rt.epoch,
@@ -93,7 +96,7 @@ fn valid_precommits_then_aggregate_provecommit() {
         &rt.total_fil_circ_supply(),
     );
     let ten_sectors_initial_pledge = BigInt::from(10i32) * expected_initial_pledge.clone();
-    assert_eq!(ten_sectors_initial_pledge, expected_initial_pledge);
+    assert_eq!(ten_sectors_initial_pledge, st.initial_pledge);
 
     // expect new onchain sector
     for sector_no in sector_nos_bf.iter() {
