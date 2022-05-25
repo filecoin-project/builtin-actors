@@ -530,7 +530,7 @@ mod miner_actor_test_commitment {
                 fault_type: ConsensusFaultType::DoubleForkMining,
             };
             let test_addr = Address::new_actor(b"satoshi");
-            h.report_consensus_fault(&mut rt, test_addr, Some(fault));
+            h.report_consensus_fault(&mut rt, test_addr, Some(fault)).unwrap();
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
             let ret = h.pre_commit_sector(

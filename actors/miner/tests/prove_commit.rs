@@ -251,10 +251,10 @@ fn prove_sectors_from_batch_pre_commit() {
         first_for_miner: true,
     };
 
-    let precommits = h.pre_commit_sector_batch(
+    let precommits = h.pre_commit_sector_batch_and_get(
         &mut rt,
         PreCommitSectorBatchParams { sectors },
-        conf,
+        &conf,
         TokenAmount::zero(),
     );
 
