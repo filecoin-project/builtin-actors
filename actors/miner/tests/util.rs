@@ -10,7 +10,7 @@ use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, qa_power_for_sector, ChangeWorkerAddressParams,
-    ExtendSectorExpirationParams,
+    ExtendSectorExpirationParams, MinerInfo,
 };
 use fil_actor_miner::{
     initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
@@ -1943,6 +1943,39 @@ impl ActorHarness {
         rt.call::<Actor>(Method::CompactPartitions as u64, &RawBytes::serialize(params).unwrap())?;
         rt.verify();
         Ok(())
+    }
+
+    pub fn get_info(&self, rt: &MockRuntime) -> MinerInfo {
+        let state: State = rt.get_state();
+        state.get_info(rt.store()).unwrap()
+    }
+
+    pub fn change_owner_address(
+        &self,
+        rt: &mut MockRuntime,
+        new_address: Address,
+    ) -> Result<RawBytes, ActorError> {
+        let expected = if rt.caller == self.owner {
+            self.owner
+        } else {
+            if let Some(pending_owner) = self.get_info(rt).pending_owner_address {
+                pending_owner
+            } else {
+                self.owner
+            }
+        };
+        rt.expect_validate_caller_addr(vec![expected]);
+        let ret = rt.call::<Actor>(
+            Method::ChangeOwnerAddress as u64,
+            &RawBytes::serialize(new_address).unwrap(),
+        );
+
+        if ret.is_ok() {
+            rt.verify();
+        } else {
+            rt.reset();
+        }
+        ret
     }
 }
 
