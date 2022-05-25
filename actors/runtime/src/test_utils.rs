@@ -214,7 +214,7 @@ impl Expectations {
             self.expect_verify_consensus_fault
         );
         assert!(
-            !self.expect_get_randomness_tickets.is_empty(),
+            self.expect_get_randomness_tickets.is_empty(),
             "expect_get_randomness_tickets {:?}, not received",
             self.expect_get_randomness_tickets
         );
