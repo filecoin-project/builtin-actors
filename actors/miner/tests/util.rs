@@ -418,9 +418,9 @@ impl ActorHarness {
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorBatchParams,
-        conf: PreCommitBatchConfig,
+        conf: &PreCommitBatchConfig,
         base_fee: TokenAmount,
-    ) -> Vec<SectorPreCommitOnChainInfo> {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
@@ -506,12 +506,22 @@ impl ActorHarness {
             );
         }
 
-        let result = rt
-            .call::<Actor>(
-                Method::PreCommitSectorBatch as u64,
-                &RawBytes::serialize(params.clone()).unwrap(),
-            )
-            .unwrap();
+        let result = rt.call::<Actor>(
+            Method::PreCommitSectorBatch as u64,
+            &RawBytes::serialize(params.clone()).unwrap(),
+        );
+        result
+    }
+
+    pub fn pre_commit_sector_batch_and_get(
+        &self,
+        rt: &mut MockRuntime,
+        params: PreCommitSectorBatchParams,
+        conf: &PreCommitBatchConfig,
+        base_fee: TokenAmount,
+    ) -> Vec<SectorPreCommitOnChainInfo> {
+        let result = self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee).unwrap();
+
         expect_empty(result);
         rt.verify();
 
