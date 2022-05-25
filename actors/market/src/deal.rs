@@ -67,10 +67,17 @@ impl<'de> Deserialize<'de> for Label {
 }
 
 impl Label {
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         match self {
             Label::String(s) => s.len(),
             Label::Bytes(b) => b.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Label::String(s) => s.is_empty(),
+            Label::Bytes(b) => b.is_empty(),
         }
     }
 }

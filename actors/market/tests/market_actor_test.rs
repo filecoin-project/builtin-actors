@@ -162,6 +162,18 @@ fn label_from_cbor() {
 }
 
 #[test]
+fn label_non_utf8() {
+    let bad_str_bytes = vec![0xde, 0xad, 0xbe, 0xef];
+    let bad_str = unsafe { std::str::from_utf8_unchecked(&bad_str_bytes) };
+    let bad_label = Label::String(bad_str.parse().unwrap());
+    let bad_label_ser = to_vec(&bad_label)
+        .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
+        .unwrap();
+    let out: Result<Label, _> = deserialize(&RawBytes::from(bad_label_ser), "invalid cbor string");
+    out.expect_err("invalid cbor string shouldn't deser");
+}
+
+#[test]
 fn adds_to_provider_escrow_funds() {
     struct TestCase {
         delta: u64,
