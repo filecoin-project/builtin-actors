@@ -418,7 +418,7 @@ impl State {
                 .map_err(|e| e.downcast_wrap("could not delete sector number"))?;
             if deleted_sector.is_none() {
                 return Err(AmtError::Dynamic(Error::msg(format!(
-                    "failed to delete sector {}",
+                    "sector {} doesn't exist, failed to delete",
                     sector_num
                 ))));
             }

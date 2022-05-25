@@ -5,11 +5,8 @@ use fvm_ipld_bitfield::BitField;
 use fvm_shared::{
     bigint::BigInt,
     clock::ChainEpoch,
-    econ::TokenAmount,
     sector::{RegisteredSealProof, SectorNumber},
 };
-
-use num_traits::Zero;
 
 mod state_harness;
 mod util;
@@ -115,11 +112,6 @@ fn new_sector_on_chain_info(
         expiration: ChainEpoch::from(1),
         deal_weight: weight.clone(),
         verified_deal_weight: weight,
-        initial_pledge: TokenAmount::from(0),
-        expected_day_reward: TokenAmount::from(0),
-        expected_storage_pledge: TokenAmount::from(0),
-        replaced_sector_age: ChainEpoch::from(0),
-        replaced_day_reward: BigInt::zero(),
-        sector_key_cid: None,
+        ..Default::default()
     }
 }
