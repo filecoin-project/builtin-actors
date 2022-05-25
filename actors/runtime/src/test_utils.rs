@@ -430,6 +430,11 @@ impl MockRuntime {
         self.id_addresses.get(address).cloned()
     }
 
+    pub fn add_id_address(&mut self, source: Address, target: Address) {
+        assert_eq!(target.protocol(), Protocol::ID, "target must use ID address protocol");
+        self.id_addresses.insert(source, target);
+    }
+
     pub fn call<A: ActorCode>(
         &mut self,
         method_num: MethodNum,

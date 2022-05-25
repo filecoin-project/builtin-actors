@@ -25,7 +25,7 @@ pub fn is_piece_cid(c: &Cid) -> bool {
         && c.hash().size() == 32
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Label {
     String(String),
     Bytes(Vec<u8>),
@@ -66,6 +66,22 @@ impl<'de> Deserialize<'de> for Label {
     }
 }
 
+impl Label {
+    pub fn len(&self) -> usize {
+        match self {
+            Label::String(s) => s.len(),
+            Label::Bytes(b) => b.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Label::String(s) => s.is_empty(),
+            Label::Bytes(b) => b.is_empty(),
+        }
+    }
+}
+
 /// Note: Deal Collateral is only released and returned to clients and miners
 /// when the storage deal stops counting towards power. In the current iteration,
 /// it will be released when the sector containing the storage deals expires,
@@ -84,7 +100,7 @@ pub struct DealProposal {
 
     /// Arbitrary client chosen label to apply to the deal
     // ! This is the field that requires unsafe unchecked utf8 deserialization
-    pub label: String,
+    pub label: Label,
 
     // Nominal start epoch. Deal payment is linear between StartEpoch and EndEpoch,
     // with total amount StoragePricePerEpoch * (EndEpoch - StartEpoch).
@@ -133,7 +149,10 @@ impl Cbor for ClientDealProposal {}
 
 #[derive(Clone, Debug, PartialEq, Copy, Serialize_tuple, Deserialize_tuple)]
 pub struct DealState {
-    pub sector_start_epoch: ChainEpoch, // -1 if not yet included in proven sector
-    pub last_updated_epoch: ChainEpoch, // -1 if deal state never updated
-    pub slash_epoch: ChainEpoch,        // -1 if deal never slashed
+    // -1 if not yet included in proven sector
+    pub sector_start_epoch: ChainEpoch,
+    // -1 if deal state never updated
+    pub last_updated_epoch: ChainEpoch,
+    // -1 if deal never slashed
+    pub slash_epoch: ChainEpoch,
 }

@@ -34,6 +34,7 @@ use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_traits::FromPrimitive;
 
 mod harness;
+
 use harness::*;
 
 #[test]
@@ -58,7 +59,7 @@ fn simple_construction() {
 
     assert_eq!(
         RawBytes::default(),
-        rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default(),).unwrap()
+        rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default()).unwrap()
     );
 
     rt.verify();
@@ -158,6 +159,18 @@ fn label_from_cbor() {
     let bad_bytes = vec![0x81, 0x80];
     let out = deserialize::<Label>(&RawBytes::from(bad_bytes), "cbor array, unexpected major type");
     out.expect_err("major type 4 should not be recognized by union type and deser should fail");
+}
+
+#[test]
+fn label_non_utf8() {
+    let bad_str_bytes = vec![0xde, 0xad, 0xbe, 0xef];
+    let bad_str = unsafe { std::str::from_utf8_unchecked(&bad_str_bytes) };
+    let bad_label = Label::String(bad_str.parse().unwrap());
+    let bad_label_ser = to_vec(&bad_label)
+        .map_err(|e| ActorError::from(e).wrap("failed to serialize DealProposal"))
+        .unwrap();
+    let out: Result<Label, _> = deserialize(&RawBytes::from(bad_label_ser), "invalid cbor string");
+    out.expect_err("invalid cbor string shouldn't deser");
 }
 
 #[test]
@@ -1534,7 +1547,7 @@ fn market_actor_deals() {
     );
 
     // Same deal with a different label should work
-    deal_proposal.label = "Cthulhu".to_owned();
+    deal_proposal.label = Label::String("Cthulhu".to_owned());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(&mut rt, &miner_addresses, &[deal_proposal]);
     check_state(&rt);
@@ -1560,12 +1573,12 @@ fn max_deal_label_size() {
         generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, 1, 200 * EPOCHS_IN_DAY);
 
     // DealLabel at max size should work.
-    deal_proposal.label = "s".repeat(DEAL_MAX_LABEL_SIZE);
+    deal_proposal.label = Label::String("s".repeat(DEAL_MAX_LABEL_SIZE));
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     publish_deals(&mut rt, &miner_addresses, &[deal_proposal.clone()]);
 
     // over max should fail
-    deal_proposal.label = "s".repeat(DEAL_MAX_LABEL_SIZE + 1);
+    deal_proposal.label = Label::String("s".repeat(DEAL_MAX_LABEL_SIZE + 1));
     publish_deals_expect_abort(
         &mut rt,
         &miner_addresses,
