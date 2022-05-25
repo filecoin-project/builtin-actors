@@ -1838,7 +1838,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         new_worker: Address,
         new_control_addresses: Vec<Address>,
-    ) -> Result<(), ActorError> {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_address_actor_type(new_worker.clone(), *ACCOUNT_ACTOR_CODE_ID);
 
         let params = ChangeWorkerAddressParams {
@@ -1856,10 +1856,16 @@ impl ActorHarness {
 
         rt.expect_validate_caller_addr(vec![self.owner]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
-        rt.call::<Actor>(
+        let ret = rt.call::<Actor>(
             Method::ChangeWorkerAddress as u64,
             &RawBytes::serialize(params).unwrap(),
-        )?;
+        );
+
+        if ret.is_err() {
+            rt.reset();
+            return ret;
+        }
+
         rt.verify();
 
         let state: State = rt.get_state();
@@ -1871,7 +1877,7 @@ impl ActorHarness {
             .collect_vec();
         assert_eq!(control_addresses, info.control_addresses);
 
-        Ok(())
+        ret
     }
 
     pub fn confirm_update_worker_key(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
