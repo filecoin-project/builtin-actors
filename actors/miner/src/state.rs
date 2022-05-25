@@ -874,7 +874,6 @@ impl State {
         let fee_debt = self.fee_debt.clone();
         let from_vesting = self.unlock_unvested_funds(store, current_epoch, &fee_debt)?;
 
-        // * It may be possible the go implementation catches a potential panic here
         if from_vesting > self.fee_debt {
             return Err(anyhow!("should never unlock more than the debt we need to repay"));
         }

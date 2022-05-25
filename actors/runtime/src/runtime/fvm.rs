@@ -64,11 +64,10 @@ impl<B> FvmRuntime<B> {
     fn assert_not_validated(&mut self) -> Result<(), ActorError> {
         if self.caller_validated {
             return Err(actor_error!(
-                user_assertion_failed,
+                assertion_failed,
                 "Method must validate caller identity exactly once"
             ));
         }
-        self.caller_validated = true;
         Ok(())
     }
 
@@ -112,7 +111,9 @@ where
     }
 
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
-        self.assert_not_validated()
+        self.assert_not_validated()?;
+        self.caller_validated = true;
+        Ok(())
     }
 
     fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
@@ -120,14 +121,14 @@ where
         I: IntoIterator<Item = &'a Address>,
     {
         self.assert_not_validated()?;
-
         let caller_addr = self.message().caller();
         if addresses.into_iter().any(|a| *a == caller_addr) {
+            self.caller_validated = true;
             Ok(())
         } else {
-            return Err(actor_error!(forbidden;
+            Err(actor_error!(forbidden;
                 "caller {} is not one of supported", caller_addr
-            ));
+            ))
         }
     }
 
@@ -136,14 +137,16 @@ where
         I: IntoIterator<Item = &'a Type>,
     {
         self.assert_not_validated()?;
-
         let caller_cid = {
             let caller_addr = self.message().caller();
             self.get_actor_code_cid(&caller_addr).expect("failed to lookup caller code")
         };
 
         match self.resolve_builtin_actor_type(&caller_cid) {
-            Some(typ) if types.into_iter().any(|t| *t == typ) => Ok(()),
+            Some(typ) if types.into_iter().any(|t| *t == typ) => {
+                self.caller_validated = true;
+                Ok(())
+            }
             _ => Err(actor_error!(forbidden;
                     "caller cid type {} not one of supported", caller_cid)),
         }
@@ -175,18 +178,27 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
-        // Note: specs-actors treats all failures to get randomness as "fatal" errors, so we're free
-        // to return whatever errors we see fit here.
+        // Note: For Go actors, Lotus treated all failures to get randomness as "fatal" errors,
+        // which it then translated into exit code SysErrReserved1 (= 4, and now known as
+        // SYS_ILLEGAL_INSTRUCTION), rather than just aborting with an appropriate exit code.
         //
-        // At the moment, we return "illegal argument" if the lookback is exceeded (not possible
-        // with the current actors) and panic otherwise (as it indicates that we passed some
-        // unexpected bad value to the syscall).
+        // We can replicate that here prior to network v16, but from nv16 onwards the FVM will
+        // override the attempt to use a system exit code, and produce
+        // SYS_ILLEGAL_EXIT_CODE (9) instead.
+        //
+        // Since that behaviour changes, we may as well abort with a more appropriate exit code
+        // explicitly.
         fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
-            match e {
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+            if self.network_version() < NetworkVersion::V16 {
+                ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
+                    "failed to get chain randomness".into())
+            } else {
+                match e {
+                    ErrorNumber::LimitExceeded => {
+                        actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                    }
+                    e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                 }
-                e => panic!("get chain randomness failed with an unexpected error: {}", e),
             }
         })
     }
@@ -197,13 +209,18 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
-        // Note: specs-actors treats all failures to get randomness as "fatal" errors. See above.
+        // See note on exit codes in get_randomness_from_tickets.
         fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
-            match e {
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+            if self.network_version() < NetworkVersion::V16 {
+                ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
+                    "failed to get chain randomness".into())
+            } else {
+                match e {
+                    ErrorNumber::LimitExceeded => {
+                        actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                    }
+                    e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                 }
-                e => panic!("get chain randomness failed with an unexpected error: {}", e),
             }
         })
     }
@@ -267,7 +284,7 @@ where
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         if self.in_transaction {
-            return Err(actor_error!(user_assertion_failed; "runtime.send() is not allowed"));
+            return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
         }
         match fvm::send::send(&to, method, params, value) {
             Ok(ret) => {
@@ -314,11 +331,11 @@ where
                 ErrorNumber::LimitExceeded => {
                     // This means we've exceeded the recursion limit.
                     // TODO: Define a better exit code.
-                    actor_error!(user_assertion_failed; "recursion limit exceeded")
+                    actor_error!(assertion_failed; "recursion limit exceeded")
                 }
                 err => {
                     // We don't expect any other syscall exit codes.
-                    actor_error!(user_assertion_failed; "unexpected error: {}", err)
+                    actor_error!(assertion_failed; "unexpected error: {}", err)
                 }
             }),
         }
@@ -329,15 +346,25 @@ where
     }
 
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
+        if self.in_transaction {
+            return Err(
+                actor_error!(assertion_failed; "create_actor is not allowed during transaction"),
+            );
+        }
         fvm::actor::create_actor(actor_id, &code_id).map_err(|e| match e {
             ErrorNumber::IllegalArgument => {
                 ActorError::illegal_argument("failed to create actor".into())
             }
-            _ => panic!("create failed with unknown error: {}", e),
+            _ => actor_error!(assertion_failed; "create failed with unknown error: {}", e),
         })
     }
 
     fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), ActorError> {
+        if self.in_transaction {
+            return Err(
+                actor_error!(assertion_failed; "delete_actor is not allowed during transaction"),
+            );
+        }
         Ok(fvm::sself::self_destruct(beneficiary)?)
     }
 
@@ -394,14 +421,16 @@ where
     fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_seal(vi) {
             Ok(true) => Ok(()),
-            Ok(false) | Err(_) => Err(Error::msg("invalid seal")),
+            Ok(false) => Err(Error::msg("invalid seal")),
+            Err(e) => Err(anyhow!("failed to verify seal: {}", e)),
         }
     }
 
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_post(verify_info) {
             Ok(true) => Ok(()),
-            Ok(false) | Err(_) => Err(Error::msg("invalid post")),
+            Ok(false) => Err(Error::msg("invalid post")),
+            Err(e) => Err(anyhow!("failed to verify post: {}", e)),
         }
     }
 
@@ -411,11 +440,13 @@ where
         h2: &[u8],
         extra: &[u8],
     ) -> Result<Option<ConsensusFault>, Error> {
-        fvm::crypto::verify_consensus_fault(h1, h2, extra).map_err(|_| Error::msg("no fault"))
+        fvm::crypto::verify_consensus_fault(h1, h2, extra)
+            .map_err(|e| anyhow!("failed to verify fault: {}", e))
     }
 
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
-        fvm::crypto::batch_verify_seals(batch).map_err(|_| Error::msg("failed to verify batch"))
+        fvm::crypto::batch_verify_seals(batch)
+            .map_err(|e| anyhow!("failed to verify batch seals: {}", e))
     }
 
     fn verify_aggregate_seals(
@@ -424,14 +455,16 @@ where
     ) -> Result<(), Error> {
         match fvm::crypto::verify_aggregate_seals(aggregate) {
             Ok(true) => Ok(()),
-            Ok(false) | Err(_) => Err(Error::msg("invalid aggregate")),
+            Ok(false) => Err(Error::msg("invalid aggregate")),
+            Err(e) => Err(anyhow!("failed to verify aggregate: {}", e)),
         }
     }
 
     fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error> {
         match fvm::crypto::verify_replica_update(replica) {
             Ok(true) => Ok(()),
-            Ok(false) | Err(_) => Err(Error::msg("invalid replica")),
+            Ok(false) => Err(Error::msg("invalid replica")),
+            Err(e) => Err(anyhow!("failed to verify replica: {}", e)),
         }
     }
 }
