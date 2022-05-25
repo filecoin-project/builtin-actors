@@ -17,6 +17,7 @@ use lazy_static::lazy_static;
 use num_traits::Zero;
 
 use super::{VestSpec, REWARD_VESTING_SPEC};
+use crate::detail::expected_reward_for_power_clamped_at_atto_fil;
 
 /// Projection period of expected sector block reward for deposit required to pre-commit a sector.
 /// This deposit is lost if the pre-commitment is not timely followed up by a commitment proof.
@@ -105,25 +106,29 @@ pub fn expected_reward_for_power(
     std::cmp::max(br128 >> PRECISION, Default::default())
 }
 
-// BR but zero values are clamped at 1 attofil
-// Some uses of BR (PCD, IP) require a strictly positive value for BR derived values so
-// accounting variables can be used as succinct indicators of miner activity.
-fn expected_reward_for_power_clamped_at_atto_fil(
-    reward_estimate: &FilterEstimate,
-    network_qa_power_estimate: &FilterEstimate,
-    qa_sector_power: &StoragePower,
-    projection_duration: ChainEpoch,
-) -> TokenAmount {
-    let br = expected_reward_for_power(
-        reward_estimate,
-        network_qa_power_estimate,
-        qa_sector_power,
-        projection_duration,
-    );
-    if br.le(&TokenAmount::from(0)) {
-        1.into()
-    } else {
-        br
+pub mod detail {
+    use super::*;
+
+    // BR but zero values are clamped at 1 attofil
+    // Some uses of BR (PCD, IP) require a strictly positive value for BR derived values so
+    // accounting variables can be used as succinct indicators of miner activity.
+    pub fn expected_reward_for_power_clamped_at_atto_fil(
+        reward_estimate: &FilterEstimate,
+        network_qa_power_estimate: &FilterEstimate,
+        qa_sector_power: &StoragePower,
+        projection_duration: ChainEpoch,
+    ) -> TokenAmount {
+        let br = expected_reward_for_power(
+            reward_estimate,
+            network_qa_power_estimate,
+            qa_sector_power,
+            projection_duration,
+        );
+        if br.le(&TokenAmount::from(0)) {
+            1.into()
+        } else {
+            br
+        }
     }
 }
 
