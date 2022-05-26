@@ -22,6 +22,7 @@ fil_actor_reward = { version = "8.0.0-alpha.1", path = "./actors/reward", featur
 fil_actor_system = { version = "8.0.0-alpha.1", path = "./actors/system", features = ["fil-actor"] }
 fil_actor_init = { version = "8.0.0-alpha.1", path = "./actors/init", features = ["fil-actor"] }
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "./actors/runtime", features = ["fil-actor"] }
+fil_actor_hierarchical_sca = { version = "8.0.0-alpha.1", path = "./actors/hierarchical_sca", features = ["fil-actor"] }
 
 [build-dependencies]
 fil_actor_bundler = "3.0.3"
