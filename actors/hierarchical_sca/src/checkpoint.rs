@@ -3,7 +3,6 @@ use cid::multihash::Code;
 use cid::multihash::MultihashDigest;
 use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::{serde_bytes, to_vec, Cbor};
 use fvm_shared::address::SubnetID;
 use fvm_shared::bigint::bigint_ser;
@@ -14,7 +13,7 @@ use fvm_shared::econ::TokenAmount;
 pub struct Checkpoint {
     pub data: CheckData,
     #[serde(with = "serde_bytes")]
-    sig: RawBytes,
+    sig: Vec<u8>,
 }
 impl Cbor for Checkpoint {}
 
@@ -40,7 +39,7 @@ impl Checkpoint {
     }
 
     /// return signature
-    pub fn signature(&self) -> &RawBytes {
+    pub fn signature(&self) -> &Vec<u8> {
         &self.sig
     }
 
