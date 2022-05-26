@@ -27,6 +27,7 @@ my_const!(circulating_supply, TokenAmount, zero());
 
 #[test]
 fn initial_pledge_clamped_at_one_attofil() {
+    // constant zero reward and zero circulating supply => IP = 0
     let initial_pledge = initial_pledge_for_power(
         &qa_sector_power(),
         &baseline_power(),
