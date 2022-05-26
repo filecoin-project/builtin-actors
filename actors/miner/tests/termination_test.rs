@@ -90,17 +90,13 @@ fn test_termination_result() {
     assert_eq!(expected.sectors.len(), result.sectors.len());
 
     let mut expected_epoch = ChainEpoch::from(0);
-    result.iter().for_each(|(epoch, _actual_bf)| {
+    result.iter().for_each(|(epoch, actual_bf)| {
         assert_eq!(expected_epoch, epoch);
         expected_epoch += 1;
-        let _expected_bf = expected.sectors.get(&epoch).unwrap();
-        // todo: bitfield.all(1000)
-        // expectedNos, err := expectedBf.All(1000)
-        // require.NoError(t, err)
-        // actualNos, err := actualBf.All(1000)
-        // require.NoError(t, err)
-        // require.Equal(t, expectedNos, actualNos)
-        // return nil
+        let expected_bf = expected.sectors.get(&epoch).unwrap();
+        let expected_nos: Vec<u64> = expected_bf.bounded_iter(1000).unwrap().collect();
+        let actual_nos: Vec<u64> = actual_bf.bounded_iter(1000).unwrap().collect();
+        assert_eq!(expected_nos, actual_nos);
     });
 
     // partitions = 2, sectors = 9
