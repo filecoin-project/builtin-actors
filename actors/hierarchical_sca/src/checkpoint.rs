@@ -38,6 +38,11 @@ impl Checkpoint {
         self.data.epoch
     }
 
+    /// return signature
+    pub fn signature(&self) -> &Vec<u8> {
+        &self.sig
+    }
+
     /// return checkpoint source
     pub fn source(&self) -> &SubnetID {
         &self.data.source
