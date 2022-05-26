@@ -11,9 +11,12 @@ use fvm_shared::sector::SectorSize;
 
 #[test]
 fn quality_is_independent_of_size_and_duration() {
+    // Quality of space with no deals. This doesn't depend on either the sector size or duration.
     let empty_quality = TokenAmount::from(1 << SECTOR_QUALITY_PRECISION);
+    // Quality space filled with non-verified deals.
     let deal_quality =
         &empty_quality * (DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
+    // Quality space filled with verified deals.
     let verified_quality = &empty_quality
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
 
@@ -52,7 +55,9 @@ fn quality_is_independent_of_size_and_duration() {
 
 #[test]
 fn quality_scales_with_verified_weight_proportion() {
+    // Quality of space with no deals. This doesn't depend on either the sector size or duration.
     let empty_quality = TokenAmount::from(1 << SECTOR_QUALITY_PRECISION);
+    // Quality space filled with verified deals.
     let verified_quality = &empty_quality
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
 
@@ -96,6 +101,7 @@ fn weight(size: SectorSize, duration: ChainEpoch) -> BigInt {
 }
 
 fn assert_equal(a: &BigInt, b: &BigInt) {
+    // Zero does not have a canonical representation, so check that explicitly.
     if !(a == &BigInt::from(0) && b == &BigInt::from(0)) {
         assert_eq!(a, b);
     }
