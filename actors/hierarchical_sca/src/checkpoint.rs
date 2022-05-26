@@ -28,7 +28,9 @@ impl Checkpoint {
     /// return cid for the checkpoint
     pub fn cid(&self) -> Cid {
         let mh_code = Code::Blake2b256;
-        Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&self).unwrap()))
+        // we only use the data of the checkpoint to compute the cid, the signature
+        // can change according to the source. We are only interested in the data.
+        Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&self.data).unwrap()))
     }
 
     /// return checkpoint epoch
