@@ -72,13 +72,16 @@ fn split_25_75() {
     let one_micro_fil = BigInt::from(ONE_NANO_FIL) * 1000;
 
     for base_fee_multiplier in [0, 5, 20] {
-        let fee_pre =
-            aggregate_pre_commit_network_fee(13, &BigInt::from(ONE_NANO_FIL * base_fee_multiplier))
-                / &one_micro_fil;
-        let fee_prove = aggregate_prove_commit_network_fee(
-            13,
-            &BigInt::from(ONE_NANO_FIL * base_fee_multiplier),
-        ) / &one_micro_fil;
-        assert_eq!(fee_prove, 3 * fee_pre);
+        for aggregate_size in [13, 303] {
+            let fee_pre = aggregate_pre_commit_network_fee(
+                aggregate_size,
+                &BigInt::from(ONE_NANO_FIL * base_fee_multiplier),
+            ) / &one_micro_fil;
+            let fee_prove = aggregate_prove_commit_network_fee(
+                aggregate_size,
+                &BigInt::from(ONE_NANO_FIL * base_fee_multiplier),
+            ) / &one_micro_fil;
+            assert_eq!(fee_prove, 3 * fee_pre);
+        }
     }
 }
