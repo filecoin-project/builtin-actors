@@ -15,7 +15,8 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features = ["fil-actor"] }
-fvm_shared = { version = "0.7.0", default-features = false }
+# fvm_shared = { version = "0.7.0", default-features = false }
+fvm_shared = { git = "https://github.com/adlrocha/ref-fvm", version = "0.7.0" }
 fvm_ipld_hamt = "0.5.1"
 num-traits = "0.2.14"
 num-derive = "0.3.3"
