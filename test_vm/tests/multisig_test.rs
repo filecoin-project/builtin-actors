@@ -1,28 +1,23 @@
-use fil_actor_init::Method as InitMethod;
-use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
-use fil_actor_miner::{Method as MinerMethod, MinerConstructorParams};
+use fil_actor_init::ExecReturn;
 use fil_actor_multisig::{
     compute_proposal_hash, Method as MsigMethod, ProposeParams, Transaction, TxnID, TxnIDParams,
 };
-use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::{BytesDe, RawBytes};
-use fvm_shared::address::Address;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::METHOD_SEND;
 use test_vm::util::{apply_code, apply_ok, create_accounts};
-use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
+use test_vm::VM;
 
 #[test]
 fn test_proposal_hash() {
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
+    let v = VM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from(10_000e18 as u64));
     let alice = addrs[0];
     let bob = addrs[1];

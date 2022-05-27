@@ -1,9 +1,9 @@
 use crate::*;
-use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
+use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{MethodNum, METHOD_SEND};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 
