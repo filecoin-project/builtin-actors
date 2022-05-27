@@ -47,7 +47,11 @@ pub fn create_accounts<'bs>(mut v: &VM<'bs>, count: u64, balance: TokenAmount) -
 }
 
 pub fn apply_ok<'bs, C:Cbor>(mut v: &VM<'bs>, from: Address, to: Address, value: TokenAmount, method: MethodNum, params: C ) ->  RawBytes {
+    apply_code(v, from, to, value, method, params, ExitCode::OK)
+}
+
+pub fn apply_code<'bs, C:Cbor>(mut v: &VM<'bs>, from: Address, to: Address, value: TokenAmount, method: MethodNum, params: C, code: ExitCode) -> RawBytes {
     let res = v.apply_message(from, to, value, method, params).unwrap();
-    assert_eq!(ExitCode::OK, res.code);
+    assert_eq!(code, res.code);
     res.ret
 }
