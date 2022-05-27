@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, RawBytes, Cbor};
+use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
@@ -119,7 +119,6 @@ pub struct ApproveReturn {
 
 impl Cbor for TxnIDParams {}
 impl Cbor for ApproveReturn {}
-
 
 /// Add signer params.
 #[derive(Serialize_tuple, Deserialize_tuple)]

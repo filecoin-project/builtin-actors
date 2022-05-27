@@ -6,8 +6,8 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
+use test_vm::util::pk_addrs_from;
 use test_vm::{actor, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
-use test_vm::util::{pk_addrs_from};
 
 #[test]
 fn state_control() {
