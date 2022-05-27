@@ -1,7 +1,7 @@
 [package]
 name = "fil_actor_miner"
 description = "Builtin miner actor for Filecoin"
-version = "7.5.0"
+version = "7.5.1"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "7.5.0", path = "../runtime" }
+fil_actors_runtime = { version = "7.5.1", path = "../runtime" }
 fvm_shared = { version = "0.7.1", default-features = false }
 bitfield = { version = "0.5.2", package = "fvm_ipld_bitfield" }
 fvm_ipld_amt = { version = "0.4.1", features = ["go-interop"] }
@@ -33,8 +33,8 @@ anyhow = "1.0.56"
 itertools = "0.10.3"
 
 [dev-dependencies]
-fil_actors_runtime = { version = "7.5.0", path = "../runtime", features = ["test_utils", "sector-default"] }
-fil_actor_account = { version = "7.5.0", path = "../account" }
+fil_actors_runtime = { version = "7.5.1", path = "../runtime", features = ["test_utils", "sector-default"] }
+fil_actor_account = { version = "7.5.1", path = "../account" }
 rand = "0.8.5"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 blake2b_simd = "1.0.0"
