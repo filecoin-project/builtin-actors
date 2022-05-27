@@ -74,9 +74,9 @@ dependencies = [
 
 [[package]]
 name = "async-io"
-version = "1.6.0"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a811e6a479f2439f0c04038796b5cfb3d2ad56c230e0f2d3f7b04d68cfee607b"
+checksum = "e5e18f61464ae81cde0a23e713ae8fd299580c54d697a35820cfd0625b8b0e07"
 dependencies = [
  "concurrent-queue",
  "futures-lite",
@@ -302,9 +302,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "cid"
-version = "0.8.4"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a52cffa791ce5cf490ac3b2d6df970dc04f931b04e727be3c3e220e17164dfc4"
+checksum = "fc949bff6704880faf064c42a4854032ab07bfcf3a4fcb82a57470acededb69c"
 dependencies = [
  "core2",
  "multibase",
@@ -550,7 +550,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_account"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -584,7 +584,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_cron"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_init"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -617,7 +617,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_market"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -639,7 +639,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_miner"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "anyhow",
  "blake2b_simd",
@@ -665,7 +665,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_multisig"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_paych"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -702,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_power"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -723,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_reward"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -739,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_system"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -752,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_verifreg"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_runtime"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -803,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_bundle"
-version = "7.5.0"
+version = "7.5.1"
 dependencies = [
  "cid",
  "clap",
@@ -1039,9 +1039,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f8461d36fb246465b4d6e111a76d3659a69ac61fce1568a6a42545e82237b0d"
+checksum = "5823623e85fa75b779c12ac793485a01d6f3a420b2b96eabeef26e1ce1aa3fc8"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -1054,9 +1054,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dc9fc253ba54aee0a7f692e590599dbeea3dcf612d0c99c16346ceea56a4842"
+checksum = "282f5fb4f2eb9f916badd253aa4898d7ba20bdda3e76a2f94d42ee67acb6ba2e"
 dependencies = [
  "anyhow",
  "bimap",
@@ -1206,9 +1206,9 @@ dependencies = [
 
 [[package]]
 name = "keccak"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67c21572b4949434e4fc1e1978b99c5f77064153c59d998bf13ecd96fb5ecba7"
+checksum = "f9b7d56ba4a8344d6be9729995e6b06f928af29998cdf79fe390cbf6b1fee838"
 
 [[package]]
 name = "kv-log-macro"
@@ -1359,15 +1359,15 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.11.0"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b10983b38c53aebdf33f542c6275b0f58a238129d00c4ae0e6fb59738d783ca"
+checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
 
 [[package]]
 name = "os_str_bytes"
-version = "6.0.1"
+version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "029d8d0b2f198229de29dca79676f2738ff952edf3fde542eb8bf94d8c21b435"
+checksum = "21326818e99cfe6ce1e524c2a805c189a99b5ae555a35d19f9a284b427d86afa"
 
 [[package]]
 name = "parking"
