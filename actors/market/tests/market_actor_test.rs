@@ -1758,7 +1758,7 @@ fn insufficient_provider_balance_in_a_batch() {
         result: Ok(()),
     });
     rt.expect_verify_signature(ExpectedVerifySig {
-        sig: sig,
+        sig,
         signer: deal2.client,
         plaintext: buf2.to_vec(),
         result: Ok(()),

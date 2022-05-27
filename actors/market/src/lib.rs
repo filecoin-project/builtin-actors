@@ -308,7 +308,8 @@ impl Actor {
 
             // drop deals with insufficient lock up to cover costs
             let client_id = client.id().expect("resolved address should be an ID address");
-            let mut client_lockup = total_client_lockup.entry(client_id).or_default().clone();
+            let mut client_lockup =
+                total_client_lockup.get(&client_id).cloned().unwrap_or_default();
             client_lockup += deal.proposal.client_balance_requirement();
 
             let client_balance_ok = msm.balance_covered(client, &client_lockup).map_err(|e| {
@@ -324,7 +325,7 @@ impl Actor {
             }
 
             let mut provider_lockup = total_provider_lockup.clone();
-            provider_lockup += deal.proposal.provider_collateral.clone();
+            provider_lockup += &deal.proposal.provider_collateral;
             let provider_balance_ok =
                 msm.balance_covered(provider, &provider_lockup).map_err(|e| {
                     e.downcast_default(
