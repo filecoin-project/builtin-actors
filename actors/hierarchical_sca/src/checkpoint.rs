@@ -43,6 +43,11 @@ impl Checkpoint {
         &self.sig
     }
 
+    /// set signature of checkpoint
+    pub fn set_signature(&mut self, sig: Vec<u8>) {
+        self.sig = sig;
+    }
+
     /// return checkpoint source
     pub fn source(&self) -> &SubnetID {
         &self.data.source
