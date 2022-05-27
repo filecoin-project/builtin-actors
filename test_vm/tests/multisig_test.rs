@@ -12,7 +12,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 use test_vm::util::{apply_code, apply_ok, create_accounts};
-use test_vm::VM;
+use test_vm::{ExpectInvocation, VM};
 
 #[test]
 fn test_proposal_hash() {
@@ -95,6 +95,15 @@ fn test_proposal_hash() {
     let correct_hash = compute_proposal_hash(&correct_tx, &v).unwrap();
     let approve_params = TxnIDParams { id: TxnID(0), proposal_hash: correct_hash.to_vec() };
     apply_ok(&v, bob, msig_addr, TokenAmount::zero(), MsigMethod::Approve as u64, approve_params);
-
+    let expect = ExpectInvocation {
+        to: msig_addr,
+        method: MsigMethod::Approve as u64,
+        subinvocs: Some(vec![
+            // Tx goes through to fund the system actor
+            ExpectInvocation { to: *SYSTEM_ACTOR_ADDR, method: METHOD_SEND, ..Default::default() },
+        ]),
+        ..Default::default()
+    };
+    expect.matches(v.take_invocations().last().unwrap());
     assert_eq!(sys_act_start_bal + fil_delta, v.get_actor(*SYSTEM_ACTOR_ADDR).unwrap().balance);
 }

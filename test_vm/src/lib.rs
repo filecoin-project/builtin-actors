@@ -962,6 +962,20 @@ impl ExpectInvocation {
     }
 }
 
+impl Default for ExpectInvocation {
+    fn default() -> Self {
+        Self {
+            method: 0,
+            to: Address::new_id(0),
+            code: None,
+            from: None,
+            params: None,
+            ret: None,
+            subinvocs: None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct TestVMError {
     msg: String,
