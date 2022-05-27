@@ -35,7 +35,7 @@ pub fn create_accounts(mut v: &VM, count: u64, balance: TokenAmount) -> Vec<Addr
     // Send funds from faucet to pk address, creating account actor
     for pk_addr in pk_addrs.clone() {
         apply_ok(
-            &mut v,
+            v,
             TEST_FAUCET_ADDR,
             pk_addr,
             balance.clone(),
