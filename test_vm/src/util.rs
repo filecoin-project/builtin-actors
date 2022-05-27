@@ -30,7 +30,7 @@ fn new_bls_from_rng(rng: &mut ChaCha8Rng) -> Address {
 
 const ACCOUNT_SEED: u64 = 93837778;
 
-pub fn create_accounts<'bs>(mut v: &VM<'bs>, count: u64, balance: TokenAmount) -> Vec<Address> {
+pub fn create_accounts(mut v: &VM, count: u64, balance: TokenAmount) -> Vec<Address> {
     let pk_addrs = pk_addrs_from(ACCOUNT_SEED, count);
     // Send funds from faucet to pk address, creating account actor
     for pk_addr in pk_addrs.clone() {
@@ -51,8 +51,8 @@ pub fn create_accounts<'bs>(mut v: &VM<'bs>, count: u64, balance: TokenAmount) -
     addrs
 }
 
-pub fn apply_ok<'bs, C: Cbor>(
-    mut v: &VM<'bs>,
+pub fn apply_ok<C: Cbor>(
+    v: &VM,
     from: Address,
     to: Address,
     value: TokenAmount,
@@ -62,8 +62,8 @@ pub fn apply_ok<'bs, C: Cbor>(
     apply_code(v, from, to, value, method, params, ExitCode::OK)
 }
 
-pub fn apply_code<'bs, C: Cbor>(
-    mut v: &VM<'bs>,
+pub fn apply_code<C: Cbor>(
+    v: &VM,
     from: Address,
     to: Address,
     value: TokenAmount,
