@@ -1,7 +1,7 @@
 use fil_actor_init::ExecReturn;
 use fil_actor_multisig::{
     compute_proposal_hash, Method as MsigMethod, ProposeParams, RemoveSignerParams,
-    State as MsigState, Transaction, TxnID, TxnIDParams,
+    State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::*;
@@ -168,6 +168,106 @@ fn test_delete_self() {
     test(2, 3, 1); // 2 of 3 removed is approver
     test(2, 2, 0); // 2 of 2 removed is proposer
     test(1, 2, 0); // 1 of 2
+}
+
+#[test]
+fn swap_self_1_of_2() {
+    let store = MemoryBlockstore::new();
+    let v = VM::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 3, TokenAmount::from(10_000e18 as u64));
+
+    let (alice, bob, chuck) = (addrs[0], addrs[1], addrs[2]);
+    let msig_addr = create_msig(&v, vec![alice, bob], 1);
+    let swap_params = SwapSignerParams { from: alice, to: chuck };
+    let propose_swap_signer_params = ProposeParams {
+        to: msig_addr,
+        value: TokenAmount::zero(),
+        method: MsigMethod::SwapSigner as u64,
+        params: serialize(&swap_params, "swap params").unwrap(),
+    };
+    // alice succeeds when trying to execute the tx swapping alice for chuck
+    apply_ok(
+        &v,
+        alice,
+        msig_addr,
+        TokenAmount::zero(),
+        MsigMethod::Propose as u64,
+        propose_swap_signer_params,
+    );
+    let st = v.get_state::<MsigState>(msig_addr).unwrap();
+    assert_eq!(vec![bob, chuck], st.signers)
+}
+
+#[test]
+fn swap_self_2_of_3() {
+    let store = MemoryBlockstore::new();
+    let v = VM::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 4, TokenAmount::from(10_000e18 as u64));
+    let (alice, bob, chuck, dinesh) = (addrs[0], addrs[1], addrs[2], addrs[3]);
+
+    let msig_addr = create_msig(&v, vec![alice, bob, chuck], 2);
+
+    // Case 1: swapped out is proposer, swap alice for dinesh
+    let swap_params = SwapSignerParams { from: alice, to: dinesh };
+    let propose_swap_signer_params = ProposeParams {
+        to: msig_addr,
+        value: TokenAmount::zero(),
+        method: MsigMethod::SwapSigner as u64,
+        params: serialize(&swap_params, "swap params").unwrap(),
+    };
+
+    // proposal from swapped addr goes ok with txnid 0
+    apply_ok(
+        &v,
+        alice,
+        msig_addr,
+        TokenAmount::zero(),
+        MsigMethod::Propose as u64,
+        propose_swap_signer_params,
+    );
+
+    // approval goes through
+    let approve_swap_signer_params = TxnIDParams { id: TxnID(0), proposal_hash: vec![] };
+    apply_ok(
+        &v,
+        bob,
+        msig_addr,
+        TokenAmount::zero(),
+        MsigMethod::Approve as u64,
+        approve_swap_signer_params,
+    );
+    let st = v.get_state::<MsigState>(msig_addr).unwrap();
+    assert_eq!(vec![dinesh, bob, chuck], st.signers);
+
+    // Case 2: swapped out is approver, swap dinesh for alice, dinesh is removed
+    let swap_params = SwapSignerParams { from: dinesh, to: alice };
+    let propose_swap_signer_params = ProposeParams {
+        to: msig_addr,
+        value: TokenAmount::zero(),
+        method: MsigMethod::SwapSigner as u64,
+        params: serialize(&swap_params, "swap params").unwrap(),
+    };
+
+    // proposal from non swapped goes ok, txnid = 1
+    apply_ok(
+        &v,
+        bob,
+        msig_addr,
+        TokenAmount::zero(),
+        MsigMethod::Propose as u64,
+        propose_swap_signer_params,
+    );
+    let approve_swap_signer_params = TxnIDParams { id: TxnID(1), proposal_hash: vec![] };
+    apply_ok(
+        &v,
+        dinesh,
+        msig_addr,
+        TokenAmount::zero(),
+        MsigMethod::Approve as u64,
+        approve_swap_signer_params,
+    );
+    let st = v.get_state::<MsigState>(msig_addr).unwrap();
+    assert_eq!(vec![alice, bob, chuck], st.signers)
 }
 
 fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
