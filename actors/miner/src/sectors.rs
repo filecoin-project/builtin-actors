@@ -128,7 +128,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
     }
 }
 
-pub(crate) fn select_sectors(
+pub fn select_sectors(
     sectors: &[SectorOnChainInfo],
     field: &BitField,
 ) -> anyhow::Result<Vec<SectorOnChainInfo>> {
