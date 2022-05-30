@@ -1,7 +1,6 @@
 use fil_actor_miner::pledge_penalty_for_continued_fault;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::{econ::TokenAmount, smooth::FilterEstimate};
-use std::ops::Neg;
 
 #[test]
 fn zero_power_means_zero_fault_penalty() {
