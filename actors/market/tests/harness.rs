@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+
 use cid::Cid;
 use num_traits::{FromPrimitive, Zero};
 use std::collections::HashMap;
@@ -6,7 +7,7 @@ use std::collections::HashMap;
 use fil_actor_market::{
     balance_table::BalanceTable, ext, ext::miner::GetControlAddressesReturnParams,
     gen_rand_next_epoch, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
-    DealMetaArray, DealProposal, DealState, Method, OnMinerSectorsTerminateParams,
+    DealMetaArray, DealProposal, DealState, Label, Method, OnMinerSectorsTerminateParams,
     PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
     VerifyDealsForActivationParams, VerifyDealsForActivationReturn, WithdrawBalanceParams,
     WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH,
@@ -95,7 +96,7 @@ pub fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
     assert_eq!(
         RawBytes::default(),
-        rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default(),).unwrap()
+        rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default()).unwrap()
     );
     rt.verify();
 }
@@ -779,7 +780,7 @@ pub fn generate_and_publish_deal_for_piece(
         verified_deal: false,
         client,
         provider: addrs.provider,
-        label: "label".to_string(),
+        label: Label::String("label".to_string()),
         start_epoch,
         end_epoch,
         storage_price_per_epoch: storage_per_epoch,
@@ -849,7 +850,7 @@ fn generate_deal_proposal_with_collateral(
         verified_deal: false,
         client,
         provider,
-        label: "label".to_string(),
+        label: Label::String("label".to_string()),
         start_epoch,
         end_epoch,
         storage_price_per_epoch: storage_per_epoch,
