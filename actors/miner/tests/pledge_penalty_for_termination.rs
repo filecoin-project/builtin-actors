@@ -13,14 +13,17 @@ fn epoch_target_reward() -> TokenAmount {
     TokenAmount::from(1_u128 << 50)
 }
 
+// 1 64 GiB sector
 fn qa_sector_power() -> StoragePower {
     StoragePower::from(1_u128 << 36)
 }
 
+// 1 PiB of network power, no estimated changes
 fn network_qa_power() -> StoragePower {
     StoragePower::from(1_u128 << 50)
 }
 
+// exactly 1 attoFIL per byte of power, no estimated changes
 fn reward_estimate() -> FilterEstimate {
     FilterEstimate::new(epoch_target_reward(), BigInt::zero())
 }
@@ -39,7 +42,7 @@ fn undeclared_penalty() -> TokenAmount {
 
 #[test]
 fn when_undeclared_fault_fee_exceeds_expected_reward_returns_undeclared_fault_fee() {
-    // small pledge and means undeclared penalty will be bigger
+    // small pledge compared to current expected reward means
     let initial_pledge = TokenAmount::from(1 << 10);
     let day_reward = initial_pledge / INITIAL_PLEDGE_FACTOR;
     let twenty_day_reward = &day_reward * INITIAL_PLEDGE_FACTOR;
@@ -82,8 +85,8 @@ fn when_expected_reward_exceeds_undeclared_fault_fee_returns_expected_reward() {
 
     // expect fee to be pledge + br * age * factor where br = pledge/initialPledgeFactor
     let expected_fee = &initial_pledge
-        + (&initial_pledge * sector_age_in_days * &*TERMINATION_REWARD_FACTOR_NUM)
-            / (INITIAL_PLEDGE_FACTOR * &*TERMINATION_REWARD_FACTOR_DENOM);
+        + (&day_reward * sector_age_in_days * &*TERMINATION_REWARD_FACTOR_NUM)
+            / &*TERMINATION_REWARD_FACTOR_DENOM;
     assert_eq!(expected_fee, fee);
 }
 
@@ -108,8 +111,8 @@ fn sector_age_is_capped() {
 
     // expect fee to be pledge * br * age-cap * factor where br = pledge/initialPledgeFactor
     let expected_fee = &initial_pledge
-        + (&initial_pledge * TERMINATION_LIFETIME_CAP * &*TERMINATION_REWARD_FACTOR_NUM)
-            / (INITIAL_PLEDGE_FACTOR * &*TERMINATION_REWARD_FACTOR_DENOM);
+        + (&day_reward * TERMINATION_LIFETIME_CAP * &*TERMINATION_REWARD_FACTOR_NUM)
+            / &*TERMINATION_REWARD_FACTOR_DENOM;
     assert_eq!(expected_fee, fee);
 }
 
