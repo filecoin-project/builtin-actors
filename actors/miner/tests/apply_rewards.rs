@@ -184,6 +184,7 @@ fn rewards_pay_back_fee_debt() {
     // 3*LockedRewardFactor*amt - 2*amt = remainingLocked
     let (locked_reward, _) = locked_reward_from_reward(reward.clone());
     let remaining_locked = locked_reward - &st.fee_debt; // note that this would be clamped at 0 if difference above is < 0
+    assert!(remaining_locked.is_positive());
     let pledge_delta = remaining_locked.clone();
     rt.set_caller(*REWARD_ACTOR_CODE_ID, *REWARD_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![*REWARD_ACTOR_ADDR]);
