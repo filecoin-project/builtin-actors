@@ -1,4 +1,3 @@
-use fil_actor_miner::power_for_sector;
 use fil_actor_miner::power_for_sectors;
 use fil_actor_miner::select_sectors;
 use fil_actor_miner::Partition;
@@ -7,8 +6,6 @@ use fil_actor_miner::Sectors;
 use fil_actor_miner::SECTORS_AMT_BITWIDTH;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::MessageAccumulator;
-use fil_actors_runtime::test_utils::MockRuntime;
-use fil_actors_runtime::ActorDowncast;
 use fil_actors_runtime::ActorError;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::BitField;
@@ -70,7 +67,7 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
     let sector_arr = sectors_arr(&store, sectors());
 
     // terminate 1 AND 2
-    let mut terminations: BitField = BitField::try_from_bits([1, 2]).unwrap();
+    let terminations: BitField = BitField::try_from_bits([1, 2]).unwrap();
     let termination_epoch = 3;
     partition
         .terminate_sectors(
@@ -158,7 +155,6 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
 
 #[test]
 fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
-    let policy = Policy::default();
     let (store, mut partition) = setup();
     let sector_arr = sectors_arr(&store, sectors());
 
@@ -237,20 +233,39 @@ fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
     );
 }
 
-// 	t.Run("successful when skipped fault set is empty", func(t *testing.T) {
-// 		store, partition := setup(t)
-// 		sectorArr := sectorsArr(t, store, sectors)
+#[test]
+fn successful_when_skipped_fault_set_is_empty() {
+    let (store, mut partition) = setup();
+    let sector_arr = sectors_arr(&store, sectors());
 
-// 		powerDelta, newFaultPower, recoveryPower, newFaults, err := partition.RecordSkippedFaults(store, sectorArr, sectorSize, quantSpec, exp, bf())
-// 		require.NoError(t, err)
-// 		require.EqualValues(t, miner.NewPowerPairZero(), newFaultPower)
-// 		require.EqualValues(t, miner.NewPowerPairZero(), recoveryPower)
-// 		require.EqualValues(t, miner.NewPowerPairZero(), powerDelta)
-// 		require.False(t, newFaults)
+    let (power_delta, new_fault_power, recovery_power, new_faults) = partition
+        .record_skipped_faults(
+            &store,
+            &sector_arr,
+            SECTOR_SIZE,
+            QUANT_SPEC,
+            EXP,
+            &mut BitField::new().into(),
+        )
+        .unwrap();
+    assert!(new_fault_power.is_zero());
+    assert!(recovery_power.is_zero());
+    assert!(power_delta.is_zero());
+    assert!(!new_faults);
 
-// 		assertPartitionState(t, store, partition, quantSpec, sectorSize, sectors, bf(1, 2, 3, 4, 5, 6), bf(), bf(), bf(), bf())
-// 	})
-// }
+    assert_partition_state(
+        &store,
+        &partition,
+        QUANT_SPEC,
+        SECTOR_SIZE,
+        &sectors(),
+        &BitField::try_from_bits(1..=6).unwrap(),
+        &BitField::new(),
+        &BitField::new(),
+        &BitField::new(),
+        &BitField::new(),
+    );
+}
 
 fn assert_partition_state(
     store: &MemoryBlockstore,
