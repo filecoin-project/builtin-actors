@@ -405,6 +405,10 @@ impl MockRuntime {
         *self.balance.get_mut() = amount;
     }
 
+    pub fn get_balance(&mut self) -> TokenAmount {
+        self.balance.borrow().to_owned()
+    }
+
     pub fn add_balance(&mut self, amount: TokenAmount) {
         *self.balance.get_mut() += amount;
     }
