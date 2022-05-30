@@ -127,7 +127,7 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
             SECTOR_SIZE,
             QUANT_SPEC,
             EXP,
-            &mut skipped.clone().into(),
+            &mut skipped.into(),
         )
         .unwrap();
     assert!(retracted_power.is_zero());
@@ -161,21 +161,12 @@ fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
     // make 4, 5 and 6 faulty
     let fault_set = BitField::try_from_bits([4, 5, 6]).unwrap();
     let _ = partition
-        .record_faults(
-            &store,
-            &sector_arr,
-            &mut fault_set.clone().into(),
-            7,
-            SECTOR_SIZE,
-            QUANT_SPEC,
-        )
+        .record_faults(&store, &sector_arr, &mut fault_set.into(), 7, SECTOR_SIZE, QUANT_SPEC)
         .unwrap();
 
     // add 4 and 5 as recoveries
     let recover_set = BitField::try_from_bits([4, 5]).unwrap();
-    partition
-        .declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set.clone().into())
-        .unwrap();
+    partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set.into()).unwrap();
 
     assert_partition_state(
         &store,
@@ -199,7 +190,7 @@ fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
             SECTOR_SIZE,
             QUANT_SPEC,
             EXP,
-            &mut skipped.clone().into(),
+            &mut skipped.into(),
         )
         .unwrap();
     assert!(new_faults);
@@ -267,6 +258,7 @@ fn successful_when_skipped_fault_set_is_empty() {
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn assert_partition_state(
     store: &MemoryBlockstore,
     partition: &Partition,
@@ -297,10 +289,10 @@ fn assert_partition_state(
     msgs.assert_empty();
 }
 
-pub fn sectors_arr<'a>(
-    store: &'a MemoryBlockstore,
+pub fn sectors_arr(
+    store: &'_ MemoryBlockstore,
     sectors_info: Vec<SectorOnChainInfo>,
-) -> Sectors<'a, MemoryBlockstore> {
+) -> Sectors<'_, MemoryBlockstore> {
     let empty_array =
         Amt::<(), _>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH).flush().unwrap();
     let mut sectors = Sectors::load(store, &empty_array).unwrap();
