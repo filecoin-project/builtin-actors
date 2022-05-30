@@ -156,39 +156,86 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
     );
 }
 
-// 	t.Run("recoveries are retracted without being marked as new faulty power", func(t *testing.T) {
-// 		store, partition := setup(t)
-// 		sectorArr := sectorsArr(t, store, sectors)
+#[test]
+fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
+    let policy = Policy::default();
+    let (store, mut partition) = setup();
+    let sector_arr = sectors_arr(&store, sectors());
 
-// 		// make 4, 5 and 6 faulty
-// 		faultSet := bf(4, 5, 6)
-// 		_, _, _, err := partition.RecordFaults(store, sectorArr, faultSet, abi.ChainEpoch(7), sectorSize, quantSpec)
-// 		require.NoError(t, err)
+    // make 4, 5 and 6 faulty
+    let fault_set = BitField::try_from_bits([4, 5, 6]).unwrap();
+    let _ = partition
+        .record_faults(
+            &store,
+            &sector_arr,
+            &mut fault_set.clone().into(),
+            7,
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
+        .unwrap();
 
-// 		// add 4 and 5 as recoveries
-// 		recoverSet := bf(4, 5)
-// 		err = partition.DeclareFaultsRecovered(sectorArr, sectorSize, recoverSet)
-// 		require.NoError(t, err)
+    // add 4 and 5 as recoveries
+    let recover_set = BitField::try_from_bits([4, 5]).unwrap();
+    partition
+        .declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set.clone().into())
+        .unwrap();
 
-// 		assertPartitionState(t, store, partition, quantSpec, sectorSize, sectors, bf(1, 2, 3, 4, 5, 6), bf(4, 5, 6), bf(4, 5), bf(), bf())
+    assert_partition_state(
+        &store,
+        &partition,
+        QUANT_SPEC,
+        SECTOR_SIZE,
+        &sectors(),
+        &BitField::try_from_bits(1..=6).unwrap(),
+        &BitField::try_from_bits([4, 5, 6]).unwrap(),
+        &BitField::try_from_bits([4, 5]).unwrap(),
+        &BitField::new(),
+        &BitField::new(),
+    );
 
-// 		// record skipped faults such that some of them have been marked as recovered
-// 		skipped := bitfield.NewFromSet([]uint64{1, 4, 5})
-// 		powerDelta, newFaultPower, recoveryPower, newFaults, err := partition.RecordSkippedFaults(store, sectorArr, sectorSize, quantSpec, exp, skipped)
-// 		require.NoError(t, err)
-// 		require.True(t, newFaults)
+    // record skipped faults such that some of them have been marked as recovered
+    let skipped = BitField::try_from_bits([1, 4, 5]).unwrap();
+    let (power_delta, new_fault_power, recovery_power, new_faults) = partition
+        .record_skipped_faults(
+            &store,
+            &sector_arr,
+            SECTOR_SIZE,
+            QUANT_SPEC,
+            EXP,
+            &mut skipped.clone().into(),
+        )
+        .unwrap();
+    assert!(new_faults);
 
-// 		// only 1 is marked for fault power as 4 & 5 are recovering
-// 		expectedFaultyPower := miner.PowerForSectors(sectorSize, selectSectors(t, sectors, bf(1)))
-// 		require.EqualValues(t, expectedFaultyPower, newFaultPower)
-// 		require.EqualValues(t, expectedFaultyPower.Neg(), powerDelta)
+    // only 1 is marked for fault power as 4 & 5 are recovering
+    let expected_faulty_power = power_for_sectors(
+        SECTOR_SIZE,
+        &select_sectors(&sectors(), &BitField::try_from_bits([1]).unwrap()).unwrap(),
+    );
+    assert_eq!(expected_faulty_power, new_fault_power);
+    assert_eq!(expected_faulty_power.neg(), power_delta);
 
-// 		// 4 & 5 are marked for recovery power
-// 		expectedRecoveryPower := miner.PowerForSectors(sectorSize, selectSectors(t, sectors, bf(4, 5)))
-// 		require.EqualValues(t, expectedRecoveryPower, recoveryPower)
+    // 4 & 5 are marked for recovery power
+    let expected_recovery_power = power_for_sectors(
+        SECTOR_SIZE,
+        &select_sectors(&sectors(), &BitField::try_from_bits([4, 5]).unwrap()).unwrap(),
+    );
+    assert_eq!(expected_recovery_power, recovery_power);
 
-// 		assertPartitionState(t, store, partition, quantSpec, sectorSize, sectors, bf(1, 2, 3, 4, 5, 6), bf(1, 4, 5, 6), bf(), bf(), bf())
-// 	})
+    assert_partition_state(
+        &store,
+        &partition,
+        QUANT_SPEC,
+        SECTOR_SIZE,
+        &sectors(),
+        &BitField::try_from_bits(1..=6).unwrap(),
+        &BitField::try_from_bits([1, 4, 5, 6]).unwrap(),
+        &BitField::new(),
+        &BitField::new(),
+        &BitField::new(),
+    );
+}
 
 // 	t.Run("successful when skipped fault set is empty", func(t *testing.T) {
 // 		store, partition := setup(t)
