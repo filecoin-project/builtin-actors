@@ -14,10 +14,11 @@ use fil_actor_miner::{
     pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_sector,
     qa_power_for_weight, reward_for_consensus_slash_report, Actor, ApplyRewardParams,
     BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams,
-    CheckSectorProvenParams, CompactPartitionsParams, ConfirmSectorProofsParams, CronEventPayload,
-    Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams, DeclareFaultsRecoveredParams,
-    DeferredCronEventParams, DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet,
-    ExtendSectorExpirationParams, FaultDeclaration, GetControlAddressesReturn, Method,
+    CheckSectorProvenParams, CompactPartitionsParams, CompactSectorNumbersParams,
+    ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
+    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
+    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, ExtendSectorExpirationParams,
+    FaultDeclaration, GetControlAddressesReturn, Method,
     MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PoStPartition, PowerPair,
     PreCommitSectorBatchParams, PreCommitSectorParams, ProveCommitSectorParams,
     RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo,
@@ -380,6 +381,26 @@ impl ActorHarness {
             .unwrap();
         rt.reset();
         sector_info
+    }
+
+    pub fn compact_sector_numbers_raw(
+        &self,
+        rt: &mut MockRuntime,
+        addr: Address,
+        bf: BitField,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let params =
+            CompactSectorNumbersParams { mask_sector_numbers: UnvalidatedBitField::Validated(bf) };
+
+        rt.call::<Actor>(Method::CompactSectorNumbers as u64, &RawBytes::serialize(params).unwrap())
+    }
+
+    pub fn compact_sector_numbers(&self, rt: &mut MockRuntime, addr: Address, bf: BitField) {
+        self.compact_sector_numbers_raw(rt, addr, bf).unwrap();
+        rt.verify();
     }
 
     pub fn get_deadline_info(&self, rt: &MockRuntime) -> DeadlineInfo {
