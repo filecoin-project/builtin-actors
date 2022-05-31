@@ -67,7 +67,7 @@ use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 use num_traits::sign::Signed;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeSet, BTreeMap, HashMap, HashSet};
 use std::convert::TryInto;
 use std::ops::Neg;
 
@@ -2346,7 +2346,7 @@ pub struct PartitionStateSummary {
 }
 
 impl PartitionStateSummary {
-    fn check_partition_state_invariants<BS: Blockstore>(
+    pub fn check_partition_state_invariants<BS: Blockstore>(
         partition: &Partition,
         store: &BS,
         quant: QuantSpec,
@@ -3091,4 +3091,14 @@ impl BitFieldQueueExpectation {
             })
             .unwrap();
     }
+}
+
+pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
+    let mut to_include: BTreeSet<_> = field.iter().collect();
+    let included =
+        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
+
+    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
+
+    included
 }
