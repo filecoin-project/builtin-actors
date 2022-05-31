@@ -44,9 +44,9 @@ fn insufficient_funds_for_aggregated_prove_commit_network_fee() {
 
     // set base fee extremely high so AggregateProveCommitNetworkFee is > 1000 FIL. Set balance to 1000 FIL to easily cover IP but not cover network fee
     rt.set_epoch(prove_commit_epoch);
-    let balance = BigInt::from(1000) * BigInt::from(10i32.pow(18));
+    let balance = BigInt::from(1000u64) * BigInt::from(10u64.pow(18));
     rt.set_balance(balance.clone());
-    let base_fee = BigInt::from(10i32.pow(16));
+    let base_fee = BigInt::from(10u64.pow(16));
     rt.set_base_fee(base_fee.clone());
     assert!(aggregate_prove_commit_network_fee(precommits.len() as i64, &base_fee) > balance);
 }
