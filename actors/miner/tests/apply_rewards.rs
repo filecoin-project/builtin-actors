@@ -78,10 +78,9 @@ fn funds_vest() {
     let (locked_amt, _) = locked_reward_from_reward(amt);
     assert_eq!(locked_amt, st.locked_funds);
     // technically applying rewards without first activating cron is an impossible state but convenient for testing
-    // TODO: check_state_invariants should return a vec of messages.
-    // let msgs = check_state_invariants(&rt)
-    // assert_eq!( 1, msgs.len());
-    // assert!( msgs[0].contains("DeadlineCronActive == false"))
+    let (_, acc) = check_state_invariants(&rt);
+    assert_eq!(1, acc.len());
+    assert!(acc.messages().first().unwrap().contains("DeadlineCronActive == false"));
 }
 
 #[test]
@@ -100,10 +99,9 @@ fn penalty_is_burnt() {
     expected_lock_amt -= penalty;
     assert_eq!(expected_lock_amt, h.get_locked_funds(&rt));
     // technically applying rewards without first activating cron is an impossible state but convenient for testing
-    // TODO: check_state_invariants should return a vec of messages.
-    // let msgs = check_state_invariants(&rt)
-    // assert_eq!( 1, msgs.len());
-    // assert!( msgs[0].contains("DeadlineCronActive == false"))
+    let (_, acc) = check_state_invariants(&rt);
+    assert_eq!(1, acc.len());
+    assert!(acc.messages().first().unwrap().contains("DeadlineCronActive == false"));
 }
 
 #[test]
@@ -149,7 +147,7 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
     // fee debt =  penalty - reward - initial balance = 3*amt - 2*amt = amt
     assert_eq!(amt, st.fee_debt);
     // technically applying rewards without first activating cron is an impossible state but convenient for testing
-    // TODO: h.check_state(&rt);
+    h.check_state(&rt);
 }
 
 // The system should not reach this state since fee debt removes mining eligibility
@@ -224,8 +222,7 @@ fn rewards_pay_back_fee_debt() {
     // remaining funds locked in vesting table
     assert_eq!(remaining_locked, st.locked_funds);
     // technically applying rewards without first activating cron is an impossible state but convenient for testing
-    // TODO: check_state_invariants should return a vec of messages.
-    // let msgs = check_state_invariants(&rt)
-    // assert_eq!( 1, msgs.len());
-    // assert!( msgs[0].contains("DeadlineCronActive == false"))
+    let (_, acc) = check_state_invariants(&rt);
+    assert_eq!(1, acc.len());
+    assert!(acc.messages().first().unwrap().contains("DeadlineCronActive == false"));
 }

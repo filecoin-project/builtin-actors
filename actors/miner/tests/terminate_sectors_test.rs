@@ -95,7 +95,7 @@ fn removes_sector_with_correct_accounting() {
     //expect pledge requirement to have been decremented
     assert!(state.initial_pledge.is_zero());
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -135,5 +135,5 @@ fn cannot_terminate_a_sector_when_the_challenge_window_is_open() {
         res,
     );
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }

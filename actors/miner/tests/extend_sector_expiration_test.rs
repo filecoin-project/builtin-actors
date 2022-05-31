@@ -68,7 +68,7 @@ fn rejects_negative_extensions() {
         &format!("cannot reduce sector {} expiration", sector.sector_number),
         res,
     );
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn rejects_extension_too_far_in_future() {
         ),
         res,
     );
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn rejects_extension_past_max_for_seal_proof() {
 
     let res = h.extend_sectors(&mut rt, params);
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "total sector lifetime", res);
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -198,7 +198,7 @@ fn updates_expiration_with_valid_params() {
     assert_eq!(expiration_set.len(), 1);
     assert!(expiration_set.on_time_sectors.get(old_sector.sector_number));
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -283,7 +283,7 @@ fn updates_many_sectors() {
     assert_eq!(sector_count / 2, on_time_total);
     assert_eq!(sector_count / 2, extended_total);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -352,5 +352,5 @@ fn supports_extensions_off_deadline_boundary() {
     let state: State = rt.get_state();
     assert!(!state.deadline_cron_active);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }

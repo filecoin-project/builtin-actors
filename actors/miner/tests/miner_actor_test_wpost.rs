@@ -70,7 +70,7 @@ fn basic_post_and_dispute() {
 
     // Advance to end-of-deadline cron to verify no penalties.
     h.advance_deadline(&mut rt, CronConfig::empty());
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 
     // Proofs should exist in snapshot.
     let deadline2 = h.get_deadline(&rt, dlidx);
@@ -571,7 +571,7 @@ fn duplicate_proof_rejected() {
 
     // Advance to end-of-deadline cron to verify no penalties.
     h.advance_deadline(&mut rt, CronConfig::empty());
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -676,7 +676,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
 
     // Advance to end-of-deadline cron to verify no penalties.
     h.advance_deadline(&mut rt, CronConfig::empty());
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -763,7 +763,7 @@ fn skipped_faults_adjust_power() {
         ),
     );
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -812,7 +812,7 @@ fn skipping_all_sectors_in_a_partition_rejected() {
 
     // These sectors are detected faulty and pay no penalty this time.
     h.advance_deadline(&mut rt, CronConfig::with_continued_faults_penalty(TokenAmount::from(0u8)));
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -865,7 +865,7 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
     let ongoing_fee = h.continued_fault_penalty(&infos1);
     h.advance_deadline(&mut rt, CronConfig::with_continued_faults_penalty(ongoing_fee));
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -917,7 +917,7 @@ fn skipping_a_fault_from_the_wrong_partition_is_an_error() {
         result,
     );
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -1217,5 +1217,5 @@ fn bad_post_fails_when_verified() {
         result,
     );
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }

@@ -121,7 +121,8 @@ fn simple_construction() {
 
     assert!(state.early_terminations.is_empty());
 
-    util::check_state_invariants(&env.rt);
+    let (_, acc) = util::check_state_invariants(&env.rt);
+    assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
 }
 
 #[test]
