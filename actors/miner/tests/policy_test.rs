@@ -37,17 +37,17 @@ fn quality_is_independent_of_size_and_duration() {
     for size in size_range {
         for duration in &duration_range {
             let sector_weight = weight(size, *duration);
-            assert_equal(
-                &empty_quality,
-                &quality_for_weight(size, *duration, &BigInt::from(0), &BigInt::from(0)),
+            assert_eq!(
+                empty_quality,
+                quality_for_weight(size, *duration, &BigInt::from(0), &BigInt::from(0)),
             );
-            assert_equal(
-                &deal_quality,
-                &quality_for_weight(size, *duration, &sector_weight, &BigInt::from(0)),
+            assert_eq!(
+                deal_quality,
+                quality_for_weight(size, *duration, &sector_weight, &BigInt::from(0)),
             );
-            assert_equal(
-                &verified_quality,
-                &quality_for_weight(size, *duration, &BigInt::from(0), &sector_weight),
+            assert_eq!(
+                verified_quality,
+                quality_for_weight(size, *duration, &BigInt::from(0), &sector_weight),
             );
         }
     }
@@ -61,38 +61,33 @@ fn quality_scales_with_verified_weight_proportion() {
     let verified_quality = &empty_quality
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
 
-    let size_range: Vec<SectorSize> = vec![
-        SectorSize::_2KiB,
-        SectorSize::_8MiB,
-        SectorSize::_512MiB,
-        SectorSize::_32GiB,
-        SectorSize::_64GiB,
-    ];
+    let sector_size = SectorSize::_64GiB;
     let sector_duration = ChainEpoch::from(1_000_000); // ~350 days
+    let sector_weight = weight(sector_size, sector_duration);
 
-    let verified_range: Vec<SectorSize> = vec![
-        SectorSize::_2KiB,
-        SectorSize::_8MiB,
-        SectorSize::_512MiB,
-        SectorSize::_32GiB,
-        SectorSize::_64GiB,
+    let verified_range: Vec<BigInt> = vec![
+        BigInt::from(0),
+        BigInt::from(1),
+        BigInt::from(1 << 10),
+        BigInt::from(2 << 20),
+        BigInt::from(5 << 20),
+        BigInt::from(1 << 30),
+        BigInt::from((1i64 << 40) - 1),
+        BigInt::from(1i64 << 40),
     ];
     for verified_space in verified_range {
-        for size in &size_range {
-            let sector_weight = weight(*size, sector_duration);
-            let verified_weight = weight(verified_space, sector_duration);
-            let empty_weight = &sector_weight - &verified_weight;
-            assert_equal(&(sector_weight.clone() - empty_weight.clone()), &verified_weight);
+        let verified_weight = weight_with_size_as_bigint(verified_space, sector_duration);
+        let empty_weight = &sector_weight - &verified_weight;
+        assert_eq!((sector_weight.clone() - empty_weight.clone()), verified_weight);
 
-            // Expect sector quality to be a weighted sum of base and verified quality
-            let eq = empty_weight * empty_quality.clone();
-            let vq = &verified_weight * verified_quality.clone();
-            let expected_quality = (eq + vq) / sector_weight;
-            assert_equal(
-                &expected_quality,
-                &quality_for_weight(*size, sector_duration, &BigInt::from(0), &verified_weight),
-            );
-        }
+        // Expect sector quality to be a weighted sum of base and verified quality
+        let eq = empty_weight * empty_quality.clone();
+        let vq = &verified_weight * verified_quality.clone();
+        let expected_quality = (eq + vq) / &sector_weight;
+        assert_eq!(
+            expected_quality,
+            quality_for_weight(sector_size, sector_duration, &BigInt::from(0), &verified_weight),
+        );
     }
 }
 
@@ -100,9 +95,6 @@ fn weight(size: SectorSize, duration: ChainEpoch) -> BigInt {
     BigInt::from(size as u64) * BigInt::from(duration as i64)
 }
 
-fn assert_equal(a: &BigInt, b: &BigInt) {
-    // Zero does not have a canonical representation, so check that explicitly.
-    if !(a == &BigInt::from(0) && b == &BigInt::from(0)) {
-        assert_eq!(a, b);
-    }
+fn weight_with_size_as_bigint(size: BigInt, duration: ChainEpoch) -> BigInt {
+    size * BigInt::from(duration as i64)
 }
