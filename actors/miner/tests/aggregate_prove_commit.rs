@@ -43,10 +43,9 @@ fn valid_precommits_then_aggregate_provecommit() {
     let mut precommits = vec![];
     let mut sector_nos_bf = BitField::new();
     for i in 0..10u64 {
-        let sector_number = SectorNumber::from(i);
         sector_nos_bf.set(i);
         let precommit_params =
-            actor.make_pre_commit_params(sector_number, precommit_epoch - 1, expiration, vec![1]);
+            actor.make_pre_commit_params(i, precommit_epoch - 1, expiration, vec![1]);
         let config =
             PreCommitConfig::new(deal_weight.clone(), BigInt::from(verified_deal_weight), None);
         let precommit = actor.pre_commit_sector_and_get(&mut rt, precommit_params, config, i == 0);
@@ -72,7 +71,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     let st = actor.get_state(&rt);
 
     for sector_no in sector_nos_bf.iter() {
-        assert!(!actor.has_precommit(&mut rt, sector_no));
+        assert!(!actor.has_precommit(&rt, sector_no));
     }
 
     // expect deposit to have been transferred to initial pledges
@@ -100,7 +99,7 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     // expect new onchain sector
     for sector_no in sector_nos_bf.iter() {
-        let sector = actor.get_sector(&rt, SectorNumber::from(sector_no));
+        let sector = actor.get_sector(&rt, sector_no);
         // expect deal weights to be transferred to on chain info
         assert_eq!(deal_weight, sector.deal_weight);
         assert_eq!(BigInt::from(verified_deal_weight), sector.verified_deal_weight);
@@ -134,7 +133,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     let quant = st.quant_spec_for_deadline(&rt.policy, dl_idx);
     let quantized_expiration = quant.quantize_up(expiration);
 
-    let d_queue = actor.collect_deadline_expirations(&mut rt, &deadline);
+    let d_queue = actor.collect_deadline_expirations(&rt, &deadline);
     let mut expected_queue = HashMap::new();
     expected_queue.insert(quantized_expiration, vec![p_idx]);
     assert_eq!(expected_queue, d_queue);
