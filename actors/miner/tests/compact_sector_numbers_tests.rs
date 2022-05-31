@@ -44,7 +44,7 @@ mod compact_sector_numbers_test {
         // Allocating masked sector number should fail.
         {
             let precommit = h.make_pre_commit_params(
-                target_sector_num,
+                target_sector_num + 1,
                 precommit_epoch - 1,
                 expiration,
                 vec![],
