@@ -551,7 +551,70 @@ mod miner_actor_test_partitions {
 
     #[test]
     fn replace_sectors() {
+        use std::convert::TryInto;
 
+        let (rt, mut partition) = setup_partition();
+
+        // remove 3 sectors starting with 2
+        let old_sectors = sectors()[1..4].to_vec();
+        let old_sector_power = power_for_sectors(SECTOR_SIZE, &old_sectors);
+        let old_sector_pledge: u64 = 1001 + 1002 + 1003;
+
+        // replace 1 and add 2 new sectors
+        let new_sectors = vec![
+            test_sector(10, 2, 150, 260, 3000),
+            test_sector(10, 7, 151, 261, 3001),
+            test_sector(18, 8, 152, 262, 3002),
+        ];
+        let new_sector_power = power_for_sectors(SECTOR_SIZE, &new_sectors);
+        let new_sector_pledge = TokenAmount::from(3000u64 + 3001 + 3002);
+
+        let (power_delta, pledge_delta) = partition.replace_sectors(
+            &rt.store, &old_sectors, &new_sectors, SECTOR_SIZE, QUANT_SPEC
+        ).unwrap();
+
+        let expected_power_delta = new_sector_power - old_sector_power;
+        assert_eq!(expected_power_delta, power_delta);
+        assert_eq!(new_sector_pledge - old_sector_pledge, pledge_delta);
+
+        // partition state should contain new sectors and not old sectors
+        let mut all_sectors = new_sectors.clone();
+        all_sectors.extend_from_slice(&sectors()[0..1]);
+        all_sectors.extend_from_slice(&sectors()[4..]);
+        let empty = bitfield_from_slice(&[]);
+        assert_partition_state(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            SECTOR_SIZE,
+            &all_sectors,
+            bitfield_from_slice(&[1, 2, 5, 6, 7, 8]),
+            empty.clone(),
+            empty.clone(),
+            empty.clone(),
+            empty
+        );
+
+        // sector 2 should be moved, 3 and 4 should be removed, and 7 and 8 added
+        assert_partition_expiration_queue(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            &[
+                ExpectExpirationGroup {
+                    expiration: 5,
+                    sectors: bitfield_from_slice(&[1]),
+                },
+                ExpectExpirationGroup {
+                    expiration: 13,
+                    sectors: bitfield_from_slice(&[2, 5, 6, 7]),
+                },
+                ExpectExpirationGroup {
+                    expiration: 21,
+                    sectors: bitfield_from_slice(&[8]),
+                },
+            ]
+        );
     }
 
     #[test]
