@@ -30,6 +30,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
+use regex::Regex;
 use std::ops::Add;
 
 use num_traits::FromPrimitive;
@@ -1111,7 +1112,15 @@ fn fail_when_deal_is_activated_but_proposal_is_not_found() {
     rt.set_epoch(process_epoch(start_epoch, deal_id));
     expect_abort(ExitCode::USR_NOT_FOUND, cron_tick_raw(&mut rt));
 
-    check_state(&rt);
+    check_state_with_expected(
+        &rt,
+        &[
+            Regex::new("no deal proposal for deal state \\d+").unwrap(),
+            Regex::new("pending proposal with cid \\w+ not found within proposals .*").unwrap(),
+            Regex::new("deal op found for deal id \\d+ with missing proposal at epoch \\d+")
+                .unwrap(),
+        ],
+    );
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1540
@@ -1146,7 +1155,10 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
 
     expect_abort(ExitCode::USR_ILLEGAL_STATE, cron_tick_raw(&mut rt));
 
-    check_state(&rt);
+    check_state_with_expected(
+        &rt,
+        &[Regex::new("deal \\d+ last updated epoch \\d+ after current \\d+").unwrap()],
+    );
 }
 
 #[test]

@@ -1,8 +1,14 @@
 #![allow(dead_code)]
 
 use cid::Cid;
-use num_traits::{FromPrimitive, Zero};
-use std::collections::HashMap;
+use itertools::Itertools;
+use num_traits::{FromPrimitive, Signed, Zero};
+use regex::Regex;
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet, HashMap},
+    convert::TryFrom,
+};
 
 use fil_actor_market::{
     balance_table::BalanceTable, ext, ext::miner::GetControlAddressesReturnParams,
@@ -16,15 +22,17 @@ use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::UseBytesParams;
 use fil_actors_runtime::{
+    make_map_with_root_and_bitwidth,
     network::EPOCHS_IN_DAY,
+    parse_uint_key,
     runtime::{Policy, Runtime},
     test_utils::*,
     ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::Cbor;
 use fvm_ipld_encoding::{to_vec, RawBytes};
-use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
@@ -35,6 +43,7 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{
     address::Address, econ::TokenAmount, error::ExitCode, METHOD_CONSTRUCTOR, METHOD_SEND,
 };
+use fvm_shared::{address::Protocol, bigint::BigInt};
 
 // Define common set of actor ids that will be used across all tests.
 const OWNER_ID: u64 = 101;
@@ -81,17 +90,42 @@ pub fn setup() -> MockRuntime {
         caller: *SYSTEM_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         actor_code_cids,
+        balance: RefCell::new(10u64.pow(19).into()),
         ..Default::default()
     };
+
     construct_and_verify(&mut rt);
 
     rt
 }
 
-pub fn check_state(_rt: &MockRuntime) {
-    // TODO
+pub fn check_state(rt: &MockRuntime) {
+    let (_, acc) = check_state_invariants(rt);
+    assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
 }
 
+/// Checks state, allowing expected invariants to fail. The invariants *must* fail in the
+/// provided order.
+pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) {
+    let (_, acc) = check_state_invariants(rt);
+
+    let messages = acc.messages();
+    assert!(
+        messages.len() == expected_patterns.len(),
+        "Incorrect number of broken invariants. Failed: {}.\nExpected: {}",
+        messages.join("\n"),
+        expected_patterns.iter().map(|regex| regex.as_str()).join("\n")
+    );
+
+    messages.iter().zip(expected_patterns).for_each(|(message, pattern)| {
+        assert!(
+            pattern.is_match(message),
+            "invariant failures did not match. Actual: {}, expected: {}",
+            message,
+            pattern.as_str()
+        );
+    });
+}
 pub fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
     assert_eq!(
@@ -709,7 +743,7 @@ pub fn assert_deal_failure<F>(
         .exit_code()
     );
     rt.verify();
-    // TODO: actor.checkState(rt)
+    check_state(&rt);
 }
 
 pub fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
@@ -923,4 +957,275 @@ pub fn verify_deals_for_activation(
         .expect("VerifyDealsForActivation failed!");
     rt.verify();
     ret
+}
+
+struct DealSummary {
+    provider: Address,
+    start_epoch: ChainEpoch,
+    end_epoch: ChainEpoch,
+    sector_start_epoch: ChainEpoch,
+    last_update_epoch: ChainEpoch,
+    slash_epoch: ChainEpoch,
+}
+
+impl Default for DealSummary {
+    fn default() -> Self {
+        Self {
+            provider: Address::new_id(0),
+            start_epoch: 0,
+            end_epoch: 0,
+            sector_start_epoch: -1,
+            last_update_epoch: -1,
+            slash_epoch: -1,
+        }
+    }
+}
+
+#[derive(Default)]
+struct StateSummary {
+    deals: BTreeMap<DealID, DealSummary>,
+    pending_proposal_count: u64,
+    deal_state_count: u64,
+    lock_table_count: u64,
+    deal_op_epoch_count: u64,
+    deal_op_count: u64,
+}
+
+fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumulator) {
+    let state = rt.get_state::<State>();
+    let current_epoch = rt.epoch;
+    let acc = MessageAccumulator::default();
+
+    acc.require(
+        !state.total_client_locked_collateral.is_negative(),
+        &format!(
+            "negative total client locked collateral: {}",
+            state.total_client_locked_collateral
+        ),
+    );
+    acc.require(
+        !state.total_provider_locked_collateral.is_negative(),
+        &format!(
+            "negative total provider locked collateral: {}",
+            state.total_provider_locked_collateral
+        ),
+    );
+    acc.require(
+        !state.total_client_storage_fee.is_negative(),
+        &format!("negative total client storage fee: {}", state.total_client_storage_fee),
+    );
+
+    // Proposals
+    let mut proposal_cids = BTreeSet::<Cid>::new();
+    let mut max_deal_id = -1;
+    let mut proposal_stats = BTreeMap::<DealID, DealSummary>::new();
+    let mut expected_deal_ops = BTreeSet::<DealID>::new();
+    let mut total_proposal_collateral = TokenAmount::zero();
+
+    match DealArray::load(&state.proposals, rt.store()) {
+        Ok(proposals) => {
+            let ret = proposals.for_each(|deal_id, proposal| {
+                let proposal_cid = proposal.cid()?;
+
+                if proposal.start_epoch >= current_epoch {
+                    expected_deal_ops.insert(deal_id);
+                }
+
+                // keep some state
+                proposal_cids.insert(proposal_cid);
+                max_deal_id = max_deal_id.max(deal_id as i64);
+
+                proposal_stats.insert(
+                    deal_id,
+                    DealSummary {
+                        provider: proposal.provider,
+                        start_epoch: proposal.start_epoch,
+                        end_epoch: proposal.end_epoch,
+                        ..Default::default()
+                    },
+                );
+
+                total_proposal_collateral +=
+                    &proposal.client_collateral + &proposal.provider_collateral;
+
+                acc.require(
+                    proposal.client.protocol() == Protocol::ID,
+                    "client address for deal {deal_id} is not an ID address",
+                );
+                acc.require(
+                    proposal.provider.protocol() == Protocol::ID,
+                    "provider address for deal {deal_id} is not an ID address",
+                );
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating proposals");
+        }
+        Err(e) => acc.add(&format!("error loading proposals: {e}")),
+    };
+
+    // next id should be higher than any existing deal
+    acc.require(
+        state.next_id as i64 > max_deal_id,
+        &format!(
+            "next id, {}, is not greater than highest id in proposals, {max_deal_id}",
+            state.next_id
+        ),
+    );
+
+    // deal states
+    let mut deal_state_count = 0;
+    match DealMetaArray::load(&state.states, rt.store()) {
+        Ok(deal_states) => {
+            let ret = deal_states.for_each(|deal_id, deal_state| {
+                acc.require(
+                    deal_state.sector_start_epoch >= 0,
+                    &format!("deal {deal_id} state start epoch undefined: {:?}", deal_state),
+                );
+                acc.require(
+                    deal_state.last_updated_epoch == EPOCH_UNDEFINED
+                        || deal_state.last_updated_epoch >= deal_state.sector_start_epoch,
+                    &format!(
+                        "deal {deal_id} state last updated before sector start: {deal_state:?}"
+                    ),
+                );
+                acc.require(
+                    deal_state.last_updated_epoch == EPOCH_UNDEFINED
+                        || deal_state.last_updated_epoch <= current_epoch,
+                    &format!(
+                        "deal {deal_id} last updated epoch {} after current {current_epoch}",
+                        deal_state.last_updated_epoch
+                    ),
+                );
+                acc.require(deal_state.slash_epoch == EPOCH_UNDEFINED || deal_state.slash_epoch >= deal_state.sector_start_epoch, &format!("deal {deal_id} state slashed before sector start: {deal_state:?}"));
+                acc.require(deal_state.slash_epoch == EPOCH_UNDEFINED || deal_state.slash_epoch <= current_epoch, &format!("deal {deal_id} state slashed after current epoch {current_epoch}: {deal_state:?}"));
+
+                if let Some(stats) = proposal_stats.get_mut(&deal_id) {
+                    stats.sector_start_epoch = deal_state.sector_start_epoch;
+                    stats.last_update_epoch = deal_state.last_updated_epoch;
+                    stats.slash_epoch = deal_state.slash_epoch;
+                } else {
+                    acc.add(&format!("no deal proposal for deal state {deal_id}"));
+                }
+
+                deal_state_count += 1;
+
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating deal states");
+        }
+        Err(e) => acc.add(&format!("error loading deal states: {e}")),
+    };
+
+    // pending proposals
+    let mut pending_proposal_count = 0;
+
+    match make_map_with_root_and_bitwidth::<_, ()>(
+        &state.pending_proposals,
+        rt.store(),
+        PROPOSALS_AMT_BITWIDTH,
+    ) {
+        Ok(pending_proposals) => {
+            let ret = pending_proposals.for_each(|key, _| {
+                let proposal_cid = Cid::try_from(key.0.to_owned())?;
+
+                acc.require(proposal_cids.contains(&proposal_cid), &format!("pending proposal with cid {proposal_cid} not found within proposals {pending_proposals:?}"));
+
+                pending_proposal_count += 1;
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating pending proposals");
+        }
+        Err(e) => acc.add(&format!("error loading pending proposals: {e}")),
+    };
+
+    // escrow table and locked table
+    let mut lock_table_count = 0;
+    let escrow_table = BalanceTable::from_root(rt.store(), &state.escrow_table);
+    let lock_table = BalanceTable::from_root(rt.store(), &state.locked_table);
+
+    match (escrow_table, lock_table) {
+        (Ok(escrow_table), Ok(lock_table)) => {
+            let mut locked_total = TokenAmount::zero();
+            let ret = lock_table.0.for_each(|key, locked_amount| {
+                let locked_amount = &locked_amount.0;
+                let address = Address::from_bytes(key)?;
+
+                locked_total += locked_amount;
+
+                // every entry in locked table should have a corresponding entry in escrow table that is at least as high
+                let escrow_amount = &escrow_table.get(&address)?;
+                acc.require(escrow_amount >= locked_amount, &format!("locked funds for {address}, {locked_amount}, greater than escrow amount, {escrow_amount}"));
+
+                lock_table_count += 1;
+
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating locked table");
+
+            // lockTable total should be sum of client and provider locked plus client storage fee
+            let expected_lock_total = &state.total_provider_locked_collateral
+                + &state.total_client_locked_collateral
+                + &state.total_client_storage_fee;
+            acc.require(locked_total == expected_lock_total, &format!("locked total, {locked_total}, does not sum to provider locked, {}, client locked, {}, and client storage fee, {}", state.total_provider_locked_collateral, state.total_client_locked_collateral, state.total_client_storage_fee));
+
+            // assert escrow <= actor balance
+            // lock_table item <= escrow item and escrow_total <= balance implies lock_table total <= balance
+            match escrow_table.total() {
+                Ok(escrow_total) => {
+                    let balance = rt.get_balance();
+                    acc.require(
+                        escrow_total <= balance,
+                        &format!(
+                            "escrow total, {escrow_total}, greater than actor balance, {balance}"
+                        ),
+                    );
+                    acc.require(escrow_total >= total_proposal_collateral, &format!("escrow total, {escrow_total}, less than sum of proposal collateral, {total_proposal_collateral}"));
+                }
+                Err(e) => acc.add(&format!("error calculating escrow total: {e}")),
+            }
+        }
+        (escrow_table, lock_table) => {
+            acc.require_no_error(escrow_table, "error loading escrow table");
+            acc.require_no_error(lock_table, "error loading locked table");
+        }
+    };
+
+    // deals ops by epoch
+    let (mut deal_op_epoch_count, mut deal_op_count) = (0, 0);
+    match SetMultimap::from_root(rt.store(), &state.deal_ops_by_epoch) {
+        Ok(deal_ops) => {
+            // get into internals just to iterate through full data structure
+            let ret = deal_ops.0.for_each(|key, _| {
+                let epoch = parse_uint_key(key)? as i64;
+
+                deal_op_epoch_count += 1;
+
+                deal_ops.for_each(epoch, |deal_id| {
+                    acc.require(proposal_stats.contains_key(&deal_id), &format!("deal op found for deal id {deal_id} with missing proposal at epoch {epoch}"));
+                    expected_deal_ops.remove(&deal_id);
+                    deal_op_count += 1;
+                    Ok(())
+                }).map_err(|e| anyhow::anyhow!("error iterating deal ops for epoch {}: {}", epoch, e))
+            });
+            acc.require_no_error(ret, "error iterating all deal ops");
+        }
+        Err(e) => acc.add(&format!("error loading deal ops: {e}")),
+    };
+
+    acc.require(
+        expected_deal_ops.is_empty(),
+        &format!("missing deal ops for proposals: {expected_deal_ops:?}"),
+    );
+
+    (
+        StateSummary {
+            deals: proposal_stats,
+            pending_proposal_count,
+            deal_state_count,
+            lock_table_count,
+            deal_op_epoch_count,
+            deal_op_count,
+        },
+        acc,
+    )
 }
