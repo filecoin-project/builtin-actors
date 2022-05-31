@@ -6,7 +6,7 @@ use fil_actor_miner::{
 };
 use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_bitfield::BitField;
-use fvm_shared::{bigint::BigInt, clock::ChainEpoch, sector::SectorNumber};
+use fvm_shared::{bigint::BigInt, clock::ChainEpoch};
 
 mod util;
 use num_traits::Zero;
