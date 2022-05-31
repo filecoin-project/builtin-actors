@@ -632,7 +632,7 @@ mod miner_actor_test_commitment {
         {
             let mut precommit_params =
                 h.make_pre_commit_params(104, challenge_epoch, expiration, vec![]);
-            precommit_params.seal_proof = RegisteredSealProof::StackedDRG2KiBV1;
+            precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1;
             expect_abort(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 h.pre_commit_sector(
