@@ -1074,7 +1074,7 @@ impl Actor {
             let mut deadlines = state
                 .load_deadlines(rt.store())?;
 
-            let mut new_sectors = vec![SectorOnChainInfo::default()];
+            let mut new_sectors = Vec::with_capacity(validated_updates.len());
             for &dl_idx in deadlines_to_load.iter() {
                 let mut deadline = deadlines
                     .load_deadline(rt.policy(), rt.store(), dl_idx)
