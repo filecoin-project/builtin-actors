@@ -72,12 +72,13 @@ fn quality_scales_with_verified_weight_proportion() {
         BigInt::from(2 << 20),
         BigInt::from(5 << 20),
         BigInt::from(1 << 30),
-        BigInt::from((1i64 << 40) - 1),
-        BigInt::from(1i64 << 40),
+        BigInt::from((2i64 << 35) - 1),
+        BigInt::from(2i64 << 35),
     ];
     for verified_space in verified_range {
-        let verified_weight = weight_with_size_as_bigint(verified_space, sector_duration);
-        let empty_weight = &sector_weight - &verified_weight;
+        let verified_weight = weight_with_size_as_bigint(verified_space.clone(), sector_duration);
+        let empty_weight =
+            weight_with_size_as_bigint(sector_size as u64 - verified_space, sector_duration);
         assert_eq!((sector_weight.clone() - empty_weight.clone()), verified_weight);
 
         // Expect sector quality to be a weighted sum of base and verified quality
