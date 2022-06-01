@@ -199,7 +199,8 @@ fn detects_and_penalizes_faults() {
         p_idx,
         sector_info_as_bitfield(&all_sectors[1..]),
         TokenAmount::zero(),
-    );
+    )
+    .unwrap();
 
     // Skip to end of proving period for sectors, cron detects all sectors as faulty
     while dl_info.index != dl_idx {

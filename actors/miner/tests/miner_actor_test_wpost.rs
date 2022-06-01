@@ -850,7 +850,7 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
-    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8));
+    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8)).unwrap();
 
     // Skip to the due deadline.
     let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
@@ -1193,7 +1193,7 @@ fn bad_post_fails_when_verified() {
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
     bf.set(infos[1].sector_number);
-    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8));
+    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8)).unwrap();
 
     // Now submit a PoSt, but a BAD one
     let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
