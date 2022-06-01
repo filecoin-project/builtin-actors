@@ -52,9 +52,6 @@ fn valid_precommits_then_aggregate_provecommit() {
         precommits.push(precommit);
     }
 
-    // todo: flush map to run to match partition state
-    // sector_nos_bf.copy() ?
-
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
     rt.set_balance(BigInt::from(1000u64) * BigInt::from(10u64.pow(18)));
@@ -152,7 +149,4 @@ fn valid_precommits_then_aggregate_provecommit() {
     assert_eq!(ten_sectors_initial_pledge, entry.on_time_pledge);
     assert_eq!(ten_sectors_power, entry.active_power);
     assert_eq!(PowerPair::zero(), entry.faulty_power);
-
-    // expect 10x locked initial pledge of sector to be the same as pledge requirement
-    assert_eq!(ten_sectors_initial_pledge, st.initial_pledge);
 }

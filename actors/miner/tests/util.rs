@@ -830,7 +830,7 @@ impl ActorHarness {
         );
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        let mut addrs = self.caller_addrs().clone();
+        let mut addrs = self.control_addrs.clone();
         addrs.push(self.worker);
         addrs.push(self.owner);
         rt.expect_validate_caller_addr(addrs);
