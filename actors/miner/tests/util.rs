@@ -67,7 +67,7 @@ use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 use num_traits::sign::Signed;
 
-use std::collections::{BTreeSet, BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::ops::Neg;
 
