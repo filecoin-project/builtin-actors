@@ -205,17 +205,17 @@ fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
         base_fee,
     );
 
-    // state untouched
-    let state: State = rt.get_state();
-    assert!(state.pre_commit_deposits.is_zero());
-    let expirations = actor.collect_precommit_expirations(&rt, &state);
-    assert_eq!(HashMap::new(), expirations);
-
     expect_abort_contains_message(
         ExitCode::USR_INSUFFICIENT_FUNDS,
         "insufficient funds 0 for pre-commit deposit",
         res,
     );
+
+    // state untouched
+    let state: State = rt.get_state();
+    assert!(state.pre_commit_deposits.is_zero());
+    let expirations = actor.collect_precommit_expirations(&rt, &state);
+    assert_eq!(HashMap::new(), expirations);
 }
 
 #[test]
