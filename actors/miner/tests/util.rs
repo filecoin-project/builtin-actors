@@ -1512,7 +1512,7 @@ impl ActorHarness {
         pidx: u64,
         recovery_sectors: BitField,
         expected_debt_repaid: TokenAmount,
-    ) {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
@@ -1534,12 +1534,16 @@ impl ActorHarness {
             sectors: UnvalidatedBitField::Validated(recovery_sectors),
         };
         let params = DeclareFaultsRecoveredParams { recoveries: vec![recovery] };
-        rt.call::<Actor>(
+        let ret = rt.call::<Actor>(
             Method::DeclareFaultsRecovered as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-        rt.verify();
+        );
+        if ret.is_ok() {
+            rt.verify();
+        } else {
+            rt.reset();
+        }
+        ret
     }
 
     pub fn continued_fault_penalty(&self, sectors: &[SectorOnChainInfo]) -> TokenAmount {
