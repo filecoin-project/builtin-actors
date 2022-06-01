@@ -32,7 +32,7 @@ fn invalid_report_rejected() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         h.report_consensus_fault(&mut rt, test_addr, None),
     );
-    check_state_invariants(&rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
+    check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
 
 #[test]
@@ -54,7 +54,7 @@ fn mistargeted_report_rejected() {
             }),
         ),
     );
-    check_state_invariants(&rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
+    check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
 
 #[test]
@@ -75,7 +75,7 @@ fn report_consensus_fault_pays_reward_and_charges_fee() {
         }),
     )
     .unwrap();
-    check_state_invariants(&rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
+    check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn report_consensus_fault_updates_consensus_fault_reported_field() {
         report_epoch + rt.policy.consensus_fault_ineligibility_duration,
         end_info.consensus_fault_elapsed
     );
-    check_state_invariants(&rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
+    check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
 
 #[test]
@@ -209,5 +209,5 @@ fn double_report_of_consensus_fault_fails() {
             }),
         ),
     );
-    check_state_invariants(&rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
+    check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }

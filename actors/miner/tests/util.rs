@@ -39,7 +39,6 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
-use fvm_shared::consensus::ConsensusFault;
 
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -53,6 +52,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::QuantSpec;
 use fvm_shared::clock::{ChainEpoch, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
