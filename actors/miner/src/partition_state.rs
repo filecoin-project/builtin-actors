@@ -853,6 +853,10 @@ pub struct PowerPair {
 }
 
 impl PowerPair {
+    pub fn new(raw: StoragePower, qa: StoragePower) -> Self {
+        Self { raw, qa }
+    }
+
     pub fn zero() -> Self {
         Default::default()
     }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use fil_actor_miner::{
-    initial_pledge_for_power, qa_power_for_weight, QUALITY_BASE_MULTIPLIER,
+    initial_pledge_for_power, qa_power_for_weight, PowerPair, QUALITY_BASE_MULTIPLIER,
     VERIFIED_DEAL_WEIGHT_MULTIPLIER,
 };
 use fil_actors_runtime::runtime::Runtime;
@@ -117,8 +117,8 @@ fn valid_precommits_then_aggregate_provecommit() {
         assert_eq!(0, pidx);
     }
 
-    let sector_power = new_power_pair(BigInt::from(actor.sector_size as i64), qa_power);
-    let ten_sectors_power = new_power_pair(10 * sector_power.raw, 10 * sector_power.qa);
+    let sector_power = PowerPair::new(BigInt::from(actor.sector_size as i64), qa_power);
+    let ten_sectors_power = PowerPair::new(10 * sector_power.raw, 10 * sector_power.qa);
 
     let dl_idx = 0;
     let p_idx = 0;
@@ -142,8 +142,8 @@ fn valid_precommits_then_aggregate_provecommit() {
     assert!(partition.recoveries.is_empty());
     assert!(partition.terminated.is_empty());
     assert_eq!(ten_sectors_power, partition.live_power);
-    assert_eq!(new_power_pair_zero(), partition.faulty_power);
-    assert_eq!(new_power_pair_zero(), partition.recovering_power);
+    assert_eq!(PowerPair::zero(), partition.faulty_power);
+    assert_eq!(PowerPair::zero(), partition.recovering_power);
 
     let p_queue = actor.collect_partition_expirations(&rt, &partition);
     let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
@@ -151,7 +151,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     assert!(entry.early_sectors.is_empty());
     assert_eq!(ten_sectors_initial_pledge, entry.on_time_pledge);
     assert_eq!(ten_sectors_power, entry.active_power);
-    assert_eq!(new_power_pair_zero(), entry.faulty_power);
+    assert_eq!(PowerPair::zero(), entry.faulty_power);
 
     // expect 10x locked initial pledge of sector to be the same as pledge requirement
     assert_eq!(ten_sectors_initial_pledge, st.initial_pledge);

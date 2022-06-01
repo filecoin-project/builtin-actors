@@ -742,10 +742,9 @@ impl ActorHarness {
         Ok(())
     }
 
-    #[allow(unused_variables)]
     pub fn prove_commit_aggregate_sector(
         &self,
-        runtime: &mut MockRuntime,
+        rt: &mut MockRuntime,
         config: ProveCommitConfig,
         precommits: Vec<SectorPreCommitOnChainInfo>,
         params: ProveCommitAggregateParams,
@@ -765,7 +764,7 @@ impl ActorHarness {
         }
         let cdc_params = ComputeDataCommitmentParams { inputs: cdc_inputs };
         let cdc_ret = ComputeDataCommitmentReturn { commds: comm_ds.clone() };
-        runtime.expect_send(
+        rt.expect_send(
             *STORAGE_MARKET_ACTOR_ADDR,
             MarketMethod::ComputeDataCommitment as u64,
             RawBytes::serialize(cdc_params).unwrap(),
@@ -773,7 +772,7 @@ impl ActorHarness {
             RawBytes::serialize(cdc_ret).unwrap(),
             ExitCode::OK,
         );
-        self.expect_query_network_info(runtime);
+        self.expect_query_network_info(rt);
 
         // expect randomness queries for provided precommits
         let mut seal_rands = Vec::new();
@@ -785,17 +784,17 @@ impl ActorHarness {
             let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
             seal_int_rands.push(seal_int_rand.clone());
             let interactive_epoch =
-                precommit.pre_commit_epoch + runtime.policy.pre_commit_challenge_delay;
+                precommit.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
 
-            let receiver = runtime.receiver;
+            let receiver = rt.receiver;
             let buf = receiver.marshal_cbor().unwrap();
-            runtime.expect_get_randomness_from_tickets(
+            rt.expect_get_randomness_from_tickets(
                 DomainSeparationTag::SealRandomness,
                 precommit.info.seal_rand_epoch,
                 buf.clone(),
                 seal_rand,
             );
-            runtime.expect_get_randomness_from_beacon(
+            rt.expect_get_randomness_from_beacon(
                 DomainSeparationTag::InteractiveSealChallengeSeed,
                 interactive_epoch,
                 buf,
@@ -814,15 +813,14 @@ impl ActorHarness {
                 unsealed_cid: comm_ds[i],
             })
         }
-        let actor_id = runtime.miner.id().unwrap();
-        runtime.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone(), Ok(()));
+        rt.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone(), Ok(()));
 
         // confirm sector proofs valid
-        self.confirm_sector_proofs_valid_internal(runtime, config, &precommits);
+        self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
 
         // burn network fee
         let expected_fee = aggregate_prove_commit_network_fee(precommits.len() as i64, &base_fee);
-        runtime.expect_send(
+        rt.expect_send(
             *BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
             RawBytes::default(),
@@ -831,18 +829,17 @@ impl ActorHarness {
             ExitCode::OK,
         );
 
-        runtime.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        let mut addrs = self.control_addrs.clone();
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        let mut addrs = self.caller_addrs().clone();
         addrs.push(self.worker);
         addrs.push(self.owner);
-        runtime.expect_validate_caller_addr(addrs);
-        runtime
-            .call::<Actor>(
-                MinerMethod::ProveCommitAggregate as u64,
-                &RawBytes::serialize(params).unwrap(),
-            )
-            .unwrap();
-        runtime.verify();
+        rt.expect_validate_caller_addr(addrs);
+        rt.call::<Actor>(
+            MinerMethod::ProveCommitAggregate as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+        rt.verify();
     }
 
     pub fn confirm_sector_proofs_valid(
@@ -3065,16 +3062,6 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
         active_power: all_active_power,
         faulty_power: all_faulty_power,
     }
-}
-
-#[allow(dead_code)]
-pub fn new_power_pair(raw: StoragePower, qa: StoragePower) -> PowerPair {
-    PowerPair { raw, qa }
-}
-
-#[allow(dead_code)]
-pub fn new_power_pair_zero() -> PowerPair {
-    PowerPair { raw: BigInt::zero(), qa: BigInt::zero() }
 }
 
 #[derive(Clone, Copy, Default)]
