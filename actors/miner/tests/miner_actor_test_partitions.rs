@@ -9,11 +9,13 @@ use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::ActorDowncast;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::SectorSize;
 
@@ -945,5 +947,57 @@ mod miner_actor_test_partitions {
     }
 
     #[test]
-    fn test_max_sectors() {}
+    fn test_max_sectors() {
+        let (h, rt) = setup();
+        let mut partition = Partition::new(&rt.store).unwrap();
+
+        let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1;
+        let sector_size = proof_type.sector_size().unwrap();
+        let partition_sectors = proof_type.window_post_partitions_sector().unwrap();
+
+        let mut many_sectors = vec![SectorOnChainInfo::default(); partition_sectors as usize];
+        let mut ids = vec![0u64; partition_sectors as usize];
+        for (i, info) in many_sectors.iter_mut().enumerate() {
+            let id = (i as u64 + 1) << 50;
+            ids[i as usize] = id;
+            *info = test_sector(i as i64 + 1, id, 50, 60, 1000);
+        }
+        let sector_numbers = bitfield_from_slice(&ids);
+
+        let power = partition
+            .add_sectors(&rt.store, false, &many_sectors, SECTOR_SIZE, QUANT_SPEC)
+            .unwrap();
+        let expected_power = power_for_sectors(SECTOR_SIZE, &many_sectors);
+        assert_eq!(expected_power, power);
+
+        let empty = bitfield_from_slice(&[]);
+        assert_partition_state(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            SECTOR_SIZE,
+            &many_sectors,
+            sector_numbers.clone(),
+            empty.clone(),
+            empty.clone(),
+            empty.clone(),
+            sector_numbers.clone(),
+        );
+
+        // Make sure we can still encode and decode.
+        let buf = RawBytes::serialize(&partition).expect("failed to marshal partition");
+        let new_partition: Partition = buf.deserialize().unwrap();
+        assert_partition_state(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            SECTOR_SIZE,
+            &many_sectors,
+            sector_numbers.clone(),
+            empty.clone(),
+            empty.clone(),
+            empty.clone(),
+            sector_numbers,
+        );
+    }
 }
