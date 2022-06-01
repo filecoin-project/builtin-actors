@@ -93,7 +93,7 @@ pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<
 /// Sectors full of Deals will have a SectorQuality of DealWeightMultiplier/QualityBaseMultiplier.
 /// Sectors with neither will have a SectorQuality of QualityBaseMultiplier/QualityBaseMultiplier.
 /// SectorQuality of a sector is a weighted average of multipliers based on their proportions.
-fn quality_for_weight(
+pub fn quality_for_weight(
     size: SectorSize,
     duration: ChainEpoch,
     deal_weight: &DealWeight,
