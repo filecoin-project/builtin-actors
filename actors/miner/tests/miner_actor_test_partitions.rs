@@ -128,7 +128,7 @@ fn assert_partition_expiration_queue(
         let set = queue.pop_until(group.expiration).unwrap();
 
         // We only care whether the sectors are in the queue or not. ExpirationQueue tests can deal with early or on time.
-        let all_sectors = &set.on_time_sectors | &partition.faults;
+        let all_sectors = &set.on_time_sectors | &set.early_sectors;
         assert_eq!(group.sectors, all_sectors);
     }
 }
@@ -236,21 +236,21 @@ mod miner_actor_test_partitions {
         );
 
         // moves newly-faulty sector
-        // assert_partition_expiration_queue(
-        //     &rt.store,
-        //     &partition,
-        //     QUANT_SPEC,
-        //     &[
-        //         ExpectExpirationGroup {
-        //             expiration: 5,
-        //             sectors: bitfield_from_slice(&[1, 2, 6]),
-        //         },
-        //         ExpectExpirationGroup {
-        //             expiration: 9,
-        //             sectors: bitfield_from_slice(&[3, 4, 5]),
-        //         },
-        //     ]
-        // );
+        assert_partition_expiration_queue(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            &[
+                ExpectExpirationGroup {
+                    expiration: 5,
+                    sectors: bitfield_from_slice(&[1, 2, 6]),
+                },
+                ExpectExpirationGroup {
+                    expiration: 9,
+                    sectors: bitfield_from_slice(&[3, 4, 5]),
+                },
+            ]
+        );
     }
 
     #[test]
@@ -416,25 +416,25 @@ mod miner_actor_test_partitions {
         );
 
         // restores recovered expirations to original state (unrecovered sector 6 still expires early)
-        // assert_partition_expiration_queue(
-        //     &rt.store,
-        //     &partition,
-        //     QUANT_SPEC,
-        //     &[
-        //         ExpectExpirationGroup {
-        //             expiration: 5,
-        //             sectors: bitfield_from_slice(&[1, 2]),
-        //         },
-        //         ExpectExpirationGroup {
-        //             expiration: 9,
-        //             sectors: bitfield_from_slice(&[3, 4, 6]),
-        //         },
-        //         ExpectExpirationGroup {
-        //             expiration: 13,
-        //             sectors: bitfield_from_slice(&[5]),
-        //         },
-        //     ]
-        // );
+        assert_partition_expiration_queue(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            &[
+                ExpectExpirationGroup {
+                    expiration: 5,
+                    sectors: bitfield_from_slice(&[1, 2]),
+                },
+                ExpectExpirationGroup {
+                    expiration: 9,
+                    sectors: bitfield_from_slice(&[3, 4, 6]),
+                },
+                ExpectExpirationGroup {
+                    expiration: 13,
+                    sectors: bitfield_from_slice(&[5]),
+                },
+            ]
+        );
     }
 
     #[test]
@@ -659,21 +659,21 @@ mod miner_actor_test_partitions {
         );
 
         // sectors should move to new expiration group
-        // assert_partition_expiration_queue(
-        //     &rt.store,
-        //     &partition,
-        //     QUANT_SPEC,
-        //     &[
-        //         ExpectExpirationGroup {
-        //             expiration: 5,
-        //             sectors: bitfield_from_slice(&[2]),
-        //         },
-        //         ExpectExpirationGroup {
-        //             expiration: 9,
-        //             sectors: bitfield_from_slice(&[4, 6]),
-        //         },
-        //     ]
-        // );
+        assert_partition_expiration_queue(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            &[
+                ExpectExpirationGroup {
+                    expiration: 5,
+                    sectors: bitfield_from_slice(&[2]),
+                },
+                ExpectExpirationGroup {
+                    expiration: 9,
+                    sectors: bitfield_from_slice(&[4, 6]),
+                },
+            ]
+        );
 
         // sectors should be added to early termination bitfield queue
         let queue = BitFieldQueue::new(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
@@ -939,15 +939,15 @@ mod miner_actor_test_partitions {
         );
 
         // everything not in first expiration group is now in second because fault expiration quantized to 9
-        // assert_partition_expiration_queue(
-        //     &rt.store,
-        //     &partition,
-        //     QUANT_SPEC,
-        //     &[
-        //         ExpectExpirationGroup { expiration: 5, sectors: bitfield_from_slice(&[1, 2]) },
-        //         ExpectExpirationGroup { expiration: 9, sectors: bitfield_from_slice(&[3, 4, 5, 6, 7]) },
-        //     ],
-        // );
+        assert_partition_expiration_queue(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            &[
+                ExpectExpirationGroup { expiration: 5, sectors: bitfield_from_slice(&[1, 2]) },
+                ExpectExpirationGroup { expiration: 9, sectors: bitfield_from_slice(&[3, 4, 5, 6, 7]) },
+            ],
+        );
     }
 
     #[test]
