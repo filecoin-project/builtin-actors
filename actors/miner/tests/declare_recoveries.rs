@@ -111,8 +111,8 @@ fn recovery_must_pay_back_fee_debt() {
         ),
     );
 
-    // Recovery pays back fee debt and IP requirements and succeeds
-    let funds = &ff + st.initial_pledge;
+    // Recovery pays back fee debt and succeeds
+    let funds = &ff + st.initial_pledge + st.locked_funds + st.pre_commit_deposits;
     rt.set_balance(funds);
     h.declare_recoveries(
         &mut rt,
@@ -164,7 +164,7 @@ fn recovery_fails_during_active_consensus_fault() {
         st.find_sector(&rt.policy, &rt.store, one_sector[0].sector_number).unwrap();
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
-        "ecovery not allowed during active consensus fault",
+        "recovery not allowed during active consensus fault",
         h.declare_recoveries(
             &mut rt,
             dl_idx,
