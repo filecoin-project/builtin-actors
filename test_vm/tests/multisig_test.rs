@@ -28,7 +28,7 @@ fn test_proposal_hash() {
     let bob = addrs[1];
     let sys_act_start_bal = v.get_actor(*SYSTEM_ACTOR_ADDR).unwrap().balance;
 
-    let msig_addr = create_msig(&v, addrs.clone(), 2);
+    let msig_addr = create_msig(&v, addrs, 2);
 
     // fund msig and propose send funds to system actor
     let fil_delta = TokenAmount::from(3 * 1_000_000_000_u64); // 3 nFIL
@@ -132,10 +132,10 @@ fn test_delete_self() {
             id: TxnID(0),
             proposal_hash: vec![], // hash optional
         };
-        for i in 1..threshold {
+        for addr in addrs.iter().take(threshold).skip(1) {
             apply_ok(
                 &v,
-                addrs[i],
+                *addr,
                 msig_addr,
                 TokenAmount::zero(),
                 MsigMethod::Approve as u64,
@@ -171,7 +171,7 @@ fn test_delete_self() {
 }
 
 fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
-    assert!(signers.len() > 0);
+    assert!(!signers.is_empty());
     let msig_ctor_params = serialize(
         &fil_actor_multisig::ConstructorParams {
             signers: signers.clone(),
@@ -183,10 +183,10 @@ fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
     )
     .unwrap();
     let msig_ctor_ret: ExecReturn = apply_ok(
-        &v,
+        v,
         signers[0],
         *INIT_ACTOR_ADDR,
-        TokenAmount::from(0 as u64),
+        TokenAmount::from(0_u64),
         fil_actor_init::Method::Exec as u64,
         fil_actor_init::ExecParams {
             code_cid: *MULTISIG_ACTOR_CODE_ID,
