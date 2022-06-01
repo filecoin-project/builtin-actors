@@ -841,11 +841,20 @@ mod miner_actor_test_partitions {
         let sector_arr = sectors_array(&rt, &rt.store, sectors());
 
         let _ = partition
-            .record_faults(&rt.store, &sector_arr, &mut make_bitfield(&[5]), 2, SECTOR_SIZE, QUANT_SPEC)
+            .record_faults(
+                &rt.store,
+                &sector_arr,
+                &mut make_bitfield(&[5]),
+                2,
+                SECTOR_SIZE,
+                QUANT_SPEC,
+            )
             .unwrap();
 
         // add a recovery
-        partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut make_bitfield(&[5])).unwrap();
+        partition
+            .declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut make_bitfield(&[5]))
+            .unwrap();
 
         // pop first expiration set
         let expire_epoch = 5;
@@ -868,7 +877,9 @@ mod miner_actor_test_partitions {
         let err = res.expect_err(&format!("expected error, but call succeeded",));
         // XXX: This is not a good way to check for specific errors.
         //      See: https://github.com/filecoin-project/builtin-actors/issues/338
-        assert!(err.to_string().contains("cannot pop expired sectors from a partition with unproven sectors"));
+        assert!(err
+            .to_string()
+            .contains("cannot pop expired sectors from a partition with unproven sectors"));
     }
 
     #[test]
@@ -905,9 +916,7 @@ mod miner_actor_test_partitions {
             .unwrap();
 
         // pop first termination
-        let (result, has_more) = partition
-            .pop_early_terminations(&rt.store, 1)
-            .unwrap();
+        let (result, has_more) = partition.pop_early_terminations(&rt.store, 1).unwrap();
 
         // expect first sector to be in early terminations
         assert_bitfield_equals(&result.sectors[&termination_epoch], &[1]);
@@ -922,9 +931,7 @@ mod miner_actor_test_partitions {
         BitFieldQueueExpectation::default().add(termination_epoch, &[3, 5]).equals(&queue);
 
         // pop the rest
-        let (result, has_more) = partition
-            .pop_early_terminations(&rt.store, 5)
-            .unwrap();
+        let (result, has_more) = partition.pop_early_terminations(&rt.store, 5).unwrap();
 
         // expect 3 and 5
         assert_bitfield_equals(&result.sectors[&termination_epoch], &[3, 5]);
