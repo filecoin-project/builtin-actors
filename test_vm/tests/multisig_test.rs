@@ -26,7 +26,7 @@ fn test_proposal_hash() {
     // create msig
     let msig_ctor_params = serialize(
         &fil_actor_multisig::ConstructorParams {
-            signers: addrs.clone(),
+            signers: addrs,
             num_approvals_threshold: 2,
             unlock_duration: 0,
             start_epoch: 0,
@@ -38,7 +38,7 @@ fn test_proposal_hash() {
         &v,
         alice,
         *INIT_ACTOR_ADDR,
-        TokenAmount::from(0 as u64),
+        TokenAmount::from(0_u64),
         fil_actor_init::Method::Exec as u64,
         fil_actor_init::ExecParams {
             code_cid: *MULTISIG_ACTOR_CODE_ID,
@@ -50,7 +50,7 @@ fn test_proposal_hash() {
     let msig_addr = msig_ctor_ret.id_address;
 
     // fund msig and propose send funds to system actor
-    let fil_delta = TokenAmount::from(3 * 1_000_000_000 as u64); // 3 nFIL
+    let fil_delta = TokenAmount::from(3 * 1_000_000_000_u64); // 3 nFIL
     let propose_send_sys_params = ProposeParams {
         to: *SYSTEM_ACTOR_ADDR,
         value: fil_delta.clone(),
@@ -68,7 +68,7 @@ fn test_proposal_hash() {
 
     let wrong_tx = Transaction {
         to: *SYSTEM_ACTOR_ADDR,
-        value: fil_delta.clone() - 1 as u64, // incorrect send amount not consistent with proposal
+        value: fil_delta.clone() - 1_u64, // incorrect send amount not consistent with proposal
         method: METHOD_SEND,
         approved: vec![alice],
         params: RawBytes::default(),
