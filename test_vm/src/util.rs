@@ -33,7 +33,6 @@ pub fn create_accounts(v: &VM, count: u64, balance: TokenAmount) -> Vec<Address>
         apply_ok(v, TEST_FAUCET_ADDR, pk_addr, balance.clone(), METHOD_SEND, RawBytes::default());
     }
     // Normalize pk address to return id address of account actor
-    let mut addrs = Vec::<Address>::new();
     pk_addrs.iter().map(|&pk_addr| v.normalize_address(&pk_addr).unwrap()).collect()
 }
 
