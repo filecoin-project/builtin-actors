@@ -836,13 +836,106 @@ mod miner_actor_test_partitions {
     }
 
     #[test]
-    fn pop_expiring_sectors_errors_if_a_unproven_sectors_exist() {}
+    fn pop_expiring_sectors_errors_if_a_recovery_exists() {
+        let (rt, mut partition) = setup_partition();
+        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+
+        let _ = partition
+            .record_faults(&rt.store, &sector_arr, &mut make_bitfield(&[5]), 2, SECTOR_SIZE, QUANT_SPEC)
+            .unwrap();
+
+        // add a recovery
+        partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut make_bitfield(&[5])).unwrap();
+
+        // pop first expiration set
+        let expire_epoch = 5;
+        let res = partition.pop_expired_sectors(&rt.store, expire_epoch, QUANT_SPEC);
+
+        let err = res.expect_err(&format!("expected error, but call succeeded",));
+        // XXX: This is not a good way to check for specific errors.
+        //      See: https://github.com/filecoin-project/builtin-actors/issues/338
+        assert!(err.to_string().contains("unexpected recoveries while processing expirations"));
+    }
+
+    #[test]
+    fn pop_expiring_sectors_errors_if_a_unproven_sectors_exist() {
+        let (rt, mut partition) = setup_unproven();
+
+        // pop first expiration set
+        let expire_epoch = 5;
+        let res = partition.pop_expired_sectors(&rt.store, expire_epoch, QUANT_SPEC);
+
+        let err = res.expect_err(&format!("expected error, but call succeeded",));
+        // XXX: This is not a good way to check for specific errors.
+        //      See: https://github.com/filecoin-project/builtin-actors/issues/338
+        assert!(err.to_string().contains("cannot pop expired sectors from a partition with unproven sectors"));
+    }
 
     #[test]
     fn records_missing_PoSt() {}
 
     #[test]
-    fn pops_early_terminations() {}
+    fn pops_early_terminations() {
+        let (rt, mut partition) = setup_partition();
+        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+
+        // fault sector 3, 4, 5 and 6
+        let mut fault_set = make_bitfield(&[3, 4, 5, 6]);
+        partition
+            .record_faults(&rt.store, &sector_arr, &mut fault_set, 7, SECTOR_SIZE, QUANT_SPEC)
+            .unwrap();
+
+        // mark 4 and 5 as a recoveries
+        let mut recover_set = make_bitfield(&[4, 5]);
+        partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set).unwrap();
+
+        // now terminate 1, 3 and 5
+        let mut terminations = make_bitfield(&[1, 3, 5]);
+        let termination_epoch = 3;
+        let removed = partition
+            .terminate_sectors(
+                &Policy::default(),
+                &rt.store,
+                &sector_arr,
+                termination_epoch,
+                &mut terminations,
+                SECTOR_SIZE,
+                QUANT_SPEC,
+            )
+            .unwrap();
+
+        // pop first termination
+        let (result, has_more) = partition
+            .pop_early_terminations(&rt.store, 1)
+            .unwrap();
+
+        // expect first sector to be in early terminations
+        assert_bitfield_equals(&result.sectors[&termination_epoch], &[1]);
+
+        // expect more results
+        assert!(has_more);
+
+        // expect terminations to still contain 3 and 5
+        let queue = BitFieldQueue::new(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
+
+        // only early termination appears in bitfield queue
+        BitFieldQueueExpectation::default().add(termination_epoch, &[3, 5]).equals(&queue);
+
+        // pop the rest
+        let (result, has_more) = partition
+            .pop_early_terminations(&rt.store, 5)
+            .unwrap();
+
+        // expect 3 and 5
+        assert_bitfield_equals(&result.sectors[&termination_epoch], &[3, 5]);
+
+        // expect no more results
+        assert!(!has_more);
+
+        // expect early terminations to be empty
+        let queue = BitFieldQueue::new(&rt.store, &partition.early_terminated, QUANT_SPEC).unwrap();
+        BitFieldQueueExpectation::default().equals(&queue);
+    }
 
     #[test]
     fn test_max_sectors() {}
