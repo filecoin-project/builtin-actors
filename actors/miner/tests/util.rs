@@ -830,9 +830,7 @@ impl ActorHarness {
         );
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        let mut addrs = self.control_addrs.clone();
-        addrs.push(self.worker);
-        addrs.push(self.owner);
+        let addrs = self.caller_addrs().clone();
         rt.expect_validate_caller_addr(addrs);
         rt.call::<Actor>(
             MinerMethod::ProveCommitAggregate as u64,
