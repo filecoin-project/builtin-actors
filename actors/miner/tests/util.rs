@@ -9,24 +9,23 @@ use fil_actor_market::{
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, qa_power_for_sector, ChangeWorkerAddressParams,
-    ExtendSectorExpirationParams, MinerInfo,
-};
-use fil_actor_miner::{
-    initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
-    pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
-    ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams,
+    aggregate_pre_commit_network_fee, consensus_fault_penalty, initial_pledge_for_power,
+    locked_reward_from_reward, max_prove_commit_duration, new_deadline_info_from_offset_and_epoch,
+    pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_sector,
+    qa_power_for_weight, reward_for_consensus_slash_report, Actor, ApplyRewardParams,
+    BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams,
+    CheckSectorProvenParams, CompactPartitionsParams, CompactSectorNumbersParams,
     ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
     DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
-    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, FaultDeclaration,
-    GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
-    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
-    ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
-    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
+    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, ExtendSectorExpirationParams,
+    FaultDeclaration, GetControlAddressesReturn, Method,
+    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PoStPartition, PowerPair,
+    PreCommitSectorBatchParams, PreCommitSectorParams, ProveCommitSectorParams,
+    RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo,
+    Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
+    VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
+    CRON_EVENT_PROVING_DEADLINE,
 };
-use fil_actor_miner::{max_prove_commit_duration, CompactPartitionsParams};
-use fil_actor_miner::{CheckSectorProvenParams, TerminateSectorsParams, TerminationDeclaration};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
@@ -50,6 +49,7 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -125,7 +125,7 @@ impl ActorHarness {
         let receiver = Address::new_id(RECEIVER_ID);
         let rwd = TokenAmount::from(10_000_000_000_000_000_000i128);
         let pwr = StoragePower::from(1i128 << 50);
-        let proof_type = RegisteredSealProof::StackedDRG32GiBV1;
+        let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1;
 
         ActorHarness {
             receiver,
@@ -317,7 +317,7 @@ impl ActorHarness {
             let precommit = self.pre_commit_sector_and_get(
                 rt,
                 params,
-                PreCommitConfig::empty(),
+                PreCommitConfig::default(),
                 first && i == 0,
             );
             precommits.push(precommit);
@@ -362,7 +362,7 @@ impl ActorHarness {
         let precommit = self.pre_commit_sector_and_get(
             rt,
             pre_commit_params.clone(),
-            PreCommitConfig::empty(),
+            PreCommitConfig::default(),
             true,
         );
 
@@ -381,6 +381,26 @@ impl ActorHarness {
             .unwrap();
         rt.reset();
         sector_info
+    }
+
+    pub fn compact_sector_numbers_raw(
+        &self,
+        rt: &mut MockRuntime,
+        addr: Address,
+        bf: BitField,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let params =
+            CompactSectorNumbersParams { mask_sector_numbers: UnvalidatedBitField::Validated(bf) };
+
+        rt.call::<Actor>(Method::CompactSectorNumbers as u64, &RawBytes::serialize(params).unwrap())
+    }
+
+    pub fn compact_sector_numbers(&self, rt: &mut MockRuntime, addr: Address, bf: BitField) {
+        self.compact_sector_numbers_raw(rt, addr, bf).unwrap();
+        rt.verify();
     }
 
     pub fn get_deadline_info(&self, rt: &MockRuntime) -> DeadlineInfo {
@@ -548,7 +568,7 @@ impl ActorHarness {
             };
             let vdreturn = VerifyDealsForActivationReturn {
                 sectors: vec![SectorWeights {
-                    deal_space: conf.deal_space.map(|s| s as u64).unwrap_or(0),
+                    deal_space: conf.deal_space,
                     deal_weight: conf.deal_weight,
                     verified_deal_weight: conf.verified_deal_weight,
                 }],
@@ -1492,7 +1512,7 @@ impl ActorHarness {
         pidx: u64,
         recovery_sectors: BitField,
         expected_debt_repaid: TokenAmount,
-    ) {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
@@ -1514,12 +1534,16 @@ impl ActorHarness {
             sectors: UnvalidatedBitField::Validated(recovery_sectors),
         };
         let params = DeclareFaultsRecoveredParams { recoveries: vec![recovery] };
-        rt.call::<Actor>(
+        let ret = rt.call::<Actor>(
             Method::DeclareFaultsRecovered as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-        rt.verify();
+        );
+        if ret.is_ok() {
+            rt.verify();
+        } else {
+            rt.reset();
+        }
+        ret
     }
 
     pub fn continued_fault_penalty(&self, sectors: &[SectorOnChainInfo]) -> TokenAmount {
@@ -1581,6 +1605,69 @@ impl ActorHarness {
 
     fn get_partition(&self, rt: &MockRuntime, deadline: &Deadline, pidx: u64) -> Partition {
         deadline.load_partition(&rt.store, pidx).unwrap()
+    }
+
+    pub fn report_consensus_fault(
+        &self,
+        rt: &mut MockRuntime,
+        from: Address,
+        fault: Option<ConsensusFault>,
+    ) -> Result<(), ActorError> {
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from);
+        let params =
+            ReportConsensusFaultParams { header1: vec![], header2: vec![], header_extra: vec![] };
+
+        rt.expect_verify_consensus_fault(
+            params.header1.clone(),
+            params.header2.clone(),
+            params.header_extra.clone(),
+            fault,
+            ExitCode::OK,
+        );
+
+        let current_reward = ThisEpochRewardReturn {
+            this_epoch_baseline_power: self.baseline_power.clone(),
+            this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
+        };
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            RewardMethod::ThisEpochReward as u64,
+            RawBytes::default(),
+            TokenAmount::from(0u8),
+            RawBytes::serialize(current_reward).unwrap(),
+            ExitCode::OK,
+        );
+        let this_epoch_reward = self.epoch_reward_smooth.estimate();
+        let penalty_total = consensus_fault_penalty(this_epoch_reward.clone());
+        let reward_total = reward_for_consensus_slash_report(&this_epoch_reward);
+        rt.expect_send(
+            from,
+            METHOD_SEND,
+            RawBytes::default(),
+            reward_total.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // pay fault fee
+        let to_burn = &penalty_total - &reward_total;
+        rt.expect_send(
+            *BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            RawBytes::default(),
+            to_burn,
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        let result = rt.call::<Actor>(
+            Method::ReportConsensusFault as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        expect_empty(result);
+        rt.verify();
+        Ok(())
     }
 
     pub fn collect_deadline_expirations(
@@ -2025,29 +2112,11 @@ impl PoStConfig {
     }
 }
 
+#[derive(Default)]
 pub struct PreCommitConfig {
     pub deal_weight: DealWeight,
     pub verified_deal_weight: DealWeight,
-    pub deal_space: Option<SectorSize>,
-}
-
-#[allow(dead_code)]
-impl PreCommitConfig {
-    pub fn empty() -> PreCommitConfig {
-        PreCommitConfig {
-            deal_weight: DealWeight::from(0),
-            verified_deal_weight: DealWeight::from(0),
-            deal_space: None,
-        }
-    }
-
-    pub fn default() -> PreCommitConfig {
-        PreCommitConfig {
-            deal_weight: DealWeight::from(0),
-            verified_deal_weight: DealWeight::from(0),
-            deal_space: Some(SectorSize::_2KiB),
-        }
-    }
+    pub deal_space: u64,
 }
 
 #[derive(Default, Clone)]
@@ -2991,7 +3060,7 @@ impl CronControl {
             dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION as i64 * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
         let precommit_params =
             h.make_pre_commit_params(sector_no, pre_commit_epoch - 1, expiration, vec![]);
-        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::empty(), true).unwrap();
+        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::default(), true).unwrap();
 
         // PCD != 0 so cron must be active
         self.require_cron_active(h, rt);
