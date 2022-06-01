@@ -50,6 +50,8 @@ use std::error::Error;
 use std::fmt;
 use std::ops::Add;
 
+pub mod util;
+
 pub struct VM<'bs> {
     store: &'bs MemoryBlockstore,
     state_root: RefCell<Cid>,
@@ -739,7 +741,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 }
 
-impl Primitives for InvocationCtx<'_, '_> {
+impl Primitives for VM<'_> {
     fn verify_signature(
         &self,
         _signature: &Signature,
@@ -766,6 +768,29 @@ impl Primitives for InvocationCtx<'_, '_> {
         _pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
         panic!("TODO implement me")
+    }
+}
+
+impl Primitives for InvocationCtx<'_, '_> {
+    fn verify_signature(
+        &self,
+        signature: &Signature,
+        signer: &Address,
+        plaintext: &[u8],
+    ) -> Result<(), anyhow::Error> {
+        self.v.verify_signature(signature, signer, plaintext)
+    }
+
+    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
+        self.v.hash_blake2b(data)
+    }
+
+    fn compute_unsealed_sector_cid(
+        &self,
+        proof_type: RegisteredSealProof,
+        pieces: &[PieceInfo],
+    ) -> Result<Cid, anyhow::Error> {
+        self.v.compute_unsealed_sector_cid(proof_type, pieces)
     }
 }
 
@@ -934,6 +959,20 @@ impl ExpectInvocation {
             "{} unexpected method: expected:{}was:{} \n{}",
             id, self.method, invoc.msg.from, extra_msg
         );
+    }
+}
+
+impl Default for ExpectInvocation {
+    fn default() -> Self {
+        Self {
+            method: 0,
+            to: Address::new_id(0),
+            code: None,
+            from: None,
+            params: None,
+            ret: None,
+            subinvocs: None,
+        }
     }
 }
 
