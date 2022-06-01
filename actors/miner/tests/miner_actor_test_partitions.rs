@@ -885,7 +885,70 @@ mod miner_actor_test_partitions {
     }
 
     #[test]
-    fn records_missing_PoSt() {}
+    fn records_missing_post() {
+        let (rt, mut partition) = setup_partition();
+
+        let unproven_sector = vec![test_sector(13, 7, 55, 65, 1006)];
+        let mut all_sectors = sectors();
+        all_sectors.extend_from_slice(&unproven_sector);
+        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+
+        // Add an unproven sector.
+        let power = partition
+            .add_sectors(&rt.store, false, &unproven_sector, SECTOR_SIZE, QUANT_SPEC)
+            .unwrap();
+        let expected_power = power_for_sectors(SECTOR_SIZE, &unproven_sector);
+        assert_eq!(expected_power, power);
+
+        // make 4, 5 and 6 faulty
+        let mut fault_set = make_bitfield(&[4, 5, 6]);
+        partition
+            .record_faults(&rt.store, &sector_arr, &mut fault_set, 7, SECTOR_SIZE, QUANT_SPEC)
+            .unwrap();
+
+        // add 4 and 5 as recoveries
+        let mut recover_set = make_bitfield(&[4, 5]);
+        partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set).unwrap();
+
+        // record entire partition as faulted
+        let (power_delta, penalized_power, new_faulty_power) =
+            partition.record_missed_post(&rt.store, 6, QUANT_SPEC).unwrap();
+
+        // 6 has always been faulty, so we shouldn't be penalized for it (except ongoing).
+        let expected_penalized_power = power_for_sectors(SECTOR_SIZE, &all_sectors)
+            - power_for_sectors(SECTOR_SIZE, &all_sectors[5..6]);
+        assert_eq!(expected_penalized_power, penalized_power);
+
+        // We should lose power for sectors 1-3.
+        let expected_power_delta = -power_for_sectors(SECTOR_SIZE, &all_sectors[..3]);
+        assert_eq!(expected_power_delta, power_delta);
+
+        // everything is now faulty
+        let empty = bitfield_from_slice(&[]);
+        assert_partition_state(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            SECTOR_SIZE,
+            &all_sectors,
+            bitfield_from_slice(&[1, 2, 3, 4, 5, 6, 7]),
+            bitfield_from_slice(&[1, 2, 3, 4, 5, 6, 7]),
+            empty.clone(),
+            empty.clone(),
+            empty,
+        );
+
+        // everything not in first expiration group is now in second because fault expiration quantized to 9
+        // assert_partition_expiration_queue(
+        //     &rt.store,
+        //     &partition,
+        //     QUANT_SPEC,
+        //     &[
+        //         ExpectExpirationGroup { expiration: 5, sectors: bitfield_from_slice(&[1, 2]) },
+        //         ExpectExpirationGroup { expiration: 9, sectors: bitfield_from_slice(&[3, 4, 5, 6, 7]) },
+        //     ],
+        // );
+    }
 
     #[test]
     fn pops_early_terminations() {
