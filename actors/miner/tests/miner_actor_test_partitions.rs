@@ -241,15 +241,9 @@ mod miner_actor_test_partitions {
             &partition,
             QUANT_SPEC,
             &[
-                ExpectExpirationGroup {
-                    expiration: 5,
-                    sectors: bitfield_from_slice(&[1, 2, 6]),
-                },
-                ExpectExpirationGroup {
-                    expiration: 9,
-                    sectors: bitfield_from_slice(&[3, 4, 5]),
-                },
-            ]
+                ExpectExpirationGroup { expiration: 5, sectors: bitfield_from_slice(&[1, 2, 6]) },
+                ExpectExpirationGroup { expiration: 9, sectors: bitfield_from_slice(&[3, 4, 5]) },
+            ],
         );
     }
 
@@ -421,19 +415,10 @@ mod miner_actor_test_partitions {
             &partition,
             QUANT_SPEC,
             &[
-                ExpectExpirationGroup {
-                    expiration: 5,
-                    sectors: bitfield_from_slice(&[1, 2]),
-                },
-                ExpectExpirationGroup {
-                    expiration: 9,
-                    sectors: bitfield_from_slice(&[3, 4, 6]),
-                },
-                ExpectExpirationGroup {
-                    expiration: 13,
-                    sectors: bitfield_from_slice(&[5]),
-                },
-            ]
+                ExpectExpirationGroup { expiration: 5, sectors: bitfield_from_slice(&[1, 2]) },
+                ExpectExpirationGroup { expiration: 9, sectors: bitfield_from_slice(&[3, 4, 6]) },
+                ExpectExpirationGroup { expiration: 13, sectors: bitfield_from_slice(&[5]) },
+            ],
         );
     }
 
@@ -664,15 +649,9 @@ mod miner_actor_test_partitions {
             &partition,
             QUANT_SPEC,
             &[
-                ExpectExpirationGroup {
-                    expiration: 5,
-                    sectors: bitfield_from_slice(&[2]),
-                },
-                ExpectExpirationGroup {
-                    expiration: 9,
-                    sectors: bitfield_from_slice(&[4, 6]),
-                },
-            ]
+                ExpectExpirationGroup { expiration: 5, sectors: bitfield_from_slice(&[2]) },
+                ExpectExpirationGroup { expiration: 9, sectors: bitfield_from_slice(&[4, 6]) },
+            ],
         );
 
         // sectors should be added to early termination bitfield queue
@@ -945,7 +924,10 @@ mod miner_actor_test_partitions {
             QUANT_SPEC,
             &[
                 ExpectExpirationGroup { expiration: 5, sectors: bitfield_from_slice(&[1, 2]) },
-                ExpectExpirationGroup { expiration: 9, sectors: bitfield_from_slice(&[3, 4, 5, 6, 7]) },
+                ExpectExpirationGroup {
+                    expiration: 9,
+                    sectors: bitfield_from_slice(&[3, 4, 5, 6, 7]),
+                },
             ],
         );
     }
