@@ -1,6 +1,10 @@
+use binaryen::CodegenConfig;
+
 use fil_actor_bundler::Bundler;
 use std::error::Error;
+use std::fs;
 use std::io::{BufRead, BufReader};
+use std::os::raw::c_char;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -28,6 +32,12 @@ const ACTORS: &[(&Package, &ID)] = &[
 const WASM_FEATURES: &[&str] = &["+bulk-memory", "+crt-static"];
 
 const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";
+
+static CODEGEN_CONFIG: &CodegenConfig = &CodegenConfig {
+    shrink_level: 2,       // Oz
+    optimization_level: 3, // O3
+    debug_info: false,
+};
 
 /// Returns the configured network name, checking both the environment and feature flags.
 fn network_name() -> String {
@@ -167,7 +177,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         // content-addressed CIDs.
         let forced_cid = None;
 
-        let cid = bundler.add_from_file(id, forced_cid, &bytecode_path).unwrap_or_else(|err| {
+        let bytecode = fs::read(&bytecode_path).expect("failed to open wasm module");
+        let bytecode = optimize_module(&bytecode).expect("failed to optimize wasm");
+
+        let cid = bundler.add_from_bytes(id, forced_cid, &bytecode).unwrap_or_else(|err| {
             panic!("failed to add file {:?} to bundle for actor {}: {}", bytecode_path, id, err)
         });
         println!("cargo:warning=added actor {} to bundle with CID {}", id, cid);
@@ -177,4 +190,27 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:warning=bundle={}", dst.display());
 
     Ok(())
+}
+
+fn optimize_module(bytecode: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+    // We have to do this manually to explicitly set the features.
+    let mut module = unsafe {
+        let raw = binaryen::ffi::BinaryenModuleSafeRead(
+            bytecode.as_ptr() as *const c_char,
+            bytecode.len(),
+        );
+        if raw.is_null() {
+            return Err("invalid module".to_string().into());
+        }
+
+        let wasm_features = binaryen::ffi::BinaryenFeatureMVP()
+            | binaryen::ffi::BinaryenFeatureSignExt()
+            | binaryen::ffi::BinaryenFeatureBulkMemory()
+            | binaryen::ffi::BinaryenFeatureMutableGlobals()
+            | binaryen::ffi::BinaryenFeatureNontrappingFPToInt();
+        binaryen::ffi::BinaryenModuleSetFeatures(raw, wasm_features);
+        binaryen::Module::from_raw(raw)
+    };
+    module.optimize(CODEGEN_CONFIG);
+    Ok(module.write())
 }
