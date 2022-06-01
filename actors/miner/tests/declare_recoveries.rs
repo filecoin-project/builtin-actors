@@ -75,10 +75,7 @@ fn recovery_must_pay_back_fee_debt() {
         st.find_sector(&rt.policy, &rt.store, one_sector[0].sector_number).unwrap();
 
     // Skip to end of proving period
-    let mut dl_info = h.deadline(&rt);
-    while dl_info.index != dl_idx {
-        dl_info = h.advance_deadline(&mut rt, CronConfig::default());
-    }
+    h.advance_to_deadline(&mut rt, dl_idx);
 
     // Can't pay during this deadline so miner goes into fee debt
     let ongoing_pwr = power_for_sectors(h.sector_size, &one_sector);
