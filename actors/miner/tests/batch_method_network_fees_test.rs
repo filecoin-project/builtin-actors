@@ -165,7 +165,58 @@ fn insufficient_funds_for_batch_precommit_in_combination_of_fee_debt_and_network
 }
 
 #[test]
-fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {}
+fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
+    let actor = ActorHarness::new(*PERIOD_OFFSET);
+    let mut rt = actor.new_runtime();
+    rt.set_balance(BigInt::from(BIG_BALANCE));
+    let precommit_epoch = *PERIOD_OFFSET + 1;
+    rt.set_epoch(precommit_epoch);
+    actor.construct_and_verify(&mut rt);
+    let dl_info = actor.deadline(&rt);
+    // something on deadline boundary but > 180 days
+    let expiration =
+        dl_info.period_end() + rt.policy.wpost_proving_period * DEFAULT_SECTOR_EXPIRATION as i64;
+
+    let mut precommits = Vec::new();
+    let mut sector_nos_bf = BitField::new();
+    for i in 0..4 {
+        sector_nos_bf.set(i);
+        let precommit = actor.make_pre_commit_params(i, precommit_epoch - 1, expiration, vec![]);
+        precommits.push(precommit);
+    }
+
+    // set base fee and fee debt high
+    let base_fee = BigInt::from(10u64.pow(16));
+    rt.set_balance(base_fee.clone());
+    let net_fee = aggregate_pre_commit_network_fee(precommits.len() as i64, &base_fee);
+    // setup miner to have feed debt equal to net fee
+    let mut state: State = rt.get_state();
+    state.fee_debt = net_fee.clone();
+    rt.replace_state(&state);
+
+    // give miner enough balance to pay both but not any extra for pcd
+    let balance = 2 * net_fee;
+    rt.set_balance(balance);
+
+    let res = actor.pre_commit_sector_batch(
+        &mut rt,
+        PreCommitSectorBatchParams { sectors: precommits },
+        &PreCommitBatchConfig { first_for_miner: true, ..Default::default() },
+        base_fee,
+    );
+
+    // state untouched
+    let state: State = rt.get_state();
+    assert!(state.pre_commit_deposits.is_zero());
+    let expirations = actor.collect_precommit_expirations(&rt, &state);
+    assert_eq!(HashMap::new(), expirations);
+
+    expect_abort_contains_message(
+        ExitCode::USR_INSUFFICIENT_FUNDS,
+        "insufficient funds 0 for pre-commit deposit",
+        res,
+    );
+}
 
 #[test]
 fn enough_funds_for_everything() {
