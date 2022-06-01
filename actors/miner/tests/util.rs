@@ -820,6 +820,7 @@ impl ActorHarness {
 
         // burn network fee
         let expected_fee = aggregate_prove_commit_network_fee(precommits.len() as i64, &base_fee);
+        assert!(expected_fee > BigInt::zero());
         rt.expect_send(
             *BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
