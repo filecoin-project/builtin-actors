@@ -93,8 +93,16 @@ fn test_proposal_hash() {
         params: RawBytes::default(),
     };
     let correct_hash = compute_proposal_hash(&correct_tx, &v).unwrap();
-    let approve_params = TxnIDParams { id: TxnID(0), proposal_hash: correct_hash.to_vec() };
-    apply_ok(&v, bob, msig_addr, TokenAmount::zero(), MsigMethod::Approve as u64, approve_params);
+    let correct_approval_params =
+        TxnIDParams { id: TxnID(0), proposal_hash: correct_hash.to_vec() };
+    apply_ok(
+        &v,
+        bob,
+        msig_addr,
+        TokenAmount::zero(),
+        MsigMethod::Approve as u64,
+        correct_approval_params,
+    );
     let expect = ExpectInvocation {
         to: msig_addr,
         method: MsigMethod::Approve as u64,

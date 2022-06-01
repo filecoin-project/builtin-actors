@@ -14,11 +14,7 @@ pub fn pk_addrs_from(seed: u64, count: u64) -> Vec<Address> {
         seed_arr[i] = *b;
     }
     let mut rng = ChaCha8Rng::from_seed(seed_arr);
-    let mut ret = vec![];
-    for _ in 0..count {
-        ret.push(new_bls_from_rng(&mut rng));
-    }
-    ret
+    (0..count).map(|_| new_bls_from_rng(&mut rng)).collect()
 }
 
 // Generate nice 32 byte arrays sampled uniformly at random based off of a u64 seed
@@ -30,25 +26,15 @@ fn new_bls_from_rng(rng: &mut ChaCha8Rng) -> Address {
 
 const ACCOUNT_SEED: u64 = 93837778;
 
-pub fn create_accounts(mut v: &VM, count: u64, balance: TokenAmount) -> Vec<Address> {
+pub fn create_accounts(v: &VM, count: u64, balance: TokenAmount) -> Vec<Address> {
     let pk_addrs = pk_addrs_from(ACCOUNT_SEED, count);
     // Send funds from faucet to pk address, creating account actor
     for pk_addr in pk_addrs.clone() {
-        apply_ok(
-            v,
-            TEST_FAUCET_ADDR,
-            pk_addr,
-            balance.clone(),
-            METHOD_SEND,
-            RawBytes::default(),
-        );
+        apply_ok(v, TEST_FAUCET_ADDR, pk_addr, balance.clone(), METHOD_SEND, RawBytes::default());
     }
     // Normalize pk address to return id address of account actor
     let mut addrs = Vec::<Address>::new();
-    for pk_addr in pk_addrs {
-        addrs.push(v.normalize_address(&pk_addr).unwrap())
-    }
-    addrs
+    pk_addrs.iter().map(|&pk_addr| v.normalize_address(&pk_addr).unwrap()).collect()
 }
 
 pub fn apply_ok<C: Cbor>(

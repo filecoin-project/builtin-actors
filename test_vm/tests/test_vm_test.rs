@@ -114,5 +114,5 @@ fn test_pk_gen() {
     let second_addr_seeded_five = addrs[1];
     let addrs = pk_addrs_from(6, 1);
     let first_addr_seeded_six = addrs[0];
-    assert!(second_addr_seeded_five != first_addr_seeded_six);
+    assert_ne!(second_addr_seeded_five, first_addr_seeded_six);
 }
