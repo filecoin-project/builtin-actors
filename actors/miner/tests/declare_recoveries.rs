@@ -1,6 +1,7 @@
 use fil_actor_miner::pledge_penalty_for_continued_fault;
 use fil_actor_miner::power_for_sectors;
 use fil_actors_runtime::test_utils::expect_abort_contains_message;
+use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -8,23 +9,17 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use num_traits::Zero;
 
 mod util;
 use crate::util::*;
-
-// an expriration ~10 days greater than effective min expiration taking into account 30 days max
-// between pre and prove commit
-const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
 const PERIOD_OFFSET: ChainEpoch = 100;
 const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 
 #[test]
 fn recovery_happy_path() {
-    let mut h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
-    h.construct_and_verify(&mut rt);
+    let (mut h, mut rt) = setup();
     let one_sector =
         h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
 
@@ -43,7 +38,7 @@ fn recovery_happy_path() {
         dl_idx,
         p_idx,
         BitField::try_from_bits([one_sector[0].sector_number]).unwrap(),
-        BigInt::from(0),
+        BigInt::zero(),
     )
     .unwrap();
 
@@ -55,10 +50,7 @@ fn recovery_happy_path() {
 
 #[test]
 fn recovery_must_pay_back_fee_debt() {
-    let mut h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
-    h.construct_and_verify(&mut rt);
+    let (mut h, mut rt) = setup();
     let one_sector =
         h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
     // advance to first proving period and submit so we'll have time to declare the fault next cycle
@@ -87,7 +79,7 @@ fn recovery_must_pay_back_fee_debt() {
     h.advance_deadline(
         &mut rt,
         CronConfig {
-            continued_faults_penalty: BigInt::from(0), // fee is instead added to debt
+            continued_faults_penalty: BigInt::zero(), // fee is instead added to debt
             ..Default::default()
         },
     );
@@ -104,7 +96,7 @@ fn recovery_must_pay_back_fee_debt() {
             dl_idx,
             p_idx,
             BitField::try_from_bits([one_sector[0].sector_number]).unwrap(),
-            BigInt::from(0),
+            BigInt::zero(),
         ),
     );
 
@@ -124,16 +116,13 @@ fn recovery_must_pay_back_fee_debt() {
     let p = dl.load_partition(&rt.store, p_idx).unwrap();
     assert_eq!(p.faults, p.recoveries);
     st = h.get_state(&rt);
-    assert_eq!(BigInt::from(0), st.fee_debt);
+    assert_eq!(BigInt::zero(), st.fee_debt);
     check_state_invariants(&rt);
 }
 
 #[test]
 fn recovery_fails_during_active_consensus_fault() {
-    let mut h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
-    h.construct_and_verify(&mut rt);
+    let (mut h, mut rt) = setup();
     let one_sector =
         h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
 
@@ -167,8 +156,17 @@ fn recovery_fails_during_active_consensus_fault() {
             dl_idx,
             p_idx,
             BitField::try_from_bits([one_sector[0].sector_number]).unwrap(),
-            BigInt::from(0),
+            BigInt::zero(),
         ),
     );
     check_state_invariants(&rt);
+}
+
+fn setup() -> (ActorHarness, MockRuntime) {
+    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    h.construct_and_verify(&mut rt);
+    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+
+    (h, rt)
 }

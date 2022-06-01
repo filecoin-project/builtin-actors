@@ -1538,11 +1538,11 @@ impl ActorHarness {
             Method::DeclareFaultsRecovered as u64,
             &RawBytes::serialize(params).unwrap(),
         );
-        if ret.is_err() {
+        if ret.is_ok() {
+            rt.verify();
+        } else {
             rt.reset();
-            return ret;
-        };
-        rt.verify();
+        }
         ret
     }
 
