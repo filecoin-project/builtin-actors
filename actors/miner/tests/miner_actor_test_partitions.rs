@@ -27,11 +27,10 @@ fn sectors() -> Vec<SectorOnChainInfo> {
     ]
 }
 
+#[allow(clippy::too_many_arguments)]
 fn assert_partition_state(
     store: &MemoryBlockstore,
     partition: &Partition,
-    quant: QuantSpec,
-    sector_size: SectorSize,
     sectors: &[SectorOnChainInfo],
     all_sector_ids: BitField,
     faults: BitField,
@@ -49,8 +48,8 @@ fn assert_partition_state(
     let _ = PartitionStateSummary::check_partition_state_invariants(
         partition,
         store,
-        quant,
-        sector_size,
+        QUANT_SPEC,
+        SECTOR_SIZE,
         &sectors_as_map(sectors),
         &acc,
     );
@@ -125,8 +124,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             empty.clone(),
@@ -154,8 +151,8 @@ mod miner_actor_test_partitions {
 
         let res = partition.add_sectors(&rt.store, false, &sectors(), SECTOR_SIZE, QUANT_SPEC);
 
-        let err = res.expect_err(&format!("expected error, but call succeeded",));
-        assert_eq!(format!("{}", err), "not all added sectors are new");
+        let err = res.expect_err("expected error, but call succeeded");
+        assert_eq!(err.to_string(), "not all added sectors are new");
     }
 
     fn assert_adds_faults(proven: bool) {
@@ -172,7 +169,7 @@ mod miner_actor_test_partitions {
 
         let expected_faulty_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), &fault_set.validate_mut().unwrap()),
+            &select_sectors(&sectors(), fault_set.validate_mut().unwrap()),
         );
         let expected_power_delta =
             if proven { -expected_faulty_power.clone() } else { PowerPair::zero() };
@@ -190,8 +187,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &sectors(),
             sector_numbers,
             fault_set.validate_mut().unwrap().clone(),
@@ -235,7 +230,7 @@ mod miner_actor_test_partitions {
 
         let expected_faulty_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), &fault_set.validate_mut().unwrap()),
+            &select_sectors(&sectors(), fault_set.validate_mut().unwrap()),
         );
         assert_eq!(expected_faulty_power, new_faulty_power);
         assert_eq!(power_delta, -expected_faulty_power);
@@ -255,8 +250,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             bitfield_from_slice(&[4, 5, 6]),
@@ -292,7 +285,7 @@ mod miner_actor_test_partitions {
             QUANT_SPEC,
         );
 
-        let err = res.expect_err(&format!("expected error, but call succeeded",));
+        let err = res.expect_err("expected error, but call succeeded");
         // XXX: This is not a good way to check for specific errors.
         //      See: https://github.com/filecoin-project/builtin-actors/issues/338
         assert!(err.to_string().contains("not all sectors are assigned to the partition"));
@@ -317,8 +310,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             bitfield_from_slice(&[4, 5, 6]),
@@ -360,8 +351,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             bitfield_from_slice(&[4, 5, 6]),
@@ -387,8 +376,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             bitfield_from_slice(&[4, 5, 6]),
@@ -413,7 +400,7 @@ mod miner_actor_test_partitions {
         let mut recover_set = make_bitfield(&[4, 5]);
         let recovery_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), &recover_set.validate_mut().unwrap()),
+            &select_sectors(&sectors(), recover_set.validate_mut().unwrap()),
         );
         partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set).unwrap();
 
@@ -429,8 +416,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             bitfield_from_slice(&[6]),
@@ -469,7 +454,7 @@ mod miner_actor_test_partitions {
 
         let recovering_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), &fault_set.validate_mut().unwrap()),
+            &select_sectors(&sectors(), fault_set.validate_mut().unwrap()),
         );
         partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut fault_set).unwrap();
         assert_eq!(partition.recovering_power, recovering_power);
@@ -484,7 +469,7 @@ mod miner_actor_test_partitions {
         let res =
             partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut make_bitfield(&[99]));
 
-        let err = res.expect_err(&format!("expected error, but call succeeded",));
+        let err = res.expect_err("expected error, but call succeeded");
         // XXX: This is not a good way to check for specific errors.
         //      See: https://github.com/filecoin-project/builtin-actors/issues/338
         assert!(err.to_string().contains("not all sectors are assigned to the partition"));
@@ -524,8 +509,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &all_sectors,
             bitfield_from_slice(&[1, 2, 5, 6, 7, 8]),
             empty.clone(),
@@ -575,7 +558,7 @@ mod miner_actor_test_partitions {
             QUANT_SPEC,
         );
 
-        let err = res.expect_err(&format!("expected error, but call succeeded",));
+        let err = res.expect_err("expected error, but call succeeded");
         // XXX: This is not a good way to check for specific errors.
         //      See: https://github.com/filecoin-project/builtin-actors/issues/338
         assert!(err.to_string().contains("refusing to replace inactive sectors"));
@@ -599,7 +582,7 @@ mod miner_actor_test_partitions {
             QUANT_SPEC,
         );
 
-        let err = res.expect_err(&format!("expected error, but call succeeded",));
+        let err = res.expect_err("expected error, but call succeeded");
         // XXX: This is not a good way to check for specific errors.
         //      See: https://github.com/filecoin-project/builtin-actors/issues/338
         assert!(err.to_string().contains("refusing to replace inactive sectors"));
@@ -648,12 +631,12 @@ mod miner_actor_test_partitions {
 
         let expected_active_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), &make_bitfield(&[1]).validate_mut().unwrap()),
+            &select_sectors(&sectors(), make_bitfield(&[1]).validate_mut().unwrap()),
         );
         assert_eq!(expected_active_power, removed.active_power);
         let expected_faulty_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), &make_bitfield(&[3, 5]).validate_mut().unwrap()),
+            &select_sectors(&sectors(), make_bitfield(&[3, 5]).validate_mut().unwrap()),
         );
         assert_eq!(expected_faulty_power, removed.faulty_power);
 
@@ -661,8 +644,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6, 7]),
             bitfield_from_slice(&[4, 6]),
@@ -706,7 +687,7 @@ mod miner_actor_test_partitions {
             QUANT_SPEC,
         );
 
-        let err = res.expect_err(&format!("expected error, but call succeeded",));
+        let err = res.expect_err("expected error, but call succeeded");
         // XXX: This is not a good way to check for specific errors.
         //      See: https://github.com/filecoin-project/builtin-actors/issues/338
         assert!(err.to_string().contains("can only terminate live sectors"));
@@ -734,7 +715,7 @@ mod miner_actor_test_partitions {
             .unwrap();
         let expected_active_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), &make_bitfield(&[1]).validate_mut().unwrap()),
+            &select_sectors(&sectors(), make_bitfield(&[1]).validate_mut().unwrap()),
         );
         assert_eq!(expected_active_power, removed.active_power);
         assert_eq!(removed.faulty_power, PowerPair::zero());
@@ -752,7 +733,7 @@ mod miner_actor_test_partitions {
             QUANT_SPEC,
         );
 
-        let err = res.expect_err(&format!("expected error, but call succeeded",));
+        let err = res.expect_err("expected error, but call succeeded");
         // XXX: This is not a good way to check for specific errors.
         //      See: https://github.com/filecoin-project/builtin-actors/issues/338
         assert!(err.to_string().contains("can only terminate live sectors"));
@@ -816,8 +797,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             empty.clone(),
@@ -869,7 +848,7 @@ mod miner_actor_test_partitions {
         let expire_epoch = 5;
         let res = partition.pop_expired_sectors(&rt.store, expire_epoch, QUANT_SPEC);
 
-        let err = res.expect_err(&format!("expected error, but call succeeded",));
+        let err = res.expect_err("expected error, but call succeeded");
         // XXX: This is not a good way to check for specific errors.
         //      See: https://github.com/filecoin-project/builtin-actors/issues/338
         assert!(err.to_string().contains("unexpected recoveries while processing expirations"));
@@ -883,7 +862,7 @@ mod miner_actor_test_partitions {
         let expire_epoch = 5;
         let res = partition.pop_expired_sectors(&rt.store, expire_epoch, QUANT_SPEC);
 
-        let err = res.expect_err(&format!("expected error, but call succeeded",));
+        let err = res.expect_err("expected error, but call succeeded");
         // XXX: This is not a good way to check for specific errors.
         //      See: https://github.com/filecoin-project/builtin-actors/issues/338
         assert!(err
@@ -935,8 +914,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &all_sectors,
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6, 7]),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6, 7]),
@@ -1047,8 +1024,6 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &many_sectors,
             sector_numbers.clone(),
             empty.clone(),
@@ -1063,13 +1038,11 @@ mod miner_actor_test_partitions {
         assert_partition_state(
             &rt.store,
             &partition,
-            QUANT_SPEC,
-            SECTOR_SIZE,
             &many_sectors,
             sector_numbers.clone(),
             empty.clone(),
             empty.clone(),
-            empty.clone(),
+            empty,
             sector_numbers,
         );
     }
