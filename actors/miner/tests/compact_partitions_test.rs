@@ -117,7 +117,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
     assert_sectors_exists(&rt, sectors[2], partition_id, deadline_id);
     assert_sectors_exists(&rt, sectors[3], partition_id, deadline_id);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn fail_to_compact_partitions_with_faults() {
     let result = h.compact_partitions(&mut rt, deadline_id, bitfield_from_slice(&[partition_id]));
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to remove partitions from deadline 0: while removing partitions: cannot remove partition 0: has faults", result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -183,7 +183,7 @@ fn fails_to_compact_partitions_with_unproven_sectors() {
     let result = h.compact_partitions(&mut rt, deadline_id, bitfield_from_slice(&[partition_id]));
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to remove partitions from deadline 0: while removing partitions: cannot remove partition 0: has unproven sectors", result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -197,7 +197,7 @@ fn fails_if_deadline_out_of_range() {
         result,
     );
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -209,7 +209,7 @@ fn fails_if_deadline_is_open_for_challenging() {
     let result = h.compact_partitions(&mut rt, 0, BitField::default());
     expect_abort(ExitCode::USR_FORBIDDEN, result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -220,7 +220,7 @@ fn fails_if_deadline_is_next_up_to_be_challenged() {
     let result = h.compact_partitions(&mut rt, current_deadline + 1, BitField::default());
     expect_abort(ExitCode::USR_FORBIDDEN, result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn deadline_after_next_deadline_should_still_be_open_for_compaction() {
     rt.set_epoch(PERIOD_OFFSET);
     let current_deadline = h.current_deadline(&rt).index;
     h.compact_partitions(&mut rt, current_deadline + 2, BitField::default()).unwrap();
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -241,7 +241,7 @@ fn deadlines_challenged_last_proving_period_should_still_be_in_dispute_window() 
     let result = h.compact_partitions(&mut rt, last_proving_period, BitField::default());
     expect_abort(ExitCode::USR_FORBIDDEN, result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -255,7 +255,7 @@ fn compaction_should_be_forbidden_during_the_dispute_window() {
     let result = h.compact_partitions(&mut rt, 0, BitField::default());
     expect_abort(ExitCode::USR_FORBIDDEN, result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn compaction_should_be_allowed_following_the_dispute_window() {
 
     h.compact_partitions(&mut rt, 0, BitField::default()).unwrap();
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -281,5 +281,5 @@ fn fails_if_partition_count_is_above_limit() {
     let result = h.compact_partitions(&mut rt, 1, partitions);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }

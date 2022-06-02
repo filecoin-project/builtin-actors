@@ -1578,19 +1578,20 @@ impl Actor {
                     precommit.sector_number
                 ));
             }
-            if precommit.sector_number > MAX_SECTOR_NUMBER {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "sector number {} out of range 0..(2^63-1)",
-                    precommit.sector_number
-                ));
-            }
             sector_numbers.set(precommit.sector_number);
+
             if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof) {
                 return Err(actor_error!(
                     illegal_argument,
                     "unsupported seal proof type {}",
                     i64::from(precommit.seal_proof)
+                ));
+            }
+            if precommit.sector_number > MAX_SECTOR_NUMBER {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "sector number {} out of range 0..(2^63-1)",
+                    precommit.sector_number
                 ));
             }
             // Skip checking if CID is defined because it cannot be so in Rust
