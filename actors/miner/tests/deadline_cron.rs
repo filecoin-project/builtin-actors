@@ -37,7 +37,7 @@ fn cron_on_inactive_state() {
     rt.set_epoch(deadline.last());
     h.on_deadline_cron(&mut rt, CronConfig { no_enrollment: true, ..CronConfig::default() });
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn sector_expires() {
     );
     let st = h.get_state(&rt);
     assert!(!st.deadline_cron_active);
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn sector_expires_and_repays_fee_debt() {
     );
     let st = h.get_state(&rt);
     assert!(!st.deadline_cron_active);
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -231,7 +231,7 @@ fn detects_and_penalizes_faults() {
         &all_sectors,
         &deadline,
     );
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -279,7 +279,7 @@ fn test_cron_run_trigger_faults() {
             ..CronConfig::default()
         },
     );
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 fn sector_info_as_bitfield(sectors: &[SectorOnChainInfo]) -> BitField {

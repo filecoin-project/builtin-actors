@@ -65,7 +65,7 @@ mod compact_sector_numbers_test {
             h.pre_commit_sector(&mut rt, precommit, util::PreCommitConfig::default(), false)
                 .unwrap();
         }
-        check_state_invariants(&rt);
+        check_state_invariants_from_mock_runtime(&rt);
     }
 
     #[test]
@@ -81,7 +81,7 @@ mod compact_sector_numbers_test {
             h.owner,
             bitfield_from_slice(&[target_sector_num, target_sector_num + 1]),
         );
-        check_state_invariants(&rt);
+        check_state_invariants_from_mock_runtime(&rt);
     }
 
     #[test]
@@ -97,7 +97,7 @@ mod compact_sector_numbers_test {
             h.caller_addrs()[0],
             bitfield_from_slice(&[target_sector_num, target_sector_num + 1]),
         );
-        check_state_invariants(&rt);
+        check_state_invariants_from_mock_runtime(&rt);
     }
 
     #[test]
@@ -119,7 +119,7 @@ mod compact_sector_numbers_test {
             ),
         );
 
-        check_state_invariants(&rt);
+        check_state_invariants_from_mock_runtime(&rt);
     }
 
     #[test]
@@ -138,7 +138,7 @@ mod compact_sector_numbers_test {
                 bitfield_from_slice(&[MAX_SECTOR_NUMBER + 1]),
             ),
         );
-        check_state_invariants(&rt);
+        check_state_invariants_from_mock_runtime(&rt);
     }
 
     #[test]
@@ -150,6 +150,6 @@ mod compact_sector_numbers_test {
             // compact nothing
             h.compact_sector_numbers_raw(&mut rt, h.worker, bitfield_from_slice(&[])),
         );
-        check_state_invariants(&rt);
+        check_state_invariants_from_mock_runtime(&rt);
     }
 }

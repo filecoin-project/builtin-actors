@@ -148,8 +148,8 @@ pub struct Expectations {
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
-    pub expect_get_randomness_tickets: Option<ExpectRandomness>,
-    pub expect_get_randomness_beacon: Option<ExpectRandomness>,
+    pub expect_get_randomness_tickets: VecDeque<ExpectRandomness>,
+    pub expect_get_randomness_beacon: VecDeque<ExpectRandomness>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
@@ -214,12 +214,12 @@ impl Expectations {
             self.expect_verify_consensus_fault
         );
         assert!(
-            self.expect_get_randomness_tickets.is_none(),
+            self.expect_get_randomness_tickets.is_empty(),
             "expect_get_randomness_tickets {:?}, not received",
             self.expect_get_randomness_tickets
         );
         assert!(
-            self.expect_get_randomness_beacon.is_none(),
+            self.expect_get_randomness_beacon.is_empty(),
             "expect_get_randomness_beacon {:?}, not received",
             self.expect_get_randomness_beacon
         );
@@ -405,7 +405,7 @@ impl MockRuntime {
         *self.balance.get_mut() = amount;
     }
 
-    pub fn get_balance(&mut self) -> TokenAmount {
+    pub fn get_balance(&self) -> TokenAmount {
         self.balance.borrow().to_owned()
     }
 
@@ -587,7 +587,7 @@ impl MockRuntime {
         out: Randomness,
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_randomness_tickets = Some(a);
+        self.expectations.borrow_mut().expect_get_randomness_tickets.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -599,7 +599,7 @@ impl MockRuntime {
         out: Randomness,
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_randomness_beacon = Some(a);
+        self.expectations.borrow_mut().expect_get_randomness_beacon.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -785,7 +785,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             .expectations
             .borrow_mut()
             .expect_get_randomness_tickets
-            .take()
+            .pop_front()
             .expect("unexpected call to get_randomness_from_tickets");
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
@@ -818,7 +818,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             .expectations
             .borrow_mut()
             .expect_get_randomness_beacon
-            .take()
+            .pop_front()
             .expect("unexpected call to get_randomness_from_beacon");
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
@@ -1272,6 +1272,11 @@ impl MessageAccumulator {
         self.msgs.borrow().is_empty()
     }
 
+    /// Returns the number of accumulated messages
+    pub fn len(&self) -> usize {
+        self.msgs.borrow().len()
+    }
+
     pub fn messages(&self) -> Vec<String> {
         self.msgs.borrow().to_owned()
     }
@@ -1309,14 +1314,15 @@ mod message_accumulator_test {
     fn adds_messages() {
         let acc = MessageAccumulator::default();
         acc.add("Cthulhu");
+        assert_eq!(acc.len(), 1);
 
         let msgs = acc.messages();
-        assert_eq!(msgs.len(), 1);
         assert_eq!(msgs, vec!["Cthulhu"]);
 
         acc.add("Azathoth");
+        assert_eq!(acc.len(), 2);
+
         let msgs = acc.messages();
-        assert_eq!(msgs.len(), 2);
         assert_eq!(msgs, vec!["Cthulhu", "Azathoth"]);
     }
 
@@ -1325,13 +1331,12 @@ mod message_accumulator_test {
         let acc = MessageAccumulator::default();
         acc.require(true, "Cthulhu");
 
-        let msgs = acc.messages();
-        assert_eq!(msgs.len(), 0);
+        assert_eq!(acc.len(), 0);
         assert!(acc.is_empty());
 
         acc.require(false, "Azathoth");
         let msgs = acc.messages();
-        assert_eq!(msgs.len(), 1);
+        assert_eq!(acc.len(), 1);
         assert_eq!(msgs, vec!["Azathoth"]);
         assert!(!acc.is_empty());
     }
@@ -1343,7 +1348,7 @@ mod message_accumulator_test {
         acc.require_no_error(fiasco, "Cthulhu says");
 
         let msgs = acc.messages();
-        assert_eq!(msgs.len(), 1);
+        assert_eq!(acc.len(), 1);
         assert_eq!(msgs, vec!["Cthulhu says: fiasco"]);
     }
 
@@ -1371,6 +1376,7 @@ mod message_accumulator_test {
         acc3.add_all(&acc1);
         acc3.add_all(&acc2);
 
+        assert_eq!(2, acc3.len());
         assert_eq!(acc3.messages(), vec!["Cthulhu", "Azathoth"]);
     }
 }

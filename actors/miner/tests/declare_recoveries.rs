@@ -45,7 +45,7 @@ fn recovery_happy_path() {
     let dl = h.get_deadline(&rt, dl_idx);
     let p = dl.load_partition(&rt.store, p_idx).unwrap();
     assert_eq!(p.faults, p.recoveries);
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn recovery_must_pay_back_fee_debt() {
     assert_eq!(p.faults, p.recoveries);
     st = h.get_state(&rt);
     assert_eq!(BigInt::zero(), st.fee_debt);
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn recovery_fails_during_active_consensus_fault() {
             BigInt::zero(),
         ),
     );
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 fn setup() -> (ActorHarness, MockRuntime) {
