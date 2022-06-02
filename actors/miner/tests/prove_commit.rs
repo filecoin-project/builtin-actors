@@ -59,7 +59,7 @@ fn prove_single_sector() {
         PreCommitConfig {
             deal_weight: deal_weight.clone(),
             verified_deal_weight: verified_deal_weight.clone(),
-            deal_space: None,
+            deal_space: 0,
         },
         true,
     );
@@ -371,7 +371,7 @@ fn invalid_proof_rejected() {
         deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period,
         vec![1],
     );
-    let precommit = h.pre_commit_sector_and_get(&mut rt, params, PreCommitConfig::empty(), true);
+    let precommit = h.pre_commit_sector_and_get(&mut rt, params, PreCommitConfig::default(), true);
 
     // Sector pre-commitment missing.
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
@@ -465,7 +465,7 @@ fn invalid_proof_rejected() {
         ),
     );
     rt.reset();
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -491,7 +491,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
     let precommit_epoch = rt.epoch + 1;
     rt.set_epoch(precommit_epoch);
     let params = h.make_pre_commit_params(h.next_sector_no, rt.epoch - 1, expiration, vec![]);
-    let precommit = h.pre_commit_sector_and_get(&mut rt, params, PreCommitConfig::empty(), false);
+    let precommit = h.pre_commit_sector_and_get(&mut rt, params, PreCommitConfig::default(), false);
 
     // Confirm the unlocked PCD will not cover the new IP
     assert!(sectors[0].initial_pledge > precommit.pre_commit_deposit);
@@ -525,7 +525,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
         ProveCommitConfig::empty(),
     )
     .unwrap();
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -542,12 +542,12 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
     rt.set_epoch(precommit_epoch);
     let params_a = h.make_pre_commit_params(h.next_sector_no, rt.epoch - 1, expiration, vec![1]);
     let pre_commit_a =
-        h.pre_commit_sector_and_get(&mut rt, params_a, PreCommitConfig::empty(), true);
+        h.pre_commit_sector_and_get(&mut rt, params_a, PreCommitConfig::default(), true);
     let sector_no_a = h.next_sector_no;
     h.next_sector_no += 1;
     let params_b = h.make_pre_commit_params(h.next_sector_no, rt.epoch - 1, expiration, vec![2]);
     let pre_commit_b =
-        h.pre_commit_sector_and_get(&mut rt, params_b, PreCommitConfig::empty(), false);
+        h.pre_commit_sector_and_get(&mut rt, params_b, PreCommitConfig::default(), false);
     let sector_no_b = h.next_sector_no;
 
     // handle both prove commits in the same epoch
@@ -565,7 +565,7 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
     let st = h.get_state(&rt);
     assert!(st.get_sector(&rt.store, sector_no_a).unwrap().is_none());
     assert!(st.get_sector(&rt.store, sector_no_b).unwrap().is_some());
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -586,7 +586,7 @@ fn prove_commit_just_after_period_start_permits_post() {
 
     // advance cron to activate power.
     h.advance_and_submit_posts(&mut rt, &[sector]);
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -608,7 +608,7 @@ fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
         deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period,
         vec![],
     );
-    let precommit = h.pre_commit_sector_and_get(&mut rt, params, PreCommitConfig::empty(), true);
+    let precommit = h.pre_commit_sector_and_get(&mut rt, params, PreCommitConfig::default(), true);
 
     // precommit at correct epoch
     rt.set_epoch(rt.epoch + rt.policy.pre_commit_challenge_delay + 1);
@@ -631,7 +631,7 @@ fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
         .unwrap();
     let st = h.get_state(&rt);
     assert!(st.get_sector(&rt.store, sector_no).unwrap().is_none());
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -654,7 +654,7 @@ fn verify_proof_does_not_vest_funds() {
         deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period,
         vec![1],
     );
-    let precommit = h.pre_commit_sector_and_get(&mut rt, params, PreCommitConfig::empty(), true);
+    let precommit = h.pre_commit_sector_and_get(&mut rt, params, PreCommitConfig::default(), true);
 
     // add 1000 tokens that vest immediately
     let mut st = h.get_state(&rt);

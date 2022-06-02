@@ -9,31 +9,31 @@ use fil_actor_market::{
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, qa_power_for_sector, ChangeWorkerAddressParams,
-    ExtendSectorExpirationParams, MinerInfo,
-};
-use fil_actor_miner::{
-    initial_pledge_for_power, locked_reward_from_reward, new_deadline_info_from_offset_and_epoch,
-    pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_weight, Actor,
+    aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
+    initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
+    new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
+    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, Actor,
     ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams,
-    ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
-    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
-    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, FaultDeclaration,
-    GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
-    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
-    ProveCommitSectorParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
-    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
+    ChangeWorkerAddressParams, CheckSectorProvenParams, CompactPartitionsParams,
+    CompactSectorNumbersParams, ConfirmSectorProofsParams, CronEventPayload, Deadline,
+    DeadlineInfo, Deadlines, DeclareFaultsParams, DeclareFaultsRecoveredParams,
+    DeferredCronEventParams, DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet,
+    ExtendSectorExpirationParams, FaultDeclaration, GetControlAddressesReturn, Method,
+    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PoStPartition, PowerPair,
+    PreCommitSectorBatchParams, PreCommitSectorParams, ProveCommitSectorParams,
+    RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo,
+    Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
+    VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
+    CRON_EVENT_PROVING_DEADLINE,
 };
-use fil_actor_miner::{max_prove_commit_duration, CompactPartitionsParams};
-use fil_actor_miner::{CheckSectorProvenParams, TerminateSectorsParams, TerminationDeclaration};
+use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
-use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime};
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::ActorDowncast;
+use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
+use fil_actors_runtime::{parse_uint_key, ActorDowncast};
+use fil_actors_runtime::{test_utils::*, Map};
 use fil_actors_runtime::{
     ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -44,19 +44,20 @@ use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
-use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
-use fvm_shared::address::Address;
+use fvm_ipld_encoding::{BytesDe, Cbor, CborStore, RawBytes};
+use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
-    PoStProof, RegisteredPoStProof, RegisteredSealProof, SealVerifyInfo, SectorID, SectorInfo,
-    SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
+    AggregateSealVerifyInfo, PoStProof, RegisteredPoStProof, RegisteredSealProof, SealVerifyInfo,
+    SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::METHOD_SEND;
@@ -67,7 +68,7 @@ use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 use num_traits::sign::Signed;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::ops::Neg;
 
@@ -125,7 +126,7 @@ impl ActorHarness {
         let receiver = Address::new_id(RECEIVER_ID);
         let rwd = TokenAmount::from(10_000_000_000_000_000_000i128);
         let pwr = StoragePower::from(1i128 << 50);
-        let proof_type = RegisteredSealProof::StackedDRG32GiBV1;
+        let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1;
 
         ActorHarness {
             receiver,
@@ -154,6 +155,10 @@ impl ActorHarness {
 
     pub fn get_state(&self, rt: &MockRuntime) -> State {
         rt.get_state::<State>()
+    }
+
+    pub fn check_state(&self, rt: &MockRuntime) {
+        check_state_invariants_from_mock_runtime(rt);
     }
 
     pub fn new_runtime(&self) -> MockRuntime {
@@ -317,7 +322,7 @@ impl ActorHarness {
             let precommit = self.pre_commit_sector_and_get(
                 rt,
                 params,
-                PreCommitConfig::empty(),
+                PreCommitConfig::default(),
                 first && i == 0,
             );
             precommits.push(precommit);
@@ -362,7 +367,7 @@ impl ActorHarness {
         let precommit = self.pre_commit_sector_and_get(
             rt,
             pre_commit_params.clone(),
-            PreCommitConfig::empty(),
+            PreCommitConfig::default(),
             true,
         );
 
@@ -381,6 +386,26 @@ impl ActorHarness {
             .unwrap();
         rt.reset();
         sector_info
+    }
+
+    pub fn compact_sector_numbers_raw(
+        &self,
+        rt: &mut MockRuntime,
+        addr: Address,
+        bf: BitField,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let params =
+            CompactSectorNumbersParams { mask_sector_numbers: UnvalidatedBitField::Validated(bf) };
+
+        rt.call::<Actor>(Method::CompactSectorNumbers as u64, &RawBytes::serialize(params).unwrap())
+    }
+
+    pub fn compact_sector_numbers(&self, rt: &mut MockRuntime, addr: Address, bf: BitField) {
+        self.compact_sector_numbers_raw(rt, addr, bf).unwrap();
+        rt.verify();
     }
 
     pub fn get_deadline_info(&self, rt: &MockRuntime) -> DeadlineInfo {
@@ -548,7 +573,7 @@ impl ActorHarness {
             };
             let vdreturn = VerifyDealsForActivationReturn {
                 sectors: vec![SectorWeights {
-                    deal_space: conf.deal_space.map(|s| s as u64).unwrap_or(0),
+                    deal_space: conf.deal_space as u64,
                     deal_weight: conf.deal_weight,
                     verified_deal_weight: conf.verified_deal_weight,
                 }],
@@ -739,6 +764,105 @@ impl ActorHarness {
         expect_empty(result);
         rt.verify();
         Ok(())
+    }
+
+    pub fn prove_commit_aggregate_sector(
+        &self,
+        rt: &mut MockRuntime,
+        config: ProveCommitConfig,
+        precommits: Vec<SectorPreCommitOnChainInfo>,
+        params: ProveCommitAggregateParams,
+        base_fee: BigInt,
+    ) {
+        // recieve call to ComputeDataCommittments
+        let mut comm_ds = Vec::new();
+        let mut cdc_inputs = Vec::new();
+        for (i, precommit) in precommits.iter().enumerate() {
+            let sector_data = SectorDataSpec {
+                deal_ids: precommit.info.deal_ids.clone(),
+                sector_type: precommit.info.seal_proof,
+            };
+            cdc_inputs.push(sector_data);
+            let comm_d = make_piece_cid(format!("commd-{}", i).as_bytes());
+            comm_ds.push(comm_d);
+        }
+        let cdc_params = ComputeDataCommitmentParams { inputs: cdc_inputs };
+        let cdc_ret = ComputeDataCommitmentReturn { commds: comm_ds.clone() };
+        rt.expect_send(
+            *STORAGE_MARKET_ACTOR_ADDR,
+            MarketMethod::ComputeDataCommitment as u64,
+            RawBytes::serialize(cdc_params).unwrap(),
+            BigInt::zero(),
+            RawBytes::serialize(cdc_ret).unwrap(),
+            ExitCode::OK,
+        );
+        self.expect_query_network_info(rt);
+
+        // expect randomness queries for provided precommits
+        let mut seal_rands = Vec::new();
+        let mut seal_int_rands = Vec::new();
+
+        for precommit in precommits.iter() {
+            let seal_rand = Randomness(vec![1, 2, 3, 4]);
+            seal_rands.push(seal_rand.clone());
+            let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
+            seal_int_rands.push(seal_int_rand.clone());
+            let interactive_epoch =
+                precommit.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
+
+            let receiver = rt.receiver;
+            let buf = receiver.marshal_cbor().unwrap();
+            rt.expect_get_randomness_from_tickets(
+                DomainSeparationTag::SealRandomness,
+                precommit.info.seal_rand_epoch,
+                buf.clone(),
+                seal_rand,
+            );
+            rt.expect_get_randomness_from_beacon(
+                DomainSeparationTag::InteractiveSealChallengeSeed,
+                interactive_epoch,
+                buf,
+                seal_int_rand,
+            );
+        }
+
+        // verify syscall
+        let mut svis = Vec::new();
+        for (i, precommit) in precommits.iter().enumerate() {
+            svis.push(AggregateSealVerifyInfo {
+                sector_number: precommit.info.sector_number,
+                randomness: seal_rands.get(i).cloned().unwrap(),
+                interactive_randomness: seal_int_rands.get(i).cloned().unwrap(),
+                sealed_cid: precommit.info.sealed_cid,
+                unsealed_cid: comm_ds[i],
+            })
+        }
+        rt.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone(), Ok(()));
+
+        // confirm sector proofs valid
+        self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
+
+        // burn network fee
+        let expected_fee = aggregate_prove_commit_network_fee(precommits.len() as i64, &base_fee);
+        assert!(expected_fee > BigInt::zero());
+        rt.expect_send(
+            *BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            RawBytes::default(),
+            expected_fee,
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        let addrs = self.caller_addrs().clone();
+        rt.expect_validate_caller_addr(addrs);
+        rt.call::<Actor>(
+            MinerMethod::ProveCommitAggregate as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+        rt.verify();
     }
 
     pub fn confirm_sector_proofs_valid(
@@ -1492,7 +1616,7 @@ impl ActorHarness {
         pidx: u64,
         recovery_sectors: BitField,
         expected_debt_repaid: TokenAmount,
-    ) {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
@@ -1514,12 +1638,16 @@ impl ActorHarness {
             sectors: UnvalidatedBitField::Validated(recovery_sectors),
         };
         let params = DeclareFaultsRecoveredParams { recoveries: vec![recovery] };
-        rt.call::<Actor>(
+        let ret = rt.call::<Actor>(
             Method::DeclareFaultsRecovered as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-        rt.verify();
+        );
+        if ret.is_ok() {
+            rt.verify();
+        } else {
+            rt.reset();
+        }
+        ret
     }
 
     pub fn continued_fault_penalty(&self, sectors: &[SectorOnChainInfo]) -> TokenAmount {
@@ -1581,6 +1709,69 @@ impl ActorHarness {
 
     fn get_partition(&self, rt: &MockRuntime, deadline: &Deadline, pidx: u64) -> Partition {
         deadline.load_partition(&rt.store, pidx).unwrap()
+    }
+
+    pub fn report_consensus_fault(
+        &self,
+        rt: &mut MockRuntime,
+        from: Address,
+        fault: Option<ConsensusFault>,
+    ) -> Result<(), ActorError> {
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from);
+        let params =
+            ReportConsensusFaultParams { header1: vec![], header2: vec![], header_extra: vec![] };
+
+        rt.expect_verify_consensus_fault(
+            params.header1.clone(),
+            params.header2.clone(),
+            params.header_extra.clone(),
+            fault,
+            ExitCode::OK,
+        );
+
+        let current_reward = ThisEpochRewardReturn {
+            this_epoch_baseline_power: self.baseline_power.clone(),
+            this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
+        };
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            RewardMethod::ThisEpochReward as u64,
+            RawBytes::default(),
+            TokenAmount::from(0u8),
+            RawBytes::serialize(current_reward).unwrap(),
+            ExitCode::OK,
+        );
+        let this_epoch_reward = self.epoch_reward_smooth.estimate();
+        let penalty_total = consensus_fault_penalty(this_epoch_reward.clone());
+        let reward_total = reward_for_consensus_slash_report(&this_epoch_reward);
+        rt.expect_send(
+            from,
+            METHOD_SEND,
+            RawBytes::default(),
+            reward_total.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // pay fault fee
+        let to_burn = &penalty_total - &reward_total;
+        rt.expect_send(
+            *BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            RawBytes::default(),
+            to_burn,
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        let result = rt.call::<Actor>(
+            Method::ReportConsensusFault as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        expect_empty(result);
+        rt.verify();
+        Ok(())
     }
 
     pub fn collect_deadline_expirations(
@@ -2025,10 +2216,11 @@ impl PoStConfig {
     }
 }
 
+#[derive(Default)]
 pub struct PreCommitConfig {
     pub deal_weight: DealWeight,
     pub verified_deal_weight: DealWeight,
-    pub deal_space: Option<SectorSize>,
+    pub deal_space: u64,
 }
 
 #[allow(dead_code)]
@@ -2037,15 +2229,23 @@ impl PreCommitConfig {
         PreCommitConfig {
             deal_weight: DealWeight::from(0),
             verified_deal_weight: DealWeight::from(0),
-            deal_space: None,
+            deal_space: 0,
         }
+    }
+
+    pub fn new(
+        deal_weight: DealWeight,
+        verified_deal_weight: DealWeight,
+        deal_space: SectorSize,
+    ) -> PreCommitConfig {
+        PreCommitConfig { deal_weight, verified_deal_weight, deal_space: deal_space as u64 }
     }
 
     pub fn default() -> PreCommitConfig {
         PreCommitConfig {
             deal_weight: DealWeight::from(0),
             verified_deal_weight: DealWeight::from(0),
-            deal_space: Some(SectorSize::_2KiB),
+            deal_space: SectorSize::_2KiB as u64,
         }
     }
 }
@@ -2147,6 +2347,14 @@ pub fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
     match ubf {
         UnvalidatedBitField::Validated(bf) => bf.clone(),
         UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes).unwrap(),
+    }
+}
+
+#[allow(dead_code)]
+pub fn make_prove_commit_aggregate(sector_nos: &BitField) -> ProveCommitAggregateParams {
+    ProveCommitAggregateParams {
+        sector_numbers: UnvalidatedBitField::Validated(sector_nos.clone()),
+        aggregate_proof: vec![0; 1024],
     }
 }
 
@@ -2279,9 +2487,362 @@ fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
     Box::new(hash)
 }
 
+pub struct DealSummary {
+    pub sector_start: ChainEpoch,
+    pub sector_expiration: ChainEpoch,
+}
+
+pub struct StateSummary {
+    pub live_power: PowerPair,
+    pub active_power: PowerPair,
+    pub faulty_power: PowerPair,
+    pub deals: BTreeMap<DealID, DealSummary>,
+    pub window_post_proof_type: RegisteredPoStProof,
+    pub deadline_cron_active: bool,
+}
+
+impl Default for StateSummary {
+    fn default() -> Self {
+        StateSummary {
+            live_power: PowerPair::zero(),
+            active_power: PowerPair::zero(),
+            faulty_power: PowerPair::zero(),
+            window_post_proof_type: RegisteredPoStProof::Invalid(0),
+            deadline_cron_active: false,
+            deals: BTreeMap::new(),
+        }
+    }
+}
+
+fn check_miner_info(info: MinerInfo, acc: &MessageAccumulator) {
+    acc.require(
+        info.owner.protocol() == Protocol::ID,
+        &format!("owner address {} is not an ID address", info.owner),
+    );
+    acc.require(
+        info.worker.protocol() == Protocol::ID,
+        &format!("worker address {} is not an ID address", info.worker),
+    );
+    info.control_addresses.iter().for_each(|address| {
+        acc.require(
+            address.protocol() == Protocol::ID,
+            &format!("control address {} is not an ID address", address),
+        )
+    });
+
+    if let Some(pending_worker_key) = info.pending_worker_key {
+        acc.require(
+            pending_worker_key.new_worker.protocol() == Protocol::ID,
+            &format!(
+                "pending worker address {} is not an ID address",
+                pending_worker_key.new_worker
+            ),
+        );
+        acc.require(
+            pending_worker_key.new_worker != info.worker,
+            &format!(
+                "pending worker key {} is same as existing worker {}",
+                pending_worker_key.new_worker, info.worker
+            ),
+        );
+    }
+
+    if let Some(pending_owner_address) = info.pending_owner_address {
+        acc.require(
+            pending_owner_address.protocol() == Protocol::ID,
+            &format!("pending owner address {} is not an ID address", pending_owner_address),
+        );
+        acc.require(
+            pending_owner_address != info.owner,
+            &format!(
+                "pending owner address {} is same as existing owner {}",
+                pending_owner_address, info.owner
+            ),
+        );
+    }
+
+    if let RegisteredPoStProof::Invalid(id) = info.window_post_proof_type {
+        acc.add(&format!("invalid Window PoSt proof type {id}"));
+    } else {
+        // safe to unwrap as we know it's valid at this point
+        let sector_size = info.window_post_proof_type.sector_size().unwrap();
+        acc.require(
+            info.sector_size == sector_size,
+            &format!(
+                "sector size {} is wrong for Window PoSt proof type {:?}: {}",
+                info.sector_size, info.window_post_proof_type, sector_size
+            ),
+        );
+
+        let partition_sectors =
+            info.window_post_proof_type.window_post_partitions_sector().unwrap();
+        acc.require(info.window_post_partition_sectors == partition_sectors, &format!("miner partition sectors {} does not match partition sectors {} for PoSt proof type {:?}", info.window_post_partition_sectors, partition_sectors, info.window_post_proof_type));
+    }
+}
+
+fn check_miner_balances<BS: Blockstore>(
+    policy: &Policy,
+    state: &State,
+    store: &BS,
+    balance: &BigInt,
+    acc: &MessageAccumulator,
+) {
+    acc.require(
+        !balance.is_negative(),
+        &format!("miner actor balance is less than zero: {balance}"),
+    );
+    acc.require(
+        !state.locked_funds.is_negative(),
+        &format!("miner locked funds is less than zero: {}", state.locked_funds),
+    );
+    acc.require(
+        !state.pre_commit_deposits.is_negative(),
+        &format!("miner precommit deposit is less than zero: {}", state.pre_commit_deposits),
+    );
+    acc.require(
+        !state.initial_pledge.is_negative(),
+        &format!("miner initial pledge is less than zero: {}", state.initial_pledge),
+    );
+    acc.require(
+        !state.fee_debt.is_negative(),
+        &format!("miner fee debt is less than zero: {}", state.fee_debt),
+    );
+
+    acc.require(balance - &state.locked_funds - &state.pre_commit_deposits - &state.initial_pledge >= BigInt::zero(), &format!("miner balance {balance} is less than sum of locked funds ({}), precommit deposit ({}) and initial pledge ({})", state.locked_funds, state.pre_commit_deposits, state.initial_pledge));
+
+    // locked funds must be sum of vesting table and vesting table payments must be quantized
+    let mut vesting_sum = BigInt::zero();
+    match state.load_vesting_funds(store) {
+        Ok(funds) => {
+            let quant = state.quant_spec_every_deadline(policy);
+            funds.funds.iter().for_each(|entry| {
+                acc.require(
+                    entry.amount.is_positive(),
+                    &format!("non-positive amount in miner vesting table entry {entry:?}"),
+                );
+                vesting_sum += &entry.amount;
+
+                let quantized = quant.quantize_up(entry.epoch);
+                acc.require(
+                    entry.epoch == quantized,
+                    &format!(
+                        "vesting table entry has non-quantized epoch {} (should be {quantized})",
+                        entry.epoch
+                    ),
+                );
+            });
+        }
+        Err(e) => {
+            acc.add(&format!("error loading vesting funds: {e}"));
+        }
+    };
+
+    acc.require(
+        state.locked_funds == vesting_sum,
+        &format!(
+            "locked funds {} is not sum of vesting table entries {vesting_sum}",
+            state.locked_funds
+        ),
+    );
+
+    // non zero funds implies that DeadlineCronActive is true
+    if state.continue_deadline_cron() {
+        acc.require(state.deadline_cron_active, "DeadlineCronActive == false when IP+PCD+LF > 0");
+    }
+}
+
+fn check_precommits<BS: Blockstore>(
+    policy: &Policy,
+    state: &State,
+    store: &BS,
+    allocated_sectors: &BTreeSet<u64>,
+    acc: &MessageAccumulator,
+) {
+    let quant = state.quant_spec_every_deadline(policy);
+
+    // invert pre-commit clean up queue into a lookup by sector number
+    let mut cleanup_epochs: BTreeMap<u64, ChainEpoch> = BTreeMap::new();
+    match BitFieldQueue::new(store, &state.pre_committed_sectors_cleanup, quant) {
+        Ok(queue) => {
+            let ret = queue.amt.for_each(|epoch, expiration_bitfield| {
+                let epoch = epoch as ChainEpoch;
+                let quantized = quant.quantize_up(epoch);
+                acc.require(
+                    quantized == epoch,
+                    &format!("pre-commit expiration {epoch} is not quantized"),
+                );
+
+                expiration_bitfield.iter().for_each(|sector_number| {
+                    cleanup_epochs.insert(sector_number, epoch);
+                });
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating pre-commit clean-up queue");
+        }
+        Err(e) => {
+            acc.add(&format!("error loading pre-commit clean-up queue: {e}"));
+        }
+    };
+
+    let mut precommit_total = BigInt::zero();
+
+    let precommited_sectors =
+        Map::<_, SectorPreCommitOnChainInfo>::load(&state.pre_committed_sectors, store);
+
+    match precommited_sectors {
+        Ok(precommited_sectors) => {
+            let ret = precommited_sectors.for_each(|key, precommit| {
+                let sector_number = match parse_uint_key(&key) {
+                    Ok(sector_number) => sector_number,
+                    Err(e) => {
+                        acc.add(&format!("error parsing pre-commit key as uint: {e}"));
+                        return Ok(());
+                    }
+                };
+
+                acc.require(
+                    allocated_sectors.contains(&sector_number),
+                    &format!("pre-commited sector number has not been allocated {sector_number}"),
+                );
+
+                acc.require(
+                    cleanup_epochs.contains_key(&sector_number),
+                    &format!("no clean-up epoch for pre-commit at {}", precommit.pre_commit_epoch),
+                );
+                precommit_total += &precommit.pre_commit_deposit;
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating pre-commited sectors");
+        }
+        Err(e) => {
+            acc.add(&format!("error loading precommited_sectors: {e}"));
+        }
+    };
+
+    acc.require(state.pre_commit_deposits == precommit_total,&format!("sum of pre-commit deposits {precommit_total} does not equal recorded pre-commit deposit {}", state.pre_commit_deposits));
+}
+
+pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {
+    let (_, acc) =
+        check_state_invariants(rt.policy(), rt.get_state::<State>(), rt.store(), &rt.get_balance());
+    assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+}
+
 #[allow(dead_code)]
-pub fn check_state_invariants(_rt: &MockRuntime) {
-    // TODO check state invariants
+pub fn check_state_invariants<BS: Blockstore>(
+    policy: &Policy,
+    state: State,
+    store: &BS,
+    balance: &TokenAmount,
+) -> (StateSummary, MessageAccumulator) {
+    let acc = MessageAccumulator::default();
+    let sector_size;
+
+    let mut miner_summary =
+        StateSummary { deadline_cron_active: state.deadline_cron_active, ..Default::default() };
+
+    // load data from linked structures
+    match state.get_info(store) {
+        Ok(info) => {
+            miner_summary.window_post_proof_type = info.window_post_proof_type;
+            sector_size = info.sector_size;
+            check_miner_info(info, &acc);
+        }
+        Err(e) => {
+            // Stop here, it's too hard to make other useful checks.
+            acc.add(&format!("error loading miner info: {e}"));
+            return (miner_summary, acc);
+        }
+    };
+
+    check_miner_balances(policy, &state, store, &balance, &acc);
+
+    let allocated_sectors = match store.get_cbor::<BitField>(&state.allocated_sectors) {
+        Ok(Some(allocated_sectors)) => {
+            if let Some(sectors) = allocated_sectors.bounded_iter(1 << 30) {
+                sectors.map(|i| i as SectorNumber).collect()
+            } else {
+                acc.add(&format!("error expanding allocated sector bitfield"));
+                BTreeSet::new()
+            }
+        }
+        Ok(None) => {
+            acc.add(&format!("error loading allocated sector bitfield"));
+            BTreeSet::new()
+        }
+        Err(e) => {
+            acc.add(&format!("error loading allocated sector bitfield: {e}"));
+            BTreeSet::new()
+        }
+    };
+
+    check_precommits(policy, &state, store, &allocated_sectors, &acc);
+
+    let mut all_sectors: BTreeMap<SectorNumber, SectorOnChainInfo> = BTreeMap::new();
+    match Sectors::load(&store, &state.sectors) {
+        Ok(sectors) => {
+            let ret = sectors.amt.for_each(|sector_number, sector| {
+                all_sectors.insert(sector_number, sector.clone());
+                acc.require(
+                    allocated_sectors.contains(&sector_number),
+                    &format!(
+                        "on chain sector's sector number has not been allocated {sector_number}"
+                    ),
+                );
+                sector.deal_ids.iter().for_each(|&deal| {
+                    miner_summary.deals.insert(
+                        deal,
+                        DealSummary {
+                            sector_start: sector.activation,
+                            sector_expiration: sector.expiration,
+                        },
+                    );
+                });
+                Ok(())
+            });
+
+            acc.require_no_error(ret, "error iterating sectors");
+        }
+        Err(e) => acc.add(&format!("error loading sectors: {e}")),
+    };
+
+    // check deadlines
+    acc.require(
+        state.current_deadline < policy.wpost_period_deadlines,
+        &format!(
+            "current deadline index is greater than deadlines per period({}): {}",
+            policy.wpost_period_deadlines, state.current_deadline
+        ),
+    );
+
+    match state.load_deadlines(store) {
+        Ok(deadlines) => {
+            let ret = deadlines.for_each(policy, store, |deadline_index, deadline| {
+                let acc = acc.with_prefix(&format!("deadline {deadline_index}: "));
+                let quant = state.quant_spec_for_deadline(policy, deadline_index);
+                let deadline_summary = check_deadline_state_invariants(
+                    &deadline,
+                    store,
+                    quant,
+                    sector_size,
+                    &all_sectors,
+                    &acc,
+                );
+
+                miner_summary.live_power += &deadline_summary.live_power;
+                miner_summary.active_power += &deadline_summary.active_power;
+                miner_summary.faulty_power += &deadline_summary.faulty_power;
+                Ok(())
+            });
+
+            acc.require_no_error(ret, "error iterating deadlines");
+        }
+        Err(e) => {
+            acc.add(&format!("error loading deadlines: {e}"));
+        }
+    };
+
+    (miner_summary, acc)
 }
 
 #[allow(dead_code)]
@@ -2947,7 +3508,6 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Default)]
 pub struct CronControl {
     pub pre_commit_num: u64,
@@ -2991,7 +3551,7 @@ impl CronControl {
             dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION as i64 * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
         let precommit_params =
             h.make_pre_commit_params(sector_no, pre_commit_epoch - 1, expiration, vec![]);
-        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::empty(), true).unwrap();
+        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::default(), true).unwrap();
 
         // PCD != 0 so cron must be active
         self.require_cron_active(h, rt);

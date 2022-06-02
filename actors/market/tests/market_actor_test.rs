@@ -30,6 +30,8 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
+use regex::Regex;
+use std::ops::Add;
 
 use num_traits::FromPrimitive;
 
@@ -472,6 +474,7 @@ fn client_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     withdraw_client_balance(&mut rt, withdraw_amount, amount, CLIENT_ADDR);
 
     assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::from(0));
+    check_state(&rt);
 }
 
 #[test]
@@ -513,6 +516,7 @@ fn fail_when_balance_is_zero() {
     );
 
     rt.verify();
+    check_state(&rt);
 }
 
 #[test]
@@ -533,6 +537,7 @@ fn fails_with_a_negative_withdraw_amount() {
     );
 
     rt.verify();
+    check_state(&rt);
 }
 
 #[test]
@@ -1110,7 +1115,15 @@ fn fail_when_deal_is_activated_but_proposal_is_not_found() {
     rt.set_epoch(process_epoch(start_epoch, deal_id));
     expect_abort(ExitCode::USR_NOT_FOUND, cron_tick_raw(&mut rt));
 
-    check_state(&rt);
+    check_state_with_expected(
+        &rt,
+        &[
+            Regex::new("no deal proposal for deal state \\d+").unwrap(),
+            Regex::new("pending proposal with cid \\w+ not found within proposals .*").unwrap(),
+            Regex::new("deal op found for deal id \\d+ with missing proposal at epoch \\d+")
+                .unwrap(),
+        ],
+    );
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1540
@@ -1145,7 +1158,10 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
 
     expect_abort(ExitCode::USR_ILLEGAL_STATE, cron_tick_raw(&mut rt));
 
-    check_state(&rt);
+    check_state_with_expected(
+        &rt,
+        &[Regex::new("deal \\d+ last updated epoch \\d+ after current \\d+").unwrap()],
+    );
 }
 
 #[test]
@@ -1278,6 +1294,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
         ),
     );
     rt.verify();
+    check_state(&rt);
 }
 
 #[test]
@@ -1585,6 +1602,199 @@ fn max_deal_label_size() {
         deal_proposal,
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
+
+    check_state(&rt);
+}
+
+#[test]
+/// Tests that if 2 deals are published, and the client can't cover collateral for the first deal,
+/// but can cover the second, then the first deal fails, but the second passes
+fn insufficient_client_balance_in_a_batch() {
+    let mut rt = setup();
+
+    let mut deal1 = generate_deal_proposal(
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        ChainEpoch::from(1),
+        200 * EPOCHS_IN_DAY,
+    );
+    let deal2 = generate_deal_proposal(
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        ChainEpoch::from(1),
+        200 * EPOCHS_IN_DAY,
+    );
+    deal1.client_collateral = deal2.clone().client_collateral + 1;
+
+    // Client gets enough funds for the 2nd deal
+    add_participant_funds(&mut rt, CLIENT_ADDR, deal2.client_balance_requirement());
+
+    // Provider has enough for both
+    let provider_funds =
+        deal1.provider_balance_requirement().add(deal2.provider_balance_requirement());
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
+    rt.set_value(provider_funds);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+
+    assert_eq!(
+        RawBytes::default(),
+        rt.call::<MarketActor>(
+            Method::AddBalance as u64,
+            &RawBytes::serialize(PROVIDER_ADDR).unwrap(),
+        )
+        .unwrap()
+    );
+
+    rt.verify();
+
+    assert_eq!(deal2.client_balance_requirement(), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
+    assert_eq!(
+        deal1.provider_balance_requirement().add(deal2.provider_balance_requirement()),
+        get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap()
+    );
+
+    let buf1 = RawBytes::serialize(&deal1).expect("failed to marshal deal proposal");
+    let buf2 = RawBytes::serialize(&deal2).expect("failed to marshal deal proposal");
+
+    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let params = PublishStorageDealsParams {
+        deals: vec![
+            ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() },
+            ClientDealProposal { proposal: deal2.clone(), client_signature: sig.clone() },
+        ],
+    };
+
+    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_query_network_info(&mut rt);
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig: sig.clone(),
+        signer: deal1.client,
+        plaintext: buf1.to_vec(),
+        result: Ok(()),
+    });
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig,
+        signer: deal2.client,
+        plaintext: buf2.to_vec(),
+        result: Ok(()),
+    });
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+
+    let ret: PublishStorageDealsReturn = rt
+        .call::<MarketActor>(
+            Method::PublishStorageDeals as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap()
+        .deserialize()
+        .unwrap();
+
+    assert!(ret.valid_deals.get(1));
+    assert!(!ret.valid_deals.get(0));
+
+    rt.verify();
+
+    check_state(&rt);
+}
+
+#[test]
+/// Tests that if 2 deals are published, and the provider can't cover collateral for the first deal,
+/// but can cover the second, then the first deal fails, but the second passes
+fn insufficient_provider_balance_in_a_batch() {
+    let mut rt = setup();
+
+    let mut deal1 = generate_deal_proposal(
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        ChainEpoch::from(1),
+        200 * EPOCHS_IN_DAY,
+    );
+    let deal2 = generate_deal_proposal(
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        ChainEpoch::from(1),
+        200 * EPOCHS_IN_DAY,
+    );
+    deal1.provider_collateral = deal2.clone().provider_collateral + 1;
+
+    // Client gets enough funds for both deals
+    add_participant_funds(
+        &mut rt,
+        CLIENT_ADDR,
+        deal1.client_balance_requirement().add(deal2.client_balance_requirement()),
+    );
+
+    // Provider has enough for only the second deal
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
+    rt.set_value(deal2.provider_balance_requirement().clone());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+
+    assert_eq!(
+        RawBytes::default(),
+        rt.call::<MarketActor>(
+            Method::AddBalance as u64,
+            &RawBytes::serialize(PROVIDER_ADDR).unwrap(),
+        )
+        .unwrap()
+    );
+
+    rt.verify();
+
+    assert_eq!(
+        deal1.client_balance_requirement().add(deal2.client_balance_requirement()),
+        get_escrow_balance(&rt, &CLIENT_ADDR).unwrap()
+    );
+    assert_eq!(
+        deal2.provider_balance_requirement().clone(),
+        get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap()
+    );
+
+    let buf1 = RawBytes::serialize(&deal1).expect("failed to marshal deal proposal");
+    let buf2 = RawBytes::serialize(&deal2).expect("failed to marshal deal proposal");
+
+    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let params = PublishStorageDealsParams {
+        deals: vec![
+            ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() },
+            ClientDealProposal { proposal: deal2.clone(), client_signature: sig.clone() },
+        ],
+    };
+
+    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_query_network_info(&mut rt);
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig: sig.clone(),
+        signer: deal1.client,
+        plaintext: buf1.to_vec(),
+        result: Ok(()),
+    });
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig,
+        signer: deal2.client,
+        plaintext: buf2.to_vec(),
+        result: Ok(()),
+    });
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+
+    let ret: PublishStorageDealsReturn = rt
+        .call::<MarketActor>(
+            Method::PublishStorageDeals as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap()
+        .deserialize()
+        .unwrap();
+
+    assert!(ret.valid_deals.get(1));
+    assert!(!ret.valid_deals.get(0));
+
+    rt.verify();
 
     check_state(&rt);
 }

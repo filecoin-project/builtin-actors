@@ -14,7 +14,8 @@ use fil_actors_runtime::{make_empty_map, make_map_with_root_and_bitwidth, Map};
 pub const BALANCE_TABLE_BITWIDTH: u32 = 6;
 
 /// Balance table which handles getting and updating token balances specifically
-pub struct BalanceTable<'a, BS>(Map<'a, BS, BigIntDe>);
+pub struct BalanceTable<'a, BS>(pub Map<'a, BS, BigIntDe>);
+
 impl<'a, BS> BalanceTable<'a, BS>
 where
     BS: Blockstore,
