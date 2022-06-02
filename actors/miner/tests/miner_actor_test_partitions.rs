@@ -190,8 +190,73 @@ mod miner_actor_test_partitions {
         assert_eq!(format!("{}", err), "not all added sectors are new");
     }
 
+    fn assert_adds_faults(proven: bool) {
+        let (rt, mut partition) = setup_unproven();
+        if proven {
+            partition.activate_unproven();
+        }
+        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+
+        let mut fault_set = make_bitfield(&[4, 5]);
+        let (_, power_delta, new_faulty_power) = partition
+            .record_faults(&rt.store, &sector_arr, &mut fault_set, 7, SECTOR_SIZE, QUANT_SPEC)
+            .unwrap();
+
+        let expected_faulty_power = power_for_sectors(
+            SECTOR_SIZE,
+            &select_sectors(&sectors(), &fault_set.validate_mut().unwrap()),
+        );
+        let expected_power_delta = if proven {
+            -expected_faulty_power.clone()
+        } else {
+            PowerPair::zero()
+        };
+        assert_eq!(new_faulty_power, expected_faulty_power);
+        assert_eq!(power_delta, expected_power_delta);
+
+        let sector_numbers = bitfield_from_slice(&[1, 2, 3, 4, 5, 6]);
+        let unproven_set = if proven {
+            bitfield_from_slice(&[])
+        } else {
+            bitfield_from_slice(&[1, 2, 3, 6]) // faults are no longer "unproven", just faulty.
+        };
+
+        let empty = bitfield_from_slice(&[]);
+        assert_partition_state(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            SECTOR_SIZE,
+            &sectors(),
+            sector_numbers,
+            fault_set.validate_mut().unwrap().clone(),
+            empty.clone(),
+            empty,
+            unproven_set,
+        );
+
+        // moves faulty sectors after expiration to earlier group
+        assert_partition_expiration_queue(
+            &rt.store,
+            &partition,
+            QUANT_SPEC,
+            &[
+                ExpectExpirationGroup { expiration: 5, sectors: bitfield_from_slice(&[1, 2]) },
+                ExpectExpirationGroup { expiration: 9, sectors: bitfield_from_slice(&[3, 4, 5]) },
+                ExpectExpirationGroup { expiration: 13, sectors: bitfield_from_slice(&[6]) },
+            ],
+        );
+    }
+
     #[test]
-    fn adds_faults() {}
+    fn adds_faults_proven() {
+        assert_adds_faults(true)
+    }
+
+    #[test]
+    fn adds_faults_unproven() {
+        assert_adds_faults(false)
+    }
 
     #[test]
     fn re_adding_faults_is_a_no_op() {
