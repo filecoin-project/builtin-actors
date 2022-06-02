@@ -29,7 +29,7 @@ fn construct() {
     let mut rt = new_runtime();
     let h = new_harness();
     h.construct_and_verify(&mut rt);
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn create_miner() {
     assert_eq!(0, st.miner_above_min_power_count);
 
     verify_empty_map(&rt, st.cron_event_queue);
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn create_miner_given_caller_is_not_of_signable_type_should_fail() {
         ),
     );
     rt.verify();
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -153,7 +153,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
         ),
     );
     rt.verify();
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -177,7 +177,7 @@ fn claimed_power_given_caller_is_not_storage_miner_should_fail() {
     );
 
     rt.verify();
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -201,7 +201,7 @@ fn claimed_power_given_claim_does_not_exist_should_fail() {
     );
 
     rt.verify();
-    h.check_state();
+    h.check_state(&rt);
 }
 
 const MINER1: Address = Address::new_id(111);
@@ -258,7 +258,7 @@ fn power_and_pledge_accounted_below_threshold() {
     let claim2 = h.get_claim(&rt, &MINER2).unwrap();
     assert!(claim2.raw_byte_power.is_zero());
     assert!(claim2.quality_adj_power.is_zero());
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -292,7 +292,7 @@ fn enroll_cron_epoch_multiple_events() {
     let payload = RawBytes::serialize(b"Azathoth").unwrap();
     enroll_and_check_cron_event(2, &miner2_address, &payload);
 
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -331,7 +331,7 @@ fn enroll_cron_epoch_before_current_epoch() {
     assert_eq!(state.first_cron_epoch, 0);
 
     rt.verify();
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -353,6 +353,7 @@ fn new_miner_updates_miner_above_min_power_count() {
 
         let st: State = rt.get_state();
         assert_eq!(test.expected_miners, st.miner_above_min_power_count);
+        h.check_state(&rt);
     }
 }
 
@@ -402,7 +403,7 @@ fn power_accounting_crossing_threshold() {
     // Less than 4 miners above threshold again small miner power is counted again
     h.update_claimed_power(&mut rt, MINER4, &delta.neg(), &(delta.neg() * 10));
     h.expect_total_power_eager(&mut rt, &expected_total_below, &(&expected_total_below * 10));
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -438,7 +439,7 @@ fn all_of_one_miners_power_disappears_when_that_miner_dips_below_min_power_thres
 
     let expected_total = &(power_unit * 4);
     h.expect_total_power_eager(&mut rt, expected_total, expected_total);
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -461,7 +462,7 @@ fn enroll_cron_epoch_given_negative_epoch_should_fail() {
     );
 
     rt.verify();
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -509,7 +510,7 @@ fn power_gets_added_when_miner_crosses_min_power_but_not_before() {
     h.expect_miners_above_min_power(&mut rt, 5);
     let new_expected_total = expected_total + power_unit;
     h.expect_total_power_eager(&mut rt, &new_expected_total, &new_expected_total);
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -537,7 +538,7 @@ fn threshold_only_depends_on_raw_power_not_qa_power() {
     h.update_claimed_power(&mut rt, MINER2, half_power_unit, power_unit);
     h.update_claimed_power(&mut rt, MINER3, half_power_unit, power_unit);
     h.expect_miners_above_min_power(&mut rt, 3);
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -564,7 +565,7 @@ fn qa_power_is_above_threshold_before_and_after_update() {
     let st: State = rt.get_state();
     assert_eq!(power_unit_x4, &st.total_quality_adj_power);
     assert_eq!(power_unit_x4, &st.total_raw_byte_power);
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -584,7 +585,7 @@ fn claimed_power_is_externally_available() {
 
     assert_eq!(power_unit, &claim.raw_byte_power);
     assert_eq!(power_unit, &claim.quality_adj_power);
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[test]
@@ -608,7 +609,7 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
     );
 
     rt.verify();
-    h.check_state();
+    h.check_state(&rt);
 }
 
 #[cfg(test)]
@@ -649,7 +650,7 @@ mod cron_tests {
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
 
         rt.verify();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -689,7 +690,7 @@ mod cron_tests {
         assert_eq!(expected_power, state.this_epoch_raw_byte_power);
 
         rt.verify();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -759,7 +760,7 @@ mod cron_tests {
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
 
         rt.verify();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -831,7 +832,7 @@ mod cron_tests {
         let state: State = rt.get_state();
 
         verify_empty_map(&rt, state.cron_event_queue);
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -845,6 +846,7 @@ mod cron_tests {
             "epoch -2 cannot be less than zero",
             h.enroll_cron_event(&mut rt, -2, &miner_addr, &RawBytes::from(vec![0x01, 0x03])),
         );
+        h.check_state(&rt);
     }
 
     #[test]
@@ -901,7 +903,7 @@ mod cron_tests {
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
         rt.verify();
 
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1006,7 +1008,7 @@ mod cron_tests {
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
         rt.verify();
-        h.check_state();
+        h.check_state(&rt);
     }
 }
 
@@ -1056,7 +1058,7 @@ mod cron_batch_proof_verifies_tests {
         h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, vec![info]);
 
         rt.verify();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1076,7 +1078,7 @@ mod cron_batch_proof_verifies_tests {
         h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
 
         rt.verify();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1100,7 +1102,7 @@ mod cron_batch_proof_verifies_tests {
         h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
 
         rt.verify();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1120,7 +1122,7 @@ mod cron_batch_proof_verifies_tests {
 
         h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
 
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1186,7 +1188,7 @@ mod cron_batch_proof_verifies_tests {
         let infos = vec![info1, info2, info5, info6, info7, info8, info3, info4];
 
         h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), confirmed_sectors, infos);
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1194,7 +1196,7 @@ mod cron_batch_proof_verifies_tests {
         let (h, mut rt) = setup();
         h.on_epoch_tick_end(&mut rt, 0, &BigInt::zero(), vec![], vec![]);
 
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1256,6 +1258,7 @@ mod cron_batch_proof_verifies_tests {
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
 
         rt.verify();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1287,6 +1290,7 @@ mod cron_batch_proof_verifies_tests {
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
         rt.verify();
+        h.check_state(&rt);
     }
 }
 
@@ -1344,7 +1348,7 @@ mod submit_porep_for_bulk_verify_tests {
         assert_eq!(1_u64, found.count());
         let sealed_cid = found.get(0).unwrap().unwrap().sealed_cid;
         assert_eq!(comm_r, sealed_cid);
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1382,6 +1386,7 @@ mod submit_porep_for_bulk_verify_tests {
 
         // Gas only charged for successful submissions
         rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL * MAX_MINER_PROVE_COMMITS_PER_EPOCH as i64);
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1408,5 +1413,6 @@ mod submit_porep_for_bulk_verify_tests {
         h.delete_claim(&mut rt, &MINER);
 
         expect_abort(ExitCode::USR_FORBIDDEN, h.submit_porep_for_bulk_verify(&mut rt, MINER, info));
+        h.check_state(&rt);
     }
 }
