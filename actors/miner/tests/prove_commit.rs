@@ -465,7 +465,7 @@ fn invalid_proof_rejected() {
         ),
     );
     rt.reset();
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -525,7 +525,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
         ProveCommitConfig::empty(),
     )
     .unwrap();
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -565,7 +565,7 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
     let st = h.get_state(&rt);
     assert!(st.get_sector(&rt.store, sector_no_a).unwrap().is_none());
     assert!(st.get_sector(&rt.store, sector_no_b).unwrap().is_some());
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -586,7 +586,7 @@ fn prove_commit_just_after_period_start_permits_post() {
 
     // advance cron to activate power.
     h.advance_and_submit_posts(&mut rt, &[sector]);
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -631,7 +631,7 @@ fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
         .unwrap();
     let st = h.get_state(&rt);
     assert!(st.get_sector(&rt.store, sector_no).unwrap().is_none());
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]

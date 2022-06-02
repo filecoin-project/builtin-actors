@@ -1272,6 +1272,11 @@ impl MessageAccumulator {
         self.msgs.borrow().is_empty()
     }
 
+    /// Returns the number of accumulated messages
+    pub fn len(&self) -> usize {
+        self.msgs.borrow().len()
+    }
+
     pub fn messages(&self) -> Vec<String> {
         self.msgs.borrow().to_owned()
     }
@@ -1309,14 +1314,15 @@ mod message_accumulator_test {
     fn adds_messages() {
         let acc = MessageAccumulator::default();
         acc.add("Cthulhu");
+        assert_eq!(acc.len(), 1);
 
         let msgs = acc.messages();
-        assert_eq!(msgs.len(), 1);
         assert_eq!(msgs, vec!["Cthulhu"]);
 
         acc.add("Azathoth");
+        assert_eq!(acc.len(), 2);
+
         let msgs = acc.messages();
-        assert_eq!(msgs.len(), 2);
         assert_eq!(msgs, vec!["Cthulhu", "Azathoth"]);
     }
 
@@ -1325,13 +1331,12 @@ mod message_accumulator_test {
         let acc = MessageAccumulator::default();
         acc.require(true, "Cthulhu");
 
-        let msgs = acc.messages();
-        assert_eq!(msgs.len(), 0);
+        assert_eq!(acc.len(), 0);
         assert!(acc.is_empty());
 
         acc.require(false, "Azathoth");
         let msgs = acc.messages();
-        assert_eq!(msgs.len(), 1);
+        assert_eq!(acc.len(), 1);
         assert_eq!(msgs, vec!["Azathoth"]);
         assert!(!acc.is_empty());
     }
@@ -1343,7 +1348,7 @@ mod message_accumulator_test {
         acc.require_no_error(fiasco, "Cthulhu says");
 
         let msgs = acc.messages();
-        assert_eq!(msgs.len(), 1);
+        assert_eq!(acc.len(), 1);
         assert_eq!(msgs, vec!["Cthulhu says: fiasco"]);
     }
 
@@ -1371,6 +1376,7 @@ mod message_accumulator_test {
         acc3.add_all(&acc1);
         acc3.add_all(&acc2);
 
+        assert_eq!(2, acc3.len());
         assert_eq!(acc3.messages(), vec!["Cthulhu", "Azathoth"]);
     }
 }

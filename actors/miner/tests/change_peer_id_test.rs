@@ -24,5 +24,5 @@ fn successfully_change_peer_id() {
     let new_pid = b"cthulhu".to_vec();
     h.change_peer_id(&mut rt, new_pid);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }

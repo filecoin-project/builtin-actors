@@ -39,7 +39,7 @@ fn successful_change() {
     assert_eq!(NEW_ADDRESS, info.owner);
     assert!(info.pending_owner_address.is_none());
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn proposed_must_be_valid() {
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
     }
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn withdraw_proposal() {
     let result = h.change_owner_address(&mut rt, NEW_ADDRESS);
     expect_abort(ExitCode::USR_FORBIDDEN, result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn only_owner_can_propose() {
     let result = h.change_owner_address(&mut rt, NEW_ADDRESS);
     expect_abort(ExitCode::USR_FORBIDDEN, result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn only_owner_can_change_proposal() {
     assert_eq!(h.owner, info.owner);
     assert_eq!(OTHER_ADDRESS, info.pending_owner_address.unwrap());
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -155,7 +155,7 @@ fn only_nominee_can_confirm() {
     assert_eq!(NEW_ADDRESS, info.owner);
     assert!(info.pending_owner_address.is_none());
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -173,5 +173,5 @@ fn nominee_must_confirm_self_explicitly() {
     let result = h.change_owner_address(&mut rt, OTHER_ADDRESS);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }

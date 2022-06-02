@@ -26,7 +26,7 @@ fn happy_path_withdraws_funds() {
         &TokenAmount::zero(),
     )
     .unwrap();
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn fails_if_miner_cant_repay_fee_debt() {
             &TokenAmount::zero(),
         ),
     );
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -67,5 +67,5 @@ fn withdraw_only_what_we_can_after_fee_debt() {
     let requested = rt.balance.borrow().to_owned();
     let expected_withdraw = &requested - &fee_debt;
     h.withdraw_funds(&mut rt, &requested, &expected_withdraw, &fee_debt).unwrap();
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }

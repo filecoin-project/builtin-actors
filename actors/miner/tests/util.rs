@@ -30,9 +30,9 @@ use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
-use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime};
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::ActorDowncast;
+use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
+use fil_actors_runtime::{parse_uint_key, ActorDowncast};
+use fil_actors_runtime::{test_utils::*, Map};
 use fil_actors_runtime::{
     ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -44,7 +44,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
 use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
-use fvm_shared::address::Address;
+use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
@@ -67,7 +67,7 @@ use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 use num_traits::sign::Signed;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::ops::Neg;
 
@@ -154,6 +154,10 @@ impl ActorHarness {
 
     pub fn get_state(&self, rt: &MockRuntime) -> State {
         rt.get_state::<State>()
+    }
+
+    pub fn check_state(&self, rt: &MockRuntime) {
+        check_state_invariants_from_mock_runtime(rt);
     }
 
     pub fn new_runtime(&self) -> MockRuntime {
@@ -2348,9 +2352,362 @@ fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
     Box::new(hash)
 }
 
+pub struct DealSummary {
+    pub sector_start: ChainEpoch,
+    pub sector_expiration: ChainEpoch,
+}
+
+pub struct StateSummary {
+    pub live_power: PowerPair,
+    pub active_power: PowerPair,
+    pub faulty_power: PowerPair,
+    pub deals: BTreeMap<DealID, DealSummary>,
+    pub window_post_proof_type: RegisteredPoStProof,
+    pub deadline_cron_active: bool,
+}
+
+impl Default for StateSummary {
+    fn default() -> Self {
+        StateSummary {
+            live_power: PowerPair::zero(),
+            active_power: PowerPair::zero(),
+            faulty_power: PowerPair::zero(),
+            window_post_proof_type: RegisteredPoStProof::Invalid(0),
+            deadline_cron_active: false,
+            deals: BTreeMap::new(),
+        }
+    }
+}
+
+fn check_miner_info(info: MinerInfo, acc: &MessageAccumulator) {
+    acc.require(
+        info.owner.protocol() == Protocol::ID,
+        &format!("owner address {} is not an ID address", info.owner),
+    );
+    acc.require(
+        info.worker.protocol() == Protocol::ID,
+        &format!("worker address {} is not an ID address", info.worker),
+    );
+    info.control_addresses.iter().for_each(|address| {
+        acc.require(
+            address.protocol() == Protocol::ID,
+            &format!("control address {} is not an ID address", address),
+        )
+    });
+
+    if let Some(pending_worker_key) = info.pending_worker_key {
+        acc.require(
+            pending_worker_key.new_worker.protocol() == Protocol::ID,
+            &format!(
+                "pending worker address {} is not an ID address",
+                pending_worker_key.new_worker
+            ),
+        );
+        acc.require(
+            pending_worker_key.new_worker != info.worker,
+            &format!(
+                "pending worker key {} is same as existing worker {}",
+                pending_worker_key.new_worker, info.worker
+            ),
+        );
+    }
+
+    if let Some(pending_owner_address) = info.pending_owner_address {
+        acc.require(
+            pending_owner_address.protocol() == Protocol::ID,
+            &format!("pending owner address {} is not an ID address", pending_owner_address),
+        );
+        acc.require(
+            pending_owner_address != info.owner,
+            &format!(
+                "pending owner address {} is same as existing owner {}",
+                pending_owner_address, info.owner
+            ),
+        );
+    }
+
+    if let RegisteredPoStProof::Invalid(id) = info.window_post_proof_type {
+        acc.add(&format!("invalid Window PoSt proof type {id}"));
+    } else {
+        // safe to unwrap as we know it's valid at this point
+        let sector_size = info.window_post_proof_type.sector_size().unwrap();
+        acc.require(
+            info.sector_size == sector_size,
+            &format!(
+                "sector size {} is wrong for Window PoSt proof type {:?}: {}",
+                info.sector_size, info.window_post_proof_type, sector_size
+            ),
+        );
+
+        let partition_sectors =
+            info.window_post_proof_type.window_post_partitions_sector().unwrap();
+        acc.require(info.window_post_partition_sectors == partition_sectors, &format!("miner partition sectors {} does not match partition sectors {} for PoSt proof type {:?}", info.window_post_partition_sectors, partition_sectors, info.window_post_proof_type));
+    }
+}
+
+fn check_miner_balances<BS: Blockstore>(
+    policy: &Policy,
+    state: &State,
+    store: &BS,
+    balance: &BigInt,
+    acc: &MessageAccumulator,
+) {
+    acc.require(
+        !balance.is_negative(),
+        &format!("miner actor balance is less than zero: {balance}"),
+    );
+    acc.require(
+        !state.locked_funds.is_negative(),
+        &format!("miner locked funds is less than zero: {}", state.locked_funds),
+    );
+    acc.require(
+        !state.pre_commit_deposits.is_negative(),
+        &format!("miner precommit deposit is less than zero: {}", state.pre_commit_deposits),
+    );
+    acc.require(
+        !state.initial_pledge.is_negative(),
+        &format!("miner initial pledge is less than zero: {}", state.initial_pledge),
+    );
+    acc.require(
+        !state.fee_debt.is_negative(),
+        &format!("miner fee debt is less than zero: {}", state.fee_debt),
+    );
+
+    acc.require(balance - &state.locked_funds - &state.pre_commit_deposits - &state.initial_pledge >= BigInt::zero(), &format!("miner balance {balance} is less than sum of locked funds ({}), precommit deposit ({}) and initial pledge ({})", state.locked_funds, state.pre_commit_deposits, state.initial_pledge));
+
+    // locked funds must be sum of vesting table and vesting table payments must be quantized
+    let mut vesting_sum = BigInt::zero();
+    match state.load_vesting_funds(store) {
+        Ok(funds) => {
+            let quant = state.quant_spec_every_deadline(policy);
+            funds.funds.iter().for_each(|entry| {
+                acc.require(
+                    entry.amount.is_positive(),
+                    &format!("non-positive amount in miner vesting table entry {entry:?}"),
+                );
+                vesting_sum += &entry.amount;
+
+                let quantized = quant.quantize_up(entry.epoch);
+                acc.require(
+                    entry.epoch == quantized,
+                    &format!(
+                        "vesting table entry has non-quantized epoch {} (should be {quantized})",
+                        entry.epoch
+                    ),
+                );
+            });
+        }
+        Err(e) => {
+            acc.add(&format!("error loading vesting funds: {e}"));
+        }
+    };
+
+    acc.require(
+        state.locked_funds == vesting_sum,
+        &format!(
+            "locked funds {} is not sum of vesting table entries {vesting_sum}",
+            state.locked_funds
+        ),
+    );
+
+    // non zero funds implies that DeadlineCronActive is true
+    if state.continue_deadline_cron() {
+        acc.require(state.deadline_cron_active, "DeadlineCronActive == false when IP+PCD+LF > 0");
+    }
+}
+
+fn check_precommits<BS: Blockstore>(
+    policy: &Policy,
+    state: &State,
+    store: &BS,
+    allocated_sectors: &BTreeSet<u64>,
+    acc: &MessageAccumulator,
+) {
+    let quant = state.quant_spec_every_deadline(policy);
+
+    // invert pre-commit clean up queue into a lookup by sector number
+    let mut cleanup_epochs: BTreeMap<u64, ChainEpoch> = BTreeMap::new();
+    match BitFieldQueue::new(store, &state.pre_committed_sectors_cleanup, quant) {
+        Ok(queue) => {
+            let ret = queue.amt.for_each(|epoch, expiration_bitfield| {
+                let epoch = epoch as ChainEpoch;
+                let quantized = quant.quantize_up(epoch);
+                acc.require(
+                    quantized == epoch,
+                    &format!("pre-commit expiration {epoch} is not quantized"),
+                );
+
+                expiration_bitfield.iter().for_each(|sector_number| {
+                    cleanup_epochs.insert(sector_number, epoch);
+                });
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating pre-commit clean-up queue");
+        }
+        Err(e) => {
+            acc.add(&format!("error loading pre-commit clean-up queue: {e}"));
+        }
+    };
+
+    let mut precommit_total = BigInt::zero();
+
+    let precommited_sectors =
+        Map::<_, SectorPreCommitOnChainInfo>::load(&state.pre_committed_sectors, store);
+
+    match precommited_sectors {
+        Ok(precommited_sectors) => {
+            let ret = precommited_sectors.for_each(|key, precommit| {
+                let sector_number = match parse_uint_key(&key) {
+                    Ok(sector_number) => sector_number,
+                    Err(e) => {
+                        acc.add(&format!("error parsing pre-commit key as uint: {e}"));
+                        return Ok(());
+                    }
+                };
+
+                acc.require(
+                    allocated_sectors.contains(&sector_number),
+                    &format!("pre-commited sector number has not been allocated {sector_number}"),
+                );
+
+                acc.require(
+                    cleanup_epochs.contains_key(&sector_number),
+                    &format!("no clean-up epoch for pre-commit at {}", precommit.pre_commit_epoch),
+                );
+                precommit_total += &precommit.pre_commit_deposit;
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating pre-commited sectors");
+        }
+        Err(e) => {
+            acc.add(&format!("error loading precommited_sectors: {e}"));
+        }
+    };
+
+    acc.require(state.pre_commit_deposits == precommit_total,&format!("sum of pre-commit deposits {precommit_total} does not equal recorded pre-commit deposit {}", state.pre_commit_deposits));
+}
+
+pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {
+    let (_, acc) =
+        check_state_invariants(rt.policy(), rt.get_state::<State>(), rt.store(), &rt.get_balance());
+    assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+}
+
 #[allow(dead_code)]
-pub fn check_state_invariants(_rt: &MockRuntime) {
-    // TODO check state invariants
+pub fn check_state_invariants<BS: Blockstore>(
+    policy: &Policy,
+    state: State,
+    store: &BS,
+    balance: &TokenAmount,
+) -> (StateSummary, MessageAccumulator) {
+    let acc = MessageAccumulator::default();
+    let sector_size;
+
+    let mut miner_summary =
+        StateSummary { deadline_cron_active: state.deadline_cron_active, ..Default::default() };
+
+    // load data from linked structures
+    match state.get_info(store) {
+        Ok(info) => {
+            miner_summary.window_post_proof_type = info.window_post_proof_type;
+            sector_size = info.sector_size;
+            check_miner_info(info, &acc);
+        }
+        Err(e) => {
+            // Stop here, it's too hard to make other useful checks.
+            acc.add(&format!("error loading miner info: {e}"));
+            return (miner_summary, acc);
+        }
+    };
+
+    check_miner_balances(policy, &state, store, &balance, &acc);
+
+    let allocated_sectors = match store.get_cbor::<BitField>(&state.allocated_sectors) {
+        Ok(Some(allocated_sectors)) => {
+            if let Some(sectors) = allocated_sectors.bounded_iter(1 << 30) {
+                sectors.map(|i| i as SectorNumber).collect()
+            } else {
+                acc.add(&format!("error expanding allocated sector bitfield"));
+                BTreeSet::new()
+            }
+        }
+        Ok(None) => {
+            acc.add(&format!("error loading allocated sector bitfield"));
+            BTreeSet::new()
+        }
+        Err(e) => {
+            acc.add(&format!("error loading allocated sector bitfield: {e}"));
+            BTreeSet::new()
+        }
+    };
+
+    check_precommits(policy, &state, store, &allocated_sectors, &acc);
+
+    let mut all_sectors: BTreeMap<SectorNumber, SectorOnChainInfo> = BTreeMap::new();
+    match Sectors::load(&store, &state.sectors) {
+        Ok(sectors) => {
+            let ret = sectors.amt.for_each(|sector_number, sector| {
+                all_sectors.insert(sector_number, sector.clone());
+                acc.require(
+                    allocated_sectors.contains(&sector_number),
+                    &format!(
+                        "on chain sector's sector number has not been allocated {sector_number}"
+                    ),
+                );
+                sector.deal_ids.iter().for_each(|&deal| {
+                    miner_summary.deals.insert(
+                        deal,
+                        DealSummary {
+                            sector_start: sector.activation,
+                            sector_expiration: sector.expiration,
+                        },
+                    );
+                });
+                Ok(())
+            });
+
+            acc.require_no_error(ret, "error iterating sectors");
+        }
+        Err(e) => acc.add(&format!("error loading sectors: {e}")),
+    };
+
+    // check deadlines
+    acc.require(
+        state.current_deadline < policy.wpost_period_deadlines,
+        &format!(
+            "current deadline index is greater than deadlines per period({}): {}",
+            policy.wpost_period_deadlines, state.current_deadline
+        ),
+    );
+
+    match state.load_deadlines(store) {
+        Ok(deadlines) => {
+            let ret = deadlines.for_each(policy, store, |deadline_index, deadline| {
+                let acc = acc.with_prefix(&format!("deadline {deadline_index}: "));
+                let quant = state.quant_spec_for_deadline(policy, deadline_index);
+                let deadline_summary = check_deadline_state_invariants(
+                    &deadline,
+                    store,
+                    quant,
+                    sector_size,
+                    &all_sectors,
+                    &acc,
+                );
+
+                miner_summary.live_power += &deadline_summary.live_power;
+                miner_summary.active_power += &deadline_summary.active_power;
+                miner_summary.faulty_power += &deadline_summary.faulty_power;
+                Ok(())
+            });
+
+            acc.require_no_error(ret, "error iterating deadlines");
+        }
+        Err(e) => {
+            acc.add(&format!("error loading deadlines: {e}"));
+        }
+    };
+
+    (miner_summary, acc)
 }
 
 #[allow(dead_code)]
