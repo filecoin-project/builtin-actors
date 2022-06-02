@@ -74,13 +74,11 @@ fn assert_partition_state(
 }
 
 fn setup_unproven() -> (MockRuntime, Partition) {
-    let quant_spec = QuantSpec { unit: 4, offset: 1 };
-
     let (_, rt) = setup();
     let mut partition = Partition::new(&rt.store).unwrap();
 
     let power =
-        partition.add_sectors(&rt.store, false, &sectors(), SECTOR_SIZE, quant_spec).unwrap();
+        partition.add_sectors(&rt.store, false, &sectors(), SECTOR_SIZE, QUANT_SPEC).unwrap();
 
     let expected_power = power_for_sectors(SECTOR_SIZE, &sectors());
     assert_eq!(expected_power, power);
@@ -147,15 +145,13 @@ mod miner_actor_test_partitions {
 
     #[test]
     fn adds_sectors_and_reports_sector_stats() {
-        let quant_spec = QuantSpec { unit: 4, offset: 1 };
-
         let (rt, partition) = setup_partition();
 
         let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
-            quant_spec,
+            QUANT_SPEC,
             SECTOR_SIZE,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
@@ -169,7 +165,7 @@ mod miner_actor_test_partitions {
         assert_partition_expiration_queue(
             &rt.store,
             &partition,
-            quant_spec,
+            QUANT_SPEC,
             &[
                 ExpectExpirationGroup { expiration: 5, sectors: bitfield_from_slice(&[1, 2]) },
                 ExpectExpirationGroup { expiration: 9, sectors: bitfield_from_slice(&[3, 4]) },
@@ -180,11 +176,9 @@ mod miner_actor_test_partitions {
 
     #[test]
     fn does_not_add_sectors_twice() {
-        let quant_spec = QuantSpec { unit: 4, offset: 1 };
-
         let (rt, mut partition) = setup_partition();
 
-        let res = partition.add_sectors(&rt.store, false, &sectors(), SECTOR_SIZE, quant_spec);
+        let res = partition.add_sectors(&rt.store, false, &sectors(), SECTOR_SIZE, QUANT_SPEC);
 
         let err = res.expect_err(&format!("expected error, but call succeeded",));
         assert_eq!(format!("{}", err), "not all added sectors are new");
