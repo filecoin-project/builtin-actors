@@ -148,8 +148,8 @@ pub struct Expectations {
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
-    pub expect_get_randomness_tickets: Option<ExpectRandomness>,
-    pub expect_get_randomness_beacon: Option<ExpectRandomness>,
+    pub expect_get_randomness_tickets: VecDeque<ExpectRandomness>,
+    pub expect_get_randomness_beacon: VecDeque<ExpectRandomness>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
@@ -214,12 +214,12 @@ impl Expectations {
             self.expect_verify_consensus_fault
         );
         assert!(
-            self.expect_get_randomness_tickets.is_none(),
+            self.expect_get_randomness_tickets.is_empty(),
             "expect_get_randomness_tickets {:?}, not received",
             self.expect_get_randomness_tickets
         );
         assert!(
-            self.expect_get_randomness_beacon.is_none(),
+            self.expect_get_randomness_beacon.is_empty(),
             "expect_get_randomness_beacon {:?}, not received",
             self.expect_get_randomness_beacon
         );
@@ -587,7 +587,7 @@ impl MockRuntime {
         out: Randomness,
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_randomness_tickets = Some(a);
+        self.expectations.borrow_mut().expect_get_randomness_tickets.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -599,7 +599,7 @@ impl MockRuntime {
         out: Randomness,
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_randomness_beacon = Some(a);
+        self.expectations.borrow_mut().expect_get_randomness_beacon.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -785,7 +785,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             .expectations
             .borrow_mut()
             .expect_get_randomness_tickets
-            .take()
+            .pop_front()
             .expect("unexpected call to get_randomness_from_tickets");
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
@@ -818,7 +818,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             .expectations
             .borrow_mut()
             .expect_get_randomness_beacon
-            .take()
+            .pop_front()
             .expect("unexpected call to get_randomness_from_beacon");
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
