@@ -237,7 +237,7 @@ fn swap_self_2_of_3() {
         approve_swap_signer_params,
     );
     let st = v.get_state::<MsigState>(msig_addr).unwrap();
-    assert_eq!(vec![dinesh, bob, chuck], st.signers);
+    assert_eq!(vec![bob, chuck, dinesh], st.signers);
 
     // Case 2: swapped out is approver, swap dinesh for alice, dinesh is removed
     let swap_params = SwapSignerParams { from: dinesh, to: alice };
@@ -267,7 +267,7 @@ fn swap_self_2_of_3() {
         approve_swap_signer_params,
     );
     let st = v.get_state::<MsigState>(msig_addr).unwrap();
-    assert_eq!(vec![alice, bob, chuck], st.signers)
+    assert_eq!(vec![bob, chuck, alice], st.signers)
 }
 
 fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
