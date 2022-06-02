@@ -4,7 +4,7 @@ use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
     pre_commit_deposit_for_power, qa_power_for_weight, PreCommitSectorBatchParams, State,
 };
-use fil_actors_runtime::test_utils::expect_abort_contains_message;
+use fil_actors_runtime::test_utils::{expect_abort, expect_abort_contains_message};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{bigint::BigInt, clock::ChainEpoch, error::ExitCode};
 use lazy_static::lazy_static;
@@ -55,9 +55,18 @@ fn insufficient_funds_for_aggregated_prove_commit_network_fee() {
     let balance = BigInt::from(1000u64) * BigInt::from(10u64.pow(18));
     rt.set_balance(balance.clone());
     let base_fee = BigInt::from(10u64.pow(16));
-    rt.set_base_fee(base_fee.clone());
+    rt.base_fee = base_fee.clone();
     assert!(aggregate_prove_commit_network_fee(precommits.len() as i64, &base_fee) > balance);
-    // TODO: needs ActorHarness::prove_commit_aggregate_sector (in miner tests part 16)
+
+    let res = actor.prove_commit_aggregate_sector(
+        &mut rt,
+        ProveCommitConfig::empty(),
+        precommits,
+        make_prove_commit_aggregate(&sector_nos_bf),
+        base_fee,
+    );
+
+    expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, res);
 }
 
 #[test]
@@ -85,7 +94,7 @@ fn insufficient_funds_for_batch_precommit_network_fee() {
     let balance = BigInt::from(1000u64) * BigInt::from(10u64.pow(18));
     rt.set_balance(balance.clone());
     let base_fee = BigInt::from(10u64.pow(16));
-    rt.set_base_fee(base_fee.clone());
+    rt.base_fee = base_fee.clone();
     assert!(aggregate_pre_commit_network_fee(precommits.len() as i64, &base_fee) > balance);
 
     let res = actor.pre_commit_sector_batch(
@@ -131,7 +140,7 @@ fn insufficient_funds_for_batch_precommit_in_combination_of_fee_debt_and_network
 
     // set base fee extremely high so AggregateProveCommitNetworkFee is > 1000 FIL. Set balance to 1000 FIL to easily cover PCD but not network fee
     let base_fee = BigInt::from(10u64.pow(16));
-    rt.set_base_fee(base_fee.clone());
+    rt.base_fee = base_fee.clone();
     let net_fee = aggregate_pre_commit_network_fee(precommits.len() as i64, &base_fee);
 
     // setup miner to have fee debt equal to net fee
@@ -241,7 +250,7 @@ fn enough_funds_for_everything() {
 
     // set base fee extremely high so AggregateProveCommitNetworkFee is > 1000 FIL. Set balance to 1000 FIL to easily cover PCD but not network fee
     let base_fee = BigInt::from(10u64.pow(16));
-    rt.set_base_fee(base_fee.clone());
+    rt.base_fee = base_fee.clone();
     let net_fee = aggregate_pre_commit_network_fee(precommits.len() as i64, &base_fee);
 
     // setup miner to have fee debt equal to net fee

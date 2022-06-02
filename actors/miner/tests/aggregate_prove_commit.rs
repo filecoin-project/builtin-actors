@@ -59,13 +59,15 @@ fn valid_precommits_then_aggregate_provecommit() {
     rt.set_epoch(prove_commit_epoch);
     rt.set_balance(BigInt::from(1000u64) * BigInt::from(10u64.pow(18)));
 
-    actor.prove_commit_aggregate_sector(
-        &mut rt,
-        ProveCommitConfig::empty(),
-        precommits,
-        make_prove_commit_aggregate(&sector_nos_bf),
-        BigInt::zero(),
-    );
+    actor
+        .prove_commit_aggregate_sector(
+            &mut rt,
+            ProveCommitConfig::empty(),
+            precommits,
+            make_prove_commit_aggregate(&sector_nos_bf),
+            BigInt::zero(),
+        )
+        .unwrap();
 
     // expect precommits to have been removed
     let st = actor.get_state(&rt);
