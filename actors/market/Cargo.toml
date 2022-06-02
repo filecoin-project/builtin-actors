@@ -35,6 +35,9 @@ fil_actor_reward = { version = "8.0.0-alpha.1", path = "../reward" }
 fil_actor_verifreg = { version = "8.0.0-alpha.1", path = "../verifreg" }
 fvm_ipld_amt = { version = "0.4.1", features = ["go-interop"] }
 multihash = { version = "0.16.1", default-features = false }
+regex = "1"
+itertools = "0.10"
+
 [features]
 fil-actor = []
 

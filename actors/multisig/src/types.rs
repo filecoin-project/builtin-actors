@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, RawBytes};
+use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
@@ -91,8 +91,11 @@ pub struct ProposeReturn {
     pub ret: RawBytes,
 }
 
+impl Cbor for ProposeParams {}
+impl Cbor for ProposeReturn {}
+
 /// Parameters for approve and cancel multisig functions.
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, PartialEq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct TxnIDParams {
     pub id: TxnID,
     /// Optional hash of proposal to ensure an operation can only apply to a
@@ -114,6 +117,9 @@ pub struct ApproveReturn {
     pub ret: RawBytes,
 }
 
+impl Cbor for TxnIDParams {}
+impl Cbor for ApproveReturn {}
+
 /// Add signer params.
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct AddSignerParams {
@@ -128,12 +134,16 @@ pub struct RemoveSignerParams {
     pub decrease: bool,
 }
 
+impl Cbor for RemoveSignerParams {}
+
 /// Swap signer multisig method params
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct SwapSignerParams {
     pub from: Address,
     pub to: Address,
 }
+
+impl Cbor for SwapSignerParams {}
 
 /// Propose method call parameters
 #[derive(Serialize_tuple, Deserialize_tuple)]

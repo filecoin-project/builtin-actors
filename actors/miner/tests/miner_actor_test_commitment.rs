@@ -158,7 +158,7 @@ mod miner_actor_test_commitment {
             ExitCode::USR_INSUFFICIENT_FUNDS,
             h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true),
         );
-        util::check_state_invariants(&rt);
+        h.check_state(&rt);
     }
 
     #[test]
@@ -196,7 +196,7 @@ mod miner_actor_test_commitment {
             "deals too large to fit in sector",
             ret,
         );
-        util::check_state_invariants(&rt);
+        h.check_state(&rt);
     }
 
     #[test]
@@ -227,7 +227,7 @@ mod miner_actor_test_commitment {
             .unwrap();
         let st: State = rt.get_state();
         assert_eq!(TokenAmount::zero(), st.fee_debt);
-        util::check_state_invariants(&rt);
+        h.check_state(&rt);
     }
 
     #[test]
@@ -609,7 +609,7 @@ mod miner_actor_test_commitment {
                 util::PreCommitConfig::default(),
                 true,
             );
-            util::check_state_invariants(&rt);
+            util::check_state_invariants_from_mock_runtime(&rt);
         }
     }
 
@@ -652,7 +652,7 @@ mod miner_actor_test_commitment {
             );
         }
 
-        util::check_state_invariants(&rt);
+        util::check_state_invariants_from_mock_runtime(&rt);
     }
 
     #[test]

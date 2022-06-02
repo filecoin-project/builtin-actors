@@ -41,7 +41,7 @@ fn successfully_changes_the_worker_address() {
     assert_eq!(info.worker, NEW_WORKER);
     assert!(info.pending_worker_key.is_none());
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn does_nothing_before_the_effective_date() {
     assert_eq!(pending_worker_key.new_worker, NEW_WORKER);
     assert_eq!(pending_worker_key.effective_at, effective_epoch);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -79,5 +79,5 @@ fn does_nothing_when_no_update_is_set() {
     assert_eq!(info.worker, h.worker);
     assert!(info.pending_worker_key.is_none());
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
