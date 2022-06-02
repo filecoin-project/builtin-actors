@@ -41,7 +41,7 @@ use fil_actors_runtime::{
 use fvm_shared::bigint::Zero;
 
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
-use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
 use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
@@ -3101,4 +3101,14 @@ pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<Se
     assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
 
     included
+}
+
+pub fn require_no_expiration_groups_before(
+    epoch: ChainEpoch,
+    queue: &mut ExpirationQueue<'_, MemoryBlockstore>,
+) {
+    queue.amt.flush().unwrap();
+
+    let set = queue.pop_until(epoch - 1).unwrap();
+    assert!(set.is_empty());
 }

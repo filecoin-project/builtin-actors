@@ -97,17 +97,6 @@ fn setup_partition() -> (MockRuntime, Partition) {
     (rt, partition)
 }
 
-// TODO: don't duplicate
-fn require_no_expiration_groups_before(
-    epoch: ChainEpoch,
-    queue: &mut ExpirationQueue<'_, MemoryBlockstore>,
-) {
-    queue.amt.flush().unwrap();
-
-    let set = queue.pop_until(epoch - 1).unwrap();
-    assert!(set.is_empty());
-}
-
 struct ExpectExpirationGroup {
     expiration: ChainEpoch,
     sectors: BitField,
