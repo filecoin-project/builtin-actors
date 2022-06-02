@@ -206,11 +206,8 @@ mod miner_actor_test_partitions {
             SECTOR_SIZE,
             &select_sectors(&sectors(), &fault_set.validate_mut().unwrap()),
         );
-        let expected_power_delta = if proven {
-            -expected_faulty_power.clone()
-        } else {
-            PowerPair::zero()
-        };
+        let expected_power_delta =
+            if proven { -expected_faulty_power.clone() } else { PowerPair::zero() };
         assert_eq!(new_faulty_power, expected_faulty_power);
         assert_eq!(power_delta, expected_power_delta);
 
