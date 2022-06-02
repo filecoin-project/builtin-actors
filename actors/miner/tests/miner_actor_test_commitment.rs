@@ -609,7 +609,7 @@ mod miner_actor_test_commitment {
                 util::PreCommitConfig::default(),
                 true,
             );
-            util::check_state_invariants(&rt);
+            util::check_state_invariants_from_mock_runtime(&rt);
         }
     }
 
@@ -652,7 +652,7 @@ mod miner_actor_test_commitment {
             );
         }
 
-        util::check_state_invariants(&rt);
+        util::check_state_invariants_from_mock_runtime(&rt);
     }
 
     #[test]

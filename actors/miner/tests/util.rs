@@ -157,8 +157,7 @@ impl ActorHarness {
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
-        let (_, acc) = check_state_invariants(rt);
-        assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+        check_state_invariants_from_mock_runtime(rt);
     }
 
     pub fn new_runtime(&self) -> MockRuntime {
@@ -2429,7 +2428,21 @@ fn check_miner_info(info: MinerInfo, acc: &MessageAccumulator) {
 
     if let RegisteredPoStProof::Invalid(id) = info.window_post_proof_type {
         acc.add(&format!("invalid Window PoSt proof type {id}"));
-    };
+    } else {
+        // safe to unwrap as we know it's valid at this point
+        let sector_size = info.window_post_proof_type.sector_size().unwrap();
+        acc.require(
+            info.sector_size == sector_size,
+            &format!(
+                "sector size {} is wrong for Window PoSt proof type {:?}: {}",
+                info.sector_size, info.window_post_proof_type, sector_size
+            ),
+        );
+
+        let partition_sectors =
+            info.window_post_proof_type.window_post_partitions_sector().unwrap();
+        acc.require(info.window_post_partition_sectors == partition_sectors, &format!("miner partition sectors {} does not match partition sectors {} for PoSt proof type {:?}", info.window_post_partition_sectors, partition_sectors, info.window_post_proof_type));
+    }
 }
 
 fn check_miner_balances<BS: Blockstore>(
@@ -2574,11 +2587,19 @@ fn check_precommits<BS: Blockstore>(
     acc.require(state.pre_commit_deposits == precommit_total,&format!("sum of pre-commit deposits {precommit_total} does not equal recorded pre-commit deposit {}", state.pre_commit_deposits));
 }
 
+pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {
+    let (_, acc) =
+        check_state_invariants(rt.policy(), rt.get_state::<State>(), rt.store(), &rt.get_balance());
+    assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+}
+
 #[allow(dead_code)]
-pub fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumulator) {
-    let state: State = rt.get_state();
-    let store = rt.store();
-    let balance = rt.balance.clone().take();
+pub fn check_state_invariants<BS: Blockstore>(
+    policy: &Policy,
+    state: State,
+    store: &BS,
+    balance: &TokenAmount,
+) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
     let sector_size;
 
@@ -2599,7 +2620,7 @@ pub fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumul
         }
     };
 
-    check_miner_balances(rt.policy(), &state, store, &balance, &acc);
+    check_miner_balances(policy, &state, store, &balance, &acc);
 
     let allocated_sectors = match store.get_cbor::<BitField>(&state.allocated_sectors) {
         Ok(Some(allocated_sectors)) => {
@@ -2620,7 +2641,7 @@ pub fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumul
         }
     };
 
-    check_precommits(rt.policy(), &state, store, &allocated_sectors, &acc);
+    check_precommits(policy, &state, store, &allocated_sectors, &acc);
 
     let mut all_sectors: BTreeMap<SectorNumber, SectorOnChainInfo> = BTreeMap::new();
     match Sectors::load(&store, &state.sectors) {
@@ -2628,7 +2649,7 @@ pub fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumul
             let ret = sectors.amt.for_each(|sector_number, sector| {
                 all_sectors.insert(sector_number, sector.clone());
                 acc.require(
-                    allocated_sectors.is_empty() || allocated_sectors.contains(&sector_number),
+                    allocated_sectors.contains(&sector_number),
                     &format!(
                         "on chain sector's sector number has not been allocated {sector_number}"
                     ),
@@ -2652,19 +2673,18 @@ pub fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumul
 
     // check deadlines
     acc.require(
-        state.current_deadline < rt.policy().wpost_period_deadlines,
+        state.current_deadline < policy.wpost_period_deadlines,
         &format!(
             "current deadline index is greater than deadlines per period({}): {}",
-            rt.policy().wpost_period_deadlines,
-            state.current_deadline
+            policy.wpost_period_deadlines, state.current_deadline
         ),
     );
 
     match state.load_deadlines(store) {
         Ok(deadlines) => {
-            let ret = deadlines.for_each(rt.policy(), store, |deadline_index, deadline| {
+            let ret = deadlines.for_each(policy, store, |deadline_index, deadline| {
                 let acc = acc.with_prefix(&format!("deadline {deadline_index}: "));
-                let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
+                let quant = state.quant_spec_for_deadline(policy, deadline_index);
                 let deadline_summary = check_deadline_state_invariants(
                     &deadline,
                     store,
