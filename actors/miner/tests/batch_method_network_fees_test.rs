@@ -196,7 +196,7 @@ fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
 
     // set base fee and fee debt high
     let base_fee = BigInt::from(10u64.pow(16));
-    rt.set_balance(base_fee.clone());
+    rt.base_fee = base_fee.clone();
     let net_fee = aggregate_pre_commit_network_fee(precommits.len() as i64, &base_fee);
     // setup miner to have feed debt equal to net fee
     let mut state: State = rt.get_state();
