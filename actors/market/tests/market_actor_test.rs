@@ -474,6 +474,7 @@ fn client_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     withdraw_client_balance(&mut rt, withdraw_amount, amount, CLIENT_ADDR);
 
     assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::from(0));
+    check_state(&rt);
 }
 
 #[test]
@@ -515,6 +516,7 @@ fn fail_when_balance_is_zero() {
     );
 
     rt.verify();
+    check_state(&rt);
 }
 
 #[test]
@@ -535,6 +537,7 @@ fn fails_with_a_negative_withdraw_amount() {
     );
 
     rt.verify();
+    check_state(&rt);
 }
 
 #[test]
@@ -1291,6 +1294,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
         ),
     );
     rt.verify();
+    check_state(&rt);
 }
 
 #[test]

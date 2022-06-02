@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use cid::Cid;
+use fvm_ipld_blockstore::Blockstore;
 use itertools::Itertools;
 use num_traits::{FromPrimitive, Signed, Zero};
 use regex::Regex;
@@ -8,6 +9,7 @@ use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryFrom,
+    fmt::Debug,
 };
 
 use fil_actor_market::{
@@ -99,15 +101,18 @@ pub fn setup() -> MockRuntime {
     rt
 }
 
+/// Checks internal invariants of market state asserting none of them are broken.
 pub fn check_state(rt: &MockRuntime) {
-    let (_, acc) = check_state_invariants(rt);
+    let (_, acc) =
+        check_state_invariants(rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
     assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
 }
 
 /// Checks state, allowing expected invariants to fail. The invariants *must* fail in the
 /// provided order.
 pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) {
-    let (_, acc) = check_state_invariants(rt);
+    let (_, acc) =
+        check_state_invariants(rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
 
     let messages = acc.messages();
     assert!(
@@ -991,9 +996,13 @@ struct StateSummary {
     deal_op_count: u64,
 }
 
-fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumulator) {
-    let state = rt.get_state::<State>();
-    let current_epoch = rt.epoch;
+/// Checks internal invariants of market state
+fn check_state_invariants<BS: Blockstore + Debug>(
+    state: State,
+    store: &BS,
+    balance: &TokenAmount,
+    current_epoch: ChainEpoch,
+) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
 
     acc.require(
@@ -1022,7 +1031,7 @@ fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumulator
     let mut expected_deal_ops = BTreeSet::<DealID>::new();
     let mut total_proposal_collateral = TokenAmount::zero();
 
-    match DealArray::load(&state.proposals, rt.store()) {
+    match DealArray::load(&state.proposals, store) {
         Ok(proposals) => {
             let ret = proposals.for_each(|deal_id, proposal| {
                 let proposal_cid = proposal.cid()?;
@@ -1074,7 +1083,7 @@ fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumulator
 
     // deal states
     let mut deal_state_count = 0;
-    match DealMetaArray::load(&state.states, rt.store()) {
+    match DealMetaArray::load(&state.states, store) {
         Ok(deal_states) => {
             let ret = deal_states.for_each(|deal_id, deal_state| {
                 acc.require(
@@ -1121,7 +1130,7 @@ fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumulator
 
     match make_map_with_root_and_bitwidth::<_, ()>(
         &state.pending_proposals,
-        rt.store(),
+        store,
         PROPOSALS_AMT_BITWIDTH,
     ) {
         Ok(pending_proposals) => {
@@ -1140,8 +1149,8 @@ fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumulator
 
     // escrow table and locked table
     let mut lock_table_count = 0;
-    let escrow_table = BalanceTable::from_root(rt.store(), &state.escrow_table);
-    let lock_table = BalanceTable::from_root(rt.store(), &state.locked_table);
+    let escrow_table = BalanceTable::from_root(store, &state.escrow_table);
+    let lock_table = BalanceTable::from_root(store, &state.locked_table);
 
     match (escrow_table, lock_table) {
         (Ok(escrow_table), Ok(lock_table)) => {
@@ -1172,9 +1181,8 @@ fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumulator
             // lock_table item <= escrow item and escrow_total <= balance implies lock_table total <= balance
             match escrow_table.total() {
                 Ok(escrow_total) => {
-                    let balance = rt.get_balance();
                     acc.require(
-                        escrow_total <= balance,
+                        &escrow_total <= balance,
                         &format!(
                             "escrow total, {escrow_total}, greater than actor balance, {balance}"
                         ),
@@ -1192,7 +1200,7 @@ fn check_state_invariants(rt: &MockRuntime) -> (StateSummary, MessageAccumulator
 
     // deals ops by epoch
     let (mut deal_op_epoch_count, mut deal_op_count) = (0, 0);
-    match SetMultimap::from_root(rt.store(), &state.deal_ops_by_epoch) {
+    match SetMultimap::from_root(store, &state.deal_ops_by_epoch) {
         Ok(deal_ops) => {
             // get into internals just to iterate through full data structure
             let ret = deal_ops.0.for_each(|key, _| {

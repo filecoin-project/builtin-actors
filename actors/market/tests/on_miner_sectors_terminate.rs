@@ -62,6 +62,7 @@ fn terminate_multiple_deals_from_multiple_providers() {
 
     terminate_deals(&mut rt, provider2, &[deal4]);
     assert_deals_terminated(&mut rt, current_epoch, &[deal4]);
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1312
