@@ -3093,6 +3093,7 @@ impl BitFieldQueueExpectation {
     }
 }
 
+#[allow(dead_code)]
 pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
     let mut to_include: BTreeSet<_> = field.iter().collect();
     let included =
@@ -3103,6 +3104,7 @@ pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<Se
     included
 }
 
+#[allow(dead_code)]
 pub fn require_no_expiration_groups_before(
     epoch: ChainEpoch,
     queue: &mut ExpirationQueue<'_, MemoryBlockstore>,

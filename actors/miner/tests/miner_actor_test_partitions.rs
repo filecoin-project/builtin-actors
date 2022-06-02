@@ -1,29 +1,14 @@
-use fil_actor_market::SectorWeights;
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, max_prove_commit_duration, power_for_sectors,
-    pre_commit_deposit_for_power, qa_power_for_weight, BitFieldQueue, ExpirationQueue, Partition,
-    PowerPair, PreCommitSectorBatchParams, SectorOnChainInfo, SectorPreCommitInfo, State,
+    power_for_sectors, BitFieldQueue, ExpirationQueue, Partition, PowerPair, SectorOnChainInfo,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::ActorDowncast;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
-use fvm_shared::deal::DealID;
+use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::sector::RegisteredSealProof;
-use fvm_shared::sector::SectorNumber;
-use fvm_shared::sector::SectorSize;
-
-use anyhow::anyhow;
-
-use num_traits::{FromPrimitive, Signed, Zero};
-
-use std::collections::HashMap;
+use fvm_shared::sector::{RegisteredSealProof, SectorSize};
 
 mod util;
 use util::*;
@@ -507,8 +492,6 @@ mod miner_actor_test_partitions {
 
     #[test]
     fn replace_sectors() {
-        use std::convert::TryInto;
-
         let (rt, mut partition) = setup_partition();
 
         // remove 3 sectors starting with 2
@@ -935,7 +918,7 @@ mod miner_actor_test_partitions {
         partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set).unwrap();
 
         // record entire partition as faulted
-        let (power_delta, penalized_power, new_faulty_power) =
+        let (power_delta, penalized_power, _) =
             partition.record_missed_post(&rt.store, 6, QUANT_SPEC).unwrap();
 
         // 6 has always been faulty, so we shouldn't be penalized for it (except ongoing).
@@ -995,7 +978,7 @@ mod miner_actor_test_partitions {
         // now terminate 1, 3 and 5
         let mut terminations = make_bitfield(&[1, 3, 5]);
         let termination_epoch = 3;
-        let removed = partition
+        partition
             .terminate_sectors(
                 &Policy::default(),
                 &rt.store,
@@ -1038,11 +1021,11 @@ mod miner_actor_test_partitions {
 
     #[test]
     fn test_max_sectors() {
-        let (h, rt) = setup();
+        let (_, rt) = setup();
         let mut partition = Partition::new(&rt.store).unwrap();
 
         let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1;
-        let sector_size = proof_type.sector_size().unwrap();
+        let _sector_size = proof_type.sector_size().unwrap();
         let partition_sectors = proof_type.window_post_partitions_sector().unwrap();
 
         let mut many_sectors = vec![SectorOnChainInfo::default(); partition_sectors as usize];
@@ -1076,7 +1059,7 @@ mod miner_actor_test_partitions {
 
         // Make sure we can still encode and decode.
         let buf = RawBytes::serialize(&partition).expect("failed to marshal partition");
-        let new_partition: Partition = buf.deserialize().unwrap();
+        let _: Partition = buf.deserialize().unwrap();
         assert_partition_state(
             &rt.store,
             &partition,
