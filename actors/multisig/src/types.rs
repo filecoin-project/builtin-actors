@@ -95,7 +95,7 @@ impl Cbor for ProposeParams {}
 impl Cbor for ProposeReturn {}
 
 /// Parameters for approve and cancel multisig functions.
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, PartialEq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct TxnIDParams {
     pub id: TxnID,
     /// Optional hash of proposal to ensure an operation can only apply to a
@@ -134,12 +134,16 @@ pub struct RemoveSignerParams {
     pub decrease: bool,
 }
 
+impl Cbor for RemoveSignerParams {}
+
 /// Swap signer multisig method params
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct SwapSignerParams {
     pub from: Address,
     pub to: Address,
 }
+
+impl Cbor for SwapSignerParams {}
 
 /// Propose method call parameters
 #[derive(Serialize_tuple, Deserialize_tuple)]

@@ -53,7 +53,7 @@ use std::ops::Add;
 pub mod util;
 
 pub struct VM<'bs> {
-    store: &'bs MemoryBlockstore,
+    pub store: &'bs MemoryBlockstore,
     state_root: RefCell<Cid>,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
