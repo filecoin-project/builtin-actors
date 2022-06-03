@@ -4,7 +4,7 @@ use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
-use fil_actor_miner::Actor as MinerActor;
+use fil_actor_miner::{Actor as MinerActor, State as MinerState};
 use fil_actor_multisig::Actor as MultisigActor;
 use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as PowerState};
@@ -61,6 +61,13 @@ pub struct VM<'bs> {
     network_version: NetworkVersion,
     curr_epoch: ChainEpoch,
     invocations: RefCell<Vec<InvocationTrace>>,
+}
+
+pub struct MinerBalances {
+    pub available_balance: TokenAmount,
+    pub vesting_balance: TokenAmount,
+    pub initial_pledge: TokenAmount,
+    pub pre_commit_deposit: TokenAmount,
 }
 
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
@@ -211,6 +218,35 @@ impl<'bs> VM<'bs> {
         v
     }
 
+    pub fn with_epoch(&self, epoch: ChainEpoch) -> VM<'bs> {
+        self.checkpoint();
+        VM {
+            store: self.store,
+            state_root: RefCell::new(self.state_root.take()),
+            actors_dirty: RefCell::new(false),
+            actors_cache: RefCell::new(HashMap::new()),
+            empty_obj_cid: self.empty_obj_cid,
+            network_version: NetworkVersion::V16,
+            curr_epoch: epoch,
+            invocations: RefCell::new(vec![]),
+        }
+    }
+
+    pub fn get_miner_balance(&self, maddr: Address) -> MinerBalances {
+        let a = self.get_actor(maddr).unwrap();
+        let st = self.get_state::<MinerState>(maddr).unwrap();
+        MinerBalances {
+            available_balance: a.balance
+                - (st.pre_commit_deposits.clone()
+                    + st.initial_pledge.clone()
+                    + st.locked_funds.clone()
+                    + st.fee_debt.clone()),
+            vesting_balance: st.locked_funds,
+            initial_pledge: st.initial_pledge,
+            pre_commit_deposit: st.pre_commit_deposits,
+        }
+    }
+
     pub fn put_store<S>(&self, obj: &S) -> Cid
     where
         S: ser::Serialize,
@@ -335,6 +371,10 @@ impl<'bs> VM<'bs> {
 
     pub fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
+    }
+
+    pub fn get_epoch(&self) -> ChainEpoch {
+        self.curr_epoch.clone()
     }
 }
 #[derive(Clone)]
@@ -865,6 +905,7 @@ pub struct ExpectInvocation {
     pub method: MethodNum, // required
     pub code: Option<ExitCode>,
     pub from: Option<Address>,
+    pub value: Option<TokenAmount>,
     pub params: Option<RawBytes>,
     pub ret: Option<RawBytes>,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
@@ -898,6 +939,13 @@ impl ExpectInvocation {
                 f, invoc.msg.from,
                 "{} unexpected from addr: expected:{}was:{} ",
                 id, f, invoc.msg.from
+            );
+        }
+        if let Some(v) = &self.value {
+            assert_eq!(
+                v, &invoc.msg.value,
+                "{} unexpected value: expected:{}was:{} ",
+                id, v, invoc.msg.value
             );
         }
         if let Some(p) = &self.params {
@@ -969,6 +1017,7 @@ impl Default for ExpectInvocation {
             to: Address::new_id(0),
             code: None,
             from: None,
+            value: None,
             params: None,
             ret: None,
             subinvocs: None,
