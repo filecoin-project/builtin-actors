@@ -2907,7 +2907,7 @@ pub struct PartitionStateSummary {
 }
 
 impl PartitionStateSummary {
-    fn check_partition_state_invariants<BS: Blockstore>(
+    pub fn check_partition_state_invariants<BS: Blockstore>(
         partition: &Partition,
         store: &BS,
         quant: QuantSpec,

@@ -1304,6 +1304,12 @@ impl MessageAccumulator {
             self.add(&format!("{msg}: {e}"));
         }
     }
+
+    /// Panic if the accumulator isn't empty. The acculumated messages are included in the panic message.
+    #[track_caller]
+    pub fn assert_empty(&self) {
+        assert!(self.is_empty(), "{}", self.messages().join("\n"))
+    }
 }
 
 #[cfg(test)]
