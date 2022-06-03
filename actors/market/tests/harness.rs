@@ -29,8 +29,8 @@ use fil_actors_runtime::{
     parse_uint_key,
     runtime::{Policy, Runtime},
     test_utils::*,
-    ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    ActorError, MessageAccumulator, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::Cbor;
@@ -1007,21 +1007,21 @@ fn check_state_invariants<BS: Blockstore + Debug>(
 
     acc.require(
         !state.total_client_locked_collateral.is_negative(),
-        &format!(
+        format!(
             "negative total client locked collateral: {}",
             state.total_client_locked_collateral
         ),
     );
     acc.require(
         !state.total_provider_locked_collateral.is_negative(),
-        &format!(
+        format!(
             "negative total provider locked collateral: {}",
             state.total_provider_locked_collateral
         ),
     );
     acc.require(
         !state.total_client_storage_fee.is_negative(),
-        &format!("negative total client storage fee: {}", state.total_client_storage_fee),
+        format!("negative total client storage fee: {}", state.total_client_storage_fee),
     );
 
     // Proposals
@@ -1069,13 +1069,13 @@ fn check_state_invariants<BS: Blockstore + Debug>(
             });
             acc.require_no_error(ret, "error iterating proposals");
         }
-        Err(e) => acc.add(&format!("error loading proposals: {e}")),
+        Err(e) => acc.add(format!("error loading proposals: {e}")),
     };
 
     // next id should be higher than any existing deal
     acc.require(
         state.next_id as i64 > max_deal_id,
-        &format!(
+        format!(
             "next id, {}, is not greater than highest id in proposals, {max_deal_id}",
             state.next_id
         ),
@@ -1088,32 +1088,32 @@ fn check_state_invariants<BS: Blockstore + Debug>(
             let ret = deal_states.for_each(|deal_id, deal_state| {
                 acc.require(
                     deal_state.sector_start_epoch >= 0,
-                    &format!("deal {deal_id} state start epoch undefined: {:?}", deal_state),
+                    format!("deal {deal_id} state start epoch undefined: {:?}", deal_state),
                 );
                 acc.require(
                     deal_state.last_updated_epoch == EPOCH_UNDEFINED
                         || deal_state.last_updated_epoch >= deal_state.sector_start_epoch,
-                    &format!(
+                    format!(
                         "deal {deal_id} state last updated before sector start: {deal_state:?}"
                     ),
                 );
                 acc.require(
                     deal_state.last_updated_epoch == EPOCH_UNDEFINED
                         || deal_state.last_updated_epoch <= current_epoch,
-                    &format!(
+                    format!(
                         "deal {deal_id} last updated epoch {} after current {current_epoch}",
                         deal_state.last_updated_epoch
                     ),
                 );
-                acc.require(deal_state.slash_epoch == EPOCH_UNDEFINED || deal_state.slash_epoch >= deal_state.sector_start_epoch, &format!("deal {deal_id} state slashed before sector start: {deal_state:?}"));
-                acc.require(deal_state.slash_epoch == EPOCH_UNDEFINED || deal_state.slash_epoch <= current_epoch, &format!("deal {deal_id} state slashed after current epoch {current_epoch}: {deal_state:?}"));
+                acc.require(deal_state.slash_epoch == EPOCH_UNDEFINED || deal_state.slash_epoch >= deal_state.sector_start_epoch, format!("deal {deal_id} state slashed before sector start: {deal_state:?}"));
+                acc.require(deal_state.slash_epoch == EPOCH_UNDEFINED || deal_state.slash_epoch <= current_epoch, format!("deal {deal_id} state slashed after current epoch {current_epoch}: {deal_state:?}"));
 
                 if let Some(stats) = proposal_stats.get_mut(&deal_id) {
                     stats.sector_start_epoch = deal_state.sector_start_epoch;
                     stats.last_update_epoch = deal_state.last_updated_epoch;
                     stats.slash_epoch = deal_state.slash_epoch;
                 } else {
-                    acc.add(&format!("no deal proposal for deal state {deal_id}"));
+                    acc.add(format!("no deal proposal for deal state {deal_id}"));
                 }
 
                 deal_state_count += 1;
@@ -1122,7 +1122,7 @@ fn check_state_invariants<BS: Blockstore + Debug>(
             });
             acc.require_no_error(ret, "error iterating deal states");
         }
-        Err(e) => acc.add(&format!("error loading deal states: {e}")),
+        Err(e) => acc.add(format!("error loading deal states: {e}")),
     };
 
     // pending proposals
@@ -1137,14 +1137,14 @@ fn check_state_invariants<BS: Blockstore + Debug>(
             let ret = pending_proposals.for_each(|key, _| {
                 let proposal_cid = Cid::try_from(key.0.to_owned())?;
 
-                acc.require(proposal_cids.contains(&proposal_cid), &format!("pending proposal with cid {proposal_cid} not found within proposals {pending_proposals:?}"));
+                acc.require(proposal_cids.contains(&proposal_cid), format!("pending proposal with cid {proposal_cid} not found within proposals {pending_proposals:?}"));
 
                 pending_proposal_count += 1;
                 Ok(())
             });
             acc.require_no_error(ret, "error iterating pending proposals");
         }
-        Err(e) => acc.add(&format!("error loading pending proposals: {e}")),
+        Err(e) => acc.add(format!("error loading pending proposals: {e}")),
     };
 
     // escrow table and locked table
@@ -1163,7 +1163,7 @@ fn check_state_invariants<BS: Blockstore + Debug>(
 
                 // every entry in locked table should have a corresponding entry in escrow table that is at least as high
                 let escrow_amount = &escrow_table.get(&address)?;
-                acc.require(escrow_amount >= locked_amount, &format!("locked funds for {address}, {locked_amount}, greater than escrow amount, {escrow_amount}"));
+                acc.require(escrow_amount >= locked_amount, format!("locked funds for {address}, {locked_amount}, greater than escrow amount, {escrow_amount}"));
 
                 lock_table_count += 1;
 
@@ -1175,7 +1175,7 @@ fn check_state_invariants<BS: Blockstore + Debug>(
             let expected_lock_total = &state.total_provider_locked_collateral
                 + &state.total_client_locked_collateral
                 + &state.total_client_storage_fee;
-            acc.require(locked_total == expected_lock_total, &format!("locked total, {locked_total}, does not sum to provider locked, {}, client locked, {}, and client storage fee, {}", state.total_provider_locked_collateral, state.total_client_locked_collateral, state.total_client_storage_fee));
+            acc.require(locked_total == expected_lock_total, format!("locked total, {locked_total}, does not sum to provider locked, {}, client locked, {}, and client storage fee, {}", state.total_provider_locked_collateral, state.total_client_locked_collateral, state.total_client_storage_fee));
 
             // assert escrow <= actor balance
             // lock_table item <= escrow item and escrow_total <= balance implies lock_table total <= balance
@@ -1183,13 +1183,13 @@ fn check_state_invariants<BS: Blockstore + Debug>(
                 Ok(escrow_total) => {
                     acc.require(
                         &escrow_total <= balance,
-                        &format!(
+                        format!(
                             "escrow total, {escrow_total}, greater than actor balance, {balance}"
                         ),
                     );
-                    acc.require(escrow_total >= total_proposal_collateral, &format!("escrow total, {escrow_total}, less than sum of proposal collateral, {total_proposal_collateral}"));
+                    acc.require(escrow_total >= total_proposal_collateral, format!("escrow total, {escrow_total}, less than sum of proposal collateral, {total_proposal_collateral}"));
                 }
-                Err(e) => acc.add(&format!("error calculating escrow total: {e}")),
+                Err(e) => acc.add(format!("error calculating escrow total: {e}")),
             }
         }
         (escrow_table, lock_table) => {
@@ -1209,7 +1209,7 @@ fn check_state_invariants<BS: Blockstore + Debug>(
                 deal_op_epoch_count += 1;
 
                 deal_ops.for_each(epoch, |deal_id| {
-                    acc.require(proposal_stats.contains_key(&deal_id), &format!("deal op found for deal id {deal_id} with missing proposal at epoch {epoch}"));
+                    acc.require(proposal_stats.contains_key(&deal_id), format!("deal op found for deal id {deal_id} with missing proposal at epoch {epoch}"));
                     expected_deal_ops.remove(&deal_id);
                     deal_op_count += 1;
                     Ok(())
@@ -1217,12 +1217,12 @@ fn check_state_invariants<BS: Blockstore + Debug>(
             });
             acc.require_no_error(ret, "error iterating all deal ops");
         }
-        Err(e) => acc.add(&format!("error loading deal ops: {e}")),
+        Err(e) => acc.add(format!("error loading deal ops: {e}")),
     };
 
     acc.require(
         expected_deal_ops.is_empty(),
-        &format!("missing deal ops for proposals: {expected_deal_ops:?}"),
+        format!("missing deal ops for proposals: {expected_deal_ops:?}"),
     );
 
     (
