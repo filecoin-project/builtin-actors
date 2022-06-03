@@ -74,6 +74,7 @@ mod sector_map;
 mod sectors;
 mod state;
 mod termination;
+pub mod testing;
 mod types;
 mod vesting_state;
 
