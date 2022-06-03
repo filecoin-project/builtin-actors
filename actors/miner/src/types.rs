@@ -238,7 +238,7 @@ pub struct PreCommitSectorBatchParams {
     pub sectors: Vec<SectorPreCommitInfo>,
 }
 
-#[derive(Default, Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitInfo {
     pub seal_proof: RegisteredSealProof,
     pub sector_number: SectorNumber,

@@ -24,7 +24,7 @@ fil_actor_init = { version = "8.0.0-alpha.1", path = "./actors/init", features =
 fil_actors_runtime = { version = "8.0.0-alpha.1", path = "./actors/runtime", features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = "3.0.2"
+fil_actor_bundler = "3.0.3"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
 [dependencies]
@@ -86,3 +86,4 @@ panic = "unwind"
 overflow-checks = true
 lto = "thin"
 opt-level = "z"
+strip = true

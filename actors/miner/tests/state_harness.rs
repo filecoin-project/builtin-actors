@@ -24,10 +24,12 @@ pub struct StateHarness {
 }
 
 impl StateHarness {
+    #[allow(dead_code)]
     pub fn new(period_boundary: ChainEpoch) -> Self {
         Self::new_with_policy(&Policy::default(), period_boundary)
     }
 
+    #[allow(dead_code)]
     pub fn new_with_policy(policy: &Policy, period_boundary: ChainEpoch) -> Self {
         // store init
         let store = MemoryBlockstore::default();
@@ -51,9 +53,7 @@ impl StateHarness {
         let st = State::new(policy, &store, info_cid, period_boundary, 0).unwrap();
         StateHarness { st, store }
     }
-}
 
-impl StateHarness {
     pub fn new_runtime(&self) -> MockRuntime {
         let mut rt = MockRuntime::default();
 
@@ -72,6 +72,7 @@ impl StateHarness {
         rt
     }
 
+    #[allow(dead_code)]
     pub fn put_precommitted_sectors(
         &mut self,
         precommits: Vec<SectorPreCommitOnChainInfo>,
@@ -79,6 +80,7 @@ impl StateHarness {
         self.st.put_precommitted_sectors(&self.store, precommits)
     }
 
+    #[allow(dead_code)]
     pub fn delete_precommitted_sectors(
         &mut self,
         sector_nums: &[SectorNumber],
@@ -86,14 +88,37 @@ impl StateHarness {
         self.st.delete_precommitted_sectors(&self.store, sector_nums)
     }
 
+    #[allow(dead_code)]
     pub fn get_precommit(&self, sector_number: SectorNumber) -> SectorPreCommitOnChainInfo {
         self.st.get_precommitted_sector(&self.store, sector_number).unwrap().unwrap()
     }
 
+    #[allow(dead_code)]
     pub fn has_precommit(&self, sector_number: SectorNumber) -> bool {
         self.st.get_precommitted_sector(&self.store, sector_number).unwrap().is_some()
     }
 
+    #[allow(dead_code)]
+    pub fn load_pre_commit_clean_ups<'db>(
+        &'db self,
+        policy: &Policy,
+    ) -> BitFieldQueue<'db, MemoryBlockstore> {
+        let quant = self.st.quant_spec_every_deadline(policy);
+        let queue =
+            BitFieldQueue::new(&self.store, &self.st.pre_committed_sectors_cleanup, quant).unwrap();
+        queue
+    }
+
+    #[allow(dead_code)]
+    pub fn add_pre_commit_clean_ups(
+        &mut self,
+        policy: &Policy,
+        cleanup_events: Vec<(ChainEpoch, u64)>,
+    ) -> anyhow::Result<()> {
+        self.st.add_pre_commit_clean_ups(policy, &self.store, cleanup_events)
+    }
+
+    #[allow(dead_code)]
     pub fn add_locked_funds(
         &mut self,
         current_epoch: ChainEpoch,
@@ -103,6 +128,7 @@ impl StateHarness {
         self.st.add_locked_funds(&self.store, current_epoch, vesting_sum, spec)
     }
 
+    #[allow(dead_code)]
     pub fn unlock_vested_funds(
         &mut self,
         current_epoch: ChainEpoch,
@@ -110,6 +136,7 @@ impl StateHarness {
         self.st.unlock_vested_funds(&self.store, current_epoch)
     }
 
+    #[allow(dead_code)]
     pub fn unlock_unvested_funds(
         &mut self,
         current_epoch: ChainEpoch,
@@ -117,9 +144,29 @@ impl StateHarness {
     ) -> anyhow::Result<TokenAmount> {
         self.st.unlock_unvested_funds(&self.store, current_epoch, target)
     }
-}
 
-impl StateHarness {
+    pub fn has_sector_number(&self, sector_no: SectorNumber) -> bool {
+        self.st.has_sector_number(&self.store, sector_no).unwrap()
+    }
+
+    pub fn put_sector(&mut self, sector: &SectorOnChainInfo) {
+        self.st.put_sectors(&self.store, vec![sector.clone()]).unwrap();
+    }
+
+    pub fn get_sector(&self, sector_number: SectorNumber) -> SectorOnChainInfo {
+        self.st.get_sector(&self.store, sector_number).unwrap().unwrap()
+    }
+
+    // makes a bit field from the passed sector numbers
+    pub fn delete_sectors(&mut self, sector_numbers: Vec<u64>) {
+        let mut bf = BitField::new();
+        for b in sector_numbers.iter() {
+            bf.set(*b);
+        }
+        self.st.delete_sectors(&self.store, &bf).unwrap();
+    }
+
+    #[allow(dead_code)]
     pub fn vesting_funds_store_empty(&self) -> bool {
         let vesting = self.store.get_cbor::<VestingFunds>(&self.st.vesting_funds).unwrap().unwrap();
         vesting.funds.is_empty()
@@ -143,26 +190,6 @@ impl StateHarness {
                 sector_size,
             )
             .unwrap();
-    }
-
-    #[allow(dead_code)]
-    pub fn load_pre_commit_clean_ups<'db>(
-        &'db self,
-        policy: &Policy,
-    ) -> BitFieldQueue<'db, MemoryBlockstore> {
-        let quant = self.st.quant_spec_every_deadline(policy);
-        let queue =
-            BitFieldQueue::new(&self.store, &self.st.pre_committed_sectors_cleanup, quant).unwrap();
-        queue
-    }
-
-    #[allow(dead_code)]
-    pub fn add_pre_commit_clean_ups(
-        &mut self,
-        policy: &Policy,
-        cleanup_events: Vec<(ChainEpoch, u64)>,
-    ) -> anyhow::Result<()> {
-        self.st.add_pre_commit_clean_ups(policy, &self.store, cleanup_events)
     }
 
     #[allow(dead_code)]

@@ -16,7 +16,7 @@ pub use deadline_info::*;
 pub use deadline_state::*;
 pub use deadlines::*;
 pub use expiration_queue::*;
-use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
+use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -28,8 +28,6 @@ use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::randomness::DomainSeparationTag::WindowedPoStChallengeSeed;
-use fvm_shared::crypto::randomness::*;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 // The following errors are particular cases of illegal state.
@@ -618,8 +616,16 @@ impl Actor {
                             "failed to load sectors for post verification",
                         )
                     })?;
-                verify_windowed_post(rt, current_deadline.challenge, &sector_infos, params.proofs)
-                    .map_err(|e| e.wrap("window post failed"))?;
+                if !verify_windowed_post(
+                    rt,
+                    current_deadline.challenge,
+                    &sector_infos,
+                    params.proofs,
+                )
+                .map_err(|e| e.wrap("window post failed"))?
+                {
+                    return Err(actor_error!(illegal_argument, "invalid post was submitted"));
+                }
             }
 
             let deadline_idx = params.deadline;
@@ -1068,10 +1074,10 @@ impl Actor {
             let mut deadlines = state
                 .load_deadlines(rt.store())?;
 
-            let mut new_sectors = vec![SectorOnChainInfo::default()];
+            let mut new_sectors = Vec::with_capacity(validated_updates.len());
             for &dl_idx in deadlines_to_load.iter() {
                 let mut deadline = deadlines
-                    .load_deadline(rt.policy(),rt.store(), dl_idx)
+                    .load_deadline(rt.policy(), rt.store(), dl_idx)
                     .map_err(|e|
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
@@ -1088,7 +1094,7 @@ impl Actor {
                         )
                     )?;
 
-                let quant = state.quant_spec_for_deadline(rt.policy(),dl_idx);
+                let quant = state.quant_spec_for_deadline(rt.policy(), dl_idx);
 
                 for with_details in &decls_by_deadline[&dl_idx] {
                     let update_proof_type = with_details.sector_info.seal_proof
@@ -1290,7 +1296,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
 
-            BitField::try_from_bits(succeeded).map_err(|_|{
+            BitField::try_from_bits(succeeded).map_err(|_| {
                 actor_error!(illegal_argument; "invalid sector number")
             })
         })?;
@@ -1572,19 +1578,20 @@ impl Actor {
                     precommit.sector_number
                 ));
             }
-            if precommit.sector_number > MAX_SECTOR_NUMBER {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "sector number {} out of range 0..(2^63-1)",
-                    precommit.sector_number
-                ));
-            }
             sector_numbers.set(precommit.sector_number);
+
             if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof) {
                 return Err(actor_error!(
                     illegal_argument,
                     "unsupported seal proof type {}",
                     i64::from(precommit.seal_proof)
+                ));
+            }
+            if precommit.sector_number > MAX_SECTOR_NUMBER {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "sector number {} out of range 0..(2^63-1)",
+                    precommit.sector_number
                 ));
             }
             // Skip checking if CID is defined because it cannot be so in Rust
@@ -1729,10 +1736,10 @@ impl Actor {
 
                 // Calculate pre-commit cleanup
                 let msd = max_prove_commit_duration(rt.policy(), precommit.seal_proof)
-                .ok_or_else(|| actor_error!(illegal_argument, "no max seal duration set for proof type: {}", i64::from(precommit.seal_proof)))?;
+                    .ok_or_else(|| actor_error!(illegal_argument, "no max seal duration set for proof type: {}", i64::from(precommit.seal_proof)))?;
                 // PreCommitCleanUpDelay > 0 here is critical for the batch verification of proofs. Without it, if a proof arrived exactly on the
-			    // due epoch, ProveCommitSector would accept it, then the expiry event would remove it, and then
-			    // ConfirmSectorProofsValid would fail to find it.
+                // due epoch, ProveCommitSector would accept it, then the expiry event would remove it, and then
+                // ConfirmSectorProofsValid would fail to find it.
                 let clean_up_bound = curr_epoch + msd + rt.policy().expired_pre_commit_clean_up_delay;
                 clean_up_events.push((clean_up_bound, precommit.sector_number));
             }
@@ -3760,8 +3767,11 @@ where
 
     // Regenerate challenge randomness, which must match that generated for the proof.
     let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
-    let randomness: PoStRandomness =
-        rt.get_randomness_from_beacon(WindowedPoStChallengeSeed, challenge_epoch, &entropy)?;
+    let randomness: PoStRandomness = rt.get_randomness_from_beacon(
+        DomainSeparationTag::WindowedPoStChallengeSeed,
+        challenge_epoch,
+        &entropy,
+    )?;
 
     let challenged_sectors = sectors
         .iter()

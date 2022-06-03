@@ -4,7 +4,7 @@
 use std::cmp;
 use std::ops::Neg;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
@@ -412,10 +412,16 @@ impl State {
         let mut sectors = Sectors::load(store, &self.sectors)?;
 
         for sector_num in sector_nos.iter() {
-            sectors
+            let deleted_sector = sectors
                 .amt
                 .delete(sector_num)
                 .map_err(|e| e.downcast_wrap("could not delete sector number"))?;
+            if deleted_sector.is_none() {
+                return Err(AmtError::Dynamic(Error::msg(format!(
+                    "sector {} doesn't exist, failed to delete",
+                    sector_num
+                ))));
+            }
         }
 
         self.sectors = sectors.amt.flush()?;
@@ -868,7 +874,6 @@ impl State {
         let fee_debt = self.fee_debt.clone();
         let from_vesting = self.unlock_unvested_funds(store, current_epoch, &fee_debt)?;
 
-        // * It may be possible the go implementation catches a potential panic here
         if from_vesting > self.fee_debt {
             return Err(anyhow!("should never unlock more than the debt we need to repay"));
         }
