@@ -61,5 +61,5 @@ fn declare_fault_pays_fee_at_window_post() {
         &mut rt,
         CronConfig { continued_faults_penalty: ongoing_penalty, ..Default::default() },
     );
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }

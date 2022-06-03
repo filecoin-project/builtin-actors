@@ -24,7 +24,7 @@ fn successfully_check_sector_is_proven() {
         h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![vec![10]], true);
     h.check_sector_proven(&mut rt, sectors[0].sector_number).unwrap();
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -34,5 +34,5 @@ fn fails_if_sector_is_not_found() {
     let result = h.check_sector_proven(&mut rt, 1);
     expect_abort(ExitCode::USR_NOT_FOUND, result);
 
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }

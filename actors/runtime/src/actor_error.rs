@@ -43,7 +43,7 @@ impl ActorError {
     pub fn unspecified(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_UNSPECIFIED, msg }
     }
-    pub fn user_assertion_failed(msg: String) -> Self {
+    pub fn assertion_failed(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_ASSERTION_FAILED, msg }
     }
 

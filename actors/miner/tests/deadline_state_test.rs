@@ -5,8 +5,9 @@ use fil_actor_miner::{
     TerminationResult,
 };
 use fil_actors_runtime::runtime::{Policy, Runtime};
-use fil_actors_runtime::test_utils::{MessageAccumulator, MockRuntime};
+use fil_actors_runtime::test_utils::MockRuntime;
 use fil_actors_runtime::ActorError;
+use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_blockstore::Blockstore;
