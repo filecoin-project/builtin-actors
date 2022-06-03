@@ -15,7 +15,8 @@ use crate::{make_empty_map, make_map_with_root, parse_uint_key, u64_key, Map};
 
 /// SetMultimap is a hamt with values that are also a hamt but are of the set variant.
 /// This allows hash sets to be indexable by an address.
-pub struct SetMultimap<'a, BS>(Map<'a, BS, Cid>);
+pub struct SetMultimap<'a, BS>(pub Map<'a, BS, Cid>);
+
 impl<'a, BS> SetMultimap<'a, BS>
 where
     BS: Blockstore,

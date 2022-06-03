@@ -62,6 +62,7 @@ fn terminate_multiple_deals_from_multiple_providers() {
 
     terminate_deals(&mut rt, provider2, &[deal4]);
     assert_deals_terminated(&mut rt, current_epoch, &[deal4]);
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1312
@@ -88,6 +89,7 @@ fn ignore_deal_proposal_that_does_not_exist() {
 
     let s = get_deal_state(&mut rt, deal1);
     assert_eq!(s.slash_epoch, current_epoch);
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1326
@@ -130,6 +132,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     terminate_deals(&mut rt, PROVIDER_ADDR, &[deal1, deal2, deal3]);
     assert_deals_terminated(&mut rt, new_epoch, &[deal1, deal2]);
     assert_deals_not_terminated(&mut rt, &[deal3]);
+    check_state(&rt);
 }
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1346
 #[test]
@@ -169,6 +172,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     terminate_deals(&mut rt, PROVIDER_ADDR, &deal_ids);
     assert_deals_terminated(&mut rt, new_epoch, &deal_ids[0..0]);
     assert_deal_deleted(&mut rt, deal_ids[1], deal2);
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1369
@@ -199,6 +203,7 @@ fn terminating_a_deal_the_second_time_does_not_change_its_slash_epoch() {
     terminate_deals(&mut rt, PROVIDER_ADDR, &[deal1]);
     let s = get_deal_state(&mut rt, deal1);
     assert_eq!(s.slash_epoch, current_epoch);
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1387
@@ -244,6 +249,8 @@ fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_
 
     let s3 = get_deal_state(&mut rt, deal3);
     assert_eq!(s3.slash_epoch, new_epoch);
+
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1415
@@ -283,6 +290,8 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     rt.set_epoch(end_epoch + 1);
     terminate_deals(&mut rt, PROVIDER_ADDR, &[deal2]);
     assert_deals_not_terminated(&mut rt, &[deal2]);
+
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1436
@@ -303,6 +312,8 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
         .unwrap_err()
         .exit_code()
     );
+
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1448
@@ -334,6 +345,8 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
         "caller f0501 is not the provider f0102 of deal 0",
         ret,
     );
+
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1468
@@ -357,6 +370,7 @@ fn fail_when_deal_has_been_published_but_not_activated() {
     let ret = terminate_deals_raw(&mut rt, PROVIDER_ADDR, &[deal]);
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no state for deal", ret);
     rt.verify();
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1485
@@ -393,4 +407,5 @@ fn termination_of_all_deals_should_fail_when_one_deal_fails() {
 
     // verify deal1 has not been terminated
     assert_deals_not_terminated(&mut rt, &[deal1]);
+    check_state(&rt);
 }
