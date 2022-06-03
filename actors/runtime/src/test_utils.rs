@@ -1291,7 +1291,7 @@ impl MessageAccumulator {
         }
     }
 
-    /// Panic if th accumulator isn't empty. The acculumated messages are included in the panic message.
+    /// Panic if the accumulator isn't empty. The acculumated messages are included in the panic message.
     #[track_caller]
     pub fn assert_empty(&self) {
         assert!(self.is_empty(), "{}", self.messages().join("\n"))
