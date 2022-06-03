@@ -62,16 +62,16 @@ mod sector_assignment {
         let sector_infos: Vec<SectorOnChainInfo> = (0..num_sectors)
             .map(|i| {
                 new_sector_on_chain_info(
-                    i as u64,
+                    i as SectorNumber,
                     make_sealed_cid("{i}".as_bytes()),
                     TokenAmount::from(1u8),
-                    0,
+                    0 as ChainEpoch,
                 )
             })
             .collect();
 
         let policy = Policy::default();
-        let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
+        let mut h = StateHarness::new_with_policy(&policy, 0);
 
         h.assign_sectors_to_deadlines(
             &policy,
@@ -112,40 +112,39 @@ mod sector_assignment {
                     let part_bf = seq(start, partition_sectors);
                     partitions.push(part_bf);
                     post_partitions.push(PoStPartition {
-                        index: 0,
+                        index: i,
                         skipped: UnvalidatedBitField::Validated(BitField::new()),
                     });
-                    let all_sector_bf = BitField::union(&partitions);
-                    let all_sector_numbers: Vec<u64> =
-                        all_sector_bf.bounded_iter(num_sectors).unwrap().collect();
-
-                    // dl_state.with_quant_spec(quant_spec)
-                    //     .with_unproven(&all_sector_numbers)
-                    //     .with_partitions(partitions.clone())
-                    //     .assert(&h.store, &sector_infos.clone(), &dl);
-
-                    // Now make sure proving activates power.
-
-                    // let result = dl
-                    //     .record_proven_sectors(
-                    //         &h.store,
-                    //         &sectors_array,
-                    //         SECTOR_SIZE,
-                    //         QUANT_SPEC,
-                    //         0,
-                    //         &mut post_partitions,
-                    //     )
-                    //     .unwrap();
-
-                    // let expected_power_delta = power_for_sectors(sector_size, &select_sectors(&sector_infos, &all_sector_bf));
-
-                    // assert_eq!(all_sector_bf, result.sectors);
-                    // assert!(result.ignored_sectors.is_empty());
-                    // assert_eq!(result.new_faulty_power, PowerPair::zero());
-                    // assert_eq!(result.power_delta, expected_power_delta);
-                    // assert_eq!(result.recovered_power, PowerPair::zero());
-                    // assert_eq!(result.retracted_recovery_power, PowerPair::zero());
                 }
+                let all_sector_bf = BitField::union(&partitions);
+                let all_sector_numbers: Vec<u64> = all_sector_bf.bounded_iter(num_sectors).unwrap().collect();
+
+                dl_state.with_quant_spec(quant_spec)
+                    .with_unproven(&all_sector_numbers)
+                    .with_partitions(partitions.clone())
+                    .assert(&h.store, &sector_infos.clone(), &dl);
+
+                // Now make sure proving activates power.
+
+                // let result = dl
+                //     .record_proven_sectors(
+                //         &h.store,
+                //         &sectors_array,
+                //         SECTOR_SIZE,
+                //         QUANT_SPEC,
+                //         0,
+                //         &mut post_partitions,
+                //     )
+                //     .unwrap();
+
+                // let expected_power_delta = power_for_sectors(sector_size, &select_sectors(&sector_infos, &all_sector_bf));
+
+                // assert_eq!(all_sector_bf, result.sectors);
+                // assert!(result.ignored_sectors.is_empty());
+                // assert_eq!(result.new_faulty_power, PowerPair::zero());
+                // assert_eq!(result.power_delta, expected_power_delta);
+                // assert_eq!(result.recovered_power, PowerPair::zero());
+                // assert_eq!(result.retracted_recovery_power, PowerPair::zero());
                 Ok(())
             })
             .unwrap();

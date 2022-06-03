@@ -3614,6 +3614,30 @@ impl ExpectedDeadlineState {
         self
     }
 
+    // // Assert that the deadline's state matches the expected state.
+    // func (s expectedDeadlineState) assert(t *testing.T, store adt.Store, dl *miner.Deadline) {
+    //     _, faults, recoveries, terminations, unproven := checkDeadlineInvariants(
+    //         t, store, dl, s.quant, s.sectorSize, s.sectors,
+    //     )
+
+    //     assertBitfieldsEqual(t, s.faults, faults)
+    //     assertBitfieldsEqual(t, s.recovering, recoveries)
+    //     assertBitfieldsEqual(t, s.terminations, terminations)
+    //     assertBitfieldsEqual(t, s.unproven, unproven)
+    //     assertBitfieldsEqual(t, s.posts, dl.PartitionsPoSted)
+
+    //     partitions, err := dl.PartitionsArray(store)
+    //     require.NoError(t, err)
+    //     require.Equal(t, uint64(len(s.partitionSectors)), partitions.Length(), "unexpected number of partitions")
+    //     for i, partSectors := range s.partitionSectors {
+    //         var partition miner.Partition
+    //         found, err := partitions.Get(uint64(i), &partition)
+    //         require.NoError(t, err)
+    //         require.True(t, found)
+    //         assertBitfieldsEqual(t, partSectors, partition.Sectors)
+    //     }
+    // }
+
     // Assert that the deadline's state matches the expected state.
     pub fn assert<BS: Blockstore>(
         self,
@@ -3630,7 +3654,7 @@ impl ExpectedDeadlineState {
         assert_eq!(self.posts, deadline.partitions_posted);
 
         let partitions = deadline.partitions_amt(store).unwrap();
-        assert_eq!(self.partition_sectors.len() as u64, partitions.count());
+        assert_eq!(self.partition_sectors.len() as u64, partitions.count(), "unexpected number of partitions");
 
         for (i, partition_sectors) in self.partition_sectors.iter().enumerate() {
             let partitions = partitions.get(i as u64).unwrap().unwrap();
