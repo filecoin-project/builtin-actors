@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actor_miner::{
-    power_for_sectors, BitFieldQueue, Deadline, PoStPartition, PowerPair, SectorOnChainInfo,
-};
+use fil_actor_miner::{power_for_sectors, Deadline, PoStPartition, PowerPair, SectorOnChainInfo};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid};
-use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::RegisteredSealProof;
@@ -16,8 +13,6 @@ use fvm_shared::sector::SectorNumber;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::MAX_SECTOR_NUMBER;
-
-use std::collections::BTreeMap;
 
 mod util;
 use util::*;
@@ -65,7 +60,7 @@ mod sector_assignment {
                     i as SectorNumber,
                     make_sealed_cid("{i}".as_bytes()),
                     TokenAmount::from(1u8),
-                    0 as ChainEpoch,
+                    0,
                 )
             })
             .collect();
@@ -230,7 +225,7 @@ mod sector_number_allocation {
         // until the limit is reached.
         let mut limit_reached = false;
         for i in 0..std::u64::MAX {
-            let (number, ovf) = (i + 1).overflowing_shl(50);
+            let (number, _) = (i + 1).overflowing_shl(50);
             let res = h.allocate(&[number]);
             if res.is_err() {
                 // We failed, yay!

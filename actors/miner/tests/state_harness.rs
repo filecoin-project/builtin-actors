@@ -55,21 +55,7 @@ impl StateHarness {
     }
 
     pub fn new_runtime(&self) -> MockRuntime {
-        let mut rt = MockRuntime::default();
-
-        // rt.policy.valid_post_proof_type.insert(self.window_post_proof_type);
-        // rt.policy.valid_pre_commit_proof_type.insert(self.seal_proof_type);
-
-        // rt.receiver = self.receiver;
-        // rt.actor_code_cids.insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
-        // rt.actor_code_cids.insert(self.worker, *ACCOUNT_ACTOR_CODE_ID);
-        // for addr in &self.control_addrs {
-        //     rt.actor_code_cids.insert(*addr, *ACCOUNT_ACTOR_CODE_ID);
-        // }
-
-        // rt.hash_func = fixed_hasher(self.period_offset);
-
-        rt
+        MockRuntime::default()
     }
 
     #[allow(dead_code)]
@@ -176,7 +162,7 @@ impl StateHarness {
         &mut self,
         policy: &Policy,
         epoch: ChainEpoch,
-        mut sectors: Vec<SectorOnChainInfo>,
+        sectors: Vec<SectorOnChainInfo>,
         partition_size: u64,
         sector_size: SectorSize,
     ) {

@@ -3270,6 +3270,7 @@ fn select_sectors_map(sectors: &SectorsMap, include: &BitField) -> (SectorsMap, 
     (included, missing)
 }
 
+#[allow(dead_code)]
 pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
     let mut to_include: BTreeSet<_> = field.iter().collect();
     let included =
@@ -3582,6 +3583,7 @@ impl ExpectedDeadlineState {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_faults(mut self, faults: &[u64]) -> Self {
         self.faults = new_bitfield(faults);
         self
@@ -3593,11 +3595,13 @@ impl ExpectedDeadlineState {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_terminations(mut self, terminations: &[u64]) -> Self {
         self.terminations = new_bitfield(terminations);
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_unproven(mut self, unproven: &[u64]) -> Self {
         self.unproven = new_bitfield(unproven);
         self
@@ -3609,12 +3613,14 @@ impl ExpectedDeadlineState {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_partitions(mut self, partitions: Vec<BitField>) -> Self {
         self.partition_sectors = partitions;
         self
     }
 
-    // Assert that the deadline's state matches the expected state.
+    /// Assert that the deadline's state matches the expected state.
+    #[allow(dead_code)]
     pub fn assert<BS: Blockstore>(
         self,
         store: &BS,
@@ -3668,10 +3674,8 @@ impl ExpectedDeadlineState {
     }
 }
 
-pub const SECTOR_SIZE: SectorSize = SectorSize::_32GiB;
-pub const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
-
 /// Create a bitfield with count bits set, starting at "start".
+#[allow(dead_code)]
 pub fn seq(start: u64, count: u64) -> BitField {
     let ranges = Ranges::new([start..(start + count)]);
     BitField::from_ranges(ranges)

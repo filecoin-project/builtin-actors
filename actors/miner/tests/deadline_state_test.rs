@@ -1,20 +1,22 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use fil_actor_miner::{
     power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, SectorOnChainInfo,
     TerminationResult,
 };
 use fil_actors_runtime::runtime::{Policy, Runtime};
-use fil_actors_runtime::test_utils::{MessageAccumulator, MockRuntime};
+use fil_actors_runtime::test_utils::MockRuntime;
 use fil_actors_runtime::ActorError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;
-use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::{clock::QuantSpec, error::ExitCode, sector::SectorSize};
 
 mod util;
 use crate::util::*;
+
+const SECTOR_SIZE: SectorSize = SectorSize::_32GiB;
+const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
 
 fn sectors() -> Vec<SectorOnChainInfo> {
     vec![
