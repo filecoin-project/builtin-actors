@@ -2,20 +2,21 @@ use cid::Cid;
 use fil_actor_init::ExecReturn;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration, Method as MinerMethod,
-    PreCommitSectorBatchParams, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    State as MinerState, ProveCommitAggregateParams, ProveCommitSectorParams,
+    PreCommitSectorBatchParams, ProveCommitAggregateParams, ProveCommitSectorParams,
+    SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState,
 };
 use fil_actor_multisig::{
     compute_proposal_hash, Method as MsigMethod, ProposeParams, RemoveSignerParams,
     State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams,
 };
+use fil_actor_market::{Method as MarketMethod};
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::{
     make_map_with_root, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
 };
 use fil_actors_runtime::{test_utils::*, BURNT_FUNDS_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
@@ -32,24 +33,29 @@ use integer_encoding::VarInt;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 use num_traits::sign::Signed;
+use num_traits::FromPrimitive;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use test_vm::util::{apply_code, apply_ok, create_accounts};
 use test_vm::{ExpectInvocation, TEST_FAUCET_ADDR, VM};
-use num_traits::FromPrimitive;
 
-//#[test]
-
+#[test]
 fn commit_post_flow_happy_path() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 2, TokenAmount::from(10_000e18 as i128));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
-    let (id_addr, robust_addr) =
-        create_miner(&mut v, owner, worker, seal_proof.registered_window_post_proof().unwrap(), TokenAmount::from(10_000e18 as i128));
+    let (id_addr, robust_addr) = create_miner(
+        &mut v,
+        owner,
+        worker,
+        seal_proof.registered_window_post_proof().unwrap(),
+        TokenAmount::from(10_000e18 as i128),
+    );
     let mut v = v.with_epoch(200);
 
+    // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
     let precommits =
         precommit_sectors(&mut v, 1, 1, worker, id_addr, seal_proof, sector_number, true, None);
@@ -60,12 +66,25 @@ fn commit_post_flow_happy_path() {
     let prove_time =
         v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     let v = v.with_epoch(prove_time);
-    let prove_params = ProveCommitSectorParams{
-        sector_number,
-        proof: vec![],
-    };
-    apply_ok(&v, worker, robust_addr, TokenAmount::zero(), MinerMethod::ProveCommitSector as u64, prove_params);
 
+    // prove commit, cron, advance to post time
+    let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
+    let prove_params_ser = serialize(&prove_params, "commit params").unwrap();
+    apply_ok(
+        &v,
+        worker,
+        robust_addr,
+        TokenAmount::zero(),
+        MinerMethod::ProveCommitSector as u64,
+        prove_params,
+    );
+    ExpectInvocation {
+        to: id_addr,
+        method: MinerMethod::ProveCommitSector as u64,
+        params: Some(prove_params_ser),
+        subinvocs: Some(vec![ExpectInvocation{to: *STORAGE_MARKET_ACTOR_ADDR, method: MarketMethod::ComputeDataCommitment as u64, ..Default::default()},ExpectInvocation{to: *STORAGE_POWER_ACTOR_ADDR, method: PowerMethod::SubmitPoRepForBulkVerify as u64, ..Default::default()}]),
+        ..Default::default()
+    }.matches(v.take_invocations().last().unwrap());
 }
 
 fn create_miner(
@@ -141,7 +160,11 @@ fn precommit_sectors(
         }
     };
     let expiration = match exp {
-        None => v.get_epoch() + Policy::default().min_sector_expiration + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap(),
+        None => {
+            v.get_epoch()
+                + Policy::default().min_sector_expiration
+                + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
+        }
         Some(e) => e,
     };
 
@@ -200,5 +223,7 @@ fn precommit_sectors(
     }
     // extract chain state
     let mstate = v.get_state::<MinerState>(maddr).unwrap();
-    (0..count).map(|i| mstate.get_precommitted_sector(v.store, sector_number_base + i).unwrap().unwrap()).collect()
+    (0..count)
+        .map(|i| mstate.get_precommitted_sector(v.store, sector_number_base + i).unwrap().unwrap())
+        .collect()
 }
