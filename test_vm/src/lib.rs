@@ -20,7 +20,7 @@ use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR, CRON_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -133,8 +133,8 @@ impl<'bs> VM<'bs> {
         ];
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
         v.set_actor(
-            *STORAGE_MARKET_ACTOR_ADDR,
-            actor(*MARKET_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()),
+            *CRON_ACTOR_ADDR,
+            actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()),
         );
 
         // power
@@ -426,11 +426,12 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
         };
         // Address does not yet exist, create it
-        match target.protocol() {
+        let protocol = target.protocol();
+        match protocol {
             Protocol::Actor | Protocol::ID => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
-                    "cannot create account for address type".to_string(),
+                    "cannot create account for address {target} type {protocol}".to_string(),
                 ))
             }
             _ => (),

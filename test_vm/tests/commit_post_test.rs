@@ -12,11 +12,12 @@ use fil_actor_multisig::{
 use fil_actor_market::{Method as MarketMethod};
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
+use fil_actor_cron::Method as CronMethod;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::{
     make_map_with_root, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, CRON_ACTOR_ADDR,
 };
 use fil_actors_runtime::{test_utils::*, BURNT_FUNDS_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
@@ -85,6 +86,9 @@ fn commit_post_flow_happy_path() {
         subinvocs: Some(vec![ExpectInvocation{to: *STORAGE_MARKET_ACTOR_ADDR, method: MarketMethod::ComputeDataCommitment as u64, ..Default::default()},ExpectInvocation{to: *STORAGE_POWER_ACTOR_ADDR, method: PowerMethod::SubmitPoRepForBulkVerify as u64, ..Default::default()}]),
         ..Default::default()
     }.matches(v.take_invocations().last().unwrap());
+    let res = v.apply_message(*SYSTEM_ACTOR_ADDR, *CRON_ACTOR_ADDR, TokenAmount::zero(), CronMethod::EpochTick as u64, RawBytes::default()).unwrap();
+    assert_eq!(ExitCode::OK, res.code);
+
 }
 
 fn create_miner(
