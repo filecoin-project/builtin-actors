@@ -120,6 +120,8 @@ pub struct ProveCommitSectorParams {
     pub proof: Vec<u8>,
 }
 
+impl Cbor for ProveCommitSectorParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CheckSectorProvenParams {
     pub sector_number: SectorNumber,
@@ -239,7 +241,6 @@ pub struct PreCommitSectorBatchParams {
 }
 
 impl Cbor for PreCommitSectorBatchParams {}
-
 
 #[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitInfo {

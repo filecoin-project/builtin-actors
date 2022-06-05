@@ -476,8 +476,13 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Ok(rb) => (Some(rb), None),
             Err(ae) => (None, Some(ae.exit_code())),
         };
+        let mut msg = self.msg.clone();
+        msg.to = match self.resolve_target(&self.msg.to) {
+            Ok((_, addr)) => addr, // use normalized address in trace 
+            _ => self.msg.to, // if target resolution fails don't fail whole invoke, just use non normalized
+        };
         InvocationTrace {
-            msg: self.msg.clone(),
+            msg,
             code,
             ret,
             subinvocations: self.subinvocations.take(),
@@ -724,7 +729,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
                     ))
                 } else {
                     act.head = self.v.store.put_cbor(obj, Code::Blake2b256).unwrap();
-                    self.v.set_actor(self.msg.to, act);
+                    self.v.set_actor(self.to(), act);
                     Ok(())
                 }
             }
@@ -745,7 +750,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         let result = f(&mut st, self);
         self.allow_side_effects = true;
         let ret = result?;
-        let mut act = self.v.get_actor(self.msg.to).unwrap();
+        let mut act = self.v.get_actor(self.to()).unwrap();
         act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
         self.v.set_actor(self.to(), act);
         Ok(ret)
