@@ -3,13 +3,13 @@ use fil_actor_init::ExecReturn;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration, Method as MinerMethod,
     PreCommitSectorBatchParams, ProveCommitAggregateParams, ProveCommitSectorParams,
-    SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState,
+    SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState, DeadlineInfo, new_deadline_info, new_deadline_info_from_offset_and_epoch,
 };
 use fil_actor_multisig::{
     compute_proposal_hash, Method as MsigMethod, ProposeParams, RemoveSignerParams,
     State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams,
 };
-use fil_actor_market::{Method as MarketMethod};
+use fil_actor_market::{Method as MarketMethod, WithdrawBalanceReturn};
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_cron::Method as CronMethod;
@@ -66,7 +66,7 @@ fn commit_post_flow_happy_path() {
 
     let prove_time =
         v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
-    let v = v.with_epoch(prove_time);
+    let (v, _) = advance_by_deadline_to_epoch(v, id_addr, prove_time);
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
@@ -88,6 +88,41 @@ fn commit_post_flow_happy_path() {
     }.matches(v.take_invocations().last().unwrap());
     let res = v.apply_message(*SYSTEM_ACTOR_ADDR, *CRON_ACTOR_ADDR, TokenAmount::zero(), CronMethod::EpochTick as u64, RawBytes::default()).unwrap();
     assert_eq!(ExitCode::OK, res.code);
+    ExpectInvocation {
+        to: *CRON_ACTOR_ADDR,
+        method: CronMethod::EpochTick as u64,
+        subinvocs: Some(vec![ExpectInvocation{
+            to: *STORAGE_POWER_ACTOR_ADDR,
+            method: PowerMethod::OnEpochTickEnd as u64,
+            subinvocs: Some(vec![
+                ExpectInvocation{
+                    to: *REWARD_ACTOR_ADDR,
+                    method: RewardMethod::ThisEpochReward as u64,
+                    ..Default::default()
+                },
+                ExpectInvocation{
+                    to: id_addr,
+                    method:MinerMethod::ConfirmSectorProofsValid as u64, 
+                    subinvocs: Some(vec![ExpectInvocation{to: *STORAGE_POWER_ACTOR_ADDR, method: PowerMethod::UpdatePledgeTotal as u64, ..Default::default()}]),
+                    ..Default::default()
+                },
+                ExpectInvocation{
+                    to: *REWARD_ACTOR_ADDR, 
+                    method: RewardMethod::UpdateNetworkKPI as u64,
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+            },
+            ExpectInvocation{
+                to: *STORAGE_MARKET_ACTOR_ADDR,
+                method: MarketMethod::CronTick as u64,
+                ..Default::default()
+            }
+        ]),
+        ..Default::default()
+    }.matches(v.take_invocations().last().unwrap());
+    ()
 
 }
 
@@ -230,4 +265,44 @@ fn precommit_sectors(
     (0..count)
         .map(|i| mstate.get_precommitted_sector(v.store, sector_number_base + i).unwrap().unwrap())
         .collect()
+}
+
+fn advance_by_deadline_to_epoch<'bs>(v: VM<'bs>, maddr: Address, e: ChainEpoch) -> (VM<'bs>, DeadlineInfo) {
+    advance_by_deadline(v, maddr, |dline_info| {dline_info.close <= e})
+}
+
+fn advance_by_deadline_to_index<'bs>(v: VM<'bs>, maddr: Address, i: u64) -> (VM<'bs>, DeadlineInfo) {
+    advance_by_deadline(v, maddr, |dline_info| {dline_info.index != i})
+}
+
+fn advance_to_proving_deadline<'bs>(v: VM<'bs>, maddr: Address, s: SectorNumber) -> (DeadlineInfo, u64, VM<'bs>) {
+    let (d, p) = sector_deadline(&v, maddr, s);
+    let (mut v, dline_info) = advance_by_deadline_to_index(v, maddr, d);
+    let v = v.with_epoch(dline_info.open);
+    (dline_info, p, v)
+}
+
+fn advance_by_deadline<'bs, F>(v: VM<'bs>, maddr: Address, more: F) -> (VM<'bs>, DeadlineInfo) where
+    F: Fn(DeadlineInfo) -> bool {
+    let v = v.with_epoch(v.get_epoch());
+    loop {
+        println!("loop, epoch: {}", v.get_epoch());
+        let dline_info = miner_dline_info(&v, maddr);
+        if !more(dline_info) {
+            return (v, dline_info)
+        }
+        let v = v.with_epoch(dline_info.last());
+        let res = v.apply_message(*SYSTEM_ACTOR_ADDR, *CRON_ACTOR_ADDR, TokenAmount::zero(), CronMethod::EpochTick as u64, RawBytes::default()).unwrap();
+        assert_eq!(ExitCode::OK, res.code);
+    };
+}
+
+fn miner_dline_info(v: &VM, m: Address) -> DeadlineInfo {
+    let st = v.get_state::<MinerState>(m).unwrap();
+    new_deadline_info_from_offset_and_epoch(&Policy::default(), st.proving_period_start, v.get_epoch())
+}
+
+fn sector_deadline(v: &VM, m: Address, s: SectorNumber) -> (u64, u64) {
+    let st = v.get_state::<MinerState>(m).unwrap();
+    st.find_sector(&Policy::default(), v.store, s).unwrap()
 }
