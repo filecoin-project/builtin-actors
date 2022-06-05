@@ -394,15 +394,15 @@ pub struct InternalMessage {
     params: RawBytes,
 }
 
-impl MessageInfo for InternalMessage {
+impl MessageInfo for InvocationCtx<'_, '_> {
     fn caller(&self) -> Address {
-        self.from
+        self.msg.from
     }
     fn receiver(&self) -> Address {
-        self.to
+        self.to()
     }
     fn value_received(&self) -> TokenAmount {
-        self.value.clone()
+        self.msg.value.clone()
     }
 }
 
@@ -482,6 +482,11 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             ret,
             subinvocations: self.subinvocations.take(),
         }
+    }
+
+    fn to(&'invocation self) -> Address {
+        let (_, to_addr) = self.resolve_target(&self.msg.to).unwrap();
+        to_addr
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
@@ -576,7 +581,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn message(&self) -> &dyn MessageInfo {
-        &self.msg
+        self
     }
 
     fn curr_epoch(&self) -> ChainEpoch {
@@ -637,7 +642,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn current_balance(&self) -> TokenAmount {
-        self.v.get_actor(self.msg.to).unwrap().balance
+        self.v.get_actor(self.to()).unwrap().balance
     }
 
     fn resolve_address(&self, addr: &Address) -> Option<Address> {
@@ -666,7 +671,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             ));
         }
 
-        let new_actor_msg = InternalMessage { from: self.msg.to, to, value, method, params };
+        let new_actor_msg = InternalMessage { from: self.to(), to, value, method, params };
         let mut new_ctx = InvocationCtx {
             v: self.v,
             top: self.top.clone(),
@@ -705,7 +710,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
-        let maybe_act = self.v.get_actor(self.msg.to);
+        let maybe_act = self.v.get_actor(self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
@@ -727,7 +732,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        Ok(self.v.get_state::<C>(self.msg.to).unwrap())
+        Ok(self.v.get_state::<C>(self.to()).unwrap())
     }
 
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
@@ -742,7 +747,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         let ret = result?;
         let mut act = self.v.get_actor(self.msg.to).unwrap();
         act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.v.set_actor(self.msg.to, act);
+        self.v.set_actor(self.to(), act);
         Ok(ret)
     }
 
@@ -807,7 +812,7 @@ impl Primitives for VM<'_> {
         _proof_type: RegisteredSealProof,
         _pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
-        panic!("TODO implement me")
+        Ok(make_piece_cid(b"unsealed from itest vm"))
     }
 }
 

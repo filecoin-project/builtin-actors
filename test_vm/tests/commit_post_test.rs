@@ -3,7 +3,7 @@ use fil_actor_init::ExecReturn;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration, Method as MinerMethod,
     PreCommitSectorBatchParams, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    State as MinerState,
+    State as MinerState, ProveCommitAggregateParams, ProveCommitSectorParams,
 };
 use fil_actor_multisig::{
     compute_proposal_hash, Method as MsigMethod, ProposeParams, RemoveSignerParams,
@@ -36,27 +36,36 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 use test_vm::util::{apply_code, apply_ok, create_accounts};
 use test_vm::{ExpectInvocation, TEST_FAUCET_ADDR, VM};
+use num_traits::FromPrimitive;
 
-#[test]
+//#[test]
+
 fn commit_post_flow_happy_path() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 2, TokenAmount::from(10_000e18 as u64));
+    let addrs = create_accounts(&v, 2, TokenAmount::from(10_000e18 as i128));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
-    let (id_addr, _) =
-        create_miner(&mut v, owner, worker, seal_proof.registered_window_post_proof().unwrap());
+    let (id_addr, robust_addr) =
+        create_miner(&mut v, owner, worker, seal_proof.registered_window_post_proof().unwrap(), TokenAmount::from(10_000e18 as i128));
     let mut v = v.with_epoch(200);
 
-    let sector_number_base: SectorNumber = 100;
+    let sector_number: SectorNumber = 100;
     let precommits =
-        precommit_sectors(&mut v, 1, 1, worker, id_addr, seal_proof, sector_number_base, true, -1);
+        precommit_sectors(&mut v, 1, 1, worker, id_addr, seal_proof, sector_number, true, None);
 
     let balances = v.get_miner_balance(id_addr);
     assert!(!balances.pre_commit_deposit.is_negative());
 
     let prove_time =
         v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+    let v = v.with_epoch(prove_time);
+    let prove_params = ProveCommitSectorParams{
+        sector_number,
+        proof: vec![],
+    };
+    apply_ok(&v, worker, robust_addr, TokenAmount::zero(), MinerMethod::ProveCommitSector as u64, prove_params);
+
 }
 
 fn create_miner(
@@ -64,6 +73,7 @@ fn create_miner(
     owner: Address,
     worker: Address,
     post_proof_type: RegisteredPoStProof,
+    balance: TokenAmount,
 ) -> (Address, Address) {
     let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
     let peer_id = "miner".as_bytes().to_vec();
@@ -79,7 +89,7 @@ fn create_miner(
         .apply_message(
             owner,
             *STORAGE_POWER_ACTOR_ADDR,
-            TokenAmount::from(1000u32),
+            balance,
             PowerMethod::CreateMiner as u64,
             params.clone(),
         )
@@ -99,7 +109,7 @@ fn precommit_sectors(
     seal_proof: RegisteredSealProof,
     sector_number_base: SectorNumber,
     expect_cron_enroll: bool,
-    expiration: ChainEpoch,
+    exp: Option<ChainEpoch>,
 ) -> Vec<SectorPreCommitOnChainInfo> {
     let invocs_common = || -> Vec<ExpectInvocation> {
         vec![
@@ -130,6 +140,10 @@ fn precommit_sectors(
             ..Default::default()
         }
     };
+    let expiration = match exp {
+        None => v.get_epoch() + Policy::default().min_sector_expiration + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap(),
+        Some(e) => e,
+    };
 
     let mut sector_idx = 0u64;
     while sector_idx < count {
@@ -146,6 +160,7 @@ fn precommit_sectors(
                 sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
                 seal_rand_epoch: v.get_epoch() - 1,
                 deal_ids: vec![],
+                expiration,
                 ..Default::default()
             });
             sector_idx += 1;
@@ -185,22 +200,5 @@ fn precommit_sectors(
     }
     // extract chain state
     let mstate = v.get_state::<MinerState>(maddr).unwrap();
-    (0..count).map(|i| mstate.get_precommitted_sector(v.store, i).unwrap().unwrap()).collect()
-}
-
-// XXX: split this out somwhere shared between here and the miner unit test utils
-// multihash library doesn't support poseidon hashing, so we fake it
-#[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
-#[mh(alloc_size = 64)]
-enum MhCode {
-    #[mh(code = 0xb401, hasher = multihash::Sha2_256)]
-    PoseidonFake,
-    #[mh(code = 0x1012, hasher = multihash::Sha2_256)]
-    Sha256TruncPaddedFake,
-}
-
-fn make_sealed_cid(input: &[u8]) -> Cid {
-    // Note: multihash library doesn't support Poseidon hashing, so we fake it
-    let h = MhCode::PoseidonFake.digest(input);
-    Cid::new_v1(FIL_COMMITMENT_SEALED, h)
+    (0..count).map(|i| mstate.get_precommitted_sector(v.store, sector_number_base + i).unwrap().unwrap()).collect()
 }
