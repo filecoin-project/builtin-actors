@@ -1552,6 +1552,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        println!("not crazy");
         let curr_epoch = rt.curr_epoch();
         {
             let policy = rt.policy();
@@ -1652,6 +1653,7 @@ impl Actor {
         rt.transaction(|state: &mut State, rt| {
             // Aggregate fee applies only when batching.
             if params.sectors.len() > 1 {
+                println!("trying to do aggregate fee with sector len {}", params.sectors.len());
                 let aggregate_fee = aggregate_pre_commit_network_fee(params.sectors.len() as i64, &rt.base_fee());
                 // AggregateFee applied to fee debt to consolidate burn with outstanding debts
                 state.apply_penalty(&aggregate_fee)
@@ -1675,6 +1677,7 @@ impl Actor {
                         e
                     )
                 })?;
+            println!("burn for some reason");
             fee_to_burn = repay_debts_or_abort(rt, state)?;
 
             let info = get_miner_info(rt.store(), state)?;
@@ -1748,6 +1751,7 @@ impl Actor {
             if available_balance < total_deposit_required {
                 return Err(actor_error!(insufficient_funds, "insufficient funds {} for pre-commit deposit: {}", available_balance, total_deposit_required));
             }
+            println!("PCD {}", total_deposit_required);
             state.add_pre_commit_deposit(&total_deposit_required)
                 .map_err(|e|
                     actor_error!(
