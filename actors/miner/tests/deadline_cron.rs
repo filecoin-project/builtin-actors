@@ -1,8 +1,8 @@
 use fil_actor_miner::{
     pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair, SectorOnChainInfo,
 };
-use fil_actors_runtime::test_utils::MessageAccumulator;
 use fil_actors_runtime::test_utils::MockRuntime;
+use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
