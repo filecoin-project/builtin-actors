@@ -18,6 +18,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
 mod util;
+use fil_actor_miner::testing::check_state_invariants;
 use num_traits::Signed;
 use util::*;
 
