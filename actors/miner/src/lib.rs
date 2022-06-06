@@ -3404,7 +3404,6 @@ where
                     "failed to expire pre-committed sectors",
                 )
             })?;
-
         state
             .apply_penalty(&deposit_to_burn)
             .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
