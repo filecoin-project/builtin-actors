@@ -27,9 +27,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
-use fvm_shared::sector::{
-    PoStProof, RegisteredPoStProof, RegisteredSealProof, SectorNumber,
-};
+use fvm_shared::sector::{PoStProof, RegisteredPoStProof, RegisteredSealProof, SectorNumber};
 use fvm_shared::METHOD_SEND;
 use num_traits::sign::Signed;
 use test_vm::util::{apply_ok, create_accounts};
@@ -182,7 +180,7 @@ fn create_miner(
         worker,
         window_post_proof_type: post_proof_type,
         peer: peer_id,
-        multiaddrs: multiaddrs,
+        multiaddrs,
     };
 
     let res: CreateMinerReturn = v
@@ -310,27 +308,15 @@ fn precommit_sectors(
         .collect()
 }
 
-fn advance_by_deadline_to_epoch(
-    v: VM,
-    maddr: Address,
-    e: ChainEpoch,
-) -> (VM, DeadlineInfo) {
+fn advance_by_deadline_to_epoch(v: VM, maddr: Address, e: ChainEpoch) -> (VM, DeadlineInfo) {
     advance_by_deadline(v, maddr, |dline_info| dline_info.close <= e)
 }
 
-fn advance_by_deadline_to_index(
-    v: VM,
-    maddr: Address,
-    i: u64,
-) -> (VM, DeadlineInfo) {
+fn advance_by_deadline_to_index(v: VM, maddr: Address, i: u64) -> (VM, DeadlineInfo) {
     advance_by_deadline(v, maddr, |dline_info| dline_info.index != i)
 }
 
-fn advance_to_proving_deadline(
-    v: VM,
-    maddr: Address,
-    s: SectorNumber,
-) -> (DeadlineInfo, u64, VM) {
+fn advance_to_proving_deadline(v: VM, maddr: Address, s: SectorNumber) -> (DeadlineInfo, u64, VM) {
     let (d, p) = sector_deadline(&v, maddr, s);
     let (v, dline_info) = advance_by_deadline_to_index(v, maddr, d);
     let v = v.with_epoch(dline_info.open);
@@ -395,14 +381,7 @@ fn submit_windowed_post(
         chain_commit_epoch: dline_info.challenge,
         chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
     };
-    apply_ok(
-        v,
-        worker,
-        maddr,
-        TokenAmount::zero(),
-        MinerMethod::SubmitWindowedPoSt as u64,
-        params,
-    );
+    apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
 
     let update_power_params = serialize(
         &UpdateClaimedPowerParams { raw_byte_delta: sector.raw, quality_adjusted_delta: sector.qa },
