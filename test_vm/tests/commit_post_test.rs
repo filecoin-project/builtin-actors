@@ -282,18 +282,20 @@ fn advance_to_proving_deadline<'bs>(v: VM<'bs>, maddr: Address, s: SectorNumber)
     (dline_info, p, v)
 }
 
-fn advance_by_deadline<'bs, F>(v: VM<'bs>, maddr: Address, more: F) -> (VM<'bs>, DeadlineInfo) where
+fn advance_by_deadline<'bs, F>(mut v: VM<'bs>, maddr: Address, more: F) -> (VM<'bs>, DeadlineInfo) where
     F: Fn(DeadlineInfo) -> bool {
-    let v = v.with_epoch(v.get_epoch());
     loop {
-        println!("loop, epoch: {}", v.get_epoch());
         let dline_info = miner_dline_info(&v, maddr);
         if !more(dline_info) {
             return (v, dline_info)
         }
-        let v = v.with_epoch(dline_info.last());
+        v = v.with_epoch(dline_info.last());
+
         let res = v.apply_message(*SYSTEM_ACTOR_ADDR, *CRON_ACTOR_ADDR, TokenAmount::zero(), CronMethod::EpochTick as u64, RawBytes::default()).unwrap();
         assert_eq!(ExitCode::OK, res.code);
+        let next = v.get_epoch() + 1;
+        v = v.with_epoch(next);
+        println!("loop {}", next);
     };
 }
 

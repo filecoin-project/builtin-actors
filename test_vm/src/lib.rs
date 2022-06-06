@@ -54,7 +54,7 @@ pub mod util;
 
 pub struct VM<'bs> {
     pub store: &'bs MemoryBlockstore,
-    state_root: RefCell<Cid>,
+    pub state_root: RefCell<Cid>,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
     empty_obj_cid: Cid,
@@ -215,10 +215,14 @@ impl<'bs> VM<'bs> {
         .unwrap();
 
         v.checkpoint();
+        let st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
+        println!("initial qap {:?}", st.this_epoch_qa_power_smoothed);
+        println!("initial qap estimate {}", st.this_epoch_qa_power_smoothed.estimate());
+
         v
     }
 
-    pub fn with_epoch(&self, epoch: ChainEpoch) -> VM<'bs> {
+    pub fn with_epoch(self, epoch: ChainEpoch) -> VM<'bs> {
         self.checkpoint();
         VM {
             store: self.store,
@@ -259,7 +263,6 @@ impl<'bs> VM<'bs> {
         if let Some(act) = self.actors_cache.borrow().get(&addr) {
             return Some(act.clone());
         }
-
         // go to persisted map
         let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
             &self.state_root.borrow(),
@@ -288,7 +291,6 @@ impl<'bs> VM<'bs> {
 
         // roll "back" to latest head, flushing cache
         self.rollback(actors.flush().unwrap());
-
         *self.state_root.borrow()
     }
 
@@ -374,7 +376,7 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn get_epoch(&self) -> ChainEpoch {
-        self.curr_epoch.clone()
+        self.curr_epoch
     }
 }
 #[derive(Clone)]
@@ -534,8 +536,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let to_actor = self.v.get_actor(to_addr).unwrap();
         let params = self.msg.params.clone();
         let res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin") {
-            // XXX Review: is there a way to do one call on an object implementing ActorCode trait?
-            // I tried using `dyn` keyword couldn't get the compiler on board.
             Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
             Type::Cron => CronActor::invoke_method(self, self.msg.method, &params),
             Type::Init => InitActor::invoke_method(self, self.msg.method, &params),
@@ -591,7 +591,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn curr_epoch(&self) -> ChainEpoch {
-        self.v.curr_epoch
+        self.v.get_epoch()
     }
 
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
