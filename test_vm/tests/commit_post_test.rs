@@ -1,44 +1,33 @@
-use cid::Cid;
-use fil_actor_init::ExecReturn;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration, Method as MinerMethod,
-    PreCommitSectorBatchParams, ProveCommitAggregateParams, ProveCommitSectorParams,
-    SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState, DeadlineInfo, new_deadline_info, new_deadline_info_from_offset_and_epoch,
+    PreCommitSectorBatchParams, ProveCommitSectorParams,
+    SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState, DeadlineInfo, new_deadline_info_from_offset_and_epoch,
+    PoStPartition, power_for_sector, PowerPair, SubmitWindowedPoStParams,
 };
-use fil_actor_multisig::{
-    compute_proposal_hash, Method as MsigMethod, ProposeParams, RemoveSignerParams,
-    State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams,
-};
-use fil_actor_market::{Method as MarketMethod, WithdrawBalanceReturn};
-use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
+use fil_actor_market::{Method as MarketMethod};
+use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod, State as PowerState};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_cron::Method as CronMethod;
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
+use fil_actors_runtime::runtime::{Policy};
 use fil_actors_runtime::{
-    make_map_with_root, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, CRON_ACTOR_ADDR,
 };
 use fil_actors_runtime::{test_utils::*, BURNT_FUNDS_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
+use fvm_ipld_bitfield::{BitField};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
-use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
-use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::clock::{ChainEpoch};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, SectorNumber};
+use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, SectorNumber, StoragePower, PoStProof};
 use fvm_shared::METHOD_SEND;
-use integer_encoding::VarInt;
-use multihash::derive::Multihash;
-use multihash::MultihashDigest;
 use num_traits::sign::Signed;
-use num_traits::FromPrimitive;
-use std::collections::HashSet;
-use std::iter::FromIterator;
-use test_vm::util::{apply_code, apply_ok, create_accounts};
-use test_vm::{ExpectInvocation, TEST_FAUCET_ADDR, VM};
+use test_vm::util::{apply_ok, create_accounts};
+use test_vm::{ExpectInvocation, VM};
 
 #[test]
 fn commit_post_flow_happy_path() {
@@ -58,8 +47,7 @@ fn commit_post_flow_happy_path() {
 
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
-    let precommits =
-        precommit_sectors(&mut v, 1, 1, worker, id_addr, seal_proof, sector_number, true, None);
+    precommit_sectors(&mut v, 1, 1, worker, id_addr, seal_proof, sector_number, true, None);
 
     let balances = v.get_miner_balance(id_addr);
     assert!(!balances.pre_commit_deposit.is_negative());
@@ -122,7 +110,27 @@ fn commit_post_flow_happy_path() {
         ]),
         ..Default::default()
     }.matches(v.take_invocations().last().unwrap());
-    ()
+    // pcd is released ip is added
+    let balances = v.get_miner_balance(id_addr);
+    assert!(balances.initial_pledge > TokenAmount::zero());
+    assert!(balances.pre_commit_deposit == TokenAmount::zero());
+
+    // power unproven so network stats are the same
+    let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
+    assert_eq!(TokenAmount::zero(), p_st.total_bytes_committed);
+    assert!(p_st.total_pledge_collateral > TokenAmount::zero());
+    let (dline_info, p_idx, v) = advance_to_proving_deadline(v, id_addr, sector_number);
+
+    // submit post
+    let st = v.get_state::<MinerState>(id_addr).unwrap();
+    let sector = st.get_sector(v.store, sector_number).unwrap().unwrap();
+    let partitions = vec![PoStPartition{index: p_idx, skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new())}];
+    let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
+    submit_windowed_post(&v, worker, id_addr, dline_info, partitions, sector_power);
+    let balances = v.get_miner_balance(id_addr);
+    assert!(balances.initial_pledge > TokenAmount::zero());
+    let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
+    assert_eq!(StoragePower::from(seal_proof.sector_size().unwrap() as u64), p_st.total_bytes_committed);
 
 }
 
@@ -277,7 +285,7 @@ fn advance_by_deadline_to_index<'bs>(v: VM<'bs>, maddr: Address, i: u64) -> (VM<
 
 fn advance_to_proving_deadline<'bs>(v: VM<'bs>, maddr: Address, s: SectorNumber) -> (DeadlineInfo, u64, VM<'bs>) {
     let (d, p) = sector_deadline(&v, maddr, s);
-    let (mut v, dline_info) = advance_by_deadline_to_index(v, maddr, d);
+    let (v, dline_info) = advance_by_deadline_to_index(v, maddr, d);
     let v = v.with_epoch(dline_info.open);
     (dline_info, p, v)
 }
@@ -295,7 +303,6 @@ fn advance_by_deadline<'bs, F>(mut v: VM<'bs>, maddr: Address, more: F) -> (VM<'
         assert_eq!(ExitCode::OK, res.code);
         let next = v.get_epoch() + 1;
         v = v.with_epoch(next);
-        println!("loop {}", next);
     };
 }
 
@@ -307,4 +314,12 @@ fn miner_dline_info(v: &VM, m: Address) -> DeadlineInfo {
 fn sector_deadline(v: &VM, m: Address, s: SectorNumber) -> (u64, u64) {
     let st = v.get_state::<MinerState>(m).unwrap();
     st.find_sector(&Policy::default(), v.store, s).unwrap()
+}
+
+fn submit_windowed_post(v: &VM, worker: Address, maddr: Address, dline_info: DeadlineInfo, partitions: Vec<PoStPartition>, sector: PowerPair) {
+    let params = SubmitWindowedPoStParams{
+        deadline: dline_info.index,
+        partitions,
+        proofs: vec![RegisteredP]
+    }
 }
