@@ -226,7 +226,7 @@ impl<'bs> VM<'bs> {
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             empty_obj_cid: self.empty_obj_cid,
-            network_version: NetworkVersion::V16,
+            network_version: self.network_version,
             curr_epoch: epoch,
             invocations: RefCell::new(vec![]),
         }
@@ -236,11 +236,7 @@ impl<'bs> VM<'bs> {
         let a = self.get_actor(maddr).unwrap();
         let st = self.get_state::<MinerState>(maddr).unwrap();
         MinerBalances {
-            available_balance: a.balance
-                - (st.pre_commit_deposits.clone()
-                    + st.initial_pledge.clone()
-                    + st.locked_funds.clone()
-                    + st.fee_debt.clone()),
+            available_balance: st.get_available_balance(&a.balance).unwrap(),
             vesting_balance: st.locked_funds,
             initial_pledge: st.initial_pledge,
             pre_commit_deposit: st.pre_commit_deposits,
@@ -484,8 +480,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     }
 
     fn to(&'invocation self) -> Address {
-        let (_, to_addr) = self.resolve_target(&self.msg.to).unwrap();
-        to_addr
+        self.resolve_target(&self.msg.to).unwrap().1
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {

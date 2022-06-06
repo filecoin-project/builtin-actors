@@ -56,11 +56,11 @@ fn commit_post_flow_happy_path() {
     precommit_sectors(&mut v, 1, 1, worker, id_addr, seal_proof, sector_number, true, None);
 
     let balances = v.get_miner_balance(id_addr);
-    assert!(!balances.pre_commit_deposit.is_negative());
+    assert!(balances.pre_commit_deposit.is_positive());
 
     let prove_time =
         v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
-    let (v, _) = advance_by_deadline_to_epoch(v, id_addr, prove_time);
+    let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
@@ -145,11 +145,11 @@ fn commit_post_flow_happy_path() {
     // pcd is released ip is added
     let balances = v.get_miner_balance(id_addr);
     assert!(balances.initial_pledge > TokenAmount::zero());
-    assert!(balances.pre_commit_deposit == TokenAmount::zero());
+    assert!(balances.pre_commit_deposit.is_zero());
 
     // power unproven so network stats are the same
     let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
-    assert_eq!(TokenAmount::zero(), p_st.total_bytes_committed);
+    assert!(p_st.total_bytes_committed.is_zero());
     assert!(p_st.total_pledge_collateral > TokenAmount::zero());
     let (dline_info, p_idx, v) = advance_to_proving_deadline(v, id_addr, sector_number);
 
@@ -161,12 +161,12 @@ fn commit_post_flow_happy_path() {
         skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new()),
     }];
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
-    submit_windowed_post(&v, worker, id_addr, dline_info, partitions, sector_power);
+    submit_windowed_post(&v, worker, id_addr, dline_info, partitions, sector_power.clone());
     let balances = v.get_miner_balance(id_addr);
     assert!(balances.initial_pledge > TokenAmount::zero());
     let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(
-        StoragePower::from(seal_proof.sector_size().unwrap() as u64),
+        sector_power.raw,
         p_st.total_bytes_committed
     );
 }
