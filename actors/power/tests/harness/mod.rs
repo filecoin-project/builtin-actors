@@ -5,10 +5,12 @@ use fil_actor_power::ext::miner::ConfirmSectorProofsParams;
 use fil_actor_power::ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD;
 use fil_actor_power::ext::reward::Method::ThisEpochReward;
 use fil_actor_power::ext::reward::UPDATE_NETWORK_KPI;
+use fil_actor_power::testing::check_state_invariants;
 use fil_actor_power::CronEvent;
 use fil_actor_power::EnrollCronEventParams;
 use fil_actor_power::CRON_QUEUE_AMT_BITWIDTH;
 use fil_actor_power::CRON_QUEUE_HAMT_BITWIDTH;
+use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::CRON_ACTOR_CODE_ID;
 use fil_actors_runtime::Multimap;
 use fil_actors_runtime::CRON_ACTOR_ADDR;
@@ -274,8 +276,9 @@ impl Harness {
         events
     }
 
-    pub fn check_state(&self) {
-        // TODO: https://github.com/filecoin-project/builtin-actors/issues/44
+    pub fn check_state(&self, rt: &MockRuntime) {
+        let (_, acc) = check_state_invariants(rt.policy(), &rt.get_state::<State>(), rt.store());
+        acc.assert_empty();
     }
 
     pub fn update_pledge_total(&self, rt: &mut MockRuntime, miner: Address, delta: &TokenAmount) {
