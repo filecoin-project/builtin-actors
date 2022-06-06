@@ -1,15 +1,18 @@
 use fil_actor_init::Method as InitMethod;
-use fil_actor_miner::{Method as MinerMethod, MinerConstructorParams};
-use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
+use fil_actor_miner::{Method as MinerMethod, MinerConstructorParams, PreCommitSectorParams};
+use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actors_runtime::cbor::serialize;
 
+use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::RegisteredPoStProof;
+use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
+use test_vm::util::create_accounts;
 use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 #[test]
@@ -91,4 +94,59 @@ fn create_miner() {
         ]),
     };
     expect.matches(v.take_invocations().last().unwrap())
+}
+
+#[test]
+fn test_cron_tick() {
+    let store = MemoryBlockstore::new();
+    let v = VM::new_with_singletons(&store);
+
+    let addrs = create_accounts(&v, 1, BigInt::from(10_000u64) * BigInt::from(10u64.pow(18)));
+
+    // create a miner
+    let miner_balance = BigInt::from(10_000u64) * BigInt::from(10u64.pow(18));
+    let params = CreateMinerParams {
+        owner: addrs[0],
+        worker: addrs[0],
+        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        // todo: not sure if these values are correct, placeholders
+        peer: String::from("pid").into_bytes(),
+        multiaddrs: vec![],
+    };
+    let ret = v
+        .apply_message(
+            addrs[0],
+            addrs[0],
+            miner_balance,
+            PowerMethod::CreateMiner as u64,
+            params.clone(),
+        )
+        .unwrap();
+
+    // todo: this fails; figure out how to deserialize this
+    let miner_addrs: CreateMinerReturn = ret.ret.deserialize().unwrap();
+
+    // create precommit
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1; // p1??
+    let sector_number = 100;
+    let sealed_cid = make_sealed_cid(b"100");
+    let precommit_params = PreCommitSectorParams {
+        seal_proof,
+        sector_number,
+        sealed_cid,
+        seal_rand_epoch: v.get_epoch() - 1,
+        deal_ids: vec![],
+        expiration: v.get_epoch(), // todo
+        ..Default::default()
+    };
+    v.apply_message(
+        addrs[0],
+        miner_addrs.robust_address,
+        TokenAmount::from(0),
+        MinerMethod::PreCommitSector as u64,
+        RawBytes::serialize(&precommit_params).unwrap(),
+    )
+    .unwrap();
+
+    // find epoch of miner's next cron task (precommit:1, enrollCron:2)
 }

@@ -276,6 +276,10 @@ impl<'bs> VM<'bs> {
         self.store.get_cbor::<C>(&a.head).unwrap()
     }
 
+    pub fn get_epoch(&self) -> ChainEpoch {
+        self.curr_epoch
+    }
+
     pub fn apply_message<C: Cbor>(
         &self,
         from: Address,
