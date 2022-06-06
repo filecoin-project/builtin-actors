@@ -215,10 +215,6 @@ impl<'bs> VM<'bs> {
         .unwrap();
 
         v.checkpoint();
-        let st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
-        println!("initial qap {:?}", st.this_epoch_qa_power_smoothed);
-        println!("initial qap estimate {}", st.this_epoch_qa_power_smoothed.estimate());
-
         v
     }
 

@@ -1551,7 +1551,6 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        println!("not crazy");
         let curr_epoch = rt.curr_epoch();
         {
             let policy = rt.policy();
@@ -1652,7 +1651,6 @@ impl Actor {
         rt.transaction(|state: &mut State, rt| {
             // Aggregate fee applies only when batching.
             if params.sectors.len() > 1 {
-                println!("trying to do aggregate fee with sector len {}", params.sectors.len());
                 let aggregate_fee = aggregate_pre_commit_network_fee(params.sectors.len() as i64, &rt.base_fee());
                 // AggregateFee applied to fee debt to consolidate burn with outstanding debts
                 state.apply_penalty(&aggregate_fee)
@@ -1676,7 +1674,6 @@ impl Actor {
                         e
                     )
                 })?;
-            println!("burn for some reason");
             fee_to_burn = repay_debts_or_abort(rt, state)?;
 
             let info = get_miner_info(rt.store(), state)?;
@@ -1750,7 +1747,6 @@ impl Actor {
             if available_balance < total_deposit_required {
                 return Err(actor_error!(insufficient_funds, "insufficient funds {} for pre-commit deposit: {}", available_balance, total_deposit_required));
             }
-            println!("PCD {}", total_deposit_required);
             state.add_pre_commit_deposit(&total_deposit_required)
                 .map_err(|e|
                     actor_error!(
@@ -3424,11 +3420,6 @@ where
         let result = state.advance_deadline(policy, rt.store(), rt.curr_epoch()).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to advance deadline")
         })?;
-        println!("previous faulty power: {}", result.previously_faulty_power.qa);
-        println!("reward {}", reward_smoothed.estimate());
-        println!("qap {}", quality_adj_power_smoothed.estimate());
-        println!("qap raw {:?}", quality_adj_power_smoothed);
-
 
         // Faults detected by this missed PoSt pay no penalty, but sectors that were already faulty
         // and remain faulty through this deadline pay the fault fee.
@@ -3437,7 +3428,6 @@ where
             quality_adj_power_smoothed,
             &result.previously_faulty_power.qa,
         );
-        println!("fault penalty {}", penalty_target);
 
         power_delta_total += &result.power_delta;
         pledge_delta_total += &result.pledge_delta;
@@ -3475,7 +3465,6 @@ where
 
     // Remove power for new faults, and burn penalties.
     request_update_power(rt, power_delta_total)?;
-    println!("burning {}", penalty_total);
     burn_funds(rt, penalty_total)?;
     notify_pledge_changed(rt, &pledge_delta_total)?;
 
