@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
+use fil_actor_init::testing::check_state_invariants;
 use fil_actor_init::{
     Actor as InitActor, ConstructorParams, ExecParams, ExecReturn, Method, State,
 };
+use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     ActorError, Multimap, FIRST_NON_SINGLETON_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -15,6 +17,11 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use serde::Serialize;
+
+fn check_state(rt: &MockRuntime) {
+    let (_, acc) = check_state_invariants(&rt.get_state(), rt.store());
+    acc.assert_empty();
+}
 
 fn construct_runtime() -> MockRuntime {
     MockRuntime {
@@ -37,6 +44,7 @@ fn abort_cant_call_exec() {
     let err =
         exec_and_verify(&mut rt, *POWER_ACTOR_CODE_ID, &"").expect_err("Exec should have failed");
     assert_eq!(err.exit_code(), ExitCode::USR_FORBIDDEN);
+    check_state(&rt);
 }
 
 #[test]
@@ -87,6 +95,7 @@ fn create_2_payment_channels() {
             .expect("Address should be able to be resolved");
 
         assert_eq!(returned_address, expected_id_addr, "Wrong Address returned");
+        check_state(&rt);
     }
 }
 
@@ -135,6 +144,7 @@ fn create_storage_miner() {
 
     let returned_address = state.resolve_address(&rt.store, &unknown_addr).unwrap();
     assert_eq!(returned_address, None, "Addresses should have not been found");
+    check_state(&rt);
 }
 
 #[test]
@@ -171,6 +181,7 @@ fn create_multisig_actor() {
     let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
+    check_state(&rt);
 }
 
 #[test]
@@ -215,6 +226,7 @@ fn sending_constructor_failure() {
 
     let returned_address = state.resolve_address(&rt.store, &unique_address).unwrap();
     assert_eq!(returned_address, None, "Addresses should have not been found");
+    check_state(&rt);
 }
 
 fn construct_and_verify(rt: &mut MockRuntime) {
@@ -235,6 +247,7 @@ fn construct_and_verify(rt: &mut MockRuntime) {
     assert_eq!(empty_map.unwrap(), state_data.address_map);
     assert_eq!(FIRST_NON_SINGLETON_ADDR, state_data.next_id);
     assert_eq!("mock".to_string(), state_data.network_name);
+    check_state(rt);
 }
 
 fn exec_and_verify<S: Serialize>(
@@ -253,5 +266,6 @@ where
         rt.call::<InitActor>(Method::Exec as u64, &RawBytes::serialize(&exec_params).unwrap());
 
     rt.verify();
+    check_state(rt);
     ret
 }
