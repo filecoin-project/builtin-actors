@@ -44,6 +44,7 @@ pub mod ext;
 pub mod policy;
 // export for testing
 mod state;
+pub mod testing;
 mod types;
 
 #[cfg(feature = "fil-actor")]
