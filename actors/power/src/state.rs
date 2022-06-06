@@ -88,10 +88,10 @@ impl State {
         Ok(State {
             cron_event_queue: empty_mmap,
             claims: empty_map,
-            this_epoch_qa_power_smoothed: FilterEstimate {
-                position: INITIAL_QA_POWER_ESTIMATE_POSITION.clone(),
-                velocity: INITIAL_QA_POWER_ESTIMATE_VELOCITY.clone(),
-            },
+            this_epoch_qa_power_smoothed: FilterEstimate::new(
+                INITIAL_QA_POWER_ESTIMATE_POSITION.clone(),
+                INITIAL_QA_POWER_ESTIMATE_VELOCITY.clone(),
+            ),
             ..Default::default()
         })
     }
