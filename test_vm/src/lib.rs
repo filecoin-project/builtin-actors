@@ -18,9 +18,9 @@ use fil_actors_runtime::runtime::{
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -477,15 +477,10 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         };
         let mut msg = self.msg.clone();
         msg.to = match self.resolve_target(&self.msg.to) {
-            Ok((_, addr)) => addr, // use normalized address in trace 
+            Ok((_, addr)) => addr, // use normalized address in trace
             _ => self.msg.to, // if target resolution fails don't fail whole invoke, just use non normalized
         };
-        InvocationTrace {
-            msg,
-            code,
-            ret,
-            subinvocations: self.subinvocations.take(),
-        }
+        InvocationTrace { msg, code, ret, subinvocations: self.subinvocations.take() }
     }
 
     fn to(&'invocation self) -> Address {
