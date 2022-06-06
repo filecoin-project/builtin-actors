@@ -425,7 +425,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Protocol::Actor | Protocol::ID => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
-                    "cannot create account for address {target} type {protocol}".to_string(),
+                    format!("cannot create account for address {} type {}", target, protocol),
                 ))
             }
             _ => (),
@@ -479,7 +479,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         InvocationTrace { msg, code, ret, subinvocations: self.subinvocations.take() }
     }
 
-    fn to(&'invocation self) -> Address {
+    fn to(&'_ self) -> Address {
         self.resolve_target(&self.msg.to).unwrap().1
     }
 

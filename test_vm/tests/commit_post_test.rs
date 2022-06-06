@@ -144,13 +144,13 @@ fn commit_post_flow_happy_path() {
     .matches(v.take_invocations().last().unwrap());
     // pcd is released ip is added
     let balances = v.get_miner_balance(id_addr);
-    assert!(balances.initial_pledge > TokenAmount::zero());
+    assert!(balances.initial_pledge.is_positive());
     assert!(balances.pre_commit_deposit.is_zero());
 
     // power unproven so network stats are the same
     let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert!(p_st.total_bytes_committed.is_zero());
-    assert!(p_st.total_pledge_collateral > TokenAmount::zero());
+    assert!(p_st.total_pledge_collateral.is_positive());
     let (dline_info, p_idx, v) = advance_to_proving_deadline(v, id_addr, sector_number);
 
     // submit post
@@ -163,7 +163,7 @@ fn commit_post_flow_happy_path() {
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
     submit_windowed_post(&v, worker, id_addr, dline_info, partitions, sector_power.clone());
     let balances = v.get_miner_balance(id_addr);
-    assert!(balances.initial_pledge > TokenAmount::zero());
+    assert!(balances.initial_pledge.is_positive());
     let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(
         sector_power.raw,
@@ -194,7 +194,7 @@ fn create_miner(
             *STORAGE_POWER_ACTOR_ADDR,
             balance,
             PowerMethod::CreateMiner as u64,
-            params.clone(),
+            params,
         )
         .unwrap()
         .ret
