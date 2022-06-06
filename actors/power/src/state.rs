@@ -30,9 +30,9 @@ use super::{CONSENSUS_MINER_MIN_MINERS, CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT
 
 lazy_static! {
     /// genesis power in bytes = 750,000 GiB
-    static ref INITIAL_QA_POWER_ESTIMATE_POSITION: BigInt = BigInt::from(750_000) * (1 << 30);
+    pub static ref INITIAL_QA_POWER_ESTIMATE_POSITION: StoragePower = StoragePower::from(750_000);// * (1 << 30);
     /// max chain throughput in bytes per epoch = 120 ProveCommits / epoch = 3,840 GiB
-    static ref INITIAL_QA_POWER_ESTIMATE_VELOCITY: BigInt = BigInt::from(3_840) * (1 << 30);
+    pub static ref INITIAL_QA_POWER_ESTIMATE_VELOCITY: StoragePower = StoragePower::from(3_840);// * (1 << 30);
 }
 
 /// Storage power actor state
@@ -88,10 +88,10 @@ impl State {
         Ok(State {
             cron_event_queue: empty_mmap,
             claims: empty_map,
-            this_epoch_qa_power_smoothed: FilterEstimate {
-                position: INITIAL_QA_POWER_ESTIMATE_POSITION.clone(),
-                velocity: INITIAL_QA_POWER_ESTIMATE_VELOCITY.clone(),
-            },
+            this_epoch_qa_power_smoothed: FilterEstimate::new(
+                INITIAL_QA_POWER_ESTIMATE_POSITION.clone(),
+                INITIAL_QA_POWER_ESTIMATE_VELOCITY.clone(),
+            ),
             ..Default::default()
         })
     }
