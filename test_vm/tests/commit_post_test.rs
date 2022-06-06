@@ -165,10 +165,7 @@ fn commit_post_flow_happy_path() {
     let balances = v.get_miner_balance(id_addr);
     assert!(balances.initial_pledge.is_positive());
     let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
-    assert_eq!(
-        sector_power.raw,
-        p_st.total_bytes_committed
-    );
+    assert_eq!(sector_power.raw, p_st.total_bytes_committed);
 }
 
 fn create_miner(
