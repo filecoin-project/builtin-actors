@@ -18,6 +18,8 @@ pub struct VerifierParams {
     pub allowance: DataCap,
 }
 
+impl Cbor for VerifierParams {}
+
 pub type AddVerifierParams = VerifierParams;
 
 pub type AddVerifierClientParams = VerifierParams;

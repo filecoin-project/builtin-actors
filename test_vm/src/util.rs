@@ -1,21 +1,32 @@
 use crate::*;
 use fil_actor_cron::Method as CronMethod;
+use fil_actor_market::{
+    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
+    PublishStorageDealsReturn,
+};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, DeadlineInfo, Method as MinerMethod, PoStPartition,
     PowerPair, PreCommitSectorBatchParams, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
     State as MinerState, SubmitWindowedPoStParams,
 };
+use fil_actor_multisig::Method as MultisigMethod;
+use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{
     CreateMinerParams, CreateMinerReturn, Method as PowerMethod, UpdateClaimedPowerParams,
 };
 use fil_actor_reward::Method as RewardMethod;
+use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
+use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
+use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{PoStProof, RegisteredPoStProof, RegisteredSealProof, SectorNumber};
 use fvm_shared::{MethodNum, METHOD_SEND};
+use num_traits::cast::FromPrimitive;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 
@@ -311,4 +322,102 @@ pub fn submit_windowed_post(
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
+    let add_verifier_params = VerifierParams { address: verifier, allowance: data_cap };
+    // root address is msig, send proposal from root key
+    let proposal = ProposeParams {
+        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        value: TokenAmount::zero(),
+        method: VerifregMethod::AddVerifier as u64,
+        params: serialize(&add_verifier_params, "verifreg add verifier params").unwrap(),
+    };
+
+    apply_ok(
+        &v,
+        TEST_VERIFREG_ROOT_SIGNER_ADDR,
+        TEST_VERIFREG_ROOT_ADDR,
+        TokenAmount::zero(),
+        MultisigMethod::Propose as u64,
+        proposal,
+    );
+}
+
+pub fn publish_deal(
+    v: &VM,
+    provider: Address,
+    deal_client: Address,
+    miner_id: Address,
+    deal_label: String,
+    piece_size: PaddedPieceSize,
+    verified_deal: bool,
+    deal_start: ChainEpoch,
+    deal_lifetime: ChainEpoch,
+) -> PublishStorageDealsReturn {
+    let label = Label::String(deal_label.to_string());
+    let deal = DealProposal {
+        piece_cid: make_piece_cid(deal_label.as_bytes()),
+        piece_size,
+        verified_deal,
+        client: deal_client,
+        provider: miner_id,
+        label,
+        start_epoch: deal_start,
+        end_epoch: deal_start + deal_lifetime,
+        storage_price_per_epoch: TokenAmount::from((1 << 20) as u64),
+        provider_collateral: TokenAmount::from(2e18 as u64),
+        client_collateral: TokenAmount::from(1e18 as u64),
+    };
+
+    let publish_params = PublishStorageDealsParams {
+        deals: vec![ClientDealProposal {
+            proposal: deal,
+            client_signature: Signature { sig_type: SignatureType::BLS, bytes: vec![] },
+        }],
+    };
+    let ret: PublishStorageDealsReturn = apply_ok(
+        &v,
+        provider,
+        *STORAGE_MARKET_ACTOR_ADDR,
+        TokenAmount::zero(),
+        MarketMethod::PublishStorageDeals as u64,
+        publish_params,
+    )
+    .deserialize()
+    .unwrap();
+
+    let mut expect_publish_invocs = vec![
+        ExpectInvocation {
+            to: miner_id,
+            method: MinerMethod::ControlAddresses as u64,
+            ..Default::default()
+        },
+        ExpectInvocation {
+            to: *REWARD_ACTOR_ADDR,
+            method: RewardMethod::ThisEpochReward as u64,
+            ..Default::default()
+        },
+        ExpectInvocation {
+            to: *STORAGE_POWER_ACTOR_ADDR,
+            method: PowerMethod::CurrentTotalPower as u64,
+            ..Default::default()
+        },
+    ];
+    if verified_deal {
+        expect_publish_invocs.push(ExpectInvocation {
+            to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+            method: VerifregMethod::UseBytes as u64,
+            ..Default::default()
+        })
+    }
+    ExpectInvocation {
+        to: *STORAGE_MARKET_ACTOR_ADDR,
+        method: MarketMethod::PublishStorageDeals as u64,
+        subinvocs: Some(expect_publish_invocs),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+
+    ret
 }

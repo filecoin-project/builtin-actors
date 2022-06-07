@@ -71,7 +71,9 @@ pub struct MinerBalances {
     pub pre_commit_deposit: TokenAmount,
 }
 
-pub const VERIFREG_ROOT_KEY_ADDR: Address = Address::new_id(80);
+pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
+pub const TEST_VERIFREG_ROOT_SIGNER_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
+pub const TEST_VERIFREG_ROOT_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 1);
 // Account actor seeding funds created by new_with_singletons
 pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
 pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
@@ -155,14 +157,48 @@ impl<'bs> VM<'bs> {
         );
 
         // verifreg
-        // initialize verifreg root key
-        let verifreg_root_key_head = v.put_store(&AccountState { address: VERIFREG_ROOT_KEY_ADDR });
-        v.set_actor(
-            VERIFREG_ROOT_KEY_ADDR,
-            actor(*ACCOUNT_ACTOR_CODE_ID, verifreg_root_key_head, 0, TokenAmount::from(100)),
-        );
-        let verifreg_head =
-            v.put_store(&VerifRegState::new(&v.store, VERIFREG_ROOT_KEY_ADDR).unwrap());
+        // initialize verifreg root signer
+        v.apply_message(
+            *INIT_ACTOR_ADDR,
+            Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
+            TokenAmount::zero(),
+            METHOD_SEND,
+            RawBytes::default(),
+        )
+        .unwrap();
+        let verifreg_root_signer =
+            v.normalize_address(&Address::new_bls(VERIFREG_ROOT_KEY).unwrap()).unwrap();
+        assert_eq!(TEST_VERIFREG_ROOT_SIGNER_ADDR, verifreg_root_signer);
+        // verifreg root msig
+        let msig_ctor_params = serialize(
+            &fil_actor_multisig::ConstructorParams {
+                signers: vec![verifreg_root_signer],
+                num_approvals_threshold: 1,
+                unlock_duration: 0,
+                start_epoch: 0,
+            },
+            "multisig ctor params",
+        )
+        .unwrap();
+        let msig_ctor_ret: ExecReturn = v
+            .apply_message(
+                *SYSTEM_ACTOR_ADDR,
+                *INIT_ACTOR_ADDR,
+                BigInt::zero(),
+                fil_actor_init::Method::Exec as u64,
+                fil_actor_init::ExecParams {
+                    code_cid: *MULTISIG_ACTOR_CODE_ID,
+                    constructor_params: msig_ctor_params,
+                },
+            )
+            .unwrap()
+            .ret
+            .deserialize()
+            .unwrap();
+        let root_msig_addr = msig_ctor_ret.id_address;
+        assert_eq!(TEST_VERIFREG_ROOT_ADDR, root_msig_addr);
+        // verifreg
+        let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
             *VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero()),
@@ -373,6 +409,7 @@ impl MessageInfo for InvocationCtx<'_, '_> {
 }
 
 pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
+pub const TEST_VM_INVALID_SIG: &str = "i_am_invalid";
 
 pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation VM<'bs>,
@@ -757,11 +794,12 @@ impl Primitives for VM<'_> {
         _signer: &Address,
         plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        if signature.bytes.eq(plaintext) {
-            return Ok(());
+        if String::from_utf8(signature.bytes.clone()).unwrap() == TEST_VM_INVALID_SIG {
+            return Err(anyhow::format_err!(
+                "verify signature syscall failing on TEST_VM_INVALID_SIG"
+            ));
         }
-
-        Err(anyhow!("plaintext should match sigbytes"))
+        Ok(())
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
