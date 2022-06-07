@@ -160,7 +160,7 @@ mod sector_number_allocation {
         let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
         h.allocate(&[1, 2, 3]).unwrap();
         h.allocate(&[4, 5, 6]).unwrap();
-        h.expect(&new_bitfield(&[1, 2, 3, 4, 5, 6]));
+        h.expect(&bitfield_from_slice(&[1, 2, 3, 4, 5, 6]));
     }
 
     #[test]
@@ -169,7 +169,7 @@ mod sector_number_allocation {
         let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
         h.allocate(&[1]).unwrap();
         assert!(h.allocate(&[1]).is_err());
-        h.expect(&new_bitfield(&[1]));
+        h.expect(&bitfield_from_slice(&[1]));
     }
 
     #[test]
@@ -178,7 +178,7 @@ mod sector_number_allocation {
         let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
         h.allocate(&[1, 2, 3]).unwrap();
         assert!(h.allocate(&[3, 4, 5]).is_err());
-        h.expect(&new_bitfield(&[1, 2, 3]));
+        h.expect(&bitfield_from_slice(&[1, 2, 3]));
     }
 
     #[test]
@@ -187,13 +187,13 @@ mod sector_number_allocation {
         let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
         h.allocate(&[1]).unwrap();
 
-        h.mask(&new_bitfield(&[0, 1, 2, 3])).unwrap();
-        h.expect(&new_bitfield(&[0, 1, 2, 3]));
+        h.mask(&bitfield_from_slice(&[0, 1, 2, 3])).unwrap();
+        h.expect(&bitfield_from_slice(&[0, 1, 2, 3]));
 
         assert!(h.allocate(&[0]).is_err());
         assert!(h.allocate(&[3]).is_err());
         h.allocate(&[4]).unwrap();
-        h.expect(&new_bitfield(&[0, 1, 2, 3, 4]));
+        h.expect(&bitfield_from_slice(&[0, 1, 2, 3, 4]));
     }
 
     #[test]
@@ -203,7 +203,7 @@ mod sector_number_allocation {
 
         h.allocate(&[0]).unwrap();
         h.allocate(&[MAX_SECTOR_NUMBER]).unwrap();
-        h.expect(&new_bitfield(&[0, MAX_SECTOR_NUMBER]));
+        h.expect(&bitfield_from_slice(&[0, MAX_SECTOR_NUMBER]));
     }
 
     #[test]
@@ -211,9 +211,9 @@ mod sector_number_allocation {
         let policy = Policy::default();
         let mut h = StateHarness::new_with_policy(&policy, PERIOD_OFFSET);
 
-        h.mask(&new_bitfield(&[0])).unwrap();
-        h.mask(&new_bitfield(&[MAX_SECTOR_NUMBER])).unwrap();
-        h.expect(&new_bitfield(&[0, MAX_SECTOR_NUMBER]));
+        h.mask(&bitfield_from_slice(&[0])).unwrap();
+        h.mask(&bitfield_from_slice(&[MAX_SECTOR_NUMBER])).unwrap();
+        h.expect(&bitfield_from_slice(&[0, MAX_SECTOR_NUMBER]));
     }
 
     #[test]

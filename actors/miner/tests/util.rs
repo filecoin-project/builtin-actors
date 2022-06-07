@@ -3539,10 +3539,6 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
 // All methods take the state by value so one can (and should) construct a
 // sane base-state.
 
-pub fn new_bitfield(sector_numbers: &[u64]) -> BitField {
-    BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
-}
-
 pub struct ExpectedDeadlineState {
     pub quant: QuantSpec,
     #[allow(dead_code)]
@@ -3585,31 +3581,31 @@ impl ExpectedDeadlineState {
 
     #[allow(dead_code)]
     pub fn with_faults(mut self, faults: &[u64]) -> Self {
-        self.faults = new_bitfield(faults);
+        self.faults = bitfield_from_slice(faults);
         self
     }
 
     #[allow(dead_code)]
     pub fn with_recovering(mut self, recovering: &[u64]) -> Self {
-        self.recovering = new_bitfield(recovering);
+        self.recovering = bitfield_from_slice(recovering);
         self
     }
 
     #[allow(dead_code)]
     pub fn with_terminations(mut self, terminations: &[u64]) -> Self {
-        self.terminations = new_bitfield(terminations);
+        self.terminations = bitfield_from_slice(terminations);
         self
     }
 
     #[allow(dead_code)]
     pub fn with_unproven(mut self, unproven: &[u64]) -> Self {
-        self.unproven = new_bitfield(unproven);
+        self.unproven = bitfield_from_slice(unproven);
         self
     }
 
     #[allow(dead_code)]
     pub fn with_posts(mut self, posts: &[u64]) -> Self {
-        self.posts = new_bitfield(posts);
+        self.posts = bitfield_from_slice(posts);
         self
     }
 
