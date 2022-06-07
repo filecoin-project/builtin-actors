@@ -16,6 +16,7 @@ use fil_actors_runtime::{actor_error, ActorError};
 pub use self::state::State;
 
 mod state;
+pub mod testing;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
