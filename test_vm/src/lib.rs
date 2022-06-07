@@ -16,7 +16,7 @@ use fil_actors_runtime::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier,
 };
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{test_utils::*, Map};
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -256,6 +256,24 @@ impl<'bs> VM<'bs> {
         *self.state_root.borrow()
     }
 
+    pub fn with_epoch(&self, epoch: ChainEpoch) -> Self {
+        let _ = self.checkpoint();
+
+        let mut actors: Hamt<&MemoryBlockstore, Cid> = Map::new(self.store);
+        actors.set_root(&self.state_root.take()).unwrap();
+
+        return Self {
+            store: self.store,
+            state_root: self.state_root.clone(),
+            actors_dirty: RefCell::new(false),
+            actors_cache: todo!("actors should be RefCell<HashMap<Address, Actors>>"),
+            empty_obj_cid: self.empty_obj_cid,
+            network_version: self.network_version,
+            curr_epoch: epoch,
+            invocations: self.invocations,
+        };
+    }
+
     pub fn rollback(&self, root: Cid) {
         self.actors_cache.replace(HashMap::new());
         self.state_root.replace(root);
@@ -339,6 +357,10 @@ impl<'bs> VM<'bs> {
 
     pub fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
+    }
+
+    pub fn params_for_invocation(&mut self, idxs: Vec<usize>) -> RawBytes {
+        todo!("the current implementation of this function may be a nightmare to implement in rust")
     }
 }
 #[derive(Clone)]
@@ -857,6 +879,7 @@ pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
     Actor { code, head, call_seq_num: seq, balance: bal }
 }
 
+#[derive(Clone)]
 pub struct InvocationTrace {
     pub msg: InternalMessage,
     pub code: Option<ExitCode>,

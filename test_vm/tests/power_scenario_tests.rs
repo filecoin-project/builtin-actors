@@ -1,10 +1,13 @@
 use fil_actor_init::Method as InitMethod;
+use fil_actor_miner::ext::power::EnrollCronEventParams;
 use fil_actor_miner::{Method as MinerMethod, MinerConstructorParams, PreCommitSectorParams};
-use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
+use fil_actor_power::{
+    CreateMinerParams, CreateMinerReturn, EnrollCronEventParams, Method as PowerMethod,
+};
 use fil_actors_runtime::cbor::serialize;
 
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
+use fil_actors_runtime::{CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
@@ -12,6 +15,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
+use num_traits::Zero;
 use test_vm::util::create_accounts;
 use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
@@ -99,9 +103,9 @@ fn create_miner() {
 #[test]
 fn test_cron_tick() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let mut vm = VM::new_with_singletons(&store);
 
-    let addrs = create_accounts(&v, 1, BigInt::from(10_000u64) * BigInt::from(10u64.pow(18)));
+    let addrs = create_accounts(&vm, 1, BigInt::from(10_000u64) * BigInt::from(10u64.pow(18)));
 
     // create a miner
     let miner_balance = BigInt::from(10_000u64) * BigInt::from(10u64.pow(18));
@@ -113,7 +117,7 @@ fn test_cron_tick() {
         peer: String::from("pid").into_bytes(),
         multiaddrs: vec![],
     };
-    let ret = v
+    let ret = vm
         .apply_message(
             addrs[0],
             addrs[0],
@@ -134,12 +138,12 @@ fn test_cron_tick() {
         seal_proof,
         sector_number,
         sealed_cid,
-        seal_rand_epoch: v.get_epoch() - 1,
+        seal_rand_epoch: vm.get_epoch() - 1,
         deal_ids: vec![],
-        expiration: v.get_epoch(), // todo
+        expiration: vm.get_epoch(), // todo
         ..Default::default()
     };
-    v.apply_message(
+    vm.apply_message(
         addrs[0],
         miner_addrs.robust_address,
         TokenAmount::from(0),
@@ -149,4 +153,18 @@ fn test_cron_tick() {
     .unwrap();
 
     // find epoch of miner's next cron task (precommit:1, enrollCron:2)
+    let cron_params = vm.params_for_invocation(vec![1, 2]);
+    let cron_config: EnrollCronEventParams = cron_params.deserialize().unwrap();
+
+    // create new vm at epoch 1 less than epoch requested by miner
+    let v = vm.with_epoch(cron_config.event_epoch - 1);
+
+    vm.apply_message(
+        *CRON_ACTOR_ADDR,
+        *STORAGE_POWER_ACTOR_ADDR,
+        BigInt::zero(),
+        PowerMethod::EnrollCronEvent as u64,
+        // abi.Empty?
+        RawBytes::new(vec![]),
+    );
 }
