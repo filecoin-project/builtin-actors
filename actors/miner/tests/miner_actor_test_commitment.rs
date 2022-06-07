@@ -297,7 +297,7 @@ mod miner_actor_test_commitment {
         {
             let mut precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
-            precommit_params.sealed_cid = make_cid("Random Data".as_bytes(), 0);
+            precommit_params.sealed_cid = make_cid_poseidon("Random Data".as_bytes(), 0);
             let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,

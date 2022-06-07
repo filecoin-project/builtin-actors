@@ -1,8 +1,10 @@
+use fil_actor_multisig::testing::check_state_invariants;
 use fil_actor_multisig::{
     compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeReturn, State,
     Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
 };
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::tuple::*;
@@ -24,6 +26,11 @@ fn construct_runtime(receiver: Address) -> MockRuntime {
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
+}
+
+fn check_state(rt: &MockRuntime) {
+    let (_, acc) = check_state_invariants(&rt.get_state(), rt.store());
+    acc.assert_empty();
 }
 
 // Constructor
@@ -64,6 +71,7 @@ mod constructor_tests {
         assert_eq!(200, st.unlock_duration);
         assert_eq!(100, st.start_epoch);
         h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
     }
 
     #[test]
@@ -92,6 +100,7 @@ mod constructor_tests {
             )
             .unwrap();
         assert_eq!(ret, RawBytes::default());
+        check_state(&rt);
     }
 
     #[test]
@@ -123,6 +132,7 @@ mod constructor_tests {
         assert_eq!(100, st.unlock_duration);
         assert_eq!(1234, st.start_epoch);
         h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
     }
 
     #[test]
@@ -320,9 +330,9 @@ mod vesting_tests {
             RawBytes::default(),
             ExitCode::OK,
         );
-        assert_eq!(RawBytes::default(), h.approve_ok(&mut rt, TxnID(0), proposal_hash))
+        assert_eq!(RawBytes::default(), h.approve_ok(&mut rt, TxnID(0), proposal_hash));
 
-        // h.check_state()
+        check_state(&rt);
     }
 
     #[test]
@@ -356,7 +366,7 @@ mod vesting_tests {
         );
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
 
-        // h.check_state()
+        check_state(&rt);
     }
 
     #[test]
@@ -393,7 +403,7 @@ mod vesting_tests {
         );
         h.propose_ok(&mut rt, DARLENE, amount_out, METHOD_SEND, RawBytes::default());
 
-        // h.check_state()
+        check_state(&rt);
     }
 
     #[test]
@@ -417,6 +427,7 @@ mod vesting_tests {
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION / 10);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, BOB);
         expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&mut rt, TxnID(0), proposal_hash));
+        check_state(&rt);
     }
 
     #[test]
@@ -491,6 +502,7 @@ mod vesting_tests {
             ExitCode::OK,
         );
         h.propose_ok(&mut rt, ANNE, locked_balance, METHOD_SEND, RawBytes::default());
+        check_state(&rt);
     }
 
     #[test]
@@ -512,6 +524,7 @@ mod vesting_tests {
             RawBytes::default(),
             ExitCode::OK,
         );
+        check_state(&rt);
     }
 
     #[test]
@@ -545,7 +558,8 @@ mod vesting_tests {
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
             h.propose(&mut rt, BOB, send_amount, METHOD_SEND, RawBytes::default()),
-        )
+        );
+        check_state(&rt);
     }
 }
 
@@ -577,6 +591,7 @@ fn test_simple_propose() {
     };
     let expect_txns = vec![(TxnID(0), txn0)];
     h.assert_transactions(&rt, expect_txns);
+    check_state(&rt);
 }
 
 #[test]
@@ -610,6 +625,7 @@ fn test_propose_with_threshold_met() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
     h.propose_ok(&mut rt, chuck, send_value, METHOD_SEND, fake_params);
     h.assert_transactions(&rt, vec![]);
+    check_state(&rt);
 }
 
 #[test]
@@ -665,6 +681,7 @@ fn test_propose_with_threshold_and_non_empty_return_value() {
     assert_eq!(TxnID(0), ret.txn_id);
     assert_eq!(ExitCode::OK, ret.code);
     assert_eq!(inner_ret_bytes, ret.ret);
+    check_state(&rt);
 }
 
 #[test]
@@ -694,6 +711,7 @@ fn test_fail_propose_with_threshold_met_and_insufficient_balance() {
     );
     rt.reset();
     h.assert_transactions(&rt, vec![]);
+    check_state(&rt);
 }
 
 #[test]
@@ -726,6 +744,7 @@ fn test_fail_propose_from_non_signer() {
 
     rt.reset();
     h.assert_transactions(&rt, vec![]);
+    check_state(&rt);
 }
 
 // AddSigner
@@ -831,6 +850,7 @@ fn test_add_signer() {
             }
             _ => expect_abort(tc.code, h.add_signer(&mut rt, tc.add_signer, tc.increase)),
         }
+        check_state(&rt);
     }
 }
 
@@ -975,6 +995,7 @@ fn test_remove_signer() {
             ),
         }
         rt.verify();
+        check_state(&rt);
     }
 }
 
@@ -1086,6 +1107,7 @@ fn test_signer_swap() {
                 ret.expect_err("swap signer return expected to be actor error").exit_code()
             ),
         };
+        check_state(&rt);
     }
 }
 
@@ -1148,7 +1170,8 @@ fn test_swap_signer_removes_approvals() {
                 },
             ),
         ],
-    )
+    );
+    check_state(&rt);
 }
 
 #[test]
@@ -1172,6 +1195,7 @@ fn test_swap_signer_deletes_solo_proposals() {
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
     h.swap_signers(&mut rt, anne, darlene).unwrap();
     h.assert_transactions(&rt, vec![]);
+    check_state(&rt);
 }
 
 #[test]
@@ -1232,7 +1256,8 @@ fn test_remove_signer_removes_approvals() {
                 },
             ),
         ],
-    )
+    );
+    check_state(&rt);
 }
 
 #[test]
@@ -1257,6 +1282,7 @@ fn remove_signer_deletes_solo_proposals() {
 
     // Tx is gone
     h.assert_transactions(&rt, vec![]);
+    check_state(&rt);
 }
 
 // Approve
@@ -1300,6 +1326,7 @@ mod approval_tests {
         rt.expect_send(chuck, fake_method, fake_params, send_value, fake_ret, ExitCode::OK);
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
         h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
     }
 
     #[test]
@@ -1328,6 +1355,7 @@ mod approval_tests {
         let ret = h.approve_ok(&mut rt, TxnID(0), proposal_hash);
         assert_eq!(fake_ret, ret);
         h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
     }
 
     #[test]
@@ -1376,6 +1404,7 @@ mod approval_tests {
         );
 
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        check_state(&rt);
     }
 
     #[test]
@@ -1413,6 +1442,7 @@ mod approval_tests {
                 },
             )],
         );
+        check_state(&rt);
     }
     #[test]
     fn fail_approval_if_not_enough_unlocked_balance_available() {
@@ -1450,7 +1480,8 @@ mod approval_tests {
         );
         rt.set_epoch(start_epoch + unlock_duration / 2);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&mut rt, TxnID(0), proposal_hash))
+        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&mut rt, TxnID(0), proposal_hash));
+        check_state(&rt);
     }
 
     #[test]
@@ -1484,6 +1515,7 @@ mod approval_tests {
         .unwrap();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.approve(&mut rt, TxnID(0), bad_hash));
+        check_state(&rt);
     }
 
     #[test]
@@ -1519,6 +1551,7 @@ mod approval_tests {
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
             .unwrap();
         rt.verify();
+        check_state(&rt);
     }
 
     #[test]
@@ -1557,6 +1590,7 @@ mod approval_tests {
                 },
             )],
         );
+        check_state(&rt);
     }
 
     #[test]
@@ -1579,6 +1613,7 @@ mod approval_tests {
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
             .expect_err("should fail on approve of non existent tx id");
         rt.verify();
+        check_state(&rt);
     }
 
     #[test]
@@ -1617,7 +1652,8 @@ mod approval_tests {
                     approved: vec![anne],
                 },
             )],
-        )
+        );
+        check_state(&rt);
     }
 
     #[test]
@@ -1657,6 +1693,7 @@ mod approval_tests {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
         h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
     }
 
     #[test]
@@ -1700,6 +1737,7 @@ mod approval_tests {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
         h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
     }
 
     #[test]
@@ -1747,6 +1785,7 @@ mod approval_tests {
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
 
         h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
     }
 }
 
@@ -1780,6 +1819,7 @@ mod cancel_tests {
 
         // tx should be removed from actor state
         h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
     }
 
     #[test]
@@ -1807,6 +1847,7 @@ mod cancel_tests {
 
         // tx should be removed from actor state after cancel
         h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
     }
 
     #[test]
@@ -1848,6 +1889,7 @@ mod cancel_tests {
                 },
             )],
         );
+        check_state(&rt);
     }
 
     #[test]
@@ -1888,6 +1930,7 @@ mod cancel_tests {
                 },
             )],
         );
+        check_state(&rt);
     }
 
     #[test]
@@ -1929,6 +1972,7 @@ mod cancel_tests {
                 },
             )],
         );
+        check_state(&rt);
     }
 
     #[test]
@@ -1984,6 +2028,7 @@ mod cancel_tests {
         //bob can cancel the tx
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
         h.cancel(&mut rt, TxnID(0), new_proposal_hash).unwrap();
+        check_state(&rt);
     }
 }
 
@@ -2055,6 +2100,7 @@ mod change_threshold_tests {
                 }
             }
             rt.verify();
+            check_state(&rt);
         }
     }
 
@@ -2096,6 +2142,7 @@ mod change_threshold_tests {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
         h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
     }
 }
 
@@ -2181,6 +2228,7 @@ mod lock_balance_tests {
             ExitCode::OK,
         );
         h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
+        check_state(&rt);
     }
 
     #[test]
@@ -2257,6 +2305,7 @@ mod lock_balance_tests {
             ExitCode::OK,
         );
         h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
+        check_state(&rt);
     }
 
     #[test]
@@ -2295,7 +2344,8 @@ mod lock_balance_tests {
             ExitCode::USR_FORBIDDEN,
             h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount - TokenAmount::from(1)),
         );
-        rt.reset()
+        rt.reset();
+        check_state(&rt);
     }
 
     #[test]
@@ -2317,6 +2367,7 @@ mod lock_balance_tests {
             h.lock_balance(&mut rt, start_epoch - 1, unlock_duration, TokenAmount::zero()),
         );
         rt.reset();
+        check_state(&rt);
     }
 
     #[test]
@@ -2345,5 +2396,6 @@ mod lock_balance_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.lock_balance(&mut rt, vest_start, vest_duration, TokenAmount::from(-1i32)),
         );
+        check_state(&rt);
     }
 }

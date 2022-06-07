@@ -4,8 +4,6 @@
 use core::fmt;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::fmt::Display;
-use std::rc::Rc;
 
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
@@ -148,8 +146,8 @@ pub struct Expectations {
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
-    pub expect_get_randomness_tickets: Option<ExpectRandomness>,
-    pub expect_get_randomness_beacon: Option<ExpectRandomness>,
+    pub expect_get_randomness_tickets: VecDeque<ExpectRandomness>,
+    pub expect_get_randomness_beacon: VecDeque<ExpectRandomness>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
@@ -214,12 +212,12 @@ impl Expectations {
             self.expect_verify_consensus_fault
         );
         assert!(
-            self.expect_get_randomness_tickets.is_none(),
+            self.expect_get_randomness_tickets.is_empty(),
             "expect_get_randomness_tickets {:?}, not received",
             self.expect_get_randomness_tickets
         );
         assert!(
-            self.expect_get_randomness_beacon.is_none(),
+            self.expect_get_randomness_beacon.is_empty(),
             "expect_get_randomness_beacon {:?}, not received",
             self.expect_get_randomness_beacon
         );
@@ -587,7 +585,7 @@ impl MockRuntime {
         out: Randomness,
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_randomness_tickets = Some(a);
+        self.expectations.borrow_mut().expect_get_randomness_tickets.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -599,7 +597,7 @@ impl MockRuntime {
         out: Randomness,
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_randomness_beacon = Some(a);
+        self.expectations.borrow_mut().expect_get_randomness_beacon.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -785,7 +783,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             .expectations
             .borrow_mut()
             .expect_get_randomness_tickets
-            .take()
+            .pop_front()
             .expect("unexpected call to get_randomness_from_tickets");
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
@@ -818,7 +816,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             .expectations
             .borrow_mut()
             .expect_get_randomness_beacon
-            .take()
+            .pop_front()
             .expect("unexpected call to get_randomness_from_beacon");
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
@@ -1229,17 +1227,25 @@ enum MhCode {
     Sha256TruncPaddedFake,
 }
 
-pub fn make_cid(input: &[u8], prefix: u64) -> Cid {
-    let hash = MhCode::Sha256TruncPaddedFake.digest(input);
+fn make_cid(input: &[u8], prefix: u64, hash: MhCode) -> Cid {
+    let hash = hash.digest(input);
     Cid::new_v1(prefix, hash)
 }
 
+pub fn make_cid_sha(input: &[u8], prefix: u64) -> Cid {
+    make_cid(input, prefix, MhCode::Sha256TruncPaddedFake)
+}
+
+pub fn make_cid_poseidon(input: &[u8], prefix: u64) -> Cid {
+    make_cid(input, prefix, MhCode::PoseidonFake)
+}
+
 pub fn make_piece_cid(input: &[u8]) -> Cid {
-    make_cid(input, FIL_COMMITMENT_UNSEALED)
+    make_cid_sha(input, FIL_COMMITMENT_UNSEALED)
 }
 
 pub fn make_sealed_cid(input: &[u8]) -> Cid {
-    make_cid(input, FIL_COMMITMENT_SEALED)
+    make_cid_poseidon(input, FIL_COMMITMENT_SEALED)
 }
 
 pub fn new_bls_addr(s: u8) -> Address {
@@ -1248,135 +1254,4 @@ pub fn new_bls_addr(s: u8) -> Address {
     let mut key = [0u8; 48];
     rng.fill_bytes(&mut key);
     Address::new_bls(&key).unwrap()
-}
-
-/// Accumulates a sequence of messages (e.g. validation failures).
-#[derive(Default)]
-pub struct MessageAccumulator {
-    /// Accumulated messages.
-    /// This is a `Rc<RefCell>` to support accumulators derived from `with_prefix()` accumulating to
-    /// the same underlying collection.
-    msgs: Rc<RefCell<Vec<String>>>,
-    /// Optional prefix to all new messages, e.g. describing higher level context.
-    prefix: String,
-}
-
-impl MessageAccumulator {
-    /// Returns a new accumulator backed by the same collection, that will prefix each new message with
-    /// a formatted string.
-    pub fn with_prefix(&self, prefix: &str) -> Self {
-        MessageAccumulator { msgs: self.msgs.clone(), prefix: self.prefix.to_owned() + prefix }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.msgs.borrow().is_empty()
-    }
-
-    /// Returns the number of accumulated messages
-    pub fn len(&self) -> usize {
-        self.msgs.borrow().len()
-    }
-
-    pub fn messages(&self) -> Vec<String> {
-        self.msgs.borrow().to_owned()
-    }
-
-    /// Adds a message to the accumulator
-    pub fn add(&self, msg: &str) {
-        self.msgs.borrow_mut().push(format!("{}{msg}", self.prefix));
-    }
-
-    /// Adds messages from another accumulator to this one
-    pub fn add_all(&self, other: &Self) {
-        self.msgs.borrow_mut().extend_from_slice(&other.msgs.borrow());
-    }
-
-    /// Adds a message if predicate is false
-    pub fn require(&self, predicate: bool, msg: &str) {
-        if !predicate {
-            self.add(msg);
-        }
-    }
-
-    /// Adds a message if result is `Err`. Underlying error must be `Display`.
-    pub fn require_no_error<V, E: Display>(&self, result: Result<V, E>, msg: &str) {
-        if let Err(e) = result {
-            self.add(&format!("{msg}: {e}"));
-        }
-    }
-}
-
-#[cfg(test)]
-mod message_accumulator_test {
-    use super::*;
-
-    #[test]
-    fn adds_messages() {
-        let acc = MessageAccumulator::default();
-        acc.add("Cthulhu");
-        assert_eq!(acc.len(), 1);
-
-        let msgs = acc.messages();
-        assert_eq!(msgs, vec!["Cthulhu"]);
-
-        acc.add("Azathoth");
-        assert_eq!(acc.len(), 2);
-
-        let msgs = acc.messages();
-        assert_eq!(msgs, vec!["Cthulhu", "Azathoth"]);
-    }
-
-    #[test]
-    fn adds_on_predicate() {
-        let acc = MessageAccumulator::default();
-        acc.require(true, "Cthulhu");
-
-        assert_eq!(acc.len(), 0);
-        assert!(acc.is_empty());
-
-        acc.require(false, "Azathoth");
-        let msgs = acc.messages();
-        assert_eq!(acc.len(), 1);
-        assert_eq!(msgs, vec!["Azathoth"]);
-        assert!(!acc.is_empty());
-    }
-
-    #[test]
-    fn require_no_error() {
-        let fiasco: Result<(), String> = Err("fiasco".to_owned());
-        let acc = MessageAccumulator::default();
-        acc.require_no_error(fiasco, "Cthulhu says");
-
-        let msgs = acc.messages();
-        assert_eq!(acc.len(), 1);
-        assert_eq!(msgs, vec!["Cthulhu says: fiasco"]);
-    }
-
-    #[test]
-    fn prefixes() {
-        let acc = MessageAccumulator::default();
-        acc.add("peasant");
-
-        let gods_acc = acc.with_prefix("elder god -> ");
-        gods_acc.add("Cthulhu");
-
-        assert_eq!(acc.messages(), vec!["peasant", "elder god -> Cthulhu"]);
-        assert_eq!(gods_acc.messages(), vec!["peasant", "elder god -> Cthulhu"]);
-    }
-
-    #[test]
-    fn add_all() {
-        let acc1 = MessageAccumulator::default();
-        acc1.add("Cthulhu");
-
-        let acc2 = MessageAccumulator::default();
-        acc2.add("Azathoth");
-
-        let acc3 = MessageAccumulator::default();
-        acc3.add_all(&acc1);
-        acc3.add_all(&acc2);
-
-        assert_eq!(2, acc3.len());
-        assert_eq!(acc3.messages(), vec!["Cthulhu", "Azathoth"]);
-    }
 }

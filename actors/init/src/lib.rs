@@ -17,6 +17,7 @@ pub use self::state::State;
 pub use self::types::*;
 
 mod state;
+pub mod testing;
 mod types;
 
 #[cfg(feature = "fil-actor")]

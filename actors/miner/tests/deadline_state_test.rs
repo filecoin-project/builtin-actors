@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
+use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
     power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, SectorOnChainInfo,
     TerminationResult,
 };
 use fil_actors_runtime::runtime::{Policy, Runtime};
-use fil_actors_runtime::test_utils::{MessageAccumulator, MockRuntime};
+use fil_actors_runtime::test_utils::MockRuntime;
 use fil_actors_runtime::ActorError;
+use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -1327,7 +1329,7 @@ impl ExpectedDeadlineState {
             &acc,
         );
 
-        assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+        acc.assert_empty();
 
         summary
     }
