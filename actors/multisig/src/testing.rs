@@ -83,6 +83,9 @@ pub fn check_state_invariants<BS: Blockstore>(
                     );
                     seen_approvals.insert(approval);
                 });
+                acc.require((seen_approvals.len() as u64) < state.num_approvals_threshold,
+                    format!("number of approvals ({}) meets the approvals threshold ({}), transaction should not be pending",
+                    seen_approvals.len(), state.num_approvals_threshold));
 
                 pending_tx_count += 1;
 
