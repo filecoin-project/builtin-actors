@@ -240,7 +240,9 @@ fn add_then_mark_faulty(
 
     let mut partition_sector_map = PartitionSectorMap::default();
     partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
-    partition_sector_map.add(1, UnvalidatedBitField::Validated(bitfield_from_slice(&[5, 6]))).unwrap();
+    partition_sector_map
+        .add(1, UnvalidatedBitField::Validated(bitfield_from_slice(&[5, 6])))
+        .unwrap();
 
     // mark faulty
     let power_delta = deadline
@@ -390,7 +392,9 @@ fn cannot_remove_missing_partition() {
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
     add_then_terminate_then_remove_partition(&rt, &mut deadline);
-    assert!(deadline.remove_partitions(rt.store(), &bitfield_from_slice(&[2]), QUANT_SPEC).is_err());
+    assert!(deadline
+        .remove_partitions(rt.store(), &bitfield_from_slice(&[2]), QUANT_SPEC)
+        .is_err());
 }
 
 #[test]
@@ -426,7 +430,9 @@ fn fails_to_remove_partitions_with_faulty_sectors() {
     add_then_mark_faulty(&rt, &mut deadline, false);
 
     // Try to remove a partition with faulty sectors.
-    assert!(deadline.remove_partitions(rt.store(), &bitfield_from_slice(&[1]), QUANT_SPEC).is_err());
+    assert!(deadline
+        .remove_partitions(rt.store(), &bitfield_from_slice(&[1]), QUANT_SPEC)
+        .is_err());
 }
 
 #[test]
@@ -801,8 +807,14 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
 
     // prove partitions 0 & 1, skipping sectors 1 & 7
     let mut post_partitions = [
-        PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[1])) },
-        PoStPartition { index: 1, skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[7])) },
+        PoStPartition {
+            index: 0,
+            skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[1])),
+        },
+        PoStPartition {
+            index: 1,
+            skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[7])),
+        },
     ];
     let post_result = deadline
         .record_proven_sectors(
@@ -888,7 +900,10 @@ fn post_with_skipped_unproven() {
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
         PoStPartition { index: 1, skipped: UnvalidatedBitField::Validated(BitField::default()) },
-        PoStPartition { index: 2, skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[10])) },
+        PoStPartition {
+            index: 2,
+            skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[10])),
+        },
     ];
     let post_result = deadline
         .record_proven_sectors(
@@ -1200,5 +1215,8 @@ fn deadline_state() -> ExpectedDeadlineState {
 }
 
 fn sector_power(sector_numbers: &[u64]) -> PowerPair {
-    power_for_sectors(SECTOR_SIZE, &select_sectors(&all_sectors(), &bitfield_from_slice(sector_numbers)))
+    power_for_sectors(
+        SECTOR_SIZE,
+        &select_sectors(&all_sectors(), &bitfield_from_slice(sector_numbers)),
+    )
 }
