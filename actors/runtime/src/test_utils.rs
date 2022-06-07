@@ -568,6 +568,11 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn set_base_fee(&mut self, base_fee: TokenAmount) {
+        self.base_fee = base_fee;
+    }
+
+    #[allow(dead_code)]
     pub fn set_circulating_supply(&mut self, circ_supply: TokenAmount) {
         self.circulating_supply = circ_supply;
     }
@@ -1227,17 +1232,25 @@ enum MhCode {
     Sha256TruncPaddedFake,
 }
 
-pub fn make_cid(input: &[u8], prefix: u64) -> Cid {
-    let hash = MhCode::Sha256TruncPaddedFake.digest(input);
+fn make_cid(input: &[u8], prefix: u64, hash: MhCode) -> Cid {
+    let hash = hash.digest(input);
     Cid::new_v1(prefix, hash)
 }
 
+pub fn make_cid_sha(input: &[u8], prefix: u64) -> Cid {
+    make_cid(input, prefix, MhCode::Sha256TruncPaddedFake)
+}
+
+pub fn make_cid_poseidon(input: &[u8], prefix: u64) -> Cid {
+    make_cid(input, prefix, MhCode::PoseidonFake)
+}
+
 pub fn make_piece_cid(input: &[u8]) -> Cid {
-    make_cid(input, FIL_COMMITMENT_UNSEALED)
+    make_cid_sha(input, FIL_COMMITMENT_UNSEALED)
 }
 
 pub fn make_sealed_cid(input: &[u8]) -> Cid {
-    make_cid(input, FIL_COMMITMENT_SEALED)
+    make_cid_poseidon(input, FIL_COMMITMENT_SEALED)
 }
 
 pub fn new_bls_addr(s: u8) -> Address {

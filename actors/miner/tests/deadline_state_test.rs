@@ -1,5 +1,6 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
+use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
     power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, SectorOnChainInfo,
     TerminationResult,
@@ -1208,16 +1209,6 @@ fn make_bitfield(sector_numbers: &[u64]) -> BitField {
     BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
 }
 
-fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
-    let mut to_include: BTreeSet<_> = field.iter().collect();
-    let included =
-        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
-
-    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
-
-    included
-}
-
 // Helper type for validating deadline state.
 //
 // All methods take the state by value so one can (and should) construct a
@@ -1338,7 +1329,7 @@ impl ExpectedDeadlineState {
             &acc,
         );
 
-        assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+        acc.assert_empty();
 
         summary
     }

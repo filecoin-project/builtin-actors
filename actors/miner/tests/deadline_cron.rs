@@ -1,3 +1,4 @@
+use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
     pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair, SectorOnChainInfo,
 };

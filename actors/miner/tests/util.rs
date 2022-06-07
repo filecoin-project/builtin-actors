@@ -32,23 +32,25 @@ use fil_actor_power::{
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
-use fil_actors_runtime::{parse_uint_key, ActorDowncast};
-use fil_actors_runtime::{test_utils::*, Map};
+use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::ActorDowncast;
+use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::{
-    ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_shared::bigint::Zero;
 
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
-use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
 use fvm_ipld_encoding::{BytesDe, Cbor, CborStore, RawBytes};
-use fvm_shared::address::{Address, Protocol};
+use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
+use fvm_shared::clock::QuantSpec;
+use fvm_shared::clock::{ChainEpoch, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::deal::DealID;
@@ -68,6 +70,7 @@ use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 use num_traits::sign::Signed;
 
+use fil_actor_miner::testing::check_state_invariants;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::ops::Neg;
@@ -773,7 +776,7 @@ impl ActorHarness {
         precommits: Vec<SectorPreCommitOnChainInfo>,
         params: ProveCommitAggregateParams,
         base_fee: BigInt,
-    ) {
+    ) -> Result<(), ActorError> {
         // recieve call to ComputeDataCommittments
         let mut comm_ds = Vec::new();
         let mut cdc_inputs = Vec::new();
@@ -791,9 +794,9 @@ impl ActorHarness {
         rt.expect_send(
             *STORAGE_MARKET_ACTOR_ADDR,
             MarketMethod::ComputeDataCommitment as u64,
-            RawBytes::serialize(cdc_params).unwrap(),
+            RawBytes::serialize(cdc_params)?,
             BigInt::zero(),
-            RawBytes::serialize(cdc_ret).unwrap(),
+            RawBytes::serialize(cdc_ret)?,
             ExitCode::OK,
         );
         self.expect_query_network_info(rt);
@@ -811,7 +814,7 @@ impl ActorHarness {
                 precommit.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
 
             let receiver = rt.receiver;
-            let buf = receiver.marshal_cbor().unwrap();
+            let buf = receiver.marshal_cbor()?;
             rt.expect_get_randomness_from_tickets(
                 DomainSeparationTag::SealRandomness,
                 precommit.info.seal_rand_epoch,
@@ -860,9 +863,10 @@ impl ActorHarness {
         rt.call::<Actor>(
             MinerMethod::ProveCommitAggregate as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
+        )?;
         rt.verify();
+
+        Ok(())
     }
 
     pub fn confirm_sector_proofs_valid(
@@ -2487,364 +2491,6 @@ fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
     Box::new(hash)
 }
 
-pub struct DealSummary {
-    pub sector_start: ChainEpoch,
-    pub sector_expiration: ChainEpoch,
-}
-
-pub struct StateSummary {
-    pub live_power: PowerPair,
-    pub active_power: PowerPair,
-    pub faulty_power: PowerPair,
-    pub deals: BTreeMap<DealID, DealSummary>,
-    pub window_post_proof_type: RegisteredPoStProof,
-    pub deadline_cron_active: bool,
-}
-
-impl Default for StateSummary {
-    fn default() -> Self {
-        StateSummary {
-            live_power: PowerPair::zero(),
-            active_power: PowerPair::zero(),
-            faulty_power: PowerPair::zero(),
-            window_post_proof_type: RegisteredPoStProof::Invalid(0),
-            deadline_cron_active: false,
-            deals: BTreeMap::new(),
-        }
-    }
-}
-
-fn check_miner_info(info: MinerInfo, acc: &MessageAccumulator) {
-    acc.require(
-        info.owner.protocol() == Protocol::ID,
-        format!("owner address {} is not an ID address", info.owner),
-    );
-    acc.require(
-        info.worker.protocol() == Protocol::ID,
-        format!("worker address {} is not an ID address", info.worker),
-    );
-    info.control_addresses.iter().for_each(|address| {
-        acc.require(
-            address.protocol() == Protocol::ID,
-            format!("control address {} is not an ID address", address),
-        )
-    });
-
-    if let Some(pending_worker_key) = info.pending_worker_key {
-        acc.require(
-            pending_worker_key.new_worker.protocol() == Protocol::ID,
-            format!(
-                "pending worker address {} is not an ID address",
-                pending_worker_key.new_worker
-            ),
-        );
-        acc.require(
-            pending_worker_key.new_worker != info.worker,
-            format!(
-                "pending worker key {} is same as existing worker {}",
-                pending_worker_key.new_worker, info.worker
-            ),
-        );
-    }
-
-    if let Some(pending_owner_address) = info.pending_owner_address {
-        acc.require(
-            pending_owner_address.protocol() == Protocol::ID,
-            format!("pending owner address {} is not an ID address", pending_owner_address),
-        );
-        acc.require(
-            pending_owner_address != info.owner,
-            format!(
-                "pending owner address {} is same as existing owner {}",
-                pending_owner_address, info.owner
-            ),
-        );
-    }
-
-    if let RegisteredPoStProof::Invalid(id) = info.window_post_proof_type {
-        acc.add(format!("invalid Window PoSt proof type {id}"));
-    } else {
-        // safe to unwrap as we know it's valid at this point
-        let sector_size = info.window_post_proof_type.sector_size().unwrap();
-        acc.require(
-            info.sector_size == sector_size,
-            format!(
-                "sector size {} is wrong for Window PoSt proof type {:?}: {}",
-                info.sector_size, info.window_post_proof_type, sector_size
-            ),
-        );
-
-        let partition_sectors =
-            info.window_post_proof_type.window_post_partitions_sector().unwrap();
-        acc.require(info.window_post_partition_sectors == partition_sectors, format!("miner partition sectors {} does not match partition sectors {} for PoSt proof type {:?}", info.window_post_partition_sectors, partition_sectors, info.window_post_proof_type));
-    }
-}
-
-fn check_miner_balances<BS: Blockstore>(
-    policy: &Policy,
-    state: &State,
-    store: &BS,
-    balance: &BigInt,
-    acc: &MessageAccumulator,
-) {
-    acc.require(
-        !balance.is_negative(),
-        format!("miner actor balance is less than zero: {balance}"),
-    );
-    acc.require(
-        !state.locked_funds.is_negative(),
-        format!("miner locked funds is less than zero: {}", state.locked_funds),
-    );
-    acc.require(
-        !state.pre_commit_deposits.is_negative(),
-        format!("miner precommit deposit is less than zero: {}", state.pre_commit_deposits),
-    );
-    acc.require(
-        !state.initial_pledge.is_negative(),
-        format!("miner initial pledge is less than zero: {}", state.initial_pledge),
-    );
-    acc.require(
-        !state.fee_debt.is_negative(),
-        format!("miner fee debt is less than zero: {}", state.fee_debt),
-    );
-
-    acc.require(balance - &state.locked_funds - &state.pre_commit_deposits - &state.initial_pledge >= BigInt::zero(), format!("miner balance {balance} is less than sum of locked funds ({}), precommit deposit ({}) and initial pledge ({})", state.locked_funds, state.pre_commit_deposits, state.initial_pledge));
-
-    // locked funds must be sum of vesting table and vesting table payments must be quantized
-    let mut vesting_sum = BigInt::zero();
-    match state.load_vesting_funds(store) {
-        Ok(funds) => {
-            let quant = state.quant_spec_every_deadline(policy);
-            funds.funds.iter().for_each(|entry| {
-                acc.require(
-                    entry.amount.is_positive(),
-                    format!("non-positive amount in miner vesting table entry {entry:?}"),
-                );
-                vesting_sum += &entry.amount;
-
-                let quantized = quant.quantize_up(entry.epoch);
-                acc.require(
-                    entry.epoch == quantized,
-                    format!(
-                        "vesting table entry has non-quantized epoch {} (should be {quantized})",
-                        entry.epoch
-                    ),
-                );
-            });
-        }
-        Err(e) => {
-            acc.add(format!("error loading vesting funds: {e}"));
-        }
-    };
-
-    acc.require(
-        state.locked_funds == vesting_sum,
-        format!(
-            "locked funds {} is not sum of vesting table entries {vesting_sum}",
-            state.locked_funds
-        ),
-    );
-
-    // non zero funds implies that DeadlineCronActive is true
-    if state.continue_deadline_cron() {
-        acc.require(state.deadline_cron_active, "DeadlineCronActive == false when IP+PCD+LF > 0");
-    }
-}
-
-fn check_precommits<BS: Blockstore>(
-    policy: &Policy,
-    state: &State,
-    store: &BS,
-    allocated_sectors: &BTreeSet<u64>,
-    acc: &MessageAccumulator,
-) {
-    let quant = state.quant_spec_every_deadline(policy);
-
-    // invert pre-commit clean up queue into a lookup by sector number
-    let mut cleanup_epochs: BTreeMap<u64, ChainEpoch> = BTreeMap::new();
-    match BitFieldQueue::new(store, &state.pre_committed_sectors_cleanup, quant) {
-        Ok(queue) => {
-            let ret = queue.amt.for_each(|epoch, expiration_bitfield| {
-                let epoch = epoch as ChainEpoch;
-                let quantized = quant.quantize_up(epoch);
-                acc.require(
-                    quantized == epoch,
-                    format!("pre-commit expiration {epoch} is not quantized"),
-                );
-
-                expiration_bitfield.iter().for_each(|sector_number| {
-                    cleanup_epochs.insert(sector_number, epoch);
-                });
-                Ok(())
-            });
-            acc.require_no_error(ret, "error iterating pre-commit clean-up queue");
-        }
-        Err(e) => {
-            acc.add(format!("error loading pre-commit clean-up queue: {e}"));
-        }
-    };
-
-    let mut precommit_total = BigInt::zero();
-
-    let precommited_sectors =
-        Map::<_, SectorPreCommitOnChainInfo>::load(&state.pre_committed_sectors, store);
-
-    match precommited_sectors {
-        Ok(precommited_sectors) => {
-            let ret = precommited_sectors.for_each(|key, precommit| {
-                let sector_number = match parse_uint_key(&key) {
-                    Ok(sector_number) => sector_number,
-                    Err(e) => {
-                        acc.add(format!("error parsing pre-commit key as uint: {e}"));
-                        return Ok(());
-                    }
-                };
-
-                acc.require(
-                    allocated_sectors.contains(&sector_number),
-                    format!("pre-commited sector number has not been allocated {sector_number}"),
-                );
-
-                acc.require(
-                    cleanup_epochs.contains_key(&sector_number),
-                    format!("no clean-up epoch for pre-commit at {}", precommit.pre_commit_epoch),
-                );
-                precommit_total += &precommit.pre_commit_deposit;
-                Ok(())
-            });
-            acc.require_no_error(ret, "error iterating pre-commited sectors");
-        }
-        Err(e) => {
-            acc.add(format!("error loading precommited_sectors: {e}"));
-        }
-    };
-
-    acc.require(state.pre_commit_deposits == precommit_total,format!("sum of pre-commit deposits {precommit_total} does not equal recorded pre-commit deposit {}", state.pre_commit_deposits));
-}
-
-pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {
-    let (_, acc) =
-        check_state_invariants(rt.policy(), rt.get_state::<State>(), rt.store(), &rt.get_balance());
-    assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
-}
-
-#[allow(dead_code)]
-pub fn check_state_invariants<BS: Blockstore>(
-    policy: &Policy,
-    state: State,
-    store: &BS,
-    balance: &TokenAmount,
-) -> (StateSummary, MessageAccumulator) {
-    let acc = MessageAccumulator::default();
-    let sector_size;
-
-    let mut miner_summary =
-        StateSummary { deadline_cron_active: state.deadline_cron_active, ..Default::default() };
-
-    // load data from linked structures
-    match state.get_info(store) {
-        Ok(info) => {
-            miner_summary.window_post_proof_type = info.window_post_proof_type;
-            sector_size = info.sector_size;
-            check_miner_info(info, &acc);
-        }
-        Err(e) => {
-            // Stop here, it's too hard to make other useful checks.
-            acc.add(format!("error loading miner info: {e}"));
-            return (miner_summary, acc);
-        }
-    };
-
-    check_miner_balances(policy, &state, store, &balance, &acc);
-
-    let allocated_sectors = match store.get_cbor::<BitField>(&state.allocated_sectors) {
-        Ok(Some(allocated_sectors)) => {
-            if let Some(sectors) = allocated_sectors.bounded_iter(1 << 30) {
-                sectors.map(|i| i as SectorNumber).collect()
-            } else {
-                acc.add(format!("error expanding allocated sector bitfield"));
-                BTreeSet::new()
-            }
-        }
-        Ok(None) => {
-            acc.add(format!("error loading allocated sector bitfield"));
-            BTreeSet::new()
-        }
-        Err(e) => {
-            acc.add(format!("error loading allocated sector bitfield: {e}"));
-            BTreeSet::new()
-        }
-    };
-
-    check_precommits(policy, &state, store, &allocated_sectors, &acc);
-
-    let mut all_sectors: BTreeMap<SectorNumber, SectorOnChainInfo> = BTreeMap::new();
-    match Sectors::load(&store, &state.sectors) {
-        Ok(sectors) => {
-            let ret = sectors.amt.for_each(|sector_number, sector| {
-                all_sectors.insert(sector_number, sector.clone());
-                acc.require(
-                    allocated_sectors.contains(&sector_number),
-                    format!(
-                        "on chain sector's sector number has not been allocated {sector_number}"
-                    ),
-                );
-                sector.deal_ids.iter().for_each(|&deal| {
-                    miner_summary.deals.insert(
-                        deal,
-                        DealSummary {
-                            sector_start: sector.activation,
-                            sector_expiration: sector.expiration,
-                        },
-                    );
-                });
-                Ok(())
-            });
-
-            acc.require_no_error(ret, "error iterating sectors");
-        }
-        Err(e) => acc.add(format!("error loading sectors: {e}")),
-    };
-
-    // check deadlines
-    acc.require(
-        state.current_deadline < policy.wpost_period_deadlines,
-        format!(
-            "current deadline index is greater than deadlines per period({}): {}",
-            policy.wpost_period_deadlines, state.current_deadline
-        ),
-    );
-
-    match state.load_deadlines(store) {
-        Ok(deadlines) => {
-            let ret = deadlines.for_each(policy, store, |deadline_index, deadline| {
-                let acc = acc.with_prefix(format!("deadline {deadline_index}: "));
-                let quant = state.quant_spec_for_deadline(policy, deadline_index);
-                let deadline_summary = check_deadline_state_invariants(
-                    &deadline,
-                    store,
-                    quant,
-                    sector_size,
-                    &all_sectors,
-                    &acc,
-                );
-
-                miner_summary.live_power += &deadline_summary.live_power;
-                miner_summary.active_power += &deadline_summary.active_power;
-                miner_summary.faulty_power += &deadline_summary.faulty_power;
-                Ok(())
-            });
-
-            acc.require_no_error(ret, "error iterating deadlines");
-        }
-        Err(e) => {
-            acc.add(format!("error loading deadlines: {e}"));
-        }
-    };
-
-    (miner_summary, acc)
-}
-
 #[allow(dead_code)]
 pub fn test_sector(
     expiration: ChainEpoch,
@@ -2971,10 +2617,10 @@ impl PartitionStateSummary {
                 power_for_sectors(sector_size, &live_sectors.values().cloned().collect::<Vec<_>>());
             acc.require(
                 partition.live_power == live_power,
-                format!("live power was {:?}, expected {:?}", partition.live_power, live_power),
+                &format!("live power was {:?}, expected {:?}", partition.live_power, live_power),
             );
         } else {
-            acc.add(format!("live sectors missing from all sectors: {missing:?}"));
+            acc.add(&format!("live sectors missing from all sectors: {missing:?}"));
         }
 
         let (unproven_sectors, missing) = select_sectors_map(sectors_map, &partition.unproven);
@@ -2985,13 +2631,13 @@ impl PartitionStateSummary {
             );
             acc.require(
                 partition.unproven_power == unproven_power,
-                format!(
+                &format!(
                     "unproven power power was {:?}, expected {:?}",
                     partition.unproven_power, unproven_power
                 ),
             );
         } else {
-            acc.add(format!("unproven sectors missing from all sectors: {missing:?}"));
+            acc.add(&format!("unproven sectors missing from all sectors: {missing:?}"));
         }
 
         let (faulty_sectors, missing) = select_sectors_map(sectors_map, &partition.faults);
@@ -3002,13 +2648,13 @@ impl PartitionStateSummary {
             );
             acc.require(
                 partition.faulty_power == faulty_power,
-                format!(
+                &format!(
                     "faulty power power was {:?}, expected {:?}",
                     partition.faulty_power, faulty_power
                 ),
             );
         } else {
-            acc.add(format!("faulty sectors missing from all sectors: {missing:?}"));
+            acc.add(&format!("faulty sectors missing from all sectors: {missing:?}"));
         }
 
         let (recovering_sectors, missing) = select_sectors_map(sectors_map, &partition.recoveries);
@@ -3019,20 +2665,20 @@ impl PartitionStateSummary {
             );
             acc.require(
                 partition.recovering_power == recovering_power,
-                format!(
+                &format!(
                     "recovering power power was {:?}, expected {:?}",
                     partition.recovering_power, recovering_power
                 ),
             );
         } else {
-            acc.add(format!("recovering sectors missing from all sectors: {missing:?}"));
+            acc.add(&format!("recovering sectors missing from all sectors: {missing:?}"));
         }
 
         let active_power = &live_power - &faulty_power - unproven_power;
         let partition_active_power = partition.active_power();
         acc.require(
             partition_active_power == active_power,
-            format!("active power was {active_power:?}, expected {:?}", partition_active_power),
+            &format!("active power was {active_power:?}, expected {:?}", partition_active_power),
         );
 
         // validate the expiration queue
@@ -3055,7 +2701,7 @@ impl PartitionStateSummary {
                 require_equal(&live, &queue_sectors, acc, "live does not equal all expirations");
             }
             Err(err) => {
-                acc.add(format!("error loading expiration_queue: {err}"));
+                acc.add(&format!("error loading expiration_queue: {err}"));
             }
         };
 
@@ -3064,7 +2710,7 @@ impl PartitionStateSummary {
             match BitFieldQueue::new(store, &partition.early_terminated, NO_QUANTIZATION) {
                 Ok(queue) => check_early_termination_queue(queue, &partition.terminated, acc),
                 Err(err) => {
-                    acc.add(format!("error loading early termination queue: {err}"));
+                    acc.add(&format!("error loading early termination queue: {err}"));
                     0
                 }
             };
@@ -3120,9 +2766,9 @@ impl ExpirationQueueStateSummary {
 
         let ret = expiration_queue.amt.for_each(|epoch, expiration_set| {
             let epoch = epoch as i64;
-            let acc = acc.with_prefix(format!("expiration epoch {epoch}: "));
+            let acc = acc.with_prefix(&format!("expiration epoch {epoch}: "));
             let quant_up = quant.quantize_up(epoch);
-            acc.require(quant_up == epoch, format!("expiration queue key {epoch} is not quantized, expected {quant_up}"));
+            acc.require(quant_up == epoch, &format!("expiration queue key {epoch} is not quantized, expected {quant_up}"));
 
             expiration_epochs.push(epoch);
 
@@ -3130,34 +2776,34 @@ impl ExpirationQueueStateSummary {
             for sector_number in expiration_set.on_time_sectors.iter() {
                 // check sectors are present only once
                 if !seen_sectors.insert(sector_number) {
-                    acc.add(format!("sector {sector_number} in expiration queue twice"));
+                    acc.add(&format!("sector {sector_number} in expiration queue twice"));
                 }
 
                 // check expiring sectors are still alive
                 if let Some(sector) = live_sectors.get(&sector_number) {
                     let target = quant.quantize_up(sector.expiration);
-                    acc.require(epoch == target, format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
+                    acc.require(epoch == target, &format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
                     on_time_sectors_pledge += sector.initial_pledge.clone();
                 } else {
-                    acc.add(format!("on time expiration sector {sector_number} isn't live"));
+                    acc.add(&format!("on time expiration sector {sector_number} isn't live"));
                 }
             }
 
             for sector_number in expiration_set.early_sectors.iter() {
                 // check sectors are present only once
                 if !seen_sectors.insert(sector_number) {
-                    acc.add(format!("sector {sector_number} in expiration queue twice"));
+                    acc.add(&format!("sector {sector_number} in expiration queue twice"));
                 }
 
                 // check early sectors are faulty
-                acc.require(partition_faults.get(sector_number), format!("sector {sector_number} expiring early but not faulty"));
+                acc.require(partition_faults.get(sector_number), &format!("sector {sector_number} expiring early but not faulty"));
 
                 // check expiring sectors are still alive
                 if let Some(sector) = live_sectors.get(&sector_number) {
                     let target = quant.quantize_up(sector.expiration);
-                    acc.require(epoch < target, format!("invalid early expiration {epoch} for sector {sector_number}, expected < {target}"));
+                    acc.require(epoch < target, &format!("invalid early expiration {epoch} for sector {sector_number}, expected < {target}"));
                 } else {
-                    acc.add(format!("on time expiration sector {sector_number} isn't live"));
+                    acc.add(&format!("on time expiration sector {sector_number} isn't live"));
                 }
             }
 
@@ -3166,19 +2812,19 @@ impl ExpirationQueueStateSummary {
             let all = BitField::union([&expiration_set.on_time_sectors, &expiration_set.early_sectors]);
             let all_active = &all - &partition_faults;
             let (active_sectors, missing) = select_sectors_map(live_sectors, &all_active);
-            acc.require(missing.is_empty(), format!("active sectors missing from live: {missing:?}"));
+            acc.require(missing.is_empty(), &format!("active sectors missing from live: {missing:?}"));
 
             let all_faulty = &all & &partition_faults;
             let (faulty_sectors, missing) = select_sectors_map(live_sectors, &all_faulty);
-            acc.require(missing.is_empty(), format!("faulty sectors missing from live: {missing:?}"));
+            acc.require(missing.is_empty(), &format!("faulty sectors missing from live: {missing:?}"));
 
             let active_sectors_power = power_for_sectors(sector_size, &active_sectors.values().cloned().collect::<Vec<_>>());
-            acc.require(expiration_set.active_power == active_sectors_power, format!("active power recorded {:?} doesn't match computed {active_sectors_power:?}", expiration_set.active_power));
+            acc.require(expiration_set.active_power == active_sectors_power, &format!("active power recorded {:?} doesn't match computed {active_sectors_power:?}", expiration_set.active_power));
 
             let faulty_sectors_power = power_for_sectors(sector_size, &faulty_sectors.values().cloned().collect::<Vec<_>>());
-            acc.require(expiration_set.faulty_power == faulty_sectors_power, format!("faulty power recorded {:?} doesn't match computed {faulty_sectors_power:?}", expiration_set.faulty_power));
+            acc.require(expiration_set.faulty_power == faulty_sectors_power, &format!("faulty power recorded {:?} doesn't match computed {faulty_sectors_power:?}", expiration_set.faulty_power));
 
-            acc.require(expiration_set.on_time_pledge == on_time_sectors_pledge, format!("on time pledge recorded {} doesn't match computed: {on_time_sectors_pledge}", expiration_set.on_time_pledge));
+            acc.require(expiration_set.on_time_pledge == on_time_sectors_pledge, &format!("on time pledge recorded {} doesn't match computed: {on_time_sectors_pledge}", expiration_set.on_time_pledge));
 
             all_on_time.push(expiration_set.on_time_sectors.clone());
             all_early.push(expiration_set.early_sectors.clone());
@@ -3215,9 +2861,12 @@ fn check_early_termination_queue<BS: Blockstore>(
     let mut seen_bitfield = BitField::new();
 
     let iter_result = early_queue.amt.for_each(|epoch, bitfield| {
-        let acc = acc.with_prefix(format!("early termination epoch {epoch}: "));
+        let acc = acc.with_prefix(&format!("early termination epoch {epoch}: "));
         for i in bitfield.iter() {
-            acc.require(!seen.contains(&i), format!("sector {i} in early termination queue twice"));
+            acc.require(
+                !seen.contains(&i),
+                &format!("sector {i} in early termination queue twice"),
+            );
             seen.insert(i);
             seen_bitfield.set(i);
         }
@@ -3259,7 +2908,7 @@ fn require_contains_all(
     error_msg: &str,
 ) {
     if !superset.contains_all(subset) {
-        acc.add(format!("{error_msg}: {subset:?}, {superset:?}"));
+        acc.add(&format!("{error_msg}: {subset:?}, {superset:?}"));
     }
 }
 
@@ -3270,7 +2919,7 @@ fn require_contains_none(
     error_msg: &str,
 ) {
     if superset.contains_any(subset) {
-        acc.add(format!("{error_msg}: {subset:?}, {superset:?}"));
+        acc.add(&format!("{error_msg}: {subset:?}, {superset:?}"));
     }
 }
 
@@ -3298,7 +2947,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
         Ok(partitions) => partitions,
         Err(e) => {
             // Hard to do any useful checks.
-            acc.add(format!("error loading partitions: {e}"));
+            acc.add(&format!("error loading partitions: {e}"));
             return DeadlineStateSummary::default();
         }
     };
@@ -3323,13 +2972,13 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
             // check sequential partitions
             acc.require(
                 index == partition_count,
-                format!(
+                &format!(
                     "Non-sequential partitions, expected index {partition_count}, found {index}"
                 ),
             );
             partition_count += 1;
 
-            let acc = acc.with_prefix(format!("partition {index}"));
+            let acc = acc.with_prefix(&format!("partition {index}"));
             let summary = PartitionStateSummary::check_partition_state_invariants(
                 partition,
                 store,
@@ -3341,7 +2990,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
 
             acc.require(
                 !all_sectors.contains_any(&summary.all_sectors),
-                format!("duplicate sector in partition {index}"),
+                &format!("duplicate sector in partition {index}"),
             );
 
             summary.expiration_epochs.iter().for_each(|&epoch| {
@@ -3370,11 +3019,11 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     if let Some(last_proof) = deadline.partitions_posted.last() {
         acc.require(
             partition_count >= last_proof + 1,
-            format!("expected at least {} partitions, found {partition_count}", last_proof + 1),
+            &format!("expected at least {} partitions, found {partition_count}", last_proof + 1),
         );
         acc.require(
             deadline.live_sectors > 0,
-            format!("expected at least one live sector when partitions have been proven"),
+            &format!("expected at least one live sector when partitions have been proven"),
         );
     }
 
@@ -3383,7 +3032,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     match deadline.partitions_snapshot_amt(store) {
         Ok(partition_snapshot) => {
             let ret = partition_snapshot.for_each(|i, partition| {
-                let acc = acc.with_prefix(format!("partition snapshot {i}"));
+                let acc = acc.with_prefix(&format!("partition snapshot {i}"));
                 acc.require(
                     partition.recovering_power.is_zero(),
                     "snapshot partition has recovering power",
@@ -3405,7 +3054,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
             });
             acc.require_no_error(ret, "error iterating partitions snapshot");
         }
-        Err(e) => acc.add(format!("error loading partitions snapshot: {e}")),
+        Err(e) => acc.add(&format!("error loading partitions snapshot: {e}")),
     };
 
     // Check that we don't have any proofs proving partitions that are not in the snapshot.
@@ -3419,7 +3068,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
                                 snapshot.is_some(),
                                 "failed to find partition for recorded proof in the snapshot",
                             ),
-                            Err(e) => acc.add(format!("error loading partition snapshot: {e}")),
+                            Err(e) => acc.add(&format!("error loading partition snapshot: {e}")),
                         }
                     }
                     Ok(())
@@ -3427,14 +3076,14 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
                 acc.require_no_error(ret, "error iterating proofs snapshot");
             }
         }
-        Err(e) => acc.add(format!("error loading proofs snapshot: {e}")),
+        Err(e) => acc.add(&format!("error loading proofs snapshot: {e}")),
     };
 
     // check memoized sector and power values
     let live_sectors = BitField::union(&all_live_sectors);
     acc.require(
         deadline.live_sectors == live_sectors.len(),
-        format!(
+        &format!(
             "deadline live sectors {} != partitions count {}",
             deadline.live_sectors,
             live_sectors.len()
@@ -3443,7 +3092,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
 
     acc.require(
         deadline.total_sectors == all_sectors.len(),
-        format!(
+        &format!(
             "deadline total sectors {} != partitions count {}",
             deadline.total_sectors,
             all_sectors.len()
@@ -3457,7 +3106,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
 
     acc.require(
         deadline.faulty_power == all_faulty_power,
-        format!(
+        &format!(
             "deadline faulty power {:?} != partitions total {all_faulty_power:?}",
             deadline.faulty_power
         ),
@@ -3471,17 +3120,17 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
                 match expiration_queue.amt.get(epoch as u64) {
                     Ok(expiration_bitfield) if expiration_bitfield.is_some() => {
                         for partition in expiring_idx {
-                            acc.require(expiration_bitfield.unwrap().get(partition), format!("expected partition {partition} to be present in deadline expiration queue at epoch {epoch}"));
+                            acc.require(expiration_bitfield.unwrap().get(partition), &format!("expected partition {partition} to be present in deadline expiration queue at epoch {epoch}"));
                         }
                     }
-                    Ok(_) => acc.add(format!(
+                    Ok(_) => acc.add(&format!(
                         "expected to find partition expiration entry at epoch {epoch}"
                     )),
-                    Err(e) => acc.add(format!("error fetching expiration bitfield: {e}")),
+                    Err(e) => acc.add(&format!("error fetching expiration bitfield: {e}")),
                 }
             }
         }
-        Err(e) => acc.add(format!("error loading expiration queue: {e}")),
+        Err(e) => acc.add(&format!("error loading expiration queue: {e}")),
     }
 
     // Validate the early termination queue contains exactly the partitions with early terminations.
@@ -3505,6 +3154,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Default)]
 pub struct CronControl {
     pub pre_commit_num: u64,
@@ -3648,4 +3298,32 @@ impl BitFieldQueueExpectation {
             })
             .unwrap();
     }
+}
+
+#[allow(dead_code)]
+pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
+    let mut to_include: BTreeSet<_> = field.iter().collect();
+    let included =
+        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
+
+    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
+
+    included
+}
+
+#[allow(dead_code)]
+pub fn require_no_expiration_groups_before(
+    epoch: ChainEpoch,
+    queue: &mut ExpirationQueue<'_, MemoryBlockstore>,
+) {
+    queue.amt.flush().unwrap();
+
+    let set = queue.pop_until(epoch - 1).unwrap();
+    assert!(set.is_empty());
+}
+
+pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {
+    let (_, acc) =
+        check_state_invariants(rt.policy(), rt.get_state::<State>(), rt.store(), &rt.get_balance());
+    assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
 }
