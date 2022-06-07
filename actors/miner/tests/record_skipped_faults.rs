@@ -1,12 +1,13 @@
 use fil_actor_miner::power_for_sectors;
 use fil_actor_miner::select_sectors;
+use fil_actor_miner::testing::PartitionStateSummary;
 use fil_actor_miner::Partition;
 use fil_actor_miner::SectorOnChainInfo;
 use fil_actor_miner::Sectors;
 use fil_actor_miner::SECTORS_AMT_BITWIDTH;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::MessageAccumulator;
 use fil_actors_runtime::ActorError;
+use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;

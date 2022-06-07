@@ -13,7 +13,7 @@ use fvm_shared::METHOD_SEND;
 use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 #[test]
-fn create_miner() {
+fn create_miner_test() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
 
@@ -51,18 +51,12 @@ fn create_miner() {
         to: *STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::CreateMiner as u64,
         params: Some(serialize(&params, "power create miner params").unwrap()),
-        code: None,
-        from: None,
         ret: Some(res.ret),
         subinvocs: Some(vec![
             // request init actor construct miner
             ExpectInvocation {
                 to: *INIT_ACTOR_ADDR,
                 method: InitMethod::Exec as u64,
-                params: None,
-                code: None,
-                from: None,
-                ret: None,
                 subinvocs: Some(vec![ExpectInvocation {
                     // init then calls miner constructor
                     to: Address::new_id(FIRST_TEST_USER_ADDR + 1),
@@ -82,13 +76,12 @@ fn create_miner() {
                         )
                         .unwrap(),
                     ),
-                    code: None,
-                    from: None,
-                    ret: None,
-                    subinvocs: None,
+                    ..Default::default()
                 }]),
+                ..Default::default()
             },
         ]),
+        ..Default::default()
     };
     expect.matches(v.take_invocations().last().unwrap())
 }
