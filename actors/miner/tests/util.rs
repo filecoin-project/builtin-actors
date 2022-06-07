@@ -8,6 +8,7 @@ use fil_actor_market::{
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
+use fil_actor_miner::testing::check_state_invariants;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
@@ -33,10 +34,9 @@ use fil_actor_power::{
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::ActorDowncast;
 use fil_actors_runtime::{
-    ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
@@ -72,14 +72,9 @@ use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 use num_traits::sign::Signed;
 
-use fil_actor_miner::testing::check_state_invariants;
-use fil_actors_runtime::MessageAccumulator;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::ops::Neg;
-
-use std::collections::BTreeSet;
-use std::collections::HashSet;
 
 const RECEIVER_ID: u64 = 1000;
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;

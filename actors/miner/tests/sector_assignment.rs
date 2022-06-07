@@ -4,12 +4,11 @@
 use cid::Cid;
 use fil_actor_miner::{power_for_sectors, Deadline, PoStPartition, PowerPair, SectorOnChainInfo};
 use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid};
+use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::sector::SectorNumber;
-
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 
 mod util;
 use util::*;
