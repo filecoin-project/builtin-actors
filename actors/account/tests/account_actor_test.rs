@@ -1,12 +1,18 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actor_account::{Actor as AccountActor, State};
+use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, State};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
+
+fn check_state(rt: &MockRuntime) {
+    let test_address = Address::new_id(1000);
+    let (_, acc) = check_state_invariants(&rt.get_state(), &test_address);
+    acc.assert_empty();
+}
 
 macro_rules! account_tests {
     ($($name:ident: $value:expr,)*) => {
@@ -36,6 +42,8 @@ macro_rules! account_tests {
                         .deserialize()
                         .unwrap();
                     assert_eq!(pk, addr);
+
+                    check_state(&rt);
                 } else {
                     expect_abort(
                         exit_code,

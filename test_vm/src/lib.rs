@@ -4,7 +4,7 @@ use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
-use fil_actor_miner::Actor as MinerActor;
+use fil_actor_miner::{Actor as MinerActor, State as MinerState};
 use fil_actor_multisig::Actor as MultisigActor;
 use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as PowerState};
@@ -18,7 +18,7 @@ use fil_actors_runtime::runtime::{
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
@@ -54,13 +54,20 @@ pub mod util;
 
 pub struct VM<'bs> {
     pub store: &'bs MemoryBlockstore,
-    state_root: RefCell<Cid>,
+    pub state_root: RefCell<Cid>,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
     empty_obj_cid: Cid,
     network_version: NetworkVersion,
     curr_epoch: ChainEpoch,
     invocations: RefCell<Vec<InvocationTrace>>,
+}
+
+pub struct MinerBalances {
+    pub available_balance: TokenAmount,
+    pub vesting_balance: TokenAmount,
+    pub initial_pledge: TokenAmount,
+    pub pre_commit_deposit: TokenAmount,
 }
 
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
@@ -126,8 +133,8 @@ impl<'bs> VM<'bs> {
         ];
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
         v.set_actor(
-            *STORAGE_MARKET_ACTOR_ADDR,
-            actor(*MARKET_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()),
+            *CRON_ACTOR_ADDR,
+            actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()),
         );
 
         // power
@@ -211,6 +218,31 @@ impl<'bs> VM<'bs> {
         v
     }
 
+    pub fn with_epoch(self, epoch: ChainEpoch) -> VM<'bs> {
+        self.checkpoint();
+        VM {
+            store: self.store,
+            state_root: RefCell::new(self.state_root.take()),
+            actors_dirty: RefCell::new(false),
+            actors_cache: RefCell::new(HashMap::new()),
+            empty_obj_cid: self.empty_obj_cid,
+            network_version: self.network_version,
+            curr_epoch: epoch,
+            invocations: RefCell::new(vec![]),
+        }
+    }
+
+    pub fn get_miner_balance(&self, maddr: Address) -> MinerBalances {
+        let a = self.get_actor(maddr).unwrap();
+        let st = self.get_state::<MinerState>(maddr).unwrap();
+        MinerBalances {
+            available_balance: st.get_available_balance(&a.balance).unwrap(),
+            vesting_balance: st.locked_funds,
+            initial_pledge: st.initial_pledge,
+            pre_commit_deposit: st.pre_commit_deposits,
+        }
+    }
+
     pub fn put_store<S>(&self, obj: &S) -> Cid
     where
         S: ser::Serialize,
@@ -223,7 +255,6 @@ impl<'bs> VM<'bs> {
         if let Some(act) = self.actors_cache.borrow().get(&addr) {
             return Some(act.clone());
         }
-
         // go to persisted map
         let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
             &self.state_root.borrow(),
@@ -252,7 +283,6 @@ impl<'bs> VM<'bs> {
 
         // roll "back" to latest head, flushing cache
         self.rollback(actors.flush().unwrap());
-
         *self.state_root.borrow()
     }
 
@@ -336,6 +366,10 @@ impl<'bs> VM<'bs> {
     pub fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
     }
+
+    pub fn get_epoch(&self) -> ChainEpoch {
+        self.curr_epoch
+    }
 }
 #[derive(Clone)]
 pub struct TopCtx {
@@ -354,15 +388,15 @@ pub struct InternalMessage {
     params: RawBytes,
 }
 
-impl MessageInfo for InternalMessage {
+impl MessageInfo for InvocationCtx<'_, '_> {
     fn caller(&self) -> Address {
-        self.from
+        self.msg.from
     }
     fn receiver(&self) -> Address {
-        self.to
+        self.to()
     }
     fn value_received(&self) -> TokenAmount {
-        self.value.clone()
+        self.msg.value.clone()
     }
 }
 
@@ -386,11 +420,12 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
         };
         // Address does not yet exist, create it
-        match target.protocol() {
+        let protocol = target.protocol();
+        match protocol {
             Protocol::Actor | Protocol::ID => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
-                    "cannot create account for address type".to_string(),
+                    format!("cannot create account for address {} type {}", target, protocol),
                 ))
             }
             _ => (),
@@ -436,12 +471,16 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Ok(rb) => (Some(rb), None),
             Err(ae) => (None, Some(ae.exit_code())),
         };
-        InvocationTrace {
-            msg: self.msg.clone(),
-            code,
-            ret,
-            subinvocations: self.subinvocations.take(),
-        }
+        let mut msg = self.msg.clone();
+        msg.to = match self.resolve_target(&self.msg.to) {
+            Ok((_, addr)) => addr, // use normalized address in trace
+            _ => self.msg.to, // if target resolution fails don't fail whole invoke, just use non normalized
+        };
+        InvocationTrace { msg, code, ret, subinvocations: self.subinvocations.take() }
+    }
+
+    fn to(&'_ self) -> Address {
+        self.resolve_target(&self.msg.to).unwrap().1
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
@@ -483,8 +522,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let to_actor = self.v.get_actor(to_addr).unwrap();
         let params = self.msg.params.clone();
         let res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin") {
-            // XXX Review: is there a way to do one call on an object implementing ActorCode trait?
-            // I tried using `dyn` keyword couldn't get the compiler on board.
             Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
             Type::Cron => CronActor::invoke_method(self, self.msg.method, &params),
             Type::Init => InitActor::invoke_method(self, self.msg.method, &params),
@@ -536,11 +573,11 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn message(&self) -> &dyn MessageInfo {
-        &self.msg
+        self
     }
 
     fn curr_epoch(&self) -> ChainEpoch {
-        self.v.curr_epoch
+        self.v.get_epoch()
     }
 
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
@@ -597,7 +634,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn current_balance(&self) -> TokenAmount {
-        self.v.get_actor(self.msg.to).unwrap().balance
+        self.v.get_actor(self.to()).unwrap().balance
     }
 
     fn resolve_address(&self, addr: &Address) -> Option<Address> {
@@ -626,7 +663,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             ));
         }
 
-        let new_actor_msg = InternalMessage { from: self.msg.to, to, value, method, params };
+        let new_actor_msg = InternalMessage { from: self.to(), to, value, method, params };
         let mut new_ctx = InvocationCtx {
             v: self.v,
             top: self.top.clone(),
@@ -665,7 +702,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
-        let maybe_act = self.v.get_actor(self.msg.to);
+        let maybe_act = self.v.get_actor(self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
@@ -679,7 +716,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
                     ))
                 } else {
                     act.head = self.v.store.put_cbor(obj, Code::Blake2b256).unwrap();
-                    self.v.set_actor(self.msg.to, act);
+                    self.v.set_actor(self.to(), act);
                     Ok(())
                 }
             }
@@ -687,7 +724,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        Ok(self.v.get_state::<C>(self.msg.to).unwrap())
+        Ok(self.v.get_state::<C>(self.to()).unwrap())
     }
 
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
@@ -700,9 +737,9 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         let result = f(&mut st, self);
         self.allow_side_effects = true;
         let ret = result?;
-        let mut act = self.v.get_actor(self.msg.to).unwrap();
+        let mut act = self.v.get_actor(self.to()).unwrap();
         act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.v.set_actor(self.msg.to, act);
+        self.v.set_actor(self.to(), act);
         Ok(ret)
     }
 
@@ -767,7 +804,7 @@ impl Primitives for VM<'_> {
         _proof_type: RegisteredSealProof,
         _pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
-        panic!("TODO implement me")
+        Ok(make_piece_cid(b"unsealed from itest vm"))
     }
 }
 
@@ -865,6 +902,7 @@ pub struct ExpectInvocation {
     pub method: MethodNum, // required
     pub code: Option<ExitCode>,
     pub from: Option<Address>,
+    pub value: Option<TokenAmount>,
     pub params: Option<RawBytes>,
     pub ret: Option<RawBytes>,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
@@ -898,6 +936,13 @@ impl ExpectInvocation {
                 f, invoc.msg.from,
                 "{} unexpected from addr: expected:{}was:{} ",
                 id, f, invoc.msg.from
+            );
+        }
+        if let Some(v) = &self.value {
+            assert_eq!(
+                v, &invoc.msg.value,
+                "{} unexpected value: expected:{}was:{} ",
+                id, v, invoc.msg.value
             );
         }
         if let Some(p) = &self.params {
@@ -969,6 +1014,7 @@ impl Default for ExpectInvocation {
             to: Address::new_id(0),
             code: None,
             from: None,
+            value: None,
             params: None,
             ret: None,
             subinvocs: None,

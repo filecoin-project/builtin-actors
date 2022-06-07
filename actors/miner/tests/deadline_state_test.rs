@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 
+use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
     power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, SectorOnChainInfo,
     TerminationResult,
@@ -1338,7 +1339,7 @@ impl ExpectedDeadlineState {
             &acc,
         );
 
-        assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+        acc.assert_empty();
 
         summary
     }
