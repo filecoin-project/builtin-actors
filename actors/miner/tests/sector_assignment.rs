@@ -3,7 +3,6 @@
 
 use cid::Cid;
 use fil_actor_miner::{power_for_sectors, Deadline, PoStPartition, PowerPair, SectorOnChainInfo};
-use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -11,16 +10,12 @@ use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::sector::SectorNumber;
 
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
-use fvm_shared::error::ExitCode;
-use fvm_shared::sector::MAX_SECTOR_NUMBER;
 
 mod util;
 use util::*;
 
 mod state_harness;
 use state_harness::*;
-
-const PERIOD_OFFSET: ChainEpoch = 0;
 
 /// returns a unique SectorOnChainInfo with each invocation with SectorNumber set to `sectorNo`.
 fn new_sector_on_chain_info(

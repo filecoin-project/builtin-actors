@@ -1,16 +1,10 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use cid::Cid;
-use fil_actor_miner::{power_for_sectors, Deadline, PoStPartition, PowerPair, SectorOnChainInfo};
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid};
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::RegisteredSealProof;
-use fvm_shared::sector::SectorNumber;
 
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::MAX_SECTOR_NUMBER;
 
