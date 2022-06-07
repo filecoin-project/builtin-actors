@@ -51,6 +51,7 @@ use fvm_ipld_encoding::{BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
+use fvm_shared::clock::QuantSpec;
 use fvm_shared::clock::{ChainEpoch, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
@@ -64,7 +65,6 @@ use fvm_shared::sector::{
 };
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::METHOD_SEND;
-use fvm_shared::clock::QuantSpec;
 
 use cid::Cid;
 use itertools::Itertools;
@@ -78,8 +78,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::ops::Neg;
 
-use std::collections::HashSet;
 use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 const RECEIVER_ID: u64 = 1000;
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
