@@ -989,8 +989,9 @@ impl Primitives for MockRuntime {
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
-        blake2b_256(data)
+        (self.hash_func)(data)
     }
+
     fn compute_unsealed_sector_cid(
         &self,
         reg: RegisteredSealProof,

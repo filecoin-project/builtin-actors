@@ -6,8 +6,8 @@ use fil_actor_reward as reward;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 
-use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_bitfield::BitField;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::randomness::DomainSeparationTag;
@@ -18,6 +18,7 @@ use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::sector::RegisteredSealProof;
 
 mod util;
+
 use util::*;
 
 // an expriration ~10 days greater than effective min expiration taking into account 30 days max
@@ -700,7 +701,7 @@ fn successful_recoveries_recover_power() {
     let pwr = miner::power_for_sectors(h.sector_size, &infos);
 
     h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
-    //let initial_locked = h.get_locked_funds(&rt);
+    let initial_locked = h.get_locked_funds(&rt);
 
     // Submit first PoSt to ensure we are sufficiently early to add a fault
     // advance to next proving period
@@ -749,13 +750,8 @@ fn successful_recoveries_recover_power() {
     // Next deadline cron does not charge for the fault
     h.advance_deadline(&mut rt, CronConfig::empty());
 
-    // TODO there is a discrepancy with the go test here, as the rust test for some reason
-    //      vests and is missing (the vested amount) from the locked funds.
-    //      We thought it was the hasher, which was buggy, but it is still there and needs
-    //      to be investigated as it will keep coming up.
-    // assert_eq!(initial_locked, h.get_locked_funds(&rt));
+    assert_eq!(initial_locked, h.get_locked_funds(&rt));
 
-//   This needs to be investigated and resolved before merging. We know for sure the problem is that the rust code vests when the go code does not. The rust code running for enough epochs to vest because it is assigned to a different deadline still seems like a good hypothesis.
     check_state_invariants(&rt);
 }
 
