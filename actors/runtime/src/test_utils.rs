@@ -568,6 +568,11 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
+    pub fn set_base_fee(&mut self, base_fee: TokenAmount) {
+        self.base_fee = base_fee;
+    }
+
+    #[allow(dead_code)]
     pub fn set_circulating_supply(&mut self, circ_supply: TokenAmount) {
         self.circulating_supply = circ_supply;
     }
