@@ -151,6 +151,8 @@ mod miner_actor_test_partitions {
         let res = partition.add_sectors(&rt.store, false, &sectors(), SECTOR_SIZE, QUANT_SPEC);
 
         let err = res.expect_err("expected error, but call succeeded");
+        // XXX: This is not a good way to check for specific errors.
+        //      See: https://github.com/filecoin-project/builtin-actors/issues/338
         assert_eq!(err.to_string(), "not all added sectors are new");
     }
 
@@ -392,7 +394,7 @@ mod miner_actor_test_partitions {
 
         // add 4 and 5 as recoveries
         let mut recover_set = make_bitfield(&[4, 5]);
-        let recovery_power = power_for_sectors(
+        let expected_recovery_power = power_for_sectors(
             SECTOR_SIZE,
             &select_sectors(&sectors(), recover_set.validate_mut().unwrap()),
         );
@@ -403,7 +405,7 @@ mod miner_actor_test_partitions {
             partition.recover_faults(&rt.store, &sector_arr, SECTOR_SIZE, QUANT_SPEC).unwrap();
 
         // recovered power should equal power of recovery sectors
-        assert_eq!(recovery_power, recovered_power);
+        assert_eq!(expected_recovery_power, recovered_power);
 
         // state should be as if recovered sectors were never faults
         assert_partition_state(
@@ -753,10 +755,12 @@ mod miner_actor_test_partitions {
             .unwrap();
 
         // Fault declaration for terminated sectors fails.
-        let (new_faults, _, _) = partition
+        let (new_faults, power_delta, faulty_power) = partition
             .record_faults(&rt.store, &sector_arr, &mut terminations, 5, SECTOR_SIZE, QUANT_SPEC)
             .unwrap();
         assert!(new_faults.is_empty());
+        assert!(power_delta.is_zero());
+        assert!(faulty_power.is_zero());
     }
 
     #[test]
