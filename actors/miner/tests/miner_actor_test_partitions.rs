@@ -1027,10 +1027,10 @@ mod miner_actor_test_partitions {
 
         // Make sure we can still encode and decode.
         let buf = RawBytes::serialize(&partition).expect("failed to marshal partition");
-        let _: Partition = buf.deserialize().unwrap();
+        let new_partition: Partition = buf.deserialize().unwrap();
         assert_partition_state(
             &rt.store,
-            &partition,
+            &new_partition,
             &many_sectors,
             sector_numbers.clone(),
             BitField::new(),
