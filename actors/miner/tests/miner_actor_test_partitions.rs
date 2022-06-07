@@ -120,16 +120,15 @@ mod miner_actor_test_partitions {
     fn adds_sectors_and_reports_sector_stats() {
         let (rt, partition) = setup_partition();
 
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
-            empty.clone(),
-            empty.clone(),
-            empty.clone(),
-            empty,
+            BitField::new(),
+            BitField::new(),
+            BitField::new(),
+            BitField::new(),
         );
 
         // assert sectors have been arranged into 3 groups
@@ -183,15 +182,14 @@ mod miner_actor_test_partitions {
             bitfield_from_slice(&[1, 2, 3, 6]) // faults are no longer "unproven", just faulty.
         };
 
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
             &sectors(),
             sector_numbers,
             fault_set.validate_mut().unwrap().clone(),
-            empty.clone(),
-            empty,
+            BitField::new(),
+            BitField::new(),
             unproven_set,
         );
 
@@ -246,16 +244,15 @@ mod miner_actor_test_partitions {
         assert_eq!(expected_faulty_power, new_faulty_power);
         assert_eq!(power_delta, -expected_faulty_power);
 
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             bitfield_from_slice(&[4, 5, 6]),
-            empty.clone(),
-            empty.clone(),
-            empty,
+            BitField::new(),
+            BitField::new(),
+            BitField::new(),
         );
 
         // moves newly-faulty sector
@@ -306,7 +303,6 @@ mod miner_actor_test_partitions {
         let mut recover_set = make_bitfield(&[4, 5]);
         partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set).unwrap();
 
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
@@ -314,8 +310,8 @@ mod miner_actor_test_partitions {
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             bitfield_from_slice(&[4, 5, 6]),
             bitfield_from_slice(&[4, 5]),
-            empty.clone(),
-            empty,
+            BitField::new(),
+            BitField::new(),
         );
     }
 
@@ -347,7 +343,6 @@ mod miner_actor_test_partitions {
             .unwrap();
         assert!(new_faults.is_empty()); // no new faults.
 
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
@@ -355,8 +350,8 @@ mod miner_actor_test_partitions {
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             bitfield_from_slice(&[4, 5, 6]),
             bitfield_from_slice(&[4, 5]),
-            empty.clone(),
-            empty,
+            BitField::new(),
+            BitField::new(),
         );
 
         // removing sector 5 alters recovery set and recovery power
@@ -372,7 +367,6 @@ mod miner_actor_test_partitions {
             .unwrap();
         assert!(new_faults.is_empty()); // these faults aren't new.
 
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
@@ -380,8 +374,8 @@ mod miner_actor_test_partitions {
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             bitfield_from_slice(&[4, 5, 6]),
             bitfield_from_slice(&[4]),
-            empty.clone(),
-            empty,
+            BitField::new(),
+            BitField::new(),
         );
     }
 
@@ -412,16 +406,15 @@ mod miner_actor_test_partitions {
         assert_eq!(recovery_power, recovered_power);
 
         // state should be as if recovered sectors were never faults
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
             bitfield_from_slice(&[6]),
-            empty.clone(),
-            empty.clone(),
-            empty,
+            BitField::new(),
+            BitField::new(),
+            BitField::new(),
         );
 
         // restores recovered expirations to original state (unrecovered sector 6 still expires early)
@@ -505,16 +498,15 @@ mod miner_actor_test_partitions {
         let mut all_sectors = new_sectors.clone();
         all_sectors.extend_from_slice(&sectors()[0..1]);
         all_sectors.extend_from_slice(&sectors()[4..]);
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
             &all_sectors,
             bitfield_from_slice(&[1, 2, 5, 6, 7, 8]),
-            empty.clone(),
-            empty.clone(),
-            empty.clone(),
-            empty,
+            BitField::new(),
+            BitField::new(),
+            BitField::new(),
+            BitField::new(),
         );
 
         // sector 2 should be moved, 3 and 4 should be removed, and 7 and 8 added
@@ -793,16 +785,15 @@ mod miner_actor_test_partitions {
         assert_eq!(expset.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[3..4]));
 
         // expect sectors to be moved to terminations
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
             &sectors(),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6]),
-            empty.clone(),
-            empty.clone(),
+            BitField::new(),
+            BitField::new(),
             bitfield_from_slice(&[1, 2, 4]),
-            empty,
+            BitField::new(),
         );
 
         // sectors should move to new expiration group
@@ -910,16 +901,15 @@ mod miner_actor_test_partitions {
         assert_eq!(expected_power_delta, power_delta);
 
         // everything is now faulty
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
             &all_sectors,
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6, 7]),
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6, 7]),
-            empty.clone(),
-            empty.clone(),
-            empty,
+            BitField::new(),
+            BitField::new(),
+            BitField::new(),
         );
 
         // everything not in first expiration group is now in second because fault expiration quantized to 9
@@ -1020,15 +1010,14 @@ mod miner_actor_test_partitions {
         let expected_power = power_for_sectors(SECTOR_SIZE, &many_sectors);
         assert_eq!(expected_power, power);
 
-        let empty = bitfield_from_slice(&[]);
         assert_partition_state(
             &rt.store,
             &partition,
             &many_sectors,
             sector_numbers.clone(),
-            empty.clone(),
-            empty.clone(),
-            empty.clone(),
+            BitField::new(),
+            BitField::new(),
+            BitField::new(),
             sector_numbers.clone(),
         );
 
@@ -1040,9 +1029,9 @@ mod miner_actor_test_partitions {
             &partition,
             &many_sectors,
             sector_numbers.clone(),
-            empty.clone(),
-            empty.clone(),
-            empty,
+            BitField::new(),
+            BitField::new(),
+            BitField::new(),
             sector_numbers,
         );
     }
