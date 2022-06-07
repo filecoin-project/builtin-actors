@@ -774,7 +774,7 @@ impl ActorHarness {
         precommits: Vec<SectorPreCommitOnChainInfo>,
         params: ProveCommitAggregateParams,
         base_fee: BigInt,
-    ) {
+    ) -> Result<(), ActorError> {
         // recieve call to ComputeDataCommittments
         let mut comm_ds = Vec::new();
         let mut cdc_inputs = Vec::new();
@@ -792,9 +792,9 @@ impl ActorHarness {
         rt.expect_send(
             *STORAGE_MARKET_ACTOR_ADDR,
             MarketMethod::ComputeDataCommitment as u64,
-            RawBytes::serialize(cdc_params).unwrap(),
+            RawBytes::serialize(cdc_params)?,
             BigInt::zero(),
-            RawBytes::serialize(cdc_ret).unwrap(),
+            RawBytes::serialize(cdc_ret)?,
             ExitCode::OK,
         );
         self.expect_query_network_info(rt);
@@ -812,7 +812,7 @@ impl ActorHarness {
                 precommit.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
 
             let receiver = rt.receiver;
-            let buf = receiver.marshal_cbor().unwrap();
+            let buf = receiver.marshal_cbor()?;
             rt.expect_get_randomness_from_tickets(
                 DomainSeparationTag::SealRandomness,
                 precommit.info.seal_rand_epoch,
@@ -861,9 +861,10 @@ impl ActorHarness {
         rt.call::<Actor>(
             MinerMethod::ProveCommitAggregate as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
+        )?;
         rt.verify();
+
+        Ok(())
     }
 
     pub fn confirm_sector_proofs_valid(
