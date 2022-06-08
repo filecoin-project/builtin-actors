@@ -1,13 +1,14 @@
 use fil_actor_init::Method as InitMethod;
 use fil_actor_miner::ext::power::EnrollCronEventParams;
 use fil_actor_miner::{Method as MinerMethod, MinerConstructorParams, PreCommitSectorParams};
-use fil_actor_power::{
-    CreateMinerParams, CreateMinerReturn, EnrollCronEventParams, Method as PowerMethod,
-};
+use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
+use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::cbor::serialize;
 
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
+use fil_actors_runtime::{
+    CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
@@ -159,6 +160,7 @@ fn test_cron_tick() {
     // create new vm at epoch 1 less than epoch requested by miner
     let v = vm.with_epoch(cron_config.event_epoch - 1);
 
+    // run cron and expect a call to miner and a call to update reward actor params
     vm.apply_message(
         *CRON_ACTOR_ADDR,
         *STORAGE_POWER_ACTOR_ADDR,
@@ -166,5 +168,38 @@ fn test_cron_tick() {
         PowerMethod::EnrollCronEvent as u64,
         // abi.Empty?
         RawBytes::new(vec![]),
-    );
+    )
+    .unwrap();
+
+    let sub_invocs = vec![
+        // get data from reward and power for any eventual calls to confirmsectorproofsvalid
+        ExpectInvocation {
+            to: *REWARD_ACTOR_ADDR,
+            method: PowerMethod::EnrollCronEvent as u64,
+            ..Default::default()
+        },
+        // expect call back to miner that was set up in create miner
+        ExpectInvocation {
+            to: miner_addrs.id_address,
+            method: MinerMethod::OnDeferredCronEvent as u64,
+            from: Some(*STORAGE_POWER_ACTOR_ADDR),
+            ..Default::default()
+        },
+        // expect call to reward to update kpi
+        ExpectInvocation {
+            to: *REWARD_ACTOR_ADDR,
+            method: RewardMethod::UpdateNetworkKPI as u64,
+            from: Some(*STORAGE_POWER_ACTOR_ADDR),
+            ..Default::default()
+        },
+    ];
+
+    // expect miner call to be missing
+    ExpectInvocation {
+        to: *STORAGE_POWER_ACTOR_ADDR,
+        method: PowerMethod::EnrollCronEvent as u64,
+        subinvocs: Some(sub_invocs),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().first().unwrap());
 }
