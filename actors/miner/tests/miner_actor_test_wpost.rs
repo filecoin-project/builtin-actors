@@ -751,7 +751,6 @@ fn successful_recoveries_recover_power() {
     h.check_state(&rt);
 }
 
-
 #[test]
 fn skipped_faults_adjust_power() {
     let period_offset = ChainEpoch::from(100);
