@@ -3,7 +3,7 @@ use fil_actor_verifreg::{Method as MethodsVerifreg, VerifierParams};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    test_utils::*, BURNT_FUNDS_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    test_utils::*, BURNT_FUNDS_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
@@ -87,7 +87,7 @@ fn terminate_sectors() {
     );
 
     // create 3 deals, some verified and some not
-    //    let mut deal_ids = vec![];
+    let mut deal_ids = vec![];
     let deal_start = v.get_epoch() + &Policy::default().pre_commit_challenge_delay + 1;
     let deals = publish_deal(
         &v,
@@ -100,5 +100,13 @@ fn terminate_sectors() {
         deal_start,
         181 * EPOCHS_IN_DAY,
     );
-    println!("deals output {:?}", deals)
+    deals.ids.iter().map(|id| {deal_ids.push(id)});
+    let deals = publish_deal(&v,worker, verified_client, id_addr, "deal2", 1<<32, true, deal_start, 200 * EPOCHS_IN_DAY);
+    deals.ids.iter().map(|id| {deal_ids.push(id)});
+    let deals = publish_deal(&v, worker, unverified_client, id_addr, "deal3", 1 << 34, false, deal_start, 210 * EPOCHS_IN_DAY);
+    deals.ids.iter().map(|id| {deal_ids.push(id)});
+
+    let res = v.apply_message(*SYSTEM_ACTOR_ADDR, *CRON_ACTOR_ADDR, TokenAmount::zero(), MethodsCron::EpochTick, RawBytes::default()).unwrap();
+    assert_eq!(ExitCode::OK, res.code);
+
 }
