@@ -680,6 +680,78 @@ fn duplicate_proof_rejected_with_many_partitions() {
 }
 
 #[test]
+fn successful_recoveries_recover_power() {
+    let period_offset = ChainEpoch::from(100);
+    let precommit_epoch = ChainEpoch::from(1);
+
+    let mut h = ActorHarness::new(period_offset);
+    h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
+
+    let mut rt = h.new_runtime();
+    rt.epoch = precommit_epoch;
+    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+
+    h.construct_and_verify(&mut rt);
+
+    let infos = h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let pwr = miner::power_for_sectors(h.sector_size, &infos);
+
+    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
+    let initial_locked = h.get_locked_funds(&rt);
+
+    // Submit first PoSt to ensure we are sufficiently early to add a fault
+    // advance to next proving period
+    h.advance_and_submit_posts(&mut rt, &infos);
+
+    // advance deadline and declare fault
+    h.advance_deadline(&mut rt, CronConfig::empty());
+    h.declare_faults(&mut rt, &infos);
+
+    // advance a deadline and declare recovery
+    h.advance_deadline(&mut rt, CronConfig::empty());
+
+    // declare recovery
+    let state = h.get_state(&rt);
+    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
+    let mut bf = BitField::new();
+    bf.set(infos[0].sector_number);
+    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8)).unwrap();
+
+    // advance to epoch when submitPoSt is due
+    let mut dlinfo = h.deadline(&rt);
+    while dlinfo.index != dlidx {
+        dlinfo = h.advance_deadline(&mut rt, CronConfig::empty());
+    }
+
+    // Now submit PoSt
+    // Power should return for recovered sector.
+    let cfg = PoStConfig::with_expected_power_delta(&pwr);
+    let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
+    h.submit_window_post(&mut rt, &dlinfo, vec![partition], infos.clone(), cfg);
+
+    // faulty power has been removed, partition no longer has faults or recoveries
+    let (deadline, partition) = h.find_sector(&rt, infos[0].sector_number);
+    assert_eq!(miner::PowerPair::zero(), deadline.faulty_power);
+    assert_eq!(miner::PowerPair::zero(), partition.faulty_power);
+    assert!(partition.faults.is_empty());
+    assert!(partition.recoveries.is_empty());
+
+    // We restored power, so we should not have recorded a post.
+    let deadline = h.get_deadline(&rt, dlidx);
+    assert_bitfield_equals(&deadline.partitions_posted, &[pidx]);
+
+    let posts = amt_to_vec::<miner::WindowedPoSt>(&rt, &deadline.optimistic_post_submissions);
+    assert!(posts.is_empty());
+
+    // Next deadline cron does not charge for the fault
+    h.advance_deadline(&mut rt, CronConfig::empty());
+
+    assert_eq!(initial_locked, h.get_locked_funds(&rt));
+
+    h.check_state(&rt);
+}
+
+#[test]
 fn skipped_faults_adjust_power() {
     let period_offset = ChainEpoch::from(100);
     let precommit_epoch = ChainEpoch::from(1);

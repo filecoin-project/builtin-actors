@@ -1,5 +1,6 @@
 use fil_actor_miner::power_for_sectors;
 use fil_actor_miner::select_sectors;
+use fil_actor_miner::testing::PartitionStateSummary;
 use fil_actor_miner::Partition;
 use fil_actor_miner::SectorOnChainInfo;
 use fil_actor_miner::Sectors;

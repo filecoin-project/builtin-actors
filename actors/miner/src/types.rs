@@ -5,7 +5,7 @@ use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe};
+use fvm_ipld_encoding::{serde_bytes, BytesDe, Cbor};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -113,12 +113,16 @@ pub struct SubmitWindowedPoStParams {
     pub chain_commit_rand: Randomness,
 }
 
+impl Cbor for SubmitWindowedPoStParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectorParams {
     pub sector_number: SectorNumber,
     #[serde(with = "serde_bytes")]
     pub proof: Vec<u8>,
 }
+
+impl Cbor for ProveCommitSectorParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CheckSectorProvenParams {
@@ -237,6 +241,8 @@ pub type PreCommitSectorParams = SectorPreCommitInfo;
 pub struct PreCommitSectorBatchParams {
     pub sectors: Vec<SectorPreCommitInfo>,
 }
+
+impl Cbor for PreCommitSectorBatchParams {}
 
 #[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitInfo {

@@ -1,6 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::fmt::Display;
+
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
 use fvm_ipld_hamt::BytesKey;
@@ -18,13 +20,19 @@ use serde::{Deserialize, Serialize};
 pub const SIGNERS_MAX: usize = 256;
 
 /// Transaction ID type
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Hash, Eq, PartialEq, PartialOrd)]
 #[serde(transparent)]
 pub struct TxnID(pub i64);
 
 impl TxnID {
     pub fn key(self) -> BytesKey {
         self.0.encode_var_vec().into()
+    }
+}
+
+impl Display for TxnID {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

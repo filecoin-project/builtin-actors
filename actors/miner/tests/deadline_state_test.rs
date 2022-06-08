@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use fil_actor_miner::{
     power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, SectorOnChainInfo,
@@ -16,6 +16,9 @@ use fvm_shared::{clock::QuantSpec, error::ExitCode, sector::SectorSize};
 
 mod util;
 use crate::util::*;
+
+const SECTOR_SIZE: SectorSize = SectorSize::_32GiB;
+const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
 
 fn sectors() -> Vec<SectorOnChainInfo> {
     vec![
@@ -39,8 +42,6 @@ fn all_sectors() -> Vec<SectorOnChainInfo> {
     [sectors(), extra_sectors()].concat()
 }
 
-const SECTOR_SIZE: SectorSize = SectorSize::_32GiB;
-const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
 const PARTITION_SIZE: u64 = 4;
 
 // Define some basic test scenarios that build one each other.
@@ -69,9 +70,9 @@ fn add_sectors(
     let deadline_state = deadline_state()
         .with_unproven(&[1, 2, 3, 4, 5, 6, 7, 8, 9])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(store, &sectors, deadline);
 
@@ -79,7 +80,7 @@ fn add_sectors(
         return (deadline_state, sectors);
     }
 
-    let mut sector_array = sectors_array(rt, store, sectors.to_owned());
+    let mut sector_array = sectors_arr(store, sectors.to_owned());
 
     //prove everything
     let result = deadline
@@ -119,9 +120,9 @@ fn add_sectors(
     let deadline_state = deadline_state
         .with_unproven(&[])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(store, &sectors, deadline);
 
@@ -144,7 +145,7 @@ fn add_then_terminate(
         deadline,
         15,
         sectors.to_owned(),
-        HashMap::from([(0, make_bitfield(&[1, 3])), (1, make_bitfield(&[6]))]),
+        HashMap::from([(0, bitfield_from_slice(&[1, 3])), (1, bitfield_from_slice(&[6]))]),
     )
     .unwrap();
 
@@ -160,9 +161,9 @@ fn add_then_terminate(
         .with_terminations(&[1, 3, 6])
         .with_unproven(&unproven)
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(rt.store(), &sectors, deadline);
 
@@ -191,9 +192,9 @@ fn add_then_terminate_then_pop_early(
     let deadline_state = deadline_state
         .with_terminations(&[1, 3, 6])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(store, &sectors, deadline);
 
@@ -209,7 +210,7 @@ fn add_then_terminate_then_remove_partition(
     let store = rt.store();
 
     let (live, dead, removed_power) = deadline
-        .remove_partitions(store, &make_bitfield(&[0]), QUANT_SPEC)
+        .remove_partitions(store, &bitfield_from_slice(&[0]), QUANT_SPEC)
         .expect("should have removed partitions");
 
     assert_bitfield_equals(&live, &[2, 4]);
@@ -220,7 +221,7 @@ fn add_then_terminate_then_remove_partition(
 
     let deadline_state = deadline_state
         .with_terminations(&[6])
-        .with_partitions(vec![make_bitfield(&[5, 6, 7, 8]), make_bitfield(&[9])])
+        .with_partitions(vec![bitfield_from_slice(&[5, 6, 7, 8]), bitfield_from_slice(&[9])])
         .assert(store, &sectors, deadline);
 
     (deadline_state, sectors)
@@ -237,11 +238,13 @@ fn add_then_mark_faulty(
     let (deadline_state, sectors) = add_sectors(rt, deadline, prove);
 
     let store = rt.store();
-    let sectors_array = sectors_array(rt, store, sectors.to_owned());
+    let sectors_array = sectors_arr(store, sectors.to_owned());
 
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(make_bitfield(&[1]))).unwrap();
-    partition_sector_map.add(1, UnvalidatedBitField::Validated(make_bitfield(&[5, 6]))).unwrap();
+    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
+    partition_sector_map
+        .add(1, UnvalidatedBitField::Validated(bitfield_from_slice(&[5, 6])))
+        .unwrap();
 
     // mark faulty
     let power_delta = deadline
@@ -260,9 +263,9 @@ fn add_then_mark_faulty(
         .with_faults(&[1, 5, 6])
         .with_unproven(&unproven)
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(store, &sectors, deadline);
     (deadline_state, sectors)
@@ -340,7 +343,7 @@ fn cannot_remove_partitions_with_early_terminations() {
     add_then_terminate(&rt, &mut deadline, false);
 
     let store = rt.store();
-    assert!(deadline.remove_partitions(store, &make_bitfield(&[0]), QUANT_SPEC).is_err());
+    assert!(deadline.remove_partitions(store, &bitfield_from_slice(&[0]), QUANT_SPEC).is_err());
 }
 
 #[test]
@@ -378,9 +381,9 @@ fn can_pop_early_terminations_in_multiple_steps() {
     deadline_state
         .with_terminations(&[1, 3, 6])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(store, &sectors, &deadline);
 }
@@ -391,7 +394,9 @@ fn cannot_remove_missing_partition() {
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
     add_then_terminate_then_remove_partition(&rt, &mut deadline);
-    assert!(deadline.remove_partitions(rt.store(), &make_bitfield(&[2]), QUANT_SPEC).is_err());
+    assert!(deadline
+        .remove_partitions(rt.store(), &bitfield_from_slice(&[2]), QUANT_SPEC)
+        .is_err());
 }
 
 #[test]
@@ -401,7 +406,7 @@ fn removing_no_partitions_does_nothing() {
 
     let (deadline_state, sectors) = add_then_terminate_then_pop_early(&rt, &mut deadline);
     let (live, dead, removed_power) = deadline
-        .remove_partitions(rt.store(), &make_bitfield(&[]), QUANT_SPEC)
+        .remove_partitions(rt.store(), &bitfield_from_slice(&[]), QUANT_SPEC)
         .expect("should not have failed to remove partitions");
 
     assert!(removed_power.is_zero());
@@ -412,9 +417,9 @@ fn removing_no_partitions_does_nothing() {
     deadline_state
         .with_terminations(&[1, 3, 6])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(rt.store(), &sectors, &deadline);
 }
@@ -427,7 +432,9 @@ fn fails_to_remove_partitions_with_faulty_sectors() {
     add_then_mark_faulty(&rt, &mut deadline, false);
 
     // Try to remove a partition with faulty sectors.
-    assert!(deadline.remove_partitions(rt.store(), &make_bitfield(&[1]), QUANT_SPEC).is_err());
+    assert!(deadline
+        .remove_partitions(rt.store(), &bitfield_from_slice(&[1]), QUANT_SPEC)
+        .is_err());
 }
 
 #[test]
@@ -442,13 +449,13 @@ fn terminate_proven_and_faulty() {
         &mut deadline,
         15,
         sectors.to_owned(),
-        HashMap::from([(0, make_bitfield(&[1, 3])), (1, make_bitfield(&[6]))]),
+        HashMap::from([(0, bitfield_from_slice(&[1, 3])), (1, bitfield_from_slice(&[6]))]),
     )
     .unwrap();
 
     // Sector 3 active, 1, 6 faulty
     let expected_power_loss =
-        power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors, &make_bitfield(&[3])));
+        power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors, &bitfield_from_slice(&[3])));
     assert_eq!(
         expected_power_loss, removed_power,
         "deadline state to remove power for terminated sectors"
@@ -458,9 +465,9 @@ fn terminate_proven_and_faulty() {
         .with_terminations(&[1, 3, 6])
         .with_faults(&[5])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(rt.store(), &sectors, &deadline);
 }
@@ -473,7 +480,7 @@ fn terminate_sectors(
     partition_sectors: HashMap<u64, BitField>,
 ) -> anyhow::Result<PowerPair> {
     let store = rt.store();
-    let sectors_array = sectors_array(rt, &store, sectors);
+    let sectors_array = sectors_arr(&store, sectors);
 
     let mut partition_sector_map = PartitionSectorMap::default();
     for (partition, sectors) in partition_sectors {
@@ -503,7 +510,7 @@ fn terminate_unproven_and_faulty() {
         &mut deadline,
         15,
         sectors.to_owned(),
-        HashMap::from([(0, make_bitfield(&[1, 3])), (1, make_bitfield(&[6]))]),
+        HashMap::from([(0, bitfield_from_slice(&[1, 3])), (1, bitfield_from_slice(&[6]))]),
     )
     .unwrap();
 
@@ -515,9 +522,9 @@ fn terminate_unproven_and_faulty() {
         .with_faults(&[5])
         .with_unproven(&[2, 4, 7, 8, 9]) // not 1, 3, 5, & 6
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(rt.store(), &sectors, &deadline);
 }
@@ -533,7 +540,7 @@ fn fails_to_terminate_missing_sector() {
         &mut deadline,
         15,
         sectors,
-        HashMap::from([(0, make_bitfield(&[6]))]),
+        HashMap::from([(0, bitfield_from_slice(&[6]))]),
     );
 
     assert!(ret.is_err());
@@ -556,7 +563,7 @@ fn fails_to_terminate_missing_partition() {
         &mut deadline,
         15,
         sectors,
-        HashMap::from([(4, make_bitfield(&[6]))]),
+        HashMap::from([(4, bitfield_from_slice(&[6]))]),
     );
 
     assert!(ret.is_err());
@@ -579,7 +586,7 @@ fn fails_to_terminate_already_terminated_sector() {
         &mut deadline,
         15,
         sectors,
-        HashMap::from([(0, make_bitfield(&[1, 2]))]),
+        HashMap::from([(0, bitfield_from_slice(&[1, 2]))]),
     );
 
     assert!(ret.is_err());
@@ -611,9 +618,9 @@ fn faulty_sectors_expire() {
         .with_terminations(&[1, 2, 3, 4, 5, 6, 8, 9])
         .with_faults(&[])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(rt.store(), &sectors, &deadline);
 
@@ -632,9 +639,9 @@ fn faulty_sectors_expire() {
         .with_terminations(&[1, 2, 3, 4, 5, 6, 8, 9])
         .with_faults(&[])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(rt.store(), &sectors, &deadline);
 }
@@ -673,7 +680,7 @@ fn post_all_the_things() {
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(expected_power, power);
 
-    let mut sectors_array = sectors_array(&rt, rt.store(), all_sectors());
+    let mut sectors_array = sectors_arr(rt.store(), all_sectors());
 
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
@@ -701,9 +708,9 @@ fn post_all_the_things() {
         .with_posts(&[0, 1])
         .with_unproven(&[10])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9, 10]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9, 10]),
         ])
         .assert(rt.store(), &all_sectors(), &deadline);
 
@@ -732,9 +739,9 @@ fn post_all_the_things() {
     deadline_state()
         .with_posts(&[0, 1, 2])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9, 10]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9, 10]),
         ])
         .assert(rt.store(), &all_sectors(), &deadline);
     let sector_array_root = sectors_array.amt.flush().unwrap();
@@ -750,9 +757,9 @@ fn post_all_the_things() {
     // everything back to normal
     deadline_state()
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9, 10]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9, 10]),
         ])
         .assert(rt.store(), &all_sectors(), &deadline);
 }
@@ -773,12 +780,12 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let mut sectors_array = sectors_array(&rt, rt.store(), all_sectors());
+    let mut sectors_array = sectors_arr(rt.store(), all_sectors());
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(make_bitfield(&[1]))).unwrap();
-    partition_sector_map.add(1, UnvalidatedBitField::Validated(make_bitfield(&[6]))).unwrap();
+    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
+    partition_sector_map.add(1, UnvalidatedBitField::Validated(bitfield_from_slice(&[6]))).unwrap();
     deadline
         .declare_faults_recovered(
             rt.store(),
@@ -794,16 +801,22 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
         .with_faults(&[1, 5, 6])
         .with_unproven(&[10])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9, 10]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9, 10]),
         ])
         .assert(rt.store(), &all_sectors(), &deadline);
 
     // prove partitions 0 & 1, skipping sectors 1 & 7
     let mut post_partitions = [
-        PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(make_bitfield(&[1])) },
-        PoStPartition { index: 1, skipped: UnvalidatedBitField::Validated(make_bitfield(&[7])) },
+        PoStPartition {
+            index: 0,
+            skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[1])),
+        },
+        PoStPartition {
+            index: 1,
+            skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[7])),
+        },
     ];
     let post_result = deadline
         .record_proven_sectors(
@@ -839,9 +852,9 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
         .with_faults(&[1, 5, 7])
         .with_unproven(&[10])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9, 10]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9, 10]),
         ])
         .assert(rt.store(), &all_sectors(), &deadline);
 
@@ -863,9 +876,9 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
     deadline_state()
         .with_faults(&[1, 5, 7, 9, 10])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9, 10]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9, 10]),
         ])
         .assert(rt.store(), &all_sectors(), &deadline);
 }
@@ -885,11 +898,14 @@ fn post_with_skipped_unproven() {
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let mut sectors_array = sectors_array(&rt, rt.store(), all_sectors());
+    let mut sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
         PoStPartition { index: 1, skipped: UnvalidatedBitField::Validated(BitField::default()) },
-        PoStPartition { index: 2, skipped: UnvalidatedBitField::Validated(make_bitfield(&[10])) },
+        PoStPartition {
+            index: 2,
+            skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[10])),
+        },
     ];
     let post_result = deadline
         .record_proven_sectors(
@@ -914,9 +930,9 @@ fn post_with_skipped_unproven() {
         .with_posts(&[0, 1, 2])
         .with_faults(&[10])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9, 10]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9, 10]),
         ])
         .assert(rt.store(), &all_sectors(), &deadline);
 
@@ -933,9 +949,9 @@ fn post_with_skipped_unproven() {
     deadline_state()
         .with_faults(&[10])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9, 10]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9, 10]),
         ])
         .assert(rt.store(), &all_sectors(), &deadline);
 }
@@ -955,7 +971,7 @@ fn post_missing_partition() {
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let sectors_array = sectors_array(&rt, rt.store(), all_sectors());
+    let sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
         PoStPartition { index: 3, skipped: UnvalidatedBitField::Validated(BitField::default()) },
@@ -992,7 +1008,7 @@ fn post_partition_twice() {
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let sectors_array = sectors_array(&rt, rt.store(), all_sectors());
+    let sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
@@ -1023,12 +1039,12 @@ fn retract_recoveries() {
     // Adds sectors 1-9 then marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, true);
 
-    let mut sectors_array = sectors_array(&rt, rt.store(), sectors.to_owned());
+    let mut sectors_array = sectors_arr(rt.store(), sectors.to_owned());
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(make_bitfield(&[1]))).unwrap();
-    partition_sector_map.add(1, UnvalidatedBitField::Validated(make_bitfield(&[6]))).unwrap();
+    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
+    partition_sector_map.add(1, UnvalidatedBitField::Validated(bitfield_from_slice(&[6]))).unwrap();
     deadline
         .declare_faults_recovered(
             rt.store(),
@@ -1040,7 +1056,7 @@ fn retract_recoveries() {
 
     // retract recovery for sector 1
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(make_bitfield(&[1]))).unwrap();
+    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
     let power_delta = deadline
         .record_faults(
             rt.store(),
@@ -1060,9 +1076,9 @@ fn retract_recoveries() {
         .with_recovering(&[6])
         .with_faults(&[1, 5, 6])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(rt.store(), &sectors, &deadline);
 
@@ -1107,9 +1123,9 @@ fn retract_recoveries() {
         .with_posts(&[0, 1, 2])
         .with_faults(&[1, 5])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(rt.store(), &sectors, &deadline);
 
@@ -1126,9 +1142,9 @@ fn retract_recoveries() {
     deadline_state()
         .with_faults(&[1, 5])
         .with_partitions(vec![
-            make_bitfield(&[1, 2, 3, 4]),
-            make_bitfield(&[5, 6, 7, 8]),
-            make_bitfield(&[9]),
+            bitfield_from_slice(&[1, 2, 3, 4]),
+            bitfield_from_slice(&[5, 6, 7, 8]),
+            bitfield_from_slice(&[9]),
         ])
         .assert(rt.store(), &all_sectors(), &deadline);
 }
@@ -1139,12 +1155,12 @@ fn cannot_declare_faults_in_missing_partitions() {
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
     let (_, sectors) = add_sectors(&rt, &mut deadline, true);
-    let sectors_array = sectors_array(&rt, rt.store(), sectors);
+    let sectors_array = sectors_arr(rt.store(), sectors);
 
     // declare sectors 1 & 6 faulty
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(make_bitfield(&[1]))).unwrap();
-    partition_sector_map.add(4, UnvalidatedBitField::Validated(make_bitfield(&[6]))).unwrap();
+    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
+    partition_sector_map.add(4, UnvalidatedBitField::Validated(bitfield_from_slice(&[6]))).unwrap();
     let result = deadline.record_faults(
         rt.store(),
         &sectors_array,
@@ -1169,12 +1185,12 @@ fn cannot_declare_faults_recovered_in_missing_partitions() {
 
     // Marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty.
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, true);
-    let sectors_array = sectors_array(&rt, rt.store(), sectors);
+    let sectors_array = sectors_arr(rt.store(), sectors);
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(make_bitfield(&[1]))).unwrap();
-    partition_sector_map.add(4, UnvalidatedBitField::Validated(make_bitfield(&[6]))).unwrap();
+    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
+    partition_sector_map.add(4, UnvalidatedBitField::Validated(bitfield_from_slice(&[6]))).unwrap();
     let result = deadline.declare_faults_recovered(
         rt.store(),
         &sectors_array,
@@ -1201,21 +1217,14 @@ fn deadline_state() -> ExpectedDeadlineState {
 }
 
 fn sector_power(sector_numbers: &[u64]) -> PowerPair {
-    power_for_sectors(SECTOR_SIZE, &select_sectors(&all_sectors(), &make_bitfield(sector_numbers)))
+    power_for_sectors(
+        SECTOR_SIZE,
+        &select_sectors(&all_sectors(), &bitfield_from_slice(sector_numbers)),
+    )
 }
 
 fn make_bitfield(sector_numbers: &[u64]) -> BitField {
     BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
-}
-
-fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
-    let mut to_include: BTreeSet<_> = field.iter().collect();
-    let included =
-        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
-
-    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
-
-    included
 }
 
 // Helper type for validating deadline state.
@@ -1338,7 +1347,7 @@ impl ExpectedDeadlineState {
             &acc,
         );
 
-        assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+        acc.assert_empty();
 
         summary
     }

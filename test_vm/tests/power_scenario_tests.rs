@@ -1,5 +1,4 @@
 use fil_actor_init::Method as InitMethod;
-use fil_actor_miner::ext::power::EnrollCronEventParams;
 use fil_actor_miner::{Method as MinerMethod, MinerConstructorParams, PreCommitSectorParams};
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -20,8 +19,11 @@ use num_traits::Zero;
 use test_vm::util::create_accounts;
 use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
+mod utils;
+use utils::*;
+
 #[test]
-fn create_miner() {
+fn create_miner_test() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
 
@@ -59,18 +61,12 @@ fn create_miner() {
         to: *STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::CreateMiner as u64,
         params: Some(serialize(&params, "power create miner params").unwrap()),
-        code: None,
-        from: None,
         ret: Some(res.ret),
         subinvocs: Some(vec![
             // request init actor construct miner
             ExpectInvocation {
                 to: *INIT_ACTOR_ADDR,
                 method: InitMethod::Exec as u64,
-                params: None,
-                code: None,
-                from: None,
-                ret: None,
                 subinvocs: Some(vec![ExpectInvocation {
                     // init then calls miner constructor
                     to: Address::new_id(FIRST_TEST_USER_ADDR + 1),
@@ -90,13 +86,12 @@ fn create_miner() {
                         )
                         .unwrap(),
                     ),
-                    code: None,
-                    from: None,
-                    ret: None,
-                    subinvocs: None,
+                    ..Default::default()
                 }]),
+                ..Default::default()
             },
         ]),
+        ..Default::default()
     };
     expect.matches(v.take_invocations().last().unwrap())
 }
@@ -154,11 +149,10 @@ fn test_cron_tick() {
     .unwrap();
 
     // find epoch of miner's next cron task (precommit:1, enrollCron:2)
-    let cron_params = vm.params_for_invocation(vec![1, 2]);
-    let cron_config: EnrollCronEventParams = cron_params.deserialize().unwrap();
+    let cron_epoch = miner_dline_info(&vm, miner_addrs.id_address).last() - 1;
 
     // create new vm at epoch 1 less than epoch requested by miner
-    let v = vm.with_epoch(cron_config.event_epoch - 1);
+    let v = vm.with_epoch(cron_epoch);
 
     // run cron and expect a call to miner and a call to update reward actor params
     vm.apply_message(
