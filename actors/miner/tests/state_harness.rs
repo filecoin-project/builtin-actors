@@ -1,11 +1,10 @@
 #![allow(dead_code)]
 use fil_actor_miner::MinerInfo;
-use fil_actor_miner::SectorOnChainInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::VestSpec;
 use fil_actor_miner::VestingFunds;
-use fil_actor_miner::{BitFieldQueue, State};
-use fil_actors_runtime::runtime::Policy;
+use fil_actor_miner::{BitFieldQueue, CollisionPolicy, SectorOnChainInfo, State};
+use fil_actors_runtime::{runtime::Policy, ActorError};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
@@ -13,9 +12,11 @@ use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::SectorNumber;
+use fvm_shared::sector::{SectorNumber, SectorSize};
 use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
 use multihash::Code::Blake2b256;
+
+use fil_actors_runtime::test_utils::*;
 
 pub struct StateHarness {
     pub st: State,
@@ -51,6 +52,10 @@ impl StateHarness {
 
         let st = State::new(policy, &store, info_cid, period_boundary, 0).unwrap();
         StateHarness { st, store }
+    }
+
+    pub fn new_runtime(&self) -> MockRuntime {
+        MockRuntime::default()
     }
 
     #[allow(dead_code)]
@@ -97,11 +102,6 @@ impl StateHarness {
         cleanup_events: Vec<(ChainEpoch, u64)>,
     ) -> anyhow::Result<()> {
         self.st.add_pre_commit_clean_ups(policy, &self.store, cleanup_events)
-    }
-
-    #[allow(dead_code)]
-    pub fn quant_spec_every_deadline(&self, policy: &Policy) -> QuantSpec {
-        self.st.quant_spec_every_deadline(policy)
     }
 
     #[allow(dead_code)]
@@ -156,5 +156,55 @@ impl StateHarness {
     pub fn vesting_funds_store_empty(&self) -> bool {
         let vesting = self.store.get_cbor::<VestingFunds>(&self.st.vesting_funds).unwrap().unwrap();
         vesting.funds.is_empty()
+    }
+
+    pub fn assign_sectors_to_deadlines(
+        &mut self,
+        policy: &Policy,
+        epoch: ChainEpoch,
+        sectors: Vec<SectorOnChainInfo>,
+        partition_size: u64,
+        sector_size: SectorSize,
+    ) {
+        self.st
+            .assign_sectors_to_deadlines(
+                policy,
+                &self.store,
+                epoch,
+                sectors,
+                partition_size,
+                sector_size,
+            )
+            .unwrap();
+    }
+
+    #[allow(dead_code)]
+    pub fn quant_spec_every_deadline(&self, policy: &Policy) -> QuantSpec {
+        self.st.quant_spec_every_deadline(policy)
+    }
+
+    #[allow(dead_code)]
+    pub fn quant_spec_for_deadline(&self, policy: &Policy, deadline_idx: u64) -> QuantSpec {
+        self.st.quant_spec_for_deadline(policy, deadline_idx)
+    }
+
+    #[allow(dead_code)]
+    pub fn allocate_sector_numbers(&mut self, sector_numbers: &[u64]) -> Result<(), ActorError> {
+        self.st.allocate_sector_numbers(
+            &self.store,
+            &BitField::try_from_bits(sector_numbers.iter().copied()).unwrap(),
+            CollisionPolicy::DenyCollisions,
+        )
+    }
+
+    #[allow(dead_code)]
+    pub fn mask_sector_numbers(&mut self, ns: &BitField) -> Result<(), ActorError> {
+        self.st.allocate_sector_numbers(&self.store, ns, CollisionPolicy::AllowCollisions)
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_allocated_sector_numbers(&mut self, expected: &BitField) {
+        let b: BitField = self.store.get_cbor(&self.st.allocated_sectors).unwrap().unwrap();
+        assert_eq!(&b, expected);
     }
 }
