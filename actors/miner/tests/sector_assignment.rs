@@ -140,7 +140,5 @@ mod sector_assignment {
                 Ok(())
             })
             .unwrap();
-
-        // Now prove and activate/check power.
     }
 }

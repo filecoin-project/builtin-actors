@@ -189,7 +189,7 @@ impl StateHarness {
     }
 
     #[allow(dead_code)]
-    pub fn allocate(&mut self, sector_numbers: &[u64]) -> Result<(), ActorError> {
+    pub fn allocate_sector_numbers(&mut self, sector_numbers: &[u64]) -> Result<(), ActorError> {
         self.st.allocate_sector_numbers(
             &self.store,
             &BitField::try_from_bits(sector_numbers.iter().copied()).unwrap(),
@@ -198,12 +198,12 @@ impl StateHarness {
     }
 
     #[allow(dead_code)]
-    pub fn mask(&mut self, ns: &BitField) -> Result<(), ActorError> {
+    pub fn mask_sector_numbers(&mut self, ns: &BitField) -> Result<(), ActorError> {
         self.st.allocate_sector_numbers(&self.store, ns, CollisionPolicy::AllowCollisions)
     }
 
     #[allow(dead_code)]
-    pub fn expect(&mut self, expected: &BitField) {
+    pub fn expect_allocated_sector_numbers(&mut self, expected: &BitField) {
         let b: BitField = self.store.get_cbor(&self.st.allocated_sectors).unwrap().unwrap();
         assert_eq!(&b, expected);
     }
