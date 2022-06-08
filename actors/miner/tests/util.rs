@@ -24,7 +24,7 @@ use fil_actor_miner::{
     RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo,
     Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
     VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
-    CRON_EVENT_PROVING_DEADLINE,
+    CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -38,10 +38,11 @@ use fil_actors_runtime::{
     ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
+use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
 
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
-use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
 use fvm_ipld_encoding::{BytesDe, Cbor, CborStore, RawBytes};
@@ -2505,6 +2506,17 @@ pub fn test_sector(
         sealed_cid: make_sealed_cid(format!("commR-{sector_number}").as_bytes()),
         ..Default::default()
     }
+}
+
+pub fn sectors_arr(
+    store: &'_ MemoryBlockstore,
+    sectors_info: Vec<SectorOnChainInfo>,
+) -> Sectors<'_, MemoryBlockstore> {
+    let empty_array =
+        Amt::<(), _>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH).flush().unwrap();
+    let mut sectors = Sectors::load(store, &empty_array).unwrap();
+    sectors.store(sectors_info).unwrap();
+    sectors
 }
 
 #[allow(dead_code)]

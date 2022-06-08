@@ -289,14 +289,3 @@ fn assert_partition_state(
     );
     msgs.assert_empty();
 }
-
-pub fn sectors_arr(
-    store: &'_ MemoryBlockstore,
-    sectors_info: Vec<SectorOnChainInfo>,
-) -> Sectors<'_, MemoryBlockstore> {
-    let empty_array =
-        Amt::<(), _>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH).flush().unwrap();
-    let mut sectors = Sectors::load(store, &empty_array).unwrap();
-    sectors.store(sectors_info).unwrap();
-    sectors
-}
