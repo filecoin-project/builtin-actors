@@ -44,7 +44,7 @@ use fvm_shared::HAMT_BIT_WIDTH;
 
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
-use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
 use fvm_ipld_encoding::{BytesDe, Cbor, CborStore, RawBytes};
@@ -777,7 +777,7 @@ impl ActorHarness {
         precommits: Vec<SectorPreCommitOnChainInfo>,
         params: ProveCommitAggregateParams,
         base_fee: BigInt,
-    ) {
+    ) -> Result<(), ActorError> {
         // recieve call to ComputeDataCommittments
         let mut comm_ds = Vec::new();
         let mut cdc_inputs = Vec::new();
@@ -795,9 +795,9 @@ impl ActorHarness {
         rt.expect_send(
             *STORAGE_MARKET_ACTOR_ADDR,
             MarketMethod::ComputeDataCommitment as u64,
-            RawBytes::serialize(cdc_params).unwrap(),
+            RawBytes::serialize(cdc_params)?,
             BigInt::zero(),
-            RawBytes::serialize(cdc_ret).unwrap(),
+            RawBytes::serialize(cdc_ret)?,
             ExitCode::OK,
         );
         self.expect_query_network_info(rt);
@@ -815,7 +815,7 @@ impl ActorHarness {
                 precommit.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
 
             let receiver = rt.receiver;
-            let buf = receiver.marshal_cbor().unwrap();
+            let buf = receiver.marshal_cbor()?;
             rt.expect_get_randomness_from_tickets(
                 DomainSeparationTag::SealRandomness,
                 precommit.info.seal_rand_epoch,
@@ -864,9 +864,10 @@ impl ActorHarness {
         rt.call::<Actor>(
             MinerMethod::ProveCommitAggregate as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
+        )?;
         rt.verify();
+
+        Ok(())
     }
 
     pub fn confirm_sector_proofs_valid(
@@ -2901,17 +2902,6 @@ fn select_sectors_map(sectors: &SectorsMap, include: &BitField) -> (SectorsMap, 
     (included, missing)
 }
 
-#[allow(dead_code)]
-pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
-    let mut to_include: BTreeSet<_> = field.iter().collect();
-    let included =
-        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
-
-    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
-
-    included
-}
-
 fn require_contains_all(
     superset: &BitField,
     subset: &BitField,
@@ -3308,6 +3298,7 @@ pub fn seq(start: u64, count: u64) -> BitField {
     BitField::from_ranges(ranges)
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Default)]
 pub struct CronControl {
     pub pre_commit_num: u64,
@@ -3451,6 +3442,28 @@ impl BitFieldQueueExpectation {
             })
             .unwrap();
     }
+}
+
+#[allow(dead_code)]
+pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
+    let mut to_include: BTreeSet<_> = field.iter().collect();
+    let included =
+        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
+
+    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
+
+    included
+}
+
+#[allow(dead_code)]
+pub fn require_no_expiration_groups_before(
+    epoch: ChainEpoch,
+    queue: &mut ExpirationQueue<'_, MemoryBlockstore>,
+) {
+    queue.amt.flush().unwrap();
+
+    let set = queue.pop_until(epoch - 1).unwrap();
+    assert!(set.is_empty());
 }
 
 pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {

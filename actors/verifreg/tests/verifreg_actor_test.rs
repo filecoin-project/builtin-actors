@@ -43,7 +43,7 @@ mod construction {
         let mut rt = new_runtime();
         let h = Harness { root: *ROOT_ADDR };
         h.construct_and_verify(&mut rt, &h.root);
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -53,7 +53,7 @@ mod construction {
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         rt.id_addresses.insert(root_pubkey, h.root);
         h.construct_and_verify(&mut rt, &root_pubkey);
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -100,7 +100,7 @@ mod verifiers {
                 &RawBytes::serialize(params).unwrap(),
             ),
         );
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -111,7 +111,7 @@ mod verifiers {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_verifier(&mut rt, &VERIFIER, &allowance),
         );
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -122,7 +122,7 @@ mod verifiers {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_verifier(&mut rt, &ROOT_ADDR, &allowance),
         );
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -131,7 +131,7 @@ mod verifiers {
         let allowance = verifier_allowance(&rt);
         h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance);
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.add_verifier(&mut rt, &CLIENT, &allowance));
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -153,7 +153,7 @@ mod verifiers {
             ExitCode::USR_ILLEGAL_STATE,
             h.add_verifier(&mut rt, &verifier_key_address, &allowance),
         );
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -161,7 +161,7 @@ mod verifiers {
         let (h, mut rt) = new_harness();
         let allowance = verifier_allowance(&rt);
         h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -172,7 +172,7 @@ mod verifiers {
         rt.id_addresses.insert(pubkey_addr, *VERIFIER);
 
         h.add_verifier(&mut rt, &pubkey_addr, &allowance).unwrap();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -192,14 +192,14 @@ mod verifiers {
                 &RawBytes::serialize(*VERIFIER).unwrap(),
             ),
         );
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
     fn remove_requires_verifier_exists() {
         let (h, mut rt) = new_harness();
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.remove_verifier(&mut rt, &VERIFIER));
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -208,7 +208,7 @@ mod verifiers {
         let allowance = verifier_allowance(&rt);
         h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
         h.remove_verifier(&mut rt, &VERIFIER).unwrap();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -221,7 +221,7 @@ mod verifiers {
         h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
         // Remove using ID address.
         h.remove_verifier(&mut rt, &VERIFIER).unwrap();
-        h.check_state();
+        h.check_state(&rt);
     }
 }
 
@@ -261,7 +261,7 @@ mod clients {
         h.assert_client_allowance(&rt, &CLIENT4, &allowance_client);
         h.assert_verifier_allowance(&rt, &VERIFIER, &DataCap::from(0));
         h.assert_verifier_allowance(&rt, &VERIFIER2, &DataCap::from(0));
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -280,7 +280,7 @@ mod clients {
         // One client should exist and verifier should have no more allowance left.
         h.assert_client_allowance(&rt, &CLIENT, &allowance);
         h.assert_verifier_allowance(&rt, &VERIFIER, &DataCap::from(0));
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -301,7 +301,7 @@ mod clients {
         h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
         let expected_allowance = allowance_client.clone() + allowance_client.clone();
         h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance_client, &expected_allowance).unwrap();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -312,7 +312,7 @@ mod clients {
 
         let allowance = rt.policy.minimum_verified_deal_size.clone();
         h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance).unwrap();
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -338,7 +338,7 @@ mod clients {
             ExitCode::USR_ILLEGAL_STATE,
             h.add_client(&mut rt, &VERIFIER, &client, &allowance_client, &allowance_client),
         );
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -352,7 +352,7 @@ mod clients {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance),
         );
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -373,7 +373,7 @@ mod clients {
                 &RawBytes::serialize(params).unwrap(),
             ),
         );
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -387,7 +387,7 @@ mod clients {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &h.root, &allowance, &allowance),
         );
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -400,7 +400,7 @@ mod clients {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &h.root, &allowance_client, &allowance_client),
         );
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -420,7 +420,7 @@ mod clients {
             h.add_client(&mut rt, &VERIFIER, &VERIFIER2, &allowance_client, &allowance_client),
         );
 
-        h.check_state();
+        h.check_state(&rt);
     }
 }
 
@@ -468,7 +468,7 @@ mod datacap {
         // Client 2 uses more bytes, exhausting allocation
         h.use_bytes(&mut rt, &CLIENT2, &deal_size).unwrap();
         h.assert_client_removed(&rt, &CLIENT2);
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -485,7 +485,7 @@ mod datacap {
         // Attempt to use more than remaining.
         let deal_size = rt.policy.minimum_verified_deal_size.clone() + 2;
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.use_bytes(&mut rt, &CLIENT, &deal_size));
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -498,7 +498,7 @@ mod datacap {
         let client_pubkey = Address::new_secp256k1(&[3u8; 65]).unwrap();
         rt.id_addresses.insert(client_pubkey, *CLIENT);
         h.use_bytes(&mut rt, &client_pubkey, &allowance).unwrap();
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -511,7 +511,7 @@ mod datacap {
         h.use_bytes(&mut rt, &CLIENT, &allowance).unwrap();
         // Fail to use any more because client was removed.
         expect_abort(ExitCode::USR_NOT_FOUND, h.use_bytes(&mut rt, &CLIENT, &allowance));
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -530,7 +530,7 @@ mod datacap {
                 &RawBytes::serialize(params).unwrap(),
             ),
         );
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -548,7 +548,7 @@ mod datacap {
 
         let deal_size = rt.policy.minimum_verified_deal_size.clone() - 1;
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.use_bytes(&mut rt, &CLIENT, &deal_size));
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -556,7 +556,7 @@ mod datacap {
         let (h, mut rt) = new_harness();
         let min_deal_size = rt.policy.minimum_verified_deal_size.clone();
         expect_abort(ExitCode::USR_NOT_FOUND, h.use_bytes(&mut rt, &CLIENT, &min_deal_size));
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -574,7 +574,7 @@ mod datacap {
 
         let deal_size = allowance_client.clone() + 1;
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.use_bytes(&mut rt, &CLIENT, &deal_size));
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -615,7 +615,7 @@ mod datacap {
 
         h.restore_bytes(&mut rt, &CLIENT3, &deal_size).unwrap();
         h.assert_client_allowance(&rt, &CLIENT3, &(ca3.clone() + &deal_size + &deal_size));
-        h.check_state();
+        h.check_state(&rt);
     }
 
     #[test]
@@ -632,7 +632,7 @@ mod datacap {
         // Restore it.
         h.restore_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
         h.assert_client_allowance(&rt, &CLIENT, &allowance);
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -652,7 +652,7 @@ mod datacap {
         // Restore to pubkey address.
         h.restore_bytes(&mut rt, &client_pubkey, &deal_size).unwrap();
         h.assert_client_allowance(&rt, &CLIENT, &allowance);
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -669,7 +669,7 @@ mod datacap {
         // Restore it. Client has only the restored bytes (lost the +1 in original allowance).
         h.restore_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
         h.assert_client_allowance(&rt, &CLIENT, &deal_size);
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -688,7 +688,7 @@ mod datacap {
                 &RawBytes::serialize(params).unwrap(),
             ),
         );
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -706,7 +706,7 @@ mod datacap {
 
         let deal_size = rt.policy.minimum_verified_deal_size.clone() - 1;
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.restore_bytes(&mut rt, &CLIENT, &deal_size));
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -717,7 +717,7 @@ mod datacap {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.restore_bytes(&mut rt, &ROOT_ADDR, &deal_size),
         );
-        h.check_state()
+        h.check_state(&rt)
     }
 
     #[test]
@@ -730,6 +730,6 @@ mod datacap {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.restore_bytes(&mut rt, &VERIFIER, &deal_size),
         );
-        h.check_state()
+        h.check_state(&rt)
     }
 }

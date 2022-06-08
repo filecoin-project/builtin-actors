@@ -1,3 +1,5 @@
+use fil_actor_verifreg::testing::check_state_invariants;
+use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -207,8 +209,9 @@ impl Harness {
         Ok(())
     }
 
-    pub fn check_state(&self) {
-        // TODO: https://github.com/filecoin-project/builtin-actors/issues/44
+    pub fn check_state(&self, rt: &MockRuntime) {
+        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store());
+        acc.assert_empty();
     }
 }
 
