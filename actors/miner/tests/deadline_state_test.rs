@@ -78,7 +78,7 @@ fn add_sectors(
         return (deadline_state, sectors);
     }
 
-    let mut sector_array = sectors_array(rt, store, sectors.to_owned());
+    let mut sector_array = sectors_arr(store, sectors.to_owned());
 
     //prove everything
     let result = deadline
@@ -236,7 +236,7 @@ fn add_then_mark_faulty(
     let (deadline_state, sectors) = add_sectors(rt, deadline, prove);
 
     let store = rt.store();
-    let sectors_array = sectors_array(rt, store, sectors.to_owned());
+    let sectors_array = sectors_arr(store, sectors.to_owned());
 
     let mut partition_sector_map = PartitionSectorMap::default();
     partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
@@ -478,7 +478,7 @@ fn terminate_sectors(
     partition_sectors: HashMap<u64, BitField>,
 ) -> anyhow::Result<PowerPair> {
     let store = rt.store();
-    let sectors_array = sectors_array(rt, &store, sectors);
+    let sectors_array = sectors_arr(&store, sectors);
 
     let mut partition_sector_map = PartitionSectorMap::default();
     for (partition, sectors) in partition_sectors {
@@ -678,7 +678,7 @@ fn post_all_the_things() {
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(expected_power, power);
 
-    let mut sectors_array = sectors_array(&rt, rt.store(), all_sectors());
+    let mut sectors_array = sectors_arr(rt.store(), all_sectors());
 
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
@@ -778,7 +778,7 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let mut sectors_array = sectors_array(&rt, rt.store(), all_sectors());
+    let mut sectors_array = sectors_arr(rt.store(), all_sectors());
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
@@ -896,7 +896,7 @@ fn post_with_skipped_unproven() {
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let mut sectors_array = sectors_array(&rt, rt.store(), all_sectors());
+    let mut sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
         PoStPartition { index: 1, skipped: UnvalidatedBitField::Validated(BitField::default()) },
@@ -969,7 +969,7 @@ fn post_missing_partition() {
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let sectors_array = sectors_array(&rt, rt.store(), all_sectors());
+    let sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
         PoStPartition { index: 3, skipped: UnvalidatedBitField::Validated(BitField::default()) },
@@ -1006,7 +1006,7 @@ fn post_partition_twice() {
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let sectors_array = sectors_array(&rt, rt.store(), all_sectors());
+    let sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
         PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
@@ -1037,7 +1037,7 @@ fn retract_recoveries() {
     // Adds sectors 1-9 then marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, true);
 
-    let mut sectors_array = sectors_array(&rt, rt.store(), sectors.to_owned());
+    let mut sectors_array = sectors_arr(rt.store(), sectors.to_owned());
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
@@ -1153,7 +1153,7 @@ fn cannot_declare_faults_in_missing_partitions() {
     let mut deadline = Deadline::new(rt.store()).unwrap();
 
     let (_, sectors) = add_sectors(&rt, &mut deadline, true);
-    let sectors_array = sectors_array(&rt, rt.store(), sectors);
+    let sectors_array = sectors_arr(rt.store(), sectors);
 
     // declare sectors 1 & 6 faulty
     let mut partition_sector_map = PartitionSectorMap::default();
@@ -1183,7 +1183,7 @@ fn cannot_declare_faults_recovered_in_missing_partitions() {
 
     // Marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty.
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, true);
-    let sectors_array = sectors_array(&rt, rt.store(), sectors);
+    let sectors_array = sectors_arr(rt.store(), sectors);
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();

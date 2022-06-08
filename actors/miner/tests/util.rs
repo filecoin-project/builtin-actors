@@ -2511,18 +2511,6 @@ pub fn test_sector(
 }
 
 #[allow(dead_code)]
-pub fn sectors_array<'a, BS: Blockstore>(
-    rt: &MockRuntime,
-    store: &'a BS,
-    sectors_info: Vec<SectorOnChainInfo>,
-) -> Sectors<'a, BS> {
-    let state: State = rt.get_state();
-    let mut sectors = Sectors::load(store, &state.sectors).unwrap();
-    sectors.store(sectors_info).unwrap();
-    sectors
-}
-
-#[allow(dead_code)]
 pub fn sectors_arr<'a, BS: Blockstore>(
     store: &'a BS,
     sectors_info: Vec<SectorOnChainInfo>,
