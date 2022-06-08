@@ -6,10 +6,7 @@ use fil_actor_miner::{
     ProveCommitSectorParams, SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState,
     SubmitWindowedPoStParams,
 };
-use fil_actor_power::{
-    CreateMinerParams, CreateMinerReturn, Method as PowerMethod, State as PowerState,
-    UpdateClaimedPowerParams,
-};
+use fil_actor_power::{Method as PowerMethod, State as PowerState, UpdateClaimedPowerParams};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
@@ -20,7 +17,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::{BytesDe, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -167,38 +164,6 @@ fn commit_post_flow_happy_path() {
     assert!(balances.initial_pledge.is_positive());
     let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(sector_power.raw, p_st.total_bytes_committed);
-}
-
-fn create_miner(
-    v: &mut VM,
-    owner: Address,
-    worker: Address,
-    post_proof_type: RegisteredPoStProof,
-    balance: TokenAmount,
-) -> (Address, Address) {
-    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
-    let peer_id = "miner".as_bytes().to_vec();
-    let params = CreateMinerParams {
-        owner,
-        worker,
-        window_post_proof_type: post_proof_type,
-        peer: peer_id,
-        multiaddrs,
-    };
-
-    let res: CreateMinerReturn = v
-        .apply_message(
-            owner,
-            *STORAGE_POWER_ACTOR_ADDR,
-            balance,
-            PowerMethod::CreateMiner as u64,
-            params,
-        )
-        .unwrap()
-        .ret
-        .deserialize()
-        .unwrap();
-    (res.id_address, res.robust_address)
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -1,6 +1,6 @@
 use fil_actor_init::Method as InitMethod;
 use fil_actor_miner::{Method as MinerMethod, MinerConstructorParams, PreCommitSectorParams};
-use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
+use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::cbor::serialize;
 
@@ -104,27 +104,13 @@ fn test_cron_tick() {
     let addrs = create_accounts(&vm, 1, BigInt::from(10_000u64) * BigInt::from(10u64.pow(18)));
 
     // create a miner
-    let miner_balance = BigInt::from(10_000u64) * BigInt::from(10u64.pow(18));
-    let params = CreateMinerParams {
-        owner: addrs[0],
-        worker: addrs[0],
-        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        // todo: not sure if these values are correct, placeholders
-        peer: String::from("pid").into_bytes(),
-        multiaddrs: vec![],
-    };
-    let ret = vm
-        .apply_message(
-            addrs[0],
-            addrs[0],
-            miner_balance,
-            PowerMethod::CreateMiner as u64,
-            params.clone(),
-        )
-        .unwrap();
-
-    // todo: this fails; figure out how to deserialize this
-    let miner_addrs: CreateMinerReturn = ret.ret.deserialize().unwrap();
+    let (id_addr, robust_addr) = create_miner(
+        &mut vm,
+        addrs[0],
+        addrs[0],
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        TokenAmount::from(10_000e18 as i128),
+    );
 
     // create precommit
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1; // p1??
@@ -141,15 +127,15 @@ fn test_cron_tick() {
     };
     vm.apply_message(
         addrs[0],
-        miner_addrs.robust_address,
-        TokenAmount::from(0),
+        robust_addr,
+        TokenAmount::from(0u32),
         MinerMethod::PreCommitSector as u64,
         RawBytes::serialize(&precommit_params).unwrap(),
     )
     .unwrap();
 
     // find epoch of miner's next cron task (precommit:1, enrollCron:2)
-    let cron_epoch = miner_dline_info(&vm, miner_addrs.id_address).last() - 1;
+    let cron_epoch = miner_dline_info(&vm, id_addr).last() - 1;
 
     // create new vm at epoch 1 less than epoch requested by miner
     let v = vm.with_epoch(cron_epoch);
@@ -160,8 +146,7 @@ fn test_cron_tick() {
         *STORAGE_POWER_ACTOR_ADDR,
         BigInt::zero(),
         PowerMethod::EnrollCronEvent as u64,
-        // abi.Empty?
-        RawBytes::new(vec![]),
+        RawBytes::default(),
     )
     .unwrap();
 
@@ -174,7 +159,7 @@ fn test_cron_tick() {
         },
         // expect call back to miner that was set up in create miner
         ExpectInvocation {
-            to: miner_addrs.id_address,
+            to: id_addr,
             method: MinerMethod::OnDeferredCronEvent as u64,
             from: Some(*STORAGE_POWER_ACTOR_ADDR),
             ..Default::default()
