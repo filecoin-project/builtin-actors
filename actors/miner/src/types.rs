@@ -221,6 +221,8 @@ pub struct WithdrawBalanceParams {
     pub amount_requested: TokenAmount,
 }
 
+impl Cbor for WithdrawBalanceParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct WithdrawBalanceReturn {

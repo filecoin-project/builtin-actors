@@ -5,6 +5,7 @@ use cid::Cid;
 use fil_actors_runtime::{Array, DealWeight};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -23,6 +24,8 @@ pub struct WithdrawBalanceParams {
     #[serde(with = "bigint_ser")]
     pub amount: TokenAmount,
 }
+
+impl Cbor for WithdrawBalanceParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
