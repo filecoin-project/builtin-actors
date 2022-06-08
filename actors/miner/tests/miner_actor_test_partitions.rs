@@ -162,7 +162,7 @@ mod miner_actor_test_partitions {
         if proven {
             partition.activate_unproven();
         }
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         let mut fault_set = make_bitfield(&[4, 5]);
         let (_, power_delta, new_faulty_power) = partition
@@ -222,7 +222,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn re_adding_faults_is_a_no_op() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         let mut fault_set = make_bitfield(&[4, 5]);
         let (_, power_delta, new_faulty_power) = partition
@@ -273,7 +273,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn fails_to_add_faults_for_missing_sectors() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         let mut fault_set = make_bitfield(&[99]);
         let res = partition.record_faults(
@@ -294,7 +294,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn adds_recoveries() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         // make 4, 5 and 6 faulty
         let mut fault_set = make_bitfield(&[4, 5, 6]);
@@ -321,7 +321,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn remove_recoveries() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         // make 4, 5 and 6 faulty
         let mut fault_set = make_bitfield(&[4, 5, 6]);
@@ -385,7 +385,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn recovers_faults() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         // make 4, 5 and 6 faulty
         let mut fault_set = make_bitfield(&[4, 5, 6]);
@@ -436,7 +436,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn faulty_power_recovered_exactly_once() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         // make 4, 5 and 6 faulty
         let mut fault_set = make_bitfield(&[4, 5, 6]);
@@ -459,7 +459,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn missing_sectors_are_not_recovered() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         // try to add 99 as a recovery but it's not in the partition
         let res =
@@ -531,7 +531,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn replace_sectors_errors_when_attempting_to_replace_inactive_sector() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         // fault sector 2
         let mut fault_set = make_bitfield(&[2]);
@@ -590,7 +590,7 @@ mod miner_actor_test_partitions {
         let unproven_sector = vec![test_sector(13, 7, 55, 65, 1006)];
         let mut all_sectors = sectors();
         all_sectors.extend(unproven_sector.clone());
-        let sector_arr = sectors_array(&rt, &rt.store, all_sectors);
+        let sector_arr = sectors_arr(&rt.store, all_sectors);
 
         // Add an unproven sector.
         let power = partition
@@ -667,7 +667,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn terminate_non_existent_sectors() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         let mut terminations = make_bitfield(&[99]);
         let termination_epoch = 3;
@@ -691,7 +691,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn terminate_already_terminated_sector() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         let mut terminations = make_bitfield(&[1]);
         let termination_epoch = 3;
@@ -737,7 +737,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn mark_terminated_sectors_as_faulty() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         let mut terminations = make_bitfield(&[1]);
         let termination_epoch = 3;
@@ -767,7 +767,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn pop_expiring_sectors() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         // add one fault with an early termination
         let mut fault_set = make_bitfield(&[4]);
@@ -822,7 +822,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn pop_expiring_sectors_errors_if_a_recovery_exists() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         let _ = partition
             .record_faults(
@@ -873,7 +873,7 @@ mod miner_actor_test_partitions {
         let unproven_sector = vec![test_sector(13, 7, 55, 65, 1006)];
         let mut all_sectors = sectors();
         all_sectors.extend_from_slice(&unproven_sector);
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         // Add an unproven sector.
         let power = partition
@@ -935,7 +935,7 @@ mod miner_actor_test_partitions {
     #[test]
     fn pops_early_terminations() {
         let (rt, mut partition) = setup_partition();
-        let sector_arr = sectors_array(&rt, &rt.store, sectors());
+        let sector_arr = sectors_arr(&rt.store, sectors());
 
         // fault sector 3, 4, 5 and 6
         let mut fault_set = make_bitfield(&[3, 4, 5, 6]);
