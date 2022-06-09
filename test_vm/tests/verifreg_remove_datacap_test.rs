@@ -15,8 +15,8 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::HAMT_BIT_WIDTH;
 use std::ops::{Div, Sub};
-use test_vm::util::{apply_ok, create_accounts};
-use test_vm::{ExpectInvocation, VERIFREG_ROOT_KEY_ADDR, VM};
+use test_vm::util::{apply_ok, create_accounts, add_verifier};
+use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
 
 #[test]
 fn remove_datacap_simple_successful_path() {
@@ -27,53 +27,12 @@ fn remove_datacap_simple_successful_path() {
     let verifier1_id_addr = v.normalize_address(&verifier1).unwrap();
     let verifier2_id_addr = v.normalize_address(&verifier2).unwrap();
     let verified_client_id_addr = v.normalize_address(&verified_client).unwrap();
-    let verifier_allowance = StoragePower::from(2 * 1048576);
-    let allowance_to_remove: StoragePower = verifier_allowance.clone().div(2);
+    let verifier_allowance = StoragePower::from(2 * 1048576 as u64);
+    let allowance_to_remove: StoragePower = verifier_allowance.clone().div(2 as u64);
 
-    // register verifier1
-    let mut add_verifier_params =
-        AddVerifierParams { address: verifier1, allowance: verifier_allowance.clone() };
-    let mut add_verifier_params_ser =
-        serialize(&add_verifier_params, "add verifier params").unwrap();
-    apply_ok(
-        &v,
-        VERIFREG_ROOT_KEY_ADDR,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
-        TokenAmount::zero(),
-        VerifregMethod::AddVerifier as u64,
-        add_verifier_params,
-    );
-
-    ExpectInvocation {
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
-        method: VerifregMethod::AddVerifier as u64,
-        params: Some(add_verifier_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
-
-    // register verifier2
-    add_verifier_params =
-        AddVerifierParams { address: verifier2, allowance: verifier_allowance.clone() };
-    add_verifier_params_ser = serialize(&add_verifier_params, "add verifier params").unwrap();
-    apply_ok(
-        &v,
-        VERIFREG_ROOT_KEY_ADDR,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
-        TokenAmount::zero(),
-        VerifregMethod::AddVerifier as u64,
-        add_verifier_params,
-    );
-
-    ExpectInvocation {
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
-        method: VerifregMethod::AddVerifier as u64,
-        params: Some(add_verifier_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
+    // register verifier1 and verifier2
+    add_verifier(&v, verifier1, verifier_allowance.clone());
+    add_verifier(&v, verifier2, verifier_allowance.clone());
 
     // register the verified client
     let add_verified_client_params =
@@ -179,7 +138,7 @@ fn remove_datacap_simple_successful_path() {
 
     let remove_datacap_ret: RemoveDataCapReturn = apply_ok(
         &v,
-        VERIFREG_ROOT_KEY_ADDR,
+        TEST_VERIFREG_ROOT_ADDR,
         *VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
@@ -273,7 +232,7 @@ fn remove_datacap_simple_successful_path() {
 
     let remove_datacap_ret: RemoveDataCapReturn = apply_ok(
         &v,
-        VERIFREG_ROOT_KEY_ADDR,
+        TEST_VERIFREG_ROOT_ADDR,
         *VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,

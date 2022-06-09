@@ -9,7 +9,6 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::sector::StoragePower;
 use serde::{Deserialize, Serialize};
 
-impl Cbor for VerifierParams {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifierParams {
