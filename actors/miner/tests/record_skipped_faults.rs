@@ -46,7 +46,7 @@ fn setup() -> (MemoryBlockstore, Partition) {
 #[test]
 fn fail_if_all_declared_sectors_are_not_in_the_partition() {
     let (store, mut partition) = setup();
-    let sector_arr = sectors_arr(&store, sectors());
+    let sector_arr = sectors_arr_mbs(&store, sectors());
 
     let mut skipped: UnvalidatedBitField = BitField::try_from_bits(1..100).unwrap().into();
 
@@ -62,7 +62,7 @@ fn fail_if_all_declared_sectors_are_not_in_the_partition() {
 fn already_faulty_and_terminated_sectors_are_ignored() {
     let policy = Policy::default();
     let (store, mut partition) = setup();
-    let sector_arr = sectors_arr(&store, sectors());
+    let sector_arr = sectors_arr_mbs(&store, sectors());
 
     // terminate 1 AND 2
     let terminations: BitField = BitField::try_from_bits([1, 2]).unwrap();
@@ -154,7 +154,7 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
 #[test]
 fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
     let (store, mut partition) = setup();
-    let sector_arr = sectors_arr(&store, sectors());
+    let sector_arr = sectors_arr_mbs(&store, sectors());
 
     // make 4, 5 and 6 faulty
     let fault_set = BitField::try_from_bits([4, 5, 6]).unwrap();
@@ -225,7 +225,7 @@ fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
 #[test]
 fn successful_when_skipped_fault_set_is_empty() {
     let (store, mut partition) = setup();
-    let sector_arr = sectors_arr(&store, sectors());
+    let sector_arr = sectors_arr_mbs(&store, sectors());
 
     let (power_delta, new_fault_power, recovery_power, new_faults) = partition
         .record_skipped_faults(

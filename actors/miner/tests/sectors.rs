@@ -6,7 +6,7 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::sector::RegisteredSealProof;
 
 mod util;
-use crate::util::sectors_arr;
+use crate::util::sectors_arr_mbs;
 
 fn make_sector(i: u64) -> SectorOnChainInfo {
     SectorOnChainInfo {
@@ -18,7 +18,7 @@ fn make_sector(i: u64) -> SectorOnChainInfo {
 }
 
 fn setup_sectors(store: &'_ MemoryBlockstore) -> Sectors<'_, MemoryBlockstore> {
-    sectors_arr(store, vec![make_sector(0), make_sector(1), make_sector(5)])
+    sectors_arr_mbs(store, vec![make_sector(0), make_sector(1), make_sector(5)])
 }
 
 fn bf_from_vec(vec: Vec<u64>) -> BitField {
