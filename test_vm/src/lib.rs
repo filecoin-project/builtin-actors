@@ -222,7 +222,7 @@ impl<'bs> VM<'bs> {
         self.checkpoint();
         VM {
             store: self.store,
-            state_root: RefCell::new(self.state_root.take()),
+            state_root: self.state_root.clone(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             empty_obj_cid: self.empty_obj_cid,
