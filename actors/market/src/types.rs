@@ -25,6 +25,8 @@ pub struct WithdrawBalanceParams {
     pub amount: TokenAmount,
 }
 
+impl Cbor for WithdrawBalanceParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct WithdrawBalanceReturn {
@@ -39,6 +41,7 @@ pub struct OnMinerSectorsTerminateParams {
 }
 
 #[derive(Serialize_tuple)]
+
 pub struct OnMinerSectorsTerminateParamsRef<'a> {
     pub epoch: ChainEpoch,
     pub deal_ids: &'a [DealID],

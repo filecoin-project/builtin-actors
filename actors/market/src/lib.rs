@@ -206,7 +206,7 @@ impl Actor {
         })?;
 
         rt.send(recipient, METHOD_SEND, RawBytes::default(), amount_extracted.clone())?;
-
+        
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_extracted })
     }
 

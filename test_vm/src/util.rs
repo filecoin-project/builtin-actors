@@ -18,6 +18,7 @@ use fil_actor_power::{
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
 use fil_actors_runtime::test_utils::*;
+use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -128,6 +129,7 @@ pub fn precommit_sectors(
     expect_cron_enroll: bool,
     exp: Option<ChainEpoch>,
 ) -> Vec<SectorPreCommitOnChainInfo> {
+    let mid = v.normalize_address(&maddr).unwrap();
     let invocs_common = || -> Vec<ExpectInvocation> {
         vec![
             ExpectInvocation {
@@ -205,7 +207,7 @@ pub fn precommit_sectors(
             PreCommitSectorBatchParams { sectors: param_sectors.clone() },
         );
         let expect = ExpectInvocation {
-            to: maddr,
+            to: mid,
             method: MinerMethod::PreCommitSectorBatch as u64,
             params: Some(
                 serialize(
@@ -220,18 +222,48 @@ pub fn precommit_sectors(
         expect.matches(v.take_invocations().last().unwrap())
     }
     // extract chain state
-    let mstate = v.get_state::<MinerState>(maddr).unwrap();
+    let mstate = v.get_state::<MinerState>(mid).unwrap();
     (0..count)
         .map(|i| mstate.get_precommitted_sector(v.store, sector_number_base + i).unwrap().unwrap())
         .collect()
 }
 
 pub fn advance_by_deadline_to_epoch(v: VM, maddr: Address, e: ChainEpoch) -> (VM, DeadlineInfo) {
-    advance_by_deadline(v, maddr, |dline_info| dline_info.close <= e)
+    // keep advancing until the epoch of interest is within the deadline
+    // if e is dline.last() == dline.close -1 cron is not run
+    let (v, dline_info) = advance_by_deadline(v, maddr, |dline_info| dline_info.close < e);
+    (v.with_epoch(e), dline_info)
 }
 
 pub fn advance_by_deadline_to_index(v: VM, maddr: Address, i: u64) -> (VM, DeadlineInfo) {
     advance_by_deadline(v, maddr, |dline_info| dline_info.index != i)
+}
+
+pub fn advance_by_deadline_to_epoch_while_proving(
+    mut v: VM,
+    maddr: Address,
+    worker: Address,
+    s: SectorNumber,
+    e: ChainEpoch,
+) -> VM {
+    let mut dline_info = miner_dline_info(&v, maddr);
+    let (d, p_idx) = sector_deadline(&v, maddr, s);
+    loop {
+        // stop if either we reach deadline of e or the proving deadline for sector s
+        (v, dline_info) = advance_by_deadline(v, maddr, |dline_info| {
+            dline_info.index != d && dline_info.close < e
+        });
+        if dline_info.close > e {
+            // in the case e is within the proving deadline don't post, leave that to the caller
+            return v.with_epoch(e);
+        }
+        submit_windowed_post(&v, worker, maddr, dline_info, p_idx, PowerPair::zero());
+        (v, dline_info) = advance_by_deadline_to_index(
+            v,
+            maddr,
+            d + 1 % &Policy::default().wpost_period_deadlines,
+        )
+    }
 }
 
 pub fn advance_to_proving_deadline(
@@ -290,12 +322,15 @@ pub fn submit_windowed_post(
     worker: Address,
     maddr: Address,
     dline_info: DeadlineInfo,
-    partitions: Vec<PoStPartition>,
-    sector: PowerPair,
+    partition_idx: u64,
+    new_power: PowerPair,
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
-        partitions,
+        partitions: vec![PoStPartition {
+            index: partition_idx,
+            skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new()),
+        }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
             proof_bytes: vec![],
@@ -304,21 +339,28 @@ pub fn submit_windowed_post(
         chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
     };
     apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
-
-    let update_power_params = serialize(
-        &UpdateClaimedPowerParams { raw_byte_delta: sector.raw, quality_adjusted_delta: sector.qa },
-        "update claim params",
-    )
-    .unwrap();
-    ExpectInvocation {
-        to: maddr,
-        method: MinerMethod::SubmitWindowedPoSt as u64,
-        subinvocs: Some(vec![ExpectInvocation {
+    let mut subinvocs = None;
+    if new_power != PowerPair::zero() {
+        let update_power_params = serialize(
+            &UpdateClaimedPowerParams {
+                raw_byte_delta: new_power.raw,
+                quality_adjusted_delta: new_power.qa,
+            },
+            "update claim params",
+        )
+        .unwrap();
+        subinvocs = Some(vec![ExpectInvocation {
             to: *STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::UpdateClaimedPower as u64,
             params: Some(update_power_params),
             ..Default::default()
-        }]),
+        }]);
+    }
+
+    ExpectInvocation {
+        to: maddr,
+        method: MinerMethod::SubmitWindowedPoSt as u64,
+        subinvocs,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -420,4 +462,8 @@ pub fn publish_deal(
     .matches(v.take_invocations().last().unwrap());
 
     ret
+}
+
+pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
+    UnvalidatedBitField::Validated(BitField::try_from_bits(bits.iter().copied()).unwrap())
 }

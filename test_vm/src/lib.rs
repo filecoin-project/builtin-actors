@@ -387,13 +387,19 @@ pub struct TopCtx {
     _circ_supply: BigInt,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InternalMessage {
     from: Address,
     to: Address,
     value: TokenAmount,
     method: MethodNum,
     params: RawBytes,
+}
+
+impl InternalMessage {
+    pub fn value(&self) -> TokenAmount{
+        self.value.clone()
+    }
 }
 
 impl MessageInfo for InvocationCtx<'_, '_> {
@@ -519,8 +525,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
         to_actor.balance = to_actor.balance.add(&self.msg.value);
         self.v.set_actor(to_addr, to_actor);
-
-        println!("to: {}, from: {}\n", to_addr, self.msg.from);
 
         // Exit early on send
         if self.msg.method == METHOD_SEND {

@@ -147,12 +147,8 @@ fn commit_post_flow_happy_path() {
     // submit post
     let st = v.get_state::<MinerState>(id_addr).unwrap();
     let sector = st.get_sector(v.store, sector_number).unwrap().unwrap();
-    let partitions = vec![PoStPartition {
-        index: p_idx,
-        skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new()),
-    }];
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
-    submit_windowed_post(&v, worker, id_addr, dline_info, partitions, sector_power.clone());
+    submit_windowed_post(&v, worker, id_addr, dline_info, p_idx, sector_power.clone());
     let balances = v.get_miner_balance(id_addr);
     assert!(balances.initial_pledge.is_positive());
     let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
