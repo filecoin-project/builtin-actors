@@ -57,12 +57,21 @@ pub fn check_state_invariants(
     // Theoretically we should compare effective_baseline_power <= this_epoch_baseline_power but
     // because of rounding issues explained and tracked in https://github.com/filecoin-project/builtin-actors/issues/459
     // we settled on this workaround.
+<<<<<<< HEAD
     let next_epoch_baseline_power = baseline_power_from_prev(&state.this_epoch_baseline_power);
     acc.require(
         state.effective_baseline_power <= next_epoch_baseline_power,
         format!(
             "effective baseline power ({}) > next_epoch_baseline_power ({})",
             state.effective_baseline_power, next_epoch_baseline_power
+=======
+    let baseline_power_from_prev = baseline_power_from_prev(&state.this_epoch_baseline_power);
+    acc.require(
+        state.effective_baseline_power <= baseline_power_from_prev,
+        format!(
+            "effective baseline power ({}) > baseline power (from prev) ({})",
+            state.effective_baseline_power, baseline_power_from_prev
+>>>>>>> 18826ec (invariant checks in integratin tests)
         ),
     );
 
