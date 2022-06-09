@@ -17,8 +17,7 @@ use fil_actor_power::{
 };
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
-use fil_actors_runtime::test_utils::*;
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -27,7 +26,6 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{PoStProof, RegisteredPoStProof, RegisteredSealProof, SectorNumber};
 use fvm_shared::{MethodNum, METHOD_SEND};
-use num_traits::cast::FromPrimitive;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 
@@ -246,7 +244,7 @@ pub fn advance_by_deadline_to_epoch_while_proving(
     s: SectorNumber,
     e: ChainEpoch,
 ) -> VM {
-    let mut dline_info = miner_dline_info(&v, maddr);
+    let mut dline_info;
     let (d, p_idx) = sector_deadline(&v, maddr, s);
     loop {
         // stop if either we reach deadline of e or the proving deadline for sector s
@@ -258,11 +256,11 @@ pub fn advance_by_deadline_to_epoch_while_proving(
             return v.with_epoch(e);
         }
         submit_windowed_post(&v, worker, maddr, dline_info, p_idx, PowerPair::zero());
-        (v, dline_info) = advance_by_deadline_to_index(
+        v = advance_by_deadline_to_index(
             v,
             maddr,
             d + 1 % &Policy::default().wpost_period_deadlines,
-        )
+        ).0
     }
 }
 
@@ -377,7 +375,7 @@ pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
     };
 
     apply_ok(
-        &v,
+        v,
         TEST_VERIFREG_ROOT_SIGNER_ADDR,
         TEST_VERIFREG_ROOT_ADDR,
         TokenAmount::zero(),
@@ -419,7 +417,7 @@ pub fn publish_deal(
         }],
     };
     let ret: PublishStorageDealsReturn = apply_ok(
-        &v,
+        v,
         provider,
         *STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),

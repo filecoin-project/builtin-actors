@@ -1,7 +1,7 @@
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
-    max_prove_commit_duration, power_for_sector, Method as MinerMethod, PoStPartition,
+    max_prove_commit_duration, power_for_sector, Method as MinerMethod,
     ProveCommitSectorParams, State as MinerState,
 };
 use fil_actor_power::{Method as PowerMethod, State as PowerState};
@@ -12,7 +12,6 @@ use fil_actors_runtime::{
     CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::Zero;

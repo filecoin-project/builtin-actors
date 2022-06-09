@@ -3,13 +3,12 @@ use fil_actor_market::{
     DealMetaArray, Method as MethodsMarket, State as MarketState, WithdrawBalanceParams,
 };
 use fil_actor_miner::{
-    power_for_sector, Method as MethodsMiner, PoStPartition, PreCommitSectorParams,
+    power_for_sector, Method as MethodsMiner, PreCommitSectorParams,
     ProveCommitSectorParams, State as MinerState, TerminateSectorsParams, TerminationDeclaration,
 };
 use fil_actor_power::{Method as MethodsPower, State as PowerState};
 use fil_actor_reward::Method as MethodsReward;
 use fil_actor_verifreg::{Method as MethodsVerifreg, VerifierParams};
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
@@ -17,26 +16,24 @@ use fil_actors_runtime::{
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
-use fvm_shared::address::Address;
-use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
+use fvm_ipld_encoding::{RawBytes};
+use fvm_shared::bigint::{Zero};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{
-    AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
-    StoragePower, WindowPoStVerifyInfo,
+    RegisteredSealProof, 
+    StoragePower, 
 };
 use fvm_shared::METHOD_SEND;
 use num_traits::cast::FromPrimitive;
 use test_vm::util::{
     add_verifier, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_to_proving_deadline, apply_ok, create_accounts, create_miner, make_bitfield,
-    precommit_sectors, publish_deal, submit_windowed_post,
+    publish_deal, submit_windowed_post,
 };
-use test_vm::{ExpectInvocation, TEST_VM_RAND_STRING, VERIFREG_ROOT_KEY, VM};
+use test_vm::{ExpectInvocation, VM};
 
 #[test]
 fn terminate_sectors() {
