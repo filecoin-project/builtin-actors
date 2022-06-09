@@ -1,9 +1,9 @@
 use fil_actor_miner::SectorOnChainInfo;
 use fil_actor_miner::Sectors;
+use fil_actors_runtime::test_utils::*;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::sector::RegisteredSealProof;
-use fil_actors_runtime::test_utils::*;
 
 mod util;
 use crate::util::sectors_arr;
@@ -17,14 +17,8 @@ fn make_sector(i: u64) -> SectorOnChainInfo {
     }
 }
 
-fn setup_sectors(store: &'_ MemoryBlockstore,) -> Sectors<'_, MemoryBlockstore> {
-
-    sectors_arr(&store, vec![
-            make_sector(0), 
-            make_sector(1), 
-            make_sector(5)
-        ]
-    )
+fn setup_sectors(store: &'_ MemoryBlockstore) -> Sectors<'_, MemoryBlockstore> {
+    sectors_arr(&store, vec![make_sector(0), make_sector(1), make_sector(5)])
 }
 
 fn bf_from_vec(vec: Vec<u64>) -> BitField {
@@ -46,7 +40,7 @@ fn loads_sectors() {
     assert_eq!(make_sector(0), vec_sectors[0]);
     assert_eq!(make_sector(5), vec_sectors[1]);
 
-    bf = bf_from_vec(vec![0, 3]); 
+    bf = bf_from_vec(vec![0, 3]);
     let res = sectors.load_sector(&bf);
     assert!(res.is_err());
 }
@@ -118,7 +112,8 @@ fn loads_for_proof_with_replacement() {
     let sectors = setup_sectors(&store);
 
     let s1 = make_sector(1);
-    let vec_sectors = sectors.load_for_proof(&bf_from_vec(vec![0, 1]),&bf_from_vec(vec![0])).unwrap();
+    let vec_sectors =
+        sectors.load_for_proof(&bf_from_vec(vec![0, 1]), &bf_from_vec(vec![0])).unwrap();
     assert_eq!(s1, vec_sectors[0]);
     assert_eq!(s1, vec_sectors[1]);
 }
@@ -131,7 +126,7 @@ fn loads_for_proof_without_replacement() {
     let s0 = make_sector(0);
     let s1 = make_sector(1);
 
-    let vec_sectors = sectors.load_for_proof(&bf_from_vec(vec![0, 1]),&BitField::new()).unwrap();
+    let vec_sectors = sectors.load_for_proof(&bf_from_vec(vec![0, 1]), &BitField::new()).unwrap();
     assert_eq!(s0, vec_sectors[0]);
     assert_eq!(s1, vec_sectors[1]);
 }
@@ -141,7 +136,7 @@ fn empty_proof() {
     let store = MemoryBlockstore::default();
     let sectors = setup_sectors(&store);
 
-    let vec_sectors = sectors.load_for_proof(&BitField::new(),&BitField::new()).unwrap();
+    let vec_sectors = sectors.load_for_proof(&BitField::new(), &BitField::new()).unwrap();
     assert_eq!(vec_sectors.len(), 0);
 }
 
@@ -150,6 +145,6 @@ fn no_non_faulty_sectors() {
     let store = MemoryBlockstore::default();
     let sectors = setup_sectors(&store);
 
-    let vec_sectors = sectors.load_for_proof(&bf_from_vec(vec![1]),&bf_from_vec(vec![1])).unwrap();
+    let vec_sectors = sectors.load_for_proof(&bf_from_vec(vec![1]), &bf_from_vec(vec![1])).unwrap();
     assert_eq!(vec_sectors.len(), 0);
 }
