@@ -170,7 +170,7 @@ fn test_cron_tick() {
     ExpectInvocation {
         // original send to storage power actor
         to: *STORAGE_POWER_ACTOR_ADDR,
-        method: PowerMethod::EnrollCronEvent as u64,
+        method: PowerMethod::OnEpochTickEnd as u64,
         subinvocs: Some(sub_invocs),
         ..Default::default()
     }
