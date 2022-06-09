@@ -397,7 +397,7 @@ pub struct InternalMessage {
 }
 
 impl InternalMessage {
-    pub fn value(&self) -> TokenAmount{
+    pub fn value(&self) -> TokenAmount {
         self.value.clone()
     }
 }

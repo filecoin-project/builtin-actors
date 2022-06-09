@@ -1,20 +1,22 @@
 use fil_actor_cron::Method as MethodsCron;
-use fil_actor_market::{DealMetaArray, Method as MethodsMarket, State as MarketState, WithdrawBalanceParams};
+use fil_actor_market::{
+    DealMetaArray, Method as MethodsMarket, State as MarketState, WithdrawBalanceParams,
+};
 use fil_actor_miner::{
     power_for_sector, Method as MethodsMiner, PoStPartition, PreCommitSectorParams,
     ProveCommitSectorParams, State as MinerState, TerminateSectorsParams, TerminationDeclaration,
 };
-use fil_actor_verifreg::{Method as MethodsVerifreg, VerifierParams};
-use fil_actor_reward::{Method as MethodsReward};
 use fil_actor_power::{Method as MethodsPower, State as PowerState};
+use fil_actor_reward::Method as MethodsReward;
+use fil_actor_verifreg::{Method as MethodsVerifreg, VerifierParams};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    test_utils::*, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    test_utils::*, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_shared::METHOD_SEND;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
@@ -27,11 +29,12 @@ use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     StoragePower, WindowPoStVerifyInfo,
 };
+use fvm_shared::METHOD_SEND;
 use num_traits::cast::FromPrimitive;
 use test_vm::util::{
     add_verifier, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_to_proving_deadline, apply_ok, create_accounts, create_miner, precommit_sectors,
-    publish_deal, submit_windowed_post, make_bitfield,
+    advance_to_proving_deadline, apply_ok, create_accounts, create_miner, make_bitfield,
+    precommit_sectors, publish_deal, submit_windowed_post,
 };
 use test_vm::{ExpectInvocation, TEST_VM_RAND_STRING, VERIFREG_ROOT_KEY, VM};
 
@@ -244,52 +247,58 @@ fn terminate_sectors() {
     }
 
     // Terminate Sector
-    apply_ok(&v, worker, robust_addr, TokenAmount::zero(), MethodsMiner::TerminateSectors as u64, 
-        TerminateSectorsParams{
-            terminations: vec![TerminationDeclaration{
+    apply_ok(
+        &v,
+        worker,
+        robust_addr,
+        TokenAmount::zero(),
+        MethodsMiner::TerminateSectors as u64,
+        TerminateSectorsParams {
+            terminations: vec![TerminationDeclaration {
                 deadline: d_idx,
                 partition: p_idx,
                 sectors: make_bitfield(&[sector_number]),
             }],
         },
     );
-    ExpectInvocation{
+    ExpectInvocation {
         to: id_addr,
         method: MethodsMiner::TerminateSectors as u64,
         subinvocs: Some(vec![
-            ExpectInvocation{
+            ExpectInvocation {
                 to: *REWARD_ACTOR_ADDR,
                 method: MethodsReward::ThisEpochReward as u64,
                 ..Default::default()
             },
-            ExpectInvocation{
+            ExpectInvocation {
                 to: *STORAGE_POWER_ACTOR_ADDR,
                 method: MethodsPower::CurrentTotalPower as u64,
                 ..Default::default()
             },
-            ExpectInvocation{
+            ExpectInvocation {
                 to: *BURNT_FUNDS_ACTOR_ADDR,
                 method: METHOD_SEND,
                 ..Default::default()
             },
-            ExpectInvocation{
+            ExpectInvocation {
                 to: *STORAGE_POWER_ACTOR_ADDR,
                 method: MethodsPower::UpdatePledgeTotal as u64,
                 ..Default::default()
             },
-            ExpectInvocation{
-                to: *STORAGE_MARKET_ACTOR_ADDR, 
+            ExpectInvocation {
+                to: *STORAGE_MARKET_ACTOR_ADDR,
                 method: MethodsMarket::OnMinerSectorsTerminate as u64,
                 ..Default::default()
-            }, 
-            ExpectInvocation{
+            },
+            ExpectInvocation {
                 to: *STORAGE_POWER_ACTOR_ADDR,
                 method: MethodsPower::UpdateClaimedPower as u64,
                 ..Default::default()
             },
         ]),
         ..Default::default()
-    }.matches(v.take_invocations().last().unwrap());
+    }
+    .matches(v.take_invocations().last().unwrap());
 
     let miner_balances = v.get_miner_balance(id_addr);
     assert!(miner_balances.initial_pledge.is_zero());
@@ -314,31 +323,48 @@ fn terminate_sectors() {
     }
 
     // advance a market cron processing period to process terminations fully
-    let (v, _) = advance_by_deadline_to_epoch(v, id_addr, termination_epoch + &Policy::default().deal_updates_interval);
+    let (v, _) = advance_by_deadline_to_epoch(
+        v,
+        id_addr,
+        termination_epoch + &Policy::default().deal_updates_interval,
+    );
     // because of rounding error it's annoying to compute exact withdrawable balance which is 2.9999.. FIL
     // withdrawing 2 FIL proves out that the claim to 1 FIL per deal (2 deals for this client) is removed at termination
-    let withdrawal = TokenAmount::from(2e18 as u64); 
-    apply_ok(&v, verified_client, *STORAGE_MARKET_ACTOR_ADDR, TokenAmount::zero(), MethodsMarket::WithdrawBalance as u64, WithdrawBalanceParams{
-        provider_or_client: verified_client,
-        amount: withdrawal.clone(),
-    });
-    ExpectInvocation{
+    let withdrawal = TokenAmount::from(2e18 as u64);
+    apply_ok(
+        &v,
+        verified_client,
+        *STORAGE_MARKET_ACTOR_ADDR,
+        TokenAmount::zero(),
+        MethodsMarket::WithdrawBalance as u64,
+        WithdrawBalanceParams { provider_or_client: verified_client, amount: withdrawal.clone() },
+    );
+    ExpectInvocation {
         to: *STORAGE_MARKET_ACTOR_ADDR,
-        method: MethodsMarket::WithdrawBalance as u64, 
-        subinvocs: Some(vec![ExpectInvocation{to: verified_client, method: METHOD_SEND, value: Some(withdrawal), ..Default::default()}]),
+        method: MethodsMarket::WithdrawBalance as u64,
+        subinvocs: Some(vec![ExpectInvocation {
+            to: verified_client,
+            method: METHOD_SEND,
+            value: Some(withdrawal),
+            ..Default::default()
+        }]),
         ..Default::default()
-    }.matches(v.take_invocations().last().unwrap());
+    }
+    .matches(v.take_invocations().last().unwrap());
 
-    apply_ok(&v, worker, *STORAGE_MARKET_ACTOR_ADDR, TokenAmount::zero(), MethodsMarket::WithdrawBalance as u64, WithdrawBalanceParams{
-        provider_or_client: id_addr,
-        amount: miner_collateral,
-    });
-
+    apply_ok(
+        &v,
+        worker,
+        *STORAGE_MARKET_ACTOR_ADDR,
+        TokenAmount::zero(),
+        MethodsMarket::WithdrawBalance as u64,
+        WithdrawBalanceParams { provider_or_client: id_addr, amount: miner_collateral },
+    );
 
     let value_withdrawn = v.take_invocations().last().unwrap().subinvocations[1].msg.value();
-   	// miner add 64 balance. Each of 3 deals required 2 FIL collateral, so provider collateral should have been
-	// slashed by 6 FIL. Miner's remaining market balance should be 64 - 6 + payment, where payment is for storage
-	// before the slash and should be << 1 FIL. Actual amount withdrawn should be between 58 and 59 FIL.
+    // miner add 64 balance. Each of 3 deals required 2 FIL collateral, so provider collateral should have been
+    // slashed by 6 FIL. Miner's remaining market balance should be 64 - 6 + payment, where payment is for storage
+    // before the slash and should be << 1 FIL. Actual amount withdrawn should be between 58 and 59 FIL.
     assert!(TokenAmount::from(58e18 as u128) < value_withdrawn.clone());
     assert!(TokenAmount::from(59e18 as u128) > value_withdrawn.clone());
 }
