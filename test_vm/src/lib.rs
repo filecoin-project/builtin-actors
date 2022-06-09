@@ -328,12 +328,13 @@ impl<'bs> VM<'bs> {
 
         let prior_root = self.checkpoint();
 
+        // big.Mul(big.NewInt(1e9), big.NewInt(1e18))
         // make top level context with internal context
         let top = TopCtx {
             originator_stable_addr: from,
             _originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
-            _circ_supply: BigInt::zero(),
+            circ_supply: TokenAmount::from(1e9 as u128 * 1e18 as u128),
         };
         let msg = InternalMessage {
             from: from_id,
@@ -383,7 +384,7 @@ pub struct TopCtx {
     originator_stable_addr: Address,
     _originator_call_seq: u64,
     new_actor_addr_count: RefCell<u64>,
-    _circ_supply: BigInt,
+    circ_supply: BigInt,
 }
 
 #[derive(Clone, Debug)]
@@ -780,7 +781,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn total_fil_circ_supply(&self) -> TokenAmount {
-        self.top._circ_supply.clone()
+        self.top.circ_supply.clone()
     }
 
     fn charge_gas(&mut self, _name: &'static str, _compute: i64) {}

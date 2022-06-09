@@ -481,3 +481,7 @@ pub fn publish_deal(
 pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
     UnvalidatedBitField::Validated(BitField::try_from_bits(bits.iter().copied()).unwrap())
 }
+
+pub fn bf_all(bf: BitField) -> Vec<u64> {
+    bf.bounded_iter(Policy::default().addressed_sectors_max).unwrap().collect()
+}
