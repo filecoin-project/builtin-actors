@@ -218,7 +218,7 @@ impl<'bs> VM<'bs> {
         v
     }
 
-    pub fn with_epoch(&self, epoch: ChainEpoch) -> VM<'bs> {
+    pub fn with_epoch(self, epoch: ChainEpoch) -> VM<'bs> {
         self.checkpoint();
         VM {
             store: self.store,

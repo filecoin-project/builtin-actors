@@ -141,11 +141,11 @@ fn test_cron_tick() {
     let v = vm.with_epoch(cron_epoch);
 
     // run cron and expect a call to miner and a call to update reward actor params
-    vm.apply_message(
+    v.apply_message(
         *CRON_ACTOR_ADDR,
         *STORAGE_POWER_ACTOR_ADDR,
         BigInt::zero(),
-        PowerMethod::EnrollCronEvent as u64,
+        PowerMethod::OnEpochTickEnd as u64,
         RawBytes::default(),
     )
     .unwrap();
@@ -154,14 +154,7 @@ fn test_cron_tick() {
         // get data from reward and power for any eventual calls to confirmsectorproofsvalid
         ExpectInvocation {
             to: *REWARD_ACTOR_ADDR,
-            method: PowerMethod::EnrollCronEvent as u64,
-            ..Default::default()
-        },
-        // expect call back to miner that was set up in create miner
-        ExpectInvocation {
-            to: id_addr,
-            method: MinerMethod::OnDeferredCronEvent as u64,
-            from: Some(*STORAGE_POWER_ACTOR_ADDR),
+            method: RewardMethod::ThisEpochReward as u64,
             ..Default::default()
         },
         // expect call to reward to update kpi
@@ -175,6 +168,7 @@ fn test_cron_tick() {
 
     // expect miner call to be missing
     ExpectInvocation {
+        // original send to storage power actor
         to: *STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::EnrollCronEvent as u64,
         subinvocs: Some(sub_invocs),
