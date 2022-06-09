@@ -194,6 +194,8 @@ fn submit_post_succeeds() {
     assert!(balances.initial_pledge.is_positive());
     let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(sector_power.raw, p_st.total_bytes_committed);
+
+    v.assert_state_invariants();
 }
 
 #[test]

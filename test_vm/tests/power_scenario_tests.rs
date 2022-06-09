@@ -94,7 +94,8 @@ fn create_miner_test() {
         ]),
         ..Default::default()
     };
-    expect.matches(v.take_invocations().last().unwrap())
+    expect.matches(v.take_invocations().last().unwrap());
+    v.assert_state_invariants();
 }
 
 #[test]

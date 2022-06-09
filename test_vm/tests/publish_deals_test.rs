@@ -163,6 +163,7 @@ fn psd_bad_piece_size() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![1], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[test]

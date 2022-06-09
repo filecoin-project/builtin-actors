@@ -10,6 +10,8 @@ use fil_actor_multisig::Actor as MultisigActor;
 use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as PowerState};
 use fil_actor_reward::{Actor as RewardActor, State as RewardState};
+use fil_actor_state::check::check_state_invariants;
+use fil_actor_state::check::Tree;
 use fil_actor_system::{Actor as SystemActor, State as SystemState};
 use fil_actor_verifreg::{Actor as VerifregActor, State as VerifRegState};
 use fil_actors_runtime::cbor::serialize;
@@ -18,6 +20,7 @@ use fil_actors_runtime::runtime::{
     Verifier,
 };
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -27,6 +30,7 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
+use fvm_shared::actor::builtin::Manifest;
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
@@ -57,6 +61,7 @@ pub mod util;
 pub struct VM<'bs> {
     pub store: &'bs MemoryBlockstore,
     pub state_root: RefCell<Cid>,
+    total_fil: TokenAmount,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
     empty_obj_cid: Cid,
@@ -108,6 +113,7 @@ impl<'bs> VM<'bs> {
         VM {
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
+            total_fil: TokenAmount::zero(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             empty_obj_cid: empty,
@@ -115,6 +121,10 @@ impl<'bs> VM<'bs> {
             curr_epoch: ChainEpoch::zero(),
             invocations: RefCell::new(vec![]),
         }
+    }
+
+    pub fn with_total_fil(self, total_fil: TokenAmount) -> Self {
+        Self { total_fil, ..self }
     }
 
     pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
@@ -125,7 +135,7 @@ impl<'bs> VM<'bs> {
         let reward_total = TokenAmount::from(1_100_000_000i32).checked_mul(&fil).unwrap();
         let faucet_total = TokenAmount::from(1_000_000_000u32).checked_mul(&fil).unwrap();
 
-        let v = VM::new(store);
+        let v = VM::new(store).with_total_fil(&reward_total + &faucet_total);
 
         // system
         let sys_st = SystemState::new(store).unwrap();
@@ -251,6 +261,7 @@ impl<'bs> VM<'bs> {
         VM {
             store: self.store,
             state_root: self.state_root.clone(),
+            total_fil: self.total_fil,
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             empty_obj_cid: self.empty_obj_cid,
@@ -424,6 +435,38 @@ impl<'bs> VM<'bs> {
 
     pub fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
+    }
+
+    /// Checks the state invariants and returns broken invariants.
+    pub fn check_state_invariants(&self) -> anyhow::Result<MessageAccumulator> {
+        let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
+
+        let mut manifest = Manifest::new();
+        actors
+            .for_each(|_, actor| {
+                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
+                Ok(())
+            })
+            .unwrap();
+
+        let policy = Policy::default();
+        let state_tree = Tree::load(&self.store, &self.state_root.borrow()).unwrap();
+        check_state_invariants(
+            &manifest,
+            &policy,
+            state_tree,
+            &self.total_fil,
+            self.get_epoch() - 1,
+        )
+    }
+
+    /// Asserts state invariants are held without any errors.
+    pub fn assert_state_invariants(&self) {
+        self.check_state_invariants().unwrap().assert_empty()
     }
 }
 

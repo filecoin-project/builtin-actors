@@ -1785,6 +1785,7 @@ dependencies = [
  "fil_actor_paych",
  "fil_actor_power",
  "fil_actor_reward",
+ "fil_actor_state",
  "fil_actor_system",
  "fil_actor_verifreg",
  "fil_actors_runtime",

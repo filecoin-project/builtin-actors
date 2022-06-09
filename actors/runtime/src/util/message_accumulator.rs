@@ -1,7 +1,7 @@
 use std::{cell::RefCell, fmt::Display, rc::Rc};
 
 /// Accumulates a sequence of messages (e.g. validation failures).
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct MessageAccumulator {
     /// Accumulated messages.
     /// This is a `Rc<RefCell>` to support accumulators derived from `with_prefix()` accumulating to
