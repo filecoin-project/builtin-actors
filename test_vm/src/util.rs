@@ -386,7 +386,7 @@ pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
 }
 
 pub fn publish_deal(
-    v: VM,
+    v: &VM,
     provider: Address,
     deal_client: Address,
     miner_id: Address,
@@ -418,7 +418,7 @@ pub fn publish_deal(
         }],
     };
     let ret: PublishStorageDealsReturn = apply_ok(
-        v,
+        &v,
         provider,
         *STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
