@@ -1,8 +1,9 @@
+use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
-use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
+use fil_actor_init::{Actor as InitActor, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
 use fil_actor_miner::{Actor as MinerActor, State as MinerState};
 use fil_actor_multisig::Actor as MultisigActor;
@@ -70,11 +71,13 @@ pub struct MinerBalances {
     pub pre_commit_deposit: TokenAmount,
 }
 
-pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
+pub const VERIFREG_ROOT_KEY_ADDR: Address = Address::new_id(80);
 // Account actor seeding funds created by new_with_singletons
 pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
-pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
-pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3; // accounts for verifreg root signer and msig
+pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
+pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 1;
+
+// accounts for verifreg root signer and msig
 impl<'bs> VM<'bs> {
     pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
@@ -152,46 +155,14 @@ impl<'bs> VM<'bs> {
         );
 
         // verifreg
-        // initialize verifreg root signer
-        v.apply_message(
-            *INIT_ACTOR_ADDR,
-            Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
-            TokenAmount::zero(),
-            METHOD_SEND,
-            RawBytes::default(),
-        )
-        .unwrap();
-        let verifreg_root_signer =
-            v.normalize_address(&Address::new_bls(VERIFREG_ROOT_KEY).unwrap()).unwrap();
-        // verifreg root msig
-        let msig_ctor_params = serialize(
-            &fil_actor_multisig::ConstructorParams {
-                signers: vec![verifreg_root_signer],
-                num_approvals_threshold: 1,
-                unlock_duration: 0,
-                start_epoch: 0,
-            },
-            "multisig ctor params",
-        )
-        .unwrap();
-        let msig_ctor_ret: ExecReturn = v
-            .apply_message(
-                *SYSTEM_ACTOR_ADDR,
-                *INIT_ACTOR_ADDR,
-                BigInt::zero(),
-                fil_actor_init::Method::Exec as u64,
-                fil_actor_init::ExecParams {
-                    code_cid: *MULTISIG_ACTOR_CODE_ID,
-                    constructor_params: msig_ctor_params,
-                },
-            )
-            .unwrap()
-            .ret
-            .deserialize()
-            .unwrap();
-        let root_msig_addr = msig_ctor_ret.id_address;
-        // verifreg
-        let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
+        // initialize verifreg root key
+        let verifreg_root_key_head = v.put_store(&AccountState { address: VERIFREG_ROOT_KEY_ADDR });
+        v.set_actor(
+            VERIFREG_ROOT_KEY_ADDR,
+            actor(*ACCOUNT_ACTOR_CODE_ID, verifreg_root_key_head, 0, TokenAmount::from(100)),
+        );
+        let verifreg_head =
+            v.put_store(&VerifRegState::new(&v.store, VERIFREG_ROOT_KEY_ADDR).unwrap());
         v.set_actor(
             *VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero()),
@@ -371,6 +342,7 @@ impl<'bs> VM<'bs> {
         self.curr_epoch
     }
 }
+
 #[derive(Clone)]
 pub struct TopCtx {
     originator_stable_addr: Address,
@@ -426,7 +398,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
                     format!("cannot create account for address {} type {}", target, protocol),
-                ))
+                ));
             }
             _ => (),
         }
@@ -549,7 +521,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_ASSERTION_FAILED,
                     "create_actor called with singleton builtin actor code cid".to_string(),
-                ))
+                ));
             }
         }
         let addr = Address::new_id(actor_id);
@@ -781,11 +753,15 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
 impl Primitives for VM<'_> {
     fn verify_signature(
         &self,
-        _signature: &Signature,
+        signature: &Signature,
         _signer: &Address,
-        _plaintext: &[u8],
+        plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        Ok(())
+        if signature.bytes.eq(plaintext) {
+            return Ok(());
+        }
+
+        Err(anyhow!("plaintext should match sigbytes"))
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
@@ -898,8 +874,10 @@ pub struct InvocationTrace {
 }
 
 pub struct ExpectInvocation {
-    pub to: Address,       // required
-    pub method: MethodNum, // required
+    pub to: Address,
+    // required
+    pub method: MethodNum,
+    // required
     pub code: Option<ExitCode>,
     pub from: Option<Address>,
     pub value: Option<TokenAmount>,
