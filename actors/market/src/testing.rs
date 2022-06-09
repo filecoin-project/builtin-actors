@@ -54,7 +54,7 @@ pub struct StateSummary {
 
 /// Checks internal invariants of market state
 pub fn check_state_invariants<BS: Blockstore + Debug>(
-    state: State,
+    state: &State,
     store: &BS,
     balance: &TokenAmount,
     current_epoch: ChainEpoch,

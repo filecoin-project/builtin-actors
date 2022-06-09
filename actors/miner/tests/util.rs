@@ -3467,7 +3467,11 @@ pub fn require_no_expiration_groups_before(
 }
 
 pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {
-    let (_, acc) =
-        check_state_invariants(rt.policy(), rt.get_state::<State>(), rt.store(), &rt.get_balance());
+    let (_, acc) = check_state_invariants(
+        rt.policy(),
+        &rt.get_state::<State>(),
+        rt.store(),
+        &rt.get_balance(),
+    );
     assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
 }

@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub fn check_state_invariants<BS: Blockstore>(
     policy: &Policy,
-    state: State,
+    state: &State,
     store: &BS,
     balance: &TokenAmount,
 ) -> (StateSummary, MessageAccumulator) {
@@ -42,7 +42,7 @@ pub fn check_state_invariants<BS: Blockstore>(
         }
     };
 
-    check_miner_balances(policy, &state, store, balance, &acc);
+    check_miner_balances(policy, state, store, balance, &acc);
 
     let allocated_sectors = match store.get_cbor::<BitField>(&state.allocated_sectors) {
         Ok(Some(allocated_sectors)) => {
@@ -63,7 +63,7 @@ pub fn check_state_invariants<BS: Blockstore>(
         }
     };
 
-    check_precommits(policy, &state, store, &allocated_sectors, &acc);
+    check_precommits(policy, state, store, &allocated_sectors, &acc);
 
     let mut all_sectors: BTreeMap<SectorNumber, SectorOnChainInfo> = BTreeMap::new();
     match Sectors::load(&store, &state.sectors) {
