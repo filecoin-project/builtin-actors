@@ -63,7 +63,7 @@ use fvm_shared::sector::{
     SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{METHOD_SEND, HAMT_BIT_WIDTH};
+use fvm_shared::{HAMT_BIT_WIDTH, METHOD_SEND};
 
 use cid::Cid;
 use itertools::Itertools;
