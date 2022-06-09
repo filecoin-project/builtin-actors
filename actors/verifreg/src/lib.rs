@@ -42,6 +42,7 @@ pub enum Method {
 }
 
 pub struct Actor;
+
 impl Actor {
     /// Constructor for Registry Actor
     pub fn constructor<BS, RT>(rt: &mut RT, root_key: Address) -> Result<(), ActorError>
@@ -563,7 +564,16 @@ impl Actor {
             })?;
 
             // check that `client` is currently a verified client
-            if !is_verifier(rt, st, client)? {
+            let is_verified_client = verified_clients
+                .get(&client.to_bytes())
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to load verified clients",
+                    )
+                })?
+                .is_some();
+            if !is_verified_client {
                 return Err(actor_error!(not_found, "{} is not a verified client", client));
             }
 
@@ -579,12 +589,12 @@ impl Actor {
                 .cloned()
                 .unwrap_or_default();
 
-            // check that `verifier_1` is currently a verified client
+            // check that `verifier_1` is currently a verifier
             if !is_verifier(rt, st, verifier_1)? {
                 return Err(actor_error!(not_found, "{} is not a verified client", verifier_1));
             }
 
-            // check that `verifier_2` is currently a verified client
+            // check that `verifier_2` is currently a verifier
             if !is_verifier(rt, st, verifier_2)? {
                 return Err(actor_error!(not_found, "{} is not a verified client", verifier_2));
             }
@@ -672,17 +682,15 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    let verified_clients = make_map_with_root_and_bitwidth::<_, BigIntDe>(
-        &st.verified_clients,
+    let verifiers = make_map_with_root_and_bitwidth::<_, BigIntDe>(
+        &st.verifiers,
         rt.store(),
         HAMT_BIT_WIDTH,
     )
-    .map_err(|e| {
-        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load verified clients")
-    })?;
+    .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load verifiers"))?;
 
     // check that the `address` is currently a verified client
-    let found = verified_clients
+    let found = verifiers
         .contains_key(&address.to_bytes())
         .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier"))?;
 
@@ -716,7 +724,7 @@ where
     };
 
     let next_id = RemoveDataCapProposalID(curr_id.0 + 1);
-    proposal_ids.set(BytesKey::from(key.to_bytes()), next_id.clone()).map_err(|e| {
+    proposal_ids.set(BytesKey::from(key.to_bytes()), next_id).map_err(|e| {
         actor_error!(
             illegal_state,
             "failed to update proposal id for verifier {} and client {}: {}",
@@ -726,7 +734,7 @@ where
         )
     })?;
 
-    Ok(next_id)
+    Ok(curr_id)
 }
 
 fn remove_data_cap_request_is_valid<BS, RT>(
@@ -751,8 +759,10 @@ where
                 serialization; "failed to marshal remove datacap request: {}", e)
     })?;
 
+    let payload = [SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP, b.bytes()].concat();
+
     // verify signature of proposal
-    rt.verify_signature(&request.signature, &request.verifier, &b).map_err(
+    rt.verify_signature(&request.signature, &request.verifier, &payload).map_err(
         |e| actor_error!(illegal_argument; "invalid signature for datacap removal request: {}", e),
     )
 }
@@ -793,8 +803,9 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::RemoveVerifiedClientDataCap) => {
-                Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let res =
+                    Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }

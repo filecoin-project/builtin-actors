@@ -96,7 +96,7 @@ pub fn setup() -> MockRuntime {
 /// Checks internal invariants of market state asserting none of them are broken.
 pub fn check_state(rt: &MockRuntime) {
     let (_, acc) =
-        check_state_invariants(rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
+        check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
     acc.assert_empty();
 }
 
@@ -104,7 +104,7 @@ pub fn check_state(rt: &MockRuntime) {
 /// provided order.
 pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) {
     let (_, acc) =
-        check_state_invariants(rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
+        check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
 
     let messages = acc.messages();
     assert!(
