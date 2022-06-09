@@ -18,7 +18,7 @@ fn make_sector(i: u64) -> SectorOnChainInfo {
 }
 
 fn setup_sectors(store: &'_ MemoryBlockstore) -> Sectors<'_, MemoryBlockstore> {
-    sectors_arr(&store, vec![make_sector(0), make_sector(1), make_sector(5)])
+    sectors_arr(store, vec![make_sector(0), make_sector(1), make_sector(5)])
 }
 
 fn bf_from_vec(vec: Vec<u64>) -> BitField {
@@ -59,7 +59,7 @@ fn stores_sectors() {
 
     sectors.store(vec![s3.clone(), s1.clone()]).unwrap();
 
-    let mut bf = bf_from_vec(vec![0, 1, 3, 5]);
+    let bf = bf_from_vec(vec![0, 1, 3, 5]);
     let vec_sectors = sectors.load_sector(&bf).unwrap();
     assert_eq!(vec_sectors.len(), 4);
     assert_eq!(&s0, &vec_sectors[0]);
@@ -74,7 +74,7 @@ fn loads_and_stores_no_sectors() {
     let store = MemoryBlockstore::default();
     let mut sectors = setup_sectors(&store);
 
-    let mut bf = bf_from_vec(vec![]);
+    let bf = bf_from_vec(vec![]);
     let vec_sectors = sectors.load_sector(&bf).unwrap();
     assert_eq!(vec_sectors.len(), 0);
     sectors.store(vec![]).unwrap();
