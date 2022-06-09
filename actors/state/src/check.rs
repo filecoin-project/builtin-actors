@@ -282,6 +282,10 @@ fn check_miner_against_power(
         } else {
             // with deferred and discontinued crons it is normal for a miner actor to have no cron
             // events
+            acc.require(
+                !miner_summary.deadline_cron_active,
+                format!("miner {address} has no cron events but the deadline cron is active"),
+            );
         }
     }
 }
