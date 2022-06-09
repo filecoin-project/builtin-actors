@@ -260,7 +260,8 @@ pub fn advance_by_deadline_to_epoch_while_proving(
             v,
             maddr,
             d + 1 % &Policy::default().wpost_period_deadlines,
-        ).0
+        )
+        .0
     }
 }
 

@@ -3,8 +3,8 @@ use fil_actor_market::{
     DealMetaArray, Method as MethodsMarket, State as MarketState, WithdrawBalanceParams,
 };
 use fil_actor_miner::{
-    power_for_sector, Method as MethodsMiner, PreCommitSectorParams,
-    ProveCommitSectorParams, State as MinerState, TerminateSectorsParams, TerminationDeclaration,
+    power_for_sector, Method as MethodsMiner, PreCommitSectorParams, ProveCommitSectorParams,
+    State as MinerState, TerminateSectorsParams, TerminationDeclaration,
 };
 use fil_actor_power::{Method as MethodsPower, State as PowerState};
 use fil_actor_reward::Method as MethodsReward;
@@ -17,15 +17,12 @@ use fil_actors_runtime::{
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::{RawBytes};
-use fvm_shared::bigint::{Zero};
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{
-    RegisteredSealProof, 
-    StoragePower, 
-};
+use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::METHOD_SEND;
 use num_traits::cast::FromPrimitive;
 use test_vm::util::{
