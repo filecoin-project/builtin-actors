@@ -2508,6 +2508,7 @@ pub fn test_sector(
     }
 }
 
+#[allow(dead_code)]
 pub fn sectors_arr(
     store: &'_ MemoryBlockstore,
     sectors_info: Vec<SectorOnChainInfo>,

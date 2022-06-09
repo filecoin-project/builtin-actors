@@ -70,6 +70,7 @@ fn stores_sectors() {
     assert_eq!(vec_sectors.len(), 4);
     assert_eq!(&s0, &vec_sectors[0]);
     assert_eq!(&s1, &vec_sectors[1]);
+    assert_eq!(1, vec_sectors[1].activation.clone());
     assert_eq!(&s3, &vec_sectors[2]);
     assert_eq!(&s5, &vec_sectors[3]);
 }
