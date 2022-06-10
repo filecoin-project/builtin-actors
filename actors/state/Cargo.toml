@@ -1,0 +1,41 @@
+[package]
+name = "fil_actor_state"
+description = "Builtin Actor state utils for Filecoin"
+version = "8.0.0-alpha.1"
+license = "MIT OR Apache-2.0"
+authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
+edition = "2018"
+repository = "https://github.com/filecoin-project/builtin-actors"
+keywords = ["filecoin", "web3", "wasm"]
+
+[lib]
+## lib is necessary for integration tests
+## cdylib is necessary for Wasm build
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+fil_actor_account = { version = "8.0.0-alpha.1", path = "../account"}
+fil_actor_verifreg = { version = "8.0.0-alpha.1", path = "../verifreg"}
+fil_actor_cron = { version = "8.0.0-alpha.1", path = "../cron"}
+fil_actor_market = { version = "8.0.0-alpha.1", path = "../market"}
+fil_actor_multisig = { version = "8.0.0-alpha.1", path = "../multisig"}
+fil_actor_paych = { version = "8.0.0-alpha.1", path = "../paych"}
+fil_actor_power = { version = "8.0.0-alpha.1", path = "../power"}
+fil_actor_miner = { version = "8.0.0-alpha.1", path = "../miner"}
+fil_actor_reward = { version = "8.0.0-alpha.1", path = "../reward"}
+fil_actor_system = { version = "8.0.0-alpha.1", path = "../system"}
+fil_actor_init = { version = "8.0.0-alpha.1", path = "../init"}
+fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime"}
+fvm_shared = { version = "0.7.1", default-features = false }
+fvm_ipld_encoding = "0.2.1"
+fvm_ipld_blockstore = "0.1.1"
+num-traits = "0.2.14"
+anyhow = "1.0.56"
+num-derive = "0.3.3"
+serde = { version = "1.0.136", features = ["derive"] }
+cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+
+[dev-dependencies]
+[features]
+fil-actor = []
+
