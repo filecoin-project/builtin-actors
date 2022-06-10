@@ -147,6 +147,8 @@ pub struct TerminateSectorsParams {
     pub terminations: Vec<TerminationDeclaration>,
 }
 
+impl Cbor for TerminateSectorsParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct TerminationDeclaration {
     pub deadline: u64,

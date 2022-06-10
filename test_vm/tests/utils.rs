@@ -5,6 +5,7 @@ use fvm_ipld_encoding::BytesDe;
 use fvm_shared::{address::Address, econ::TokenAmount, sector::RegisteredPoStProof};
 use test_vm::VM;
 
+#[allow(dead_code)]
 pub fn miner_dline_info(v: &VM, m: Address) -> DeadlineInfo {
     let st = v.get_state::<MinerState>(m).unwrap();
     new_deadline_info_from_offset_and_epoch(
@@ -14,6 +15,7 @@ pub fn miner_dline_info(v: &VM, m: Address) -> DeadlineInfo {
     )
 }
 
+#[allow(dead_code)]
 pub fn create_miner(
     v: &mut VM,
     owner: Address,

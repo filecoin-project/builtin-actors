@@ -480,7 +480,6 @@ impl Actor {
                     submission_partition_limit
                 ));
             }
-
             let current_deadline = state.deadline_info(rt.policy(), current_epoch);
 
             // Check that the miner state indicates that the current proving deadline has started.
@@ -594,7 +593,6 @@ impl Actor {
                     "cannot prove partitions with no active sectors"
                 ));
             }
-
             // If we're not recovering power, record the proof for optimistic verification.
             if post_result.recovered_power.is_zero() {
                 deadline
