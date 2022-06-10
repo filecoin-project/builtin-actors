@@ -147,6 +147,8 @@ pub struct TerminateSectorsParams {
     pub terminations: Vec<TerminationDeclaration>,
 }
 
+impl Cbor for TerminateSectorsParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct TerminationDeclaration {
     pub deadline: u64,
@@ -260,6 +262,8 @@ pub struct SectorPreCommitInfo {
     pub replace_sector_partition: u64,
     pub replace_sector_number: SectorNumber,
 }
+
+impl Cbor for SectorPreCommitInfo {}
 
 /// Information stored on-chain for a pre-committed sector.
 #[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
