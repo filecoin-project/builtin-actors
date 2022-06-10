@@ -42,7 +42,7 @@ fn token_defaults() -> (TokenAmount, TokenAmount, TokenAmount) {
 }
 
 // create miner and client and add collateral
-fn setup<'bs>(store: &'bs MemoryBlockstore) -> (VM<'bs>, Addrs, ChainEpoch) {
+fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     let mut v = VM::new_with_singletons(store);
     let addrs = create_accounts(&v, 7, TokenAmount::from(10_000e18 as i128));
     let (worker, client1, client2, not_miner, cheap_client, verifier, verified_client) =
@@ -485,7 +485,7 @@ fn psd_all_deals_are_good() {
     assert_eq!(vec![0, 1, 2, 3, 4], good_inputs);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct DealOptions {
     provider: Option<Address>,
     piece_size: Option<PaddedPieceSize>,
@@ -497,20 +497,6 @@ struct DealOptions {
     client_collateral: Option<TokenAmount>,
 }
 
-impl Default for DealOptions {
-    fn default() -> Self {
-        Self {
-            provider: None,
-            piece_size: None,
-            verified: None,
-            deal_start: None,
-            deal_lifetime: None,
-            price_per_epoch: None,
-            provider_collateral: None,
-            client_collateral: None,
-        }
-    }
-}
 struct DealBatcher<'bs> {
     deals: Vec<DealProposal>,
     v: &'bs VM<'bs>,
@@ -569,7 +555,7 @@ impl<'bs> DealBatcher<'bs> {
         self.deals.push(deal)
     }
 
-    pub fn default_opts(&self, mut in_opts: DealOptions) -> DealOptions {
+    pub fn default_opts(&self, in_opts: DealOptions) -> DealOptions {
         let mut opts = in_opts.clone();
         if in_opts.provider.is_none() {
             opts.provider = Some(self.default_provider)
@@ -609,7 +595,7 @@ impl<'bs> DealBatcher<'bs> {
             .collect();
         let publish_params = PublishStorageDealsParams { deals: params_deals };
         let ret: PublishStorageDealsReturn = apply_ok(
-            &self.v,
+            self.v,
             sender,
             *STORAGE_MARKET_ACTOR_ADDR,
             TokenAmount::zero(),
