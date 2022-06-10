@@ -281,7 +281,7 @@ fn psd_not_enough_provider_lockup_for_batch() {
     batcher.stage(a.client2, "deal1", DealOptions::default());
     let deal_ret = batcher.publish_ok(cheap_worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
-    assert_eq!(vec![1], good_inputs);
+    assert_eq!(vec![0], good_inputs);
 }
 
 #[test]
