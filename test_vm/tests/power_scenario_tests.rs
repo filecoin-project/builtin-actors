@@ -20,11 +20,8 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
-use test_vm::util::{apply_ok, create_accounts};
+use test_vm::util::{apply_ok, create_accounts, create_miner, miner_dline_info};
 use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
-
-mod utils;
-use utils::*;
 
 #[test]
 fn create_miner_test() {

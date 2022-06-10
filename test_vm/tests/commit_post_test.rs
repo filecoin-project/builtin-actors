@@ -25,8 +25,6 @@ use test_vm::util::{
 };
 use test_vm::{ExpectInvocation, VM};
 
-mod utils;
-
 #[test]
 fn commit_post_flow_happy_path() {
     let store = MemoryBlockstore::new();
