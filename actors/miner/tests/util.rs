@@ -25,7 +25,7 @@ use fil_actor_miner::{
     RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo,
     Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
     VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
-    CRON_EVENT_PROVING_DEADLINE,
+    CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -40,7 +40,6 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
-use fvm_shared::HAMT_BIT_WIDTH;
 
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -64,7 +63,7 @@ use fvm_shared::sector::{
     SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::METHOD_SEND;
+use fvm_shared::{HAMT_BIT_WIDTH, METHOD_SEND};
 
 use cid::Cid;
 use itertools::Itertools;
@@ -2509,6 +2508,18 @@ pub fn test_sector(
         sealed_cid: make_sealed_cid(format!("commR-{sector_number}").as_bytes()),
         ..Default::default()
     }
+}
+
+#[allow(dead_code)]
+pub fn sectors_arr_mbs(
+    store: &'_ MemoryBlockstore,
+    sectors_info: Vec<SectorOnChainInfo>,
+) -> Sectors<'_, MemoryBlockstore> {
+    let empty_array =
+        Amt::<(), _>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH).flush().unwrap();
+    let mut sectors = Sectors::load(store, &empty_array).unwrap();
+    sectors.store(sectors_info).unwrap();
+    sectors
 }
 
 #[allow(dead_code)]

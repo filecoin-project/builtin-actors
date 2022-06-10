@@ -3,12 +3,9 @@ use fil_actor_miner::select_sectors;
 use fil_actor_miner::testing::PartitionStateSummary;
 use fil_actor_miner::Partition;
 use fil_actor_miner::SectorOnChainInfo;
-use fil_actor_miner::Sectors;
-use fil_actor_miner::SECTORS_AMT_BITWIDTH;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
-use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
@@ -49,7 +46,7 @@ fn setup() -> (MemoryBlockstore, Partition) {
 #[test]
 fn fail_if_all_declared_sectors_are_not_in_the_partition() {
     let (store, mut partition) = setup();
-    let sector_arr = sectors_arr(&store, sectors());
+    let sector_arr = sectors_arr_mbs(&store, sectors());
 
     let mut skipped: UnvalidatedBitField = BitField::try_from_bits(1..100).unwrap().into();
 
@@ -65,7 +62,7 @@ fn fail_if_all_declared_sectors_are_not_in_the_partition() {
 fn already_faulty_and_terminated_sectors_are_ignored() {
     let policy = Policy::default();
     let (store, mut partition) = setup();
-    let sector_arr = sectors_arr(&store, sectors());
+    let sector_arr = sectors_arr_mbs(&store, sectors());
 
     // terminate 1 AND 2
     let terminations: BitField = BitField::try_from_bits([1, 2]).unwrap();
@@ -157,7 +154,7 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
 #[test]
 fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
     let (store, mut partition) = setup();
-    let sector_arr = sectors_arr(&store, sectors());
+    let sector_arr = sectors_arr_mbs(&store, sectors());
 
     // make 4, 5 and 6 faulty
     let fault_set = BitField::try_from_bits([4, 5, 6]).unwrap();
@@ -228,7 +225,7 @@ fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
 #[test]
 fn successful_when_skipped_fault_set_is_empty() {
     let (store, mut partition) = setup();
-    let sector_arr = sectors_arr(&store, sectors());
+    let sector_arr = sectors_arr_mbs(&store, sectors());
 
     let (power_delta, new_fault_power, recovery_power, new_faults) = partition
         .record_skipped_faults(
@@ -288,15 +285,4 @@ fn assert_partition_state(
         &msgs,
     );
     msgs.assert_empty();
-}
-
-pub fn sectors_arr(
-    store: &'_ MemoryBlockstore,
-    sectors_info: Vec<SectorOnChainInfo>,
-) -> Sectors<'_, MemoryBlockstore> {
-    let empty_array =
-        Amt::<(), _>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH).flush().unwrap();
-    let mut sectors = Sectors::load(store, &empty_array).unwrap();
-    sectors.store(sectors_info).unwrap();
-    sectors
 }
