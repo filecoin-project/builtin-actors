@@ -361,3 +361,5 @@ pub struct ReplicaUpdate {
 pub struct ProveReplicaUpdatesParams {
     pub updates: Vec<ReplicaUpdate>,
 }
+
+impl Cbor for ProveReplicaUpdatesParams {}
