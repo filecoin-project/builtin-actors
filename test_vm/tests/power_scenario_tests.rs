@@ -1,9 +1,13 @@
 use fil_actor_init::Method as InitMethod;
-use fil_actor_miner::{Method as MinerMethod, MinerConstructorParams, PreCommitSectorParams};
+use fil_actor_miner::{
+    max_prove_commit_duration, Method as MinerMethod, MinerConstructorParams,
+    PreCommitSectorParams, MIN_SECTOR_EXPIRATION,
+};
 use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actors_runtime::cbor::serialize;
 
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::{
     CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -16,7 +20,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
-use test_vm::util::create_accounts;
+use test_vm::util::{apply_ok, create_accounts};
 use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 mod utils;
@@ -113,7 +117,7 @@ fn test_cron_tick() {
     );
 
     // create precommit
-    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1; // p1??
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1; // p1??
     let sector_number = 100;
     let sealed_cid = make_sealed_cid(b"100");
     let precommit_params = PreCommitSectorParams {
@@ -122,17 +126,21 @@ fn test_cron_tick() {
         sealed_cid,
         seal_rand_epoch: vm.get_epoch() - 1,
         deal_ids: vec![],
-        expiration: vm.get_epoch(), // todo
+        expiration: vm.get_epoch()
+            + MIN_SECTOR_EXPIRATION
+            + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
+            + 100,
         ..Default::default()
     };
-    vm.apply_message(
+
+    apply_ok(
+        &vm,
         addrs[0],
         robust_addr,
         TokenAmount::from(0u32),
         MinerMethod::PreCommitSector as u64,
-        RawBytes::serialize(&precommit_params).unwrap(),
-    )
-    .unwrap();
+        precommit_params,
+    );
 
     // find epoch of miner's next cron task (precommit:1, enrollCron:2)
     let cron_epoch = miner_dline_info(&vm, id_addr).last() - 1;
@@ -141,14 +149,14 @@ fn test_cron_tick() {
     let v = vm.with_epoch(cron_epoch);
 
     // run cron and expect a call to miner and a call to update reward actor params
-    v.apply_message(
+    apply_ok(
+        &v,
         *CRON_ACTOR_ADDR,
         *STORAGE_POWER_ACTOR_ADDR,
         BigInt::zero(),
         PowerMethod::OnEpochTickEnd as u64,
         RawBytes::default(),
-    )
-    .unwrap();
+    );
 
     let sub_invocs = vec![
         // get data from reward and power for any eventual calls to confirmsectorproofsvalid
@@ -166,7 +174,6 @@ fn test_cron_tick() {
         },
     ];
 
-    // expect miner call to be missing
     ExpectInvocation {
         // original send to storage power actor
         to: *STORAGE_POWER_ACTOR_ADDR,
