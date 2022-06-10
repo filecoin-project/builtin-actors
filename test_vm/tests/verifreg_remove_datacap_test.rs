@@ -1,6 +1,6 @@
 use fil_actor_verifreg::{
-    AddVerifierClientParams, RemoveDataCapParams, RemoveDataCapRequest,
-    RemoveDataCapReturn, SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
+    AddVerifierClientParams, RemoveDataCapParams, RemoveDataCapRequest, RemoveDataCapReturn,
+    SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
 };
 use fil_actor_verifreg::{AddrPairKey, Method as VerifregMethod};
 use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State as VerifregState};
