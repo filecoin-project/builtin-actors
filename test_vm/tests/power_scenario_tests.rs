@@ -117,7 +117,7 @@ fn test_cron_tick() {
     );
 
     // create precommit
-    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1; // p1??
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let sector_number = 100;
     let sealed_cid = make_sealed_cid(b"100");
     let precommit_params = PreCommitSectorParams {
@@ -158,11 +158,56 @@ fn test_cron_tick() {
         RawBytes::default(),
     );
 
+    // expect miner call to be missing
+    ExpectInvocation {
+        // original send to storage power actor
+        to: *STORAGE_POWER_ACTOR_ADDR,
+        method: PowerMethod::OnEpochTickEnd as u64,
+        subinvocs: Some(vec![
+            // get data from reward actor for any eventual calls to confirmsectorproofsparams
+            ExpectInvocation {
+                to: *REWARD_ACTOR_ADDR,
+                method: RewardMethod::ThisEpochReward as u64,
+                ..Default::default()
+            },
+            // expect call to reward to update kpi
+            ExpectInvocation {
+                to: *REWARD_ACTOR_ADDR,
+                method: RewardMethod::UpdateNetworkKPI as u64,
+                from: Some(*STORAGE_POWER_ACTOR_ADDR),
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().first().unwrap());
+
+    // create new vm at cron epoch with existing state
+    let v = v.with_epoch(cron_epoch + 1);
+
+    // run cron and expect a call to miner and a a call to update reward actor params
+    apply_ok(
+        &v,
+        *CRON_ACTOR_ADDR,
+        *STORAGE_POWER_ACTOR_ADDR,
+        BigInt::zero(),
+        PowerMethod::OnEpochTickEnd as u64,
+        RawBytes::default(),
+    );
+
     let sub_invocs = vec![
         // get data from reward and power for any eventual calls to confirmsectorproofsvalid
         ExpectInvocation {
             to: *REWARD_ACTOR_ADDR,
             method: RewardMethod::ThisEpochReward as u64,
+            ..Default::default()
+        },
+        // expect call back to miner that was set up in create miner
+        ExpectInvocation {
+            to: id_addr,
+            method: MinerMethod::OnDeferredCronEvent as u64,
+            from: Some(*STORAGE_POWER_ACTOR_ADDR),
+            value: Some(BigInt::zero()),
             ..Default::default()
         },
         // expect call to reward to update kpi
@@ -174,6 +219,7 @@ fn test_cron_tick() {
         },
     ];
 
+    // expect call to miner
     ExpectInvocation {
         // original send to storage power actor
         to: *STORAGE_POWER_ACTOR_ADDR,
