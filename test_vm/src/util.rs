@@ -399,6 +399,7 @@ pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
     .matches(v.take_invocations().last().unwrap());
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn publish_deal(
     v: &VM,
     provider: Address,
@@ -432,7 +433,7 @@ pub fn publish_deal(
         }],
     };
     let ret: PublishStorageDealsReturn = apply_ok(
-        &v,
+        v,
         provider,
         *STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),

@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
@@ -796,7 +795,7 @@ impl Primitives for VM<'_> {
         &self,
         signature: &Signature,
         _signer: &Address,
-        plaintext: &[u8],
+        _plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
         if signature.bytes.clone() == TEST_VM_INVALID_SIG.as_bytes() {
             return Err(anyhow::format_err!(
