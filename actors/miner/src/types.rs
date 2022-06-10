@@ -239,6 +239,8 @@ pub struct WorkerKeyChange {
 
 pub type PreCommitSectorParams = SectorPreCommitInfo;
 
+impl Cbor for PreCommitSectorParams {}
+
 #[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct PreCommitSectorBatchParams {
     pub sectors: Vec<SectorPreCommitInfo>,
@@ -262,8 +264,6 @@ pub struct SectorPreCommitInfo {
     pub replace_sector_partition: u64,
     pub replace_sector_number: SectorNumber,
 }
-
-impl Cbor for SectorPreCommitInfo {}
 
 /// Information stored on-chain for a pre-committed sector.
 #[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]

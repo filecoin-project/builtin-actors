@@ -302,7 +302,7 @@ where
     }
 }
 
-fn miner_dline_info(v: &VM, m: Address) -> DeadlineInfo {
+pub fn miner_dline_info(v: &VM, m: Address) -> DeadlineInfo {
     let st = v.get_state::<MinerState>(m).unwrap();
     new_deadline_info_from_offset_and_epoch(
         &Policy::default(),
