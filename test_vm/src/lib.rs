@@ -351,7 +351,6 @@ impl<'bs> VM<'bs> {
             caller_validated: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
-            block_store_ref: &RefToMemoryBlockstore::new(self.store),
         };
         let res = new_ctx.invoke();
         let invoc = new_ctx.gather_trace(res.clone());
@@ -426,7 +425,6 @@ pub struct InvocationCtx<'invocation, 'bs> {
     caller_validated: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
-    block_store_ref: &'invocation RefToMemoryBlockstore<'bs>,
 }
 
 impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
@@ -470,8 +468,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 caller_validated: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
-                block_store_ref: &RefToMemoryBlockstore::new(self.v.store),
-
             };
             new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id).unwrap();
             let res = new_ctx.invoke();
@@ -558,7 +554,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     }
 }
 
-impl<'invocation, 'bs> Runtime<RefToMemoryBlockstore<'bs>> for InvocationCtx<'invocation, 'bs> {
+impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
         match NON_SINGLETON_CODES.get(&code_id) {
             Some(_) => (),
@@ -581,8 +577,8 @@ impl<'invocation, 'bs> Runtime<RefToMemoryBlockstore<'bs>> for InvocationCtx<'in
         Ok(())
     }
 
-    fn store(&self) -> &RefToMemoryBlockstore<'bs> {
-        self.block_store_ref
+    fn store(&self) -> &&'bs MemoryBlockstore {
+        &self.v.store
     }
 
     fn network_version(&self) -> NetworkVersion {
@@ -689,7 +685,6 @@ impl<'invocation, 'bs> Runtime<RefToMemoryBlockstore<'bs>> for InvocationCtx<'in
             caller_validated: false,
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
-            block_store_ref: &RefToMemoryBlockstore::new(self.v.store),
         };
         let res = new_ctx.invoke();
 
@@ -1044,31 +1039,6 @@ impl Default for ExpectInvocation {
             ret: None,
             subinvocs: None,
         }
-    }
-}
-
-#[derive(Clone)]
-pub struct RefToMemoryBlockstore<'bs> {
-    pub reference: Rc<&'bs MemoryBlockstore>,
-}
-
-impl<'bs> RefToMemoryBlockstore<'bs> {
-    pub fn new(store: &MemoryBlockstore) -> RefToMemoryBlockstore {
-        RefToMemoryBlockstore { reference: Rc::new(store) }
-    }
-}
-
-impl<'bs> fvm_ipld_blockstore::Blockstore for RefToMemoryBlockstore<'bs> {
-    fn has(&self, k: &Cid) -> anyhow::Result<bool> {
-        self.reference.has(k)
-    }
-
-    fn get(&self, k: &Cid) -> anyhow::Result<Option<Vec<u8>>> {
-        self.reference.get(k)
-    }
-
-    fn put_keyed(&self, k: &Cid, block: &[u8]) -> anyhow::Result<()> {
-        self.reference.put_keyed(k, block)
     }
 }
 
