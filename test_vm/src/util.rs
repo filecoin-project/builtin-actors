@@ -7,8 +7,8 @@ use fil_actor_market::{
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, DeadlineInfo, Method as MinerMethod, PoStPartition,
-    PowerPair, PreCommitSectorBatchParams, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    State as MinerState, SubmitWindowedPoStParams, SectorOnChainInfo,
+    PowerPair, PreCommitSectorBatchParams, SectorOnChainInfo, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
@@ -326,7 +326,7 @@ pub fn check_sector_faulty(v: &VM, m: Address, d_idx: u64, p_idx: u64, s: Sector
     let st = v.get_state::<MinerState>(m).unwrap();
     let deadlines = st.load_deadlines(v.store).unwrap();
     let deadline = deadlines.load_deadline(&Policy::default(), v.store, d_idx).unwrap();
-    let partition = deadline.load_partition( v.store, p_idx).unwrap();
+    let partition = deadline.load_partition(v.store, p_idx).unwrap();
     partition.faults.get(s)
 }
 

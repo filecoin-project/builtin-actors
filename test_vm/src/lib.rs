@@ -16,14 +16,13 @@ use fil_actors_runtime::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier,
 };
-use std::rc::Rc;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_ipld_blockstore::{MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
@@ -50,6 +49,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::ops::Add;
+use std::rc::Rc;
 
 pub mod util;
 
