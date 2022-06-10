@@ -1,20 +1,14 @@
 use fil_actor_market::{
-    ClientDealProposal, DealProposal, Label, Method as MethodsMarket,
-    PublishStorageDealsParams, PublishStorageDealsReturn, 
+    ClientDealProposal, DealProposal, Label, Method as MethodsMarket, PublishStorageDealsParams,
+    PublishStorageDealsReturn,
 };
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 
-use fil_actor_miner::{
-    max_prove_commit_duration, 
-};
+use fil_actor_miner::max_prove_commit_duration;
 use fil_actor_verifreg::{AddVerifierClientParams, Method as MethodsVerifreg};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
-    test_utils::*,
-    STORAGE_MARKET_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use fil_actors_runtime::{test_utils::*, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -24,11 +18,9 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use test_vm::util::{
-    add_verifier,
-    apply_ok, bf_all, create_accounts, create_accounts_seeded,
-    create_miner,
+    add_verifier, apply_ok, bf_all, create_accounts, create_accounts_seeded, create_miner,
 };
-use test_vm::{VM};
+use test_vm::VM;
 
 struct Addrs {
     worker: Address,
