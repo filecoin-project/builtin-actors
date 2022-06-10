@@ -15,7 +15,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::HAMT_BIT_WIDTH;
 use std::ops::{Div, Sub};
-use test_vm::util::{apply_ok, create_accounts, add_verifier};
+use test_vm::util::{add_verifier, apply_ok, create_accounts};
 use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
 
 #[test]
@@ -24,6 +24,7 @@ fn remove_datacap_simple_successful_path() {
     let v = VM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 4, TokenAmount::from(10_000e18 as i128));
     let (verifier1, verifier2, verified_client) = (addrs[0], addrs[1], addrs[2]);
+
     let verifier1_id_addr = v.normalize_address(&verifier1).unwrap();
     let verifier2_id_addr = v.normalize_address(&verifier2).unwrap();
     let verified_client_id_addr = v.normalize_address(&verified_client).unwrap();

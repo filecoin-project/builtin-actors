@@ -383,11 +383,17 @@ pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
         MultisigMethod::Propose as u64,
         proposal,
     );
-    ExpectInvocation {
+    let verifreg_invoc = ExpectInvocation {
         to: *VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifier as u64,
         params: Some(serialize(&add_verifier_params, "verifreg add verifier params").unwrap()),
         subinvocs: Some(vec![]),
+        ..Default::default()
+    };
+    ExpectInvocation {
+        to: TEST_VERIFREG_ROOT_ADDR,
+        method: MultisigMethod::Propose as u64,
+        subinvocs: Some(vec![verifreg_invoc]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

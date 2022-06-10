@@ -3,10 +3,10 @@ use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
-use fil_actor_init::{Actor as InitActor, State as InitState, ExecReturn};
+use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
 use fil_actor_miner::{Actor as MinerActor, State as MinerState};
-use fil_actor_multisig::{Actor as MultisigActor};
+use fil_actor_multisig::Actor as MultisigActor;
 use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as PowerState};
 use fil_actor_reward::{Actor as RewardActor, State as RewardState};
@@ -76,8 +76,8 @@ pub const TEST_VERIFREG_ROOT_SIGNER_ADDR: Address = Address::new_id(FIRST_NON_SI
 pub const TEST_VERIFREG_ROOT_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 1);
 // Account actor seeding funds created by new_with_singletons
 pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
-pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
-pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 1;
+pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
+pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
 
 // accounts for verifreg root signer and msig
 impl<'bs> VM<'bs> {
@@ -798,7 +798,7 @@ impl Primitives for VM<'_> {
         _signer: &Address,
         plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        if String::from_utf8(signature.bytes.clone()).unwrap() == TEST_VM_INVALID_SIG {
+        if signature.bytes.clone() == TEST_VM_INVALID_SIG.as_bytes() {
             return Err(anyhow::format_err!(
                 "verify signature syscall failing on TEST_VM_INVALID_SIG"
             ));
