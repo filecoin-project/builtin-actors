@@ -228,7 +228,7 @@ impl<'bs> VM<'bs> {
         self.checkpoint();
         VM {
             store: self.store,
-            state_root: RefCell::new(self.state_root.take()),
+            state_root: self.state_root.clone(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             empty_obj_cid: self.empty_obj_cid,
@@ -312,6 +312,10 @@ impl<'bs> VM<'bs> {
         self.store.get_cbor::<C>(&a.head).unwrap()
     }
 
+    pub fn get_epoch(&self) -> ChainEpoch {
+        self.curr_epoch
+    }
+
     pub fn apply_message<C: Cbor>(
         &self,
         from: Address,
@@ -372,10 +376,6 @@ impl<'bs> VM<'bs> {
 
     pub fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
-    }
-
-    pub fn get_epoch(&self) -> ChainEpoch {
-        self.curr_epoch
     }
 }
 
@@ -908,6 +908,7 @@ pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
     Actor { code, head, call_seq_num: seq, balance: bal }
 }
 
+#[derive(Clone)]
 pub struct InvocationTrace {
     pub msg: InternalMessage,
     pub code: Option<ExitCode>,
