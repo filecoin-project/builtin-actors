@@ -1,27 +1,21 @@
-use fil_actor_cron::Method as MethodsCron;
 use fil_actor_market::{
-    ClientDealProposal, DealMetaArray, DealProposal, Label, Method as MethodsMarket,
-    PublishStorageDealsParams, PublishStorageDealsReturn, State as MarketState,
-    WithdrawBalanceParams,
+    ClientDealProposal, DealProposal, Label, Method as MethodsMarket,
+    PublishStorageDealsParams, PublishStorageDealsReturn, 
 };
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 
 use fil_actor_miner::{
-    max_prove_commit_duration, power_for_sector, Method as MethodsMiner, PreCommitSectorParams,
-    ProveCommitSectorParams, State as MinerState, TerminateSectorsParams, TerminationDeclaration,
+    max_prove_commit_duration, 
 };
-use fil_actor_power::{Method as MethodsPower, State as PowerState};
-use fil_actor_reward::Method as MethodsReward;
-use fil_actor_verifreg::{Method as MethodsVerifreg, VerifierParams};
+use fil_actor_verifreg::{AddVerifierClientParams, Method as MethodsVerifreg};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    test_utils::*, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    test_utils::*,
+    STORAGE_MARKET_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -29,14 +23,12 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
-use fvm_shared::METHOD_SEND;
-use num_traits::cast::FromPrimitive;
 use test_vm::util::{
-    add_verifier, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_to_proving_deadline, apply_ok, bf_all, create_accounts, create_miner, make_bitfield,
-    publish_deal, submit_windowed_post,
+    add_verifier,
+    apply_ok, bf_all, create_accounts, create_accounts_seeded,
+    create_miner,
 };
-use test_vm::{ExpectInvocation, VM};
+use test_vm::{VM};
 
 struct Addrs {
     worker: Address,
@@ -45,6 +37,7 @@ struct Addrs {
     not_miner: Address,
     cheap_client: Address,
     maddr: Address,
+    verified_client: Address,
 }
 
 const DEAL_LIFETIME: ChainEpoch = 181 * EPOCHS_IN_DAY;
@@ -59,11 +52,12 @@ fn token_defaults() -> (TokenAmount, TokenAmount, TokenAmount) {
 // create miner and client and add collateral
 fn setup<'bs>(store: &'bs MemoryBlockstore) -> (VM<'bs>, Addrs, ChainEpoch) {
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 5, TokenAmount::from(10_000e18 as i128));
-    let (worker, client1, client2, not_miner, cheap_client) =
-        (addrs[0], addrs[1], addrs[2], addrs[3], addrs[4]);
+    let addrs = create_accounts(&v, 7, TokenAmount::from(10_000e18 as i128));
+    let (worker, client1, client2, not_miner, cheap_client, verifier, verified_client) =
+        (addrs[0], addrs[1], addrs[2], addrs[3], addrs[4], addrs[5], addrs[6]);
     let owner = worker;
 
+    // setup provider
     let miner_balance = TokenAmount::from(100e18 as i128);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
@@ -75,6 +69,22 @@ fn setup<'bs>(store: &'bs MemoryBlockstore) -> (VM<'bs>, Addrs, ChainEpoch) {
         miner_balance,
     )
     .0;
+
+    // setup verified client
+    add_verifier(&v, verifier, StoragePower::from((32_u64 << 40) as u128));
+    let add_client_params = AddVerifierClientParams {
+        address: verified_client,
+        allowance: StoragePower::from((1_u64 << 32) as u64),
+    };
+    apply_ok(
+        &v,
+        verifier,
+        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        TokenAmount::zero(),
+        MethodsVerifreg::AddVerifiedClient as u64,
+        add_client_params,
+    );
+
     let client_collateral = TokenAmount::from(100e18 as i128);
     apply_ok(
         &v,
@@ -88,10 +98,19 @@ fn setup<'bs>(store: &'bs MemoryBlockstore) -> (VM<'bs>, Addrs, ChainEpoch) {
         &v,
         client2,
         *STORAGE_MARKET_ACTOR_ADDR,
-        client_collateral,
+        client_collateral.clone(),
         MethodsMarket::AddBalance as u64,
         client2,
     );
+    apply_ok(
+        &v,
+        verified_client,
+        *STORAGE_MARKET_ACTOR_ADDR,
+        client_collateral,
+        MethodsMarket::AddBalance as u64,
+        verified_client,
+    );
+
     let miner_collateral = TokenAmount::from(100e18 as i128);
     apply_ok(
         &v,
@@ -104,7 +123,11 @@ fn setup<'bs>(store: &'bs MemoryBlockstore) -> (VM<'bs>, Addrs, ChainEpoch) {
 
     let deal_start =
         v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
-    (v, Addrs { worker, client1, client2, not_miner, cheap_client, maddr }, deal_start)
+    (
+        v,
+        Addrs { worker, client1, client2, not_miner, cheap_client, maddr, verified_client },
+        deal_start,
+    )
 }
 
 #[test]
@@ -135,15 +158,19 @@ fn psd_bad_piece_size() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);  
+        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     // bad deal piece size too small
-    batcher.stage(a.client1, "deal0", DealOptions{piece_size: Some(PaddedPieceSize(0)), ..Default::default()});
+    batcher.stage(
+        a.client1,
+        "deal0",
+        DealOptions { piece_size: Some(PaddedPieceSize(0)), ..Default::default() },
+    );
     // good deal
     batcher.stage(a.client1, "deal1", DealOptions::default());
 
-     let deal_ret = batcher.publish_ok(a.worker);
-     let good_inputs = bf_all(deal_ret.valid_deals);
-     assert_eq!(vec![1], good_inputs);
+    let deal_ret = batcher.publish_ok(a.worker);
+    let good_inputs = bf_all(deal_ret.valid_deals);
+    assert_eq!(vec![1], good_inputs);
 }
 
 #[test]
@@ -153,7 +180,11 @@ fn psd_start_time_in_past() {
     let mut batcher =
         DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     let bad_deal_start = v.get_epoch() - 1;
-    batcher.stage(a.client1, "deal0", DealOptions{deal_start: Some(bad_deal_start), ..Default::default()});
+    batcher.stage(
+        a.client1,
+        "deal0",
+        DealOptions { deal_start: Some(bad_deal_start), ..Default::default() },
+    );
     batcher.stage(a.client1, "deal1", DealOptions::default());
 
     let deal_ret = batcher.publish_ok(a.worker);
@@ -174,14 +205,244 @@ fn psd_client_address_cannot_be_resolved() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
-} 
+}
 
 #[test]
 fn psd_no_client_lockup() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME); 
+        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    batcher.stage(a.cheap_client, "deal0", DealOptions::default());
+    batcher.stage(a.client1, "deal1", DealOptions::default());
+
+    let deal_ret = batcher.publish_ok(a.worker);
+    let good_inputs = bf_all(deal_ret.valid_deals);
+    assert_eq!(vec![1], good_inputs)
+}
+
+#[test]
+fn psd_not_enought_client_lockup_for_batch() {
+    let store = MemoryBlockstore::new();
+    let (v, a, deal_start) = setup(&store);
+    // Add one lifetime cost to cheap_client's market balance but attempt to make 3 deals
+    let (default_price, _, default_client_collateral) = token_defaults();
+    let one_lifetime_cost = default_client_collateral + DEAL_LIFETIME * default_price;
+    apply_ok(
+        &v,
+        a.cheap_client,
+        *STORAGE_MARKET_ACTOR_ADDR,
+        one_lifetime_cost,
+        MethodsMarket::AddBalance as u64,
+        a.cheap_client,
+    );
+
+    let mut batcher =
+        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    // good
+    batcher.stage(a.cheap_client, "deal0", DealOptions::default());
+    // bad -- insufficient funds
+    batcher.stage(a.cheap_client, "deal1", DealOptions::default());
+    batcher.stage(a.cheap_client, "deal2", DealOptions::default());
+
+    let deal_ret = batcher.publish_ok(a.worker);
+    let good_inputs = bf_all(deal_ret.valid_deals);
+    assert_eq!(vec![0], good_inputs);
+}
+
+#[test]
+fn psd_not_enough_provider_lockup_for_batch() {
+    let store = MemoryBlockstore::new();
+    let (mut v, a, deal_start) = setup(&store);
+
+    // note different seed, different address
+    let cheap_worker = create_accounts_seeded(&v, 1, TokenAmount::from(10_000e18 as u128), 444)[0];
+    let cheap_maddr = create_miner(
+        &mut v,
+        cheap_worker,
+        cheap_worker,
+        fvm_shared::sector::RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        TokenAmount::from(100e18 as u128),
+    )
+    .0;
+    // add one deal of collateral to provider's market account
+    let default_provider_collateral = token_defaults().1;
+    apply_ok(
+        &v,
+        cheap_worker,
+        *STORAGE_MARKET_ACTOR_ADDR,
+        default_provider_collateral,
+        MethodsMarket::AddBalance as u64,
+        cheap_maddr,
+    );
+    let mut batcher = DealBatcher::new(
+        &v,
+        cheap_maddr,
+        PaddedPieceSize(1 << 30),
+        false,
+        deal_start,
+        DEAL_LIFETIME,
+    );
+    // good deal
+    batcher.stage(a.client1, "deal0", DealOptions::default());
+    // bad deal insufficient funds on provider
+    batcher.stage(a.client2, "deal1", DealOptions::default());
+    let deal_ret = batcher.publish_ok(cheap_worker);
+    let good_inputs = bf_all(deal_ret.valid_deals);
+    assert_eq!(vec![1], good_inputs);
+}
+
+#[test]
+fn psd_duplicate_deal_in_batch() {
+    let store = MemoryBlockstore::new();
+    let (v, a, deal_start) = setup(&store);
+    let mut batcher =
+        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+
+    // good deals
+    batcher.stage(a.client1, "deal0", DealOptions::default());
+    batcher.stage(a.client1, "deal1", DealOptions::default());
+
+    // bad duplicates
+    batcher.stage(a.client1, "deal0", DealOptions::default());
+    batcher.stage(a.client1, "deal0", DealOptions::default());
+
+    // good
+    batcher.stage(a.client1, "deal2", DealOptions::default());
+
+    // bad
+    batcher.stage(a.client1, "deal1", DealOptions::default());
+
+    let deal_ret = batcher.publish_ok(a.worker);
+    let good_inputs = bf_all(deal_ret.valid_deals);
+    assert_eq!(vec![0, 1, 4], good_inputs);
+}
+
+#[test]
+fn psd_duplicate_deal_in_state() {
+    let store = MemoryBlockstore::new();
+    let (v, a, deal_start) = setup(&store);
+    let mut batcher =
+        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+
+    batcher.stage(a.client2, "deal0", DealOptions::default());
+    let deal_ret1 = batcher.publish_ok(a.worker);
+    let good_inputs1 = bf_all(deal_ret1.valid_deals);
+    assert_eq!(vec![0], good_inputs1);
+
+    let mut batcher =
+        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    batcher.stage(a.client2, "deal1", DealOptions::default());
+    // duplicate in batch
+    batcher.stage(a.client2, "deal1", DealOptions::default());
+    // duplicate in state
+    batcher.stage(a.client2, "deal0", DealOptions::default());
+
+    let deal_ret2 = batcher.publish_ok(a.worker);
+    let good_inputs2 = bf_all(deal_ret2.valid_deals);
+    assert_eq!(vec![0], good_inputs2);
+}
+
+#[test]
+fn psd_verified_deal_fails_getting_datacap() {
+    let store = MemoryBlockstore::new();
+    let (v, a, deal_start) = setup(&store);
+    let mut batcher =
+        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+
+    batcher.stage(a.verified_client, "deal0", DealOptions::default());
+    // good verified deal that uses up all datacap
+    batcher.stage(
+        a.verified_client,
+        "deal1",
+        DealOptions {
+            piece_size: Some(PaddedPieceSize(1_u64 << 32)),
+            verified: Some(true),
+            ..Default::default()
+        },
+    );
+    // bad verified deal, no data cap left
+    batcher.stage(
+        a.verified_client,
+        "deal2",
+        DealOptions {
+            piece_size: Some(PaddedPieceSize(1_u64 << 32)),
+            verified: Some(true),
+            ..Default::default()
+        },
+    );
+
+    let deal_ret = batcher.publish_ok(a.worker);
+    let good_inputs = bf_all(deal_ret.valid_deals);
+    assert_eq!(vec![0, 1], good_inputs);
+}
+
+#[test]
+fn psd_random_assortment_of_failures() {
+    let store = MemoryBlockstore::new();
+    let (v, a, deal_start) = setup(&store);
+    let mut batcher =
+        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    // Add one lifetime cost to cheap_client's market balance but attempt to make 3 deals
+    let (default_price, _, default_client_collateral) = token_defaults();
+    let one_lifetime_cost = default_client_collateral + DEAL_LIFETIME * default_price;
+    apply_ok(
+        &v,
+        a.cheap_client,
+        *STORAGE_MARKET_ACTOR_ADDR,
+        one_lifetime_cost,
+        MethodsMarket::AddBalance as u64,
+        a.cheap_client,
+    );
+    let broke_client = create_accounts_seeded(&v, 1, TokenAmount::zero(), 555)[0];
+
+    batcher.stage(
+        a.verified_client,
+        "deal1",
+        DealOptions {
+            piece_size: Some(PaddedPieceSize(1u64 << 32)),
+            verified: Some(true),
+            ..Default::default()
+        },
+    );
+    // duplicate
+    batcher.stage(
+        a.verified_client,
+        "deal1",
+        DealOptions {
+            piece_size: Some(PaddedPieceSize(1u64 << 32)),
+            verified: Some(true),
+            ..Default::default()
+        },
+    );
+    batcher.stage(a.cheap_client, "deal2", DealOptions::default());
+    // no client funds
+    batcher.stage(broke_client, "deal3", DealOptions::default());
+    // provider addr does not match
+    batcher.stage(
+        a.client1,
+        "deal4",
+        DealOptions { provider: Some(a.client2), ..Default::default() },
+    );
+    // insufficient data cap
+    batcher.stage(
+        a.verified_client,
+        "deal5",
+        DealOptions { verified: Some(true), ..Default::default() },
+    );
+    // cheap client out of funds
+    batcher.stage(a.cheap_client, "deal6", DealOptions::default());
+    // provider collateral too low
+    batcher.stage(
+        a.client2,
+        "deal7",
+        DealOptions { provider_collateral: Some(TokenAmount::zero()), ..Default::default() },
+    );
+    batcher.stage(a.client1, "deal8", DealOptions::default());
+
+    let deal_ret = batcher.publish_ok(a.worker);
+    let good_inputs = bf_all(deal_ret.valid_deals);
+    assert_eq!(vec![0, 2, 8], good_inputs);
 }
 
 #[test]
@@ -192,11 +453,23 @@ fn psd_all_deals_are_bad() {
         DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     let bad_client = Address::new_id(1000);
 
-    batcher.stage(a.client1, "deal0", DealOptions{provider_collateral: Some(TokenAmount::zero()), ..Default::default()});
-    batcher.stage(a.client1, "deal1", DealOptions{provider: Some(a.client2), ..Default::default()});
-    batcher.stage(a.client1, "deal2", DealOptions{verified: Some(true), ..Default::default()});
+    batcher.stage(
+        a.client1,
+        "deal0",
+        DealOptions { provider_collateral: Some(TokenAmount::zero()), ..Default::default() },
+    );
+    batcher.stage(
+        a.client1,
+        "deal1",
+        DealOptions { provider: Some(a.client2), ..Default::default() },
+    );
+    batcher.stage(a.client1, "deal2", DealOptions { verified: Some(true), ..Default::default() });
     batcher.stage(bad_client, "deal3", DealOptions::default());
-    batcher.stage(a.client1, "deal4", DealOptions{piece_size: Some(PaddedPieceSize(0)), ..Default::default()});
+    batcher.stage(
+        a.client1,
+        "deal4",
+        DealOptions { piece_size: Some(PaddedPieceSize(0)), ..Default::default() },
+    );
 
     batcher.publish_fail(a.worker);
 }
@@ -219,7 +492,6 @@ fn psd_all_deals_are_good() {
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1, 2, 3, 4], good_inputs);
 }
-
 
 #[derive(Clone)]
 struct DealOptions {
@@ -367,7 +639,16 @@ impl<'bs> DealBatcher<'bs> {
             })
             .collect();
         let publish_params = PublishStorageDealsParams { deals: params_deals };
-        let ret = self.v.apply_message(sender, *STORAGE_MARKET_ACTOR_ADDR, TokenAmount::zero(), MethodsMarket::PublishStorageDeals as u64, publish_params).unwrap();
+        let ret = self
+            .v
+            .apply_message(
+                sender,
+                *STORAGE_MARKET_ACTOR_ADDR,
+                TokenAmount::zero(),
+                MethodsMarket::PublishStorageDeals as u64,
+                publish_params,
+            )
+            .unwrap();
         assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
     }
 }

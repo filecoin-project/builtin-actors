@@ -49,7 +49,11 @@ fn new_bls_from_rng(rng: &mut ChaCha8Rng) -> Address {
 const ACCOUNT_SEED: u64 = 93837778;
 
 pub fn create_accounts(v: &VM, count: u64, balance: TokenAmount) -> Vec<Address> {
-    let pk_addrs = pk_addrs_from(ACCOUNT_SEED, count);
+    create_accounts_seeded(v, count, balance, ACCOUNT_SEED)
+}
+
+pub fn create_accounts_seeded(v: &VM, count: u64, balance: TokenAmount, seed: u64) -> Vec<Address> {
+    let pk_addrs = pk_addrs_from(seed, count);
     // Send funds from faucet to pk address, creating account actor
     for pk_addr in pk_addrs.clone() {
         apply_ok(v, TEST_FAUCET_ADDR, pk_addr, balance.clone(), METHOD_SEND, RawBytes::default());
