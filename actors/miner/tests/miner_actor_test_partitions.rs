@@ -1,5 +1,6 @@
 use fil_actor_miner::{
-    power_for_sectors, BitFieldQueue, ExpirationQueue, Partition, PowerPair, SectorOnChainInfo,
+    power_for_sectors, testing::PartitionStateSummary, BitFieldQueue, ExpirationQueue, Partition,
+    PowerPair, SectorOnChainInfo,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
