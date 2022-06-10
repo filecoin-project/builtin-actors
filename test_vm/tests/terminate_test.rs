@@ -39,7 +39,7 @@ fn terminate_sectors() {
     let addrs = create_accounts(&v, 4, TokenAmount::from(10_000e18 as i128));
     let (owner, verifier, unverified_client, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3]);
-    let worker = owner.clone();
+    let worker = owner;
 
     let miner_balance = TokenAmount::from(1_000e18 as i128);
     let sector_number = 100;
@@ -55,11 +55,11 @@ fn terminate_sectors() {
     );
 
     // publish verified and unverified deals
-    add_verifier(&v, verifier, StoragePower::from_i64(32 << 40 as i64).unwrap());
+    add_verifier(&v, verifier, StoragePower::from_i64(32 << 40_i64).unwrap());
 
     let add_client_params = VerifierParams {
         address: verified_client,
-        allowance: StoragePower::from_i64(32 << 40 as i64).unwrap(),
+        allowance: StoragePower::from_i64(32 << 40_i64).unwrap(),
     };
     apply_ok(
         &v,
@@ -78,15 +78,15 @@ fn terminate_sectors() {
         *STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
         MethodsMarket::AddBalance as u64,
-        unverified_client.clone(),
+        unverified_client,
     );
     apply_ok(
         &v,
         verified_client,
         *STORAGE_MARKET_ACTOR_ADDR,
-        collateral.clone(),
+        collateral,
         MethodsMarket::AddBalance as u64,
-        verified_client.clone(),
+        verified_client,
     );
 
     let miner_collateral = TokenAmount::from(64e18 as u128);
@@ -101,7 +101,7 @@ fn terminate_sectors() {
 
     // create 3 deals, some verified and some not
     let mut deal_ids = vec![];
-    let deal_start = v.get_epoch() + &Policy::default().pre_commit_challenge_delay + 1;
+    let deal_start = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
     let deals = publish_deal(
         &v,
         worker,
@@ -179,7 +179,7 @@ fn terminate_sectors() {
             ..Default::default()
         },
     );
-    let prove_time = v.get_epoch() + &Policy::default().pre_commit_challenge_delay + 1;
+    let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
     let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
 
     // prove commit, cron, advance to post time
@@ -207,7 +207,7 @@ fn terminate_sectors() {
     let st = v.get_state::<MinerState>(id_addr).unwrap();
     let sector = st.get_sector(v.store, sector_number).unwrap().unwrap();
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
-    submit_windowed_post(&v, worker, id_addr, dline_info, p_idx, sector_power.clone());
+    submit_windowed_post(&v, worker, id_addr, dline_info, p_idx, sector_power);
     let v = v.with_epoch(dline_info.last());
 
     v.apply_message(
@@ -228,7 +228,7 @@ fn terminate_sectors() {
         id_addr,
         worker,
         sector_number,
-        start + &Policy::default().deal_updates_interval,
+        start + Policy::default().deal_updates_interval,
     );
 
     // market cron updates deal states indication deals are no longer pending
@@ -320,7 +320,7 @@ fn terminate_sectors() {
     let (v, _) = advance_by_deadline_to_epoch(
         v,
         id_addr,
-        termination_epoch + &Policy::default().deal_updates_interval,
+        termination_epoch + Policy::default().deal_updates_interval,
     );
     // because of rounding error it's annoying to compute exact withdrawable balance which is 2.9999.. FIL
     // withdrawing 2 FIL proves out that the claim to 1 FIL per deal (2 deals for this client) is removed at termination
@@ -359,6 +359,6 @@ fn terminate_sectors() {
     // miner add 64 balance. Each of 3 deals required 2 FIL collateral, so provider collateral should have been
     // slashed by 6 FIL. Miner's remaining market balance should be 64 - 6 + payment, where payment is for storage
     // before the slash and should be << 1 FIL. Actual amount withdrawn should be between 58 and 59 FIL.
-    assert!(TokenAmount::from(58e18 as u128) < value_withdrawn.clone());
-    assert!(TokenAmount::from(59e18 as u128) > value_withdrawn.clone());
+    assert!(TokenAmount::from(58e18 as u128) < value_withdrawn);
+    assert!(TokenAmount::from(59e18 as u128) > value_withdrawn);
 }
