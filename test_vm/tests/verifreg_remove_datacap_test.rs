@@ -1,5 +1,5 @@
 use fil_actor_verifreg::{
-    AddVerifierClientParams, AddVerifierParams, RemoveDataCapParams, RemoveDataCapRequest,
+    AddVerifierClientParams, RemoveDataCapParams, RemoveDataCapRequest,
     RemoveDataCapReturn, SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
 };
 use fil_actor_verifreg::{AddrPairKey, Method as VerifregMethod};
@@ -28,8 +28,8 @@ fn remove_datacap_simple_successful_path() {
     let verifier1_id_addr = v.normalize_address(&verifier1).unwrap();
     let verifier2_id_addr = v.normalize_address(&verifier2).unwrap();
     let verified_client_id_addr = v.normalize_address(&verified_client).unwrap();
-    let verifier_allowance = StoragePower::from(2 * 1048576 as u64);
-    let allowance_to_remove: StoragePower = verifier_allowance.clone().div(2 as u64);
+    let verifier_allowance = StoragePower::from(2 * 1048576);
+    let allowance_to_remove: StoragePower = verifier_allowance.clone().div(2);
 
     // register verifier1 and verifier2
     add_verifier(&v, verifier1, verifier_allowance.clone());
