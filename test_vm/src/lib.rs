@@ -554,7 +554,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     }
 }
 
-impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
+impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
         match NON_SINGLETON_CODES.get(&code_id) {
             Some(_) => (),
@@ -577,8 +577,8 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         Ok(())
     }
 
-    fn store(&self) -> &MemoryBlockstore {
-        self.v.store
+    fn store(&self) -> &&'bs MemoryBlockstore {
+        &self.v.store
     }
 
     fn network_version(&self) -> NetworkVersion {

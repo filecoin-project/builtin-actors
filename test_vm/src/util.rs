@@ -7,8 +7,8 @@ use fil_actor_market::{
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, DeadlineInfo, Method as MinerMethod, PoStPartition,
-    PowerPair, PreCommitSectorBatchParams, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    State as MinerState, SubmitWindowedPoStParams,
+    PowerPair, PreCommitSectorBatchParams, SectorOnChainInfo, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
@@ -318,6 +318,31 @@ pub fn miner_dline_info(v: &VM, m: Address) -> DeadlineInfo {
 fn sector_deadline(v: &VM, m: Address, s: SectorNumber) -> (u64, u64) {
     let st = v.get_state::<MinerState>(m).unwrap();
     st.find_sector(&Policy::default(), v.store, s).unwrap()
+}
+
+pub fn check_sector_active(v: &VM, m: Address, s: SectorNumber) -> bool {
+    let (d_idx, p_idx) = sector_deadline(v, m, s);
+    let st = v.get_state::<MinerState>(m).unwrap();
+    st.check_sector_active(&Policy::default(), v.store, d_idx, p_idx, s, true).unwrap()
+}
+
+pub fn check_sector_faulty(v: &VM, m: Address, d_idx: u64, p_idx: u64, s: SectorNumber) -> bool {
+    let st = v.get_state::<MinerState>(m).unwrap();
+    let deadlines = st.load_deadlines(v.store).unwrap();
+    let deadline = deadlines.load_deadline(&Policy::default(), v.store, d_idx).unwrap();
+    let partition = deadline.load_partition(v.store, p_idx).unwrap();
+    partition.faults.get(s)
+}
+
+pub fn sector_info(v: &VM, m: Address, s: SectorNumber) -> SectorOnChainInfo {
+    let st = v.get_state::<MinerState>(m).unwrap();
+    st.get_sector(v.store, s).unwrap().unwrap()
+}
+
+pub fn miner_power(v: &VM, m: Address) -> PowerPair {
+    let st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
+    let claim = st.get_claim(v.store, &m).unwrap().unwrap();
+    PowerPair::new(claim.raw_byte_power, claim.quality_adj_power)
 }
 
 pub fn submit_windowed_post(
