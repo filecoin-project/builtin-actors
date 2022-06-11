@@ -228,7 +228,7 @@ impl<'bs> VM<'bs> {
         self.checkpoint();
         VM {
             store: self.store,
-            state_root: RefCell::new(self.state_root.take()),
+            state_root: self.state_root.clone(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             empty_obj_cid: self.empty_obj_cid,
@@ -312,6 +312,10 @@ impl<'bs> VM<'bs> {
         self.store.get_cbor::<C>(&a.head).unwrap()
     }
 
+    pub fn get_epoch(&self) -> ChainEpoch {
+        self.curr_epoch
+    }
+
     pub fn apply_message<C: Cbor>(
         &self,
         from: Address,
@@ -328,12 +332,13 @@ impl<'bs> VM<'bs> {
 
         let prior_root = self.checkpoint();
 
+        // big.Mul(big.NewInt(1e9), big.NewInt(1e18))
         // make top level context with internal context
         let top = TopCtx {
             originator_stable_addr: from,
             _originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
-            _circ_supply: BigInt::zero(),
+            circ_supply: TokenAmount::from(1e9 as u128 * 1e18 as u128),
         };
         let msg = InternalMessage {
             from: from_id,
@@ -372,10 +377,6 @@ impl<'bs> VM<'bs> {
     pub fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
     }
-
-    pub fn get_epoch(&self) -> ChainEpoch {
-        self.curr_epoch
-    }
 }
 
 #[derive(Clone)]
@@ -383,7 +384,7 @@ pub struct TopCtx {
     originator_stable_addr: Address,
     _originator_call_seq: u64,
     new_actor_addr_count: RefCell<u64>,
-    _circ_supply: BigInt,
+    circ_supply: BigInt,
 }
 
 #[derive(Clone, Debug)]
@@ -780,7 +781,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
     }
 
     fn total_fil_circ_supply(&self) -> TokenAmount {
-        self.top._circ_supply.clone()
+        self.top.circ_supply.clone()
     }
 
     fn charge_gas(&mut self, _name: &'static str, _compute: i64) {}
@@ -907,6 +908,7 @@ pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
     Actor { code, head, call_seq_num: seq, balance: bal }
 }
 
+#[derive(Clone)]
 pub struct InvocationTrace {
     pub msg: InternalMessage,
     pub code: Option<ExitCode>,
