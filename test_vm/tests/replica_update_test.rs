@@ -24,7 +24,6 @@ use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use num_traits::sign::Signed;
-use std::fmt::Debug;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     apply_ok, bf_all, check_sector_active, create_accounts, create_miner, miner_power,
@@ -39,8 +38,8 @@ fn replica_update_simple_path_sucess() {
 
 fn create_miner_and_upgrade_sector<'bs>(
     store: &'bs MemoryBlockstore,
-) -> (VM<'bs>, SectorOnChainInfo, Address, Address, u64, u64, SectorSize) {
-    let mut v = VM::new_with_singletons(&store);
+) -> (VM, SectorOnChainInfo, Address, Address, u64, u64, SectorSize) {
+    let mut v = VM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -66,7 +65,7 @@ fn create_miner_and_upgrade_sector<'bs>(
     assert_eq!(StoragePower::from(seal_proof.sector_size().unwrap() as u64), miner_power.raw);
 
     // make some deals
-    let deal_ids = create_deals(1, &v, worker, worker, maddr, seal_proof);
+    let deal_ids = create_deals(1, &v, worker, worker, maddr);
 
     // replica update
     let new_cid = make_sealed_cid(b"replica1");
@@ -173,11 +172,10 @@ fn create_deals(
     client: Address,
     worker: Address,
     maddr: Address,
-    seal_proof: RegisteredSealProof,
 ) -> Vec<DealID> {
     let collateral = TokenAmount::from(3 * num_deals * 1e18 as u128);
     apply_ok(
-        &v,
+        v,
         client,
         *STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
@@ -185,7 +183,7 @@ fn create_deals(
         client,
     );
     apply_ok(
-        &v,
+        v,
         worker,
         *STORAGE_MARKET_ACTOR_ADDR,
         collateral,
@@ -198,11 +196,11 @@ fn create_deals(
 
     for i in 0..num_deals {
         let deals = publish_deal(
-            &v,
+            v,
             worker,
             client,
             maddr,
-            "deal-label".to_string(),
+            format!("deal-label {}", i),
             PaddedPieceSize(32 << 30),
             false,
             deal_start,
