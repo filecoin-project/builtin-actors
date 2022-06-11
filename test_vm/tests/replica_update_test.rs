@@ -36,8 +36,8 @@ fn replica_update_simple_path_sucess() {
     create_miner_and_upgrade_sector(&MemoryBlockstore::new());
 }
 
-fn create_miner_and_upgrade_sector<'bs>(
-    store: &'bs MemoryBlockstore,
+fn create_miner_and_upgrade_sector(
+    store: &MemoryBlockstore,
 ) -> (VM, SectorOnChainInfo, Address, Address, u64, u64, SectorSize) {
     let mut v = VM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
