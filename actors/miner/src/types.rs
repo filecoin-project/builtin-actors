@@ -338,6 +338,8 @@ pub struct DisputeWindowedPoStParams {
     pub post_index: u64, // only one is allowed at a time to avoid loading too many sector infos.
 }
 
+impl Cbor for ProveCommitAggregateParams {}
+
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
     pub sector_numbers: UnvalidatedBitField,
