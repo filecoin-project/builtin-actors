@@ -249,21 +249,18 @@ pub fn advance_by_deadline_to_epoch_while_proving(
     e: ChainEpoch,
 ) -> VM {
     let mut dline_info;
-    let (d, p_idx) = sector_deadline(&v, maddr, s);
+    let mut p_idx;
     loop {
-        // stop if either we reach deadline of e or the proving deadline for sector s
-        (v, dline_info) = advance_by_deadline(v, maddr, |dline_info| {
-            dline_info.index != d && dline_info.close < e
-        });
-        if dline_info.close > e {
-            // in the case e is within the proving deadline don't post, leave that to the caller
-            return v.with_epoch(e);
+        if v.get_epoch() >= e {
+            return v;
         }
+
+        (dline_info, p_idx, v) = advance_to_proving_deadline(v, maddr, s);
         submit_windowed_post(&v, worker, maddr, dline_info, p_idx, PowerPair::zero());
         v = advance_by_deadline_to_index(
             v,
             maddr,
-            d + 1 % &Policy::default().wpost_period_deadlines,
+            dline_info.index + 2 % &Policy::default().wpost_period_deadlines,
         )
         .0
     }

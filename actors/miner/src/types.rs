@@ -134,6 +134,8 @@ pub struct ExtendSectorExpirationParams {
     pub extensions: Vec<ExpirationExtension>,
 }
 
+impl Cbor for ExtendSectorExpirationParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ExpirationExtension {
     pub deadline: u64,
