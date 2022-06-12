@@ -188,6 +188,8 @@ pub struct DeclareFaultsRecoveredParams {
     pub recoveries: Vec<RecoveryDeclaration>,
 }
 
+impl Cbor for DeclareFaultsRecoveredParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct RecoveryDeclaration {
     /// The deadline to which the recovered sectors are assigned, in range [0..WPoStPeriodDeadlines)
@@ -197,6 +199,8 @@ pub struct RecoveryDeclaration {
     /// Sectors in the partition being declared recovered.
     pub sectors: UnvalidatedBitField,
 }
+
+impl Cbor for RecoveryDeclaration {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CompactPartitionsParams {
@@ -335,6 +339,8 @@ pub struct ApplyRewardParams {
     #[serde(with = "bigint_ser")]
     pub penalty: TokenAmount,
 }
+
+impl Cbor for DisputeWindowedPoStParams {}
 
 #[derive(Debug, PartialEq, Clone, Copy, Serialize_tuple, Deserialize_tuple)]
 pub struct DisputeWindowedPoStParams {

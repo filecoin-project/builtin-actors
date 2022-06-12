@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
@@ -462,7 +463,7 @@ impl MessageInfo for InvocationCtx<'_, '_> {
 }
 
 pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
-pub const TEST_VM_INVALID_SIG: &str = "i_am_invalid";
+pub const TEST_VM_INVALID: &str = "i_am_invalid";
 
 pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation VM<'bs>,
@@ -845,7 +846,7 @@ impl Primitives for VM<'_> {
         _signer: &Address,
         _plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        if signature.bytes.clone() == TEST_VM_INVALID_SIG.as_bytes() {
+        if signature.bytes.clone() == TEST_VM_INVALID.as_bytes() {
             return Err(anyhow::format_err!(
                 "verify signature syscall failing on TEST_VM_INVALID_SIG"
             ));
@@ -901,7 +902,13 @@ impl Verifier for InvocationCtx<'_, '_> {
         Ok(())
     }
 
-    fn verify_post(&self, _verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
+    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
+        for proof in &verify_info.proofs {
+            if proof.proof_bytes.eq(&TEST_VM_INVALID.as_bytes().to_vec()) {
+                return Err(anyhow!("invalid proof"));
+            }
+        }
+
         Ok(())
     }
 
