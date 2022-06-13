@@ -40,6 +40,7 @@ use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     StoragePower, WindowPoStVerifyInfo,
 };
+use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_traits::Signed;
@@ -68,6 +69,26 @@ pub struct MinerBalances {
     pub vesting_balance: TokenAmount,
     pub initial_pledge: TokenAmount,
     pub pre_commit_deposit: TokenAmount,
+}
+
+pub struct NetworkStats {
+    pub total_raw_byte_power: StoragePower,
+    pub total_bytes_committed: StoragePower,
+    pub total_quality_adj_power: StoragePower,
+    pub total_qa_bytes_committed: StoragePower,
+    pub total_pledge_collateral: TokenAmount,
+    pub this_epoch_raw_byte_power: StoragePower,
+    pub this_epoch_quality_adj_power: StoragePower,
+    pub this_epoch_pledge_collateral: TokenAmount,
+    pub miner_count: i64,
+    pub miner_above_min_power_count: i64,
+    pub this_epoch_reward: TokenAmount,
+    pub this_epoch_reward_smoothed: FilterEstimate,
+    pub this_epoch_baseline_power: StoragePower,
+    pub total_storage_power_reward: TokenAmount,
+    pub total_client_locked_collateral: TokenAmount,
+    pub total_provider_locked_collateral: TokenAmount,
+    pub total_client_storage_fee: TokenAmount,
 }
 
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
@@ -246,6 +267,32 @@ impl<'bs> VM<'bs> {
             vesting_balance: st.locked_funds,
             initial_pledge: st.initial_pledge,
             pre_commit_deposit: st.pre_commit_deposits,
+        }
+    }
+
+    pub fn get_network_stats(&self) -> NetworkStats {
+        let power_state = self.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
+        let reward_state = self.get_state::<RewardState>(*REWARD_ACTOR_ADDR).unwrap();
+        let market_state = self.get_state::<MarketState>(*STORAGE_MARKET_ACTOR_ADDR).unwrap();
+
+        NetworkStats {
+            total_raw_byte_power: power_state.total_raw_byte_power,
+            total_bytes_committed: power_state.total_bytes_committed,
+            total_quality_adj_power: power_state.total_quality_adj_power,
+            total_qa_bytes_committed: power_state.total_qa_bytes_committed,
+            total_pledge_collateral: power_state.total_pledge_collateral,
+            this_epoch_raw_byte_power: power_state.this_epoch_raw_byte_power,
+            this_epoch_quality_adj_power: power_state.this_epoch_quality_adj_power,
+            this_epoch_pledge_collateral: power_state.this_epoch_pledge_collateral,
+            miner_count: power_state.miner_count,
+            miner_above_min_power_count: power_state.miner_above_min_power_count,
+            this_epoch_reward: reward_state.this_epoch_reward,
+            this_epoch_reward_smoothed: reward_state.this_epoch_reward_smoothed,
+            this_epoch_baseline_power: reward_state.this_epoch_baseline_power,
+            total_storage_power_reward: reward_state.total_storage_power_reward,
+            total_client_locked_collateral: market_state.total_client_locked_collateral,
+            total_provider_locked_collateral: market_state.total_provider_locked_collateral,
+            total_client_storage_fee: market_state.total_client_storage_fee,
         }
     }
 
