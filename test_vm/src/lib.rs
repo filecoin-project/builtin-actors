@@ -377,10 +377,6 @@ impl<'bs> VM<'bs> {
     pub fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
     }
-
-    pub fn get_epoch(&self) -> ChainEpoch {
-        self.curr_epoch
-    }
 }
 
 #[derive(Clone)]
@@ -497,7 +493,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         };
         InvocationTrace { msg, code, ret, subinvocations: self.subinvocations.take() }
     }
-  
+
     fn to(&'_ self) -> Address {
         self.resolve_target(&self.msg.to).unwrap().1
     }
