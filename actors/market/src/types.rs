@@ -41,6 +41,7 @@ pub struct OnMinerSectorsTerminateParams {
 }
 
 #[derive(Serialize_tuple)]
+
 pub struct OnMinerSectorsTerminateParamsRef<'a> {
     pub epoch: ChainEpoch,
     pub deal_ids: &'a [DealID],
@@ -51,7 +52,9 @@ pub struct PublishStorageDealsParams {
     pub deals: Vec<ClientDealProposal>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+impl Cbor for PublishStorageDealsParams {}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug)]
 pub struct PublishStorageDealsReturn {
     pub ids: Vec<DealID>,
     pub valid_deals: BitField,

@@ -74,6 +74,7 @@ mod sector_map;
 mod sectors;
 mod state;
 mod termination;
+pub mod testing;
 mod types;
 mod vesting_state;
 
@@ -479,7 +480,6 @@ impl Actor {
                     submission_partition_limit
                 ));
             }
-
             let current_deadline = state.deadline_info(rt.policy(), current_epoch);
 
             // Check that the miner state indicates that the current proving deadline has started.
@@ -593,7 +593,6 @@ impl Actor {
                     "cannot prove partitions with no active sectors"
                 ));
             }
-
             // If we're not recovering power, record the proof for optimistic verification.
             if post_result.recovered_power.is_zero() {
                 deadline
@@ -1715,9 +1714,7 @@ impl Actor {
                 if deal_weight.deal_space > info.sector_size as u64 {
                     return Err(actor_error!(illegal_argument, "deals too large to fit in sector {} > {}", deal_weight.deal_space, info.sector_size));
                 }
-                if precommit.replace_capacity {
-                    validate_replace_sector(rt.policy(), state, store, precommit)?
-                }
+
                 // Estimate the sector weight using the current epoch as an estimate for activation,
                 // and compute the pre-commit deposit using that weight.
                 // The sector's power will be recalculated when it's proven.
@@ -3560,94 +3557,6 @@ where
             activation
         ));
     }
-
-    Ok(())
-}
-
-fn validate_replace_sector<BS>(
-    policy: &Policy,
-    state: &State,
-    store: &BS,
-    params: &SectorPreCommitInfo,
-) -> Result<(), ActorError>
-where
-    BS: Blockstore,
-{
-    let replace_sector = state
-        .get_sector(store, params.replace_sector_number)
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to load sector {}", params.replace_sector_number),
-            )
-        })?
-        .ok_or_else(|| {
-            actor_error!(not_found, "no such sector {} to replace", params.replace_sector_number)
-        })?;
-
-    if !replace_sector.deal_ids.is_empty() {
-        return Err(actor_error!(
-            illegal_argument,
-            "cannot replace sector {} which has deals",
-            params.replace_sector_number
-        ));
-    }
-
-    // From network version 7, the new sector's seal type must have the same Window PoSt proof type as the one
-    // being replaced, rather than be exactly the same seal type.
-    // This permits replacing sectors with V1 seal types with V1_1 seal types.
-    let replace_w_post_proof =
-        replace_sector.seal_proof.registered_window_post_proof().map_err(|e| {
-            actor_error!(
-                illegal_state,
-                "failed to lookup Window PoSt proof type for sector seal proof {:?}: {}",
-                replace_sector.seal_proof,
-                e
-            )
-        })?;
-    let new_w_post_proof = params.seal_proof.registered_window_post_proof().map_err(|e| {
-        actor_error!(
-            illegal_argument,
-            "failed to lookup Window PoSt proof type for new seal proof {:?}: {}",
-            replace_sector.seal_proof,
-            e
-        )
-    })?;
-
-    if replace_w_post_proof != new_w_post_proof {
-        return Err(actor_error!(
-                illegal_argument,
-                "new sector window PoSt proof type {:?} must match replaced proof type {:?} (seal proof type {:?})",
-                replace_w_post_proof,
-                new_w_post_proof,
-                params.seal_proof
-            ));
-    }
-
-    if params.expiration < replace_sector.expiration {
-        return Err(actor_error!(
-            illegal_argument,
-            "cannot replace sector {} expiration {} with sooner expiration {}",
-            params.replace_sector_number,
-            replace_sector.expiration,
-            params.expiration
-        ));
-    }
-
-    state
-        .check_sector_health(
-            policy,
-            store,
-            params.replace_sector_deadline,
-            params.replace_sector_partition,
-            params.replace_sector_number,
-        )
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to replace sector {}", params.replace_sector_number),
-            )
-        })?;
 
     Ok(())
 }

@@ -561,7 +561,7 @@ impl Partition {
         // handling sector expirations.
         if !self.unproven.is_empty() {
             return Err(anyhow!(
-                "Cannot pop expired sectors from a partition with unproven sectors"
+                "cannot pop expired sectors from a partition with unproven sectors"
             ));
         }
 

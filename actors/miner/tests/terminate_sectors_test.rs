@@ -7,7 +7,6 @@ use fil_actors_runtime::{
     test_utils::{expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID},
     EPOCHS_IN_DAY,
 };
-use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{econ::TokenAmount, error::ExitCode};
 
@@ -28,10 +27,6 @@ fn setup() -> (ActorHarness, MockRuntime) {
     rt.set_epoch(precommit_epoch);
 
     (h, rt)
-}
-
-fn make_bitfield(sector_numbers: &[u64]) -> BitField {
-    BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
 }
 
 #[test]
@@ -77,7 +72,7 @@ fn removes_sector_with_correct_accounting() {
         0,
     );
 
-    let sectors = make_bitfield(&[sector.sector_number]);
+    let sectors = bitfield_from_slice(&[sector.sector_number]);
     h.terminate_sectors(&mut rt, &sectors, expected_fee.clone());
 
     // expect sector to be marked as terminated and the early termination queue to be empty (having been fully processed)

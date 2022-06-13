@@ -71,10 +71,14 @@ pub struct MinerBalances {
 }
 
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
+pub const TEST_VERIFREG_ROOT_SIGNER_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
+pub const TEST_VERIFREG_ROOT_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 1);
 // Account actor seeding funds created by new_with_singletons
 pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
 pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
-pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3; // accounts for verifreg root signer and msig
+pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
+
+// accounts for verifreg root signer and msig
 impl<'bs> VM<'bs> {
     pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
@@ -163,6 +167,7 @@ impl<'bs> VM<'bs> {
         .unwrap();
         let verifreg_root_signer =
             v.normalize_address(&Address::new_bls(VERIFREG_ROOT_KEY).unwrap()).unwrap();
+        assert_eq!(TEST_VERIFREG_ROOT_SIGNER_ADDR, verifreg_root_signer);
         // verifreg root msig
         let msig_ctor_params = serialize(
             &fil_actor_multisig::ConstructorParams {
@@ -190,6 +195,7 @@ impl<'bs> VM<'bs> {
             .deserialize()
             .unwrap();
         let root_msig_addr = msig_ctor_ret.id_address;
+        assert_eq!(TEST_VERIFREG_ROOT_ADDR, root_msig_addr);
         // verifreg
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
@@ -222,11 +228,11 @@ impl<'bs> VM<'bs> {
         self.checkpoint();
         VM {
             store: self.store,
-            state_root: RefCell::new(self.state_root.take()),
+            state_root: self.state_root.clone(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             empty_obj_cid: self.empty_obj_cid,
-            network_version: NetworkVersion::V16,
+            network_version: self.network_version,
             curr_epoch: epoch,
             invocations: RefCell::new(vec![]),
         }
@@ -236,11 +242,7 @@ impl<'bs> VM<'bs> {
         let a = self.get_actor(maddr).unwrap();
         let st = self.get_state::<MinerState>(maddr).unwrap();
         MinerBalances {
-            available_balance: a.balance
-                - (st.pre_commit_deposits.clone()
-                    + st.initial_pledge.clone()
-                    + st.locked_funds.clone()
-                    + st.fee_debt.clone()),
+            available_balance: st.get_available_balance(&a.balance).unwrap(),
             vesting_balance: st.locked_funds,
             initial_pledge: st.initial_pledge,
             pre_commit_deposit: st.pre_commit_deposits,
@@ -310,6 +312,10 @@ impl<'bs> VM<'bs> {
         self.store.get_cbor::<C>(&a.head).unwrap()
     }
 
+    pub fn get_epoch(&self) -> ChainEpoch {
+        self.curr_epoch
+    }
+
     pub fn apply_message<C: Cbor>(
         &self,
         from: Address,
@@ -326,12 +332,13 @@ impl<'bs> VM<'bs> {
 
         let prior_root = self.checkpoint();
 
+        // big.Mul(big.NewInt(1e9), big.NewInt(1e18))
         // make top level context with internal context
         let top = TopCtx {
             originator_stable_addr: from,
             _originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
-            _circ_supply: BigInt::zero(),
+            circ_supply: TokenAmount::from(1e9 as u128 * 1e18 as u128),
         };
         let msg = InternalMessage {
             from: from_id,
@@ -375,21 +382,28 @@ impl<'bs> VM<'bs> {
         self.curr_epoch
     }
 }
+
 #[derive(Clone)]
 pub struct TopCtx {
     originator_stable_addr: Address,
     _originator_call_seq: u64,
     new_actor_addr_count: RefCell<u64>,
-    _circ_supply: BigInt,
+    circ_supply: BigInt,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InternalMessage {
     from: Address,
     to: Address,
     value: TokenAmount,
     method: MethodNum,
     params: RawBytes,
+}
+
+impl InternalMessage {
+    pub fn value(&self) -> TokenAmount {
+        self.value.clone()
+    }
 }
 
 impl MessageInfo for InvocationCtx<'_, '_> {
@@ -405,6 +419,7 @@ impl MessageInfo for InvocationCtx<'_, '_> {
 }
 
 pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
+pub const TEST_VM_INVALID_SIG: &str = "i_am_invalid";
 
 pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation VM<'bs>,
@@ -429,8 +444,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Protocol::Actor | Protocol::ID => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
-                    "cannot create account for address {target} type {protocol}".to_string(),
-                ))
+                    format!("cannot create account for address {} type {}", target, protocol),
+                ));
             }
             _ => (),
         }
@@ -482,10 +497,9 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         };
         InvocationTrace { msg, code, ret, subinvocations: self.subinvocations.take() }
     }
-
-    fn to(&'invocation self) -> Address {
-        let (_, to_addr) = self.resolve_target(&self.msg.to).unwrap();
-        to_addr
+  
+    fn to(&'_ self) -> Address {
+        self.resolve_target(&self.msg.to).unwrap().1
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
@@ -516,8 +530,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         to_actor.balance = to_actor.balance.add(&self.msg.value);
         self.v.set_actor(to_addr, to_actor);
 
-        println!("to: {}, from: {}\n", to_addr, self.msg.from);
-
         // Exit early on send
         if self.msg.method == METHOD_SEND {
             return Ok(RawBytes::default());
@@ -546,7 +558,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     }
 }
 
-impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
+impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
         match NON_SINGLETON_CODES.get(&code_id) {
             Some(_) => (),
@@ -554,7 +566,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_ASSERTION_FAILED,
                     "create_actor called with singleton builtin actor code cid".to_string(),
-                ))
+                ));
             }
         }
         let addr = Address::new_id(actor_id);
@@ -569,8 +581,8 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         Ok(())
     }
 
-    fn store(&self) -> &MemoryBlockstore {
-        self.v.store
+    fn store(&self) -> &&'bs MemoryBlockstore {
+        &self.v.store
     }
 
     fn network_version(&self) -> NetworkVersion {
@@ -773,7 +785,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn total_fil_circ_supply(&self) -> TokenAmount {
-        self.top._circ_supply.clone()
+        self.top.circ_supply.clone()
     }
 
     fn charge_gas(&mut self, _name: &'static str, _compute: i64) {}
@@ -786,10 +798,15 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
 impl Primitives for VM<'_> {
     fn verify_signature(
         &self,
-        _signature: &Signature,
+        signature: &Signature,
         _signer: &Address,
         _plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
+        if signature.bytes.clone() == TEST_VM_INVALID_SIG.as_bytes() {
+            return Err(anyhow::format_err!(
+                "verify signature syscall failing on TEST_VM_INVALID_SIG"
+            ));
+        }
         Ok(())
     }
 
@@ -895,6 +912,7 @@ pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
     Actor { code, head, call_seq_num: seq, balance: bal }
 }
 
+#[derive(Clone)]
 pub struct InvocationTrace {
     pub msg: InternalMessage,
     pub code: Option<ExitCode>,
@@ -903,8 +921,10 @@ pub struct InvocationTrace {
 }
 
 pub struct ExpectInvocation {
-    pub to: Address,       // required
-    pub method: MethodNum, // required
+    pub to: Address,
+    // required
+    pub method: MethodNum,
+    // required
     pub code: Option<ExitCode>,
     pub from: Option<Address>,
     pub value: Option<TokenAmount>,

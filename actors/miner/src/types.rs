@@ -147,6 +147,8 @@ pub struct TerminateSectorsParams {
     pub terminations: Vec<TerminationDeclaration>,
 }
 
+impl Cbor for TerminateSectorsParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct TerminationDeclaration {
     pub deadline: u64,
@@ -238,6 +240,8 @@ pub struct WorkerKeyChange {
 }
 
 pub type PreCommitSectorParams = SectorPreCommitInfo;
+
+impl Cbor for PreCommitSectorParams {}
 
 #[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct PreCommitSectorBatchParams {
@@ -336,6 +340,8 @@ pub struct DisputeWindowedPoStParams {
     pub post_index: u64, // only one is allowed at a time to avoid loading too many sector infos.
 }
 
+impl Cbor for ProveCommitAggregateParams {}
+
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
     pub sector_numbers: UnvalidatedBitField,
@@ -359,3 +365,5 @@ pub struct ReplicaUpdate {
 pub struct ProveReplicaUpdatesParams {
     pub updates: Vec<ReplicaUpdate>,
 }
+
+impl Cbor for ProveReplicaUpdatesParams {}
