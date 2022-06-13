@@ -136,9 +136,7 @@ fn extend_sector_with_deals() {
 
     // advance time to max seal duration
 
-    let prove_time = v.get_epoch() + max_prove_commit_duration(&policy, seal_proof).unwrap();
-    v = advance_by_deadline_to_epoch(v, miner_id, prove_time).0;
-    v = v.with_epoch(prove_time);
+    v = advance_by_deadline_to_epoch(v, miner_id, deal_start).0;
 
     // Prove commit sector
 
@@ -198,7 +196,7 @@ fn extend_sector_with_deals() {
     v = advance_by_deadline_to_index(
         v,
         miner_id,
-        deadline_info.index + 2 % policy.wpost_period_deadlines,
+        deadline_info.index + 1 % policy.wpost_period_deadlines,
     )
     .0;
 
@@ -213,7 +211,6 @@ fn extend_sector_with_deals() {
         sector_number,
         deal_start + 90 * EPOCHS_IN_DAY,
     );
-    v = v.with_epoch(deal_start + 90 * EPOCHS_IN_DAY); // for getting epoch exactly halfway through lifetime
 
     let mut extension_params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
@@ -266,8 +263,6 @@ fn extend_sector_with_deals() {
         sector_number,
         deal_start + 180 * EPOCHS_IN_DAY,
     );
-
-    v = v.with_epoch(deal_start + 180 * EPOCHS_IN_DAY); // for getting epoch exactly halfway through lifetime
 
     extension_params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
