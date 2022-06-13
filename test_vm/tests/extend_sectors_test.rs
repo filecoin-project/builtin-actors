@@ -259,14 +259,6 @@ fn extend_sector_with_deals() {
     // power multiplier = (1/3)*3.25 + (2/3)*1 = 1.75
     // power delta = (3.25 - 1.75)*32GiB = 1.5*32GiB
 
-    // move forward one deadline so advanceWhileProving doesn't fail double submitting posts
-    v = advance_by_deadline_to_index(
-        v,
-        miner_id,
-        deadline_info.index + 2 % policy.wpost_period_deadlines,
-    )
-    .0;
-
     v = advance_by_deadline_to_epoch_while_proving(
         v,
         miner_id,
