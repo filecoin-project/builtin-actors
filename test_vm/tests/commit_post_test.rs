@@ -21,9 +21,7 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
-use fvm_shared::sector::{
-    PoStProof, RegisteredSealProof, SectorNumber, StoragePower, MAX_SECTOR_NUMBER,
-};
+use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
 use fvm_shared::METHOD_SEND;
 use num_traits::sign::Signed;
 use test_vm::util::{
@@ -158,7 +156,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
     // power unproven so network stats are the same
 
     let network_stats = v.get_network_stats();
-    assert_eq!(StoragePower::zero(), network_stats.total_bytes_committed);
+    assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 
     let (deadline_info, partition_index, v) =
@@ -236,7 +234,7 @@ fn skip_sector() {
 
     // power unproven so network stats are the same
     let network_stats = v.get_network_stats();
-    assert_eq!(StoragePower::zero(), network_stats.total_bytes_committed);
+    assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 }
 
@@ -303,7 +301,7 @@ fn missed_first_post_deadline() {
 
     // power unproven so network stats are the same
     let network_stats = v.get_network_stats();
-    assert_eq!(StoragePower::zero(), network_stats.total_bytes_committed);
+    assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 }
 
@@ -408,14 +406,14 @@ fn overdue_precommit() {
     .matches(v.take_invocations().last().unwrap());
 
     let balances = v.get_miner_balance(id_addr);
-    assert_eq!(balances.initial_pledge, TokenAmount::zero());
-    assert_eq!(balances.pre_commit_deposit, TokenAmount::zero());
+    assert!(balances.initial_pledge.is_zero());
+    assert!(balances.pre_commit_deposit.is_zero());
 
     let network_stats = v.get_network_stats();
-    assert_eq!(StoragePower::zero(), network_stats.total_bytes_committed);
-    assert_eq!(TokenAmount::zero(), network_stats.total_pledge_collateral);
-    assert_eq!(StoragePower::zero(), network_stats.total_raw_byte_power);
-    assert_eq!(StoragePower::zero(), network_stats.total_quality_adj_power);
+    assert!(network_stats.total_bytes_committed.is_zero());
+    assert!(network_stats.total_pledge_collateral.is_zero());
+    assert!(network_stats.total_raw_byte_power.is_zero());
+    assert!(network_stats.total_quality_adj_power.is_zero());
 }
 
 #[test]
