@@ -29,8 +29,9 @@ use num_traits::sign::Signed;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     apply_code, apply_ok, bf_all, check_sector_active, check_sector_faulty, create_accounts,
-    create_miner, deadline_state, declare_recovery, make_bitfield, miner_power, precommit_sectors,
-    prove_commit_sectors, publish_deal, sector_info, submit_invalid_post, submit_windowed_post, invariant_failure_patterns,
+    create_miner, deadline_state, declare_recovery, invariant_failure_patterns, make_bitfield,
+    miner_power, precommit_sectors, prove_commit_sectors, publish_deal, sector_info,
+    submit_invalid_post, submit_windowed_post,
 };
 use test_vm::VM;
 
@@ -393,7 +394,9 @@ fn unhealthy_sector_failure() {
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    v.expect_state_invariants(
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 #[test]
