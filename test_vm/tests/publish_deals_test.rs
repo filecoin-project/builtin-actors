@@ -142,7 +142,9 @@ fn psd_mistmatched_provider() {
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
-    assert_eq!(vec![0, 2], good_inputs)
+    assert_eq!(vec![0, 2], good_inputs);
+
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -163,6 +165,7 @@ fn psd_bad_piece_size() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![1], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -182,6 +185,7 @@ fn psd_start_time_in_past() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![1], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -197,6 +201,7 @@ fn psd_client_address_cannot_be_resolved() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -210,7 +215,8 @@ fn psd_no_client_lockup() {
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
-    assert_eq!(vec![1], good_inputs)
+    assert_eq!(vec![1], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -240,6 +246,7 @@ fn psd_not_enought_client_lockup_for_batch() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -282,6 +289,7 @@ fn psd_not_enough_provider_lockup_for_batch() {
     let deal_ret = batcher.publish_ok(cheap_worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -308,6 +316,7 @@ fn psd_duplicate_deal_in_batch() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1, 4], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -333,6 +342,7 @@ fn psd_duplicate_deal_in_state() {
     let deal_ret2 = batcher.publish_ok(a.worker);
     let good_inputs2 = bf_all(deal_ret2.valid_deals);
     assert_eq!(vec![0], good_inputs2);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -367,6 +377,7 @@ fn psd_verified_deal_fails_getting_datacap() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -435,6 +446,7 @@ fn psd_random_assortment_of_failures() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 2, 8], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -464,6 +476,7 @@ fn psd_all_deals_are_bad() {
     );
 
     batcher.publish_fail(a.worker);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -483,6 +496,7 @@ fn psd_all_deals_are_good() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1, 2, 3, 4], good_inputs);
+    v.assert_state_invariants();
 }
 
 #[derive(Clone, Default)]

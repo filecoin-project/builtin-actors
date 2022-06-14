@@ -29,8 +29,9 @@ use num_traits::sign::Signed;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     apply_code, apply_ok, bf_all, check_sector_active, check_sector_faulty, create_accounts,
-    create_miner, deadline_state, declare_recovery, make_bitfield, miner_power, precommit_sectors,
-    prove_commit_sectors, publish_deal, sector_info, submit_invalid_post, submit_windowed_post,
+    create_miner, deadline_state, declare_recovery, invariant_failure_patterns, make_bitfield,
+    miner_power, precommit_sectors, prove_commit_sectors, publish_deal, sector_info,
+    submit_invalid_post, submit_windowed_post,
 };
 use test_vm::VM;
 
@@ -39,7 +40,7 @@ use test_vm::VM;
 // Tests that an active CC sector can be correctly upgraded, and the expected state changes occur
 #[test]
 fn replica_update_simple_path_sucess() {
-    create_miner_and_upgrade_sector(&MemoryBlockstore::new());
+    create_miner_and_upgrade_sector(&MemoryBlockstore::new()).0.assert_state_invariants();
 }
 
 // Tests a successful upgrade, followed by the sector going faulty and recovering
@@ -95,6 +96,7 @@ fn replica_update_full_path_sucess() {
     assert!(check_sector_active(&v, miner_id, sector_number));
     assert!(!check_sector_faulty(&v, miner_id, deadline_index, partition_index, sector_number));
     assert_eq!(miner_power(&v, miner_id).raw, BigInt::from(sector_size as i64));
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -148,6 +150,7 @@ fn upgrade_and_miss_post() {
     assert!(check_sector_active(&v, miner_id, sector_number));
     assert!(!check_sector_faulty(&v, miner_id, deadline_index, partition_index, sector_number));
     assert_eq!(miner_power(&v, miner_id).raw, BigInt::from(sector_size as i64));
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -284,6 +287,7 @@ fn prove_replica_update_multi_dline() {
     assert_eq!(1, new_sector_info_p2.deal_ids.len());
     assert_eq!(old_sector_commr_p2, new_sector_info_p2.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
+    v.assert_state_invariants();
 }
 
 // ---- Failure cases ----
@@ -336,6 +340,7 @@ fn immutable_deadline_failure() {
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -388,6 +393,9 @@ fn unhealthy_sector_failure() {
         MethodsMiner::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
+    v.expect_state_invariants(
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
     );
 }
 
@@ -453,6 +461,7 @@ fn terminated_sector_failure() {
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -505,6 +514,7 @@ fn bad_batch_size_failure() {
         ProveReplicaUpdatesParams { updates },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -522,6 +532,7 @@ fn no_dispute_after_upgrade() {
         dispute_params,
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -551,6 +562,7 @@ fn upgrade_bad_post_dispute() {
         MethodsMiner::DisputeWindowedPoSt as u64,
         dispute_params,
     );
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -627,6 +639,7 @@ fn bad_post_upgrade_dispute() {
         MethodsMiner::DisputeWindowedPoSt as u64,
         dispute_params,
     );
+    v.assert_state_invariants();
 }
 
 // Tests that an active CC sector can be correctly upgraded, and then the sector can be terminated
@@ -666,6 +679,8 @@ fn terminate_after_upgrade() {
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_qa_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_zero());
+
+    v.assert_state_invariants();
 }
 
 // Tests that an active CC sector can be correctly upgraded, and then the sector can be terminated
@@ -701,6 +716,7 @@ fn extend_after_upgrade() {
         policy.max_sector_expiration_extension - 1,
         final_sector_info.expiration - final_sector_info.activation
     );
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -757,6 +773,7 @@ fn wrong_deadline_index_failure() {
 
     let new_sector_info = sector_info(&v, maddr, sector_number);
     assert_eq!(old_sector_info, new_sector_info);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -813,6 +830,7 @@ fn wrong_partition_index_failure() {
 
     let new_sector_info = sector_info(&v, maddr, sector_number);
     assert_eq!(old_sector_info, new_sector_info);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -903,7 +921,7 @@ fn deal_included_in_multiple_sectors_failure() {
         deadline: 0,
         partition: 0,
         new_sealed_cid: new_sealed_cid1,
-        deals: deal_ids[0..1].to_vec(),
+        deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![],
     };
@@ -911,10 +929,10 @@ fn deal_included_in_multiple_sectors_failure() {
     let new_sealed_cid2 = make_sealed_cid(b"replica2");
     let replica_update_2 = ReplicaUpdate {
         sector_number: first_sector_number + 1,
-        deadline: 1,
+        deadline: 0,
         partition: 0,
         new_sealed_cid: new_sealed_cid2,
-        deals: deal_ids[1..].to_vec(),
+        deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![],
     };
@@ -935,13 +953,13 @@ fn deal_included_in_multiple_sectors_failure() {
     assert!(!ret_bf.get(first_sector_number + 1));
 
     let new_sector_info_p1 = sector_info(&v, maddr, first_sector_number);
-    assert_eq!(deal_ids[0], new_sector_info_p1.deal_ids[0]);
-    assert_eq!(1, new_sector_info_p1.deal_ids.len());
+    assert_eq!(deal_ids, new_sector_info_p1.deal_ids);
     assert_eq!(new_sealed_cid1, new_sector_info_p1.sealed_cid);
 
     let new_sector_info_p2 = sector_info(&v, maddr, first_sector_number + 1);
     assert!(new_sector_info_p2.deal_ids.len().is_zero());
     assert_ne!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
+    v.assert_state_invariants();
 }
 
 fn create_miner_and_upgrade_sector(

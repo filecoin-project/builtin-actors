@@ -1,4 +1,4 @@
-use crate::State;
+use crate::{baseline_power_from_prev, State};
 use fil_actors_runtime::MessageAccumulator;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
@@ -53,11 +53,16 @@ pub fn check_state_invariants(
         !state.cumsum_realized.is_negative(),
         format!("cumsum realized negative ({})", state.cumsum_realized),
     );
+
+    // Theoretically we should compare effective_baseline_power <= this_epoch_baseline_power but
+    // because of rounding issues explained and tracked in https://github.com/filecoin-project/builtin-actors/issues/459
+    // we settled on this workaround.
+    let next_epoch_baseline_power = baseline_power_from_prev(&state.this_epoch_baseline_power);
     acc.require(
-        state.effective_baseline_power <= state.this_epoch_baseline_power,
+        state.effective_baseline_power <= next_epoch_baseline_power,
         format!(
-            "effective baseline power ({}) > baseline power ({})",
-            state.effective_baseline_power, state.this_epoch_baseline_power
+            "effective baseline power ({}) > next_epoch_baseline_power ({})",
+            state.effective_baseline_power, next_epoch_baseline_power
         ),
     );
 

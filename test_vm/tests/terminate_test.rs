@@ -27,8 +27,8 @@ use fvm_shared::METHOD_SEND;
 use num_traits::cast::FromPrimitive;
 use test_vm::util::{
     add_verifier, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_to_proving_deadline, apply_ok, create_accounts, create_miner, make_bitfield,
-    publish_deal, submit_windowed_post,
+    advance_to_proving_deadline, apply_ok, create_accounts, create_miner,
+    invariant_failure_patterns, make_bitfield, publish_deal, submit_windowed_post,
 };
 use test_vm::{ExpectInvocation, VM};
 
@@ -361,4 +361,8 @@ fn terminate_sectors() {
     // before the slash and should be << 1 FIL. Actual amount withdrawn should be between 58 and 59 FIL.
     assert!(TokenAmount::from(58e18 as u128) < value_withdrawn);
     assert!(TokenAmount::from(59e18 as u128) > value_withdrawn);
+
+    v.expect_state_invariants(
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
