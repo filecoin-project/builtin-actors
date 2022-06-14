@@ -74,3 +74,4 @@ panic = "unwind"
 overflow-checks = true
 lto = "thin"
 opt-level = "z"
+strip = true
