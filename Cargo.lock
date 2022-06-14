@@ -559,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_account"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -572,9 +572,9 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_bundler"
-version = "3.0.3"
+version = "3.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "646120abeada2d68a2970cc52a624642c100d5c83189110846b16e807b88e06a"
+checksum = "715d3ad31a6e4715a49747e136d5daa1a6bbe7c078385bca7e11215c57884a35"
 dependencies = [
  "anyhow",
  "async-std",
@@ -592,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_cron"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -606,7 +606,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_init"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -623,7 +623,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_market"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_miner"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -677,7 +677,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_multisig"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -695,7 +695,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_paych"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_power"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -733,7 +733,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_reward"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_system"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_verifreg"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -807,7 +807,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_runtime"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -840,7 +840,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_bundle"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "cid",
  "clap",
@@ -982,9 +982,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_amt"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bbe1fb55191eec39304eccc690e94bfe2462a829dbc0a227559d2bf1c33b4dc"
+checksum = "48d09e5aa7de45452676d18fcb70b750acd65faae7a4fe18fe784b4c85f869fb"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1038,9 +1038,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_encoding"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39a5b85beb7f0c612abbe36ce013d50fd4c5304098f7b439a32c82526d7d800a"
+checksum = "ce9cfcb4ae444801009182fded790dd56aff9c9a567e54510e2ccf14fb9daf8e"
 dependencies = [
  "anyhow",
  "cid",
@@ -1077,9 +1077,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5823623e85fa75b779c12ac793485a01d6f3a420b2b96eabeef26e1ce1aa3fc8"
+checksum = "3bd162cff8cab78c3798762bc6879429ecbd0f5515856bcb3bc31d197208db70"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -1092,9 +1092,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "0.7.1"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "282f5fb4f2eb9f916badd253aa4898d7ba20bdda3e76a2f94d42ee67acb6ba2e"
+checksum = "94c2485c563703b730df0502e2e8fcea86bc183b7018a080c6a5b15b7a29c5d0"
 dependencies = [
  "anyhow",
  "bimap",

@@ -14,20 +14,20 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actor_account = { version = "8.0.0-alpha.1", path = "../account"}
-fil_actor_verifreg = { version = "8.0.0-alpha.1", path = "../verifreg"}
-fil_actor_cron = { version = "8.0.0-alpha.1", path = "../cron"}
-fil_actor_market = { version = "8.0.0-alpha.1", path = "../market"}
-fil_actor_multisig = { version = "8.0.0-alpha.1", path = "../multisig"}
-fil_actor_paych = { version = "8.0.0-alpha.1", path = "../paych"}
-fil_actor_power = { version = "8.0.0-alpha.1", path = "../power"}
-fil_actor_miner = { version = "8.0.0-alpha.1", path = "../miner"}
-fil_actor_reward = { version = "8.0.0-alpha.1", path = "../reward"}
-fil_actor_system = { version = "8.0.0-alpha.1", path = "../system"}
-fil_actor_init = { version = "8.0.0-alpha.1", path = "../init"}
-fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime"}
-fvm_shared = { version = "0.7.1", default-features = false }
-fvm_ipld_encoding = "0.2.1"
+fil_actor_account = { version = "8.0.0-rc.1", path = "../account"}
+fil_actor_verifreg = { version = "8.0.0-rc.1", path = "../verifreg"}
+fil_actor_cron = { version = "8.0.0-rc.1", path = "../cron"}
+fil_actor_market = { version = "8.0.0-rc.1", path = "../market"}
+fil_actor_multisig = { version = "8.0.0-rc.1", path = "../multisig"}
+fil_actor_paych = { version = "8.0.0-rc.1", path = "../paych"}
+fil_actor_power = { version = "8.0.0-rc.1", path = "../power"}
+fil_actor_miner = { version = "8.0.0-rc.1", path = "../miner"}
+fil_actor_reward = { version = "8.0.0-rc.1", path = "../reward"}
+fil_actor_system = { version = "8.0.0-rc.1", path = "../system"}
+fil_actor_init = { version = "8.0.0-rc.1", path = "../init"}
+fil_actors_runtime = { version = "8.0.0-rc.1", path = "../runtime"}
+fvm_shared = { version = "0.8.0", default-features = false }
+fvm_ipld_encoding = "0.2.2"
 fvm_ipld_blockstore = "0.1.1"
 num-traits = "0.2.14"
 anyhow = "1.0.56"
