@@ -805,7 +805,7 @@ impl Actor {
         rt.verify_aggregate_seals(&AggregateSealVerifyProofAndInfos {
             miner: miner_actor_id,
             seal_proof,
-            aggregate_proof: RegisteredAggregateProof::SnarkPackV1,
+            aggregate_proof: RegisteredAggregateProof::SnarkPackV2,
             proof: params.aggregate_proof,
             infos: svis,
         })
