@@ -918,7 +918,7 @@ fn deal_included_in_multiple_sectors_failure() {
         deadline: 0,
         partition: 0,
         new_sealed_cid: new_sealed_cid1,
-        deals: deal_ids[0..1].to_vec(),
+        deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![],
     };
@@ -926,10 +926,10 @@ fn deal_included_in_multiple_sectors_failure() {
     let new_sealed_cid2 = make_sealed_cid(b"replica2");
     let replica_update_2 = ReplicaUpdate {
         sector_number: first_sector_number + 1,
-        deadline: 1,
+        deadline: 0,
         partition: 0,
         new_sealed_cid: new_sealed_cid2,
-        deals: deal_ids[1..].to_vec(),
+        deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![],
     };
@@ -950,8 +950,7 @@ fn deal_included_in_multiple_sectors_failure() {
     assert!(!ret_bf.get(first_sector_number + 1));
 
     let new_sector_info_p1 = sector_info(&v, maddr, first_sector_number);
-    assert_eq!(deal_ids[0], new_sector_info_p1.deal_ids[0]);
-    assert_eq!(1, new_sector_info_p1.deal_ids.len());
+    assert_eq!(deal_ids, new_sector_info_p1.deal_ids);
     assert_eq!(new_sealed_cid1, new_sector_info_p1.sealed_cid);
 
     let new_sector_info_p2 = sector_info(&v, maddr, first_sector_number + 1);
