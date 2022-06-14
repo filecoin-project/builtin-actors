@@ -189,7 +189,7 @@ fn extend_sector_with_deals() {
         miner_id,
         deadline_info,
         partition_index,
-        expected_power_delta,
+        Some(expected_power_delta),
     );
 
     // move forward one deadline so advanceWhileProving doesn't fail double submitting posts

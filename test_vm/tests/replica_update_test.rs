@@ -39,13 +39,13 @@ use test_vm::VM;
 
 // Tests that an active CC sector can be correctly upgraded, and the expected state changes occur
 #[test]
-fn replica_update_simple_path_sucess() {
+fn replica_update_simple_path_success() {
     create_miner_and_upgrade_sector(&MemoryBlockstore::new()).0.assert_state_invariants();
 }
 
 // Tests a successful upgrade, followed by the sector going faulty and recovering
 #[test]
-fn replica_update_full_path_sucess() {
+fn replica_update_full_path_success() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
@@ -54,7 +54,14 @@ fn replica_update_full_path_sucess() {
 
     // submit post successfully
     let (mut deadline_info, _, mut v) = advance_to_proving_deadline(v, miner_id, sector_number);
-    submit_windowed_post(&v, worker, miner_id, deadline_info, partition_index, PowerPair::zero());
+    submit_windowed_post(
+        &v,
+        worker,
+        miner_id,
+        deadline_info,
+        partition_index,
+        Some(PowerPair::zero()),
+    );
 
     // move out of the sector's deadline
     v = advance_by_deadline_to_index(
@@ -87,10 +94,10 @@ fn replica_update_full_path_sucess() {
         miner_id,
         deadline_info,
         partition_index,
-        PowerPair {
+        Some(PowerPair {
             raw: StoragePower::from(sector_size as i64),
             qa: StoragePower::from(sector_size as i64),
-        },
+        }),
     );
 
     assert!(check_sector_active(&v, miner_id, sector_number));
@@ -141,10 +148,10 @@ fn upgrade_and_miss_post() {
         miner_id,
         deadline_info,
         partition_index,
-        PowerPair {
+        Some(PowerPair {
             raw: StoragePower::from(sector_size as i64),
             qa: StoragePower::from(sector_size as i64),
-        },
+        }),
     );
 
     assert!(check_sector_active(&v, miner_id, sector_number));
@@ -206,7 +213,7 @@ fn prove_replica_update_multi_dline() {
 
     // first partition shouldn't be active until PoSt
     assert!(!check_sector_active(&v, maddr, deadline_info.index));
-    submit_windowed_post(&v, worker, maddr, deadline_info, partition_index, PowerPair::zero());
+    submit_windowed_post(&v, worker, maddr, deadline_info, partition_index, None);
 
     // move into the next deadline so that the first batch of created sectors are active
     let (v, current_deadline_info) = advance_by_deadline_to_index(
@@ -224,7 +231,7 @@ fn prove_replica_update_multi_dline() {
 
     // second partition shouldn't be active until PoSt
     assert!(!check_sector_active(&v, maddr, first_sector_number_p2));
-    submit_windowed_post(&v, worker, maddr, current_deadline_info, 0, PowerPair::zero());
+    submit_windowed_post(&v, worker, maddr, current_deadline_info, 0, None);
 
     // move into the next deadline so that the second batch of created sectors are active
     let (v, _) = advance_by_deadline_to_index(
@@ -895,7 +902,7 @@ fn deal_included_in_multiple_sectors_failure() {
     assert!(!check_sector_active(&v, maddr, first_sector_number));
     assert!(!check_sector_active(&v, maddr, first_sector_number + 1));
 
-    submit_windowed_post(&v, worker, maddr, deadline_info, partition_index, PowerPair::zero());
+    submit_windowed_post(&v, worker, maddr, deadline_info, partition_index, None);
 
     // move into the next deadline so that the created sectors are mutable
     v = advance_by_deadline_to_index(
@@ -1070,7 +1077,7 @@ fn create_sector(
     let m_st = v.get_state::<MinerState>(maddr).unwrap();
     let sector = m_st.get_sector(v.store, sector_number).unwrap().unwrap();
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
-    submit_windowed_post(&v, worker, maddr, dline_info, p_idx, sector_power);
+    submit_windowed_post(&v, worker, maddr, dline_info, p_idx, Some(sector_power));
 
     // move to next deadline to activate power
     let v = advance_by_deadline_to_index(

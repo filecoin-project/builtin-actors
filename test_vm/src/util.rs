@@ -329,7 +329,7 @@ pub fn advance_by_deadline_to_epoch_while_proving(
             // in the case e is within the proving deadline don't post, leave that to the caller
             return v.with_epoch(e);
         }
-        submit_windowed_post(&v, worker, maddr, dline_info, p_idx, PowerPair::zero());
+        submit_windowed_post(&v, worker, maddr, dline_info, p_idx, None);
         v = advance_by_deadline_to_index(
             v,
             maddr,
@@ -455,7 +455,7 @@ pub fn submit_windowed_post(
     maddr: Address,
     dline_info: DeadlineInfo,
     partition_idx: u64,
-    new_power: PowerPair,
+    new_power: Option<PowerPair>,
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
@@ -472,21 +472,25 @@ pub fn submit_windowed_post(
     };
     apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
     let mut subinvocs = None;
-    if new_power != PowerPair::zero() {
-        let update_power_params = serialize(
-            &UpdateClaimedPowerParams {
-                raw_byte_delta: new_power.raw,
-                quality_adjusted_delta: new_power.qa,
-            },
-            "update claim params",
-        )
-        .unwrap();
-        subinvocs = Some(vec![ExpectInvocation {
-            to: *STORAGE_POWER_ACTOR_ADDR,
-            method: PowerMethod::UpdateClaimedPower as u64,
-            params: Some(update_power_params),
-            ..Default::default()
-        }]);
+    if let Some(new_pow) = new_power {
+        if new_pow == PowerPair::zero() {
+            subinvocs = Some(vec![])
+        } else {
+            let update_power_params = serialize(
+                &UpdateClaimedPowerParams {
+                    raw_byte_delta: new_pow.raw,
+                    quality_adjusted_delta: new_pow.qa,
+                },
+                "update claim params",
+            )
+            .unwrap();
+            subinvocs = Some(vec![ExpectInvocation {
+                to: *STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::UpdateClaimedPower as u64,
+                params: Some(update_power_params),
+                ..Default::default()
+            }]);
+        }
     }
 
     ExpectInvocation {

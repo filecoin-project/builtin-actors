@@ -132,7 +132,7 @@ fn batch_onboarding() {
     new_power.raw *= proven_count;
     new_power.qa *= proven_count;
 
-    submit_windowed_post(&v, worker, id_addr, dline_info, p_idx, new_power.clone());
+    submit_windowed_post(&v, worker, id_addr, dline_info, p_idx, Some(new_power.clone()));
 
     let balances = v.get_miner_balance(id_addr);
     assert!(balances.initial_pledge.is_positive());
