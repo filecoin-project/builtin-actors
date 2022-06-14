@@ -1,29 +1,25 @@
-use fil_actor_miner::{
-    power_for_sector,
-    State as MinerState,
-};
+use fil_actor_cron::Method as CronMethod;
+use fil_actor_miner::{power_for_sector, State as MinerState};
 use fil_actor_miner::{PoStPartition, SectorPreCommitOnChainInfo};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
-use fil_actors_runtime::runtime::policy_constants::{PRE_COMMIT_SECTOR_BATCH_MAX_SIZE, MAX_AGGREGATED_SECTORS};
-use fil_actors_runtime::{
- CRON_ACTOR_ADDR,
+use fil_actors_runtime::runtime::policy_constants::{
+    MAX_AGGREGATED_SECTORS, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
 };
-use fil_actor_cron::Method as CronMethod;
+use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::bigint::{Zero, BigInt};
+use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use num_traits::Signed;
 use test_vm::util::{
-    advance_to_proving_deadline, apply_ok, create_accounts,
-    create_miner, precommit_sectors, submit_windowed_post, prove_commit_sectors, invariant_failure_patterns,
-
+    advance_to_proving_deadline, apply_ok, create_accounts, create_miner,
+    invariant_failure_patterns, precommit_sectors, prove_commit_sectors, submit_windowed_post,
 };
-use test_vm::{VM};
+use test_vm::VM;
 
 struct Onboarding {
     epoch_delay: i64,                 // epochs to advance since the prior action
@@ -34,7 +30,13 @@ struct Onboarding {
 }
 
 impl Onboarding {
-    fn new(epoch_delay: i64, pre_commit_sector_count: u64, pre_commit_batch_size: i64, prove_commit_sector_count: u64, prove_commit_aggregate_size: i64) -> Self {
+    fn new(
+        epoch_delay: i64,
+        pre_commit_sector_count: u64,
+        pre_commit_batch_size: i64,
+        prove_commit_sector_count: u64,
+        prove_commit_aggregate_size: i64,
+    ) -> Self {
         Self {
             epoch_delay,
             pre_commit_sector_count,
@@ -128,7 +130,10 @@ fn batch_onboarding() {
     let st = v.get_state::<MinerState>(id_addr).unwrap();
     let sector = st.get_sector(v.store, 0).unwrap().unwrap();
 
-    let partitions = vec![PoStPartition { index: p_idx, skipped: UnvalidatedBitField::Validated(BitField::new()) }];
+    let partitions = vec![PoStPartition {
+        index: p_idx,
+        skipped: UnvalidatedBitField::Validated(BitField::new()),
+    }];
     let mut new_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
     new_power.raw *= proven_count;
     new_power.qa *= proven_count;
@@ -151,7 +156,7 @@ fn batch_onboarding() {
         CronMethod::EpochTick as u64,
         RawBytes::default(),
     );
-    
+
     v.expect_state_invariants(
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
     );
