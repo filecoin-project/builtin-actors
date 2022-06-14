@@ -559,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_account"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -592,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_cron"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -606,7 +606,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_init"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -623,7 +623,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_market"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_miner"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -677,7 +677,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_multisig"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -695,7 +695,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_paych"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_power"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -733,7 +733,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_reward"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_system"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_verifreg"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -807,7 +807,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_runtime"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -840,7 +840,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_bundle"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "cid",
  "clap",
