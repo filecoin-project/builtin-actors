@@ -646,7 +646,7 @@ pub mod invariant_failure_patterns {
     use lazy_static::lazy_static;
     use regex::Regex;
     lazy_static! {
-        pub static ref REWARD_STATE_MISMATCH: Regex =
+        pub static ref REWARD_STATE_EPOCH_MISMATCH: Regex =
             Regex::new("^reward state epoch \\d+ does not match prior_epoch\\+1 \\d+$").unwrap();
     }
 }

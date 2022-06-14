@@ -309,7 +309,7 @@ fn missed_first_post_deadline() {
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 
-    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -422,7 +422,7 @@ fn overdue_precommit() {
     assert!(network_stats.total_raw_byte_power.is_zero());
     assert!(network_stats.total_quality_adj_power.is_zero());
 
-    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -500,7 +500,7 @@ fn aggregate_bad_sector_number() {
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
-    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -632,7 +632,7 @@ fn aggregate_size_limits() {
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
-    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -706,7 +706,7 @@ fn aggregate_bad_sender() {
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
-    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -843,5 +843,5 @@ fn aggregate_one_precommit_expires() {
     assert!(balances.initial_pledge.is_positive());
     assert!(balances.pre_commit_deposit.is_positive());
 
-    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }

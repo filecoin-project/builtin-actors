@@ -229,5 +229,5 @@ fn test_cron_tick() {
     }
     .matches(v.take_invocations().first().unwrap());
 
-    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
