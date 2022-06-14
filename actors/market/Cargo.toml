@@ -1,7 +1,7 @@
 [package]
 name = "fil_actor_market"
 description = "Builtin market actor for Filecoin"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
@@ -14,9 +14,9 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features = ["fil-actor"] }
+fil_actors_runtime = { version = "8.0.0-rc.1", path = "../runtime", features = ["fil-actor"] }
 fvm_ipld_hamt = "0.5.1"
-fvm_shared = { version = "0.7.1", default-features = false }
+fvm_shared = { version = "0.8.0", default-features = false }
 fvm_ipld_bitfield = "0.5.2"
 num-traits = "0.2.14"
 num-derive = "0.3.3"
@@ -25,15 +25,15 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 log = "0.4.14"
 anyhow = "1.0.56"
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.2.1"
+fvm_ipld_encoding = "0.2.2"
 libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 
 [dev-dependencies]
-fil_actors_runtime = { version = "8.0.0-alpha.1", path = "../runtime", features = ["test_utils", "sector-default"] }
-fil_actor_power = { version = "8.0.0-alpha.1", path = "../power" }
-fil_actor_reward = { version = "8.0.0-alpha.1", path = "../reward" }
-fil_actor_verifreg = { version = "8.0.0-alpha.1", path = "../verifreg" }
-fvm_ipld_amt = { version = "0.4.1", features = ["go-interop"] }
+fil_actors_runtime = { version = "8.0.0-rc.1", path = "../runtime", features = ["test_utils", "sector-default"] }
+fil_actor_power = { version = "8.0.0-rc.1", path = "../power" }
+fil_actor_reward = { version = "8.0.0-rc.1", path = "../reward" }
+fil_actor_verifreg = { version = "8.0.0-rc.1", path = "../verifreg" }
+fvm_ipld_amt = { version = "0.4.2", features = ["go-interop"] }
 multihash = { version = "0.16.1", default-features = false }
 regex = "1"
 itertools = "0.10"
