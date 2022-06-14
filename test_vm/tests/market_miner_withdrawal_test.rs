@@ -2,11 +2,9 @@ use fil_actor_market::Method as MarketMethod;
 use fil_actor_market::WithdrawBalanceParams as MarketWithdrawBalanceParams;
 use fil_actor_miner::Method as MinerMethod;
 use fil_actor_miner::WithdrawBalanceParams as MinerWithdrawBalanceParams;
-use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actors_runtime::test_utils::{MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID};
-use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
+use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
@@ -16,7 +14,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::METHOD_SEND;
-use test_vm::util::{apply_ok, create_accounts};
+use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
 use test_vm::Actor;
 use test_vm::VM;
 
@@ -29,7 +27,7 @@ mod market_tests {
         let store = MemoryBlockstore::new();
         let (v, caller) = market_setup(&store);
 
-        let three_fil = TokenAmount::from(3);
+        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
         assert_add_collateral_and_withdraw(
             &v,
             three_fil.clone(),
@@ -46,8 +44,8 @@ mod market_tests {
         let (v, caller) = market_setup(&store);
 
         // Add 2 FIL of collateral and attempt to withdraw 3
-        let two_fil = TokenAmount::from(2);
-        let three_fil = TokenAmount::from(3);
+        let two_fil = TokenAmount::from(2) * BigInt::from(1e18 as i128);
+        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
         assert_add_collateral_and_withdraw(
             &v,
             two_fil.clone(),
@@ -64,7 +62,7 @@ mod market_tests {
         let (v, caller) = market_setup(&store);
 
         // Add 0 FIL of collateral and attempt to withdraw 3
-        let three_fil = TokenAmount::from(3);
+        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
         assert_add_collateral_and_withdraw(
             &v,
             TokenAmount::zero(),
@@ -85,7 +83,7 @@ mod miner_tests {
         let store = MemoryBlockstore::new();
         let (v, _, owner, m_addr) = miner_setup(&store);
 
-        let three_fil = TokenAmount::from(3);
+        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
         assert_add_collateral_and_withdraw(
             &v,
             three_fil.clone(),
@@ -101,8 +99,8 @@ mod miner_tests {
         let store = MemoryBlockstore::new();
         let (v, _, owner, m_addr) = miner_setup(&store);
 
-        let two_fil = TokenAmount::from(2);
-        let three_fil = TokenAmount::from(3);
+        let two_fil = TokenAmount::from(2) * BigInt::from(1e18 as i128);
+        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
         assert_add_collateral_and_withdraw(&v, two_fil.clone(), two_fil, three_fil, m_addr, owner);
     }
 
@@ -111,7 +109,7 @@ mod miner_tests {
         let store = MemoryBlockstore::new();
         let (v, _, owner, m_addr) = miner_setup(&store);
 
-        let three_fil = TokenAmount::from(3);
+        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
         assert_add_collateral_and_withdraw(
             &v,
             TokenAmount::zero(),
@@ -127,19 +125,17 @@ mod miner_tests {
         let store = MemoryBlockstore::new();
         let (v, worker, _, m_addr) = miner_setup(&store);
 
-        let one_fil = TokenAmount::from(1);
-        apply_ok(&v, worker, m_addr, one_fil.clone(), METHOD_SEND, RawBytes::default());
+        let one_fil = TokenAmount::from(1) * BigInt::from(1e18 as i128);
         let params = MinerWithdrawBalanceParams { amount_requested: one_fil };
-        let res = v
-            .apply_message(
-                worker,
-                m_addr,
-                TokenAmount::zero(),
-                MinerMethod::WithdrawBalance as u64,
-                params,
-            )
-            .unwrap();
-        assert_eq!(ExitCode::USR_FORBIDDEN, res.code);
+        apply_code(
+            &v,
+            worker,
+            m_addr,
+            TokenAmount::zero(),
+            MinerMethod::WithdrawBalance as u64,
+            params,
+            ExitCode::USR_FORBIDDEN,
+        );
     }
 }
 
@@ -197,7 +193,7 @@ fn assert_add_collateral_and_withdraw(
         }
         x if x == *MARKET_ACTOR_CODE_ID => {
             let params =
-                MarketWithdrawBalanceParams { provider_or_client: caller, amount: collateral };
+                MarketWithdrawBalanceParams { provider_or_client: caller, amount: requested };
             apply_ok(
                 v,
                 caller,
@@ -231,32 +227,19 @@ fn market_setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Address) {
 }
 
 fn miner_setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Address, Address, Address) {
-    let v = VM::new_with_singletons(store);
-    let initial_balance = BigInt::from(10_000);
+    let mut v = VM::new_with_singletons(store);
+    let initial_balance = BigInt::from(10_000) * BigInt::from(1e18 as i128);
     let addrs = create_accounts(&v, 2, initial_balance);
     let (worker, owner) = (addrs[0], addrs[1]);
 
     // create miner
-    let peer = "not really a peer id".as_bytes().to_vec();
-    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
-    let params = CreateMinerParams {
+    let (m_addr, _) = create_miner(
+        &mut v,
         owner,
         worker,
-        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        peer,
-        multiaddrs,
-    };
-    let ret: CreateMinerReturn = apply_ok(
-        &v,
-        worker,
-        *STORAGE_POWER_ACTOR_ADDR,
-        BigInt::zero(),
-        PowerMethod::CreateMiner as u64,
-        params,
-    )
-    .deserialize()
-    .unwrap();
-    let m_addr = ret.id_address;
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        TokenAmount::from(0),
+    );
 
     (v, worker, owner, m_addr)
 }
