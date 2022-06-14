@@ -1,38 +1,29 @@
-use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
-    power_for_sector, Method as MinerMethod, ProveCommitAggregateParams,
+    power_for_sector,
     State as MinerState,
 };
 use fil_actor_miner::{PoStPartition, SectorPreCommitOnChainInfo};
-use fil_actor_power::Method as PowerMethod;
-use fil_actor_reward::Method as RewardMethod;
-use fil_actor_state::check::Tree;
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
 use fil_actors_runtime::runtime::policy_constants::{PRE_COMMIT_SECTOR_BATCH_MAX_SIZE, MAX_AGGREGATED_SECTORS};
-use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, CRON_ACTOR_ADDR,
+ CRON_ACTOR_ADDR,
 };
 use fil_actor_cron::Method as CronMethod;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
 use fvm_shared::bigint::{Zero, BigInt};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
-use fvm_shared::METHOD_SEND;
 use num_traits::Signed;
 use test_vm::util::{
     advance_to_proving_deadline, apply_ok, create_accounts,
-    create_miner, precommit_sectors, submit_windowed_post, make_bitfield,
+    create_miner, precommit_sectors, submit_windowed_post, prove_commit_sectors, invariant_failure_patterns,
+
 };
-use test_vm::{ExpectInvocation, VM};
-use std::cmp::min;
+use test_vm::{VM};
 
 struct Onboarding {
     epoch_delay: i64,                 // epochs to advance since the prior action
@@ -137,7 +128,7 @@ fn batch_onboarding() {
     let st = v.get_state::<MinerState>(id_addr).unwrap();
     let sector = st.get_sector(v.store, 0).unwrap().unwrap();
 
-    let mut partitions = vec![PoStPartition { index: p_idx, skipped: UnvalidatedBitField::Validated(BitField::new()) }];
+    let partitions = vec![PoStPartition { index: p_idx, skipped: UnvalidatedBitField::Validated(BitField::new()) }];
     let mut new_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
     new_power.raw *= proven_count;
     new_power.qa *= proven_count;
@@ -160,78 +151,8 @@ fn batch_onboarding() {
         CronMethod::EpochTick as u64,
         RawBytes::default(),
     );
-
-    let state_tree = Tree::load(&store, &v.checkpoint()).unwrap();
-
-    v.get_total_actor_balance(&store).unwrap();
     
-    // v.check_state_invariants().unwrap().assert_empty()
-}
-
-pub fn prove_commit_sectors(
-    v: &mut VM,
-    worker: Address,
-    maddr: Address,
-    precommits: Vec<SectorPreCommitOnChainInfo>,
-    aggregate_size: i64,
-) {
-    let mut precommit_infos = precommits.as_slice();
-    while !precommit_infos.is_empty() {
-        let batch_size = min(aggregate_size, precommit_infos.len() as i64) as usize;
-        let to_prove = &precommit_infos[0..batch_size];
-        precommit_infos = &precommit_infos[batch_size..];
-        let sector_nos_bf =  make_bitfield(to_prove.iter().map(|p| p.info.sector_number).collect::<Vec<u64>>().as_slice());
-
-        let prove_commit_aggregate_params = ProveCommitAggregateParams {
-            sector_numbers: sector_nos_bf,
-            aggregate_proof: vec![],
-        };
-        let prove_commit_aggregate_params_ser =
-            serialize(&prove_commit_aggregate_params, "prove commit aggregate params").unwrap();
-
-        apply_ok(
-            v,
-            worker,
-            maddr,
-            TokenAmount::zero(),
-            MinerMethod::ProveCommitAggregate as u64,
-            prove_commit_aggregate_params,
-        );
-
-        ExpectInvocation {
-            to: maddr,
-            method: MinerMethod::ProveCommitAggregate as u64,
-            from: Some(worker),
-            params: Some(prove_commit_aggregate_params_ser),
-            subinvocs: Some(vec![
-                ExpectInvocation {
-                    to: *STORAGE_MARKET_ACTOR_ADDR,
-                    method: MarketMethod::ComputeDataCommitment as u64,
-                    ..Default::default()
-                },
-                ExpectInvocation {
-                    to: *REWARD_ACTOR_ADDR,
-                    method: RewardMethod::ThisEpochReward as u64,
-                    ..Default::default()
-                },
-                ExpectInvocation {
-                    to: *STORAGE_POWER_ACTOR_ADDR,
-                    method: PowerMethod::CurrentTotalPower as u64,
-                    ..Default::default()
-                },
-                ExpectInvocation {
-                    to: *STORAGE_POWER_ACTOR_ADDR,
-                    method: PowerMethod::UpdatePledgeTotal as u64,
-                    ..Default::default()
-                },
-                ExpectInvocation {
-                    to: *BURNT_FUNDS_ACTOR_ADDR,
-                    method: METHOD_SEND,
-                    ..Default::default()
-                },
-            ]),
-            ..Default::default()
-        }
-        .matches(v.take_invocations().last().unwrap());
-    }
+    v.expect_state_invariants(
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
