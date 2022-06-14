@@ -6,8 +6,9 @@ use fil_actor_market::{
 };
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, DeadlineInfo, Method as MinerMethod, PoStPartition,
-    PowerPair, PreCommitSectorBatchParams, SectorOnChainInfo, SectorPreCommitInfo,
+    new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams,
+    Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams,
+    ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitInfo,
     SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
 };
 use fil_actor_multisig::Method as MultisigMethod;
@@ -28,6 +29,7 @@ use fvm_shared::sector::{PoStProof, RegisteredPoStProof, RegisteredSealProof, Se
 use fvm_shared::{MethodNum, METHOD_SEND};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
+use std::cmp::min;
 
 // Generate count addresses by seeding an rng
 pub fn pk_addrs_from(seed: u64, count: u64) -> Vec<Address> {
@@ -230,6 +232,74 @@ pub fn precommit_sectors(
         .collect()
 }
 
+pub fn prove_commit_sectors(
+    v: &mut VM,
+    worker: Address,
+    maddr: Address,
+    precommits: Vec<SectorPreCommitOnChainInfo>,
+    aggregate_size: i64,
+) {
+    let mut precommit_infos = precommits.as_slice();
+    while !precommit_infos.is_empty() {
+        let batch_size = min(aggregate_size, precommit_infos.len() as i64) as usize;
+        let to_prove = &precommit_infos[0..batch_size];
+        precommit_infos = &precommit_infos[batch_size..];
+        let b: Vec<u64> = to_prove.iter().map(|p| p.info.sector_number).collect();
+
+        let prove_commit_aggregate_params = ProveCommitAggregateParams {
+            sector_numbers: make_bitfield(b.as_slice()),
+            aggregate_proof: vec![],
+        };
+        let prove_commit_aggregate_params_ser =
+            serialize(&prove_commit_aggregate_params, "prove commit aggregate params").unwrap();
+
+        apply_ok(
+            v,
+            worker,
+            maddr,
+            TokenAmount::zero(),
+            MinerMethod::ProveCommitAggregate as u64,
+            prove_commit_aggregate_params,
+        );
+
+        ExpectInvocation {
+            to: maddr,
+            method: MinerMethod::ProveCommitAggregate as u64,
+            from: Some(worker),
+            params: Some(prove_commit_aggregate_params_ser),
+            subinvocs: Some(vec![
+                ExpectInvocation {
+                    to: *STORAGE_MARKET_ACTOR_ADDR,
+                    method: MarketMethod::ComputeDataCommitment as u64,
+                    ..Default::default()
+                },
+                ExpectInvocation {
+                    to: *REWARD_ACTOR_ADDR,
+                    method: RewardMethod::ThisEpochReward as u64,
+                    ..Default::default()
+                },
+                ExpectInvocation {
+                    to: *STORAGE_POWER_ACTOR_ADDR,
+                    method: PowerMethod::CurrentTotalPower as u64,
+                    ..Default::default()
+                },
+                ExpectInvocation {
+                    to: *STORAGE_POWER_ACTOR_ADDR,
+                    method: PowerMethod::UpdatePledgeTotal as u64,
+                    ..Default::default()
+                },
+                ExpectInvocation {
+                    to: *BURNT_FUNDS_ACTOR_ADDR,
+                    method: METHOD_SEND,
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        }
+        .matches(v.take_invocations().last().unwrap());
+    }
+}
+
 pub fn advance_by_deadline_to_epoch(v: VM, maddr: Address, e: ChainEpoch) -> (VM, DeadlineInfo) {
     // keep advancing until the epoch of interest is within the deadline
     // if e is dline.last() == dline.close -1 cron is not run
@@ -334,6 +404,12 @@ pub fn check_sector_faulty(v: &VM, m: Address, d_idx: u64, p_idx: u64, s: Sector
     partition.faults.get(s)
 }
 
+pub fn deadline_state(v: &VM, m: Address, d_idx: u64) -> Deadline {
+    let st = v.get_state::<MinerState>(m).unwrap();
+    let deadlines = st.load_deadlines(v.store).unwrap();
+    deadlines.load_deadline(&Policy::default(), v.store, d_idx).unwrap()
+}
+
 pub fn sector_info(v: &VM, m: Address, s: SectorNumber) -> SectorOnChainInfo {
     let st = v.get_state::<MinerState>(m).unwrap();
     st.get_sector(v.store, s).unwrap().unwrap()
@@ -343,6 +419,34 @@ pub fn miner_power(v: &VM, m: Address) -> PowerPair {
     let st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
     let claim = st.get_claim(v.store, &m).unwrap().unwrap();
     PowerPair::new(claim.raw_byte_power, claim.quality_adj_power)
+}
+
+pub fn declare_recovery(
+    v: &VM,
+    worker: Address,
+    maddr: Address,
+    deadline: u64,
+    partition: u64,
+    sector_number: SectorNumber,
+) {
+    let recover_params = DeclareFaultsRecoveredParams {
+        recoveries: vec![RecoveryDeclaration {
+            deadline,
+            partition,
+            sectors: UnvalidatedBitField::Validated(
+                BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
+            ),
+        }],
+    };
+
+    apply_ok(
+        v,
+        worker,
+        maddr,
+        TokenAmount::zero(),
+        MinerMethod::DeclareFaultsRecovered as u64,
+        recover_params,
+    );
 }
 
 pub fn submit_windowed_post(
@@ -392,6 +496,29 @@ pub fn submit_windowed_post(
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn submit_invalid_post(
+    v: &VM,
+    worker: Address,
+    maddr: Address,
+    dline_info: DeadlineInfo,
+    partition_idx: u64,
+) {
+    let params = SubmitWindowedPoStParams {
+        deadline: dline_info.index,
+        partitions: vec![PoStPartition {
+            index: partition_idx,
+            skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new()),
+        }],
+        proofs: vec![PoStProof {
+            post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+            proof_bytes: TEST_VM_INVALID.as_bytes().to_vec(),
+        }],
+        chain_commit_epoch: dline_info.challenge,
+        chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
+    };
+    apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
 }
 
 pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
