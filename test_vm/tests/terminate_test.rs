@@ -362,7 +362,11 @@ fn terminate_sectors() {
     assert!(TokenAmount::from(58e18 as u128) < value_withdrawn);
     assert!(TokenAmount::from(59e18 as u128) > value_withdrawn);
 
+<<<<<<< HEAD
     v.expect_state_invariants(
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
     );
+=======
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+>>>>>>> 86f1d9d (Add invariant checks to PRU and fix market invarian epoch off by one)
 }
