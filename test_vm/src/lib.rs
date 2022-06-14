@@ -485,9 +485,8 @@ impl<'bs> VM<'bs> {
 
         let mut total = BigInt::zero();
         state_tree.for_each(|_, actor| {
-            Ok({
-                total += &actor.balance.clone();
-            })
+            total += &actor.balance.clone();
+            Ok(())
         })?;
         Ok(total)
     }

@@ -1,14 +1,12 @@
 use fil_actor_cron::Method as CronMethod;
+use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::{power_for_sector, State as MinerState};
-use fil_actor_miner::{PoStPartition, SectorPreCommitOnChainInfo};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
 use fil_actors_runtime::runtime::policy_constants::{
     MAX_AGGREGATED_SECTORS, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
 };
 use fil_actors_runtime::CRON_ACTOR_ADDR;
-use fvm_ipld_bitfield::BitField;
-use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{BigInt, Zero};
@@ -75,6 +73,7 @@ fn batch_onboarding() {
     // Sectors are still proven in the order of pre-commitment.
 
     let mut next_sector_no: SectorNumber = 0;
+    #[allow(unused_variables)]
     let mut pre_committed_count = 0;
     let mut proven_count = 0;
 
@@ -129,11 +128,6 @@ fn batch_onboarding() {
     // submit post
     let st = v.get_state::<MinerState>(id_addr).unwrap();
     let sector = st.get_sector(v.store, 0).unwrap().unwrap();
-
-    let partitions = vec![PoStPartition {
-        index: p_idx,
-        skipped: UnvalidatedBitField::Validated(BitField::new()),
-    }];
     let mut new_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
     new_power.raw *= proven_count;
     new_power.qa *= proven_count;
