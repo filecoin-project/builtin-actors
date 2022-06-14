@@ -476,6 +476,16 @@ impl<'bs> VM<'bs> {
     pub fn expect_state_invariants(&self, expected_patterns: &[Regex]) {
         self.check_state_invariants().unwrap().assert_expected(expected_patterns)
     }
+
+    pub fn get_total_actor_balance(&self, store: &MemoryBlockstore) -> anyhow::Result<BigInt, anyhow::Error> {
+        let state_tree = Tree::load(store, &self.checkpoint())?;
+
+        let mut total = BigInt::zero();
+        state_tree.for_each(|_, actor| Ok({
+            total += &actor.balance.clone();
+        }))?;
+        Ok(total)
+    }
 }
 
 #[derive(Clone)]

@@ -32,7 +32,7 @@ pub mod fvm;
 #[cfg(feature = "fil-actor")]
 mod actor_blockstore;
 
-mod policy;
+pub mod policy;
 mod randomness;
 
 /// Runtime is the VM's internal runtime object.
