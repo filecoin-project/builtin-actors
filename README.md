@@ -98,6 +98,7 @@ By default, this bumps the patch version. To bump to a different version, append
 - `major`
 - `alpha`
 - `beta`
+- `rc`
 
 You can also _set_ a specific version with the `set-version` target.
 
