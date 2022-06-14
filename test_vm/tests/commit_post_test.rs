@@ -853,7 +853,11 @@ fn aggregate_one_precommit_expires() {
     assert!(balances.initial_pledge.is_positive());
     assert!(balances.pre_commit_deposit.is_positive());
 
+<<<<<<< HEAD
     v.expect_state_invariants(
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
     );
+=======
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
+>>>>>>> 7d25a72 (more invariant checks)
 }
