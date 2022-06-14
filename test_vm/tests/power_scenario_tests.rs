@@ -20,7 +20,9 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
-use test_vm::util::{apply_ok, create_accounts, create_miner, miner_dline_info};
+use test_vm::util::{
+    apply_ok, create_accounts, create_miner, invariant_failure_patterns, miner_dline_info,
+};
 use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 #[test]
@@ -226,4 +228,6 @@ fn test_cron_tick() {
         ..Default::default()
     }
     .matches(v.take_invocations().first().unwrap());
+
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
 }

@@ -99,7 +99,6 @@ fn test_proposal_hash() {
 }
 
 #[test]
-
 fn test_delete_self() {
     let test = |threshold: usize, signers: u64, remove_idx: usize| {
         let store = MemoryBlockstore::new();

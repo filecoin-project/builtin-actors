@@ -641,3 +641,12 @@ pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
 pub fn bf_all(bf: BitField) -> Vec<u64> {
     bf.bounded_iter(Policy::default().addressed_sectors_max).unwrap().collect()
 }
+
+pub mod invariant_failure_patterns {
+    use lazy_static::lazy_static;
+    use regex::Regex;
+    lazy_static! {
+        pub static ref REWARD_STATE_MISMATCH: Regex =
+            Regex::new("^reward state epoch \\d+ does not match prior_epoch\\+1 \\d+$").unwrap();
+    }
+}

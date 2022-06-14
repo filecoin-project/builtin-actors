@@ -49,6 +49,7 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_traits::Signed;
+use regex::Regex;
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
@@ -439,6 +440,7 @@ impl<'bs> VM<'bs> {
 
     /// Checks the state invariants and returns broken invariants.
     pub fn check_state_invariants(&self) -> anyhow::Result<MessageAccumulator> {
+        self.checkpoint();
         let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
             &self.state_root.borrow(),
             self.store,
@@ -467,6 +469,12 @@ impl<'bs> VM<'bs> {
     /// Asserts state invariants are held without any errors.
     pub fn assert_state_invariants(&self) {
         self.check_state_invariants().unwrap().assert_empty()
+    }
+
+    /// Checks state, allowing expected invariants to fail. The invariants *must* fail in the
+    /// provided order.
+    pub fn expect_state_invariants(&self, expected_patterns: &[Regex]) {
+        self.check_state_invariants().unwrap().assert_expected(expected_patterns)
     }
 }
 

@@ -749,7 +749,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_state"
-version = "8.0.0-alpha.1"
+version = "8.0.0-rc.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -825,12 +825,14 @@ dependencies = [
  "hex",
  "indexmap",
  "integer-encoding",
+ "itertools",
  "lazy_static",
  "log",
  "multihash",
  "num-derive",
  "num-traits",
  "rand",
+ "regex",
  "serde",
  "serde_repr",
  "sha2",
@@ -1803,6 +1805,7 @@ dependencies = [
  "num-traits",
  "rand",
  "rand_chacha",
+ "regex",
  "serde",
  "thiserror",
 ]

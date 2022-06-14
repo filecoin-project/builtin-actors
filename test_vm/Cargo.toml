@@ -41,9 +41,8 @@ thiserror = "1.0.30"
 anyhow = "1.0.56"
 blake2b_simd = "1.0"
 integer-encoding = { version = "3.0.3", default-features = false }
+regex = "1"
+
 [dev-dependencies]
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false }
-
-
-

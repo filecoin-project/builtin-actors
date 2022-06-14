@@ -26,7 +26,8 @@ use fvm_shared::METHOD_SEND;
 use num_traits::sign::Signed;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, apply_code, apply_ok,
-    create_accounts, create_miner, precommit_sectors, submit_windowed_post,
+    create_accounts, create_miner, invariant_failure_patterns, precommit_sectors,
+    submit_windowed_post,
 };
 use test_vm::{ExpectInvocation, TEST_VM_RAND_STRING, VM};
 
@@ -238,6 +239,8 @@ fn skip_sector() {
     let network_stats = v.get_network_stats();
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
+
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -305,6 +308,8 @@ fn missed_first_post_deadline() {
     let network_stats = v.get_network_stats();
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
+
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -416,6 +421,8 @@ fn overdue_precommit() {
     assert!(network_stats.total_pledge_collateral.is_zero());
     assert!(network_stats.total_raw_byte_power.is_zero());
     assert!(network_stats.total_quality_adj_power.is_zero());
+
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -493,6 +500,7 @@ fn aggregate_bad_sector_number() {
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -624,6 +632,7 @@ fn aggregate_size_limits() {
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -697,6 +706,7 @@ fn aggregate_bad_sender() {
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -832,4 +842,6 @@ fn aggregate_one_precommit_expires() {
     let balances = v.get_miner_balance(id_addr);
     assert!(balances.initial_pledge.is_positive());
     assert!(balances.pre_commit_deposit.is_positive());
+
+    v.expect_state_invariants(&[invariant_failure_patterns::REWARD_STATE_MISMATCH.to_owned()]);
 }

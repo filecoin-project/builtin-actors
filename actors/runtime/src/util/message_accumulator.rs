@@ -1,4 +1,7 @@
+use itertools::Itertools;
 use std::{cell::RefCell, fmt::Display, rc::Rc};
+
+use regex::Regex;
 
 /// Accumulates a sequence of messages (e.g. validation failures).
 #[derive(Debug, Default)]
@@ -62,6 +65,27 @@ impl MessageAccumulator {
     #[track_caller]
     pub fn assert_empty(&self) {
         assert!(self.is_empty(), "{}", self.messages().join("\n"))
+    }
+
+    /// Asserts the accumulator contains messages matching provided pattern *in the given order*.
+    #[track_caller]
+    pub fn assert_expected(&self, expected_patterns: &[Regex]) {
+        let messages = self.messages();
+        assert!(
+            messages.len() == expected_patterns.len(),
+            "Incorrect number of accumulator messages. Actual: {}.\nExpected: {}",
+            messages.join("\n"),
+            expected_patterns.iter().map(|regex| regex.as_str()).join("\n")
+        );
+
+        messages.iter().zip(expected_patterns).for_each(|(message, pattern)| {
+            assert!(
+                pattern.is_match(message),
+                "message does not match. Actual: {}, expected: {}",
+                message,
+                pattern.as_str()
+            );
+        });
     }
 }
 
