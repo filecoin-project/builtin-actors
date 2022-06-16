@@ -4,7 +4,7 @@
 use std::cmp::{self, max};
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
+use fil_actors_runtime::{EXPECTED_LEADERS_PER_EPOCH, ONE_NANO_FIL};
 use fvm_shared::bigint::num_integer::div_floor;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
@@ -17,6 +17,7 @@ use lazy_static::lazy_static;
 use num_traits::Zero;
 
 use super::{VestSpec, REWARD_VESTING_SPEC};
+use crate::detail::*;
 
 /// Projection period of expected sector block reward for deposit required to pre-commit a sector.
 /// This deposit is lost if the pre-commitment is not timely followed up by a commitment proof.
@@ -24,7 +25,7 @@ const PRE_COMMIT_DEPOSIT_FACTOR: u64 = 20;
 
 /// Projection period of expected sector block rewards for storage pledge required to commit a sector.
 /// This pledge is lost if a sector is terminated before its full committed lifetime.
-const INITIAL_PLEDGE_FACTOR: u64 = 20;
+pub const INITIAL_PLEDGE_FACTOR: u64 = 20;
 
 pub const PRE_COMMIT_DEPOSIT_PROJECTION_PERIOD: i64 =
     (PRE_COMMIT_DEPOSIT_FACTOR as ChainEpoch) * EPOCHS_IN_DAY;
@@ -35,8 +36,8 @@ lazy_static! {
     static ref LOCK_TARGET_FACTOR_NUM: BigInt = BigInt::from(3);
     static ref LOCK_TARGET_FACTOR_DENOM: BigInt = BigInt::from(10);
 
-    static ref TERMINATION_REWARD_FACTOR_NUM: BigInt = BigInt::from(1);
-    static ref TERMINATION_REWARD_FACTOR_DENOM: BigInt = BigInt::from(2);
+    pub static ref TERMINATION_REWARD_FACTOR_NUM: BigInt = BigInt::from(1);
+    pub static ref TERMINATION_REWARD_FACTOR_DENOM: BigInt = BigInt::from(2);
 
     // * go impl has 75/100 but this is just simplified
     static ref LOCKED_REWARD_FACTOR_NUM: BigInt = BigInt::from(3);
@@ -105,25 +106,33 @@ pub fn expected_reward_for_power(
     std::cmp::max(br128 >> PRECISION, Default::default())
 }
 
-// BR but zero values are clamped at 1 attofil
-// Some uses of BR (PCD, IP) require a strictly positive value for BR derived values so
-// accounting variables can be used as succinct indicators of miner activity.
-fn expected_reward_for_power_clamped_at_atto_fil(
-    reward_estimate: &FilterEstimate,
-    network_qa_power_estimate: &FilterEstimate,
-    qa_sector_power: &StoragePower,
-    projection_duration: ChainEpoch,
-) -> TokenAmount {
-    let br = expected_reward_for_power(
-        reward_estimate,
-        network_qa_power_estimate,
-        qa_sector_power,
-        projection_duration,
-    );
-    if br.le(&TokenAmount::from(0)) {
-        1.into()
-    } else {
-        br
+pub mod detail {
+    use super::*;
+
+    lazy_static! {
+        pub static ref BATCH_BALANCER: BigInt = BigInt::from(ONE_NANO_FIL) * BigInt::from(5);
+    }
+
+    // BR but zero values are clamped at 1 attofil
+    // Some uses of BR (PCD, IP) require a strictly positive value for BR derived values so
+    // accounting variables can be used as succinct indicators of miner activity.
+    pub fn expected_reward_for_power_clamped_at_atto_fil(
+        reward_estimate: &FilterEstimate,
+        network_qa_power_estimate: &FilterEstimate,
+        qa_sector_power: &StoragePower,
+        projection_duration: ChainEpoch,
+    ) -> TokenAmount {
+        let br = expected_reward_for_power(
+            reward_estimate,
+            network_qa_power_estimate,
+            qa_sector_power,
+            projection_duration,
+        );
+        if br.le(&TokenAmount::from(0)) {
+            1.into()
+        } else {
+            br
+        }
     }
 }
 
@@ -286,9 +295,9 @@ pub fn locked_reward_from_reward(reward: TokenAmount) -> (TokenAmount, &'static 
 
 lazy_static! {
     static ref ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE: BigInt = BigInt::from(49299973);
-    static ref ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE: BigInt = BigInt::from(16433324);    static ref BATCH_DISCOUNT_NUM: BigInt = BigInt::from(1);
+    static ref ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE: BigInt = BigInt::from(16433324);
+    static ref BATCH_DISCOUNT_NUM: BigInt = BigInt::from(1);
     static ref BATCH_DISCOUNT_DENOM: BigInt = BigInt::from(20);
-    static ref BATCH_BALANCER: BigInt = BigInt::from(1_000_000_000) * BigInt::from(5); // 5 * 1 nanoFIL
 }
 
 pub fn aggregate_prove_commit_network_fee(

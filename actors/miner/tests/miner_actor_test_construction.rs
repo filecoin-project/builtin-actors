@@ -121,7 +121,7 @@ fn simple_construction() {
 
     assert!(state.early_terminations.is_empty());
 
-    util::check_state_invariants(&env.rt);
+    util::check_state_invariants_from_mock_runtime(&env.rt);
 }
 
 #[test]

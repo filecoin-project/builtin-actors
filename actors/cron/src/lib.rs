@@ -15,6 +15,7 @@ use num_traits::FromPrimitive;
 pub use self::state::{Entry, State};
 
 mod state;
+pub mod testing;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);

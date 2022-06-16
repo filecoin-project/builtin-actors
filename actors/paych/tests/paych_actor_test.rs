@@ -7,10 +7,12 @@ use std::collections::HashMap;
 use anyhow::anyhow;
 use cid::Cid;
 use derive_builder::Builder;
+use fil_actor_paych::testing::check_state_invariants;
 use fil_actor_paych::{
     Actor as PaychActor, ConstructorParams, LaneState, Merge, Method, ModVerifyParams,
     SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE, SETTLE_DELAY,
 };
+use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_amt::Amt;
@@ -59,6 +61,11 @@ fn get_lane_state(rt: &MockRuntime, cid: &Cid, lane: u64) -> LaneState {
     arr.get(lane).unwrap().unwrap().clone()
 }
 
+fn check_state(rt: &MockRuntime) {
+    let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), &rt.get_balance());
+    acc.assert_empty();
+}
+
 mod paych_constructor {
     use fvm_shared::METHOD_CONSTRUCTOR;
     use fvm_shared::METHOD_SEND;
@@ -92,6 +99,7 @@ mod paych_constructor {
         let mut rt = construct_runtime();
         rt.actor_code_cids.insert(caller_addr, *ACCOUNT_ACTOR_CODE_ID);
         construct_and_verify(&mut rt, Address::new_id(TEST_PAYER_ADDR), caller_addr);
+        check_state(&rt);
     }
 
     #[test]
@@ -125,6 +133,7 @@ mod paych_constructor {
         rt.id_addresses.insert(payee_non_id, payee_addr);
 
         construct_and_verify(&mut rt, payer_non_id, payee_non_id);
+        check_state(&rt);
     }
 
     #[test]
@@ -302,6 +311,7 @@ mod create_lane_tests {
         #[builder(default = "ExitCode::USR_ILLEGAL_ARGUMENT")]
         exp_exit_code: ExitCode,
     }
+
     impl TestCase {
         pub fn builder() -> TestCaseBuilder {
             TestCaseBuilder::default()
@@ -389,13 +399,6 @@ mod create_lane_tests {
                 .verify_sig(false)
                 .build()
                 .unwrap(),
-            // TODO this should fail with byte array max from cbor gen (pre image serialization)
-            // TestCase::builder()
-            //     .desc("Fails if signing fails".to_string())
-            //     .sig(sig.clone())
-            //     .secret_preimage(vec![0; 2 << 21])
-            //     .build()
-            //     .unwrap(),
         ];
 
         for test_case in test_cases {
@@ -462,6 +465,7 @@ mod create_lane_tests {
                 let ls = l_states.get(sv.lane).unwrap().unwrap();
                 assert_eq!(sv.amount, ls.redeemed);
                 assert_eq!(sv.nonce, ls.nonce);
+                check_state(&rt);
             } else {
                 expect_abort(
                     &mut rt,
@@ -558,6 +562,7 @@ mod update_channel_state_redeem {
         assert_eq!(exp_send, state.to_send);
         assert_eq!(sv.amount, ls_updated.redeemed);
         assert_eq!(sv.nonce, ls_updated.nonce);
+        check_state(&rt);
     }
 
     #[test]
@@ -589,6 +594,7 @@ mod update_channel_state_redeem {
         );
 
         rt.verify();
+        check_state(&rt);
     }
 }
 
@@ -775,6 +781,7 @@ mod update_channel_state_extra {
         );
         (rt, sv)
     }
+
     #[test]
     fn extra_call_succeed() {
         let (mut rt, sv) = construct_runtime(ExitCode::OK);
@@ -784,6 +791,7 @@ mod update_channel_state_extra {
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
         );
         rt.verify();
+        check_state(&rt);
     }
 
     #[test]
@@ -796,6 +804,7 @@ mod update_channel_state_extra {
             ExitCode::USR_UNSPECIFIED,
         );
         rt.verify();
+        check_state(&rt);
     }
 }
 
@@ -848,6 +857,7 @@ fn update_channel_settling() {
         assert_eq!(tc.exp_settling_at, new_state.settling_at);
         assert_eq!(tc.exp_min_settle_height, new_state.min_settle_height);
         ucp.sv.nonce += 1;
+        check_state(&rt);
     }
 }
 
@@ -872,6 +882,7 @@ mod secret_preimage {
         call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(ucp).unwrap());
 
         rt.verify();
+        check_state(&rt);
     }
 
     #[test]
@@ -900,6 +911,7 @@ mod secret_preimage {
         );
 
         rt.verify();
+        check_state(&rt);
     }
 }
 
@@ -907,6 +919,7 @@ mod actor_settle {
     use super::*;
 
     const EP: i64 = 10;
+
     #[test]
     fn adjust_settling_at() {
         let (mut rt, _sv) = require_create_channel_with_lanes(1);
@@ -921,6 +934,7 @@ mod actor_settle {
         state = rt.get_state();
         assert_eq!(state.settling_at, exp_settling_at);
         assert_eq!(state.min_settle_height, 0);
+        check_state(&rt);
     }
 
     #[test]
@@ -970,6 +984,7 @@ mod actor_settle {
 
         state = rt.get_state();
         assert_eq!(state.settling_at, ucp.sv.min_settle_height);
+        check_state(&rt);
     }
 
     #[test]
@@ -1041,6 +1056,7 @@ mod actor_collect {
         rt.expect_delete_actor(st.from);
         let res = call(&mut rt, Method::Collect as u64, &Default::default());
         assert_eq!(res, RawBytes::default());
+        check_state(&rt);
     }
 
     #[test]
@@ -1099,6 +1115,7 @@ mod actor_collect {
                 &RawBytes::default(),
                 tc.exp_collect_exit,
             );
+            check_state(&rt);
         }
     }
 }
@@ -1210,6 +1227,7 @@ fn verify_state(rt: &MockRuntime, exp_lanes: Option<u64>, expected_state: PState
     } else {
         assert_lane_states_length(rt, &state.lane_states, 0);
     }
+    check_state(rt);
 }
 
 fn assert_lane_states_length(rt: &MockRuntime, cid: &Cid, l: u64) {
