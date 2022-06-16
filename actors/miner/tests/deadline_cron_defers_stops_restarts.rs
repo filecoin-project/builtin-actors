@@ -28,7 +28,7 @@ fn cron_enrolls_on_precommit_prove_commits_and_continues_enrolling() {
     for _ in 0..499 {
         h.advance_and_submit_posts(&mut rt, &sectors);
     }
-    check_state_invariants(&rt);
+    h.check_state(&rt);
     let st = h.get_state(&rt);
     assert!(st.deadline_cron_active);
 }

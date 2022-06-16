@@ -709,16 +709,6 @@ fn test_sector(
     }
 }
 
-fn require_no_expiration_groups_before(
-    epoch: ChainEpoch,
-    queue: &mut ExpirationQueue<'_, MemoryBlockstore>,
-) {
-    queue.amt.flush().unwrap();
-
-    let set = queue.pop_until(epoch - 1).unwrap();
-    assert!(set.is_empty());
-}
-
 fn empty_expiration_queue_with_quantizing(
     rt: &MockRuntime,
     quant: QuantSpec,

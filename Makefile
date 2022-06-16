@@ -12,6 +12,7 @@ ORDERED_PACKAGES:=fil_actors_runtime \
                   fil_actor_reward \
                   fil_actor_system \
                   fil_actor_verifreg \
+                  fil_builtin_actors_state \
                   fil_builtin_actors_bundle
 
 # How much to "bump" the version by on release.

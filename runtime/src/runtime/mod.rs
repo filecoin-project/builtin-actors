@@ -32,7 +32,7 @@ pub mod fvm;
 #[cfg(feature = "fil-actor")]
 mod actor_blockstore;
 
-mod policy;
+pub mod policy;
 mod randomness;
 
 /// Runtime is the VM's internal runtime object.
@@ -89,23 +89,20 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     ) -> Result<Randomness, ActorError>;
 
     /// Initializes the state object.
-    /// This is only valid in a constructor function and when the state has not yet been initialized.
+    /// This is only valid when the state has not yet been initialized.
+    /// NOTE: we should also limit this to being invoked during the constructor method
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError>;
 
     /// Loads a readonly copy of the state of the receiver into the argument.
-    ///
-    /// Any modification to the state is illegal and will result in an abort.
     fn state<C: Cbor>(&self) -> Result<C, ActorError>;
 
-    /// Loads a mutable version of the state into the `obj` argument and protects
-    /// the execution from side effects (including message send).
+    /// Loads a mutable copy of the state of the receiver, passes it to `f`,
+    /// and after `f` completes puts the state object back to the store and sets it as
+    /// the receiver's state root.
     ///
-    /// The second argument is a function which allows the caller to mutate the state.
-    /// The return value from that function will be returned from the call to Transaction().
+    /// During the call to `f`, execution is protected from side-effects, (including message send).
     ///
-    /// If the state is modified after this function returns, execution will abort.
-    ///
-    /// The gas cost of this method is that of a Store.Put of the mutated state object.
+    /// Returns the result of `f`.
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
         C: Cbor,
@@ -117,6 +114,9 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// Sends a message to another actor, returning the exit code and return value envelope.
     /// If the invoked method does not return successfully, its state changes
     /// (and that of any messages it sent in turn) will be rolled back.
+    /// Note that the current return type cannot distinguish between a successful invocation
+    /// that returns an error code, and an error originating from the syscall prior to
+    /// invoking the target actor/method.
     fn send(
         &self,
         to: Address,
