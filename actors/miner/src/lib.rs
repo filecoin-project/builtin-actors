@@ -3,6 +3,7 @@
 
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
+use std::convert::{TryFrom, TryInto};
 use std::iter;
 use std::ops::Neg;
 
@@ -41,6 +42,7 @@ use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use itertools::Itertools;
 use log::{error, info, warn};
 pub use monies::*;
 use num_derive::FromPrimitive;
@@ -114,6 +116,7 @@ pub enum Method {
     PreCommitSectorBatch = 25,
     ProveCommitAggregate = 26,
     ProveReplicaUpdates = 27,
+    PreCommitSectorBatch2 = 28,
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -709,8 +712,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get precommits")
             })?;
 
-        // compute data commitments and validate each precommit
-        let mut compute_data_commitments_inputs = Vec::with_capacity(precommits.len());
+        // validate each precommit
         let mut precommits_to_confirm = Vec::new();
         for (i, precommit) in precommits.iter().enumerate() {
             let msd = max_prove_commit_duration(rt.policy(), precommit.info.seal_proof)
@@ -744,14 +746,7 @@ impl Actor {
                     ));
                 }
             }
-
-            compute_data_commitments_inputs.push(ext::market::SectorDataSpec {
-                deal_ids: precommit.info.deal_ids.clone(),
-                sector_type: precommit.info.seal_proof,
-            });
         }
-
-        let comm_ds = request_unsealed_sector_cids(rt, &compute_data_commitments_inputs)?;
         let mut svis = Vec::new();
         let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
             *i
@@ -785,12 +780,15 @@ impl Actor {
                 interactive_epoch,
                 &receiver_bytes,
             )?;
+
+            let unsealed_cid = unsealed_cid_from_option(precommit.info.seal_proof, precommit.info.unsealed_cid)?;
+
             let svi = AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
                 randomness: sv_info_randomness,
                 interactive_randomness: sv_info_interactive_randomness,
                 sealed_cid: precommit.info.sealed_cid,
-                unsealed_cid: comm_ds[i],
+                unsealed_cid,
             };
             svis.push(svi);
         }
@@ -1006,6 +1004,7 @@ impl Actor {
             validated_updates.push(UpdateAndSectorInfo { update, sector_info });
 
             sectors_deals.push(ext::market::SectorDeals {
+                sector_type: seal_proof,
                 deal_ids: update.deals.clone(),
                 sector_expiry: expiration,
             });
@@ -1021,7 +1020,7 @@ impl Actor {
 
         // Errors past this point cause the prove_replica_updates call to fail (no more skipping sectors)
 
-        let deal_weights = request_deal_weights(rt, &sectors_deals)?;
+        let deal_weights = request_deal_data(rt, &sectors_deals)?;
         if deal_weights.sectors.len() != validated_updates.len() {
             return Err(actor_error!(
                 illegal_state,
@@ -1031,21 +1030,10 @@ impl Actor {
             ));
         }
 
-        let unsealed_sector_cids = request_unsealed_sector_cids(rt, &sectors_data_spec)?;
-        if unsealed_sector_cids.len() != validated_updates.len() {
-            return Err(actor_error!(
-                illegal_state,
-                "unsealed sector cid request returned {} records, expected {}",
-                unsealed_sector_cids.len(),
-                validated_updates.len()
-            ));
-        }
-
         struct UpdateWithDetails<'a> {
             update: &'a ReplicaUpdate,
             sector_info: &'a SectorOnChainInfo,
-            deal_weight: &'a ext::market::SectorWeights,
-            unsealed_cid: Cid,
+            deal_data: &'a ext::market::SectorDealData,
         }
 
         // Group declarations by deadline
@@ -1060,8 +1048,7 @@ impl Actor {
             decls_by_deadline.entry(dl).or_default().push(UpdateWithDetails {
                 update: with_sector_info.update,
                 sector_info: &with_sector_info.sector_info,
-                deal_weight: &deal_weights.sectors[i],
-                unsealed_cid: unsealed_sector_cids[i],
+                deal_data: &deal_weights.sectors[i],
             });
         }
 
@@ -1116,7 +1103,7 @@ impl Actor {
                             update_proof_type,
                             new_sealed_cid: with_details.update.new_sealed_cid,
                             old_sealed_cid: with_details.sector_info.sealed_cid,
-                            new_unsealed_cid: with_details.unsealed_cid,
+                            new_unsealed_cid: unsealed_cid_from_option(with_details.sector_info.seal_proof, with_details.deal_data.commd)?,
                             proof: with_details.update.replica_proof.clone(),
                         }
                     )
@@ -1139,8 +1126,8 @@ impl Actor {
                     new_sector_info.deal_ids = with_details.update.deals.clone();
                     new_sector_info.activation = rt.curr_epoch();
 
-                    new_sector_info.deal_weight = with_details.deal_weight.deal_weight.clone();
-                    new_sector_info.verified_deal_weight = with_details.deal_weight.verified_deal_weight.clone();
+                    new_sector_info.deal_weight = with_details.deal_data.deal_weight.clone();
+                    new_sector_info.verified_deal_weight = with_details.deal_data.verified_deal_weight.clone();
 
                     // compute initial pledge
                     let duration = with_details.sector_info.expiration - rt.curr_epoch();
@@ -1519,9 +1506,8 @@ impl Actor {
         Ok(())
     }
 
-    /// Pledges to seal and commit a single sector.
-    /// See PreCommitSectorBatch for details.
-    /// This method may be deprecated and removed in the future
+    /// This method is deprecated and will removed in the future.
+    /// Use PreCommitSectorBatch2 instead
     fn pre_commit_sector<BS, RT>(
         rt: &mut RT,
         params: PreCommitSectorParams,
@@ -1534,14 +1520,8 @@ impl Actor {
         Self::pre_commit_sector_batch(rt, batch_params)
     }
 
-    /// Pledges the miner to seal and commit some new sectors.
-    /// The caller specifies sector numbers, sealed sector data CIDs, seal randomness epoch, expiration, and the IDs
-    /// of any storage deals contained in the sector data. The storage deal proposals must be already submitted
-    /// to the storage market actor.
-    /// A pre-commitment may specify an existing committed-capacity sector that the committed sector will replace
-    /// when proven.
-    /// This method calculates the sector's power, locks a pre-commit deposit for the sector, stores information about the
-    /// sector in state and waits for it to be proven or expire.
+    /// This method is deprecated and will removed in the future.
+    /// Use PreCommitSectorBatch2 instead
     fn pre_commit_sector_batch<BS, RT>(
         rt: &mut RT,
         params: PreCommitSectorBatchParams,
@@ -1550,25 +1530,67 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        let sectors = params
+            .sectors
+            .into_iter()
+            .map(|precommit| {
+                if precommit.replace_capacity {
+                    Err(actor_error!(
+                        forbidden,
+                        "cc upgrade through precommit discontinued, use ProveReplicaUpdate"
+                    ))
+                } else {
+                    Ok(precommit.into())
+                }
+            })
+            .collect::<Result<_, _>>()?;
+        Self::pre_commit_sector_batch_inner(rt, sectors)
+    }
+
+    /// Pledges the miner to seal and commit some new sectors.
+    /// The caller specifies sector numbers, sealed sector CIDs, unsealed sector CID, seal randomness epoch, expiration, and the IDs
+    /// of any storage deals contained in the sector data. The storage deal proposals must be already submitted
+    /// to the storage market actor.
+    /// This method calculates the sector's power, locks a pre-commit deposit for the sector, stores information about the
+    /// sector in state and waits for it to be proven or expire.
+    fn pre_commit_sector_batch2<BS, RT>(
+        rt: &mut RT,
+        params: PreCommitSectorBatchParams2,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        Self::pre_commit_sector_batch_inner(rt, params.sectors.into_iter().map_into().collect())
+    }
+
+    fn pre_commit_sector_batch_inner<BS, RT>(
+        rt: &mut RT,
+        sectors: Vec<SectorPreCommitInfoInner>,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
         let curr_epoch = rt.curr_epoch();
         {
             let policy = rt.policy();
-            if params.sectors.is_empty() {
+            if sectors.is_empty() {
                 return Err(actor_error!(illegal_argument, "batch empty"));
-            } else if params.sectors.len() > policy.pre_commit_sector_batch_max_size {
+            } else if sectors.len() > policy.pre_commit_sector_batch_max_size {
                 return Err(actor_error!(
                     illegal_argument,
                     "batch of {} too large, max {}",
-                    params.sectors.len(),
+                    sectors.len(),
                     policy.pre_commit_sector_batch_max_size
                 ));
             }
         }
         // Check per-sector preconditions before opening state transaction or sending other messages.
         let challenge_earliest = curr_epoch - rt.policy().max_pre_commit_randomness_lookback;
-        let mut sectors_deals = Vec::with_capacity(params.sectors.len());
+        let mut sectors_deals = Vec::with_capacity(sectors.len());
         let mut sector_numbers = BitField::new();
-        for precommit in params.sectors.iter() {
+        for precommit in sectors.iter() {
             let set = sector_numbers.get(precommit.sector_number);
             if set {
                 return Err(actor_error!(
@@ -1615,20 +1637,20 @@ impl Actor {
                 ));
             }
 
+            if let CommDState::Set(ref commd) = precommit.unsealed_cid {
+                if !is_unsealed_sector(commd) {
+                    return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
+                }
+            }
+
             // Require sector lifetime meets minimum by assuming activation happens at last epoch permitted for seal proof.
             // This could make sector maximum lifetime validation more lenient if the maximum sector limit isn't hit first.
             let max_activation = curr_epoch
                 + max_prove_commit_duration(rt.policy(), precommit.seal_proof).unwrap_or_default();
             validate_expiration(rt, max_activation, precommit.expiration, precommit.seal_proof)?;
 
-            if precommit.replace_capacity {
-                return Err(actor_error!(
-                    forbidden,
-                    "cc upgrade through precommit discontinued, use ProveReplicaUpdate"
-                ));
-            }
-
             sectors_deals.push(ext::market::SectorDeals {
+                sector_type: precommit.seal_proof,
                 sector_expiry: precommit.expiration,
                 deal_ids: precommit.deal_ids.clone(),
             })
@@ -1636,21 +1658,21 @@ impl Actor {
         // gather information from other actors
         let reward_stats = request_current_epoch_block_reward(rt)?;
         let power_total = request_current_total_power(rt)?;
-        let deal_weights = request_deal_weights(rt, &sectors_deals)?;
-        if deal_weights.sectors.len() != params.sectors.len() {
+        let deal_data_vec = request_deal_data(rt, &sectors_deals)?;
+        if deal_data_vec.sectors.len() != sectors.len() {
             return Err(actor_error!(
                 illegal_state,
                 "deal weight request returned {} records, expected {}",
-                deal_weights.sectors.len(),
-                params.sectors.len()
+                deal_data_vec.sectors.len(),
+                sectors.len()
             ));
         }
         let mut fee_to_burn = TokenAmount::from(0_u32);
         let mut needs_cron = false;
         rt.transaction(|state: &mut State, rt| {
             // Aggregate fee applies only when batching.
-            if params.sectors.len() > 1 {
-                let aggregate_fee = aggregate_pre_commit_network_fee(params.sectors.len() as i64, &rt.base_fee());
+            if sectors.len() > 1 {
+                let aggregate_fee = aggregate_pre_commit_network_fee(sectors.len() as i64, &rt.base_fee());
                 // AggregateFee applied to fee debt to consolidate burn with outstanding debts
                 state.apply_penalty(&aggregate_fee)
                     .map_err(|e| {
@@ -1687,12 +1709,15 @@ impl Actor {
                 return Err(actor_error!(forbidden, "pre-commit not allowed during active consensus fault"));
             }
 
-            let mut chain_infos = Vec::with_capacity(params.sectors.len());
+            let mut chain_infos = Vec::with_capacity(sectors.len());
             let mut total_deposit_required = BigInt::zero();
-            let mut clean_up_events = Vec::with_capacity(params.sectors.len());
+            let mut clean_up_events = Vec::with_capacity(sectors.len());
             let deal_count_max = sector_deals_max(rt.policy(), info.sector_size);
 
-            for (i, precommit) in params.sectors.iter().enumerate() {
+            let sector_weight_for_deposit = qa_power_max(info.sector_size);
+            let deposit_req = pre_commit_deposit_for_power(&reward_stats.this_epoch_reward_smoothed, &power_total.quality_adj_power_smoothed, &sector_weight_for_deposit);
+
+            for (i, precommit) in sectors.iter().enumerate() {
                 // Sector must have the same Window PoSt proof type as the miner's recorded seal type.
                 let sector_wpost_proof = precommit.seal_proof
                     .registered_window_post_proof()
@@ -1710,26 +1735,38 @@ impl Actor {
                 }
 
                 // Ensure total deal space does not exceed sector size.
-                let deal_weight = &deal_weights.sectors[i];
-                if deal_weight.deal_space > info.sector_size as u64 {
-                    return Err(actor_error!(illegal_argument, "deals too large to fit in sector {} > {}", deal_weight.deal_space, info.sector_size));
+                let deal_data = &deal_data_vec.sectors[i];
+                if deal_data.deal_space > info.sector_size as u64 {
+                    return Err(actor_error!(illegal_argument, "deals too large to fit in sector {} > {}", deal_data.deal_space, info.sector_size));
                 }
 
-                // Estimate the sector weight using the current epoch as an estimate for activation,
-                // and compute the pre-commit deposit using that weight.
-                // The sector's power will be recalculated when it's proven.
-                let duration = precommit.expiration - curr_epoch;
-                let sector_weight = qa_power_for_weight(info.sector_size, duration, &deal_weight.deal_weight, &deal_weight.verified_deal_weight);
-                let deposit_req = pre_commit_deposit_for_power(&reward_stats.this_epoch_reward_smoothed, &power_total.quality_adj_power_smoothed, &sector_weight);
+                if let CommDState::Set(ref in_commd) = precommit.unsealed_cid {
+                    if Some(in_commd) != deal_data.commd.as_ref() {
+                        return Err(actor_error!(illegal_argument, "computed {} and passed {} CommDs not equal",
+                            deal_data.commd.map(|c| c.to_string()).unwrap_or_else(|| "None".to_string()), in_commd));
+                    }
+                }
+
+                let commd = match precommit.unsealed_cid.clone() {
+                    // if the CommD is unknown, use CommD computed by the market
+                    CommDState::Unknown => deal_data.commd.into(),
+                    x => x,
+                };
+
+                let on_chain_precommit = SectorPreCommitInfoInner {
+                    unsealed_cid: commd,
+                    ..precommit.clone()
+                };
+
                 // Build on-chain record.
-                chain_infos.push(SectorPreCommitOnChainInfo {
-                    info: precommit.clone(),
+                chain_infos.push(SectorPreCommitOnChainInfo2 {
+                    info: on_chain_precommit.try_into()?,
                     pre_commit_deposit: deposit_req.clone(),
                     pre_commit_epoch: curr_epoch,
-                    deal_weight: deal_weight.deal_weight.clone(),
-                    verified_deal_weight: deal_weight.verified_deal_weight.clone(),
+                    deal_weight: deal_data.deal_weight.clone(),
+                    verified_deal_weight: deal_data.verified_deal_weight.clone(),
                 });
-                total_deposit_required += deposit_req;
+                total_deposit_required += &deposit_req;
 
                 // Calculate pre-commit cleanup
                 let msd = max_prove_commit_duration(rt.policy(), precommit.seal_proof)
@@ -1860,6 +1897,7 @@ impl Actor {
                 sector_num: precommit.info.sector_number,
                 registered_seal_proof: precommit.info.seal_proof,
             },
+            precommit.info.unsealed_cid,
         )?;
 
         rt.send(
@@ -3229,6 +3267,90 @@ impl Actor {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum CommDState {
+    Zero,
+    Set(Cid),
+    Unknown,
+}
+
+impl From<Option<Cid>> for CommDState {
+    fn from(cid: Option<Cid>) -> Self {
+        match cid {
+            Some(cid) => CommDState::Set(cid),
+            None => CommDState::Zero,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct SectorPreCommitInfoInner {
+    pub seal_proof: RegisteredSealProof,
+    pub sector_number: SectorNumber,
+    /// CommR
+    pub sealed_cid: Cid,
+    pub seal_rand_epoch: ChainEpoch,
+    pub deal_ids: Vec<DealID>,
+    pub expiration: ChainEpoch,
+    /// CommD
+    pub unsealed_cid: CommDState,
+}
+
+impl TryInto<SectorPreCommitInfo2> for SectorPreCommitInfoInner {
+    type Error = ActorError;
+
+    fn try_into(self) -> Result<SectorPreCommitInfo2, Self::Error> {
+        let commd = match self.unsealed_cid {
+            CommDState::Zero => None,
+            CommDState::Set(c) => Some(c),
+            CommDState::Unknown => {
+                return Err(actor_error!(assertion_failed, "Unknown CommD during conversion"))
+            }
+        };
+
+        Ok(SectorPreCommitInfo2 {
+            seal_proof: self.seal_proof,
+            sector_number: self.sector_number,
+            sealed_cid: self.sealed_cid,
+            seal_rand_epoch: self.seal_rand_epoch,
+            deal_ids: self.deal_ids,
+            expiration: self.expiration,
+
+            unsealed_cid: commd,
+        })
+    }
+}
+
+impl From<SectorPreCommitInfo2> for SectorPreCommitInfoInner {
+    fn from(spci: SectorPreCommitInfo2) -> Self {
+        SectorPreCommitInfoInner {
+            seal_proof: spci.seal_proof,
+            sector_number: spci.sector_number,
+            sealed_cid: spci.sealed_cid,
+            seal_rand_epoch: spci.seal_rand_epoch,
+            deal_ids: spci.deal_ids,
+            expiration: spci.expiration,
+
+            unsealed_cid: spci.unsealed_cid.into(),
+        }
+    }
+}
+
+impl From<SectorPreCommitInfo> for SectorPreCommitInfoInner {
+    fn from(spci: SectorPreCommitInfo) -> Self {
+        SectorPreCommitInfoInner {
+            seal_proof: spci.seal_proof,
+            sector_number: spci.sector_number,
+            sealed_cid: spci.sealed_cid,
+            seal_rand_epoch: spci.seal_rand_epoch,
+            deal_ids: spci.deal_ids,
+            expiration: spci.expiration,
+
+            unsealed_cid: CommDState::Unknown,
+        }
+    }
+}
+
 // TODO: We're using the current power+epoch reward. Technically, we
 // should use the power/reward at the time of termination.
 // https://github.com/filecoin-project/specs-actors/v6/pull/648
@@ -3702,6 +3824,7 @@ where
 fn get_verify_info<BS, RT>(
     rt: &mut RT,
     params: SealVerifyParams,
+    unsealed_cid: Option<Cid>,
 ) -> Result<SealVerifyInfo, ActorError>
 where
     BS: Blockstore,
@@ -3710,14 +3833,6 @@ where
     if rt.curr_epoch() <= params.interactive_epoch {
         return Err(actor_error!(forbidden, "too early to prove sector"));
     }
-
-    let commds = request_unsealed_sector_cids(
-        rt,
-        &[ext::market::SectorDataSpec {
-            deal_ids: params.deal_ids.clone(),
-            sector_type: params.registered_seal_proof,
-        }],
-    )?;
 
     let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
         *i
@@ -3740,6 +3855,8 @@ where
         &entropy,
     )?;
 
+    let commd = unsealed_cid_from_option(params.registered_seal_proof, unsealed_cid)?;
+
     Ok(SealVerifyInfo {
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
@@ -3748,12 +3865,13 @@ where
         proof: params.proof,
         randomness,
         sealed_cid: params.sealed_cid,
-        unsealed_cid: commds[0],
+        unsealed_cid: commd,
     })
 }
 
 /// Requests the storage market actor compute the unsealed sector CID from a sector's deals.
-fn request_unsealed_sector_cids<BS, RT>(
+/// TODO REMOVE
+/*fn request_unsealed_sector_cids<BS, RT>(
     rt: &mut RT,
     data_commitment_inputs: &[ext::market::SectorDataSpec],
 ) -> Result<Vec<Cid>, ActorError>
@@ -3782,9 +3900,9 @@ where
     }
 
     Ok(ret.commds)
-}
+}*/
 
-fn request_deal_weights<BS, RT>(
+fn request_deal_data<BS, RT>(
     rt: &mut RT,
     sectors: &[ext::market::SectorDeals],
 ) -> Result<ext::market::VerifyDealsForActivationReturn, ActorError>
@@ -3798,18 +3916,11 @@ where
         deal_count += sector.deal_ids.len();
     }
     if deal_count == 0 {
-        let mut empty_result = ext::market::VerifyDealsForActivationReturn {
-            sectors: Vec::with_capacity(sectors.len()),
-        };
-        for _ in 0..sectors.len() {
-            empty_result.sectors.push(ext::market::SectorWeights {
-                deal_space: 0,
-                deal_weight: 0.into(),
-                verified_deal_weight: 0.into(),
-            });
-        }
-        return Ok(empty_result);
+        return Ok(ext::market::VerifyDealsForActivationReturn {
+            sectors: vec![Default::default(); sectors.len()],
+        });
     }
+
     let serialized = rt.send(
         *STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
@@ -3818,6 +3929,66 @@ where
     )?;
 
     Ok(serialized.deserialize()?)
+}
+
+fn zero_commd(seal_proof: RegisteredSealProof) -> Result<Cid, ActorError> {
+    match seal_proof {
+        RegisteredSealProof::StackedDRG2KiBV1P1 => Ok(Cid::try_from(
+            [
+                1, 129, 226, 3, 146, 32, 32, 252, 126, 146, 130, 150, 229, 22, 250, 173, 233, 134,
+                178, 143, 146, 212, 74, 79, 36, 185, 53, 72, 82, 35, 55, 106, 121, 144, 39, 188,
+                24, 248, 51,
+            ]
+            .as_slice(),
+        )
+        .unwrap()),
+        RegisteredSealProof::StackedDRG512MiBV1P1 => Ok(Cid::try_from(
+            [
+                1, 129, 226, 3, 146, 32, 32, 57, 86, 14, 123, 19, 169, 59, 7, 162, 67, 253, 39, 32,
+                255, 167, 203, 62, 29, 46, 80, 90, 179, 98, 158, 121, 244, 99, 19, 81, 44, 218, 6,
+            ]
+            .as_slice(),
+        )
+        .unwrap()),
+        RegisteredSealProof::StackedDRG8MiBV1P1 => Ok(Cid::try_from(
+            [
+                1, 129, 226, 3, 146, 32, 32, 101, 242, 158, 93, 152, 210, 70, 195, 139, 56, 140,
+                252, 6, 219, 31, 107, 2, 19, 3, 197, 162, 137, 0, 11, 220, 232, 50, 169, 195, 236,
+                66, 28,
+            ]
+            .as_slice(),
+        )
+        .unwrap()),
+        RegisteredSealProof::StackedDRG32GiBV1P1 => Ok(Cid::try_from(
+            [
+                1, 129, 226, 3, 146, 32, 32, 7, 126, 95, 222, 53, 197, 10, 147, 3, 165, 80, 9, 227,
+                73, 138, 78, 190, 223, 243, 156, 66, 183, 16, 183, 48, 216, 236, 122, 199, 175,
+                166, 62,
+            ]
+            .as_slice(),
+        )
+        .unwrap()),
+        RegisteredSealProof::StackedDRG64GiBV1P1 => Ok(Cid::try_from(
+            [
+                1, 129, 226, 3, 146, 32, 32, 230, 64, 5, 166, 191, 227, 119, 121, 83, 184, 173,
+                110, 249, 63, 15, 202, 16, 73, 178, 4, 22, 84, 242, 164, 17, 247, 112, 39, 153,
+                206, 206, 2,
+            ]
+            .as_slice(),
+        )
+        .unwrap()),
+        _ => Err(actor_error!(illegal_argument, "unknown SealProof")),
+    }
+}
+
+fn unsealed_cid_from_option(
+    seal_proof: RegisteredSealProof,
+    commd: Option<Cid>,
+) -> Result<Cid, ActorError> {
+    Ok(match commd {
+        Some(c) => c,
+        None => zero_commd(seal_proof)?,
+    })
 }
 
 /// Requests the current epoch target block reward from the reward actor.
@@ -4223,7 +4394,7 @@ fn check_peer_info(
 
 fn confirm_sector_proofs_valid_internal<BS, RT>(
     rt: &mut RT,
-    pre_commits: Vec<SectorPreCommitOnChainInfo>,
+    pre_commits: Vec<SectorPreCommitOnChainInfo2>,
     this_epoch_baseline_power: &BigInt,
     this_epoch_reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
@@ -4239,7 +4410,7 @@ where
     // a constant number of them.
     let activation = rt.curr_epoch();
     // Pre-commits for new sectors.
-    let mut valid_pre_commits = Vec::<SectorPreCommitOnChainInfo>::new();
+    let mut valid_pre_commits = Vec::default();
 
     for pre_commit in pre_commits {
         if !pre_commit.info.deal_ids.is_empty() {
@@ -4536,6 +4707,10 @@ impl ActorCode for Actor {
                 let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
+            Some(Method::PreCommitSectorBatch2) => {
+                Self::pre_commit_sector_batch2(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
         }
     }
@@ -4543,3 +4718,9 @@ impl ActorCode for Actor {
 
 #[cfg(test)]
 mod internal_tests;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test() {}
+}

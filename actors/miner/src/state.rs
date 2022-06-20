@@ -71,7 +71,7 @@ pub struct State {
     pub initial_pledge: TokenAmount,
 
     /// Sectors that have been pre-committed but not yet proven.
-    /// Map, HAMT<SectorNumber, SectorPreCommitOnChainInfo>
+    /// Map, HAMT<SectorNumber, SectorPreCommitOnChainInfo2>
     pub pre_committed_sectors: Cid,
 
     // PreCommittedSectorsCleanUp maintains the state required to cleanup expired PreCommittedSectors.
@@ -291,7 +291,7 @@ impl State {
     pub fn put_precommitted_sectors<BS: Blockstore>(
         &mut self,
         store: &BS,
-        precommits: Vec<SectorPreCommitOnChainInfo>,
+        precommits: Vec<SectorPreCommitOnChainInfo2>,
     ) -> anyhow::Result<()> {
         let mut precommitted =
             make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
@@ -315,7 +315,7 @@ impl State {
         &self,
         store: &BS,
         sector_num: SectorNumber,
-    ) -> Result<Option<SectorPreCommitOnChainInfo>, HamtError> {
+    ) -> Result<Option<SectorPreCommitOnChainInfo2>, HamtError> {
         let precommitted =
             make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
         Ok(precommitted.get(&u64_key(sector_num))?.cloned())
@@ -326,8 +326,8 @@ impl State {
         &self,
         store: &BS,
         sector_numbers: &[SectorNumber],
-    ) -> anyhow::Result<Vec<SectorPreCommitOnChainInfo>> {
-        let precommitted = make_map_with_root_and_bitwidth::<_, SectorPreCommitOnChainInfo>(
+    ) -> anyhow::Result<Vec<SectorPreCommitOnChainInfo2>> {
+        let precommitted = make_map_with_root_and_bitwidth::<_, SectorPreCommitOnChainInfo2>(
             &self.pre_committed_sectors,
             store,
             HAMT_BIT_WIDTH,
@@ -353,7 +353,7 @@ impl State {
         store: &BS,
         sector_nums: &[SectorNumber],
     ) -> Result<(), HamtError> {
-        let mut precommitted = make_map_with_root_and_bitwidth::<_, SectorPreCommitOnChainInfo>(
+        let mut precommitted = make_map_with_root_and_bitwidth::<_, SectorPreCommitOnChainInfo2>(
             &self.pre_committed_sectors,
             store,
             HAMT_BIT_WIDTH,
@@ -1177,7 +1177,7 @@ impl State {
         &self,
         store: &BS,
         sector_nos: &BitField,
-    ) -> anyhow::Result<Vec<SectorPreCommitOnChainInfo>> {
+    ) -> anyhow::Result<Vec<SectorPreCommitOnChainInfo2>> {
         let mut precommits = Vec::new();
         let precommitted =
             make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
@@ -1187,10 +1187,9 @@ impl State {
                     actor_error!(illegal_argument; "sector number greater than maximum").into()
                 );
             }
-            let info: &SectorPreCommitOnChainInfo =
-                precommitted
-                    .get(&u64_key(sector_no as u64))?
-                    .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
+            let info: &SectorPreCommitOnChainInfo2 = precommitted
+                .get(&u64_key(sector_no as u64))?
+                .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
             precommits.push(info.clone());
         }
         Ok(precommits)

@@ -9,7 +9,10 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{DealWeight, EXPECTED_LEADERS_PER_EPOCH};
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, POSEIDON_BLS12_381_A1_FC1};
+use fvm_shared::commcid::{
+    FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED, POSEIDON_BLS12_381_A1_FC1,
+    SHA2_256_TRUNC254_PADDED,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{
     RegisteredPoStProof, RegisteredSealProof, SectorQuality, SectorSize, StoragePower,
@@ -45,6 +48,14 @@ pub fn is_sealed_sector(c: &Cid) -> bool {
     c.version() == Version::V1
         && c.codec() == FIL_COMMITMENT_SEALED
         && c.hash().code() == POSEIDON_BLS12_381_A1_FC1
+        && c.hash().size() == 32
+}
+
+/// Prefix for unsealed sector CIDs (CommD).
+pub fn is_unsealed_sector(c: &Cid) -> bool {
+    c.version() == Version::V1
+        && c.codec() == FIL_COMMITMENT_UNSEALED
+        && c.hash().code() == SHA2_256_TRUNC254_PADDED
         && c.hash().size() == 32
 }
 
@@ -119,6 +130,11 @@ pub fn quality_for_weight(
         .div_floor(&QUALITY_BASE_MULTIPLIER)
 }
 
+pub fn qa_power_max(size: SectorSize) -> StoragePower {
+    (BigInt::from(size as u64) * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER)
+        .div_floor(&QUALITY_BASE_MULTIPLIER)
+}
+
 /// Returns the power for a sector size and weight.
 pub fn qa_power_for_weight(
     size: SectorSize,
@@ -140,11 +156,15 @@ pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> Stor
 pub fn sector_deals_max(policy: &Policy, size: SectorSize) -> u64 {
     cmp::max(256, size as u64 / policy.deal_limit_denominator)
 }
+
 /// Specification for a linear vesting schedule.
 pub struct VestSpec {
-    pub initial_delay: ChainEpoch, // Delay before any amount starts vesting.
-    pub vest_period: ChainEpoch, // Period over which the total should vest, after the initial delay.
-    pub step_duration: ChainEpoch, // Duration between successive incremental vests (independent of vesting period).
+    pub initial_delay: ChainEpoch,
+    // Delay before any amount starts vesting.
+    pub vest_period: ChainEpoch,
+    // Period over which the total should vest, after the initial delay.
+    pub step_duration: ChainEpoch,
+    // Duration between successive incremental vests (independent of vesting period).
     pub quantization: ChainEpoch, // Maximum precision of vesting table (limits cardinality of table).
 }
 

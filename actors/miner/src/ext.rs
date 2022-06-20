@@ -22,17 +22,9 @@ pub mod market {
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
     pub const COMPUTE_DATA_COMMITMENT_METHOD: u64 = 8;
 
-    #[derive(Serialize_tuple, Deserialize_tuple, Default)]
-    pub struct SectorWeights {
-        pub deal_space: u64,
-        #[serde(with = "bigint_ser")]
-        pub deal_weight: DealWeight,
-        #[serde(with = "bigint_ser")]
-        pub verified_deal_weight: DealWeight,
-    }
-
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct SectorDeals {
+        pub sector_type: RegisteredSealProof,
         pub sector_expiry: ChainEpoch,
         pub deal_ids: Vec<DealID>,
     }
@@ -76,9 +68,19 @@ pub mod market {
         pub sectors: &'a [SectorDeals],
     }
 
-    #[derive(Serialize_tuple, Deserialize_tuple, Default)]
+    #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
+    pub struct SectorDealData {
+        pub deal_space: u64,
+        #[serde(with = "bigint_ser")]
+        pub deal_weight: DealWeight,
+        #[serde(with = "bigint_ser")]
+        pub verified_deal_weight: DealWeight,
+        pub commd: Option<Cid>,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
     pub struct VerifyDealsForActivationReturn {
-        pub sectors: Vec<SectorWeights>,
+        pub sectors: Vec<SectorDealData>,
     }
 }
 

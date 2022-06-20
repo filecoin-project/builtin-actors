@@ -484,7 +484,7 @@ impl Actor {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
         })?;
 
-        let mut weights = Vec::with_capacity(params.sectors.len());
+        let mut sectors_data = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
             let (deal_weight, verified_deal_weight, deal_space) = validate_and_compute_deal_weight(
                 &proposals,
@@ -499,10 +499,43 @@ impl Actor {
                     "failed to validate deal proposals for activation",
                 )
             })?;
-            weights.push(SectorWeights { deal_space, deal_weight, verified_deal_weight });
+
+            let commd = if sector.deal_ids.is_empty() {
+                None
+            } else {
+                let mut pieces: Vec<PieceInfo> = Vec::with_capacity(sector.deal_ids.len());
+                for deal_id in &sector.deal_ids {
+                    let deal = proposals
+                        .get(*deal_id)
+                        .map_err(|e| {
+                            e.downcast_default(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                format!("failed to get deal_id ({})", deal_id),
+                            )
+                        })?
+                        .ok_or_else(|| {
+                            actor_error!(not_found, "proposal doesn't exist ({})", deal_id)
+                        })?;
+                    pieces.push(PieceInfo { cid: deal.piece_cid, size: deal.piece_size });
+                }
+
+                Some(rt.compute_unsealed_sector_cid(sector.sector_type, &pieces).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_ARGUMENT,
+                        "failed to compute unsealed sector CID",
+                    )
+                })?)
+            };
+
+            sectors_data.push(SectorDealData {
+                deal_space,
+                deal_weight,
+                verified_deal_weight,
+                commd,
+            });
         }
 
-        Ok(VerifyDealsForActivationReturn { sectors: weights })
+        Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
     }
 
     /// Verify that a given set of storage deals is valid for a sector currently being ProveCommitted,
