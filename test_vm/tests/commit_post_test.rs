@@ -189,7 +189,7 @@ fn submit_post_succeeds() {
         miner_info.miner_id,
         sector_info.deadline_info,
         sector_info.partition_index,
-        sector_power.clone(),
+        Some(sector_power.clone()),
     );
     let balances = v.get_miner_balance(miner_info.miner_id);
     assert!(balances.initial_pledge.is_positive());

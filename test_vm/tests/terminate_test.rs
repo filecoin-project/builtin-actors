@@ -207,7 +207,7 @@ fn terminate_sectors() {
     let st = v.get_state::<MinerState>(id_addr).unwrap();
     let sector = st.get_sector(v.store, sector_number).unwrap().unwrap();
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
-    submit_windowed_post(&v, worker, id_addr, dline_info, p_idx, sector_power);
+    submit_windowed_post(&v, worker, id_addr, dline_info, p_idx, Some(sector_power));
     let v = v.with_epoch(dline_info.last());
 
     v.apply_message(
