@@ -1,14 +1,14 @@
-use fil_actor_cron::Method as MethodsCron;
+use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::{
-    DealMetaArray, Method as MethodsMarket, State as MarketState, WithdrawBalanceParams,
+    DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
 };
 use fil_actor_miner::{
-    power_for_sector, Method as MethodsMiner, PreCommitSectorParams, ProveCommitSectorParams,
+    power_for_sector, Method as MinerMethod, PreCommitSectorParams, ProveCommitSectorParams,
     State as MinerState, TerminateSectorsParams, TerminationDeclaration,
 };
-use fil_actor_power::{Method as MethodsPower, State as PowerState};
-use fil_actor_reward::Method as MethodsReward;
-use fil_actor_verifreg::{Method as MethodsVerifreg, VerifierParams};
+use fil_actor_power::{Method as PowerMethod, State as PowerState};
+use fil_actor_reward::Method as RewardMethod;
+use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
@@ -66,7 +66,7 @@ fn terminate_sectors() {
         verifier,
         *VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
-        MethodsVerifreg::AddVerifiedClient as u64,
+        VerifregMethod::AddVerifiedClient as u64,
         add_client_params,
     );
 
@@ -77,7 +77,7 @@ fn terminate_sectors() {
         unverified_client,
         *STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         unverified_client,
     );
     apply_ok(
@@ -85,7 +85,7 @@ fn terminate_sectors() {
         verified_client,
         *STORAGE_MARKET_ACTOR_ADDR,
         collateral,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         verified_client,
     );
 
@@ -95,7 +95,7 @@ fn terminate_sectors() {
         worker,
         *STORAGE_MARKET_ACTOR_ADDR,
         miner_collateral.clone(),
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         id_addr,
     );
 
@@ -150,7 +150,7 @@ fn terminate_sectors() {
             *SYSTEM_ACTOR_ADDR,
             *CRON_ACTOR_ADDR,
             TokenAmount::zero(),
-            MethodsCron::EpochTick as u64,
+            CronMethod::EpochTick as u64,
             RawBytes::default(),
         )
         .unwrap();
@@ -168,7 +168,7 @@ fn terminate_sectors() {
         worker,
         robust_addr,
         TokenAmount::zero(),
-        MethodsMiner::PreCommitSector as u64,
+        MinerMethod::PreCommitSector as u64,
         PreCommitSectorParams {
             seal_proof,
             sector_number,
@@ -189,7 +189,7 @@ fn terminate_sectors() {
         worker,
         robust_addr,
         TokenAmount::zero(),
-        MethodsMiner::ProveCommitSector as u64,
+        MinerMethod::ProveCommitSector as u64,
         prove_params,
     );
     let res = v
@@ -197,7 +197,7 @@ fn terminate_sectors() {
             *SYSTEM_ACTOR_ADDR,
             *CRON_ACTOR_ADDR,
             TokenAmount::zero(),
-            MethodsCron::EpochTick as u64,
+            CronMethod::EpochTick as u64,
             RawBytes::default(),
         )
         .unwrap();
@@ -214,7 +214,7 @@ fn terminate_sectors() {
         *SYSTEM_ACTOR_ADDR,
         *CRON_ACTOR_ADDR,
         TokenAmount::zero(),
-        MethodsCron::EpochTick as u64,
+        CronMethod::EpochTick as u64,
         RawBytes::default(),
     )
     .unwrap();
@@ -246,7 +246,7 @@ fn terminate_sectors() {
         worker,
         robust_addr,
         TokenAmount::zero(),
-        MethodsMiner::TerminateSectors as u64,
+        MinerMethod::TerminateSectors as u64,
         TerminateSectorsParams {
             terminations: vec![TerminationDeclaration {
                 deadline: d_idx,
@@ -257,16 +257,16 @@ fn terminate_sectors() {
     );
     ExpectInvocation {
         to: id_addr,
-        method: MethodsMiner::TerminateSectors as u64,
+        method: MinerMethod::TerminateSectors as u64,
         subinvocs: Some(vec![
             ExpectInvocation {
                 to: *REWARD_ACTOR_ADDR,
-                method: MethodsReward::ThisEpochReward as u64,
+                method: RewardMethod::ThisEpochReward as u64,
                 ..Default::default()
             },
             ExpectInvocation {
                 to: *STORAGE_POWER_ACTOR_ADDR,
-                method: MethodsPower::CurrentTotalPower as u64,
+                method: PowerMethod::CurrentTotalPower as u64,
                 ..Default::default()
             },
             ExpectInvocation {
@@ -276,17 +276,17 @@ fn terminate_sectors() {
             },
             ExpectInvocation {
                 to: *STORAGE_POWER_ACTOR_ADDR,
-                method: MethodsPower::UpdatePledgeTotal as u64,
+                method: PowerMethod::UpdatePledgeTotal as u64,
                 ..Default::default()
             },
             ExpectInvocation {
                 to: *STORAGE_MARKET_ACTOR_ADDR,
-                method: MethodsMarket::OnMinerSectorsTerminate as u64,
+                method: MarketMethod::OnMinerSectorsTerminate as u64,
                 ..Default::default()
             },
             ExpectInvocation {
                 to: *STORAGE_POWER_ACTOR_ADDR,
-                method: MethodsPower::UpdateClaimedPower as u64,
+                method: PowerMethod::UpdateClaimedPower as u64,
                 ..Default::default()
             },
         ]),
@@ -330,12 +330,12 @@ fn terminate_sectors() {
         verified_client,
         *STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
-        MethodsMarket::WithdrawBalance as u64,
+        MarketMethod::WithdrawBalance as u64,
         WithdrawBalanceParams { provider_or_client: verified_client, amount: withdrawal.clone() },
     );
     ExpectInvocation {
         to: *STORAGE_MARKET_ACTOR_ADDR,
-        method: MethodsMarket::WithdrawBalance as u64,
+        method: MarketMethod::WithdrawBalance as u64,
         subinvocs: Some(vec![ExpectInvocation {
             to: verified_client,
             method: METHOD_SEND,
@@ -351,7 +351,7 @@ fn terminate_sectors() {
         worker,
         *STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
-        MethodsMarket::WithdrawBalance as u64,
+        MarketMethod::WithdrawBalance as u64,
         WithdrawBalanceParams { provider_or_client: id_addr, amount: miner_collateral },
     );
 

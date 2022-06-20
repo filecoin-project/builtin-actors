@@ -1,8 +1,8 @@
-use fil_actor_cron::Method as MethodsCron;
-use fil_actor_market::Method as MethodsMarket;
+use fil_actor_cron::Method as CronMethod;
+use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MethodsMiner, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
+    Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
     ReplicaUpdate, SectorOnChainInfo, State as MinerState, TerminateSectorsParams,
     TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
@@ -267,7 +267,7 @@ fn prove_replica_update_multi_dline() {
         worker,
         maddr,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] },
     )
     .deserialize()
@@ -336,7 +336,7 @@ fn immutable_deadline_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -390,7 +390,7 @@ fn unhealthy_sector_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -437,7 +437,7 @@ fn terminated_sector_failure() {
         worker,
         maddr,
         TokenAmount::zero(),
-        MethodsMiner::TerminateSectors as u64,
+        MinerMethod::TerminateSectors as u64,
         terminate_parms,
     );
 
@@ -457,7 +457,7 @@ fn terminated_sector_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -510,7 +510,7 @@ fn bad_batch_size_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -528,7 +528,7 @@ fn no_dispute_after_upgrade() {
         worker,
         miner_id,
         TokenAmount::zero(),
-        MethodsMiner::DisputeWindowedPoSt as u64,
+        MinerMethod::DisputeWindowedPoSt as u64,
         dispute_params,
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -559,7 +559,7 @@ fn upgrade_bad_post_dispute() {
         worker,
         miner_id,
         TokenAmount::zero(),
-        MethodsMiner::DisputeWindowedPoSt as u64,
+        MinerMethod::DisputeWindowedPoSt as u64,
         dispute_params,
     );
     v.assert_state_invariants();
@@ -614,7 +614,7 @@ fn bad_post_upgrade_dispute() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
     )
     .deserialize()
@@ -636,7 +636,7 @@ fn bad_post_upgrade_dispute() {
         worker,
         maddr,
         TokenAmount::zero(),
-        MethodsMiner::DisputeWindowedPoSt as u64,
+        MinerMethod::DisputeWindowedPoSt as u64,
         dispute_params,
     );
     v.assert_state_invariants();
@@ -663,7 +663,7 @@ fn terminate_after_upgrade() {
         worker,
         miner_id,
         TokenAmount::zero(),
-        MethodsMiner::TerminateSectors as u64,
+        MinerMethod::TerminateSectors as u64,
         terminate_params,
     );
 
@@ -706,7 +706,7 @@ fn extend_after_upgrade() {
         worker,
         miner_id,
         TokenAmount::zero(),
-        MethodsMiner::ExtendSectorExpiration as u64,
+        MinerMethod::ExtendSectorExpiration as u64,
         extension_params,
     );
 
@@ -766,7 +766,7 @@ fn wrong_deadline_index_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -823,7 +823,7 @@ fn wrong_partition_index_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -883,7 +883,7 @@ fn deal_included_in_multiple_sectors_failure() {
         *SYSTEM_ACTOR_ADDR,
         *CRON_ACTOR_ADDR,
         TokenAmount::zero(),
-        MethodsCron::EpochTick as u64,
+        CronMethod::EpochTick as u64,
         RawBytes::default(),
     );
 
@@ -942,7 +942,7 @@ fn deal_included_in_multiple_sectors_failure() {
         worker,
         maddr,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] },
     )
     .deserialize()
@@ -1003,7 +1003,7 @@ fn create_miner_and_upgrade_sector(
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
     )
     .deserialize()
@@ -1050,7 +1050,7 @@ fn create_sector(
         worker,
         maddr,
         TokenAmount::zero(),
-        MethodsMiner::ProveCommitSector as u64,
+        MinerMethod::ProveCommitSector as u64,
         prove_commit_params,
     );
     let res = v
@@ -1058,7 +1058,7 @@ fn create_sector(
             *SYSTEM_ACTOR_ADDR,
             *CRON_ACTOR_ADDR,
             TokenAmount::zero(),
-            MethodsCron::EpochTick as u64,
+            CronMethod::EpochTick as u64,
             RawBytes::default(),
         )
         .unwrap();
@@ -1106,7 +1106,7 @@ fn create_deals(
         client,
         *STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         client,
     );
     apply_ok(
@@ -1114,7 +1114,7 @@ fn create_deals(
         worker,
         *STORAGE_MARKET_ACTOR_ADDR,
         collateral,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         maddr,
     );
 

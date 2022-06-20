@@ -1,11 +1,11 @@
 use fil_actor_market::{
-    ClientDealProposal, DealProposal, Label, Method as MethodsMarket, PublishStorageDealsParams,
+    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
     PublishStorageDealsReturn,
 };
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 
 use fil_actor_miner::max_prove_commit_duration;
-use fil_actor_verifreg::{AddVerifierClientParams, Method as MethodsVerifreg};
+use fil_actor_verifreg::{AddVerifierClientParams, Method as VerifregMethod};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{test_utils::*, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
@@ -73,7 +73,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         verifier,
         *VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
-        MethodsVerifreg::AddVerifiedClient as u64,
+        VerifregMethod::AddVerifiedClient as u64,
         add_client_params,
     );
 
@@ -83,7 +83,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         client1,
         *STORAGE_MARKET_ACTOR_ADDR,
         client_collateral.clone(),
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         client1,
     );
     apply_ok(
@@ -91,7 +91,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         client2,
         *STORAGE_MARKET_ACTOR_ADDR,
         client_collateral.clone(),
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         client2,
     );
     apply_ok(
@@ -99,7 +99,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         verified_client,
         *STORAGE_MARKET_ACTOR_ADDR,
         client_collateral,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         verified_client,
     );
 
@@ -109,7 +109,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         worker,
         *STORAGE_MARKET_ACTOR_ADDR,
         miner_collateral,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         maddr,
     );
 
@@ -231,7 +231,7 @@ fn psd_not_enought_client_lockup_for_batch() {
         a.cheap_client,
         *STORAGE_MARKET_ACTOR_ADDR,
         one_lifetime_cost,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         a.cheap_client,
     );
 
@@ -271,7 +271,7 @@ fn psd_not_enough_provider_lockup_for_batch() {
         cheap_worker,
         *STORAGE_MARKET_ACTOR_ADDR,
         default_provider_collateral,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         cheap_maddr,
     );
     let mut batcher = DealBatcher::new(
@@ -394,7 +394,7 @@ fn psd_random_assortment_of_failures() {
         a.cheap_client,
         *STORAGE_MARKET_ACTOR_ADDR,
         one_lifetime_cost,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         a.cheap_client,
     );
     let broke_client = create_accounts_seeded(&v, 1, TokenAmount::zero(), 555)[0];
@@ -613,7 +613,7 @@ impl<'bs> DealBatcher<'bs> {
             sender,
             *STORAGE_MARKET_ACTOR_ADDR,
             TokenAmount::zero(),
-            MethodsMarket::PublishStorageDeals as u64,
+            MarketMethod::PublishStorageDeals as u64,
             publish_params,
         )
         .deserialize()
@@ -637,7 +637,7 @@ impl<'bs> DealBatcher<'bs> {
                 sender,
                 *STORAGE_MARKET_ACTOR_ADDR,
                 TokenAmount::zero(),
-                MethodsMarket::PublishStorageDeals as u64,
+                MarketMethod::PublishStorageDeals as u64,
                 publish_params,
             )
             .unwrap();
