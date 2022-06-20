@@ -232,7 +232,7 @@ impl Default for Policy {
     }
 }
 
-mod policy_constants {
+pub mod policy_constants {
     use crate::builtin::*;
     use fvm_shared::clock::ChainEpoch;
     use fvm_shared::clock::EPOCH_DURATION_SECONDS;

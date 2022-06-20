@@ -748,32 +748,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fil_actor_state"
-version = "8.0.0-alpha.1"
-dependencies = [
- "anyhow",
- "cid",
- "fil_actor_account",
- "fil_actor_cron",
- "fil_actor_init",
- "fil_actor_market",
- "fil_actor_miner",
- "fil_actor_multisig",
- "fil_actor_paych",
- "fil_actor_power",
- "fil_actor_reward",
- "fil_actor_system",
- "fil_actor_verifreg",
- "fil_actors_runtime",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "fvm_shared",
- "num-derive",
- "num-traits",
- "serde",
-]
-
-[[package]]
 name = "fil_actor_system"
 version = "8.0.0-rc.1"
 dependencies = [
@@ -825,12 +799,14 @@ dependencies = [
  "hex",
  "indexmap",
  "integer-encoding",
+ "itertools",
  "lazy_static",
  "log",
  "multihash",
  "num-derive",
  "num-traits",
  "rand",
+ "regex",
  "serde",
  "serde_repr",
  "sha2",
@@ -854,10 +830,34 @@ dependencies = [
  "fil_actor_paych",
  "fil_actor_power",
  "fil_actor_reward",
- "fil_actor_state",
+ "fil_actor_system",
+ "fil_actor_verifreg",
+]
+
+[[package]]
+name = "fil_builtin_actors_state"
+version = "8.0.0-rc.1"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actor_account",
+ "fil_actor_cron",
+ "fil_actor_init",
+ "fil_actor_market",
+ "fil_actor_miner",
+ "fil_actor_multisig",
+ "fil_actor_paych",
+ "fil_actor_power",
+ "fil_actor_reward",
  "fil_actor_system",
  "fil_actor_verifreg",
  "fil_actors_runtime",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "num-derive",
+ "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -1788,6 +1788,7 @@ dependencies = [
  "fil_actor_system",
  "fil_actor_verifreg",
  "fil_actors_runtime",
+ "fil_builtin_actors_state",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -1802,6 +1803,7 @@ dependencies = [
  "num-traits",
  "rand",
  "rand_chacha",
+ "regex",
  "serde",
  "thiserror",
 ]

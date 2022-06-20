@@ -167,8 +167,12 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
             }
             Some(Type::Market) => {
                 let state = get_state!(tree, actor, MarketState);
-                let (summary, msgs) =
-                    market::check_state_invariants(&state, tree.store, &actor.balance, prior_epoch);
+                let (summary, msgs) = market::check_state_invariants(
+                    &state,
+                    tree.store,
+                    &actor.balance,
+                    prior_epoch + 1,
+                );
                 acc.with_prefix("market: ").add_all(&msgs);
                 market_summary = Some(summary);
             }

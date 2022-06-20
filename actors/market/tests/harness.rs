@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use cid::Cid;
-use itertools::Itertools;
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 use std::{cell::RefCell, collections::HashMap};
@@ -105,23 +104,7 @@ pub fn check_state(rt: &MockRuntime) {
 pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) {
     let (_, acc) =
         check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
-
-    let messages = acc.messages();
-    assert!(
-        messages.len() == expected_patterns.len(),
-        "Incorrect number of broken invariants. Failed: {}.\nExpected: {}",
-        messages.join("\n"),
-        expected_patterns.iter().map(|regex| regex.as_str()).join("\n")
-    );
-
-    messages.iter().zip(expected_patterns).for_each(|(message, pattern)| {
-        assert!(
-            pattern.is_match(message),
-            "invariant failures did not match. Actual: {}, expected: {}",
-            message,
-            pattern.as_str()
-        );
-    });
+    acc.assert_expected(expected_patterns);
 }
 pub fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
