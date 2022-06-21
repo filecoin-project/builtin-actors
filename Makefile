@@ -36,12 +36,12 @@ test: deps-build
 	cargo test --workspace
 
 # Release a new version. Specify the version "bump" with BUMP
-bump-version: check-clean deps-release check test
+bump-version: check-clean deps-release check
 	echo "$(ORDERED_PACKAGES)" | xargs -n1 cargo set-version --bump $(BUMP) -p
 	cargo update --workspace
 	@echo "Bumped actors to version $$($(MAKE) --quiet version)"
 
-set-version: check-clean deps-release check test
+set-version: check-clean deps-release check
 	echo "$(ORDERED_PACKAGES)" | xargs -n1 cargo set-version $(VERSION) -p
 	cargo update --workspace
 	@echo "Set actors to version $(VERSION)"

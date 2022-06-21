@@ -10,19 +10,19 @@ keywords = ["filecoin", "web3", "wasm"]
 [lib]
 
 [dependencies]
-fil_builtin_actors_state = { version = "8.0.0-rc.1", path = "../state"}
-fil_actors_runtime = { version = "8.0.0-rc.1", path = "../runtime", features = [ "test_utils" ] }
-fil_actor_init = { version = "8.0.0-rc.1", path = "../actors/init" }
-fil_actor_cron = { version = "8.0.0-rc.1", path = "../actors/cron" }
-fil_actor_system = { version = "8.0.0-rc.1", path = "../actors/system" }
-fil_actor_account = { version = "8.0.0-rc.1", path = "../actors/account" }
-fil_actor_multisig = { version = "8.0.0-rc.1", path = "../actors/multisig" }
-fil_actor_paych = { version = "8.0.0-rc.1", path = "../actors/paych" }
-fil_actor_reward = { version = "8.0.0-rc.1", path = "../actors/reward" }
-fil_actor_power = { version = "8.0.0-rc.1", path = "../actors/power" }
-fil_actor_market = { version = "8.0.0-rc.1", path = "../actors/market" }
-fil_actor_verifreg = { version = "8.0.0-rc.1", path = "../actors/verifreg" }
-fil_actor_miner = { version = "8.0.0-rc.1", path = "../actors/miner" }
+fil_builtin_actors_state = { version = "9.0.0-alpha.1", path = "../state"}
+fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../runtime", features = [ "test_utils" ] }
+fil_actor_init = { version = "9.0.0-alpha.1", path = "../actors/init" }
+fil_actor_cron = { version = "9.0.0-alpha.1", path = "../actors/cron" }
+fil_actor_system = { version = "9.0.0-alpha.1", path = "../actors/system" }
+fil_actor_account = { version = "9.0.0-alpha.1", path = "../actors/account" }
+fil_actor_multisig = { version = "9.0.0-alpha.1", path = "../actors/multisig" }
+fil_actor_paych = { version = "9.0.0-alpha.1", path = "../actors/paych" }
+fil_actor_reward = { version = "9.0.0-alpha.1", path = "../actors/reward" }
+fil_actor_power = { version = "9.0.0-alpha.1", path = "../actors/power" }
+fil_actor_market = { version = "9.0.0-alpha.1", path = "../actors/market" }
+fil_actor_verifreg = { version = "9.0.0-alpha.1", path = "../actors/verifreg" }
+fil_actor_miner = { version = "9.0.0-alpha.1", path = "../actors/miner" }
 lazy_static = "1.4.0"
 fvm_shared = { version = "0.8.0", default-features = false }
 fvm_ipld_encoding = { version = "0.2.2", default-features = false }
