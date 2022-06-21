@@ -95,10 +95,10 @@ fn test_proposal_hash() {
     };
     expect.matches(v.take_invocations().last().unwrap());
     assert_eq!(sys_act_start_bal + fil_delta, v.get_actor(*SYSTEM_ACTOR_ADDR).unwrap().balance);
+    v.assert_state_invariants();
 }
 
 #[test]
-
 fn test_delete_self() {
     let test = |threshold: usize, signers: u64, remove_idx: usize| {
         let store = MemoryBlockstore::new();
@@ -163,6 +163,7 @@ fn test_delete_self() {
         let new_signers: HashSet<Address> = HashSet::from_iter(st.signers);
         let diff: Vec<&Address> = old_signers.symmetric_difference(&new_signers).collect();
         assert_eq!(vec![&(addrs[remove_idx])], diff);
+        v.assert_state_invariants();
     };
     test(2, 3, 0); // 2 of 3 removed is proposer
     test(2, 3, 1); // 2 of 3 removed is approver
@@ -195,7 +196,8 @@ fn swap_self_1_of_2() {
         propose_swap_signer_params,
     );
     let st = v.get_state::<MsigState>(msig_addr).unwrap();
-    assert_eq!(vec![bob, chuck], st.signers)
+    assert_eq!(vec![bob, chuck], st.signers);
+    v.assert_state_invariants();
 }
 
 #[test]
@@ -267,7 +269,8 @@ fn swap_self_2_of_3() {
         approve_swap_signer_params,
     );
     let st = v.get_state::<MsigState>(msig_addr).unwrap();
-    assert_eq!(vec![bob, chuck, alice], st.signers)
+    assert_eq!(vec![bob, chuck, alice], st.signers);
+    v.assert_state_invariants();
 }
 
 fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {

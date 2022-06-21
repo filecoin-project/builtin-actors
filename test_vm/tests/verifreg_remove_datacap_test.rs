@@ -284,4 +284,5 @@ fn remove_datacap_simple_successful_path() {
         .unwrap();
 
     assert_eq!(2u64, verifier2_proposal_id.0);
+    v.assert_state_invariants();
 }

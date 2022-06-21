@@ -311,6 +311,7 @@ mod create_lane_tests {
         #[builder(default = "ExitCode::USR_ILLEGAL_ARGUMENT")]
         exp_exit_code: ExitCode,
     }
+
     impl TestCase {
         pub fn builder() -> TestCaseBuilder {
             TestCaseBuilder::default()
@@ -398,13 +399,6 @@ mod create_lane_tests {
                 .verify_sig(false)
                 .build()
                 .unwrap(),
-            // TODO this should fail with byte array max from cbor gen (pre image serialization)
-            // TestCase::builder()
-            //     .desc("Fails if signing fails".to_string())
-            //     .sig(sig.clone())
-            //     .secret_preimage(vec![0; 2 << 21])
-            //     .build()
-            //     .unwrap(),
         ];
 
         for test_case in test_cases {
@@ -787,6 +781,7 @@ mod update_channel_state_extra {
         );
         (rt, sv)
     }
+
     #[test]
     fn extra_call_succeed() {
         let (mut rt, sv) = construct_runtime(ExitCode::OK);
@@ -924,6 +919,7 @@ mod actor_settle {
     use super::*;
 
     const EP: i64 = 10;
+
     #[test]
     fn adjust_settling_at() {
         let (mut rt, _sv) = require_create_channel_with_lanes(1);

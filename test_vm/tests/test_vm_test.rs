@@ -32,6 +32,10 @@ fn state_control() {
     // a2 is gone
     assert_eq!(None, v.get_actor(addr2));
     assert_eq!(v.get_actor(addr1).unwrap(), a1);
+
+    let invariants_check = v.check_state_invariants();
+    assert!(invariants_check.is_err());
+    assert!(invariants_check.unwrap_err().to_string().contains("AccountState is empty"));
 }
 
 fn assert_account_actor(
@@ -106,6 +110,7 @@ fn test_sent() {
     assert_eq!(ExitCode::SYS_INVALID_RECEIVER, mres.code);
     assert_account_actor(3, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::from(0u8), addr2, &v, expect_id_addr2);
+    v.assert_state_invariants();
 }
 
 #[test]

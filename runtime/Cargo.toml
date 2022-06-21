@@ -34,6 +34,8 @@ fvm_ipld_encoding = "0.2.2"
 multihash = { version = "0.16.1", default-features = false }
 rand = "0.8.5"
 serde_repr = "0.1.8"
+regex = "1"
+itertools = "0.10"
 
 [dependencies.sha2]
 version = "0.10"

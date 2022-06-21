@@ -896,7 +896,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     };
 
     // Check that we don't have any proofs proving partitions that are not in the snapshot.
-    match deadline.optimistic_proofs_amt(store) {
+    match deadline.optimistic_proofs_snapshot_amt(store) {
         Ok(proofs_snapshot) => {
             if let Ok(partitions_snapshot) = deadline.partitions_snapshot_amt(store) {
                 let ret = proofs_snapshot.for_each(|_, proof| {
@@ -904,7 +904,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
                         match partitions_snapshot.get(partition) {
                             Ok(snapshot) => acc.require(
                                 snapshot.is_some(),
-                                "failed to find partition for recorded proof in the snapshot",
+                                format!("failed to find partition {partition} for recorded proof in the snapshot"),
                             ),
                             Err(e) => acc.add(format!("error loading partition snapshot: {e}")),
                         }

@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
@@ -17,15 +18,19 @@ use fil_actors_runtime::runtime::{
     Verifier,
 };
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fil_builtin_actors_state::check::check_state_invariants;
+use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
+use fvm_shared::actor::builtin::Manifest;
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
@@ -44,6 +49,7 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_traits::Signed;
+use regex::Regex;
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
@@ -56,6 +62,7 @@ pub mod util;
 pub struct VM<'bs> {
     pub store: &'bs MemoryBlockstore,
     pub state_root: RefCell<Cid>,
+    total_fil: TokenAmount,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
     empty_obj_cid: Cid,
@@ -107,6 +114,7 @@ impl<'bs> VM<'bs> {
         VM {
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
+            total_fil: TokenAmount::zero(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             empty_obj_cid: empty,
@@ -114,6 +122,10 @@ impl<'bs> VM<'bs> {
             curr_epoch: ChainEpoch::zero(),
             invocations: RefCell::new(vec![]),
         }
+    }
+
+    pub fn with_total_fil(self, total_fil: TokenAmount) -> Self {
+        Self { total_fil, ..self }
     }
 
     pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
@@ -124,7 +136,7 @@ impl<'bs> VM<'bs> {
         let reward_total = TokenAmount::from(1_100_000_000i32).checked_mul(&fil).unwrap();
         let faucet_total = TokenAmount::from(1_000_000_000u32).checked_mul(&fil).unwrap();
 
-        let v = VM::new(store);
+        let v = VM::new(store).with_total_fil(&reward_total + &faucet_total);
 
         // system
         let sys_st = SystemState::new(store).unwrap();
@@ -250,6 +262,7 @@ impl<'bs> VM<'bs> {
         VM {
             store: self.store,
             state_root: self.state_root.clone(),
+            total_fil: self.total_fil,
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             empty_obj_cid: self.empty_obj_cid,
@@ -424,6 +437,59 @@ impl<'bs> VM<'bs> {
     pub fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
     }
+
+    /// Checks the state invariants and returns broken invariants.
+    pub fn check_state_invariants(&self) -> anyhow::Result<MessageAccumulator> {
+        self.checkpoint();
+        let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
+
+        let mut manifest = Manifest::new();
+        actors
+            .for_each(|_, actor| {
+                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
+                Ok(())
+            })
+            .unwrap();
+
+        let policy = Policy::default();
+        let state_tree = Tree::load(&self.store, &self.state_root.borrow()).unwrap();
+        check_state_invariants(
+            &manifest,
+            &policy,
+            state_tree,
+            &self.total_fil,
+            self.get_epoch() - 1,
+        )
+    }
+
+    /// Asserts state invariants are held without any errors.
+    pub fn assert_state_invariants(&self) {
+        self.check_state_invariants().unwrap().assert_empty()
+    }
+
+    /// Checks state, allowing expected invariants to fail. The invariants *must* fail in the
+    /// provided order.
+    pub fn expect_state_invariants(&self, expected_patterns: &[Regex]) {
+        self.check_state_invariants().unwrap().assert_expected(expected_patterns)
+    }
+
+    pub fn get_total_actor_balance(
+        &self,
+        store: &MemoryBlockstore,
+    ) -> anyhow::Result<BigInt, anyhow::Error> {
+        let state_tree = Tree::load(store, &self.checkpoint())?;
+
+        let mut total = BigInt::zero();
+        state_tree.for_each(|_, actor| {
+            total += &actor.balance.clone();
+            Ok(())
+        })?;
+        Ok(total)
+    }
 }
 
 #[derive(Clone)]
@@ -462,7 +528,7 @@ impl MessageInfo for InvocationCtx<'_, '_> {
 }
 
 pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
-pub const TEST_VM_INVALID_SIG: &str = "i_am_invalid";
+pub const TEST_VM_INVALID: &str = "i_am_invalid";
 
 pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation VM<'bs>,
@@ -845,7 +911,7 @@ impl Primitives for VM<'_> {
         _signer: &Address,
         _plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        if signature.bytes.clone() == TEST_VM_INVALID_SIG.as_bytes() {
+        if signature.bytes.clone() == TEST_VM_INVALID.as_bytes() {
             return Err(anyhow::format_err!(
                 "verify signature syscall failing on TEST_VM_INVALID_SIG"
             ));
@@ -901,7 +967,13 @@ impl Verifier for InvocationCtx<'_, '_> {
         Ok(())
     }
 
-    fn verify_post(&self, _verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
+    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
+        for proof in &verify_info.proofs {
+            if proof.proof_bytes.eq(&TEST_VM_INVALID.as_bytes().to_vec()) {
+                return Err(anyhow!("invalid proof"));
+            }
+        }
+
         Ok(())
     }
 
