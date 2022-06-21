@@ -1,7 +1,7 @@
 [package]
 name = "fil_actor_miner"
 description = "Builtin miner actor for Filecoin"
-version = "8.0.0-rc.1"
+version = "8.0.0-rc.2"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "8.0.0-rc.1", path = "../../runtime", features = ["fil-actor"] }
+fil_actors_runtime = { version = "8.0.0-rc.2", path = "../../runtime", features = ["fil-actor"] }
 fvm_shared = { version = "0.8.0", default-features = false }
 fvm_ipld_bitfield = "0.5.2"
 fvm_ipld_amt = { version = "0.4.2", features = ["go-interop"] }
@@ -32,11 +32,11 @@ fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.2"
 
 [dev-dependencies]
-fil_actors_runtime = { version = "8.0.0-rc.1", path = "../../runtime", features = ["test_utils", "sector-default"] }
-fil_actor_account = { version = "8.0.0-rc.1", path = "../account" }
-fil_actor_reward = { version = "8.0.0-rc.1", path = "../reward" }
-fil_actor_power = { version = "8.0.0-rc.1", path = "../power" }
-fil_actor_market = { version = "8.0.0-rc.1", path = "../market" }
+fil_actors_runtime = { version = "8.0.0-rc.2", path = "../../runtime", features = ["test_utils", "sector-default"] }
+fil_actor_account = { version = "8.0.0-rc.2", path = "../account" }
+fil_actor_reward = { version = "8.0.0-rc.2", path = "../reward" }
+fil_actor_power = { version = "8.0.0-rc.2", path = "../power" }
+fil_actor_market = { version = "8.0.0-rc.2", path = "../market" }
 rand = "0.8.5"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false }
