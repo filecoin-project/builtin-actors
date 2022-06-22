@@ -1,4 +1,7 @@
-use crate::{power_for_sectors, BitFieldQueue, Deadline, ExpirationQueue, MinerInfo, Partition, PowerPair, SectorOnChainInfo, Sectors, State, SectorPreCommitOnChainInfo2};
+use crate::{
+    power_for_sectors, BitFieldQueue, Deadline, ExpirationQueue, MinerInfo, Partition, PowerPair,
+    SectorOnChainInfo, SectorPreCommitOnChainInfo2, Sectors, State,
+};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{parse_uint_key, Map, MessageAccumulator};
 use fvm_ipld_bitfield::BitField;

@@ -760,7 +760,7 @@ impl Actor {
         let receiver_bytes =
             serialize_vec(&rt.message().receiver(), "address for seal verification challenge")?;
 
-        for  precommit in precommits.iter() {
+        for precommit in precommits.iter() {
             let interactive_epoch =
                 precommit.pre_commit_epoch + rt.policy().pre_commit_challenge_delay;
             if rt.curr_epoch() <= interactive_epoch {

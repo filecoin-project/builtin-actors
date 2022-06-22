@@ -4,7 +4,13 @@ use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
     PublishStorageDealsReturn,
 };
-use fil_actor_miner::{aggregate_pre_commit_network_fee, max_prove_commit_duration, new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams, Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams, ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo2, State as MinerState, SubmitWindowedPoStParams, SectorPreCommitInfo};
+use fil_actor_miner::{
+    aggregate_pre_commit_network_fee, max_prove_commit_duration,
+    new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams,
+    Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams,
+    ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo2, State as MinerState, SubmitWindowedPoStParams,
+};
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{

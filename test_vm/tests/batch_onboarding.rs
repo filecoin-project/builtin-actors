@@ -1,5 +1,5 @@
 use fil_actor_cron::Method as CronMethod;
-use fil_actor_miner::{SectorPreCommitOnChainInfo2};
+use fil_actor_miner::SectorPreCommitOnChainInfo2;
 use fil_actor_miner::{power_for_sector, State as MinerState};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;

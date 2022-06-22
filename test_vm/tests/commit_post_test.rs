@@ -84,13 +84,11 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
         to: id_addr,
         method: MinerMethod::ProveCommitSector as u64,
         params: Some(prove_params_ser),
-        subinvocs: Some(vec![
-            ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::SubmitPoRepForBulkVerify as u64,
-                ..Default::default()
-            },
-        ]),
+        subinvocs: Some(vec![ExpectInvocation {
+            to: *STORAGE_POWER_ACTOR_ADDR,
+            method: PowerMethod::SubmitPoRepForBulkVerify as u64,
+            ..Default::default()
+        }]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
