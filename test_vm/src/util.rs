@@ -4,13 +4,7 @@ use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
     PublishStorageDealsReturn,
 };
-use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams,
-    Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams,
-    ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
-};
+use fil_actor_miner::{aggregate_pre_commit_network_fee, max_prove_commit_duration, new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams, Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams, ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitOnChainInfo2, State as MinerState, SubmitWindowedPoStParams, SectorPreCommitInfo};
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{
@@ -132,7 +126,7 @@ pub fn precommit_sectors(
     sector_number_base: SectorNumber,
     expect_cron_enroll: bool,
     exp: Option<ChainEpoch>,
-) -> Vec<SectorPreCommitOnChainInfo> {
+) -> Vec<SectorPreCommitOnChainInfo2> {
     let mid = v.normalize_address(&maddr).unwrap();
     let invocs_common = || -> Vec<ExpectInvocation> {
         vec![
@@ -236,7 +230,7 @@ pub fn prove_commit_sectors(
     v: &mut VM,
     worker: Address,
     maddr: Address,
-    precommits: Vec<SectorPreCommitOnChainInfo>,
+    precommits: Vec<SectorPreCommitOnChainInfo2>,
     aggregate_size: i64,
 ) {
     let mut precommit_infos = precommits.as_slice();
@@ -268,11 +262,12 @@ pub fn prove_commit_sectors(
             from: Some(worker),
             params: Some(prove_commit_aggregate_params_ser),
             subinvocs: Some(vec![
-                ExpectInvocation {
-                    to: *STORAGE_MARKET_ACTOR_ADDR,
-                    method: MarketMethod::ComputeDataCommitment as u64,
-                    ..Default::default()
-                },
+                //TODO actual deeal commd
+                // ExpectInvocation {
+                //     to: *STORAGE_MARKET_ACTOR_ADDR,
+                //     method: MarketMethod::ComputeDataCommitment as u64,
+                //     ..Default::default()
+                // },
                 ExpectInvocation {
                     to: *REWARD_ACTOR_ADDR,
                     method: RewardMethod::ThisEpochReward as u64,

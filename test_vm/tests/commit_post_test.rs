@@ -86,11 +86,6 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
         params: Some(prove_params_ser),
         subinvocs: Some(vec![
             ExpectInvocation {
-                to: *STORAGE_MARKET_ACTOR_ADDR,
-                method: MarketMethod::ComputeDataCommitment as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
                 to: *STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::SubmitPoRepForBulkVerify as u64,
                 ..Default::default()
@@ -514,7 +509,7 @@ fn aggregate_size_limits() {
     let oversized_batch = 820;
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -522,7 +517,7 @@ fn aggregate_size_limits() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from(100_000e18 as i128),
     );
     let mut v = v.with_epoch(200);
     let policy = &Policy::default();
@@ -819,11 +814,6 @@ fn aggregate_one_precommit_expires() {
         method: MinerMethod::ProveCommitAggregate as u64,
         params: Some(prove_params_ser),
         subinvocs: Some(vec![
-            ExpectInvocation {
-                to: *STORAGE_MARKET_ACTOR_ADDR,
-                method: MarketMethod::ComputeDataCommitment as u64,
-                ..Default::default()
-            },
             ExpectInvocation {
                 to: *REWARD_ACTOR_ADDR,
                 method: RewardMethod::ThisEpochReward as u64,

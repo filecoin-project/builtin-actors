@@ -165,7 +165,7 @@ fn prove_replica_update_multi_dline() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from(1_000_000e18 as i128));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, _) = create_miner(
@@ -173,7 +173,7 @@ fn prove_replica_update_multi_dline() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from(100_000e18 as i128),
     );
 
     v = v.with_epoch(1440); // something offset far away from deadline 0 and 1

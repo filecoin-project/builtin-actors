@@ -3,7 +3,7 @@
 
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 use std::iter;
 use std::ops::Neg;
 
@@ -747,7 +747,7 @@ impl Actor {
                 }
             }
         }
-        let mut svis = Vec::new();
+        let mut svis = Vec::with_capacity(precommits.len());
         let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
             *i
         } else {
@@ -760,7 +760,7 @@ impl Actor {
         let receiver_bytes =
             serialize_vec(&rt.message().receiver(), "address for seal verification challenge")?;
 
-        for (i, precommit) in precommits.iter().enumerate() {
+        for  precommit in precommits.iter() {
             let interactive_epoch =
                 precommit.pre_commit_epoch + rt.policy().pre_commit_challenge_delay;
             if rt.curr_epoch() <= interactive_epoch {
@@ -781,7 +781,8 @@ impl Actor {
                 &receiver_bytes,
             )?;
 
-            let unsealed_cid = unsealed_cid_from_option(precommit.info.seal_proof, precommit.info.unsealed_cid)?;
+            let unsealed_cid =
+                unsealed_cid_from_option(precommit.info.seal_proof, precommit.info.unsealed_cid)?;
 
             let svi = AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
@@ -3304,7 +3305,7 @@ impl TryInto<SectorPreCommitInfo2> for SectorPreCommitInfoInner {
             CommDState::Zero => None,
             CommDState::Set(c) => Some(c),
             CommDState::Unknown => {
-                return Err(actor_error!(assertion_failed, "Unknown CommD during conversion"))
+                return Err(actor_error!(assertion_failed, "Unknown CommD during conversion"));
             }
         };
 
@@ -3931,64 +3932,56 @@ where
     Ok(serialized.deserialize()?)
 }
 
+const ZERO_COMMD_HASH: [[u8; 32]; 5] = [
+    [
+        252, 126, 146, 130, 150, 229, 22, 250, 173, 233, 134, 178, 143, 146, 212, 74, 79, 36, 185,
+        53, 72, 82, 35, 55, 106, 121, 144, 39, 188, 24, 248, 51,
+    ],
+    [
+        57, 86, 14, 123, 19, 169, 59, 7, 162, 67, 253, 39, 32, 255, 167, 203, 62, 29, 46, 80, 90,
+        179, 98, 158, 121, 244, 99, 19, 81, 44, 218, 6,
+    ],
+    [
+        101, 242, 158, 93, 152, 210, 70, 195, 139, 56, 140, 252, 6, 219, 31, 107, 2, 19, 3, 197,
+        162, 137, 0, 11, 220, 232, 50, 169, 195, 236, 66, 28,
+    ],
+    [
+        7, 126, 95, 222, 53, 197, 10, 147, 3, 165, 80, 9, 227, 73, 138, 78, 190, 223, 243, 156, 66,
+        183, 16, 183, 48, 216, 236, 122, 199, 175, 166, 62,
+    ],
+    [
+        230, 64, 5, 166, 191, 227, 119, 121, 83, 184, 173, 110, 249, 63, 15, 202, 16, 73, 178, 4,
+        22, 84, 242, 164, 17, 247, 112, 39, 153, 206, 206, 2,
+    ],
+];
+
 fn zero_commd(seal_proof: RegisteredSealProof) -> Result<Cid, ActorError> {
-    match seal_proof {
-        RegisteredSealProof::StackedDRG2KiBV1P1 => Ok(Cid::try_from(
-            [
-                1, 129, 226, 3, 146, 32, 32, 252, 126, 146, 130, 150, 229, 22, 250, 173, 233, 134,
-                178, 143, 146, 212, 74, 79, 36, 185, 53, 72, 82, 35, 55, 106, 121, 144, 39, 188,
-                24, 248, 51,
-            ]
-            .as_slice(),
-        )
-        .unwrap()),
-        RegisteredSealProof::StackedDRG512MiBV1P1 => Ok(Cid::try_from(
-            [
-                1, 129, 226, 3, 146, 32, 32, 57, 86, 14, 123, 19, 169, 59, 7, 162, 67, 253, 39, 32,
-                255, 167, 203, 62, 29, 46, 80, 90, 179, 98, 158, 121, 244, 99, 19, 81, 44, 218, 6,
-            ]
-            .as_slice(),
-        )
-        .unwrap()),
-        RegisteredSealProof::StackedDRG8MiBV1P1 => Ok(Cid::try_from(
-            [
-                1, 129, 226, 3, 146, 32, 32, 101, 242, 158, 93, 152, 210, 70, 195, 139, 56, 140,
-                252, 6, 219, 31, 107, 2, 19, 3, 197, 162, 137, 0, 11, 220, 232, 50, 169, 195, 236,
-                66, 28,
-            ]
-            .as_slice(),
-        )
-        .unwrap()),
-        RegisteredSealProof::StackedDRG32GiBV1P1 => Ok(Cid::try_from(
-            [
-                1, 129, 226, 3, 146, 32, 32, 7, 126, 95, 222, 53, 197, 10, 147, 3, 165, 80, 9, 227,
-                73, 138, 78, 190, 223, 243, 156, 66, 183, 16, 183, 48, 216, 236, 122, 199, 175,
-                166, 62,
-            ]
-            .as_slice(),
-        )
-        .unwrap()),
-        RegisteredSealProof::StackedDRG64GiBV1P1 => Ok(Cid::try_from(
-            [
-                1, 129, 226, 3, 146, 32, 32, 230, 64, 5, 166, 191, 227, 119, 121, 83, 184, 173,
-                110, 249, 63, 15, 202, 16, 73, 178, 4, 22, 84, 242, 164, 17, 247, 112, 39, 153,
-                206, 206, 2,
-            ]
-            .as_slice(),
-        )
-        .unwrap()),
-        _ => Err(actor_error!(illegal_argument, "unknown SealProof")),
-    }
+    use fvm_shared::commcid::{FIL_COMMITMENT_UNSEALED, SHA2_256_TRUNC254_PADDED};
+    use multihash::Multihash;
+
+    let i = match seal_proof {
+        RegisteredSealProof::StackedDRG2KiBV1P1 => 0,
+        RegisteredSealProof::StackedDRG512MiBV1P1 => 1,
+        RegisteredSealProof::StackedDRG8MiBV1P1 => 2,
+        RegisteredSealProof::StackedDRG32GiBV1P1 => 3,
+        RegisteredSealProof::StackedDRG64GiBV1P1 => 4,
+        _ => {
+            return Err(actor_error!(illegal_argument, "unknown SealProof"));
+        }
+    };
+    let hash = Multihash::wrap(SHA2_256_TRUNC254_PADDED, &ZERO_COMMD_HASH[i])
+        .map_err(|_| actor_error!(assertion_failed, "static commd payload invalid"))?;
+    Ok(Cid::new_v1(FIL_COMMITMENT_UNSEALED, hash))
 }
 
 fn unsealed_cid_from_option(
     seal_proof: RegisteredSealProof,
     commd: Option<Cid>,
 ) -> Result<Cid, ActorError> {
-    Ok(match commd {
-        Some(c) => c,
-        None => zero_commd(seal_proof)?,
-    })
+    match commd {
+        Some(c) => Ok(c),
+        None => zero_commd(seal_proof),
+    }
 }
 
 /// Requests the current epoch target block reward from the reward actor.
