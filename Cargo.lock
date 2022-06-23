@@ -1771,7 +1771,7 @@ dependencies = [
 
 [[package]]
 name = "test_vm"
-version = "8.0.0-alpha.1"
+version = "9.0.0-alpha.1"
 dependencies = [
  "anyhow",
  "blake2b_simd",
