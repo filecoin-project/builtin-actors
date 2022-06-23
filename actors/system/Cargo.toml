@@ -25,7 +25,7 @@ serde = { version = "1.0.136", features = ["derive"] }
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
 [dev-dependencies]
-fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../../runtime", features = ["test_utils", "sector-default"] }
+fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 [features]
 fil-actor = []
 
