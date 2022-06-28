@@ -115,6 +115,7 @@ pub enum Method {
     ProveCommitAggregate = 26,
     ProveReplicaUpdates = 27,
     PreCommitSectorBatch2 = 28,
+    ProveReplicaUpdates2 = 29,
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -843,7 +844,33 @@ impl Actor {
 
     fn prove_replica_updates<BS, RT>(
         rt: &mut RT,
-        params: ProveReplicaUpdatesParams,
+        params: ProveReplicaUpdatesParams2,
+    ) -> Result<BitField, ActorError>
+        where
+        // + Clone because we messed up and need to keep a copy around between transactions.
+        // https://github.com/filecoin-project/builtin-actors/issues/133
+            BS: Blockstore + Clone,
+            RT: Runtime<BS>,
+    {
+        let updates = params.updates.into_iter().map(|ru| {
+            ReplicaUpdateInner{
+                sector_number: ru.sector_number,
+                deadline: ru.deadline,
+                partition: ru.partition,
+                new_sealed_cid: ru.new_sealed_cid,
+                new_unsealed_cid: None,
+                deals: ru.deals,
+                update_proof_type: ru.update_proof_type,
+                replica_proof: ru.replica_proof,
+            }
+        }).collect();
+        Self::prove_replica_updates_inner(rt, updates)
+    }
+
+
+    fn prove_replica_updates2<BS, RT>(
+        rt: &mut RT,
+        params: ProveReplicaUpdatesParams2,
     ) -> Result<BitField, ActorError>
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
@@ -851,13 +878,37 @@ impl Actor {
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
+        let updates = params.updates.into_iter().map(|ru| {
+            ReplicaUpdateInner{
+                sector_number: ru.sector_number,
+                deadline: ru.deadline,
+                partition: ru.partition,
+                new_sealed_cid: ru.new_sealed_cid,
+                new_unsealed_cid: Some(ru.new_unsealed_cid),
+                deals: ru.deals,
+                update_proof_type: ru.update_proof_type,
+                replica_proof: ru.replica_proof,
+            }
+        }).collect();
+        Self::prove_replica_updates_inner(rt, updates)
+    }
+    fn prove_replica_updates_inner<BS, RT>(
+        rt: &mut RT,
+        updates: Vec<ReplicaUpdateInner>,
+    ) -> Result<BitField, ActorError>
+        where
+        // + Clone because we messed up and need to keep a copy around between transactions.
+        // https://github.com/filecoin-project/builtin-actors/issues/133
+            BS: Blockstore + Clone,
+            RT: Runtime<BS>,
+    {
         // Validate inputs
 
-        if params.updates.len() > rt.policy().prove_replica_updates_max_size {
+        if updates.len() > rt.policy().prove_replica_updates_max_size {
             return Err(actor_error!(
                 illegal_argument,
                 "too many updates ({} > {})",
-                params.updates.len(),
+                updates.len(),
                 rt.policy().prove_replica_updates_max_size
             ));
         }
@@ -878,7 +929,7 @@ impl Actor {
         let mut pledge_delta = TokenAmount::zero();
 
         struct UpdateAndSectorInfo<'a> {
-            update: &'a ReplicaUpdate,
+            update: &'a ReplicaUpdateInner,
             sector_info: SectorOnChainInfo,
             deal_weights: ext::market::DealWeights,
         }
@@ -887,7 +938,7 @@ impl Actor {
         let mut sectors_data_spec = Vec::<ext::market::SectorDataSpec>::new();
         let mut validated_updates = Vec::<UpdateAndSectorInfo>::new();
         let mut sector_numbers = BitField::new();
-        for update in params.updates.iter() {
+        for update in updates.iter() {
             let set = sector_numbers.get(update.sector_number);
             if set {
                 info!("duplicate sector being updated {}, skipping", update.sector_number,);
@@ -1027,18 +1078,18 @@ impl Actor {
 
         // Errors past this point cause the prove_replica_updates call to fail (no more skipping sectors)
 
-        let deal_weights = request_deal_data(rt, &sectors_deals)?;
-        if deal_weights.sectors.len() != validated_updates.len() {
+        let deal_data = request_deal_data(rt, &sectors_deals)?;
+        if deal_data.sectors.len() != validated_updates.len() {
             return Err(actor_error!(
                 illegal_state,
                 "deal weight request returned {} records, expected {}",
-                deal_weights.sectors.len(),
+                deal_data.sectors.len(),
                 validated_updates.len()
             ));
         }
 
         struct UpdateWithDetails<'a> {
-            update: &'a ReplicaUpdate,
+            update: &'a ReplicaUpdateInner,
             sector_info: &'a SectorOnChainInfo,
             deal_data: &'a ext::market::SectorDealData,
             deal_weights: &'a ext::market::DealWeights,
@@ -1047,7 +1098,13 @@ impl Actor {
         // Group declarations by deadline
         let mut decls_by_deadline = BTreeMap::<u64, Vec<UpdateWithDetails>>::new();
         let mut deadlines_to_load = Vec::<u64>::new();
-        for (i, with_sector_info) in validated_updates.iter().enumerate() {
+        for (i, (with_sector_info, deal_data)) in validated_updates.iter().zip(deal_data.sectors.iter()).enumerate() {
+            if let Some(ref tgt_commd) = with_sector_info.update.new_unsealed_cid {
+                let expected_commd = unsealed_cid_from_option(with_sector_info.sector_info.seal_proof, deal_data.commd)?;
+                if !tgt_commd.eq(&expected_commd) {
+                    info!("unsealed CID does not match with deals: expected {}, got {}, sector: {}", expected_commd, tgt_commd, with_sector_info.update.sector_number);
+                }
+            }
             let dl = with_sector_info.update.deadline;
             if !decls_by_deadline.contains_key(&dl) {
                 deadlines_to_load.push(dl);
@@ -1056,7 +1113,7 @@ impl Actor {
             decls_by_deadline.entry(dl).or_default().push(UpdateWithDetails {
                 update: with_sector_info.update,
                 sector_info: &with_sector_info.sector_info,
-                deal_data: &deal_weights.sectors[i],
+                deal_data,
                 deal_weights: &with_sector_info.deal_weights,
             });
         }
@@ -3338,6 +3395,21 @@ struct SectorPreCommitInfoInner {
     pub unsealed_cid: CommDState,
 }
 
+
+/// ReplicaUpdate param with Option<Cid> for CommD
+/// None means unknown
+pub struct ReplicaUpdateInner {
+    pub sector_number: SectorNumber,
+    pub deadline: u64,
+    pub partition: u64,
+    pub new_sealed_cid: Cid,
+    /// None means unknown
+    pub new_unsealed_cid: Option<Cid>,
+    pub deals: Vec<DealID>,
+    pub update_proof_type: RegisteredUpdateProof,
+    pub replica_proof: Vec<u8>,
+}
+
 // TODO: We're using the current power+epoch reward. Technically, we
 // should use the power/reward at the time of termination.
 // https://github.com/filecoin-project/specs-actors/v6/pull/648
@@ -4697,6 +4769,10 @@ impl ActorCode for Actor {
                 Self::pre_commit_sector_batch2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
+            Some(Method::ProveReplicaUpdates2) => {
+                let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
         }
     }
@@ -4705,8 +4781,3 @@ impl ActorCode for Actor {
 #[cfg(test)]
 mod internal_tests;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test() {}
-}

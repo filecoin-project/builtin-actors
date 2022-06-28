@@ -400,3 +400,24 @@ pub struct ProveReplicaUpdatesParams {
 }
 
 impl Cbor for ProveReplicaUpdatesParams {}
+
+
+#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct ReplicaUpdate2 {
+    pub sector_number: SectorNumber,
+    pub deadline: u64,
+    pub partition: u64,
+    pub new_sealed_cid: Cid,
+    pub new_unsealed_cid: Cid,
+    pub deals: Vec<DealID>,
+    pub update_proof_type: RegisteredUpdateProof,
+    #[serde(with = "serde_bytes")]
+    pub replica_proof: Vec<u8>,
+}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ProveReplicaUpdatesParams2 {
+    pub updates: Vec<ReplicaUpdate2>,
+}
+
+impl Cbor for ProveReplicaUpdatesParams2 {}
