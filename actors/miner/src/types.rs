@@ -297,12 +297,6 @@ pub struct SectorPreCommitOnChainInfo2 {
     #[serde(with = "bigint_ser")]
     pub pre_commit_deposit: TokenAmount,
     pub pre_commit_epoch: ChainEpoch,
-    /// Integral of active deals over sector lifetime, 0 if CommittedCapacity sector
-    #[serde(with = "bigint_ser")]
-    pub deal_weight: DealWeight,
-    /// Integral of active verified deals over sector lifetime
-    #[serde(with = "bigint_ser")]
-    pub verified_deal_weight: DealWeight,
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]

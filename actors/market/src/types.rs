@@ -85,15 +85,9 @@ pub struct VerifyDealsForActivationReturn {
     pub sectors: Vec<SectorDealData>,
 }
 
-// Changes:
-//   - added CommD
 #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
 pub struct SectorDealData {
-    pub deal_space: u64,
-    #[serde(with = "bigint_ser")]
-    pub deal_weight: DealWeight,
-    #[serde(with = "bigint_ser")]
-    pub verified_deal_weight: DealWeight,
+    /// Option::None signifies commitment to empty sector, meaning no deals.
     pub commd: Option<Cid>,
 }
 
@@ -101,6 +95,20 @@ pub struct SectorDealData {
 pub struct ActivateDealsParams {
     pub deal_ids: Vec<DealID>,
     pub sector_expiry: ChainEpoch,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ActivateDealsResult {
+    pub weights: DealWeights,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct DealWeights {
+    pub deal_space: u64,
+    #[serde(with = "bigint_ser")]
+    pub deal_weight: DealWeight,
+    #[serde(with = "bigint_ser")]
+    pub verified_deal_weight: DealWeight,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

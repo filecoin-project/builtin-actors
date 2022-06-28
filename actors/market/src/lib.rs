@@ -15,7 +15,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::StoragePower;
+use fvm_shared::sector::{SectorSize, StoragePower};
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::info;
 use num_derive::FromPrimitive;
@@ -464,6 +464,7 @@ impl Actor {
     }
 
     /// Verify that a given set of storage deals is valid for a sector currently being PreCommitted
+    /// and return UnsealedCID for the set of deals.
     /// and return DealWeight of the set of storage deals given.
     /// The weight is defined as the sum, over all deals in the set, of the product of deal size
     /// and duration.
@@ -486,12 +487,17 @@ impl Actor {
 
         let mut sectors_data = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
-            let (deal_weight, verified_deal_weight, deal_space) = validate_and_compute_deal_weight(
+            let sector_size = sector
+                .sector_type
+                .sector_size()
+                .map_err(|e| actor_error!(illegal_argument, "sector size unknown: {}", e))?;
+            validate_deals_for_activation(
                 &proposals,
                 &sector.deal_ids,
                 &miner_addr,
                 sector.sector_expiry,
                 curr_epoch,
+                sector_size,
             )
             .map_err(|e| {
                 e.downcast_default(
@@ -527,20 +533,16 @@ impl Actor {
                 })?)
             };
 
-            sectors_data.push(SectorDealData {
-                deal_space,
-                deal_weight,
-                verified_deal_weight,
-                commd,
-            });
+            sectors_data.push(SectorDealData { commd });
         }
 
         Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
     }
-
-    /// Verify that a given set of storage deals is valid for a sector currently being ProveCommitted,
-    /// update the market's internal state accordingly.
-    fn activate_deals<BS, RT>(rt: &mut RT, params: ActivateDealsParams) -> Result<(), ActorError>
+    /// Activate a set of deals, returning the combined deal weights.
+    fn activate_deals<BS, RT>(
+        rt: &mut RT,
+        params: ActivateDealsParams,
+    ) -> Result<ActivateDealsResult, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -549,23 +551,27 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
+        let st: State = rt.state()?;
+        let proposals = DealArray::load(&st.proposals, rt.store()).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
+        })?;
+
+        let deal_weights = validate_and_compute_deal_weight(
+            &proposals,
+            &params.deal_ids,
+            &miner_addr,
+            params.sector_expiry,
+            curr_epoch,
+        )
+        .map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to validate deal proposals for activation",
+            )
+        })?;
+
         // Update deal states
         rt.transaction(|st: &mut State, rt| {
-            validate_deals_for_activation(
-                st,
-                rt.store(),
-                &params.deal_ids,
-                &miner_addr,
-                params.sector_expiry,
-                curr_epoch,
-            )
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to validate deal proposals for activation",
-                )
-            })?;
-
             let mut msm = st.mutator(rt.store());
             msm.with_deal_states(Permission::Write)
                 .with_pending_proposals(Permission::ReadOnly)
@@ -650,7 +656,7 @@ impl Actor {
             Ok(())
         })?;
 
-        Ok(())
+        Ok(ActivateDealsResult { weights: deal_weights })
     }
 
     /// Terminate a set of deals in response to their containing sector being terminated.
@@ -1088,19 +1094,38 @@ impl Actor {
 /// Validates a collection of deal dealProposals for activation, and returns their combined weight,
 /// split into regular deal weight and verified deal weight.
 pub fn validate_deals_for_activation<BS>(
-    st: &State,
-    store: &BS,
+    proposals: &DealArray<BS>,
     deal_ids: &[DealID],
     miner_addr: &Address,
     sector_expiry: ChainEpoch,
     curr_epoch: ChainEpoch,
-) -> anyhow::Result<(BigInt, BigInt, u64)>
+    sector_size: SectorSize,
+) -> anyhow::Result<()>
 where
     BS: Blockstore,
 {
-    let proposals = DealArray::load(&st.proposals, store)?;
+    let mut total_size: u64 = 0;
+    for deal_id in deal_ids {
+        let proposal: &DealProposal = proposals
+            .get(*deal_id)?
+            .ok_or_else(|| actor_error!(not_found, "no such deal {}", deal_id))?;
 
-    validate_and_compute_deal_weight(&proposals, deal_ids, miner_addr, sector_expiry, curr_epoch)
+        validate_deal_can_activate(proposal, miner_addr, sector_expiry, curr_epoch)
+            .map_err(|e| e.wrap(&format!("cannot activate deal {}", deal_id)))?;
+        total_size += proposal.piece_size.0
+    }
+
+    if total_size > sector_size as u64 {
+        return Err(actor_error!(
+            illegal_argument,
+            "deals too large to fit in sector {} > {}",
+            total_size,
+            sector_size
+        )
+        .into());
+    }
+
+    Ok(())
 }
 
 pub fn validate_and_compute_deal_weight<BS>(
@@ -1109,7 +1134,7 @@ pub fn validate_and_compute_deal_weight<BS>(
     miner_addr: &Address,
     sector_expiry: ChainEpoch,
     sector_activation: ChainEpoch,
-) -> anyhow::Result<(BigInt, BigInt, u64)>
+) -> anyhow::Result<DealWeights>
 where
     BS: Blockstore,
 {
@@ -1142,7 +1167,11 @@ where
         }
     }
 
-    Ok((total_deal_space_time, total_verified_space_time, total_deal_space))
+    Ok(DealWeights {
+        deal_space: total_deal_space,
+        deal_weight: total_deal_space_time,
+        verified_deal_weight: total_verified_space_time,
+    })
 }
 
 pub fn gen_rand_next_epoch(
@@ -1389,8 +1418,8 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ActivateDeals) => {
-                Self::activate_deals(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let res = Self::activate_deals(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
             }
             Some(Method::OnMinerSectorsTerminate) => {
                 Self::on_miner_sectors_terminate(rt, cbor::deserialize_params(params)?)?;

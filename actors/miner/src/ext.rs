@@ -35,6 +35,20 @@ pub mod market {
         pub sector_expiry: ChainEpoch,
     }
 
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    pub struct ActivateDealsResult {
+        pub weights: DealWeights,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple, Default)]
+    pub struct DealWeights {
+        pub deal_space: u64,
+        #[serde(with = "bigint_ser")]
+        pub deal_weight: DealWeight,
+        #[serde(with = "bigint_ser")]
+        pub verified_deal_weight: DealWeight,
+    }
+
     #[derive(Serialize_tuple)]
     pub struct ComputeDataCommitmentParamsRef<'a> {
         pub inputs: &'a [SectorDataSpec],
@@ -70,11 +84,7 @@ pub mod market {
 
     #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
     pub struct SectorDealData {
-        pub deal_space: u64,
-        #[serde(with = "bigint_ser")]
-        pub deal_weight: DealWeight,
-        #[serde(with = "bigint_ser")]
-        pub verified_deal_weight: DealWeight,
+        /// Option::None signifies commitment to empty sector, meaning no deals.
         pub commd: Option<Cid>,
     }
 
