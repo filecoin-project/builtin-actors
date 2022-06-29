@@ -1830,19 +1830,17 @@ impl Actor {
                 }
 
                 let deal_data = &deal_data_vec.sectors[i];
-                if let CommDState::Set(ref in_commd) = precommit.unsealed_cid {
-                    if Some(in_commd) != deal_data.commd.as_ref() {
-                        return Err(actor_error!(illegal_argument, "computed {} and passed {} CommDs not equal",
-                            deal_data.commd.map(|c| c.to_string()).unwrap_or_else(|| "None".to_string()), in_commd));
-                    }
-                }
-
                 let commd = match precommit.unsealed_cid.clone() {
                     // if the CommD is unknown, use CommD computed by the market
                     CommDState::Unknown => deal_data.commd,
                     CommDState::Set(c) => Some(c),
                     CommDState::Zero => None,
                 };
+                if commd != deal_data.commd {
+                    return Err(actor_error!(illegal_argument, "computed {:?} and passed {:?} CommDs not equal",
+                            deal_data.commd, commd));
+                }
+
 
                 let on_chain_precommit = SectorPreCommitInfo2 {
                     seal_proof: precommit.seal_proof,
