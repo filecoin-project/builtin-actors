@@ -19,9 +19,9 @@ use lazy_static::lazy_static;
 use fil_actor_hierarchical_sca::checkpoint::ChildCheck;
 use fil_actor_hierarchical_sca::ext;
 use fil_actor_hierarchical_sca::{
-    get_topdown_msg, is_bottomup, Checkpoint, ConstructorParams, CrossMsgArray, CrossMsgMeta,
-    CrossMsgParams, CrossMsgs, FundParams, HCMsgType, Method, State, StorableMsg, Subnet,
-    CROSSMSG_AMT_BITWIDTH, DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT,
+    get_topdown_msg, is_bottomup, Checkpoint, ConstructorParams, CrossMsgMeta, CrossMsgParams,
+    CrossMsgs, FundParams, HCMsgType, Method, State, StorableMsg, Subnet, CROSSMSG_AMT_BITWIDTH,
+    DEFAULT_CHECKPOINT_PERIOD, MAX_NONCE, MIN_COLLATERAL_AMOUNT,
 };
 use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::runtime::Runtime;
@@ -98,11 +98,11 @@ impl Harness {
         assert_eq!(st.min_stake, TokenAmount::from(MIN_COLLATERAL_AMOUNT));
         assert_eq!(st.check_period, DEFAULT_CHECKPOINT_PERIOD);
         assert_eq!(st.applied_bottomup_nonce, MAX_NONCE);
-        assert_eq!(st.bottomup_msg_meta, empty_bottomup_array);
-        verify_empty_map(rt, st.subnets);
-        verify_empty_map(rt, st.checkpoints);
-        verify_empty_map(rt, st.check_msg_registry);
-        verify_empty_map(rt, st.atomic_exec_registry);
+        assert_eq!(st.bottomup_msg_meta.cid(), empty_bottomup_array);
+        verify_empty_map(rt, st.subnets.cid());
+        verify_empty_map(rt, st.checkpoints.cid());
+        verify_empty_map(rt, st.check_msg_registry.cid());
+        verify_empty_map(rt, st.atomic_exec_registry.cid());
     }
 
     pub fn register(
@@ -316,7 +316,7 @@ impl Harness {
         rt.verify();
 
         let sub = self.get_subnet(rt, id).unwrap();
-        let crossmsgs = CrossMsgArray::load(&sub.top_down_msgs, rt.store()).unwrap();
+        let crossmsgs = sub.top_down_msgs.load(rt.store()).unwrap();
         let msg = get_topdown_msg(&crossmsgs, expected_nonce - 1).unwrap().unwrap();
         assert_eq!(&sub.circ_supply, expected_circ_sup);
         assert_eq!(sub.nonce, expected_nonce);
@@ -381,12 +381,7 @@ impl Harness {
         let chmeta_ind = ch.crossmsg_meta_index(&self.net_name, &parent).unwrap();
         let chmeta = &ch.data.cross_msgs[chmeta_ind];
 
-        let cross_reg = make_map_with_root_and_bitwidth::<_, CrossMsgs>(
-            &st.check_msg_registry,
-            rt.store(),
-            HAMT_BIT_WIDTH,
-        )
-        .unwrap();
+        let cross_reg = st.check_msg_registry.load(rt.store()).unwrap();
         let meta = get_cross_msgs(&cross_reg, &chmeta.msgs_cid).unwrap().unwrap();
         let msg = meta.msgs[expected_nonce as usize].clone();
 
@@ -477,12 +472,7 @@ impl Harness {
             let chmeta_ind = ch.crossmsg_meta_index(&self.net_name, &dest).unwrap();
             let chmeta = &ch.data.cross_msgs[chmeta_ind];
 
-            let cross_reg = make_map_with_root_and_bitwidth::<_, CrossMsgs>(
-                &st.check_msg_registry,
-                rt.store(),
-                HAMT_BIT_WIDTH,
-            )
-            .unwrap();
+            let cross_reg = st.check_msg_registry.load(rt.store()).unwrap();
             let meta = get_cross_msgs(&cross_reg, &chmeta.msgs_cid).unwrap().unwrap();
             let msg = meta.msgs[nonce as usize].clone();
 
@@ -494,7 +484,7 @@ impl Harness {
         } else {
             // top-down
             let sub = self.get_subnet(rt, &dest.down(&self.net_name).unwrap()).unwrap();
-            let crossmsgs = CrossMsgArray::load(&sub.top_down_msgs, rt.store()).unwrap();
+            let crossmsgs = sub.top_down_msgs.load(rt.store()).unwrap();
             let msg = get_topdown_msg(&crossmsgs, nonce - 1).unwrap().unwrap();
             assert_eq!(&sub.circ_supply, expected_circ_sup);
             assert_eq!(sub.nonce, nonce);
@@ -600,7 +590,7 @@ impl Harness {
 
             if sto != st.network_name {
                 let sub = self.get_subnet(rt, &sto.down(&self.net_name).unwrap()).unwrap();
-                let crossmsgs = CrossMsgArray::load(&sub.top_down_msgs, rt.store()).unwrap();
+                let crossmsgs = sub.top_down_msgs.load(rt.store()).unwrap();
                 let msg = get_topdown_msg(&crossmsgs, td_nonce).unwrap().unwrap();
                 assert_eq!(&msg.from, from);
                 assert_eq!(&msg.to, to);
@@ -621,8 +611,7 @@ impl Harness {
 
     pub fn get_subnet(&self, rt: &MockRuntime, id: &SubnetID) -> Option<Subnet> {
         let st: State = rt.get_state();
-        let subnets =
-            make_map_with_root_and_bitwidth(&st.subnets, rt.store(), HAMT_BIT_WIDTH).unwrap();
+        let subnets = st.subnets.load(rt.store()).unwrap();
         subnets.get(&id.to_bytes()).unwrap().cloned()
     }
 }

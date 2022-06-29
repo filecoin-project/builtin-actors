@@ -27,12 +27,14 @@ pub use self::types::*;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+pub mod atomic;
 pub mod checkpoint;
 mod cross;
 #[doc(hidden)]
 pub mod ext;
 mod state;
 pub mod subnet;
+pub mod tcid;
 mod types;
 
 /// SCA actor methods available
