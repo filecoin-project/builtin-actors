@@ -1,11 +1,11 @@
 use anyhow::anyhow;
-use cid::multihash::Code;
 use cid::Cid;
-use fil_actors_runtime::{Array, BURNT_FUNDS_ACTOR_ADDR};
+use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, SubnetID};
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::econ::TokenAmount;
@@ -14,6 +14,7 @@ use fvm_shared::METHOD_SEND;
 use std::path::Path;
 
 use crate::checkpoint::CrossMsgMeta;
+use crate::tcid::{TAmt, TCid, TLink};
 
 /// StorableMsg stores all the relevant information required
 /// to execute cross-messages.
@@ -126,12 +127,18 @@ pub struct CrossMsgs {
 }
 impl Cbor for CrossMsgs {}
 
-#[derive(PartialEq, Eq, Clone, Debug, Default, Serialize_tuple, Deserialize_tuple)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct MetaTag {
-    pub msgs_cid: Cid,
-    pub meta_cid: Cid,
+    pub msgs_cid: TCid<TAmt<StorableMsg>>,
+    pub meta_cid: TCid<TAmt<CrossMsgMeta>>,
 }
 impl Cbor for MetaTag {}
+
+impl MetaTag {
+    pub fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<MetaTag> {
+        Ok(Self { msgs_cid: TCid::new_amt(store)?, meta_cid: TCid::new_amt(store)? })
+    }
+}
 
 impl CrossMsgs {
     pub fn new() -> Self {
@@ -140,19 +147,19 @@ impl CrossMsgs {
 
     pub(crate) fn cid(&self) -> anyhow::Result<Cid> {
         let store = MemoryBlockstore::new();
-        let mut msgs_array = Array::new(&store);
-        msgs_array.batch_set(self.msgs.clone())?;
-        let msgs_cid = msgs_array
-            .flush()
-            .map_err(|e| anyhow!("Failed to create empty messages array: {}", e))?;
+        let mut meta = MetaTag::new(&store)?;
 
-        let mut meta_array = Array::new(&store);
-        meta_array.batch_set(self.msgs.clone())?;
-        let meta_cid = meta_array
-            .flush()
-            .map_err(|e| anyhow!("Failed to create empty messages array: {}", e))?;
+        meta.msgs_cid.update(&store, |msgs_array| {
+            msgs_array.batch_set(self.msgs.clone()).map_err(|e| e.into())
+        })?;
 
-        Ok(store.put_cbor(&MetaTag { msgs_cid: msgs_cid, meta_cid: meta_cid }, Code::Blake2b256)?)
+        meta.meta_cid.update(&store, |meta_array| {
+            meta_array.batch_set(self.metas.clone()).map_err(|e| e.into())
+        })?;
+
+        let meta_cid: TCid<TLink<MetaTag>> = TCid::new_link(&store, &meta)?;
+
+        Ok(meta_cid.cid())
     }
 
     pub(crate) fn add_metas(&mut self, metas: Vec<CrossMsgMeta>) -> anyhow::Result<()> {

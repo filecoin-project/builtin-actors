@@ -1,7 +1,6 @@
 use cid::Cid;
 use fil_actor_hierarchical_sca::{
-    get_bottomup_msg, subnet, Actor as SCAActor, Checkpoint, CrossMsgMetaArray, State,
-    DEFAULT_CHECKPOINT_PERIOD,
+    get_bottomup_msg, subnet, Actor as SCAActor, Checkpoint, State, DEFAULT_CHECKPOINT_PERIOD,
 };
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
@@ -336,7 +335,7 @@ fn checkpoint_crossmsgs() {
     let prev_cid = ch.cid();
     assert_eq!(has_cid(&child_check.checks, &prev_cid), true);
 
-    let crossmsgs = CrossMsgMetaArray::load(&st.bottomup_msg_meta, rt.store()).unwrap();
+    let crossmsgs = st.bottomup_msg_meta.load(rt.store()).unwrap();
     for item in 0..=2 {
         get_bottomup_msg(&crossmsgs, item).unwrap().unwrap();
     }
@@ -378,7 +377,7 @@ fn checkpoint_crossmsgs() {
     assert_eq!(&child_check.checks.len(), &2);
     assert_eq!(has_cid(&child_check.checks, &ch.cid()), true);
 
-    let crossmsgs = CrossMsgMetaArray::load(&st.bottomup_msg_meta, rt.store()).unwrap();
+    let crossmsgs = &st.bottomup_msg_meta.load(rt.store()).unwrap();
     for item in 0..=2 {
         get_bottomup_msg(&crossmsgs, item).unwrap().unwrap();
     }
