@@ -61,7 +61,8 @@ impl<'d, T: TCidContent, C> serde::Deserialize<'d> for TCid<T, C> {
     }
 }
 
-/// Assuming that the type implements `load` and `flush`, implement some convenience methods.
+/// Assuming that the type implements `maybe_load` and `flush`,
+/// implement some convenience methods.
 ///
 /// NOTE: This can be achieved with a trait and an associated type as well, but unfortunately
 /// it got too complex for Rust Analyzer to provide code completion, which makes it less ergonomic.
@@ -82,6 +83,21 @@ macro_rules! tcid_ops {
           $(, $code : $ct)?
         > TCid<$typ<$($gen),+> $(, $code)?>
         {
+            /// Read the underlying `Cid` from the store or return a `ActorError::illegal_state` error if not found.
+            /// Use this method for content that should have already been correctly initialized and maintained.
+            /// For content that may not be present, consider using `maybe_load` instead.
+            pub fn load<'s, S: fvm_ipld_blockstore::Blockstore>(&self, store: &'s S) -> Result<$item> {
+                match self.maybe_load(store)? {
+                    Some(content) => Ok(content),
+                    None => Err(fil_actors_runtime::actor_error!(
+                        illegal_state;
+                        "error loading {}: Cid ({}) did not match any in database",
+                        type_name::<Self>(),
+                        self.cid.to_string()
+                    ).into()),
+                }
+            }
+
             /// Load, modify and flush a value, returning something as a result.
             pub fn modify<'s, S: fvm_ipld_blockstore::Blockstore, R>(
                 &mut self,

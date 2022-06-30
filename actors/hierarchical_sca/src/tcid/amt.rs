@@ -6,6 +6,7 @@ use crate::tcid_ops;
 use super::{TCid, TCidContent};
 use anyhow::{anyhow, Result};
 use fil_actors_runtime::fvm_ipld_amt::Amt;
+use fil_actors_runtime::fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
@@ -60,9 +61,13 @@ where
         Ok(Self::from(cid))
     }
 
-    pub fn load<'s, S: Blockstore>(&self, store: &'s S) -> Result<Amt<V, &'s S>> {
-        Amt::<V, _>::load(&self.cid, store)
-            .map_err(|e| anyhow!("error loading {}: {}", type_name::<Self>(), e))
+    /// Load the data pointing at the store with the underlying `Cid` as its root, if it exists.
+    pub fn maybe_load<'s, S: Blockstore>(&self, store: &'s S) -> Result<Option<Amt<V, &'s S>>> {
+        match Amt::<V, _>::load(&self.cid, store) {
+            Ok(content) => Ok(Some(content)),
+            Err(AmtError::CidNotFound(_)) => Ok(None),
+            Err(other) => Err(anyhow!(other)),
+        }
     }
 
     pub fn flush<'s, S: Blockstore>(&mut self, mut value: Amt<V, &'s S>) -> Result<Amt<V, &'s S>> {

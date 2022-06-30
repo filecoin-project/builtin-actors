@@ -5,6 +5,7 @@ use crate::tcid_ops;
 use anyhow::{anyhow, Result};
 use fil_actors_runtime::{make_empty_map, make_map_with_root_and_bitwidth};
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_hamt::Error as HamtError;
 use fvm_ipld_hamt::Hamt;
 use fvm_shared::HAMT_BIT_WIDTH;
 use serde::de::DeserializeOwned;
@@ -63,11 +64,13 @@ where
         Ok(Self::from(cid))
     }
 
-    /// Load the data pointing at the store with the underlying `Cid` as its root,
-    /// or return an error if the `Cid` is not found.
-    pub fn load<'s, S: Blockstore>(&self, store: &'s S) -> Result<Hamt<&'s S, V>> {
-        make_map_with_root_and_bitwidth::<S, V>(&self.cid, store, W)
-            .map_err(|e| anyhow!("error loading {}: {}", type_name::<Self>(), e))
+    /// Load the data pointing at the store with the underlying `Cid` as its root, if it exists.
+    pub fn maybe_load<'s, S: Blockstore>(&self, store: &'s S) -> Result<Option<Hamt<&'s S, V>>> {
+        match make_map_with_root_and_bitwidth::<S, V>(&self.cid, store, W) {
+            Ok(content) => Ok(Some(content)),
+            Err(HamtError::CidNotFound(_)) => Ok(None),
+            Err(other) => Err(anyhow!(other)),
+        }
     }
 
     /// Flush the data to the store and overwrite the `Cid`.

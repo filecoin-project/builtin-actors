@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use super::{CodeType, TCid, TCidContent};
 use crate::tcid_ops;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::CborStore;
 use serde::de::DeserializeOwned;
@@ -73,16 +73,12 @@ where
         Ok(Self::from(cid))
     }
 
-    /// Read the underlying `Cid` from the store or return an error if not found.
-    pub fn load<'s, S: Blockstore>(&self, store: &'s S) -> Result<StoreContent<'s, S, T>> {
-        match store.get_cbor(&self.cid)? {
-            Some(content) => Ok(StoreContent { store, content }),
-            None => Err(anyhow!(
-                "error loading {}: Cid ({}) did not match any in database",
-                type_name::<Self>(),
-                self.cid.to_string()
-            )),
-        }
+    /// Read the underlying `Cid` from the store, if it exists.
+    pub fn maybe_load<'s, S: Blockstore>(
+        &self,
+        store: &'s S,
+    ) -> Result<Option<StoreContent<'s, S, T>>> {
+        Ok(store.get_cbor(&self.cid)?.map(|content| StoreContent { store, content }))
     }
 
     /// Put the value into the store and overwrite the `Cid`.
