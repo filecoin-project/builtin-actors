@@ -56,7 +56,7 @@ if requested by implementors.
 
 ## Releasing
 
-We usually release all actors, the runtime, and the bundle at the same time. That means releasing:
+We usually release all actors, the runtime, and the state abstraction at the same time. That means releasing:
 
 - `fil_actors_runtime`
 - `fil_actor_account`
@@ -70,9 +70,9 @@ We usually release all actors, the runtime, and the bundle at the same time. Tha
 - `fil_actor_reward`
 - `fil_actor_system`
 - `fil_actor_verifreg`
-- `fil_builtin_actors_bundle`
+- `fil_builtin_actors_state`
 
-(in that order)
+We do not publish the "bundle" but instead build it in CI.
 
 To make this easier, we've added some helper scripts to the Makefile. Instructions follow.
 
@@ -98,6 +98,7 @@ By default, this bumps the patch version. To bump to a different version, append
 - `major`
 - `alpha`
 - `beta`
+- `rc`
 
 You can also _set_ a specific version with the `set-version` target.
 

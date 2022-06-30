@@ -35,12 +35,16 @@ use self::policy::*;
 pub use self::state::*;
 pub use self::types::*;
 
-pub mod balance_table; // export for testing
+pub mod balance_table;
+// export for testing
 mod deal;
 #[doc(hidden)]
-pub mod ext; // export for testing
-pub mod policy; // export for testing
+pub mod ext;
+// export for testing
+pub mod policy;
+// export for testing
 mod state;
+pub mod testing;
 mod types;
 
 #[cfg(feature = "fil-actor")]
@@ -84,6 +88,7 @@ pub enum Method {
 
 /// Market Actor
 pub struct Actor;
+
 impl Actor {
     pub fn constructor<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
     where
@@ -304,10 +309,11 @@ impl Actor {
 
             // drop deals with insufficient lock up to cover costs
             let client_id = client.id().expect("resolved address should be an ID address");
-            let lockup = total_client_lockup.entry(client_id).or_default();
-            *lockup += deal.proposal.client_balance_requirement();
+            let mut client_lockup =
+                total_client_lockup.get(&client_id).cloned().unwrap_or_default();
+            client_lockup += deal.proposal.client_balance_requirement();
 
-            let client_balance_ok = msm.balance_covered(client, lockup).map_err(|e| {
+            let client_balance_ok = msm.balance_covered(client, &client_lockup).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to check client balance coverage",
@@ -318,9 +324,11 @@ impl Actor {
                 info!("invalid deal: {}: insufficient client funds to cover proposal cost", di);
                 continue;
             }
-            total_provider_lockup += &deal.proposal.provider_collateral;
+
+            let mut provider_lockup = total_provider_lockup.clone();
+            provider_lockup += &deal.proposal.provider_collateral;
             let provider_balance_ok =
-                msm.balance_covered(provider, &total_provider_lockup).map_err(|e| {
+                msm.balance_covered(provider, &provider_lockup).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check provider balance coverage",
@@ -374,6 +382,8 @@ impl Actor {
                 }
             }
 
+            total_provider_lockup = provider_lockup;
+            total_client_lockup.insert(client_id, client_lockup);
             proposal_cid_lookup.insert(pcid);
             valid_proposal_cids.push(pcid);
             valid_deals.push(deal);
@@ -1116,6 +1126,7 @@ pub fn gen_rand_next_epoch(
     let next_day = q.quantize_up(start_epoch);
     next_day + offset
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 // Checks
 ////////////////////////////////////////////////////////////////////////////////

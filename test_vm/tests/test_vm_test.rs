@@ -6,6 +6,7 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
+use test_vm::util::pk_addrs_from;
 use test_vm::{actor, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 #[test]
@@ -31,6 +32,10 @@ fn state_control() {
     // a2 is gone
     assert_eq!(None, v.get_actor(addr2));
     assert_eq!(v.get_actor(addr1).unwrap(), a1);
+
+    let invariants_check = v.check_state_invariants();
+    assert!(invariants_check.is_err());
+    assert!(invariants_check.unwrap_err().to_string().contains("AccountState is empty"));
 }
 
 fn assert_account_actor(
@@ -105,4 +110,14 @@ fn test_sent() {
     assert_eq!(ExitCode::SYS_INVALID_RECEIVER, mres.code);
     assert_account_actor(3, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::from(0u8), addr2, &v, expect_id_addr2);
+    v.assert_state_invariants();
+}
+
+#[test]
+fn test_pk_gen() {
+    let addrs = pk_addrs_from(5, 2);
+    let second_addr_seeded_five = addrs[1];
+    let addrs = pk_addrs_from(6, 1);
+    let first_addr_seeded_six = addrs[0];
+    assert_ne!(second_addr_seeded_five, first_addr_seeded_six);
 }

@@ -87,13 +87,16 @@ pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<
     }
 }
 
+/// minimum number of epochs past the current epoch a sector may be set to expire
+pub const MIN_SECTOR_EXPIRATION: i64 = 180 * EPOCHS_IN_DAY;
+
 /// DealWeight and VerifiedDealWeight are spacetime occupied by regular deals and verified deals in a sector.
 /// Sum of DealWeight and VerifiedDealWeight should be less than or equal to total SpaceTime of a sector.
 /// Sectors full of VerifiedDeals will have a SectorQuality of VerifiedDealWeightMultiplier/QualityBaseMultiplier.
 /// Sectors full of Deals will have a SectorQuality of DealWeightMultiplier/QualityBaseMultiplier.
 /// Sectors with neither will have a SectorQuality of QualityBaseMultiplier/QualityBaseMultiplier.
 /// SectorQuality of a sector is a weighted average of multipliers based on their proportions.
-fn quality_for_weight(
+pub fn quality_for_weight(
     size: SectorSize,
     duration: ChainEpoch,
     deal_weight: &DealWeight,

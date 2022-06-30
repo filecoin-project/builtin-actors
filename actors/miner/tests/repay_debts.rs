@@ -26,7 +26,7 @@ fn repay_with_no_available_funds_does_nothing() {
 
     let st = h.get_state(&rt);
     assert_eq!(fee_debt, st.fee_debt);
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn pay_debt_entirely_from_balance() {
 
     let st = h.get_state(&rt);
     assert!(st.fee_debt.is_zero());
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn partially_repay_debt() {
 
     let st = h.get_state(&rt);
     assert_eq!(&fee_debt / 4, st.fee_debt);
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -97,5 +97,5 @@ fn pay_debt_partially_from_vested_funds() {
 
     let st = h.get_state(&rt);
     assert!(st.fee_debt.is_zero());
-    check_state_invariants(&rt);
+    h.check_state(&rt);
 }

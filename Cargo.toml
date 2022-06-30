@@ -1,7 +1,7 @@
 [package]
 name = "fil_builtin_actors_bundle"
 description = "Bundle of FVM-compatible Wasm bytecode for Filecoin builtin actors"
-version = "8.0.0-alpha.1"
+version = "9.0.0-alpha.1"
 license = "MIT OR Apache-2.0"
 authors = ["Protocol Labs", "Filecoin Core Devs"]
 edition = "2021"
@@ -9,23 +9,25 @@ repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm"]
 exclude = ["examples", ".github"]
 
+# We don't publish the bundle to crates.io anymore. Instead, we build in CI.
+publish = false
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-fil_actor_account = { version = "8.0.0-alpha.1", path = "./actors/account", features = ["fil-actor"] }
-fil_actor_verifreg = { version = "8.0.0-alpha.1", path = "./actors/verifreg", features = ["fil-actor"] }
-fil_actor_cron = { version = "8.0.0-alpha.1", path = "./actors/cron", features = ["fil-actor"] }
-fil_actor_market = { version = "8.0.0-alpha.1", path = "./actors/market", features = ["fil-actor"] }
-fil_actor_multisig = { version = "8.0.0-alpha.1", path = "./actors/multisig", features = ["fil-actor"] }
-fil_actor_paych = { version = "8.0.0-alpha.1", path = "./actors/paych", features = ["fil-actor"] }
-fil_actor_power = { version = "8.0.0-alpha.1", path = "./actors/power", features = ["fil-actor"] }
-fil_actor_miner = { version = "8.0.0-alpha.1", path = "./actors/miner", features = ["fil-actor"] }
-fil_actor_reward = { version = "8.0.0-alpha.1", path = "./actors/reward", features = ["fil-actor"] }
-fil_actor_system = { version = "8.0.0-alpha.1", path = "./actors/system", features = ["fil-actor"] }
-fil_actor_init = { version = "8.0.0-alpha.1", path = "./actors/init", features = ["fil-actor"] }
-fil_actors_runtime = { version = "8.0.0-alpha.1", path = "./actors/runtime", features = ["fil-actor"] }
-fil_actor_hierarchical_sca = { version = "8.0.0-alpha.1", path = "./actors/hierarchical_sca", features = ["fil-actor"] }
+fil_actor_account = { version = "9.0.0-alpha.1", path = "./actors/account", features = ["fil-actor"] }
+fil_actor_verifreg = { version = "9.0.0-alpha.1", path = "./actors/verifreg", features = ["fil-actor"] }
+fil_actor_cron = { version = "9.0.0-alpha.1", path = "./actors/cron", features = ["fil-actor"] }
+fil_actor_market = { version = "9.0.0-alpha.1", path = "./actors/market", features = ["fil-actor"] }
+fil_actor_multisig = { version = "9.0.0-alpha.1", path = "./actors/multisig", features = ["fil-actor"] }
+fil_actor_paych = { version = "9.0.0-alpha.1", path = "./actors/paych", features = ["fil-actor"] }
+fil_actor_power = { version = "9.0.0-alpha.1", path = "./actors/power", features = ["fil-actor"] }
+fil_actor_miner = { version = "9.0.0-alpha.1", path = "./actors/miner", features = ["fil-actor"] }
+fil_actor_reward = { version = "9.0.0-alpha.1", path = "./actors/reward", features = ["fil-actor"] }
+fil_actor_system = { version = "9.0.0-alpha.1", path = "./actors/system", features = ["fil-actor"] }
+fil_actor_init = { version = "9.0.0-alpha.1", path = "./actors/init", features = ["fil-actor"] }
+fil_actor_hierarchical_sca = { version = "9.0.0-alpha.1", path = "./actors/hierarchical_sca", features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = "3.0.3"
+fil_actor_bundler = "3.0.4"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
 [dependencies]
@@ -44,6 +46,8 @@ testing-fake-proofs = []
 [workspace]
 members = [
      "actors/*",
+     "state",
+     "runtime",
      "test_vm",
 ]
 
@@ -87,3 +91,4 @@ panic = "unwind"
 overflow-checks = true
 lto = "thin"
 opt-level = "z"
+strip = true

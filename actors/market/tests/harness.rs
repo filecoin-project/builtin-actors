@@ -1,15 +1,18 @@
 #![allow(dead_code)]
+
 use cid::Cid;
 use num_traits::{FromPrimitive, Zero};
-use std::collections::HashMap;
+use regex::Regex;
+use std::{cell::RefCell, collections::HashMap};
 
 use fil_actor_market::{
     balance_table::BalanceTable, ext, ext::miner::GetControlAddressesReturnParams,
-    gen_rand_next_epoch, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
-    DealMetaArray, DealProposal, DealState, Method, OnMinerSectorsTerminateParams,
-    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn, WithdrawBalanceParams,
-    WithdrawBalanceReturn, PROPOSALS_AMT_BITWIDTH,
+    gen_rand_next_epoch, testing::check_state_invariants, ActivateDealsParams,
+    Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
+    Label, Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
+    PublishStorageDealsReturn, SectorDeals, State, VerifyDealsForActivationParams,
+    VerifyDealsForActivationReturn, WithdrawBalanceParams, WithdrawBalanceReturn,
+    PROPOSALS_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -80,22 +83,34 @@ pub fn setup() -> MockRuntime {
         caller: *SYSTEM_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         actor_code_cids,
+        balance: RefCell::new(10u64.pow(19).into()),
         ..Default::default()
     };
+
     construct_and_verify(&mut rt);
 
     rt
 }
 
-pub fn check_state(_rt: &MockRuntime) {
-    // TODO
+/// Checks internal invariants of market state asserting none of them are broken.
+pub fn check_state(rt: &MockRuntime) {
+    let (_, acc) =
+        check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
+    acc.assert_empty();
 }
 
+/// Checks state, allowing expected invariants to fail. The invariants *must* fail in the
+/// provided order.
+pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) {
+    let (_, acc) =
+        check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
+    acc.assert_expected(expected_patterns);
+}
 pub fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
     assert_eq!(
         RawBytes::default(),
-        rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default(),).unwrap()
+        rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default()).unwrap()
     );
     rt.verify();
 }
@@ -708,7 +723,7 @@ pub fn assert_deal_failure<F>(
         .exit_code()
     );
     rt.verify();
-    // TODO: actor.checkState(rt)
+    check_state(&rt);
 }
 
 pub fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
@@ -779,7 +794,7 @@ pub fn generate_and_publish_deal_for_piece(
         verified_deal: false,
         client,
         provider: addrs.provider,
-        label: "label".to_string(),
+        label: Label::String("label".to_string()),
         start_epoch,
         end_epoch,
         storage_price_per_epoch: storage_per_epoch,
@@ -849,7 +864,7 @@ fn generate_deal_proposal_with_collateral(
         verified_deal: false,
         client,
         provider,
-        label: "label".to_string(),
+        label: Label::String("label".to_string()),
         start_epoch,
         end_epoch,
         storage_price_per_epoch: storage_per_epoch,

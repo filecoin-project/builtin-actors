@@ -5,7 +5,7 @@ use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe};
+use fvm_ipld_encoding::{serde_bytes, BytesDe, Cbor};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -113,12 +113,16 @@ pub struct SubmitWindowedPoStParams {
     pub chain_commit_rand: Randomness,
 }
 
+impl Cbor for SubmitWindowedPoStParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectorParams {
     pub sector_number: SectorNumber,
     #[serde(with = "serde_bytes")]
     pub proof: Vec<u8>,
 }
+
+impl Cbor for ProveCommitSectorParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CheckSectorProvenParams {
@@ -129,6 +133,8 @@ pub struct CheckSectorProvenParams {
 pub struct ExtendSectorExpirationParams {
     pub extensions: Vec<ExpirationExtension>,
 }
+
+impl Cbor for ExtendSectorExpirationParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ExpirationExtension {
@@ -142,6 +148,8 @@ pub struct ExpirationExtension {
 pub struct TerminateSectorsParams {
     pub terminations: Vec<TerminationDeclaration>,
 }
+
+impl Cbor for TerminateSectorsParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct TerminationDeclaration {
@@ -180,6 +188,8 @@ pub struct DeclareFaultsRecoveredParams {
     pub recoveries: Vec<RecoveryDeclaration>,
 }
 
+impl Cbor for DeclareFaultsRecoveredParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct RecoveryDeclaration {
     /// The deadline to which the recovered sectors are assigned, in range [0..WPoStPeriodDeadlines)
@@ -189,6 +199,8 @@ pub struct RecoveryDeclaration {
     /// Sectors in the partition being declared recovered.
     pub sectors: UnvalidatedBitField,
 }
+
+impl Cbor for RecoveryDeclaration {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CompactPartitionsParams {
@@ -217,6 +229,8 @@ pub struct WithdrawBalanceParams {
     pub amount_requested: TokenAmount,
 }
 
+impl Cbor for WithdrawBalanceParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct WithdrawBalanceReturn {
@@ -233,12 +247,16 @@ pub struct WorkerKeyChange {
 
 pub type PreCommitSectorParams = SectorPreCommitInfo;
 
+impl Cbor for PreCommitSectorParams {}
+
 #[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct PreCommitSectorBatchParams {
     pub sectors: Vec<SectorPreCommitInfo>,
 }
 
-#[derive(Default, Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+impl Cbor for PreCommitSectorBatchParams {}
+
+#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitInfo {
     pub seal_proof: RegisteredSealProof,
     pub sector_number: SectorNumber,
@@ -322,11 +340,15 @@ pub struct ApplyRewardParams {
     pub penalty: TokenAmount,
 }
 
+impl Cbor for DisputeWindowedPoStParams {}
+
 #[derive(Debug, PartialEq, Clone, Copy, Serialize_tuple, Deserialize_tuple)]
 pub struct DisputeWindowedPoStParams {
     pub deadline: u64,
     pub post_index: u64, // only one is allowed at a time to avoid loading too many sector infos.
 }
+
+impl Cbor for ProveCommitAggregateParams {}
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
@@ -351,3 +373,5 @@ pub struct ReplicaUpdate {
 pub struct ProveReplicaUpdatesParams {
     pub updates: Vec<ReplicaUpdate>,
 }
+
+impl Cbor for ProveReplicaUpdatesParams {}

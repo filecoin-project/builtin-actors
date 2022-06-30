@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
@@ -5,7 +6,7 @@ use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState}
 use fil_actor_hierarchical_sca::{Actor as SCAActor, State as SCAState};
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
-use fil_actor_miner::Actor as MinerActor;
+use fil_actor_miner::{Actor as MinerActor, State as MinerState};
 use fil_actor_multisig::Actor as MultisigActor;
 use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as PowerState};
@@ -18,15 +19,19 @@ use fil_actors_runtime::runtime::{
     Verifier,
 };
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fil_builtin_actors_state::check::check_state_invariants;
+use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
+use fvm_shared::actor::builtin::Manifest;
 use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
@@ -41,9 +46,11 @@ use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     StoragePower, WindowPoStVerifyInfo,
 };
+use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_traits::Signed;
+use regex::Regex;
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
@@ -51,9 +58,12 @@ use std::error::Error;
 use std::fmt;
 use std::ops::Add;
 
+pub mod util;
+
 pub struct VM<'bs> {
-    store: &'bs MemoryBlockstore,
-    state_root: RefCell<Cid>,
+    pub store: &'bs MemoryBlockstore,
+    pub state_root: RefCell<Cid>,
+    total_fil: TokenAmount,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
     empty_obj_cid: Cid,
@@ -62,11 +72,42 @@ pub struct VM<'bs> {
     invocations: RefCell<Vec<InvocationTrace>>,
 }
 
+pub struct MinerBalances {
+    pub available_balance: TokenAmount,
+    pub vesting_balance: TokenAmount,
+    pub initial_pledge: TokenAmount,
+    pub pre_commit_deposit: TokenAmount,
+}
+
+pub struct NetworkStats {
+    pub total_raw_byte_power: StoragePower,
+    pub total_bytes_committed: StoragePower,
+    pub total_quality_adj_power: StoragePower,
+    pub total_qa_bytes_committed: StoragePower,
+    pub total_pledge_collateral: TokenAmount,
+    pub this_epoch_raw_byte_power: StoragePower,
+    pub this_epoch_quality_adj_power: StoragePower,
+    pub this_epoch_pledge_collateral: TokenAmount,
+    pub miner_count: i64,
+    pub miner_above_min_power_count: i64,
+    pub this_epoch_reward: TokenAmount,
+    pub this_epoch_reward_smoothed: FilterEstimate,
+    pub this_epoch_baseline_power: StoragePower,
+    pub total_storage_power_reward: TokenAmount,
+    pub total_client_locked_collateral: TokenAmount,
+    pub total_provider_locked_collateral: TokenAmount,
+    pub total_client_storage_fee: TokenAmount,
+}
+
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
+pub const TEST_VERIFREG_ROOT_SIGNER_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
+pub const TEST_VERIFREG_ROOT_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 1);
 // Account actor seeding funds created by new_with_singletons
 pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
 pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
-pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3; // accounts for verifreg root signer and msig
+pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
+
+// accounts for verifreg root signer and msig
 impl<'bs> VM<'bs> {
     pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
@@ -74,6 +115,7 @@ impl<'bs> VM<'bs> {
         VM {
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
+            total_fil: TokenAmount::zero(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             empty_obj_cid: empty,
@@ -81,6 +123,10 @@ impl<'bs> VM<'bs> {
             curr_epoch: ChainEpoch::zero(),
             invocations: RefCell::new(vec![]),
         }
+    }
+
+    pub fn with_total_fil(self, total_fil: TokenAmount) -> Self {
+        Self { total_fil, ..self }
     }
 
     pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
@@ -91,7 +137,7 @@ impl<'bs> VM<'bs> {
         let reward_total = TokenAmount::from(1_100_000_000i32).checked_mul(&fil).unwrap();
         let faucet_total = TokenAmount::from(1_000_000_000u32).checked_mul(&fil).unwrap();
 
-        let v = VM::new(store);
+        let v = VM::new(store).with_total_fil(&reward_total + &faucet_total);
 
         // system
         let sys_st = SystemState::new(store).unwrap();
@@ -125,8 +171,8 @@ impl<'bs> VM<'bs> {
         ];
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
         v.set_actor(
-            *STORAGE_MARKET_ACTOR_ADDR,
-            actor(*MARKET_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()),
+            *CRON_ACTOR_ADDR,
+            actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()),
         );
 
         // power
@@ -155,6 +201,7 @@ impl<'bs> VM<'bs> {
         .unwrap();
         let verifreg_root_signer =
             v.normalize_address(&Address::new_bls(VERIFREG_ROOT_KEY).unwrap()).unwrap();
+        assert_eq!(TEST_VERIFREG_ROOT_SIGNER_ADDR, verifreg_root_signer);
         // verifreg root msig
         let msig_ctor_params = serialize(
             &fil_actor_multisig::ConstructorParams {
@@ -182,6 +229,7 @@ impl<'bs> VM<'bs> {
             .deserialize()
             .unwrap();
         let root_msig_addr = msig_ctor_ret.id_address;
+        assert_eq!(TEST_VERIFREG_ROOT_ADDR, root_msig_addr);
         // verifreg
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
@@ -210,6 +258,58 @@ impl<'bs> VM<'bs> {
         v
     }
 
+    pub fn with_epoch(self, epoch: ChainEpoch) -> VM<'bs> {
+        self.checkpoint();
+        VM {
+            store: self.store,
+            state_root: self.state_root.clone(),
+            total_fil: self.total_fil,
+            actors_dirty: RefCell::new(false),
+            actors_cache: RefCell::new(HashMap::new()),
+            empty_obj_cid: self.empty_obj_cid,
+            network_version: self.network_version,
+            curr_epoch: epoch,
+            invocations: RefCell::new(vec![]),
+        }
+    }
+
+    pub fn get_miner_balance(&self, maddr: Address) -> MinerBalances {
+        let a = self.get_actor(maddr).unwrap();
+        let st = self.get_state::<MinerState>(maddr).unwrap();
+        MinerBalances {
+            available_balance: st.get_available_balance(&a.balance).unwrap(),
+            vesting_balance: st.locked_funds,
+            initial_pledge: st.initial_pledge,
+            pre_commit_deposit: st.pre_commit_deposits,
+        }
+    }
+
+    pub fn get_network_stats(&self) -> NetworkStats {
+        let power_state = self.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
+        let reward_state = self.get_state::<RewardState>(*REWARD_ACTOR_ADDR).unwrap();
+        let market_state = self.get_state::<MarketState>(*STORAGE_MARKET_ACTOR_ADDR).unwrap();
+
+        NetworkStats {
+            total_raw_byte_power: power_state.total_raw_byte_power,
+            total_bytes_committed: power_state.total_bytes_committed,
+            total_quality_adj_power: power_state.total_quality_adj_power,
+            total_qa_bytes_committed: power_state.total_qa_bytes_committed,
+            total_pledge_collateral: power_state.total_pledge_collateral,
+            this_epoch_raw_byte_power: power_state.this_epoch_raw_byte_power,
+            this_epoch_quality_adj_power: power_state.this_epoch_quality_adj_power,
+            this_epoch_pledge_collateral: power_state.this_epoch_pledge_collateral,
+            miner_count: power_state.miner_count,
+            miner_above_min_power_count: power_state.miner_above_min_power_count,
+            this_epoch_reward: reward_state.this_epoch_reward,
+            this_epoch_reward_smoothed: reward_state.this_epoch_reward_smoothed,
+            this_epoch_baseline_power: reward_state.this_epoch_baseline_power,
+            total_storage_power_reward: reward_state.total_storage_power_reward,
+            total_client_locked_collateral: market_state.total_client_locked_collateral,
+            total_provider_locked_collateral: market_state.total_provider_locked_collateral,
+            total_client_storage_fee: market_state.total_client_storage_fee,
+        }
+    }
+
     pub fn put_store<S>(&self, obj: &S) -> Cid
     where
         S: ser::Serialize,
@@ -222,7 +322,6 @@ impl<'bs> VM<'bs> {
         if let Some(act) = self.actors_cache.borrow().get(&addr) {
             return Some(act.clone());
         }
-
         // go to persisted map
         let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
             &self.state_root.borrow(),
@@ -251,7 +350,6 @@ impl<'bs> VM<'bs> {
 
         // roll "back" to latest head, flushing cache
         self.rollback(actors.flush().unwrap());
-
         *self.state_root.borrow()
     }
 
@@ -275,6 +373,10 @@ impl<'bs> VM<'bs> {
         self.store.get_cbor::<C>(&a.head).unwrap()
     }
 
+    pub fn get_epoch(&self) -> ChainEpoch {
+        self.curr_epoch
+    }
+
     pub fn apply_message<C: Cbor>(
         &self,
         from: Address,
@@ -291,12 +393,13 @@ impl<'bs> VM<'bs> {
 
         let prior_root = self.checkpoint();
 
+        // big.Mul(big.NewInt(1e9), big.NewInt(1e18))
         // make top level context with internal context
         let top = TopCtx {
             originator_stable_addr: from,
             _originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
-            _circ_supply: BigInt::zero(),
+            circ_supply: TokenAmount::from(1e9 as u128 * 1e18 as u128),
         };
         let msg = InternalMessage {
             from: from_id,
@@ -335,16 +438,70 @@ impl<'bs> VM<'bs> {
     pub fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
     }
+
+    /// Checks the state invariants and returns broken invariants.
+    pub fn check_state_invariants(&self) -> anyhow::Result<MessageAccumulator> {
+        self.checkpoint();
+        let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
+
+        let mut manifest = Manifest::new();
+        actors
+            .for_each(|_, actor| {
+                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
+                Ok(())
+            })
+            .unwrap();
+
+        let policy = Policy::default();
+        let state_tree = Tree::load(&self.store, &self.state_root.borrow()).unwrap();
+        check_state_invariants(
+            &manifest,
+            &policy,
+            state_tree,
+            &self.total_fil,
+            self.get_epoch() - 1,
+        )
+    }
+
+    /// Asserts state invariants are held without any errors.
+    pub fn assert_state_invariants(&self) {
+        self.check_state_invariants().unwrap().assert_empty()
+    }
+
+    /// Checks state, allowing expected invariants to fail. The invariants *must* fail in the
+    /// provided order.
+    pub fn expect_state_invariants(&self, expected_patterns: &[Regex]) {
+        self.check_state_invariants().unwrap().assert_expected(expected_patterns)
+    }
+
+    pub fn get_total_actor_balance(
+        &self,
+        store: &MemoryBlockstore,
+    ) -> anyhow::Result<BigInt, anyhow::Error> {
+        let state_tree = Tree::load(store, &self.checkpoint())?;
+
+        let mut total = BigInt::zero();
+        state_tree.for_each(|_, actor| {
+            total += &actor.balance.clone();
+            Ok(())
+        })?;
+        Ok(total)
+    }
 }
+
 #[derive(Clone)]
 pub struct TopCtx {
     originator_stable_addr: Address,
     _originator_call_seq: u64,
     new_actor_addr_count: RefCell<u64>,
-    _circ_supply: BigInt,
+    circ_supply: BigInt,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InternalMessage {
     from: Address,
     to: Address,
@@ -353,19 +510,26 @@ pub struct InternalMessage {
     params: RawBytes,
 }
 
-impl MessageInfo for InternalMessage {
-    fn caller(&self) -> Address {
-        self.from
-    }
-    fn receiver(&self) -> Address {
-        self.to
-    }
-    fn value_received(&self) -> TokenAmount {
+impl InternalMessage {
+    pub fn value(&self) -> TokenAmount {
         self.value.clone()
     }
 }
 
+impl MessageInfo for InvocationCtx<'_, '_> {
+    fn caller(&self) -> Address {
+        self.msg.from
+    }
+    fn receiver(&self) -> Address {
+        self.to()
+    }
+    fn value_received(&self) -> TokenAmount {
+        self.msg.value.clone()
+    }
+}
+
 pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
+pub const TEST_VM_INVALID: &str = "i_am_invalid";
 
 pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation VM<'bs>,
@@ -385,12 +549,13 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
         };
         // Address does not yet exist, create it
-        match target.protocol() {
+        let protocol = target.protocol();
+        match protocol {
             Protocol::Actor | Protocol::ID => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
-                    "cannot create account for address type".to_string(),
-                ))
+                    format!("cannot create account for address {} type {}", target, protocol),
+                ));
             }
             _ => (),
         }
@@ -435,12 +600,16 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Ok(rb) => (Some(rb), None),
             Err(ae) => (None, Some(ae.exit_code())),
         };
-        InvocationTrace {
-            msg: self.msg.clone(),
-            code,
-            ret,
-            subinvocations: self.subinvocations.take(),
-        }
+        let mut msg = self.msg.clone();
+        msg.to = match self.resolve_target(&self.msg.to) {
+            Ok((_, addr)) => addr, // use normalized address in trace
+            _ => self.msg.to, // if target resolution fails don't fail whole invoke, just use non normalized
+        };
+        InvocationTrace { msg, code, ret, subinvocations: self.subinvocations.take() }
+    }
+
+    fn to(&'_ self) -> Address {
+        self.resolve_target(&self.msg.to).unwrap().1
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
@@ -471,8 +640,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         to_actor.balance = to_actor.balance.add(&self.msg.value);
         self.v.set_actor(to_addr, to_actor);
 
-        println!("to: {}, from: {}\n", to_addr, self.msg.from);
-
         // Exit early on send
         if self.msg.method == METHOD_SEND {
             return Ok(RawBytes::default());
@@ -482,8 +649,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let to_actor = self.v.get_actor(to_addr).unwrap();
         let params = self.msg.params.clone();
         let res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin") {
-            // XXX Review: is there a way to do one call on an object implementing ActorCode trait?
-            // I tried using `dyn` keyword couldn't get the compiler on board.
             Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
             Type::Cron => CronActor::invoke_method(self, self.msg.method, &params),
             Type::Init => InitActor::invoke_method(self, self.msg.method, &params),
@@ -505,7 +670,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     }
 }
 
-impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
+impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
         match NON_SINGLETON_CODES.get(&code_id) {
             Some(_) => (),
@@ -513,7 +678,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_ASSERTION_FAILED,
                     "create_actor called with singleton builtin actor code cid".to_string(),
-                ))
+                ));
             }
         }
         let addr = Address::new_id(actor_id);
@@ -528,8 +693,8 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         Ok(())
     }
 
-    fn store(&self) -> &MemoryBlockstore {
-        self.v.store
+    fn store(&self) -> &&'bs MemoryBlockstore {
+        &self.v.store
     }
 
     fn network_version(&self) -> NetworkVersion {
@@ -537,11 +702,11 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn message(&self) -> &dyn MessageInfo {
-        &self.msg
+        self
     }
 
     fn curr_epoch(&self) -> ChainEpoch {
-        self.v.curr_epoch
+        self.v.get_epoch()
     }
 
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
@@ -598,7 +763,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn current_balance(&self) -> TokenAmount {
-        self.v.get_actor(self.msg.to).unwrap().balance
+        self.v.get_actor(self.to()).unwrap().balance
     }
 
     fn resolve_address(&self, addr: &Address) -> Option<Address> {
@@ -627,7 +792,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
             ));
         }
 
-        let new_actor_msg = InternalMessage { from: self.msg.to, to, value, method, params };
+        let new_actor_msg = InternalMessage { from: self.to(), to, value, method, params };
         let mut new_ctx = InvocationCtx {
             v: self.v,
             top: self.top.clone(),
@@ -666,7 +831,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
-        let maybe_act = self.v.get_actor(self.msg.to);
+        let maybe_act = self.v.get_actor(self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
@@ -680,7 +845,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
                     ))
                 } else {
                     act.head = self.v.store.put_cbor(obj, Code::Blake2b256).unwrap();
-                    self.v.set_actor(self.msg.to, act);
+                    self.v.set_actor(self.to(), act);
                     Ok(())
                 }
             }
@@ -688,7 +853,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        Ok(self.v.get_state::<C>(self.msg.to).unwrap())
+        Ok(self.v.get_state::<C>(self.to()).unwrap())
     }
 
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
@@ -701,9 +866,9 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
         let result = f(&mut st, self);
         self.allow_side_effects = true;
         let ret = result?;
-        let mut act = self.v.get_actor(self.msg.to).unwrap();
+        let mut act = self.v.get_actor(self.to()).unwrap();
         act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.v.set_actor(self.msg.to, act);
+        self.v.set_actor(self.to(), act);
         Ok(ret)
     }
 
@@ -732,7 +897,7 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 
     fn total_fil_circ_supply(&self) -> TokenAmount {
-        self.top._circ_supply.clone()
+        self.top.circ_supply.clone()
     }
 
     fn charge_gas(&mut self, _name: &'static str, _compute: i64) {}
@@ -742,13 +907,18 @@ impl<'invocation, 'bs> Runtime<MemoryBlockstore> for InvocationCtx<'invocation, 
     }
 }
 
-impl Primitives for InvocationCtx<'_, '_> {
+impl Primitives for VM<'_> {
     fn verify_signature(
         &self,
-        _signature: &Signature,
+        signature: &Signature,
         _signer: &Address,
         _plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
+        if signature.bytes.clone() == TEST_VM_INVALID.as_bytes() {
+            return Err(anyhow::format_err!(
+                "verify signature syscall failing on TEST_VM_INVALID_SIG"
+            ));
+        }
         Ok(())
     }
 
@@ -768,7 +938,30 @@ impl Primitives for InvocationCtx<'_, '_> {
         _proof_type: RegisteredSealProof,
         _pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
-        panic!("TODO implement me")
+        Ok(make_piece_cid(b"unsealed from itest vm"))
+    }
+}
+
+impl Primitives for InvocationCtx<'_, '_> {
+    fn verify_signature(
+        &self,
+        signature: &Signature,
+        signer: &Address,
+        plaintext: &[u8],
+    ) -> Result<(), anyhow::Error> {
+        self.v.verify_signature(signature, signer, plaintext)
+    }
+
+    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
+        self.v.hash_blake2b(data)
+    }
+
+    fn compute_unsealed_sector_cid(
+        &self,
+        proof_type: RegisteredSealProof,
+        pieces: &[PieceInfo],
+    ) -> Result<Cid, anyhow::Error> {
+        self.v.compute_unsealed_sector_cid(proof_type, pieces)
     }
 }
 
@@ -777,7 +970,13 @@ impl Verifier for InvocationCtx<'_, '_> {
         Ok(())
     }
 
-    fn verify_post(&self, _verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
+    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
+        for proof in &verify_info.proofs {
+            if proof.proof_bytes.eq(&TEST_VM_INVALID.as_bytes().to_vec()) {
+                return Err(anyhow!("invalid proof"));
+            }
+        }
+
         Ok(())
     }
 
@@ -831,6 +1030,7 @@ pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
     Actor { code, head, call_seq_num: seq, balance: bal }
 }
 
+#[derive(Clone)]
 pub struct InvocationTrace {
     pub msg: InternalMessage,
     pub code: Option<ExitCode>,
@@ -839,10 +1039,13 @@ pub struct InvocationTrace {
 }
 
 pub struct ExpectInvocation {
-    pub to: Address,       // required
-    pub method: MethodNum, // required
+    pub to: Address,
+    // required
+    pub method: MethodNum,
+    // required
     pub code: Option<ExitCode>,
     pub from: Option<Address>,
+    pub value: Option<TokenAmount>,
     pub params: Option<RawBytes>,
     pub ret: Option<RawBytes>,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
@@ -876,6 +1079,13 @@ impl ExpectInvocation {
                 f, invoc.msg.from,
                 "{} unexpected from addr: expected:{}was:{} ",
                 id, f, invoc.msg.from
+            );
+        }
+        if let Some(v) = &self.value {
+            assert_eq!(
+                v, &invoc.msg.value,
+                "{} unexpected value: expected:{}was:{} ",
+                id, v, invoc.msg.value
             );
         }
         if let Some(p) = &self.params {
@@ -937,6 +1147,21 @@ impl ExpectInvocation {
             "{} unexpected method: expected:{}was:{} \n{}",
             id, self.method, invoc.msg.from, extra_msg
         );
+    }
+}
+
+impl Default for ExpectInvocation {
+    fn default() -> Self {
+        Self {
+            method: 0,
+            to: Address::new_id(0),
+            code: None,
+            from: None,
+            value: None,
+            params: None,
+            ret: None,
+            subinvocs: None,
+        }
     }
 }
 
