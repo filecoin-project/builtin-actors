@@ -48,11 +48,11 @@ characteristics:
     - Reward = 10
     - VerifiedRegistry = 11
 
-The CARv1 is embedded as a byte slice at the root of the library, and exported
-under the `BUNDLE_CAR` public const, for easier consumption by Rust code.
+Precompiled actor bundles are provided as [release binaries][releases] in this repo. The
+[`fil_builtin_actors_bundle`](https://crates.io/crates/fil_builtin_actors_bundle) crate on
+[crates.io](https://crates.io) will not be updated.
 
-Precompiled actor bundles may also be provided as release binaries in this repo,
-if requested by implementors.
+[releases]: https://github.com/filecoin-project/builtin-actors/releases
 
 ## Releasing
 
@@ -72,7 +72,7 @@ We usually release all actors, the runtime, and the state abstraction at the sam
 - `fil_actor_verifreg`
 - `fil_builtin_actors_state`
 
-We do not publish the "bundle" but instead build it in CI.
+We do not publish the "bundle" _crate_, but instead build it in CI and publish the bundle itself as a [release][releases].
 
 To make this easier, we've added some helper scripts to the Makefile. Instructions follow.
 
