@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use crate::atomic::AtomicExec;
-use crate::tcid::{TAmt, TCid, THamt};
+use crate::tcid::{TAmt, TCid, THamt, TLink};
 
 use super::checkpoint::*;
 use super::cross::*;
@@ -36,7 +36,7 @@ pub struct State {
     pub subnets: TCid<THamt<Cid, Subnet>>,
     pub check_period: ChainEpoch,
     pub checkpoints: TCid<THamt<ChainEpoch, Checkpoint>>,
-    pub check_msg_registry: TCid<THamt<Cid, CrossMsgs>>,
+    pub check_msg_registry: TCid<THamt<TCid<TLink<CrossMsgs>>, CrossMsgs>>,
     pub nonce: u64,
     pub bottomup_nonce: u64,
     pub bottomup_msg_meta: TCid<TAmt<CrossMsgMeta, CROSSMSG_AMT_BITWIDTH>>,
@@ -106,7 +106,7 @@ impl State {
                     circ_supply: TokenAmount::zero(),
                     status: Status::Active,
                     nonce: 0,
-                    prev_checkpoint: Checkpoint::default(),
+                    prev_checkpoint: None,
                 };
                 set_subnet(subnets, &id, subnet)?;
                 Ok(true)
@@ -221,8 +221,8 @@ impl State {
             match ch.crossmsg_meta_index(&self.network_name, &to) {
                 Some(index) => {
                     let msgmeta = &mut ch.data.cross_msgs[index];
-                    let prev_cid = msgmeta.msgs_cid;
-                    let m_cid = self.append_metas_to_meta(store, &prev_cid, metas)?;
+                    let prev_cid = &msgmeta.msgs_cid;
+                    let m_cid = self.append_metas_to_meta(store, prev_cid, metas)?;
                     msgmeta.msgs_cid = m_cid;
                     msgmeta.value += value;
                 }
@@ -258,8 +258,8 @@ impl State {
         match ch.crossmsg_meta_index(&sfrom, &sto) {
             Some(index) => {
                 let msgmeta = &mut ch.data.cross_msgs[index];
-                let prev_cid = msgmeta.msgs_cid;
-                let m_cid = self.append_msg_to_meta(store, &prev_cid, msg)?;
+                let prev_cid = &msgmeta.msgs_cid;
+                let m_cid = self.append_msg_to_meta(store, prev_cid, msg)?;
                 msgmeta.msgs_cid = m_cid;
                 msgmeta.value += &msg.value;
             }
@@ -288,18 +288,18 @@ impl State {
     pub(crate) fn append_metas_to_meta<BS: Blockstore>(
         &mut self,
         store: &BS,
-        meta_cid: &Cid,
+        meta_cid: &TCid<TLink<CrossMsgs>>,
         metas: Vec<CrossMsgMeta>,
-    ) -> anyhow::Result<Cid> {
+    ) -> anyhow::Result<TCid<TLink<CrossMsgs>>> {
         self.check_msg_registry.modify(store, |cross_reg| {
             // get previous meta stored
-            let mut prev_meta = match cross_reg.get(&meta_cid.to_bytes())? {
+            let mut prev_meta = match cross_reg.get(&meta_cid.cid().to_bytes())? {
                 Some(m) => m.clone(),
                 None => return Err(anyhow!("no msgmeta found for cid")),
             };
             prev_meta.add_metas(metas)?;
             // if the cid hasn't changed
-            let cid = prev_meta.cid()?;
+            let cid = TCid::from(prev_meta.cid()?);
             if &cid == meta_cid {
                 Ok(cid)
             } else {
@@ -314,12 +314,12 @@ impl State {
     pub(crate) fn append_msg_to_meta<BS: Blockstore>(
         &mut self,
         store: &BS,
-        meta_cid: &Cid,
+        meta_cid: &TCid<TLink<CrossMsgs>>,
         msg: &StorableMsg,
-    ) -> anyhow::Result<Cid> {
+    ) -> anyhow::Result<TCid<TLink<CrossMsgs>>> {
         self.check_msg_registry.modify(store, |cross_reg| {
             // get previous meta stored
-            let mut prev_meta = match cross_reg.get(&meta_cid.to_bytes())? {
+            let mut prev_meta = match cross_reg.get(&meta_cid.cid().to_bytes())? {
                 Some(m) => m.clone(),
                 None => return Err(anyhow!("no msgmeta found for cid")),
             };
@@ -327,7 +327,7 @@ impl State {
             prev_meta.add_msg(&msg)?;
 
             // if the cid hasn't changed
-            let cid = prev_meta.cid()?;
+            let cid = TCid::from(prev_meta.cid()?);
             if &cid == meta_cid {
                 Ok(cid)
             } else {
@@ -523,10 +523,10 @@ fn get_checkpoint<'m, BS: Blockstore>(
 fn put_msgmeta<BS: Blockstore>(
     registry: &mut Map<BS, CrossMsgs>,
     metas: CrossMsgs,
-) -> anyhow::Result<Cid> {
-    let m_cid = metas.cid()?;
+) -> anyhow::Result<TCid<TLink<CrossMsgs>>> {
+    let m_cid = TCid::from(metas.cid()?);
     registry
-        .set(m_cid.to_bytes().into(), metas)
+        .set(m_cid.cid().to_bytes().into(), metas)
         .map_err(|e| e.downcast_wrap(format!("failed to set crossmsg meta for cid {}", m_cid)))?;
     Ok(m_cid)
 }
@@ -534,13 +534,13 @@ fn put_msgmeta<BS: Blockstore>(
 /// insert a message meta and remove the old one.
 fn replace_msgmeta<BS: Blockstore>(
     registry: &mut Map<BS, CrossMsgs>,
-    prev_cid: &Cid,
+    prev_cid: &TCid<TLink<CrossMsgs>>,
     meta: CrossMsgs,
-) -> anyhow::Result<Cid> {
+) -> anyhow::Result<TCid<TLink<CrossMsgs>>> {
     // add new meta
     let m_cid = put_msgmeta(registry, meta)?;
     // remove the previous one
-    registry.delete(&prev_cid.to_bytes())?;
+    registry.delete(&prev_cid.cid().to_bytes())?;
     Ok(m_cid)
 }
 

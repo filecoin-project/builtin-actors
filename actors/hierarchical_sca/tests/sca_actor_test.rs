@@ -1,4 +1,5 @@
 use cid::Cid;
+use fil_actor_hierarchical_sca::tcid::TCid;
 use fil_actor_hierarchical_sca::{
     get_bottomup_msg, subnet, Actor as SCAActor, Checkpoint, State, DEFAULT_CHECKPOINT_PERIOD,
 };
@@ -232,7 +233,7 @@ fn checkpoint_commit() {
 
     // Append a new checkpoint for the same subnet
     let mut ch = Checkpoint::new(shid.clone(), epoch + 11);
-    ch.data.prev_check = prev_cid;
+    ch.data.prev_check = TCid::from(prev_cid);
     h.commit_child_check(&mut rt, &shid, &ch, ExitCode::OK, TokenAmount::zero()).unwrap();
     let st: State = rt.get_state();
     let commit = st.get_window_checkpoint(rt.store(), epoch).unwrap();
@@ -353,7 +354,7 @@ fn checkpoint_crossmsgs() {
     h.fund(&mut rt, &funder, &shid, ExitCode::OK, amount.clone(), 1, &amount).unwrap();
 
     let mut ch = Checkpoint::new(shid.clone(), epoch + 9);
-    ch.data.prev_check = prev_cid;
+    ch.data.prev_check = TCid::from(prev_cid);
     add_msg_meta(
         &mut ch,
         &shid,

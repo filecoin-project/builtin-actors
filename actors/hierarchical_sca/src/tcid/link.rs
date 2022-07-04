@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use super::{CodeType, TCid, TCidContent};
 use crate::tcid_ops;
 use anyhow::Result;
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
@@ -94,18 +94,21 @@ where
 
 tcid_ops!(TLink<T : Serialize + DeserializeOwned>, C: CodeType => StoreContent<'s, S, T>);
 
-/// This `Default` implementation is unsound in that while it
-/// creates `TCid` instances with a correct `Cid` value, this value
-/// is not stored anywhere, so there is no guarantee that any retrieval
-/// attempt from a random store won't fail.
+/// This `Default` implementation is there in case we need to derive `Default` for something
+/// that contains a `TCid`, but also to be used as a null pointer, in cases where using an
+/// `Option<TCid<TLink<T>>>` is not the right choice.
 ///
-/// The main purpose is to allow the `#[derive(Default)]` to be
-/// applied on types that use a `TCid` field, if that's unavoidable.
-impl<T, C: CodeType> Default for TCid<TLink<T>, C>
-where
-    T: Serialize + DeserializeOwned + Default,
-{
+/// For example if something has a previous link to a parent item in all cases bug Genesis,
+/// it could be more convenient to use non-optional values, than to match cases all the time.
+///
+/// The reason we are not using `T::default()` to generate the CID is because it is highly
+/// unlikely that the actual store we deal with won't have an entry for that, so we would
+/// not be able to retrieve it anyway, and also because in Go we would have just a raw
+/// `Cid` field, which, when empty, serializes as `"nil"`. We want to be compatible with that.
+///
+/// Also, using `T::default()` with non-optional fields would lead to infinite recursion.
+impl<T, C: CodeType> Default for TCid<TLink<T>, C> {
     fn default() -> Self {
-        Self::new_link(&MemoryBlockstore::new(), &T::default()).unwrap()
+        Self::from(cid::Cid::default())
     }
 }

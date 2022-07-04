@@ -310,15 +310,15 @@ impl Actor {
 
                     // if this is not the first checkpoint we need to perform some
                     // additional verifications.
-                    if sub.prev_checkpoint != Checkpoint::default() {
-                        if sub.prev_checkpoint.epoch() > commit.epoch() {
+                    if let Some(ref prev_checkpoint) = sub.prev_checkpoint {
+                        if prev_checkpoint.epoch() > commit.epoch() {
                             return Err(actor_error!(
                                 illegal_argument,
                                 "checkpoint being committed belongs to the past"
                             ));
                         }
                         // check that the previous cid is consistent with the previous one
-                        if sub.prev_checkpoint.cid() != commit.prev_check() {
+                        if commit.prev_check().cid() != prev_checkpoint.cid() {
                             return Err(actor_error!(
                                 illegal_argument,
                                 "previous checkpoint not consistente with previous one"
@@ -356,7 +356,7 @@ impl Actor {
                     })?;
 
                     // update prev_check for child
-                    sub.prev_checkpoint = commit;
+                    sub.prev_checkpoint = Some(commit);
                     // flush subnet
                     st.flush_subnet(rt.store(), &sub).map_err(|e| {
                         e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "error flushing subnet")

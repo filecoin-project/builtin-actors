@@ -33,7 +33,7 @@ pub struct Subnet {
     #[serde(with = "bigint_ser")]
     pub circ_supply: TokenAmount,
     pub status: Status,
-    pub prev_checkpoint: Checkpoint,
+    pub prev_checkpoint: Option<Checkpoint>,
 }
 
 impl Cbor for Subnet {}

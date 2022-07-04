@@ -9,7 +9,10 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 
-#[derive(Default, PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+use crate::tcid::{TCid, TLink};
+use crate::CrossMsgs;
+
+#[derive(PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct Checkpoint {
     pub data: CheckData,
     #[serde(with = "serde_bytes")]
@@ -19,10 +22,7 @@ impl Cbor for Checkpoint {}
 
 impl Checkpoint {
     pub fn new(id: SubnetID, epoch: ChainEpoch) -> Self {
-        Self {
-            data: CheckData { source: id, epoch: epoch, ..Default::default() },
-            ..Default::default()
-        }
+        Self { data: CheckData::new(id, epoch), sig: Vec::new() }
     }
 
     /// return cid for the checkpoint
@@ -54,8 +54,8 @@ impl Checkpoint {
     }
 
     /// return the cid of the previous checkpoint this checkpoint points to.
-    pub fn prev_check(&self) -> Cid {
-        self.data.prev_check
+    pub fn prev_check(&self) -> &TCid<TLink<Checkpoint>> {
+        &self.data.prev_check
     }
 
     /// return cross_msg metas included in the checkpoint.
@@ -90,7 +90,7 @@ impl Checkpoint {
     /// Add the cid of a checkpoint from a child subnet for further propagation
     /// to the upper layerse of the hierarchy.
     pub fn add_child_check(&mut self, commit: &Checkpoint) -> anyhow::Result<()> {
-        let cid = commit.cid();
+        let cid = TCid::from(commit.cid());
         match self.data.children.iter_mut().find(|m| commit.source() == &m.source) {
             // if there is already a structure for that child
             Some(ck) => {
@@ -115,15 +115,27 @@ impl Checkpoint {
     }
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct CheckData {
     pub source: SubnetID,
     #[serde(with = "serde_bytes")]
     pub tip_set: Vec<u8>,
     pub epoch: ChainEpoch,
-    pub prev_check: Cid,
+    pub prev_check: TCid<TLink<Checkpoint>>,
     pub children: Vec<ChildCheck>,
     pub cross_msgs: Vec<CrossMsgMeta>,
+}
+impl CheckData {
+    pub fn new(id: SubnetID, epoch: ChainEpoch) -> Self {
+        Self {
+            source: id,
+            tip_set: Vec::new(),
+            epoch,
+            prev_check: TCid::default(),
+            children: Vec::new(),
+            cross_msgs: Vec::new(),
+        }
+    }
 }
 impl Cbor for CheckData {}
 
@@ -131,7 +143,7 @@ impl Cbor for CheckData {}
 pub struct CrossMsgMeta {
     pub from: SubnetID,
     pub to: SubnetID,
-    pub msgs_cid: Cid,
+    pub msgs_cid: TCid<TLink<CrossMsgs>>,
     pub nonce: u64,
     #[serde(with = "bigint_ser")]
     pub value: TokenAmount,
@@ -151,7 +163,7 @@ impl CrossMsgMeta {
 #[derive(PartialEq, Eq, Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ChildCheck {
     pub source: SubnetID,
-    pub checks: Vec<Cid>,
+    pub checks: Vec<TCid<TLink<Checkpoint>>>,
 }
 impl Cbor for ChildCheck {}
 

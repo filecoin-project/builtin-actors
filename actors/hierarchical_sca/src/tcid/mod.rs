@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Display, marker::PhantomData};
 
 use cid::{multihash::Code, Cid};
 
@@ -61,6 +61,12 @@ impl<'d, T: TCidContent, C> serde::Deserialize<'d> for TCid<T, C> {
     }
 }
 
+impl<T: TCidContent, C> Display for TCid<T, C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.cid.fmt(f)
+    }
+}
+
 /// Assuming that the type implements `maybe_load` and `flush`,
 /// implement some convenience methods.
 ///
@@ -83,6 +89,13 @@ macro_rules! tcid_ops {
           $(, $code : $ct)?
         > TCid<$typ<$($gen),+> $(, $code)?>
         {
+            /// Check that the underlying `Cid` is for the empty use case.
+            ///
+            /// What that means depends on the content.
+            pub fn is_default(&self) -> bool {
+                self.cid == Self::default().cid()
+            }
+
             /// Read the underlying `Cid` from the store or return a `ActorError::illegal_state` error if not found.
             /// Use this method for content that should have already been correctly initialized and maintained.
             /// For content that may not be present, consider using `maybe_load` instead.
@@ -185,12 +198,12 @@ mod test {
     }
 
     #[test]
-    fn default_cid_and_default_hamt_differ() {
+    fn default_cid_and_default_hamt_equal() {
         let cid_typed: TCid<TLink<TestRecordTyped>> = TCid::default();
         let cid_untyped: TCid<TLink<TestRecordUntyped>> = TCid::default();
         // The stronger typing allows us to use proper default values,
-        // but this is a breaking change from the invalid values that came before.
-        assert_ne!(cid_typed.cid(), cid_untyped.cid());
+        // but this should not be a breaking change, they should be treated as null pointers.
+        assert_eq!(cid_typed.cid(), cid_untyped.cid());
     }
 
     #[test]
