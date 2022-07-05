@@ -159,13 +159,14 @@ pub fn sector_deals_max(policy: &Policy, size: SectorSize) -> u64 {
 
 /// Specification for a linear vesting schedule.
 pub struct VestSpec {
+    /// Delay before any amount starts vesting.
     pub initial_delay: ChainEpoch,
-    // Delay before any amount starts vesting.
+    /// Period over which the total should vest, after the initial delay.
     pub vest_period: ChainEpoch,
-    // Period over which the total should vest, after the initial delay.
+    /// Duration between successive incremental vests (independent of vesting period).
     pub step_duration: ChainEpoch,
-    // Duration between successive incremental vests (independent of vesting period).
-    pub quantization: ChainEpoch, // Maximum precision of vesting table (limits cardinality of table).
+    /// Maximum precision of vesting table (limits cardinality of table).
+    pub quantization: ChainEpoch,
 }
 
 pub const REWARD_VESTING_SPEC: VestSpec = VestSpec {
