@@ -465,9 +465,6 @@ impl Actor {
 
     /// Verify that a given set of storage deals is valid for a sector currently being PreCommitted
     /// and return UnsealedCID for the set of deals.
-    /// and return DealWeight of the set of storage deals given.
-    /// The weight is defined as the sum, over all deals in the set, of the product of deal size
-    /// and duration.
     fn verify_deals_for_activation<BS, RT>(
         rt: &mut RT,
         params: VerifyDealsForActivationParams,
@@ -539,6 +536,8 @@ impl Actor {
         Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
     }
     /// Activate a set of deals, returning the combined deal weights.
+    /// The weight is defined as the sum, over all deals in the set, of the product of deal size
+    /// and duration.
     fn activate_deals<BS, RT>(
         rt: &mut RT,
         params: ActivateDealsParams,
@@ -1091,8 +1090,7 @@ impl Actor {
     }
 }
 
-/// Validates a collection of deal dealProposals for activation, and returns their combined weight,
-/// split into regular deal weight and verified deal weight.
+/// Validates a collection of deal dealProposals for activation.
 pub fn validate_deals_for_activation<BS>(
     proposals: &DealArray<BS>,
     deal_ids: &[DealID],

@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use crate::compact_commd::CompactCommD;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::UnvalidatedBitField;
@@ -287,7 +288,7 @@ pub struct SectorPreCommitInfo2 {
     pub deal_ids: Vec<DealID>,
     pub expiration: ChainEpoch,
     /// CommD
-    pub unsealed_cid: Option<Cid>,
+    pub unsealed_cid: CompactCommD,
 }
 
 /// Information stored on-chain for a pre-committed sector.
@@ -400,7 +401,6 @@ pub struct ProveReplicaUpdatesParams {
 }
 
 impl Cbor for ProveReplicaUpdatesParams {}
-
 
 #[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct ReplicaUpdate2 {

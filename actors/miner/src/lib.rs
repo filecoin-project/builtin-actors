@@ -54,12 +54,14 @@ pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
 
+use crate::compact_commd::CompactCommD;
 use crate::Code::Blake2b256;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
 mod bitfield_queue;
+mod compact_commd;
 mod deadline_assignment;
 mod deadline_info;
 mod deadline_state;
@@ -780,8 +782,7 @@ impl Actor {
                 &receiver_bytes,
             )?;
 
-            let unsealed_cid =
-                unsealed_cid_from_option(precommit.info.seal_proof, precommit.info.unsealed_cid)?;
+            let unsealed_cid = precommit.info.unsealed_cid.get_cid(precommit.info.seal_proof)?;
 
             let svi = AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
@@ -846,14 +847,18 @@ impl Actor {
         rt: &mut RT,
         params: ProveReplicaUpdatesParams2,
     ) -> Result<BitField, ActorError>
-        where
+    where
         // + Clone because we messed up and need to keep a copy around between transactions.
         // https://github.com/filecoin-project/builtin-actors/issues/133
-            BS: Blockstore + Clone,
-            RT: Runtime<BS>,
+        BS: Blockstore + Clone,
+        RT: Runtime<BS>,
     {
-        let updates = params.updates.into_iter().map(|ru| {
-            ReplicaUpdateInner{
+        // In this entry point, the unsealed CID is computed from deals via the market actor.
+        // A future entry point will take the unsealed CID as parameter
+        let updates = params
+            .updates
+            .into_iter()
+            .map(|ru| ReplicaUpdateInner {
                 sector_number: ru.sector_number,
                 deadline: ru.deadline,
                 partition: ru.partition,
@@ -862,11 +867,10 @@ impl Actor {
                 deals: ru.deals,
                 update_proof_type: ru.update_proof_type,
                 replica_proof: ru.replica_proof,
-            }
-        }).collect();
+            })
+            .collect();
         Self::prove_replica_updates_inner(rt, updates)
     }
-
 
     fn prove_replica_updates2<BS, RT>(
         rt: &mut RT,
@@ -878,8 +882,10 @@ impl Actor {
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
-        let updates = params.updates.into_iter().map(|ru| {
-            ReplicaUpdateInner{
+        let updates = params
+            .updates
+            .into_iter()
+            .map(|ru| ReplicaUpdateInner {
                 sector_number: ru.sector_number,
                 deadline: ru.deadline,
                 partition: ru.partition,
@@ -888,19 +894,19 @@ impl Actor {
                 deals: ru.deals,
                 update_proof_type: ru.update_proof_type,
                 replica_proof: ru.replica_proof,
-            }
-        }).collect();
+            })
+            .collect();
         Self::prove_replica_updates_inner(rt, updates)
     }
     fn prove_replica_updates_inner<BS, RT>(
         rt: &mut RT,
         updates: Vec<ReplicaUpdateInner>,
     ) -> Result<BitField, ActorError>
-        where
+    where
         // + Clone because we messed up and need to keep a copy around between transactions.
         // https://github.com/filecoin-project/builtin-actors/issues/133
-            BS: Blockstore + Clone,
-            RT: Runtime<BS>,
+        BS: Blockstore + Clone,
+        RT: Runtime<BS>,
     {
         // Validate inputs
 
@@ -1091,18 +1097,23 @@ impl Actor {
         struct UpdateWithDetails<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: &'a SectorOnChainInfo,
-            deal_data: &'a ext::market::SectorDealData,
             deal_weights: &'a ext::market::DealWeights,
+            full_unsealed_cid: Cid,
         }
 
         // Group declarations by deadline
         let mut decls_by_deadline = BTreeMap::<u64, Vec<UpdateWithDetails>>::new();
         let mut deadlines_to_load = Vec::<u64>::new();
-        for (i, (with_sector_info, deal_data)) in validated_updates.iter().zip(deal_data.sectors.iter()).enumerate() {
+        for (with_sector_info, deal_data) in validated_updates.iter().zip(deal_data.sectors.iter())
+        {
+            let full_commd = CompactCommD::new(deal_data.commd)
+                .get_cid(with_sector_info.sector_info.seal_proof)?;
             if let Some(ref tgt_commd) = with_sector_info.update.new_unsealed_cid {
-                let expected_commd = unsealed_cid_from_option(with_sector_info.sector_info.seal_proof, deal_data.commd)?;
-                if !tgt_commd.eq(&expected_commd) {
-                    info!("unsealed CID does not match with deals: expected {}, got {}, sector: {}", expected_commd, tgt_commd, with_sector_info.update.sector_number);
+                if !tgt_commd.eq(&full_commd) {
+                    info!(
+                        "unsealed CID does not match with deals: expected {}, got {}, sector: {}",
+                        full_commd, tgt_commd, with_sector_info.update.sector_number
+                    );
                 }
             }
             let dl = with_sector_info.update.deadline;
@@ -1113,8 +1124,8 @@ impl Actor {
             decls_by_deadline.entry(dl).or_default().push(UpdateWithDetails {
                 update: with_sector_info.update,
                 sector_info: &with_sector_info.sector_info,
-                deal_data,
                 deal_weights: &with_sector_info.deal_weights,
+                full_unsealed_cid: full_commd,
             });
         }
 
@@ -1169,7 +1180,7 @@ impl Actor {
                             update_proof_type,
                             new_sealed_cid: with_details.update.new_sealed_cid,
                             old_sealed_cid: with_details.sector_info.sealed_cid,
-                            new_unsealed_cid: unsealed_cid_from_option(with_details.sector_info.seal_proof, with_details.deal_data.commd)?,
+                            new_unsealed_cid: with_details.full_unsealed_cid,
                             proof: with_details.update.replica_proof.clone(),
                         }
                     )
@@ -1613,8 +1624,9 @@ impl Actor {
                         seal_rand_epoch: spci.seal_rand_epoch,
                         deal_ids: spci.deal_ids,
                         expiration: spci.expiration,
-
-                        unsealed_cid: CommDState::Unknown,
+                        // This entry point computes the unsealed CID from deals vial the market.
+                        // A future one will accept it directly as a parameter.
+                        unsealed_cid: None,
                     })
                 }
             })
@@ -1649,7 +1661,7 @@ impl Actor {
                     deal_ids: spci.deal_ids,
                     expiration: spci.expiration,
 
-                    unsealed_cid: spci.unsealed_cid.into(),
+                    unsealed_cid: Some(spci.unsealed_cid),
                 })
                 .collect(),
         )
@@ -1732,7 +1744,7 @@ impl Actor {
                 ));
             }
 
-            if let CommDState::Set(ref commd) = precommit.unsealed_cid {
+            if let Some(ref commd) = precommit.unsealed_cid.as_ref().and_then(|c| c.0) {
                 if !is_unsealed_sector(commd) {
                     return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
                 }
@@ -1812,7 +1824,7 @@ impl Actor {
             let sector_weight_for_deposit = qa_power_max(info.sector_size);
             let deposit_req = pre_commit_deposit_for_power(&reward_stats.this_epoch_reward_smoothed, &power_total.quality_adj_power_smoothed, &sector_weight_for_deposit);
 
-            for (i, precommit) in sectors.iter().enumerate() {
+            for (i, precommit) in sectors.into_iter().enumerate() {
                 // Sector must have the same Window PoSt proof type as the miner's recorded seal type.
                 let sector_wpost_proof = precommit.seal_proof
                     .registered_window_post_proof()
@@ -1830,13 +1842,16 @@ impl Actor {
                 }
 
                 let deal_data = &deal_data_vec.sectors[i];
-                let commd = match precommit.unsealed_cid.clone() {
+
+                // 1. verify that precommit.unsealed_cid is correct
+                // 2. create a new on_chain_precommit
+
+                let commd = match precommit.unsealed_cid {
                     // if the CommD is unknown, use CommD computed by the market
-                    CommDState::Unknown => deal_data.commd,
-                    CommDState::Set(c) => Some(c),
-                    CommDState::Zero => None,
+                    None => CompactCommD::new(deal_data.commd),
+                    Some(x) => x,
                 };
-                if commd != deal_data.commd {
+                if commd.0 != deal_data.commd {
                     return Err(actor_error!(illegal_argument, "computed {:?} and passed {:?} CommDs not equal",
                             deal_data.commd, commd));
                 }
@@ -1847,7 +1862,7 @@ impl Actor {
                     sector_number: precommit.sector_number,
                     sealed_cid: precommit.sealed_cid,
                     seal_rand_epoch: precommit.seal_rand_epoch,
-                    deal_ids: precommit.deal_ids.clone(),
+                    deal_ids: precommit.deal_ids,
                     expiration: precommit.expiration,
                     unsealed_cid: commd,
                 };
@@ -1858,11 +1873,13 @@ impl Actor {
                     pre_commit_deposit: deposit_req.clone(),
                     pre_commit_epoch: curr_epoch,
                 });
+
                 total_deposit_required += &deposit_req;
 
                 // Calculate pre-commit cleanup
-                let msd = max_prove_commit_duration(rt.policy(), precommit.seal_proof)
-                    .ok_or_else(|| actor_error!(illegal_argument, "no max seal duration set for proof type: {}", i64::from(precommit.seal_proof)))?;
+                let seal_proof = precommit.seal_proof;
+                let msd = max_prove_commit_duration(rt.policy(), seal_proof)
+                    .ok_or_else(|| actor_error!(illegal_argument, "no max seal duration set for proof type: {}", i64::from(seal_proof)))?;
                 // PreCommitCleanUpDelay > 0 here is critical for the batch verification of proofs. Without it, if a proof arrived exactly on the
                 // due epoch, ProveCommitSector would accept it, then the expiry event would remove it, and then
                 // ConfirmSectorProofsValid would fail to find it.
@@ -3359,27 +3376,6 @@ impl Actor {
     }
 }
 
-/// CommDState is used to unify old an new flows of PreCommit
-#[derive(Debug, Clone, PartialEq)]
-enum CommDState {
-    /// Commitment to zeros, empty sector
-    Zero,
-    /// Known CID, set by SP, will be compared with CommD returned by markers
-    Set(Cid),
-    /// CommD is unknown because we are coming from old PreCommit flow
-    /// Whatever markets reports as CommD is the correct value
-    Unknown,
-}
-
-impl From<Option<Cid>> for CommDState {
-    fn from(cid: Option<Cid>) -> Self {
-        match cid {
-            Some(cid) => CommDState::Set(cid),
-            None => CommDState::Zero,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Clone)]
 struct SectorPreCommitInfoInner {
     pub seal_proof: RegisteredSealProof,
@@ -3390,9 +3386,8 @@ struct SectorPreCommitInfoInner {
     pub deal_ids: Vec<DealID>,
     pub expiration: ChainEpoch,
     /// CommD
-    pub unsealed_cid: CommDState,
+    pub unsealed_cid: Option<CompactCommD>,
 }
-
 
 /// ReplicaUpdate param with Option<Cid> for CommD
 /// None means unknown
@@ -3881,7 +3876,7 @@ where
 fn get_verify_info<BS, RT>(
     rt: &mut RT,
     params: SealVerifyParams,
-    unsealed_cid: Option<Cid>,
+    unsealed_cid: CompactCommD,
 ) -> Result<SealVerifyInfo, ActorError>
 where
     BS: Blockstore,
@@ -3912,7 +3907,7 @@ where
         &entropy,
     )?;
 
-    let commd = unsealed_cid_from_option(params.registered_seal_proof, unsealed_cid)?;
+    let commd = unsealed_cid.get_cid(params.registered_seal_proof)?;
 
     Ok(SealVerifyInfo {
         registered_proof: params.registered_seal_proof,
@@ -3986,58 +3981,6 @@ where
     )?;
 
     Ok(serialized.deserialize()?)
-}
-
-const ZERO_COMMD_HASH: [[u8; 32]; 5] = [
-    [
-        252, 126, 146, 130, 150, 229, 22, 250, 173, 233, 134, 178, 143, 146, 212, 74, 79, 36, 185,
-        53, 72, 82, 35, 55, 106, 121, 144, 39, 188, 24, 248, 51,
-    ],
-    [
-        57, 86, 14, 123, 19, 169, 59, 7, 162, 67, 253, 39, 32, 255, 167, 203, 62, 29, 46, 80, 90,
-        179, 98, 158, 121, 244, 99, 19, 81, 44, 218, 6,
-    ],
-    [
-        101, 242, 158, 93, 152, 210, 70, 195, 139, 56, 140, 252, 6, 219, 31, 107, 2, 19, 3, 197,
-        162, 137, 0, 11, 220, 232, 50, 169, 195, 236, 66, 28,
-    ],
-    [
-        7, 126, 95, 222, 53, 197, 10, 147, 3, 165, 80, 9, 227, 73, 138, 78, 190, 223, 243, 156, 66,
-        183, 16, 183, 48, 216, 236, 122, 199, 175, 166, 62,
-    ],
-    [
-        230, 64, 5, 166, 191, 227, 119, 121, 83, 184, 173, 110, 249, 63, 15, 202, 16, 73, 178, 4,
-        22, 84, 242, 164, 17, 247, 112, 39, 153, 206, 206, 2,
-    ],
-];
-
-fn zero_commd(seal_proof: RegisteredSealProof) -> Result<Cid, ActorError> {
-    use fvm_shared::commcid::{FIL_COMMITMENT_UNSEALED, SHA2_256_TRUNC254_PADDED};
-    use multihash::Multihash;
-
-    let i = match seal_proof {
-        RegisteredSealProof::StackedDRG2KiBV1P1 => 0,
-        RegisteredSealProof::StackedDRG512MiBV1P1 => 1,
-        RegisteredSealProof::StackedDRG8MiBV1P1 => 2,
-        RegisteredSealProof::StackedDRG32GiBV1P1 => 3,
-        RegisteredSealProof::StackedDRG64GiBV1P1 => 4,
-        _ => {
-            return Err(actor_error!(illegal_argument, "unknown SealProof"));
-        }
-    };
-    let hash = Multihash::wrap(SHA2_256_TRUNC254_PADDED, &ZERO_COMMD_HASH[i])
-        .map_err(|_| actor_error!(assertion_failed, "static commd payload invalid"))?;
-    Ok(Cid::new_v1(FIL_COMMITMENT_UNSEALED, hash))
-}
-
-fn unsealed_cid_from_option(
-    seal_proof: RegisteredSealProof,
-    commd: Option<Cid>,
-) -> Result<Cid, ActorError> {
-    match commd {
-        Some(c) => Ok(c),
-        None => zero_commd(seal_proof),
-    }
 }
 
 /// Requests the current epoch target block reward from the reward actor.
@@ -4778,4 +4721,3 @@ impl ActorCode for Actor {
 
 #[cfg(test)]
 mod internal_tests;
-
