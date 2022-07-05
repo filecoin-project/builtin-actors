@@ -550,24 +550,26 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let st: State = rt.state()?;
-        let proposals = DealArray::load(&st.proposals, rt.store()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
-        })?;
+        let deal_weights = {
+            let st: State = rt.state()?;
+            let proposals = DealArray::load(&st.proposals, rt.store()).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
+            })?;
 
-        let deal_weights = validate_and_compute_deal_weight(
-            &proposals,
-            &params.deal_ids,
-            &miner_addr,
-            params.sector_expiry,
-            curr_epoch,
-        )
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                "failed to validate deal proposals for activation",
+            validate_and_compute_deal_weight(
+                &proposals,
+                &params.deal_ids,
+                &miner_addr,
+                params.sector_expiry,
+                curr_epoch,
             )
-        })?;
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to validate deal proposals for activation",
+                )
+            })?
+        };
 
         // Update deal states
         rt.transaction(|st: &mut State, rt| {
@@ -652,6 +654,7 @@ impl Actor {
             msm.commit_state().map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush state")
             })?;
+
             Ok(())
         })?;
 
@@ -1103,7 +1106,16 @@ where
     BS: Blockstore,
 {
     let mut total_size: u64 = 0;
+    let mut seen_deal_ids = BTreeSet::new();
     for deal_id in deal_ids {
+        if !seen_deal_ids.insert(deal_id) {
+            return Err(actor_error!(
+                illegal_argument,
+                "deal id {} present multiple times",
+                deal_id
+            )
+            .into());
+        }
         let proposal: &DealProposal = proposals
             .get(*deal_id)?
             .ok_or_else(|| actor_error!(not_found, "no such deal {}", deal_id))?;

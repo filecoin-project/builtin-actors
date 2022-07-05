@@ -276,8 +276,6 @@ pub struct PreCommitSectorBatchParams2 {
 
 impl Cbor for PreCommitSectorBatchParams {}
 
-
-
 #[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitInfo {
     pub seal_proof: RegisteredSealProof,

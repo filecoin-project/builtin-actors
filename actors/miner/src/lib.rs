@@ -54,7 +54,7 @@ pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
 
-use crate::commd::{CompactCommD, is_unsealed_sector};
+use crate::commd::{is_unsealed_sector, CompactCommD};
 use crate::Code::Blake2b256;
 
 #[cfg(feature = "fil-actor")]

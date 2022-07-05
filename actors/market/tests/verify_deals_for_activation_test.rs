@@ -47,8 +47,7 @@ fn verify_deal_and_get_deal_weight_for_unverified_deal_proposal() {
         }],
         |_| None,
     );
-    let a_response =
-        activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
+    let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
 
     assert_eq!(1, v_response.sectors.len());
     assert_eq!(BigInt::zero(), a_response.weights.verified_deal_weight);
@@ -80,8 +79,7 @@ fn verify_deal_and_get_deal_weight_for_verified_deal_proposal() {
         |_| None,
     );
 
-    let a_response =
-        activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
+    let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
 
     assert_eq!(1, response.sectors.len());
     assert_eq!(deal_weight(&deal_proposal), a_response.weights.verified_deal_weight);
@@ -123,7 +121,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
         &mut rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
-            sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             sector_expiry: SECTOR_EXPIRY,
             deal_ids: deal_ids.clone(),
         }],
@@ -298,7 +296,7 @@ fn fail_when_the_same_deal_id_is_passed_multiple_times() {
 
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
-            sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             sector_expiry: SECTOR_EXPIRY,
             deal_ids: vec![deal_id, deal_id],
         }],

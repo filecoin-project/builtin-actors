@@ -1,7 +1,7 @@
-use fil_actor_market::SectorWeights;
+use fil_actor_market::SectorDealData;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration, pre_commit_deposit_for_power,
-    qa_power_for_weight, PreCommitSectorBatchParams, SectorPreCommitInfo, State,
+    qa_power_max, PreCommitSectorBatchParams, PreCommitSectorParams, State,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
@@ -14,6 +14,7 @@ use fvm_shared::sector::SectorNumber;
 
 use num_traits::{Signed, Zero};
 
+use cid::Cid;
 use std::collections::HashMap;
 
 mod util;
@@ -28,9 +29,8 @@ const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 
 #[derive(Default, Clone)]
 struct DealSpec {
-    size: u64,
-    verified_size: u64,
     ids: Vec<DealID>,
+    commd: Option<Cid>,
 }
 
 fn assert_simple_batch(
@@ -55,12 +55,10 @@ fn assert_simple_batch(
     let sector_no_as_uints: Vec<u64> = (0..batch_size).map(|x| x as u64 + 100).collect();
     let sector_expiration =
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // on deadline boundary but > 180 days
-    let prove_commit_epoch = precommit_epoch + rt.policy.pre_commit_challenge_delay + 1;
-    let deal_lifespan = sector_expiration - prove_commit_epoch;
 
-    let mut sectors = vec![SectorPreCommitInfo::default(); batch_size];
+    let mut sectors = vec![PreCommitSectorParams::default(); batch_size];
     let mut conf = PreCommitBatchConfig {
-        sector_weights: vec![SectorWeights::default(); batch_size],
+        sector_deal_data: vec![SectorDealData::default(); batch_size],
         first_for_miner: true,
     };
     let mut deposits = vec![BigInt::default(); batch_size];
@@ -77,20 +75,8 @@ fn assert_simple_batch(
             deals.ids,
         );
 
-        let deal_space = deals.size + deals.verified_size;
-        let deal_weight = BigInt::from(deals.size) * BigInt::from(deal_lifespan);
-        let verified_deal_weight = BigInt::from(deals.verified_size) * BigInt::from(deal_lifespan);
-        conf.sector_weights[i] = SectorWeights {
-            deal_space,
-            deal_weight: deal_weight.clone(),
-            verified_deal_weight: verified_deal_weight.clone(),
-        };
-        let pwr_estimate = qa_power_for_weight(
-            h.sector_size,
-            sectors[i].expiration - precommit_epoch,
-            &deal_weight,
-            &verified_deal_weight,
-        );
+        conf.sector_deal_data[i] = SectorDealData { commd: deals.commd };
+        let pwr_estimate = qa_power_max(h.sector_size);
         deposits[i] = pre_commit_deposit_for_power(
             &h.epoch_reward_smooth,
             &h.epoch_qa_power_smooth,
@@ -133,18 +119,12 @@ fn assert_simple_batch(
     let st: State = rt.get_state();
     for i in (0..batch_size).map(|i| i as usize) {
         assert_eq!(precommit_epoch, precommits[i].pre_commit_epoch);
-        assert_eq!(conf.sector_weights[i].deal_weight, precommits[i].deal_weight);
-        assert_eq!(conf.sector_weights[i].verified_deal_weight, precommits[i].verified_deal_weight);
+        assert_eq!(conf.sector_deal_data[i].commd, precommits[i].info.unsealed_cid.0);
 
         assert_eq!(sector_nos[i], precommits[i].info.sector_number);
-        assert_eq!(sectors[i], precommits[i].info);
+        //assert_eq!(sectors[i], precommits[i].info);
 
-        let pwr_estimate = qa_power_for_weight(
-            h.sector_size,
-            sectors[i].expiration - precommit_epoch,
-            &conf.sector_weights[i].deal_weight,
-            &conf.sector_weights[i].verified_deal_weight,
-        );
+        let pwr_estimate = qa_power_max(h.sector_size);
         let expect_deposit = pre_commit_deposit_for_power(
             &h.epoch_reward_smooth,
             &h.epoch_qa_power_smooth,
@@ -189,7 +169,7 @@ mod miner_actor_precommit_batch {
             3,
             TokenAmount::zero(),
             TokenAmount::zero(),
-            &[DealSpec { size: 32 << 30, verified_size: 0, ids: vec![1] }],
+            &[DealSpec { ids: vec![1], commd: Some(make_piece_cid("1".as_bytes())) }],
             ExitCode::OK,
             "",
         );
@@ -202,9 +182,9 @@ mod miner_actor_precommit_batch {
             TokenAmount::zero(),
             TokenAmount::zero(),
             &[
-                DealSpec { size: 32 << 30, verified_size: 0, ids: vec![1] },
-                DealSpec { size: 0, verified_size: 32 << 30, ids: vec![1] },
-                DealSpec { size: 16 << 30, verified_size: 16 << 30, ids: vec![1, 2] },
+                DealSpec { ids: vec![1], commd: Some(make_piece_cid("1".as_bytes())) },
+                DealSpec { ids: vec![2], commd: Some(make_piece_cid("2".as_bytes())) },
+                DealSpec { ids: vec![1, 2], commd: Some(make_piece_cid("1|2".as_bytes())) },
             ],
             ExitCode::OK,
             "",
@@ -279,7 +259,7 @@ mod miner_actor_precommit_batch {
             h.pre_commit_sector_batch(
                 &mut rt,
                 PreCommitSectorBatchParams { sectors },
-                &PreCommitBatchConfig { sector_weights: vec![], first_for_miner: true },
+                &PreCommitBatchConfig { sector_deal_data: vec![], first_for_miner: true },
                 BigInt::zero(),
             ),
         );
@@ -314,7 +294,7 @@ mod miner_actor_precommit_batch {
             h.pre_commit_sector_batch(
                 &mut rt,
                 PreCommitSectorBatchParams { sectors },
-                &PreCommitBatchConfig { sector_weights: vec![], first_for_miner: true },
+                &PreCommitBatchConfig { sector_deal_data: vec![], first_for_miner: true },
                 BigInt::zero(),
             ),
         );

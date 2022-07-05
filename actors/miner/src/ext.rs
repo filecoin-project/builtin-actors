@@ -40,7 +40,7 @@ pub mod market {
         pub weights: DealWeights,
     }
 
-    #[derive(Serialize_tuple, Deserialize_tuple, Default)]
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone, Default)]
     pub struct DealWeights {
         pub deal_space: u64,
         #[serde(with = "bigint_ser")]

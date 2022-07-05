@@ -275,6 +275,7 @@ pub fn activate_deals_raw(
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
 ) -> Result<RawBytes, ActorError> {
+    rt.set_epoch(current_epoch);
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
 
