@@ -54,14 +54,14 @@ pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
 
-use crate::compact_commd::CompactCommD;
+use crate::commd::{CompactCommD, is_unsealed_sector};
 use crate::Code::Blake2b256;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
 mod bitfield_queue;
-mod compact_commd;
+mod commd;
 mod deadline_assignment;
 mod deadline_info;
 mod deadline_state;
@@ -1857,7 +1857,7 @@ impl Actor {
                 }
 
 
-                let on_chain_precommit = SectorPreCommitInfo2 {
+                let on_chain_precommit = SectorPreCommitInfo {
                     seal_proof: precommit.seal_proof,
                     sector_number: precommit.sector_number,
                     sealed_cid: precommit.sealed_cid,
@@ -1868,7 +1868,7 @@ impl Actor {
                 };
 
                 // Build on-chain record.
-                chain_infos.push(SectorPreCommitOnChainInfo2 {
+                chain_infos.push(SectorPreCommitOnChainInfo {
                     info: on_chain_precommit,
                     pre_commit_deposit: deposit_req.clone(),
                     pre_commit_epoch: curr_epoch,
@@ -4386,7 +4386,7 @@ fn check_peer_info(
 
 fn confirm_sector_proofs_valid_internal<BS, RT>(
     rt: &mut RT,
-    pre_commits: Vec<SectorPreCommitOnChainInfo2>,
+    pre_commits: Vec<SectorPreCommitOnChainInfo>,
     this_epoch_baseline_power: &BigInt,
     this_epoch_reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,

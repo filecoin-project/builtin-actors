@@ -1,6 +1,6 @@
 use crate::{
     power_for_sectors, BitFieldQueue, Deadline, ExpirationQueue, MinerInfo, Partition, PowerPair,
-    SectorOnChainInfo, SectorPreCommitOnChainInfo2, Sectors, State,
+    SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{parse_uint_key, Map, MessageAccumulator};
@@ -332,7 +332,7 @@ fn check_precommits<BS: Blockstore>(
     let mut precommit_total = BigInt::zero();
 
     let precommited_sectors =
-        Map::<_, SectorPreCommitOnChainInfo2>::load(&state.pre_committed_sectors, store);
+        Map::<_, SectorPreCommitOnChainInfo>::load(&state.pre_committed_sectors, store);
 
     match precommited_sectors {
         Ok(precommited_sectors) => {

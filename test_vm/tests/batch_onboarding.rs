@@ -1,5 +1,5 @@
 use fil_actor_cron::Method as CronMethod;
-use fil_actor_miner::SectorPreCommitOnChainInfo2;
+use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::{power_for_sector, State as MinerState};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
@@ -86,7 +86,7 @@ fn batch_onboarding() {
         Onboarding::new(PRE_COMMIT_CHALLENGE_DELAY + 1, 0, 0, 24, 10),
     ];
 
-    let mut precommmits: Vec<SectorPreCommitOnChainInfo2> = vec![];
+    let mut precommmits: Vec<SectorPreCommitOnChainInfo> = vec![];
 
     for item in vec_onboarding {
         let epoch = v.get_epoch();

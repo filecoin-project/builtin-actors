@@ -9,10 +9,7 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{DealWeight, EXPECTED_LEADERS_PER_EPOCH};
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::commcid::{
-    FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED, POSEIDON_BLS12_381_A1_FC1,
-    SHA2_256_TRUNC254_PADDED,
-};
+use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, POSEIDON_BLS12_381_A1_FC1};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{
     RegisteredPoStProof, RegisteredSealProof, SectorQuality, SectorSize, StoragePower,
@@ -48,14 +45,6 @@ pub fn is_sealed_sector(c: &Cid) -> bool {
     c.version() == Version::V1
         && c.codec() == FIL_COMMITMENT_SEALED
         && c.hash().code() == POSEIDON_BLS12_381_A1_FC1
-        && c.hash().size() == 32
-}
-
-/// Prefix for unsealed sector CIDs (CommD).
-pub fn is_unsealed_sector(c: &Cid) -> bool {
-    c.version() == Version::V1
-        && c.codec() == FIL_COMMITMENT_UNSEALED
-        && c.hash().code() == SHA2_256_TRUNC254_PADDED
         && c.hash().size() == 32
 }
 

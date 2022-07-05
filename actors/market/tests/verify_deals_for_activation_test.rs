@@ -48,7 +48,7 @@ fn verify_deal_and_get_deal_weight_for_unverified_deal_proposal() {
         |_| None,
     );
     let a_response =
-        activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &vec![deal_id]);
+        activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
 
     assert_eq!(1, v_response.sectors.len());
     assert_eq!(BigInt::zero(), a_response.weights.verified_deal_weight);
@@ -81,7 +81,7 @@ fn verify_deal_and_get_deal_weight_for_verified_deal_proposal() {
     );
 
     let a_response =
-        activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &vec![deal_id]);
+        activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
 
     assert_eq!(1, response.sectors.len());
     assert_eq!(deal_weight(&deal_proposal), a_response.weights.verified_deal_weight);

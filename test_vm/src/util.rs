@@ -9,7 +9,7 @@ use fil_actor_miner::{
     new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams,
     Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams,
     ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo2, State as MinerState, SubmitWindowedPoStParams,
+    SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
@@ -132,7 +132,7 @@ pub fn precommit_sectors(
     sector_number_base: SectorNumber,
     expect_cron_enroll: bool,
     exp: Option<ChainEpoch>,
-) -> Vec<SectorPreCommitOnChainInfo2> {
+) -> Vec<SectorPreCommitOnChainInfo> {
     let mid = v.normalize_address(&maddr).unwrap();
     let invocs_common = || -> Vec<ExpectInvocation> {
         vec![
@@ -236,7 +236,7 @@ pub fn prove_commit_sectors(
     v: &mut VM,
     worker: Address,
     maddr: Address,
-    precommits: Vec<SectorPreCommitOnChainInfo2>,
+    precommits: Vec<SectorPreCommitOnChainInfo>,
     aggregate_size: i64,
 ) {
     let mut precommit_infos = precommits.as_slice();

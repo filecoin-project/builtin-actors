@@ -1,7 +1,9 @@
-use cid::Cid;
+use cid::{Cid, Version};
+use fvm_shared::commcid::{FIL_COMMITMENT_UNSEALED, SHA2_256_TRUNC254_PADDED};
 use fil_actors_runtime::{actor_error, ActorError};
 use fvm_shared::sector::RegisteredSealProof;
 use serde::{Deserialize, Serialize};
+use multihash::Multihash;
 
 /// CompactCommD represents a Cid with compact representation of context dependant zero value
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Default)]
@@ -18,6 +20,14 @@ impl CompactCommD {
             None => zero_commd(seal_proof),
         }
     }
+}
+
+/// Prefix for unsealed sector CIDs (CommD).
+pub fn is_unsealed_sector(c: &Cid) -> bool {
+    c.version() == Version::V1
+        && c.codec() == FIL_COMMITMENT_UNSEALED
+        && c.hash().code() == SHA2_256_TRUNC254_PADDED
+        && c.hash().size() == 32
 }
 
 const ZERO_COMMD_HASH: [[u8; 32]; 5] = [
@@ -44,9 +54,6 @@ const ZERO_COMMD_HASH: [[u8; 32]; 5] = [
 ];
 
 fn zero_commd(seal_proof: RegisteredSealProof) -> Result<Cid, ActorError> {
-    use fvm_shared::commcid::{FIL_COMMITMENT_UNSEALED, SHA2_256_TRUNC254_PADDED};
-    use multihash::Multihash;
-
     let i = match seal_proof {
         RegisteredSealProof::StackedDRG2KiBV1P1 => 0,
         RegisteredSealProof::StackedDRG512MiBV1P1 => 1,

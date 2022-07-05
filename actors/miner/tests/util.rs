@@ -4,28 +4,11 @@ use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
     ActivateDealsParams, ComputeDataCommitmentParams, ComputeDataCommitmentReturn,
     Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDataSpec, SectorDeals,
-    SectorWeights, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
-use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
-    initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
-    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, Actor,
-    ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams,
-    ChangeWorkerAddressParams, CheckSectorProvenParams, CompactPartitionsParams,
-    CompactSectorNumbersParams, ConfirmSectorProofsParams, CronEventPayload, Deadline,
-    DeadlineInfo, Deadlines, DeclareFaultsParams, DeclareFaultsRecoveredParams,
-    DeferredCronEventParams, DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet,
-    ExtendSectorExpirationParams, FaultDeclaration, GetControlAddressesReturn, Method,
-    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PoStPartition, PowerPair,
-    PreCommitSectorBatchParams, PreCommitSectorParams, ProveCommitSectorParams,
-    RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
-    VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
-    CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
-};
+use fil_actor_miner::{aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty, initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration, new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors, qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, Actor, ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams, CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, ExtendSectorExpirationParams, FaultDeclaration, GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH, zSectorPreCommitOnChainInfo};
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -461,6 +444,7 @@ impl ActorHarness {
         let mut any_deals = false;
         for (i, sector) in params.sectors.iter().enumerate() {
             sector_deals.push(SectorDeals {
+                sector_type: sector.seal_proof,
                 sector_expiry: sector.expiration,
                 deal_ids: sector.deal_ids.clone(),
             });
@@ -573,6 +557,7 @@ impl ActorHarness {
         if !params.deal_ids.is_empty() {
             let vdparams = VerifyDealsForActivationParams {
                 sectors: vec![SectorDeals {
+                    sector_type: params.seal_proof,
                     sector_expiry: params.expiration,
                     deal_ids: params.deal_ids.clone(),
                 }],
