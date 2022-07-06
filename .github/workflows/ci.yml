@@ -45,7 +45,7 @@ jobs:
       uses: ./.github/actions/rust-cargo-run
       with:
         command: test
-        args: --all
+        args: --all --no-fail-fast
         github_token: ${{ secrets.GITHUB_TOKEN }}
 
   build:
