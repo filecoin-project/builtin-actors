@@ -47,7 +47,7 @@ hex = "0.4.3"
 [features]
 default = []
 fil-actor = ["fvm_sdk"]
-m2-native = []
+m2-native = ["fvm_sdk/m2-native"]
 
 # Enable 2k sectors
 sector-2k = []
