@@ -1,18 +1,18 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+#[cfg(feature = "m2-native")]
+use cid::multihash::Code;
 #[cfg(not(feature = "m2-native"))]
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
-use fvm_ipld_blockstore::Blockstore;
 #[cfg(feature = "m2-native")]
 use fvm_ipld_blockstore::Block;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 #[cfg(not(feature = "m2-native"))]
 use fvm_shared::actor::builtin::Type;
-#[cfg(feature = "m2-native")]
-use cid::multihash::Code;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
