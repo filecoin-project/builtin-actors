@@ -1,12 +1,17 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-//use cid::Cid;
+#[cfg(not(feature = "m2-native"))]
+use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
-use fvm_ipld_blockstore::{Block, Blockstore};
+use fvm_ipld_blockstore::Blockstore;
+#[cfg(feature = "m2-native")]
+use fvm_ipld_blockstore::Block;
 use fvm_ipld_encoding::RawBytes;
-//use fvm_shared::actor::builtin::Type;
+#[cfg(not(feature = "m2-native"))]
+use fvm_shared::actor::builtin::Type;
+#[cfg(feature = "m2-native")]
 use cid::multihash::Code;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
@@ -32,6 +37,7 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     Exec = 2,
+    #[cfg(feature = "m2-native")]
     Install = 3,
 }
 
@@ -65,19 +71,19 @@ impl Actor {
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
 
-        // TODO figure out ACLs -- allow exec anything for now
-        // let caller_code = rt.get_actor_code_cid(&rt.message().caller()).ok_or_else(|| {
-        //     actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
-        // })?;
+        // TODO figure out ACLs -- m2-native allows exec anything for now
+        let caller_code = rt.get_actor_code_cid(&rt.message().caller()).ok_or_else(|| {
+            actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
+        })?;
 
-        // log::trace!("caller code CID: {:?}", &caller_code);
+        log::trace!("caller code CID: {:?}", &caller_code);
 
-        // if !can_exec(rt, &caller_code, &params.code_cid) {
-        //     return Err(actor_error!(forbidden;
-        //             "called type {} cannot exec actor type {}",
-        //             &caller_code, &params.code_cid
-        //     ));
-        // }
+        if !can_exec(rt, &caller_code, &params.code_cid) {
+            return Err(actor_error!(forbidden;
+                    "called type {} cannot exec actor type {}",
+                    &caller_code, &params.code_cid
+            ));
+        }
 
         // Compute a re-org-stable address.
         // This address exists for use by messages coming from outside the system, in order to
@@ -110,6 +116,7 @@ impl Actor {
         Ok(ExecReturn { id_address: Address::new_id(id_address), robust_address })
     }
 
+    #[cfg(feature = "m2-native")]
     pub fn install<BS, RT>(rt: &mut RT, params: InstallParams) -> Result<InstallReturn, ActorError>
     where
         BS: Blockstore,
@@ -175,6 +182,7 @@ impl ActorCode for Actor {
                 let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
+            #[cfg(feature = "m2-native")]
             Some(Method::Install) => {
                 let res = Self::install(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
@@ -184,16 +192,26 @@ impl ActorCode for Actor {
     }
 }
 
-// fn can_exec<BS, RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
-// where
-//     BS: Blockstore,
-//     RT: Runtime<BS>,
-// {
-//     rt.resolve_builtin_actor_type(exec)
-//         .map(|typ| match typ {
-//             Type::Multisig | Type::PaymentChannel => true,
-//             Type::Miner if rt.resolve_builtin_actor_type(caller) == Some(Type::Power) => true,
-//             _ => false,
-//         })
-//         .unwrap_or(false)
-// }
+#[cfg(not(feature = "m2-native"))]
+fn can_exec<BS, RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    rt.resolve_builtin_actor_type(exec)
+        .map(|typ| match typ {
+            Type::Multisig | Type::PaymentChannel => true,
+            Type::Miner if rt.resolve_builtin_actor_type(caller) == Some(Type::Power) => true,
+            _ => false,
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(feature = "m2-native")]
+fn can_exec<BS, RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    true
+}

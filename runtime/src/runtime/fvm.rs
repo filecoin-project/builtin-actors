@@ -412,6 +412,7 @@ where
             .map_err(|e| anyhow!("failed to compute unsealed sector CID; exit code: {}", e))
     }
 
+    #[cfg(feature = "m2-native")]
     fn install_actor(&self, code_id: &Cid) -> Result<(), Error> {
         fvm::actor::install_actor(code_id).map_err(|_| Error::msg("failed to install actor"))
     }

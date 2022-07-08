@@ -197,6 +197,7 @@ pub trait Primitives {
         plaintext: &[u8],
     ) -> Result<(), anyhow::Error>;
 
+    #[cfg(feature = "m2-native")]
     fn install_actor(&self, code_cid: &Cid) -> Result<(), anyhow::Error>;
 }
 

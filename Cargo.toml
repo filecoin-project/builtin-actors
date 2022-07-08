@@ -38,6 +38,7 @@ calibrationnet = []
 devnet = []
 testing = []
 testing-fake-proofs = []
+m2-native = []
 
 [workspace]
 members = [
@@ -48,13 +49,13 @@ members = [
 ]
 
 [patch.crates-io]
-fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "experimental/fvm-m2" }
-fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "experimental/fvm-m2" }
-fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "experimental/fvm-m2" }
-fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "experimental/fvm-m2" }
-fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "experimental/fvm-m2" }
-fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "experimental/fvm-m2" }
-fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "experimental/fvm-m2" }
+# fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.

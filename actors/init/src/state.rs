@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
+#[cfg(feature = "m2-native")]
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::{
@@ -10,6 +11,7 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
+#[cfg(feature = "m2-native")]
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::{Address, Protocol};
@@ -21,6 +23,7 @@ pub struct State {
     pub address_map: Cid,
     pub next_id: ActorID,
     pub network_name: String,
+    #[cfg(feature = "m2-native")]
     pub installed_actors: Cid,
 }
 
@@ -29,11 +32,13 @@ impl State {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
             .map_err(|e| anyhow!("failed to create empty map: {}", e))?;
+        #[cfg(feature = "m2-native")]
         let installed_actors = store.put_cbor(&Vec::<Cid>::new(), Code::Blake2b256)?;
         Ok(Self {
             address_map: empty_map,
             next_id: FIRST_NON_SINGLETON_ADDR,
             network_name,
+            #[cfg(feature = "m2-native")]
             installed_actors,
         })
     }
@@ -80,6 +85,7 @@ impl State {
     }
 
     /// Check to see if an actor is already installed
+    #[cfg(feature = "m2-native")]
     pub fn is_installed_actor<BS: Blockstore>(
         &self,
         store: &BS,
@@ -93,6 +99,7 @@ impl State {
     }
 
     /// Adds a new code Cid to the list of installed actors.
+    #[cfg(feature = "m2-native")]
     pub fn add_installed_actor<BS: Blockstore>(
         &mut self,
         store: &BS,
