@@ -918,7 +918,7 @@ fn deal_included_in_multiple_sectors_failure() {
 
     // make some unverified deals
 
-    let deal_ids = create_deals(2, &v, worker, worker, maddr);
+    let deal_ids = create_deals_frac(2, &v, worker, worker, maddr, 2);
 
     // replicaUpdate the sector
 
@@ -1099,13 +1099,23 @@ fn create_sector(
 
     (v, d_idx, p_idx)
 }
-
 fn create_deals(
     num_deals: u128,
     v: &VM,
     client: Address,
     worker: Address,
     maddr: Address,
+) -> Vec<DealID> {
+    create_deals_frac(num_deals, v, client, worker, maddr, 1)
+}
+
+fn create_deals_frac(
+    num_deals: u128,
+    v: &VM,
+    client: Address,
+    worker: Address,
+    maddr: Address,
+    size_frac: u8,
 ) -> Vec<DealID> {
     let collateral = TokenAmount::from(3 * num_deals * 1e18 as u128);
     apply_ok(
@@ -1135,7 +1145,7 @@ fn create_deals(
             client,
             maddr,
             format!("deal-label {}", i),
-            PaddedPieceSize(32 << 30),
+            PaddedPieceSize((32 << 30) / size_frac as u64),
             false,
             deal_start,
             180 * EPOCHS_IN_DAY,
