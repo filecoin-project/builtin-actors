@@ -54,6 +54,8 @@ const ZERO_COMMD_HASH: [[u8; 32]; 5] = [
 ];
 
 fn zero_commd(seal_proof: RegisteredSealProof) -> Result<Cid, ActorError> {
+    let mut seal_proof = seal_proof;
+    seal_proof.update_to_v1();
     let i = match seal_proof {
         RegisteredSealProof::StackedDRG2KiBV1P1 => 0,
         RegisteredSealProof::StackedDRG512MiBV1P1 => 1,

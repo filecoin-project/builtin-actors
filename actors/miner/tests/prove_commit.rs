@@ -3,6 +3,7 @@ use fil_actor_miner::{
     initial_pledge_for_power, max_prove_commit_duration, pre_commit_deposit_for_power,
     qa_power_for_weight, qa_power_max, PowerPair, PreCommitSectorBatchParams, VestSpec,
 };
+use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{runtime::Runtime, test_utils::expect_abort, DealWeight};
 use fvm_shared::{
     bigint::{BigInt, Zero},
@@ -15,6 +16,7 @@ use fvm_shared::{
 use std::collections::HashMap;
 
 mod util;
+
 use util::*;
 
 // an expiration ~10 days greater than effective min expiration taking into account 30 days max
@@ -193,39 +195,12 @@ fn prove_sectors_from_batch_pre_commit() {
         verified_deal_weight: verified_deal_weight.clone(),
     };
 
-    // Power estimates made a pre-commit time
-    let no_deal_power_estimate = qa_power_for_weight(
-        h.sector_size,
-        sector_expiration - precommit_epoch,
-        &DealWeight::zero(),
-        &DealWeight::zero(),
-    );
-    let full_deal_power_estimate = qa_power_for_weight(
-        h.sector_size,
-        sector_expiration - precommit_epoch,
-        &deal_weight,
-        &verified_deal_weight,
-    );
-
-    let deposits = [
-        pre_commit_deposit_for_power(
-            &h.epoch_reward_smooth,
-            &h.epoch_qa_power_smooth,
-            &no_deal_power_estimate,
-        ),
-        pre_commit_deposit_for_power(
-            &h.epoch_reward_smooth,
-            &h.epoch_qa_power_smooth,
-            &full_deal_power_estimate,
-        ),
-        pre_commit_deposit_for_power(
-            &h.epoch_reward_smooth,
-            &h.epoch_qa_power_smooth,
-            &full_deal_power_estimate,
-        ),
-    ];
     let conf = PreCommitBatchConfig {
-        sector_deal_data: vec![SectorDealData { commd: None }; 3],
+        sector_deal_data: vec![
+            SectorDealData { commd: None },
+            SectorDealData { commd: Some(make_piece_cid(b"1")) },
+            SectorDealData { commd: Some(make_piece_cid(b"2|3")) },
+        ],
         first_for_miner: true,
     };
 
@@ -281,8 +256,13 @@ fn prove_sectors_from_batch_pre_commit() {
             .unwrap();
         assert_eq!(rt.epoch, sector.activation);
         let st = h.get_state(&rt);
-        let expected_deposit: TokenAmount = deposits[1..].iter().sum(); // First sector deposit released
-        assert_eq!(expected_deposit, st.pre_commit_deposits);
+        let expected_deposits = 2 * pre_commit_deposit_for_power(
+            &h.epoch_reward_smooth,
+            &h.epoch_qa_power_smooth,
+            &qa_power_max(h.sector_size),
+        ); // first sector deposit released
+
+        assert_eq!(expected_deposits, st.pre_commit_deposits);
 
         // Expect power/pledge for a sector with no deals
         assert_eq!(no_deal_pledge, sector.initial_pledge);
@@ -305,8 +285,13 @@ fn prove_sectors_from_batch_pre_commit() {
             .unwrap();
         assert_eq!(rt.epoch, sector.activation);
         let st = h.get_state(&rt);
-        let expected_deposit: TokenAmount = deposits[2..].iter().sum(); // First and second sector deposits released
-        assert_eq!(expected_deposit, st.pre_commit_deposits);
+        let expected_deposits = pre_commit_deposit_for_power(
+            &h.epoch_reward_smooth,
+            &h.epoch_qa_power_smooth,
+            &qa_power_max(h.sector_size),
+        ); // first and second deposit released
+
+        assert_eq!(expected_deposits, st.pre_commit_deposits);
 
         // Expect power/pledge for the two sectors (only this one having any deal weight)
         assert_eq!(full_deal_pledge, sector.initial_pledge);
