@@ -1667,10 +1667,8 @@ impl Actor {
         )
     }
 
-    /// This function combines old and new flows for PreCommit with use of CommDState,
-    /// the old flow uses CommDState::Unknown
-    /// the new flow uses either CommDState::Zero to mean CommD of empty sector or
-    /// CommDState::Set to signify known CID
+    /// This function combines old and new flows for PreCommit with use Option<CommpactCommD>
+    /// The old PreCommits will call this with None, new ones with Some(CompactCommD).
     fn pre_commit_sector_batch_inner<BS, RT>(
         rt: &mut RT,
         sectors: Vec<SectorPreCommitInfoInner>,
