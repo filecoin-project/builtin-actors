@@ -25,7 +25,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
 
     let mut h = ActorHarness::new(period_offset);
     // reduce the partition size
-    h.set_proof_type(RegisteredSealProof::StackedDRG512MiBV1);
+    h.set_proof_type(RegisteredSealProof::StackedDRG512MiBV1P1);
     let mut rt = h.new_runtime();
     rt.balance.replace(TokenAmount::from(big_balance));
     rt.set_epoch(precommit_epoch);
