@@ -845,7 +845,7 @@ impl Actor {
 
     fn prove_replica_updates<BS, RT>(
         rt: &mut RT,
-        params: ProveReplicaUpdatesParams2,
+        params: ProveReplicaUpdatesParams,
     ) -> Result<BitField, ActorError>
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
