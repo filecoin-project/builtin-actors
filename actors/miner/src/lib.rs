@@ -53,12 +53,14 @@ pub use state::*;
 pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
+pub use beneficiary_term::*;
 
 use crate::Code::Blake2b256;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+mod beneficiary_term;
 mod bitfield_queue;
 mod deadline_assignment;
 mod deadline_info;
@@ -114,6 +116,8 @@ pub enum Method {
     PreCommitSectorBatch = 25,
     ProveCommitAggregate = 26,
     ProveReplicaUpdates = 27,
+    ChangeBeneficiary   =28,
+    GetBeneficiary      =29,
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -310,6 +314,15 @@ impl Actor {
                         new_address
                     ));
                 }
+
+                // Change beneficiary address to new owner if current beneficiary address equal to old owner address
+                if info.beneficiary == info.owner {
+                    info.beneficiary = pending_address;
+                }
+                // Cancel pending beneficiary term change when the owner changes
+                info.pending_beneficiary_term = None;
+
+                // Set the new owner address
                 info.owner = pending_address;
             }
 
@@ -3084,9 +3097,9 @@ impl Actor {
             ));
         }
 
-        let (info, newly_vested, fee_to_burn, available_balance, state) =
+        let (info, amount_withdrawn, newly_vested, fee_to_burn, state) =
             rt.transaction(|state: &mut State, rt| {
-                let info = get_miner_info(rt.store(), state)?;
+                let mut info = get_miner_info(rt.store(), state)?;
 
                 // Only the owner is allowed to withdraw the balance as it belongs to/is controlled by the owner
                 // and not the worker.
@@ -3123,28 +3136,41 @@ impl Actor {
                 // and repay fee debt now.
                 let fee_to_burn = repay_debts_or_abort(rt, state)?;
 
-                Ok((info, newly_vested, fee_to_burn, available_balance, state.clone()))
+
+                let mut amount_withdrawn = std::cmp::min(&available_balance, &params.amount_requested);
+                if amount_withdrawn.is_negative() {
+                        return Err(actor_error!(
+                            illegal_state,
+                            "negative amount to withdraw: {}",
+                            amount_withdrawn
+                        ));
+                }
+                if info.beneficiary != info.owner {
+                    let remaining_quota = info.beneficiary_term.available(rt.curr_epoch());
+                    if !remaining_quota.is_positive() {
+                        return Err(actor_error!(
+                            forbidden,
+                            "beneficiary{}  quota {} used quota {} expiration epoch {}  current epoch {}",
+                            info.beneficiary,
+                            info.beneficiary_term.quota,
+                            info.beneficiary_term.used_quota,
+                            info.beneficiary_term.expiration,
+                            rt.curr_epoch()
+                        ));
+                    }
+                    amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
+                    info.beneficiary_term.used_quota = info.beneficiary_term.used_quota + amount_withdrawn;
+                    state.save_info(rt.store(), &info).map_err(|e| {
+                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
+                    })?;
+                    Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
+                }else{
+                    Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
+                }
             })?;
 
-        let amount_withdrawn = std::cmp::min(&available_balance, &params.amount_requested);
-        if amount_withdrawn.is_negative() {
-            return Err(actor_error!(
-                illegal_state,
-                "negative amount to withdraw: {}",
-                amount_withdrawn
-            ));
-        }
-        if amount_withdrawn > &available_balance {
-            return Err(actor_error!(
-                illegal_state,
-                "amount to withdraw {} < available {}",
-                amount_withdrawn,
-                available_balance
-            ));
-        }
-
         if amount_withdrawn.is_positive() {
-            rt.send(info.owner, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
+            rt.send(info.beneficiary, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
         }
 
         burn_funds(rt, fee_to_burn)?;
@@ -3153,6 +3179,116 @@ impl Actor {
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_withdrawn.clone() })
     }
+
+    /// Proposes or confirms a change of owner address.
+    /// If invoked by the current owner, proposes a new owner address for confirmation. If the proposed address is the
+    /// current owner address, revokes any existing proposal.
+    /// If invoked by the previously proposed address, with the same proposal, changes the current owner address to be
+    /// that proposed address.
+    fn change_beneficiary<BS, RT>(rt: &mut RT, params: ChangeBeneficiaryParams) -> Result<(), ActorError>
+        where
+            BS: Blockstore,
+            RT: Runtime<BS>,
+    {
+        let new_beneficiary = rt.resolve_address(&params.new_beneficiary)
+            .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", params.new_beneficiary))?;
+
+        rt.transaction(|state: &mut State, rt| {
+            let mut info = get_miner_info(rt.store(), state)?;
+            if rt.message().caller() == info.owner {
+                // This is a ChangeBeneficiary proposal when the caller is Owner
+                if new_beneficiary!= info.owner{
+                    // When beneficiary is not owner, just check quota in params,
+                    // Expiration maybe an expiration value, but wouldn't cause problem, just the new beneficiary never get any benefit
+                    if !params.new_quota.is_positive() {
+                        return Err(actor_error!(illegal_argument,  "beneficial quota {} must bigger than zero", params.new_quota));
+                    }
+                }else{
+                    // Expiration/quota must set to 0 while change beneficiary to owner
+                    if !params.new_quota.is_zero() {
+                        return Err(actor_error!(illegal_argument,  "owner beneficial quota {} must be zero", params.new_quota));
+                    }
+
+                    if params.new_expiration != 0 {
+                        return Err(actor_error!(illegal_argument,  "owner beneficial expiration {} must be zero", params.new_expiration));
+                    }
+                }
+
+                let mut pending_beneficiary_term = PendingBeneficiaryChange::new(new_beneficiary, params.new_quota, params.new_expiration);
+                if info.beneficiary_term.available(rt.curr_epoch()).is_zero(){
+                    // Set current beneficiary to approved when current beneficiary is not effective
+                    pending_beneficiary_term.approved_by_beneficiary = true;
+                }
+                info.pending_beneficiary_term = Some(pending_beneficiary_term);
+            }else{
+                if info.pending_beneficiary_term.is_none() {
+                    return Err(actor_error!(forbidden,  "No changeBeneficiary proposal exists"));
+                }
+                if let Some(pending_term) = &info.pending_beneficiary_term {
+                    if pending_term.new_beneficiary != new_beneficiary {
+                        return Err(actor_error!(forbidden, "new beneficiary address must be equal expect {}, but got {}", pending_term.new_beneficiary, params.new_beneficiary));
+                    }
+                    if pending_term.new_quota != params.new_quota {
+                        return Err(actor_error!(forbidden, "new beneficiary quota must be equal expect {}, but got {}", pending_term.new_quota, params.new_quota));
+                    }
+                    if pending_term.new_expiration != params.new_expiration {
+                        return Err(actor_error!(forbidden,  "new beneficiary expire date must be equal expect {}, but got {}", pending_term.new_expiration, params.new_expiration));
+                    }
+                }
+            }
+
+            if let Some(pending_term) = info.pending_beneficiary_term.as_mut() {
+                if rt.message().caller() == info.beneficiary {
+                    pending_term.approved_by_beneficiary = true
+                }
+
+                if rt.message().caller() == new_beneficiary {
+                    pending_term.approved_by_nominee = true
+                }
+
+
+                if pending_term.approved_by_beneficiary && pending_term.approved_by_nominee {
+                    //approved by both beneficiary and nominee
+                    info.beneficiary = new_beneficiary;
+                    info.beneficiary_term.quota = pending_term.new_quota.clone();
+                    info.beneficiary_term.expiration = pending_term.new_expiration;
+                    if new_beneficiary != info.beneficiary {
+                        info.beneficiary_term.used_quota = TokenAmount::default();
+                    }
+                    // Clear the pending proposal
+                    info.pending_beneficiary_term = None;
+                }
+            }
+
+            state.save_info(rt.store(), &info).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
+            })?;
+            Ok(())
+        })
+    }
+
+    // GetBeneficiary retrieves the currently active and proposed beneficiary information.
+// This method is for use by other actors (such as those acting as beneficiaries),
+// and to abstract the state representation for clients.
+    fn get_beneficiary<BS, RT>(rt: &mut RT) -> Result<GetBeneficiaryReturn, ActorError>
+        where
+            BS: Blockstore,
+            RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_accept_any()?;
+        let info = rt.transaction(|state: &mut State, rt|{
+            Ok(get_miner_info(rt.store(), &state)?)
+        })?;
+
+        Ok(GetBeneficiaryReturn{
+            active: ActiveBeneficiary{
+                beneficiary: info.beneficiary,
+                term:        info.beneficiary_term,
+            },
+            proposed: info.pending_beneficiary_term,
+        })
+    }
+
 
     fn repay_debt<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
     where
@@ -4534,6 +4670,14 @@ impl ActorCode for Actor {
             }
             Some(Method::ProveReplicaUpdates) => {
                 let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::ChangeBeneficiary) => {
+                Self::change_beneficiary(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::GetBeneficiary) => {
+                let res = Self::get_beneficiary(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
