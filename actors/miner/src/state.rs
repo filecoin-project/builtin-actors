@@ -30,6 +30,7 @@ use num_traits::{Signed, Zero};
 use super::deadlines::new_deadline_info;
 use super::policy::*;
 use super::types::*;
+use super::beneficiary::*;
 use super::{
     assign_deadlines, deadline_is_mutable, new_deadline_info_from_offset_and_epoch,
     quant_spec_for_deadline, BitFieldQueue, Deadline, DeadlineInfo, DeadlineSectorMap, Deadlines,
@@ -1230,6 +1231,12 @@ pub struct MinerInfo {
     /// Optional worker key to update at an epoch
     pub pending_worker_key: Option<WorkerKeyChange>,
 
+    // Beneficiary account for receive miner benefits, withdraw on miner must send to this address,
+    // beneficiary set owner address by default when create miner
+    pub beneficiary: Address,
+    pub beneficiary_term: BeneficiaryTerm,
+    pub pending_beneficiary_term: Option<PendingBeneficiaryChange>,
+
     /// Libp2p identity that should be used when connecting to this miner
     #[serde(with = "serde_bytes")]
     pub peer_id: Vec<u8>,
@@ -1278,6 +1285,9 @@ impl MinerInfo {
             worker,
             control_addresses,
             pending_worker_key: None,
+            beneficiary: owner,
+            beneficiary_term: BeneficiaryTerm::default(),
+            pending_beneficiary_term: None,
             peer_id,
             multi_address,
             window_post_proof_type,
