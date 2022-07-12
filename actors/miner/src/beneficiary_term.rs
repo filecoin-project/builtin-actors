@@ -2,7 +2,7 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
-use fvm_shared::clock::{ChainEpoch};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use std::cmp::max;
 
@@ -71,13 +71,17 @@ pub struct PendingBeneficiaryChange {
 impl Cbor for PendingBeneficiaryChange {}
 
 impl PendingBeneficiaryChange {
-    pub fn new(new_beneficiary:Address,new_quota: TokenAmount, new_expiration: ChainEpoch)->Self {
-        PendingBeneficiaryChange{
+    pub fn new(
+        new_beneficiary: Address,
+        new_quota: TokenAmount,
+        new_expiration: ChainEpoch,
+    ) -> Self {
+        PendingBeneficiaryChange {
             new_beneficiary,
             new_quota,
             new_expiration,
-            approved_by_beneficiary:false,
-            approved_by_nominee:false,
+            approved_by_beneficiary: false,
+            approved_by_nominee: false,
         }
     }
 }

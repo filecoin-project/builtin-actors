@@ -33,6 +33,7 @@ use fvm_shared::econ::TokenAmount;
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
+pub use beneficiary_term::*;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::error::*;
@@ -53,7 +54,6 @@ pub use state::*;
 pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
-pub use beneficiary_term::*;
 
 use crate::Code::Blake2b256;
 
@@ -116,8 +116,8 @@ pub enum Method {
     PreCommitSectorBatch = 25,
     ProveCommitAggregate = 26,
     ProveReplicaUpdates = 27,
-    ChangeBeneficiary   =28,
-    GetBeneficiary      =29,
+    ChangeBeneficiary = 28,
+    GetBeneficiary = 29,
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -3135,8 +3135,6 @@ impl Actor {
                 // Verify unlocked funds cover both InitialPledgeRequirement and FeeDebt
                 // and repay fee debt now.
                 let fee_to_burn = repay_debts_or_abort(rt, state)?;
-
-
                 let mut amount_withdrawn = std::cmp::min(&available_balance, &params.amount_requested);
                 if amount_withdrawn.is_negative() {
                         return Err(actor_error!(
@@ -3185,54 +3183,89 @@ impl Actor {
     /// current owner address, revokes any existing proposal.
     /// If invoked by the previously proposed address, with the same proposal, changes the current owner address to be
     /// that proposed address.
-    fn change_beneficiary<BS, RT>(rt: &mut RT, params: ChangeBeneficiaryParams) -> Result<(), ActorError>
-        where
-            BS: Blockstore,
-            RT: Runtime<BS>,
+    fn change_beneficiary<BS, RT>(
+        rt: &mut RT,
+        params: ChangeBeneficiaryParams,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
     {
-        let new_beneficiary = rt.resolve_address(&params.new_beneficiary)
-            .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", params.new_beneficiary))?;
+        let new_beneficiary = rt.resolve_address(&params.new_beneficiary).ok_or_else(|| {
+            actor_error!(illegal_argument, "unable to resolve address: {}", params.new_beneficiary)
+        })?;
 
         rt.transaction(|state: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), state)?;
             if rt.message().caller() == info.owner {
                 // This is a ChangeBeneficiary proposal when the caller is Owner
-                if new_beneficiary!= info.owner{
+                if new_beneficiary != info.owner {
                     // When beneficiary is not owner, just check quota in params,
                     // Expiration maybe an expiration value, but wouldn't cause problem, just the new beneficiary never get any benefit
                     if !params.new_quota.is_positive() {
-                        return Err(actor_error!(illegal_argument,  "beneficial quota {} must bigger than zero", params.new_quota));
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "beneficial quota {} must bigger than zero",
+                            params.new_quota
+                        ));
                     }
-                }else{
+                } else {
                     // Expiration/quota must set to 0 while change beneficiary to owner
                     if !params.new_quota.is_zero() {
-                        return Err(actor_error!(illegal_argument,  "owner beneficial quota {} must be zero", params.new_quota));
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "owner beneficial quota {} must be zero",
+                            params.new_quota
+                        ));
                     }
 
                     if params.new_expiration != 0 {
-                        return Err(actor_error!(illegal_argument,  "owner beneficial expiration {} must be zero", params.new_expiration));
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "owner beneficial expiration {} must be zero",
+                            params.new_expiration
+                        ));
                     }
                 }
 
-                let mut pending_beneficiary_term = PendingBeneficiaryChange::new(new_beneficiary, params.new_quota, params.new_expiration);
-                if info.beneficiary_term.available(rt.curr_epoch()).is_zero(){
+                let mut pending_beneficiary_term = PendingBeneficiaryChange::new(
+                    new_beneficiary,
+                    params.new_quota,
+                    params.new_expiration,
+                );
+                if info.beneficiary_term.available(rt.curr_epoch()).is_zero() {
                     // Set current beneficiary to approved when current beneficiary is not effective
                     pending_beneficiary_term.approved_by_beneficiary = true;
                 }
                 info.pending_beneficiary_term = Some(pending_beneficiary_term);
-            }else{
+            } else {
                 if info.pending_beneficiary_term.is_none() {
-                    return Err(actor_error!(forbidden,  "No changeBeneficiary proposal exists"));
+                    return Err(actor_error!(forbidden, "No changeBeneficiary proposal exists"));
                 }
                 if let Some(pending_term) = &info.pending_beneficiary_term {
                     if pending_term.new_beneficiary != new_beneficiary {
-                        return Err(actor_error!(forbidden, "new beneficiary address must be equal expect {}, but got {}", pending_term.new_beneficiary, params.new_beneficiary));
+                        return Err(actor_error!(
+                            forbidden,
+                            "new beneficiary address must be equal expect {}, but got {}",
+                            pending_term.new_beneficiary,
+                            params.new_beneficiary
+                        ));
                     }
                     if pending_term.new_quota != params.new_quota {
-                        return Err(actor_error!(forbidden, "new beneficiary quota must be equal expect {}, but got {}", pending_term.new_quota, params.new_quota));
+                        return Err(actor_error!(
+                            forbidden,
+                            "new beneficiary quota must be equal expect {}, but got {}",
+                            pending_term.new_quota,
+                            params.new_quota
+                        ));
                     }
                     if pending_term.new_expiration != params.new_expiration {
-                        return Err(actor_error!(forbidden,  "new beneficiary expire date must be equal expect {}, but got {}", pending_term.new_expiration, params.new_expiration));
+                        return Err(actor_error!(
+                            forbidden,
+                            "new beneficiary expire date must be equal expect {}, but got {}",
+                            pending_term.new_expiration,
+                            params.new_expiration
+                        ));
                     }
                 }
             }
@@ -3245,7 +3278,6 @@ impl Actor {
                 if rt.message().caller() == new_beneficiary {
                     pending_term.approved_by_nominee = true
                 }
-
 
                 if pending_term.approved_by_beneficiary && pending_term.approved_by_nominee {
                     //approved by both beneficiary and nominee
@@ -3268,27 +3300,25 @@ impl Actor {
     }
 
     // GetBeneficiary retrieves the currently active and proposed beneficiary information.
-// This method is for use by other actors (such as those acting as beneficiaries),
-// and to abstract the state representation for clients.
+    // This method is for use by other actors (such as those acting as beneficiaries),
+    // and to abstract the state representation for clients.
     fn get_beneficiary<BS, RT>(rt: &mut RT) -> Result<GetBeneficiaryReturn, ActorError>
-        where
-            BS: Blockstore,
-            RT: Runtime<BS>,
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_accept_any()?;
-        let info = rt.transaction(|state: &mut State, rt|{
-            Ok(get_miner_info(rt.store(), &state)?)
-        })?;
+        let info =
+            rt.transaction(|state: &mut State, rt| Ok(get_miner_info(rt.store(), &state)?))?;
 
-        Ok(GetBeneficiaryReturn{
-            active: ActiveBeneficiary{
+        Ok(GetBeneficiaryReturn {
+            active: ActiveBeneficiary {
                 beneficiary: info.beneficiary,
-                term:        info.beneficiary_term,
+                term: info.beneficiary_term,
             },
             proposed: info.pending_beneficiary_term,
         })
     }
-
 
     fn repay_debt<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
     where
