@@ -33,7 +33,6 @@ use fvm_shared::econ::TokenAmount;
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
-pub use beneficiary_term::*;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::error::*;
@@ -54,13 +53,14 @@ pub use state::*;
 pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
+pub use beneficiary::*;
 
 use crate::Code::Blake2b256;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
-mod beneficiary_term;
+mod beneficiary;
 mod bitfield_queue;
 mod deadline_assignment;
 mod deadline_info;

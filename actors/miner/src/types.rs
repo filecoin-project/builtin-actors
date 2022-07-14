@@ -1,8 +1,5 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
-
-use crate::beneficiary_term::BeneficiaryTerm;
-use crate::PendingBeneficiaryChange;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::UnvalidatedBitField;
@@ -19,6 +16,7 @@ use fvm_shared::sector::{
     StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
+use super::beneficiary::*;
 
 pub type CronEvent = i64;
 
