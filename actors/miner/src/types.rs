@@ -1,6 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use crate::beneficiary_term::BeneficiaryTerm;
+use crate::PendingBeneficiaryChange;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::UnvalidatedBitField;
@@ -375,3 +377,29 @@ pub struct ProveReplicaUpdatesParams {
 }
 
 impl Cbor for ProveReplicaUpdatesParams {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ChangeBeneficiaryParams {
+    pub new_beneficiary: Address,
+    #[serde(with = "bigint_ser")]
+    pub new_quota: TokenAmount,
+    pub new_expiration: ChainEpoch,
+}
+
+impl Cbor for ChangeBeneficiaryParams {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ActiveBeneficiary {
+    pub beneficiary: Address,
+    pub term: BeneficiaryTerm,
+}
+
+impl Cbor for ActiveBeneficiary {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct GetBeneficiaryReturn {
+    pub active: ActiveBeneficiary,
+    pub proposed: Option<PendingBeneficiaryChange>,
+}
+
+impl Cbor for GetBeneficiaryReturn {}
