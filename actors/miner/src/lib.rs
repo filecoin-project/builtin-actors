@@ -1583,8 +1583,8 @@ impl Actor {
         Ok(())
     }
 
-    /// This method is deprecated and will removed in the future.
-    /// Use PreCommitSectorBatch2 instead
+    /// Pledges to seal and commit a single sector.
+    /// See PreCommitSectorBatch for details.
     fn pre_commit_sector<BS, RT>(
         rt: &mut RT,
         params: PreCommitSectorParams,
@@ -1597,8 +1597,14 @@ impl Actor {
         Self::pre_commit_sector_batch(rt, batch_params)
     }
 
-    /// This method is deprecated and will removed in the future.
-    /// Use PreCommitSectorBatch2 instead
+    /// Pledges the miner to seal and commit some new sectors.
+    /// The caller specifies sector numbers, sealed sector data CIDs, seal randomness epoch, expiration, and the IDs
+    /// of any storage deals contained in the sector data. The storage deal proposals must be already submitted
+    /// to the storage market actor.
+    /// A pre-commitment may specify an existing committed-capacity sector that the committed sector will replace
+    /// when proven.
+    /// This method calculates the sector's power, locks a pre-commit deposit for the sector, stores information about the
+    /// sector in state and waits for it to be proven or expire.
     fn pre_commit_sector_batch<BS, RT>(
         rt: &mut RT,
         params: PreCommitSectorBatchParams,
@@ -4671,11 +4677,15 @@ impl ActorCode for Actor {
                 let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
+            #[allow(unreachable_code)]
             Some(Method::PreCommitSectorBatch2) => {
+                return Err(actor_error!(unhandled_message, "Invalid method"));
                 Self::pre_commit_sector_batch2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
+            #[allow(unreachable_code)]
             Some(Method::ProveReplicaUpdates2) => {
+                return Err(actor_error!(unhandled_message, "Invalid method"));
                 let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
