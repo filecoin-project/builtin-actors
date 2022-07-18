@@ -119,6 +119,7 @@ pub fn quality_for_weight(
         .div_floor(&QUALITY_BASE_MULTIPLIER)
 }
 
+/// Returns maximum achievable QA power.
 pub fn qa_power_max(size: SectorSize) -> StoragePower {
     (BigInt::from(size as u64) * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER)
         .div_floor(&QUALITY_BASE_MULTIPLIER)

@@ -1624,7 +1624,7 @@ impl Actor {
                         seal_rand_epoch: spci.seal_rand_epoch,
                         deal_ids: spci.deal_ids,
                         expiration: spci.expiration,
-                        // This entry point computes the unsealed CID from deals vial the market.
+                        // This entry point computes the unsealed CID from deals via the market.
                         // A future one will accept it directly as a parameter.
                         unsealed_cid: None,
                     })
@@ -3918,39 +3918,6 @@ where
         unsealed_cid: commd,
     })
 }
-
-/// Requests the storage market actor compute the unsealed sector CID from a sector's deals.
-/// TODO REMOVE
-/*fn request_unsealed_sector_cids<BS, RT>(
-    rt: &mut RT,
-    data_commitment_inputs: &[ext::market::SectorDataSpec],
-) -> Result<Vec<Cid>, ActorError>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
-    if data_commitment_inputs.is_empty() {
-        return Ok(vec![]);
-    }
-    let ret: ext::market::ComputeDataCommitmentReturn = rt
-        .send(
-            *STORAGE_MARKET_ACTOR_ADDR,
-            ext::market::COMPUTE_DATA_COMMITMENT_METHOD,
-            RawBytes::serialize(ext::market::ComputeDataCommitmentParamsRef {
-                inputs: data_commitment_inputs,
-            })?,
-            TokenAmount::zero(),
-        )?
-        .deserialize()?;
-    if data_commitment_inputs.len() != ret.commds.len() {
-        return Err(actor_error!(illegal_state,
-            "number of data commitments computed {} does not match number of data commitment inputs {}",
-            ret.commds.len(), data_commitment_inputs.len()
-        ));
-    }
-
-    Ok(ret.commds)
-}*/
 
 fn request_deal_data<BS, RT>(
     rt: &mut RT,

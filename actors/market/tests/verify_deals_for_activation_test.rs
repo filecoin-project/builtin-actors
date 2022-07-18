@@ -6,7 +6,8 @@ mod harness;
 use fil_actor_market::policy::detail::deal_weight;
 use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams};
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, make_piece_cid, ACCOUNT_ACTOR_CODE_ID,
+    MINER_ACTOR_CODE_ID,
 };
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fvm_ipld_encoding::RawBytes;
@@ -48,8 +49,8 @@ fn verify_deal_and_get_deal_weight_for_unverified_deal_proposal() {
         |_| None,
     );
     let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
-
     assert_eq!(1, v_response.sectors.len());
+    assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.sectors[0].commd);
     assert_eq!(BigInt::zero(), a_response.weights.verified_deal_weight);
     assert_eq!(deal_weight(&deal_proposal), a_response.weights.deal_weight);
 
@@ -82,6 +83,7 @@ fn verify_deal_and_get_deal_weight_for_verified_deal_proposal() {
     let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
 
     assert_eq!(1, response.sectors.len());
+    assert_eq!(Some(make_piece_cid("1".as_bytes())), response.sectors[0].commd);
     assert_eq!(deal_weight(&deal_proposal), a_response.weights.verified_deal_weight);
     assert_eq!(BigInt::zero(), a_response.weights.deal_weight);
 

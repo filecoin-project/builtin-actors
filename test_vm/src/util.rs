@@ -268,12 +268,6 @@ pub fn prove_commit_sectors(
             from: Some(worker),
             params: Some(prove_commit_aggregate_params_ser),
             subinvocs: Some(vec![
-                //TODO actual deeal commd
-                // ExpectInvocation {
-                //     to: *STORAGE_MARKET_ACTOR_ADDR,
-                //     method: MarketMethod::ComputeDataCommitment as u64,
-                //     ..Default::default()
-                // },
                 ExpectInvocation {
                     to: *REWARD_ACTOR_ADDR,
                     method: RewardMethod::ThisEpochReward as u64,
