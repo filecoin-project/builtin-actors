@@ -1106,13 +1106,13 @@ impl Actor {
         let mut deadlines_to_load = Vec::<u64>::new();
         for (with_sector_info, deal_data) in validated_updates.iter().zip(deal_data.sectors.iter())
         {
-            let full_commd = CompactCommD::new(deal_data.commd)
+            let computed_commd = CompactCommD::new(deal_data.commd)
                 .get_cid(with_sector_info.sector_info.seal_proof)?;
-            if let Some(ref tgt_commd) = with_sector_info.update.new_unsealed_cid {
-                if !tgt_commd.eq(&full_commd) {
+            if let Some(ref declared_commd) = with_sector_info.update.new_unsealed_cid {
+                if !declared_commd.eq(&computed_commd) {
                     info!(
                         "unsealed CID does not match with deals: expected {}, got {}, sector: {}",
-                        full_commd, tgt_commd, with_sector_info.update.sector_number
+                        computed_commd, declared_commd, with_sector_info.update.sector_number
                     );
                 }
             }
@@ -1125,7 +1125,7 @@ impl Actor {
                 update: with_sector_info.update,
                 sector_info: &with_sector_info.sector_info,
                 deal_weights: &with_sector_info.deal_weights,
-                full_unsealed_cid: full_commd,
+                full_unsealed_cid: computed_commd,
             });
         }
 
