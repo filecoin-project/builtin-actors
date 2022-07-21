@@ -1,18 +1,11 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-#[cfg(feature = "m2-native")]
-use cid::multihash::Code;
-#[cfg(not(feature = "m2-native"))]
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
-#[cfg(feature = "m2-native")]
-use fvm_ipld_blockstore::Block;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-#[cfg(not(feature = "m2-native"))]
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
@@ -38,7 +31,7 @@ pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     Exec = 2,
     #[cfg(feature = "m2-native")]
-    Install = 3,
+    InstallCode = 3,
 }
 
 /// Init actor
@@ -122,6 +115,9 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        use cid::multihash::Code;
+        use fvm_ipld_blockstore::Block;
+
         rt.validate_immediate_caller_accept_any()?;
 
         let (code_cid, installed) = rt.transaction(|st: &mut State, rt| {
@@ -183,7 +179,7 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(res)?)
             }
             #[cfg(feature = "m2-native")]
-            Some(Method::Install) => {
+            Some(Method::InstallCode) => {
                 let res = Self::install(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
@@ -198,6 +194,8 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
+    use fvm_shared::actor::builtin::Type;
+
     rt.resolve_builtin_actor_type(exec)
         .map(|typ| match typ {
             Type::Multisig | Type::PaymentChannel => true,
