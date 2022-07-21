@@ -64,7 +64,6 @@ impl Actor {
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
 
-        // TODO figure out ACLs -- m2-native allows exec anything for now
         let caller_code = rt.get_actor_code_cid(&rt.message().caller()).ok_or_else(|| {
             actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
         })?;
@@ -211,5 +210,8 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
+    // TODO figure out ACLs -- m2-native allows exec for everyone for now
+    //      maybe we should leave this as is for production, but at least we should
+    //      consider adding relevant ACLs.
     true
 }
