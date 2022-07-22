@@ -652,3 +652,29 @@ pub mod invariant_failure_patterns {
             Regex::new("^reward state epoch \\d+ does not match prior_epoch\\+1 \\d+$").unwrap();
     }
 }
+
+pub fn generate_deal_proposal(
+    client: Address,
+    provider: Address,
+    client_collateral: TokenAmount,
+    provider_collateral: TokenAmount,
+    start_epoch: ChainEpoch,
+    end_epoch: ChainEpoch,
+) -> DealProposal {
+    let piece_cid = make_piece_cid("1".as_bytes());
+    let piece_size = PaddedPieceSize(2048u64);
+    let storage_per_epoch = BigInt::from(10u8);
+    DealProposal {
+        piece_cid,
+        piece_size,
+        verified_deal: false,
+        client,
+        provider,
+        label: Label::String("label".to_string()),
+        start_epoch,
+        end_epoch,
+        storage_price_per_epoch: storage_per_epoch,
+        provider_collateral,
+        client_collateral,
+    }
+}
