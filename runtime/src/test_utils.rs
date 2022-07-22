@@ -1075,6 +1075,11 @@ impl Primitives for MockRuntime {
         }
         Ok(exp.cid)
     }
+
+    #[cfg(feature = "m2-native")]
+    fn install_actor(&self, _code_cid: &Cid) -> anyhow::Result<(), anyhow::Error> {
+        Ok(())
+    }
 }
 
 impl Verifier for MockRuntime {

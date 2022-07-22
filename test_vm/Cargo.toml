@@ -46,3 +46,6 @@ regex = "1"
 [dev-dependencies]
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false }
+
+[features]
+m2-native = []

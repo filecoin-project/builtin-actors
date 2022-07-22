@@ -27,7 +27,7 @@ thiserror = "1.0.30"
 getrandom = { version = "0.2.5", features = ["js"] }
 hex = { version = "0.4.3", optional = true }
 anyhow = "1.0.56"
-fvm_sdk = { version = "1.0.0-rc.3", optional = true }
+fvm_sdk = { version = "2.0.0-alpha.1", optional = true }
 blake2b_simd = "1.0"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.2"
@@ -47,6 +47,7 @@ hex = "0.4.3"
 [features]
 default = []
 fil-actor = ["fvm_sdk"]
+m2-native = ["fvm_sdk/m2-native"]
 
 # Enable 2k sectors
 sector-2k = []

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
+#[cfg(feature = "m2-native")]
+use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::{
     make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
@@ -9,6 +11,8 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
+#[cfg(feature = "m2-native")]
+use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
@@ -19,6 +23,8 @@ pub struct State {
     pub address_map: Cid,
     pub next_id: ActorID,
     pub network_name: String,
+    #[cfg(feature = "m2-native")]
+    pub installed_actors: Cid,
 }
 
 impl State {
@@ -26,7 +32,15 @@ impl State {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
             .map_err(|e| anyhow!("failed to create empty map: {}", e))?;
-        Ok(Self { address_map: empty_map, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
+        #[cfg(feature = "m2-native")]
+        let installed_actors = store.put_cbor(&Vec::<Cid>::new(), Code::Blake2b256)?;
+        Ok(Self {
+            address_map: empty_map,
+            next_id: FIRST_NON_SINGLETON_ADDR,
+            network_name,
+            #[cfg(feature = "m2-native")]
+            installed_actors,
+        })
     }
 
     /// Allocates a new ID address and stores a mapping of the argument address to it.
@@ -68,6 +82,36 @@ impl State {
         let map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)?;
 
         Ok(map.get(&addr.to_bytes())?.copied().map(Address::new_id))
+    }
+
+    /// Check to see if an actor is already installed
+    #[cfg(feature = "m2-native")]
+    pub fn is_installed_actor<BS: Blockstore>(
+        &self,
+        store: &BS,
+        cid: &Cid,
+    ) -> anyhow::Result<bool> {
+        let installed: Vec<Cid> = match store.get_cbor(&self.installed_actors)? {
+            Some(v) => v,
+            None => Vec::new(),
+        };
+        Ok(installed.contains(cid))
+    }
+
+    /// Adds a new code Cid to the list of installed actors.
+    #[cfg(feature = "m2-native")]
+    pub fn add_installed_actor<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        cid: Cid,
+    ) -> anyhow::Result<()> {
+        let mut installed: Vec<Cid> = match store.get_cbor(&self.installed_actors)? {
+            Some(v) => v,
+            None => Vec::new(),
+        };
+        installed.push(cid);
+        self.installed_actors = store.put_cbor(&installed, Code::Blake2b256)?;
+        Ok(())
     }
 }
 

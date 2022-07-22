@@ -6,7 +6,6 @@ use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
@@ -31,6 +30,8 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     Exec = 2,
+    #[cfg(feature = "m2-native")]
+    InstallCode = 3,
 }
 
 /// Init actor
@@ -106,6 +107,55 @@ impl Actor {
 
         Ok(ExecReturn { id_address: Address::new_id(id_address), robust_address })
     }
+
+    #[cfg(feature = "m2-native")]
+    pub fn install<BS, RT>(rt: &mut RT, params: InstallParams) -> Result<InstallReturn, ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        use cid::multihash::Code;
+        use fvm_ipld_blockstore::Block;
+
+        rt.validate_immediate_caller_accept_any()?;
+
+        let (code_cid, installed) = rt.transaction(|st: &mut State, rt| {
+            let code = params.code.bytes();
+            let code_cid =
+                rt.store().put(Code::Blake2b256, &Block::new(0x55, code)).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_SERIALIZATION,
+                        "failed to put code into the bockstore",
+                    )
+                })?;
+
+            if st.is_installed_actor(rt.store(), &code_cid).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to check state for installed actor",
+                )
+            })? {
+                return Ok((code_cid, false));
+            }
+
+            rt.install_actor(&code_cid).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
+                    "failed to check state for installed actor",
+                )
+            })?;
+
+            st.add_installed_actor(rt.store(), code_cid).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to add installed actor to state",
+                )
+            })?;
+            Ok((code_cid, true))
+        })?;
+
+        Ok(InstallReturn { code_cid, installed })
+    }
 }
 
 impl ActorCode for Actor {
@@ -127,16 +177,24 @@ impl ActorCode for Actor {
                 let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
+            #[cfg(feature = "m2-native")]
+            Some(Method::InstallCode) => {
+                let res = Self::install(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
 }
 
+#[cfg(not(feature = "m2-native"))]
 fn can_exec<BS, RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
+    use fvm_shared::actor::builtin::Type;
+
     rt.resolve_builtin_actor_type(exec)
         .map(|typ| match typ {
             Type::Multisig | Type::PaymentChannel => true,
@@ -144,4 +202,16 @@ where
             _ => false,
         })
         .unwrap_or(false)
+}
+
+#[cfg(feature = "m2-native")]
+fn can_exec<BS, RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    // TODO figure out ACLs -- m2-native allows exec for everyone for now
+    //      maybe we should leave this as is for production, but at least we should
+    //      consider adding relevant ACLs.
+    true
 }
