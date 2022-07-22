@@ -19,6 +19,8 @@ pub struct State {
     pub address_map: Cid,
     pub next_id: ActorID,
     pub network_name: String,
+    #[cfg(feature = "m2-native")]
+    pub installed_actors: Cid,
 }
 
 impl State {
@@ -87,6 +89,36 @@ impl State {
             .get(&addr.to_bytes())
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get address entry")?;
         Ok(found.copied().map(Address::new_id))
+    }
+
+    /// Check to see if an actor is already installed
+    #[cfg(feature = "m2-native")]
+    pub fn is_installed_actor<BS: Blockstore>(
+        &self,
+        store: &BS,
+        cid: &Cid,
+    ) -> anyhow::Result<bool> {
+        let installed: Vec<Cid> = match store.get_cbor(&self.installed_actors)? {
+            Some(v) => v,
+            None => Vec::new(),
+        };
+        Ok(installed.contains(cid))
+    }
+
+    /// Adds a new code Cid to the list of installed actors.
+    #[cfg(feature = "m2-native")]
+    pub fn add_installed_actor<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        cid: Cid,
+    ) -> anyhow::Result<()> {
+        let mut installed: Vec<Cid> = match store.get_cbor(&self.installed_actors)? {
+            Some(v) => v,
+            None => Vec::new(),
+        };
+        installed.push(cid);
+        self.installed_actors = store.put_cbor(&installed, Code::Blake2b256)?;
+        Ok(())
     }
 }
 
