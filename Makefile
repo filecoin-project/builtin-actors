@@ -73,7 +73,7 @@ bundle-devnet: deps-build
 	BUILD_FIL_NETWORK=devnet cargo run -- -o output/builtin-actors-devnet.car
 
 bundle-devnet-m2-native: deps-build
-	BUILD_FIL_NETWORK=devnet-m2-native cargo run -- -o output/builtin-actors-devnet.car
+	BUILD_FIL_NETWORK=devnet-m2-native cargo run -- -o output/builtin-actors-devnet-m2-native.car
 
 bundle-testing: deps-build
 	BUILD_FIL_NETWORK=testing cargo run -- -o output/builtin-actors-testing.car
