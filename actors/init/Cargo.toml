@@ -31,4 +31,4 @@ fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../../runtime", featur
 
 [features]
 fil-actor = []
-m2-native = []
+m2-native = ["fil_actors_runtime/m2-native"]
