@@ -43,6 +43,8 @@ fn network_name() -> String {
         Some("calibrationnet")
     } else if cfg!(feature = "devnet") {
         Some("devnet")
+    } else if cfg!(feature = "devnet-m2-native") {
+        Some("devnet-m2-native")
     } else if cfg!(feature = "testing") {
         Some("testing")
     } else if cfg!(feature = "testing-fake-proofs") {
