@@ -6,7 +6,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use std::cmp::max;
 
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct BeneficiaryTerm {
     // Quota: The total amount the current beneficiary can withdraw. Monotonic, but reset when beneficiary changes.
     #[serde(with = "bigint_ser")]

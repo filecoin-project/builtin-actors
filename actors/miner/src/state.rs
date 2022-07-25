@@ -27,10 +27,10 @@ use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECT
 use fvm_shared::HAMT_BIT_WIDTH;
 use num_traits::{Signed, Zero};
 
+use super::beneficiary::*;
 use super::deadlines::new_deadline_info;
 use super::policy::*;
 use super::types::*;
-use super::beneficiary::*;
 use super::{
     assign_deadlines, deadline_is_mutable, new_deadline_info_from_offset_and_epoch,
     quant_spec_for_deadline, BitFieldQueue, Deadline, DeadlineInfo, DeadlineSectorMap, Deadlines,
