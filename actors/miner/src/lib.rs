@@ -33,6 +33,7 @@ use fvm_shared::econ::TokenAmount;
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
+pub use beneficiary::*;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::error::*;
@@ -53,7 +54,6 @@ pub use state::*;
 pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
-pub use beneficiary::*;
 
 use crate::Code::Blake2b256;
 
@@ -3103,7 +3103,7 @@ impl Actor {
 
                 // Only the owner is allowed to withdraw the balance as it belongs to/is controlled by the owner
                 // and not the worker.
-                rt.validate_immediate_caller_is(&[info.owner])?;
+                rt.validate_immediate_caller_is(&[info.owner, info.beneficiary])?;
 
                 // Ensure we don't have any pending terminations.
                 if !state.early_terminations.is_empty() {
@@ -3245,7 +3245,7 @@ impl Actor {
                 if let Some(pending_term) = &info.pending_beneficiary_term {
                     if pending_term.new_beneficiary != new_beneficiary {
                         return Err(actor_error!(
-                            forbidden,
+                            illegal_argument,
                             "new beneficiary address must be equal expect {}, but got {}",
                             pending_term.new_beneficiary,
                             params.new_beneficiary
@@ -3253,7 +3253,7 @@ impl Actor {
                     }
                     if pending_term.new_quota != params.new_quota {
                         return Err(actor_error!(
-                            forbidden,
+                            illegal_argument,
                             "new beneficiary quota must be equal expect {}, but got {}",
                             pending_term.new_quota,
                             params.new_quota
@@ -3261,7 +3261,7 @@ impl Actor {
                     }
                     if pending_term.new_expiration != params.new_expiration {
                         return Err(actor_error!(
-                            forbidden,
+                            illegal_argument,
                             "new beneficiary expire date must be equal expect {}, but got {}",
                             pending_term.new_expiration,
                             params.new_expiration
@@ -3281,12 +3281,12 @@ impl Actor {
 
                 if pending_term.approved_by_beneficiary && pending_term.approved_by_nominee {
                     //approved by both beneficiary and nominee
-                    info.beneficiary = new_beneficiary;
-                    info.beneficiary_term.quota = pending_term.new_quota.clone();
-                    info.beneficiary_term.expiration = pending_term.new_expiration;
                     if new_beneficiary != info.beneficiary {
                         info.beneficiary_term.used_quota = TokenAmount::default();
                     }
+                    info.beneficiary = new_beneficiary;
+                    info.beneficiary_term.quota = pending_term.new_quota.clone();
+                    info.beneficiary_term.expiration = pending_term.new_expiration;
                     // Clear the pending proposal
                     info.pending_beneficiary_term = None;
                 }
