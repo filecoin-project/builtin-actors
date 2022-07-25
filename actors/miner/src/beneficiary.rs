@@ -4,17 +4,18 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use std::cmp::max;
+use num_traits::Zero;
+use std::ops::Sub;
 
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct BeneficiaryTerm {
-    // Quota: The total amount the current beneficiary can withdraw. Monotonic, but reset when beneficiary changes.
+    /// The total amount the current beneficiary can withdraw. Monotonic, but reset when beneficiary changes.
     #[serde(with = "bigint_ser")]
     pub quota: TokenAmount,
-    // UsedQuota: The amount of quota the current beneficiary has already withdrawn
+    /// The amount of quota the current beneficiary has already withdrawn
     #[serde(with = "bigint_ser")]
     pub used_quota: TokenAmount,
-    // Expiration: The epoch at which the beneficiary's rights expire and revert to the owner
+    /// The epoch at which the beneficiary's rights expire and revert to the owner
     pub expiration: ChainEpoch,
 }
 
@@ -23,9 +24,9 @@ impl Cbor for BeneficiaryTerm {}
 impl BeneficiaryTerm {
     pub fn default() -> BeneficiaryTerm {
         BeneficiaryTerm {
-            quota: TokenAmount::default(),
+            quota: TokenAmount::zero(),
             expiration: 0,
-            used_quota: TokenAmount::default(),
+            used_quota: TokenAmount::zero(),
         }
     }
 
@@ -37,23 +38,13 @@ impl BeneficiaryTerm {
         BeneficiaryTerm { quota, expiration, used_quota }
     }
 
-    // IsUsedUp check whether beneficiary has use up all quota
-    pub fn is_used_up(&self) -> bool {
-        self.used_quota >= self.quota
-    }
-
-    // IsExpire check if the beneficiary is within the validity period
-    pub fn is_expire(&self, cur: ChainEpoch) -> bool {
-        self.expiration <= cur
-    }
-
-    // Available get the amount that the beneficiary has not yet withdrawn
+    /// get the amount that the beneficiary has not yet withdrawn
     pub fn available(&self, cur: ChainEpoch) -> TokenAmount {
         // Return 0 when the usedQuota > Quota for safe
-        if self.is_expire(cur) {
-            TokenAmount::default()
-        } else {
-            max(self.quota.clone() - self.used_quota.clone(), TokenAmount::default())
+        if self.expiration > cur {
+            (&self.quota).sub(&self.used_quota).max(TokenAmount::zero())
+        }else{
+            TokenAmount::zero()
         }
     }
 }

@@ -3254,7 +3254,7 @@ impl Actor {
 
                 // Only the owner is allowed to withdraw the balance as it belongs to/is controlled by the owner
                 // and not the worker.
-                rt.validate_immediate_caller_is(&[info.owner])?;
+                rt.validate_immediate_caller_is(&[info.owner, info.beneficiary])?;
 
                 // Ensure we don't have any pending terminations.
                 if !state.early_terminations.is_empty() {
@@ -3299,7 +3299,7 @@ impl Actor {
                     if !remaining_quota.is_positive() {
                         return Err(actor_error!(
                             forbidden,
-                            "beneficiary{}  quota {} used quota {} expiration epoch {}  current epoch {}",
+                            "quota not enough beneficiary {}  quota {} used quota {} expiration epoch {}  current epoch {}",
                             info.beneficiary,
                             info.beneficiary_term.quota,
                             info.beneficiary_term.used_quota,
@@ -3390,13 +3390,10 @@ impl Actor {
                 }
                 info.pending_beneficiary_term = Some(pending_beneficiary_term);
             } else {
-                if info.pending_beneficiary_term.is_none() {
-                    return Err(actor_error!(forbidden, "No changeBeneficiary proposal exists"));
-                }
                 if let Some(pending_term) = &info.pending_beneficiary_term {
                     if pending_term.new_beneficiary != new_beneficiary {
                         return Err(actor_error!(
-                            forbidden,
+                            illegal_argument,
                             "new beneficiary address must be equal expect {}, but got {}",
                             pending_term.new_beneficiary,
                             params.new_beneficiary
@@ -3404,7 +3401,7 @@ impl Actor {
                     }
                     if pending_term.new_quota != params.new_quota {
                         return Err(actor_error!(
-                            forbidden,
+                            illegal_argument,
                             "new beneficiary quota must be equal expect {}, but got {}",
                             pending_term.new_quota,
                             params.new_quota
@@ -3412,12 +3409,14 @@ impl Actor {
                     }
                     if pending_term.new_expiration != params.new_expiration {
                         return Err(actor_error!(
-                            forbidden,
+                            illegal_argument,
                             "new beneficiary expire date must be equal expect {}, but got {}",
                             pending_term.new_expiration,
                             params.new_expiration
                         ));
                     }
+                } else {
+                    return Err(actor_error!(forbidden, "No changeBeneficiary proposal exists"));
                 }
             }
 
@@ -3432,13 +3431,14 @@ impl Actor {
 
                 if pending_term.approved_by_beneficiary && pending_term.approved_by_nominee {
                     //approved by both beneficiary and nominee
+                    if new_beneficiary != info.beneficiary {
+                        //if beneficiary changes, reset used_quota to zero
+                        info.beneficiary_term.used_quota = TokenAmount::zero();
+                    }
                     info.beneficiary = new_beneficiary;
                     info.beneficiary_term.quota = pending_term.new_quota.clone();
                     info.beneficiary_term.expiration = pending_term.new_expiration;
-                    if new_beneficiary != info.beneficiary {
-                        info.beneficiary_term.used_quota = TokenAmount::default();
-                    }
-                    // Clear the pending proposal
+                    // clear the pending proposal
                     info.pending_beneficiary_term = None;
                 }
             }
