@@ -239,25 +239,13 @@ fn successfully_immediately_change_back_to_owner_while_expired() {
 }
 
 #[test]
-fn successfully_increase_quota_when_used_up() {
+fn successfully_increase_quota() {
     let (mut h, mut rt) = setup();
     let first_beneficiary_id = Address::new_id(999);
     let beneficiary_term =
         BeneficiaryTerm::new(TokenAmount::from(100), TokenAmount::zero(), ChainEpoch::from(200));
     h.propose_approve_initial_beneficiary(&mut rt, first_beneficiary_id, beneficiary_term.clone())
         .unwrap();
-
-    //used up quota
-    h.withdraw_funds(
-        &mut rt,
-        h.beneficiary,
-        &beneficiary_term.quota,
-        &beneficiary_term.quota,
-        &TokenAmount::zero(),
-    )
-    .unwrap();
-    let mut info = h.get_info(&mut rt);
-    assert!(info.beneficiary_term.is_used_up());
 
     //increase quota
     let increase_quota = TokenAmount::from(100) + beneficiary_term.quota.clone();
@@ -267,7 +255,7 @@ fn successfully_increase_quota_when_used_up() {
         beneficiary_term.expiration,
     );
     h.change_beneficiary(&mut rt, h.owner, increase_beneficiary_change.clone(), None).unwrap();
-    info = h.get_info(&mut rt);
+    let mut info = h.get_info(&mut rt);
     let pending_beneficiary_term = info.pending_beneficiary_term.unwrap();
     assert_eq!(first_beneficiary_id, info.beneficiary);
     assert_eq!(increase_quota, pending_beneficiary_term.new_quota);
@@ -286,7 +274,6 @@ fn successfully_increase_quota_when_used_up() {
     assert_eq!(first_beneficiary_id, info.beneficiary);
     assert_eq!(increase_quota, info.beneficiary_term.quota);
     assert_eq!(beneficiary_term.expiration, info.beneficiary_term.expiration);
-    assert_eq!(beneficiary_term.quota, info.beneficiary_term.used_quota);
     h.check_state(&rt);
 }
 

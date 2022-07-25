@@ -1231,12 +1231,6 @@ pub struct MinerInfo {
     /// Optional worker key to update at an epoch
     pub pending_worker_key: Option<WorkerKeyChange>,
 
-    // Beneficiary account for receive miner benefits, withdraw on miner must send to this address,
-    // beneficiary set owner address by default when create miner
-    pub beneficiary: Address,
-    pub beneficiary_term: BeneficiaryTerm,
-    pub pending_beneficiary_term: Option<PendingBeneficiaryChange>,
-
     /// Libp2p identity that should be used when connecting to this miner
     #[serde(with = "serde_bytes")]
     pub peer_id: Vec<u8>,
@@ -1261,6 +1255,17 @@ pub struct MinerInfo {
     /// A proposed new owner account for this miner.
     /// Must be confirmed by a message from the pending address itself.
     pub pending_owner_address: Option<Address>,
+
+    /// Account for receive miner benefits, withdraw on miner must send to this address,
+    /// set owner address by default when create miner
+    pub beneficiary: Address,
+
+    /// beneficiary's total quota, how much quota has been withdraw,
+    /// and when this beneficiary expired
+    pub beneficiary_term: BeneficiaryTerm,
+
+    /// A proposal new beneficiary message for this miner
+    pub pending_beneficiary_term: Option<PendingBeneficiaryChange>,
 }
 
 impl MinerInfo {
