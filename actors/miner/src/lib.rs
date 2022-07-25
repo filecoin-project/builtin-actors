@@ -3148,7 +3148,7 @@ impl Actor {
                     if !remaining_quota.is_positive() {
                         return Err(actor_error!(
                             forbidden,
-                            "beneficiary{}  quota {} used quota {} expiration epoch {}  current epoch {}",
+                            "quota not enough beneficiary {}  quota {} used quota {} expiration epoch {}  current epoch {}",
                             info.beneficiary,
                             info.beneficiary_term.quota,
                             info.beneficiary_term.used_quota,
@@ -3239,9 +3239,6 @@ impl Actor {
                 }
                 info.pending_beneficiary_term = Some(pending_beneficiary_term);
             } else {
-                if info.pending_beneficiary_term.is_none() {
-                    return Err(actor_error!(forbidden, "No changeBeneficiary proposal exists"));
-                }
                 if let Some(pending_term) = &info.pending_beneficiary_term {
                     if pending_term.new_beneficiary != new_beneficiary {
                         return Err(actor_error!(
@@ -3267,6 +3264,8 @@ impl Actor {
                             params.new_expiration
                         ));
                     }
+                } else {
+                    return Err(actor_error!(forbidden, "No changeBeneficiary proposal exists"));
                 }
             }
 
@@ -3282,12 +3281,13 @@ impl Actor {
                 if pending_term.approved_by_beneficiary && pending_term.approved_by_nominee {
                     //approved by both beneficiary and nominee
                     if new_beneficiary != info.beneficiary {
-                        info.beneficiary_term.used_quota = TokenAmount::default();
+                        //if beneficiary changes, reset used_quota to zero
+                        info.beneficiary_term.used_quota = TokenAmount::zero();
                     }
                     info.beneficiary = new_beneficiary;
                     info.beneficiary_term.quota = pending_term.new_quota.clone();
                     info.beneficiary_term.expiration = pending_term.new_expiration;
-                    // Clear the pending proposal
+                    // clear the pending proposal
                     info.pending_beneficiary_term = None;
                 }
             }
