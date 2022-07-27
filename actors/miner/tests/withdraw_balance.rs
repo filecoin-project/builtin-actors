@@ -98,6 +98,31 @@ fn successfully_withdraw() {
 }
 
 #[test]
+fn successfully_withdraw_allow_zero() {
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    h.construct_and_verify(&mut rt);
+
+    let first_beneficiary_id = Address::new_id(999);
+    h.propose_approve_initial_beneficiary(
+        &mut rt,
+        first_beneficiary_id,
+        BeneficiaryTerm::new( TokenAmount::from(1), TokenAmount::zero(), PERIOD_OFFSET + 100),
+    )
+    .unwrap();
+    h.withdraw_funds(
+        &mut rt,
+        first_beneficiary_id,
+        &TokenAmount::zero(),
+        &TokenAmount::zero(),
+        &TokenAmount::zero(),
+    )
+    .unwrap();
+    h.check_state(&rt);
+}
+
+#[test]
 fn successfully_withdraw_from_non_main_beneficiary_and_failure_when_used_all_quota() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();

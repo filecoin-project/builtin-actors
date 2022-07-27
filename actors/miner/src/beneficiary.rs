@@ -43,7 +43,7 @@ impl BeneficiaryTerm {
         // Return 0 when the usedQuota > Quota for safe
         if self.expiration > cur {
             (&self.quota).sub(&self.used_quota).max(TokenAmount::zero())
-        }else{
+        } else {
             TokenAmount::zero()
         }
     }

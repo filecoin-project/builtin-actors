@@ -3145,7 +3145,7 @@ impl Actor {
                 }
                 if info.beneficiary != info.owner {
                     let remaining_quota = info.beneficiary_term.available(rt.curr_epoch());
-                    if !remaining_quota.is_positive() {
+                    if remaining_quota.is_negative() {
                         return Err(actor_error!(
                             forbidden,
                             "quota not enough beneficiary {}  quota {} used quota {} expiration epoch {}  current epoch {}",
@@ -3157,10 +3157,12 @@ impl Actor {
                         ));
                     }
                     amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
-                    info.beneficiary_term.used_quota = info.beneficiary_term.used_quota + amount_withdrawn;
-                    state.save_info(rt.store(), &info).map_err(|e| {
-                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
-                    })?;
+                    if amount_withdrawn.is_positive() {
+                        info.beneficiary_term.used_quota = info.beneficiary_term.used_quota + amount_withdrawn;
+                        state.save_info(rt.store(), &info).map_err(|e| {
+                            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
+                        })?;
+                    }
                     Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
                 }else{
                     Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
