@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::commd::CompactCommD;
 use super::beneficiary::*;
+use crate::commd::CompactCommD;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::UnvalidatedBitField;
@@ -408,7 +408,6 @@ pub struct ProveReplicaUpdatesParams2 {
 }
 
 impl Cbor for ProveReplicaUpdatesParams2 {}
-
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ChangeBeneficiaryParams {

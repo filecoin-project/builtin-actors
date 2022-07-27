@@ -29,10 +29,10 @@ fn successfully_change_owner_to_another_address_two_message() {
     // proposal beneficiary change
     h.change_beneficiary(&mut rt, h.owner, beneficiary_change.clone(), None).unwrap();
     // assert change has been made in state
-    let mut info = h.get_info(&mut rt);
+    let mut info = h.get_info(&rt);
     let pending_beneficiary_term = info.pending_beneficiary_term.unwrap();
     assert_eq!(beneficiary_change.expiration, pending_beneficiary_term.new_expiration);
-    assert_eq!(beneficiary_change.quota.clone(), pending_beneficiary_term.new_quota);
+    assert_eq!(beneficiary_change.quota, pending_beneficiary_term.new_quota);
     assert_eq!(first_beneficiary_id, pending_beneficiary_term.new_beneficiary);
 
     //confirm proposal
@@ -44,10 +44,10 @@ fn successfully_change_owner_to_another_address_two_message() {
     )
     .unwrap();
 
-    info = h.get_info(&mut rt);
+    info = h.get_info(&rt);
     assert_eq!(None, info.pending_beneficiary_term);
     assert_eq!(first_beneficiary_id, info.beneficiary);
-    assert_eq!(beneficiary_change.quota.clone(), info.beneficiary_term.quota);
+    assert_eq!(beneficiary_change.quota, info.beneficiary_term.quota);
     assert_eq!(beneficiary_change.expiration, info.beneficiary_term.expiration);
 
     h.check_state(&rt);
@@ -70,31 +70,31 @@ fn successfully_change_from_not_owner_beneficiary_to_another_address_three_messa
         ChainEpoch::from(201),
     );
     h.change_beneficiary(&mut rt, h.owner, second_beneficiary_change.clone(), None).unwrap();
-    let mut info = h.get_info(&mut rt);
+    let mut info = h.get_info(&rt);
     assert_eq!(first_beneficiary_id, info.beneficiary);
 
     let mut pending_beneficiary_term = info.pending_beneficiary_term.unwrap();
     assert_eq!(second_beneficiary_change.expiration, pending_beneficiary_term.new_expiration);
-    assert_eq!(second_beneficiary_change.quota.clone(), pending_beneficiary_term.new_quota);
+    assert_eq!(second_beneficiary_change.quota, pending_beneficiary_term.new_quota);
     assert_eq!(second_beneficiary_id, pending_beneficiary_term.new_beneficiary);
     assert!(!pending_beneficiary_term.approved_by_beneficiary);
     assert!(!pending_beneficiary_term.approved_by_nominee);
 
     h.change_beneficiary(&mut rt, first_beneficiary_id, second_beneficiary_change.clone(), None)
         .unwrap();
-    info = h.get_info(&mut rt);
+    info = h.get_info(&rt);
     assert_eq!(first_beneficiary_id, info.beneficiary);
 
     pending_beneficiary_term = info.pending_beneficiary_term.unwrap();
     assert_eq!(second_beneficiary_change.expiration, pending_beneficiary_term.new_expiration);
-    assert_eq!(second_beneficiary_change.quota.clone(), pending_beneficiary_term.new_quota);
+    assert_eq!(second_beneficiary_change.quota, pending_beneficiary_term.new_quota);
     assert_eq!(second_beneficiary_id, pending_beneficiary_term.new_beneficiary);
     assert!(pending_beneficiary_term.approved_by_beneficiary);
     assert!(!pending_beneficiary_term.approved_by_nominee);
 
     h.change_beneficiary(&mut rt, second_beneficiary_id, second_beneficiary_change.clone(), None)
         .unwrap();
-    info = h.get_info(&mut rt);
+    info = h.get_info(&rt);
     assert_eq!(second_beneficiary_id, info.beneficiary);
 
     assert_eq!(None, info.pending_beneficiary_term);
@@ -115,7 +115,7 @@ fn successfully_change_from_not_owner_beneficiary_to_another_address_when_benefi
     h.propose_approve_initial_beneficiary(
         &mut rt,
         first_beneficiary_id,
-        BeneficiaryTerm::new(quota.clone(), TokenAmount::zero(), expiration),
+        BeneficiaryTerm::new(quota, TokenAmount::zero(), expiration),
     )
     .unwrap();
 
@@ -125,7 +125,7 @@ fn successfully_change_from_not_owner_beneficiary_to_another_address_when_benefi
     let another_beneficiary_change =
         BeneficiaryChange::new(second_beneficiary_id, another_quota.clone(), another_expiration);
     h.change_beneficiary(&mut rt, h.owner, another_beneficiary_change.clone(), None).unwrap();
-    let mut info = h.get_info(&mut rt);
+    let mut info = h.get_info(&rt);
 
     let pending_beneficiary_term = info.pending_beneficiary_term.unwrap();
     assert_eq!(second_beneficiary_id, pending_beneficiary_term.new_beneficiary);
@@ -133,7 +133,7 @@ fn successfully_change_from_not_owner_beneficiary_to_another_address_when_benefi
     assert_eq!(another_expiration, pending_beneficiary_term.new_expiration);
 
     h.change_beneficiary(&mut rt, second_beneficiary_id, another_beneficiary_change, None).unwrap();
-    info = h.get_info(&mut rt);
+    info = h.get_info(&rt);
     assert_eq!(None, info.pending_beneficiary_term);
     assert_eq!(second_beneficiary_id, info.beneficiary);
     assert_eq!(another_quota, info.beneficiary_term.quota);
@@ -152,7 +152,7 @@ fn successfully_owner_immediate_revoking_unapproved_proposal() {
     // proposal beneficiary change
     h.change_beneficiary(&mut rt, h.owner, beneficiary_change.clone(), None).unwrap();
     // assert change has been made in state
-    let mut info = h.get_info(&mut rt);
+    let mut info = h.get_info(&rt);
     let pending_beneficiary_term = info.pending_beneficiary_term.unwrap();
     assert_eq!(beneficiary_change.expiration, pending_beneficiary_term.new_expiration);
     assert_eq!(beneficiary_change.quota, pending_beneficiary_term.new_quota);
@@ -167,7 +167,7 @@ fn successfully_owner_immediate_revoking_unapproved_proposal() {
     )
     .unwrap();
 
-    info = h.get_info(&mut rt);
+    info = h.get_info(&rt);
     assert_eq!(None, info.pending_beneficiary_term);
     assert_eq!(h.owner, info.beneficiary);
 
@@ -197,7 +197,7 @@ fn successfully_immediately_change_back_to_owner_address_while_used_up_quota() {
     )
     .unwrap();
 
-    let info = h.get_info(&mut rt);
+    let info = h.get_info(&rt);
     assert_eq!(None, info.pending_beneficiary_term);
     assert_eq!(h.owner, info.beneficiary);
     assert_eq!(TokenAmount::zero(), info.beneficiary_term.quota);
@@ -216,7 +216,7 @@ fn successfully_immediately_change_back_to_owner_while_expired() {
     h.propose_approve_initial_beneficiary(
         &mut rt,
         first_beneficiary_id,
-        BeneficiaryTerm::new(quota.clone(), TokenAmount::zero(), expiration),
+        BeneficiaryTerm::new(quota, TokenAmount::zero(), expiration),
     )
     .unwrap();
 
@@ -229,7 +229,7 @@ fn successfully_immediately_change_back_to_owner_while_expired() {
     )
     .unwrap();
 
-    let info = h.get_info(&mut rt);
+    let info = h.get_info(&rt);
     assert_eq!(None, info.pending_beneficiary_term);
     assert_eq!(h.owner, info.beneficiary);
     assert_eq!(TokenAmount::zero(), info.beneficiary_term.quota);
@@ -255,7 +255,7 @@ fn successfully_increase_quota() {
         beneficiary_term.expiration,
     );
     h.change_beneficiary(&mut rt, h.owner, increase_beneficiary_change.clone(), None).unwrap();
-    let mut info = h.get_info(&mut rt);
+    let mut info = h.get_info(&rt);
     let pending_beneficiary_term = info.pending_beneficiary_term.unwrap();
     assert_eq!(first_beneficiary_id, info.beneficiary);
     assert_eq!(increase_quota, pending_beneficiary_term.new_quota);
@@ -269,7 +269,7 @@ fn successfully_increase_quota() {
         Some(first_beneficiary_id),
     )
     .unwrap();
-    info = h.get_info(&mut rt);
+    info = h.get_info(&rt);
     assert_eq!(None, info.pending_beneficiary_term);
     assert_eq!(first_beneficiary_id, info.beneficiary);
     assert_eq!(increase_quota, info.beneficiary_term.quota);
@@ -290,7 +290,7 @@ fn fails_approval_message_with_invalidate_params() {
         None,
     )
     .unwrap();
-    assert!(h.get_info(&mut rt).pending_beneficiary_term.is_some());
+    assert!(h.get_info(&rt).pending_beneficiary_term.is_some());
 
     //expiration in approval message must equal with proposal
     expect_abort(
@@ -380,7 +380,7 @@ fn fails_proposal_beneficiary_with_invalidate_params() {
 #[test]
 fn successfully_get_beneficiary() {
     let (mut h, mut rt) = setup();
-    let mut info = h.get_info(&mut rt);
+    let mut info = h.get_info(&rt);
     assert_eq!(h.owner, info.beneficiary);
     assert_eq!(ChainEpoch::from(0), info.beneficiary_term.expiration);
     assert_eq!(TokenAmount::zero(), info.beneficiary_term.quota);
@@ -392,7 +392,7 @@ fn successfully_get_beneficiary() {
     h.propose_approve_initial_beneficiary(&mut rt, first_beneficiary_id, beneficiary_term.clone())
         .unwrap();
 
-    info = h.get_info(&mut rt);
+    info = h.get_info(&rt);
     assert_eq!(first_beneficiary_id, info.beneficiary);
     assert_eq!(beneficiary_term.expiration, info.beneficiary_term.expiration);
     assert_eq!(beneficiary_term.quota, info.beneficiary_term.quota);
@@ -403,7 +403,7 @@ fn successfully_get_beneficiary() {
     h.withdraw_funds(&mut rt, h.beneficiary, &withdraw_fund, &withdraw_fund, &TokenAmount::zero())
         .unwrap();
 
-    info = h.get_info(&mut rt);
+    info = h.get_info(&rt);
     assert_eq!(first_beneficiary_id, info.beneficiary);
     assert_eq!(beneficiary_term.expiration, info.beneficiary_term.expiration);
     assert_eq!(left_quota, info.beneficiary_term.available(rt.epoch));

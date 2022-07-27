@@ -33,6 +33,7 @@ use fvm_shared::econ::TokenAmount;
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
+pub use beneficiary::*;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::error::*;
@@ -53,7 +54,6 @@ pub use state::*;
 pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
-pub use beneficiary::*;
 
 use crate::commd::{is_unsealed_sector, CompactCommD};
 use crate::Code::Blake2b256;
@@ -120,8 +120,8 @@ pub enum Method {
     ProveReplicaUpdates = 27,
     PreCommitSectorBatch2 = 28,
     ProveReplicaUpdates2 = 29,
-    ChangeBeneficiary   =30,
-    GetBeneficiary      =31,
+    ChangeBeneficiary = 30,
+    GetBeneficiary = 31,
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -3296,7 +3296,7 @@ impl Actor {
                 }
                 if info.beneficiary != info.owner {
                     let remaining_quota = info.beneficiary_term.available(rt.curr_epoch());
-                    if !remaining_quota.is_positive() {
+                    if remaining_quota.is_negative() {
                         return Err(actor_error!(
                             forbidden,
                             "quota not enough beneficiary {}  quota {} used quota {} expiration epoch {}  current epoch {}",
@@ -3308,10 +3308,12 @@ impl Actor {
                         ));
                     }
                     amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
-                    info.beneficiary_term.used_quota = info.beneficiary_term.used_quota + amount_withdrawn;
-                    state.save_info(rt.store(), &info).map_err(|e| {
-                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
-                    })?;
+                    if amount_withdrawn.is_positive() {
+                        info.beneficiary_term.used_quota += amount_withdrawn;
+                        state.save_info(rt.store(), &info).map_err(|e| {
+                            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
+                        })?;
+                    }
                     Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
                 }else{
                     Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
@@ -3326,7 +3328,7 @@ impl Actor {
         notify_pledge_changed(rt, &newly_vested.neg())?;
 
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
-        Ok(WithdrawBalanceReturn { amount_withdrawn: amount_withdrawn.clone() })
+        Ok(WithdrawBalanceReturn { amount_withdrawn })
     }
 
     /// Proposes or confirms a change of owner address.
@@ -3389,35 +3391,33 @@ impl Actor {
                     pending_beneficiary_term.approved_by_beneficiary = true;
                 }
                 info.pending_beneficiary_term = Some(pending_beneficiary_term);
-            } else {
-                if let Some(pending_term) = &info.pending_beneficiary_term {
-                    if pending_term.new_beneficiary != new_beneficiary {
-                        return Err(actor_error!(
-                            illegal_argument,
-                            "new beneficiary address must be equal expect {}, but got {}",
-                            pending_term.new_beneficiary,
-                            params.new_beneficiary
-                        ));
-                    }
-                    if pending_term.new_quota != params.new_quota {
-                        return Err(actor_error!(
-                            illegal_argument,
-                            "new beneficiary quota must be equal expect {}, but got {}",
-                            pending_term.new_quota,
-                            params.new_quota
-                        ));
-                    }
-                    if pending_term.new_expiration != params.new_expiration {
-                        return Err(actor_error!(
-                            illegal_argument,
-                            "new beneficiary expire date must be equal expect {}, but got {}",
-                            pending_term.new_expiration,
-                            params.new_expiration
-                        ));
-                    }
-                } else {
-                    return Err(actor_error!(forbidden, "No changeBeneficiary proposal exists"));
+            } else if let Some(pending_term) = &info.pending_beneficiary_term {
+                if pending_term.new_beneficiary != new_beneficiary {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "new beneficiary address must be equal expect {}, but got {}",
+                        pending_term.new_beneficiary,
+                        params.new_beneficiary
+                    ));
                 }
+                if pending_term.new_quota != params.new_quota {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "new beneficiary quota must be equal expect {}, but got {}",
+                        pending_term.new_quota,
+                        params.new_quota
+                    ));
+                }
+                if pending_term.new_expiration != params.new_expiration {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "new beneficiary expire date must be equal expect {}, but got {}",
+                        pending_term.new_expiration,
+                        params.new_expiration
+                    ));
+                }
+            } else {
+                return Err(actor_error!(forbidden, "No changeBeneficiary proposal exists"));
             }
 
             if let Some(pending_term) = info.pending_beneficiary_term.as_mut() {
@@ -3459,8 +3459,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_accept_any()?;
-        let info =
-            rt.transaction(|state: &mut State, rt| Ok(get_miner_info(rt.store(), &state)?))?;
+        let info = rt.transaction(|state: &mut State, rt| get_miner_info(rt.store(), state))?;
 
         Ok(GetBeneficiaryReturn {
             active: ActiveBeneficiary {

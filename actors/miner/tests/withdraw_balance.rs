@@ -89,7 +89,7 @@ fn successfully_withdraw() {
     h.propose_approve_initial_beneficiary(
         &mut rt,
         first_beneficiary_id,
-        BeneficiaryTerm::new(quota.clone(), TokenAmount::zero(), PERIOD_OFFSET + 100),
+        BeneficiaryTerm::new(quota, TokenAmount::zero(), PERIOD_OFFSET + 100),
     )
     .unwrap();
     h.withdraw_funds(&mut rt, h.owner, &one, &one, &TokenAmount::zero()).unwrap();
@@ -98,25 +98,27 @@ fn successfully_withdraw() {
 }
 
 #[test]
-fn successfully_withdraw_from_non_main_beneficiary_and_failure_when_used_all_quota() {
+fn successfully_withdraw_allow_zero() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
     rt.set_balance(TokenAmount::from(BIG_BALANCE));
     h.construct_and_verify(&mut rt);
 
     let first_beneficiary_id = Address::new_id(999);
-    let quota = TokenAmount::from(ONE_PERCENT_BALANCE);
     h.propose_approve_initial_beneficiary(
         &mut rt,
         first_beneficiary_id,
-        BeneficiaryTerm::new(quota.clone(), TokenAmount::zero(), PERIOD_OFFSET + 100),
+        BeneficiaryTerm::new(TokenAmount::from(1), TokenAmount::zero(), PERIOD_OFFSET + 100),
     )
     .unwrap();
-    h.withdraw_funds(&mut rt, h.beneficiary, &quota, &quota, &TokenAmount::zero()).unwrap();
-    expect_abort(
-        ExitCode::USR_FORBIDDEN,
-        h.withdraw_funds(&mut rt, h.beneficiary, &quota, &quota, &TokenAmount::zero()),
-    );
+    h.withdraw_funds(
+        &mut rt,
+        first_beneficiary_id,
+        &TokenAmount::zero(),
+        &TokenAmount::zero(),
+        &TokenAmount::zero(),
+    )
+    .unwrap();
     h.check_state(&rt);
 }
 
@@ -143,7 +145,7 @@ fn successfully_withdraw_more_than_quota() {
 }
 
 #[test]
-fn fails_withdraw_when_beneficiary_expired() {
+fn allow_withdraw_but_no_send_when_beneficiary_not_efficient() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
     rt.set_balance(TokenAmount::from(BIG_BALANCE));
@@ -157,12 +159,52 @@ fn fails_withdraw_when_beneficiary_expired() {
         BeneficiaryTerm::new(quota.clone(), TokenAmount::zero(), PERIOD_OFFSET - 10),
     )
     .unwrap();
-    let info = h.get_info(&mut rt);
+    let info = h.get_info(&rt);
     assert_eq!(PERIOD_OFFSET - 10, info.beneficiary_term.expiration);
     rt.set_epoch(100);
+    h.withdraw_funds(&mut rt, h.beneficiary, &quota, &TokenAmount::zero(), &TokenAmount::zero())
+        .unwrap();
+    h.check_state(&rt);
+}
+
+#[test]
+fn fail_withdraw_from_non_beneficiary() {
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = h.new_runtime();
+    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    h.construct_and_verify(&mut rt);
+
+    let first_beneficiary_id = Address::new_id(999);
+    let another_actor = Address::new_id(1000);
+    let quota = TokenAmount::from(ONE_PERCENT_BALANCE);
+    let one = TokenAmount::from(1);
+
     expect_abort(
         ExitCode::USR_FORBIDDEN,
-        h.withdraw_funds(&mut rt, h.beneficiary, &quota, &quota, &TokenAmount::zero()),
+        h.withdraw_funds(
+            &mut rt,
+            first_beneficiary_id,
+            &one,
+            &TokenAmount::zero(),
+            &TokenAmount::zero(),
+        ),
     );
+
+    h.propose_approve_initial_beneficiary(
+        &mut rt,
+        first_beneficiary_id,
+        BeneficiaryTerm::new(quota, TokenAmount::zero(), PERIOD_OFFSET - 10),
+    )
+    .unwrap();
+
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        h.withdraw_funds(&mut rt, another_actor, &one, &TokenAmount::zero(), &TokenAmount::zero()),
+    );
+
+    //allow owner withdraw
+    h.withdraw_funds(&mut rt, h.owner, &one, &one, &TokenAmount::zero()).unwrap();
+    //allow beneficiary withdraw
+    h.withdraw_funds(&mut rt, first_beneficiary_id, &one, &one, &TokenAmount::zero()).unwrap();
     h.check_state(&rt);
 }
