@@ -385,6 +385,8 @@ pub mod policy_constants {
     pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 10;
     #[cfg(feature = "min-power-2g")]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 30;
+    #[cfg(feature = "min-power-16g")]
+    pub const MINIMUM_CONSENSUS_POWER: i64 = 16 << 30;
     #[cfg(feature = "min-power-32g")]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 32 << 30;
     #[cfg(not(any(
