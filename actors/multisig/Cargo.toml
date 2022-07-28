@@ -1,7 +1,7 @@
 [package]
 name = "fil_actor_multisig"
 description = "Builtin multisig actor for Filecoin"
-version = "9.0.0-alpha.1"
+version = "10.0.0-alpha.1"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"

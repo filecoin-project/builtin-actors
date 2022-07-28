@@ -1,7 +1,7 @@
 [package]
 name = "fil_actor_verifreg"
 description = "Builtin verifreg actor for Filecoin"
-version = "9.0.0-alpha.1"
+version = "10.0.0-alpha.1"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
@@ -35,4 +35,3 @@ fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../../runtime", featur
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]
-
