@@ -287,7 +287,8 @@ pub mod policy_constants {
     /// The period over which all a miner's active sectors will be challenged.
     pub const WPOST_PROVING_PERIOD: ChainEpoch = EPOCHS_IN_DAY;
     /// The duration of a deadline's challenge window, the period before a deadline when the challenge is available.
-    pub const WPOST_CHALLENGE_WINDOW: ChainEpoch = 30 * 60 / EPOCH_DURATION_SECONDS; // Half an hour (=48 per day)
+    pub const WPOST_CHALLENGE_WINDOW: ChainEpoch = 30 * 60 / EPOCH_DURATION_SECONDS;
+    // Half an hour (=48 per day)
     /// The number of non-overlapping PoSt deadlines in each proving period.
     pub const WPOST_PERIOD_DEADLINES: u64 = 48;
     /// The maximum distance back that a valid Window PoSt must commit to the current chain.
@@ -411,11 +412,14 @@ pub mod policy_constants {
     pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 10;
     #[cfg(feature = "min-power-2g")]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 30;
+    #[cfg(feature = "min-power-16g")]
+    pub const MINIMUM_CONSENSUS_POWER: i64 = 16 << 30;
     #[cfg(feature = "min-power-32g")]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 32 << 30;
     #[cfg(not(any(
         feature = "min-power-2k",
         feature = "min-power-2g",
+        feature = "min-power-16g",
         feature = "min-power-32g"
     )))]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 10 << 40;
