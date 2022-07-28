@@ -6,7 +6,7 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use test_vm::util::{apply_code, apply_ok, create_accounts, generate_deal_proposal};
-use test_vm::{TEST_VM_INVALID, VM};
+use test_vm::VM;
 
 // Using a deal proposal as a serialized message, we confirm that:
 // - calls to authenticate_message with valid signatures succeed
@@ -37,10 +37,8 @@ fn account_authenticate_message() {
     );
 
     // Bad, bad sig! message fails
-    let authenticate_message_params = AuthenticateMessageParams {
-        signature: TEST_VM_INVALID.as_bytes().to_vec(),
-        message: proposal_ser,
-    };
+    let authenticate_message_params =
+        AuthenticateMessageParams { signature: vec![], message: proposal_ser };
     apply_code(
         &v,
         addr,

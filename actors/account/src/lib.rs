@@ -71,7 +71,8 @@ impl Actor {
     }
 
     /// Authenticates whether the provided signature is valid for the provided message.
-    /// Errors if the authentication is invalid.
+    /// Should be called with the raw bytes of a signature, NOT a serialized Signature object that includes a SignatureType.
+    /// Errors with USR_ILLEGAL_ARGUMENT if the authentication is invalid.
     pub fn authenticate_message<BS, RT>(
         rt: &mut RT,
         params: AuthenticateMessageParams,
@@ -92,7 +93,7 @@ impl Actor {
             }
         };
         let sig = Signature { sig_type, bytes: params.signature };
-        rt.verify_signature(&sig, &st.address, &params.message).map_err(|e| {
+        rt.verify_signature(&sig, &address, &params.message).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "failed to authenticate message, signature invalid",
