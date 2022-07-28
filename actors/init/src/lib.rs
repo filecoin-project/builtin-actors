@@ -205,7 +205,7 @@ where
 }
 
 #[cfg(feature = "m2-native")]
-fn can_exec<BS, RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
+fn can_exec<BS, RT>(_rt: &RT, _caller: &Cid, _exec: &Cid) -> bool
 where
     BS: Blockstore,
     RT: Runtime<BS>,
