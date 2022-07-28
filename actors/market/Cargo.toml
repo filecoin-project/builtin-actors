@@ -29,10 +29,10 @@ fvm_ipld_encoding = "0.2.2"
 libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 
 [dev-dependencies]
-fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../../runtime", features = ["test_utils", "sector-default"] }
-fil_actor_power = { version = "9.0.0-alpha.1", path = "../power" }
-fil_actor_reward = { version = "9.0.0-alpha.1", path = "../reward" }
-fil_actor_verifreg = { version = "9.0.0-alpha.1", path = "../verifreg" }
+fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
+fil_actor_power = { path = "../power" }
+fil_actor_reward = { path = "../reward" }
+fil_actor_verifreg = { path = "../verifreg" }
 fvm_ipld_amt = { version = "0.4.2", features = ["go-interop"] }
 multihash = { version = "0.16.1", default-features = false }
 regex = "1"

@@ -1,8 +1,10 @@
 use std::collections::HashSet;
 
+use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
 use num_traits::FromPrimitive;
+use serde::{Deserialize, Serialize};
 
 // A trait for runtime policy configuration
 pub trait RuntimePolicy {
@@ -10,6 +12,7 @@ pub trait RuntimePolicy {
 }
 
 // The policy itself
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Policy {
     /// Maximum amount of sectors that can be aggregated.
     pub max_aggregated_sectors: u64,
@@ -134,6 +137,7 @@ pub struct Policy {
 
     // --- verifreg policy
     /// Minimum verified deal size
+    #[serde(with = "bigint_ser")]
     pub minimum_verified_deal_size: StoragePower,
 
     //  --- market policy ---
@@ -150,6 +154,7 @@ pub struct Policy {
 
     // --- power ---
     /// Minimum miner consensus power
+    #[serde(with = "bigint_ser")]
     pub minimum_consensus_power: StoragePower,
 }
 
