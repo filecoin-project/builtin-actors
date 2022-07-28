@@ -32,7 +32,7 @@ const MINER_ADDRESSES: MinerAddresses = MinerAddresses {
 };
 
 #[test]
-fn verify_deal_and_get_deal_weight_for_unverified_deal_proposal() {
+fn verify_deal_and_activate_to_get_deal_weight_for_unverified_deal_proposal() {
     let mut rt = setup();
     let deal_id =
         generate_and_publish_deal(&mut rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
@@ -58,7 +58,7 @@ fn verify_deal_and_get_deal_weight_for_unverified_deal_proposal() {
 }
 
 #[test]
-fn verify_deal_and_get_deal_weight_for_verified_deal_proposal() {
+fn verify_deal_and_activate_to_get_deal_weight_for_verified_deal_proposal() {
     let mut rt = setup();
     let deal_id = generate_and_publish_verified_deal(
         &mut rt,

@@ -458,7 +458,7 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
         let mut sector_deals = Vec::new();
-        let mut sector_weights = Vec::new();
+        let mut sector_deal_data = Vec::new();
         let mut any_deals = false;
         for (i, sector) in params.sectors.iter().enumerate() {
             sector_deals.push(SectorDeals {
@@ -468,9 +468,9 @@ impl ActorHarness {
             });
 
             if conf.sector_deal_data.len() > i {
-                sector_weights.push(conf.sector_deal_data[i].clone());
+                sector_deal_data.push(conf.sector_deal_data[i].clone());
             } else {
-                sector_weights.push(SectorDealData { commd: None });
+                sector_deal_data.push(SectorDealData { commd: None });
             }
 
             // Sanity check on expectations
@@ -484,7 +484,7 @@ impl ActorHarness {
         }
         if any_deals {
             let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
-            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_weights };
+            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
             rt.expect_send(
                 *STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,

@@ -255,8 +255,10 @@ pub struct PreCommitSectorParams {
     pub seal_rand_epoch: ChainEpoch,
     pub deal_ids: Vec<DealID>,
     pub expiration: ChainEpoch,
+    /// Deprecated:
     /// Whether to replace a "committed capacity" no-deal sector (requires non-empty DealIDs)
     pub replace_capacity: bool,
+    /// Deprecated:
     /// The committed capacity sector to replace, and its deadline/partition location
     pub replace_sector_deadline: u64,
     pub replace_sector_partition: u64,

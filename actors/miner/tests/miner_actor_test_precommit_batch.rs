@@ -122,7 +122,6 @@ fn assert_simple_batch(
         assert_eq!(conf.sector_deal_data[i].commd, precommits[i].info.unsealed_cid.0);
 
         assert_eq!(sector_nos[i], precommits[i].info.sector_number);
-        //assert_eq!(sectors[i], precommits[i].info);
 
         let pwr_estimate = qa_power_max(h.sector_size);
         let expect_deposit = pre_commit_deposit_for_power(
