@@ -32,6 +32,8 @@ const DEFAULT_CARGO_FEATURES: &[&str] = &["fil-actor"];
 
 /// Extra Cargo-level features to enable per network.
 const EXTRA_CARGO_FEATURES: &[(&str, &[&str])] = &[
+    ("devnet-wasm", &["m2-native"]),
+    /*("devnet-evm", &["m2-fevm"]),*/
     ("wallaby", &["m2-native"]),
 ];
 
@@ -51,8 +53,10 @@ fn network_name() -> String {
         Some("calibrationnet")
     } else if cfg!(feature = "devnet") {
         Some("devnet")
-    } else if cfg!(feature = "devnet-m2-native") {
-        Some("devnet-m2-native")
+    } else if cfg!(feature = "devnet-wasm") {
+        Some("devnet-wasm")
+    } else if cfg!(feature = "wallaby") {
+        Some("wallaby")
     } else if cfg!(feature = "testing") {
         Some("testing")
     } else if cfg!(feature = "testing-fake-proofs") {
@@ -118,7 +122,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Compute Cargo features to apply.
     let features = {
-        let extra = EXTRA_CARGO_FEATURES.iter().find(|(k, _)| k == &network_name).map(|f| f.1).unwrap_or_default();
+        let extra = EXTRA_CARGO_FEATURES
+            .iter()
+            .find(|(k, _)| k == &network_name)
+            .map(|f| f.1)
+            .unwrap_or_default();
         [DEFAULT_CARGO_FEATURES, extra].concat()
     };
 

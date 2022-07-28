@@ -72,8 +72,11 @@ bundle-calibrationnet: deps-build
 bundle-devnet: deps-build
 	BUILD_FIL_NETWORK=devnet cargo run -- -o output/builtin-actors-devnet.car
 
-bundle-devnet-m2-native: deps-build
-	BUILD_FIL_NETWORK=devnet-m2-native cargo run -- -o output/builtin-actors-devnet-m2-native.car
+bundle-wallaby: deps-build
+	BUILD_FIL_NETWORK=wallaby cargo run -- -o output/builtin-actors-wallaby.car
+
+bundle-devnet-wasm: deps-build
+	BUILD_FIL_NETWORK=devnet-wasm cargo run -- -o output/builtin-actors-devnet-wasm.car
 
 bundle-testing: deps-build
 	BUILD_FIL_NETWORK=testing cargo run -- -o output/builtin-actors-testing.car
