@@ -11,7 +11,11 @@ static NETWORKS: &[(&[&str], &[&str])] = &[
             "min-power-2k",
         ],
     ),
-    (&["butterflynet", "wallaby"], &["sector-512m", "sector-32g", "sector-64g", "min-power-2g"]),
+    (&["butterflynet"], &["sector-512m", "sector-32g", "sector-64g", "min-power-2g"]),
+    (
+        &["wallaby"],
+        &["sector-512m", "sector-32g", "sector-64g", "min-power-16g", "short-precommit"],
+    ),
     (&["calibrationnet"], &["sector-32g", "sector-64g", "min-power-32g"]),
     (
         &["devnet", "devnet-wasm" /*devnet-fevm*/],
