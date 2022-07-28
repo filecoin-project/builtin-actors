@@ -44,6 +44,10 @@ fn network_name() -> String {
         Some("calibrationnet")
     } else if cfg!(feature = "devnet") {
         Some("devnet")
+    } else if cfg!(feature = "devnet-wasm") {
+        Some("devnet-wasm")
+    } else if cfg!(feature = "wallaby") {
+        Some("wallaby")
     } else if cfg!(feature = "testing") {
         Some("testing")
     } else if cfg!(feature = "testing-fake-proofs") {
@@ -110,7 +114,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .arg("--target=wasm32-unknown-unknown")
         .arg("--profile=wasm")
         .arg("--locked")
-        .arg("--features=fil-actor")
+        .arg("--features=".to_owned() + &features.join(","))
         .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
         .env(NETWORK_ENV, network_name)
         .stdout(Stdio::piped())

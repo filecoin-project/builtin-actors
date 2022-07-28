@@ -1083,7 +1083,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.4.2"
-source = "git+https://github.com/filecoin-project/ref-fvm#cfbb6b11878afc90afde964da6b22c4709db5123"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=master#e9657a7d1927f154d3020024229fc1122e0b947b"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1112,7 +1112,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_blockstore"
 version = "0.1.1"
-source = "git+https://github.com/filecoin-project/ref-fvm#cfbb6b11878afc90afde964da6b22c4709db5123"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=master#e9657a7d1927f154d3020024229fc1122e0b947b"
 dependencies = [
  "anyhow",
  "cid",
@@ -1137,7 +1137,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_encoding"
 version = "0.2.2"
-source = "git+https://github.com/filecoin-project/ref-fvm#cfbb6b11878afc90afde964da6b22c4709db5123"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=master#e9657a7d1927f154d3020024229fc1122e0b947b"
 dependencies = [
  "anyhow",
  "cid",
@@ -1154,7 +1154,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_hamt"
 version = "0.5.1"
-source = "git+https://github.com/filecoin-project/ref-fvm#cfbb6b11878afc90afde964da6b22c4709db5123"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=master#e9657a7d1927f154d3020024229fc1122e0b947b"
 dependencies = [
  "anyhow",
  "byteorder",
