@@ -528,7 +528,7 @@ impl MessageInfo for InvocationCtx<'_, '_> {
 }
 
 pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
-pub const TEST_VM_INVALID: &str = "i_am_invalid";
+pub const TEST_VM_INVALID_POST: &str = "i_am_invalid_post";
 
 pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation VM<'bs>,
@@ -905,15 +905,17 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
 }
 
 impl Primitives for VM<'_> {
+    // A "valid" signature has its bytes equal to the plaintext.
+    // Anything else is considered invalid.
     fn verify_signature(
         &self,
         signature: &Signature,
         _signer: &Address,
-        _plaintext: &[u8],
+        plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        if signature.bytes.clone() == TEST_VM_INVALID.as_bytes() {
+        if signature.bytes != plaintext {
             return Err(anyhow::format_err!(
-                "verify signature syscall failing on TEST_VM_INVALID_SIG"
+                "invalid signature (mock sig validation expects siggy bytes to be equal to plaintext)"
             ));
         }
         Ok(())
@@ -969,7 +971,7 @@ impl Verifier for InvocationCtx<'_, '_> {
 
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         for proof in &verify_info.proofs {
-            if proof.proof_bytes.eq(&TEST_VM_INVALID.as_bytes().to_vec()) {
+            if proof.proof_bytes.eq(&TEST_VM_INVALID_POST.as_bytes().to_vec()) {
                 return Err(anyhow!("invalid proof"));
             }
         }

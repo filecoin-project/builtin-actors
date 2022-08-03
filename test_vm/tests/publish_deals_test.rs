@@ -6,6 +6,7 @@ use fvm_shared::crypto::signature::{Signature, SignatureType};
 
 use fil_actor_miner::max_prove_commit_duration;
 use fil_actor_verifreg::{AddVerifierClientParams, Method as VerifregMethod};
+use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{test_utils::*, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
@@ -604,7 +605,10 @@ impl<'bs> DealBatcher<'bs> {
             .iter_mut()
             .map(|deal| ClientDealProposal {
                 proposal: deal.clone(),
-                client_signature: Signature { sig_type: SignatureType::BLS, bytes: vec![] },
+                client_signature: Signature {
+                    sig_type: SignatureType::BLS,
+                    bytes: serialize(deal, "serializing deal proposal").unwrap().to_vec(),
+                },
             })
             .collect();
         let publish_params = PublishStorageDealsParams { deals: params_deals };
