@@ -70,6 +70,7 @@ pub struct VerifyDealsForActivationParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct SectorDeals {
+    pub sector_type: RegisteredSealProof,
     pub sector_expiry: ChainEpoch,
     pub deal_ids: Vec<DealID>,
 }
@@ -81,22 +82,33 @@ pub struct VerifyDealsForActivationParamsRef<'a> {
 
 #[derive(Serialize_tuple, Deserialize_tuple, Default)]
 pub struct VerifyDealsForActivationReturn {
-    pub sectors: Vec<SectorWeights>,
+    pub sectors: Vec<SectorDealData>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
-pub struct SectorWeights {
-    pub deal_space: u64,
-    #[serde(with = "bigint_ser")]
-    pub deal_weight: DealWeight,
-    #[serde(with = "bigint_ser")]
-    pub verified_deal_weight: DealWeight,
+pub struct SectorDealData {
+    /// Option::None signifies commitment to empty sector, meaning no deals.
+    pub commd: Option<Cid>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ActivateDealsParams {
     pub deal_ids: Vec<DealID>,
     pub sector_expiry: ChainEpoch,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ActivateDealsResult {
+    pub weights: DealWeights,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Default)]
+pub struct DealWeights {
+    pub deal_space: u64,
+    #[serde(with = "bigint_ser")]
+    pub deal_weight: DealWeight,
+    #[serde(with = "bigint_ser")]
+    pub verified_deal_weight: DealWeight,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

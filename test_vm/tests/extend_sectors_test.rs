@@ -2,7 +2,7 @@ use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     max_prove_commit_duration, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MinerMethod, PowerPair, ProveCommitSectorParams, SectorPreCommitInfo,
+    Method as MinerMethod, PowerPair, PreCommitSectorParams, ProveCommitSectorParams,
     State as MinerState,
 };
 use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
@@ -112,7 +112,7 @@ fn extend_sector_with_deals() {
     //
 
     // precommit sector
-    let precommit_params = SectorPreCommitInfo {
+    let precommit_params = PreCommitSectorParams {
         seal_proof,
         sector_number,
         sealed_cid,

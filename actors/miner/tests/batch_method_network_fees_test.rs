@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
-    pre_commit_deposit_for_power, qa_power_for_weight, PreCommitSectorBatchParams, State,
+    pre_commit_deposit_for_power, qa_power_max, PreCommitSectorBatchParams, State,
 };
 use fil_actors_runtime::test_utils::{expect_abort, expect_abort_contains_message};
 use fvm_ipld_bitfield::BitField;
@@ -260,17 +260,11 @@ fn enough_funds_for_everything() {
 
     // give miner enough balance to pay both and pcd
     let mut balance = BigInt::from(2) * net_fee;
-    let one_sector_power_estimate = qa_power_for_weight(
-        actor.sector_size,
-        expiration - precommit_epoch,
-        &BigInt::zero(),
-        &BigInt::zero(),
-    );
     let expected_deposit = pre_commit_deposit_for_power(
         &actor.epoch_reward_smooth,
         &actor.epoch_qa_power_smooth,
-        &(BigInt::from(4u32) * one_sector_power_estimate),
-    );
+        &qa_power_max(actor.sector_size),
+    ) * precommits.len();
     balance += expected_deposit.clone();
     rt.set_balance(balance);
 

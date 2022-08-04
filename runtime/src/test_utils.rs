@@ -1064,7 +1064,9 @@ impl Primitives for MockRuntime {
         assert_eq!(exp.reg, reg, "Unexpected compute_unsealed_sector_cid : reg mismatch");
         assert!(
             exp.pieces[..].eq(pieces),
-            "Unexpected compute_unsealed_sector_cid : pieces mismatch"
+            "Unexpected compute_unsealed_sector_cid : pieces mismatch, exp: {:?}, got: {:?}",
+            exp.pieces,
+            pieces,
         );
 
         if exp.exit_code != ExitCode::OK {

@@ -165,7 +165,7 @@ fn prove_replica_update_multi_dline() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from(1_000_000e18 as i128));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, _) = create_miner(
@@ -173,7 +173,7 @@ fn prove_replica_update_multi_dline() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from(100_000e18 as i128),
     );
 
     v = v.with_epoch(1440); // something offset far away from deadline 0 and 1
@@ -918,7 +918,7 @@ fn deal_included_in_multiple_sectors_failure() {
 
     // make some unverified deals
 
-    let deal_ids = create_deals(2, &v, worker, worker, maddr);
+    let deal_ids = create_deals_frac(2, &v, worker, worker, maddr, 2);
 
     // replicaUpdate the sector
 
@@ -1099,13 +1099,23 @@ fn create_sector(
 
     (v, d_idx, p_idx)
 }
-
 fn create_deals(
     num_deals: u128,
     v: &VM,
     client: Address,
     worker: Address,
     maddr: Address,
+) -> Vec<DealID> {
+    create_deals_frac(num_deals, v, client, worker, maddr, 1)
+}
+
+fn create_deals_frac(
+    num_deals: u128,
+    v: &VM,
+    client: Address,
+    worker: Address,
+    maddr: Address,
+    size_frac: u8,
 ) -> Vec<DealID> {
     let collateral = TokenAmount::from(3 * num_deals * 1e18 as u128);
     apply_ok(
@@ -1135,7 +1145,7 @@ fn create_deals(
             client,
             maddr,
             format!("deal-label {}", i),
-            PaddedPieceSize(32 << 30),
+            PaddedPieceSize((32 << 30) / size_frac as u64),
             false,
             deal_start,
             180 * EPOCHS_IN_DAY,

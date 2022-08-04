@@ -8,7 +8,7 @@ use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams,
     Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams,
-    ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitInfo,
+    PreCommitSectorParams, ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo,
     SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
 };
 use fil_actor_multisig::Method as MultisigMethod;
@@ -177,11 +177,11 @@ pub fn precommit_sectors(
         let msg_sector_idx_base = sector_idx;
         let mut invocs = invocs_common();
 
-        let mut param_sectors = Vec::<SectorPreCommitInfo>::new();
+        let mut param_sectors = Vec::<PreCommitSectorParams>::new();
         let mut j = 0;
         while j < batch_size && sector_idx < count {
             let sector_number = sector_number_base + sector_idx;
-            param_sectors.push(SectorPreCommitInfo {
+            param_sectors.push(PreCommitSectorParams {
                 seal_proof,
                 sector_number,
                 sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
@@ -268,11 +268,6 @@ pub fn prove_commit_sectors(
             from: Some(worker),
             params: Some(prove_commit_aggregate_params_ser),
             subinvocs: Some(vec![
-                ExpectInvocation {
-                    to: *STORAGE_MARKET_ACTOR_ADDR,
-                    method: MarketMethod::ComputeDataCommitment as u64,
-                    ..Default::default()
-                },
                 ExpectInvocation {
                     to: *REWARD_ACTOR_ADDR,
                     method: RewardMethod::ThisEpochReward as u64,
