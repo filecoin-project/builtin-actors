@@ -517,7 +517,7 @@ pub fn submit_invalid_post(
         }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-            proof_bytes: TEST_VM_INVALID.as_bytes().to_vec(),
+            proof_bytes: TEST_VM_INVALID_POST.as_bytes().to_vec(),
         }],
         chain_commit_epoch: dline_info.challenge,
         chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
@@ -588,8 +588,11 @@ pub fn publish_deal(
 
     let publish_params = PublishStorageDealsParams {
         deals: vec![ClientDealProposal {
-            proposal: deal,
-            client_signature: Signature { sig_type: SignatureType::BLS, bytes: vec![] },
+            proposal: deal.clone(),
+            client_signature: Signature {
+                sig_type: SignatureType::BLS,
+                bytes: serialize(&deal, "deal proposal").unwrap().to_vec(),
+            },
         }],
     };
     let ret: PublishStorageDealsReturn = apply_ok(
