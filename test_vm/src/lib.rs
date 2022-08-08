@@ -20,12 +20,12 @@ use fil_actors_runtime::runtime::{
     Verifier,
 };
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
@@ -230,7 +230,9 @@ impl<'bs> VM<'bs> {
         let root_msig_addr = msig_ctor_ret.id_address;
         assert_eq!(TEST_VERIFREG_ROOT_ADDR, root_msig_addr);
         // verifreg
-        let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
+        let verifreg_head = v.put_store(
+            &VerifRegState::new(&v.store, root_msig_addr, *DATACAP_TOKEN_ACTOR_ADDR).unwrap(),
+        );
         v.set_actor(
             *VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero()),

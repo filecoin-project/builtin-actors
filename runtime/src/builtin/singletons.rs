@@ -12,6 +12,7 @@ lazy_static! {
     pub static ref STORAGE_POWER_ACTOR_ADDR: Address  = Address::new_id(4);
     pub static ref STORAGE_MARKET_ACTOR_ADDR: Address = Address::new_id(5);
     pub static ref VERIFIED_REGISTRY_ACTOR_ADDR: Address = Address::new_id(6);
+    pub static ref DATACAP_TOKEN_ACTOR_ADDR: Address = Address::new_id(7);
 
     pub static ref CHAOS_ACTOR_ADDR: Address    = Address::new_id(98);
 
