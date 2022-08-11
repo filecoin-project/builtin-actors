@@ -14,10 +14,9 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{PoStProof, SectorSize};
-use num_traits::{Signed, Zero};
+use num_traits::Signed;
 
 use super::{
     BitFieldQueue, ExpirationSet, Partition, PartitionSectorMap, PoStPartition, PowerPair,
@@ -323,11 +322,7 @@ impl Deadline {
 
         let mut partitions = self.partitions_amt(store)?;
 
-        let mut on_time_sectors = Vec::<BitField>::new();
-        let mut early_sectors = Vec::<BitField>::new();
-        let mut all_on_time_pledge = TokenAmount::zero();
-        let mut all_active_power = PowerPair::zero();
-        let mut all_faulty_power = PowerPair::zero();
+        let mut all_epirations = ExpirationSet::empty();
         let mut partitions_with_early_terminations = Vec::<u64>::new();
 
         // For each partition with an expiry, remove and collect expirations from the partition queue.
@@ -350,12 +345,7 @@ impl Deadline {
                 partitions_with_early_terminations.push(partition_idx);
             }
 
-            on_time_sectors.push(partition_expiration.on_time_sectors);
-            early_sectors.push(partition_expiration.early_sectors);
-            all_active_power += &partition_expiration.active_power;
-            all_faulty_power += &partition_expiration.faulty_power;
-            all_on_time_pledge += &partition_expiration.on_time_pledge;
-
+            all_epirations.combine(&partition_expiration)?;
             partitions.set(partition_idx, partition)?;
         }
 
@@ -366,23 +356,14 @@ impl Deadline {
             .map_err(|_| actor_error!(illegal_state; "partition index out of bitfield range"))?;
         self.early_terminations |= &new_early_terminations;
 
-        let all_on_time_sectors = BitField::union(&on_time_sectors);
-        let all_early_sectors = BitField::union(&early_sectors);
-
         // Update live sector count.
-        let on_time_count = all_on_time_sectors.len();
-        let early_count = all_early_sectors.len();
+        let on_time_count =  all_epirations.on_time_sectors.len();
+        let early_count = all_epirations.early_sectors.len();
         self.live_sectors -= on_time_count + early_count;
 
-        self.faulty_power -= &all_faulty_power;
+        self.faulty_power -= &all_epirations.faulty_power;
+        Ok(all_epirations)
 
-        Ok(ExpirationSet {
-            on_time_sectors: all_on_time_sectors,
-            early_sectors: all_early_sectors,
-            on_time_pledge: all_on_time_pledge,
-            active_power: all_active_power,
-            faulty_power: all_faulty_power,
-        })
     }
 
     /// Adds sectors to a deadline. It's the caller's responsibility to make sure
