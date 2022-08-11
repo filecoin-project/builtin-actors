@@ -69,6 +69,17 @@ impl ExpirationSet {
         Ok(())
     }
 
+    pub fn combine(&mut self, other: &Self) -> anyhow::Result<()> {
+        self.on_time_sectors |= &other.on_time_sectors;
+        self.early_sectors |= &other.early_sectors;
+        self.on_time_pledge += &other.on_time_pledge;
+        self.active_power += &other.active_power;
+        self.faulty_power += &other.faulty_power;
+
+        self.validate_state()?;
+        Ok(())
+    }
+
     /// Removes sectors and power from the expiration set in place.
     pub fn remove(
         &mut self,
@@ -588,11 +599,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
     /// Removes and aggregates entries from the queue up to and including some epoch.
     pub fn pop_until(&mut self, until: ChainEpoch) -> anyhow::Result<ExpirationSet> {
-        let mut on_time_sectors = BitField::new();
-        let mut early_sectors = BitField::new();
-        let mut active_power = PowerPair::zero();
-        let mut faulty_power = PowerPair::zero();
-        let mut on_time_pledge = TokenAmount::zero();
+
+        let mut result = ExpirationSet::empty();
         let mut popped_keys = Vec::<u64>::new();
 
         self.amt.for_each_while(|i, this_value| {
@@ -601,24 +609,14 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             }
 
             popped_keys.push(i);
-            on_time_sectors |= &this_value.on_time_sectors;
-            early_sectors |= &this_value.early_sectors;
-            active_power += &this_value.active_power;
-            faulty_power += &this_value.faulty_power;
-            on_time_pledge += &this_value.on_time_pledge;
+            result.combine(this_value)?;
 
             Ok(true)
         })?;
 
         self.amt.batch_delete(popped_keys, true)?;
 
-        Ok(ExpirationSet {
-            on_time_sectors,
-            early_sectors,
-            on_time_pledge,
-            active_power,
-            faulty_power,
-        })
+        Ok(result)
     }
 
     fn add(
