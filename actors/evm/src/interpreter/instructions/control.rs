@@ -1,10 +1,10 @@
 use {
     super::memory::{get_memory_region, num_words},
-    crate::interp::output::StatusCode,
-    crate::interp::stack::Stack,
-    crate::interp::Bytecode,
-    crate::interp::ExecutionState,
-    crate::interp::U256,
+    crate::interpreter::output::StatusCode,
+    crate::interpreter::stack::Stack,
+    crate::interpreter::Bytecode,
+    crate::interpreter::ExecutionState,
+    crate::interpreter::U256,
 };
 
 #[inline]

@@ -1,6 +1,6 @@
 use {
     crate::abort,
-    crate::interp::uints::H160,
+    crate::interpreter::uints::H160,
     cid::Cid,
     fvm_ipld_encoding::{to_vec, Cbor, RawBytes, DAG_CBOR},
     fvm_sdk::{ipld, sself},

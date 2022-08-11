@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
 use {
-    crate::interp::transaction::TransactionAction,
-    crate::interp::SignedTransaction,
-    crate::interp::{H160, U256},
+    crate::interpreter::transaction::TransactionAction,
+    crate::interpreter::SignedTransaction,
+    crate::interpreter::{H160, U256},
     bytes::Bytes,
     fil_actors_runtime::ActorError,
     std::fmt::Debug,

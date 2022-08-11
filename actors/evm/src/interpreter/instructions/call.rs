@@ -1,11 +1,11 @@
 use {
     super::memory::{get_memory_region, num_words},
-    crate::interp::output::StatusCode,
-    crate::interp::stack::Stack,
-    crate::interp::CallKind,
-    crate::interp::ExecutionState,
-    crate::interp::System,
-    crate::interp::U256,
+    crate::interpreter::output::StatusCode,
+    crate::interpreter::stack::Stack,
+    crate::interpreter::CallKind,
+    crate::interpreter::ExecutionState,
+    crate::interpreter::System,
+    crate::interpreter::U256,
     fvm_ipld_blockstore::Blockstore,
 };
 

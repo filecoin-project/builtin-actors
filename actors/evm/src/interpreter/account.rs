@@ -1,5 +1,5 @@
 use {
-    crate::interp::uints::U256,
+    crate::interpreter::uints::U256,
     fvm_shared::address::Address as FileCoinAddress,
     serde::{Deserialize, Serialize},
     serde_tuple::{Deserialize_tuple, Serialize_tuple},

@@ -1,6 +1,6 @@
 use {
-    crate::interp::uints::*, crate::interp::ExecutionState, crate::interp::StatusCode,
-    crate::interp::System, fvm_ipld_blockstore::Blockstore,
+    crate::interpreter::uints::*, crate::interpreter::ExecutionState, crate::interpreter::StatusCode,
+    crate::interpreter::System, fvm_ipld_blockstore::Blockstore,
 };
 
 #[inline]

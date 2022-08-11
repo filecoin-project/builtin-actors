@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use {
-    crate::interp::{H160, H256, U256},
+    crate::interpreter::{H160, H256, U256},
     bytes::Bytes,
     fil_actors_runtime::ActorError,
     fvm_shared::crypto::signature::SECP_PUB_LEN,

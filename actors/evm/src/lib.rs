@@ -1,4 +1,4 @@
-mod interp;
+mod interpreter;
 mod state;
 
 use {
@@ -11,7 +11,7 @@ use {
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::{from_slice, RawBytes},
     fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
-    interp::EvmContractRuntimeConstructor,
+    interpreter::EvmContractRuntimeConstructor,
     num_derive::FromPrimitive,
     num_traits::FromPrimitive,
 };

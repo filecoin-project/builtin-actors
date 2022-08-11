@@ -1,8 +1,8 @@
 use {
-    crate::interp::system::{AccessStatus, StorageStatus},
-    crate::interp::ExecutionState,
-    crate::interp::StatusCode,
-    crate::interp::System,
+    crate::interpreter::system::{AccessStatus, StorageStatus},
+    crate::interpreter::ExecutionState,
+    crate::interpreter::StatusCode,
+    crate::interpreter::System,
     fvm_ipld_blockstore::Blockstore,
 };
 

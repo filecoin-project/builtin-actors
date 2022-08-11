@@ -1,4 +1,4 @@
-use {crate::interp::stack::Stack, crate::interp::U256};
+use {crate::interpreter::stack::Stack, crate::interpreter::U256};
 
 #[inline]
 pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> usize {

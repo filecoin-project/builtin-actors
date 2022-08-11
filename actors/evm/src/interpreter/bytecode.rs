@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use {super::opcode::OpCode, crate::interp::output::StatusCode, std::ops::Deref};
+use {super::opcode::OpCode, crate::interpreter::output::StatusCode, std::ops::Deref};
 
 pub struct Bytecode<'c> {
     code: &'c [u8],

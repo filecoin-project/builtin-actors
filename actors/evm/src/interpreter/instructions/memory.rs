@@ -1,6 +1,6 @@
 use {
-    crate::interp::ExecutionState, crate::interp::StatusCode, crate::interp::System,
-    crate::interp::U256, fvm_ipld_blockstore::Blockstore, std::num::NonZeroUsize,
+    crate::interpreter::ExecutionState, crate::interpreter::StatusCode, crate::interpreter::System,
+    crate::interpreter::U256, fvm_ipld_blockstore::Blockstore, std::num::NonZeroUsize,
 };
 
 /// The size of the EVM 256-bit word in bytes.

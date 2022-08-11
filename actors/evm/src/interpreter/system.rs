@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use {
-    crate::interp::{Message, Output, SignedTransaction, StatusCode, H160, U256},
+    crate::interpreter::{Message, Output, SignedTransaction, StatusCode, H160, U256},
     bytes::Bytes,
     cid::Cid,
     fil_actors_runtime::{runtime::Runtime, ActorError},

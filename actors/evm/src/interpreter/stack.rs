@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use {crate::interp::U256, arrayvec::ArrayVec, serde::Serialize};
+use {crate::interpreter::U256, arrayvec::ArrayVec, serde::Serialize};
 
 /// Ethereum Yellow Paper (9.1)
 pub const MAX_STACK_SIZE: usize = 1024;

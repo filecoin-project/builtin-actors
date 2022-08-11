@@ -1,8 +1,8 @@
 use {
     super::memory::{get_memory_region, num_words},
-    crate::interp::ExecutionState,
-    crate::interp::StatusCode,
-    crate::interp::U256,
+    crate::interpreter::ExecutionState,
+    crate::interpreter::StatusCode,
+    crate::interpreter::U256,
     sha3::{Digest, Keccak256},
 };
 

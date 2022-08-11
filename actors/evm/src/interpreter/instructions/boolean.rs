@@ -1,5 +1,5 @@
 use {
-    crate::interp::stack::Stack, crate::interp::uints::*, crate::interp::U256, std::cmp::Ordering,
+    crate::interpreter::stack::Stack, crate::interpreter::uints::*, crate::interpreter::U256, std::cmp::Ordering,
 };
 
 #[inline]
