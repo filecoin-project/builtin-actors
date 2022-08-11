@@ -605,6 +605,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_datacap"
+version = "9.0.0-alpha.1"
+dependencies = [
+ "cid",
+ "fil_actors_runtime",
+ "fil_fungible_token",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "lazy_static",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_init"
 version = "9.0.0-alpha.1"
 dependencies = [
@@ -862,6 +879,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_fungible_token"
+version = "0.1.0"
+source = "git+https://github.com/helix-onchain/filecoin?rev=b5c55eadf13946155d06d76a3409fc800b9a6e64#b5c55eadf13946155d06d76a3409fc800b9a6e64"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fvm_ipld_amt",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_sdk",
+ "fvm_shared",
+ "num-traits",
+ "serde",
+ "serde_tuple",
+ "thiserror",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1078,9 +1114,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "1.0.0-rc.3"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bd162cff8cab78c3798762bc6879429ecbd0f5515856bcb3bc31d197208db70"
+checksum = "d013aaca686496e85886d96e5c4c228555141849d59347d1f22d793d5be2572b"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
