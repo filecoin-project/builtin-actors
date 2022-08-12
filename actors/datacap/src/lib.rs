@@ -391,9 +391,9 @@ where
     RT: Runtime<BS>,
 {
     fn actor_id(&self) -> ActorID {
-        // The Runtime unhelpfully wraps caller in an ID, while the Messaging trait
+        // The Runtime unhelpfully wraps receiver in an address, while the Messaging trait
         // is closer to the syscall interface.
-        self.rt.message().caller().id().unwrap()
+        self.rt.message().receiver().id().unwrap()
     }
 
     fn send(
