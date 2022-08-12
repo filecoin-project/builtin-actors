@@ -32,7 +32,7 @@ jobs:
       uses: ./.github/actions/rust-cargo-run
       with:
         command: clippy
-        args: --all --all-targets -- -D warnings
+        args: --locked --all --all-targets -- -D warnings
         components: clippy
         github_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -45,7 +45,7 @@ jobs:
       uses: ./.github/actions/rust-cargo-run
       with:
         command: test
-        args: --all --no-fail-fast
+        args: --locked --all --no-fail-fast
         github_token: ${{ secrets.GITHUB_TOKEN }}
 
   build:
@@ -68,4 +68,4 @@ jobs:
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
-        cargo run -- -o output/builtin-actors.car
+        cargo run --locked -- -o output/builtin-actors.car
