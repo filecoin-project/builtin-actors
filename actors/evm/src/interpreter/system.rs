@@ -118,8 +118,28 @@ impl<'r, BS: Blockstore> System<'r, BS> {
     /// Get value of a storage key.
     ///
     /// Returns `Ok(U256::zero())` if does not exist.
-    pub fn get_storage(&self, _address: H160, _key: U256) -> U256 {
-        todo!();
+    pub fn get_storage(&self, address: H160, key: U256) -> Result<U256, StatusCode> {
+        let mut key_bytes = [0u8; 32];
+        key.to_big_endian(&mut key_bytes);
+        fvm_sdk::debug::log(format!(
+            "reading storage for contract 0x{} at 0x{}",
+            hex::encode(address),
+            hex::encode(key_bytes)
+        ));
+
+        if address == self.self_address {
+            Ok(
+                self
+                    .state
+                    .borrow()
+                    .get(&key)
+                    .map_err(|e| StatusCode::InternalError(e.to_string()))?
+                    .cloned()
+                    .unwrap_or_default(),
+            )
+        } else {
+            unimplemented!("reading storage across contracts is not supported yet");
+        }
     }
 
     /// Set value of a storage key.
@@ -129,7 +149,14 @@ impl<'r, BS: Blockstore> System<'r, BS> {
         key: U256,
         value: U256,
     ) -> Result<StorageStatus, StatusCode> {
-        fvm_sdk::debug::log(format!("setting storage for {address:?} @ {key} to {value}"));
+        let mut key_bytes = [0u8; 32];
+        key.to_big_endian(&mut key_bytes);
+        fvm_sdk::debug::log(format!(
+            "setting storage for contract 0x{} at 0x{} to {value}",
+            hex::encode(address),
+            hex::encode(key_bytes)
+        ));
+
         if address == self.self_address {
             let mut storage_status = StorageStatus::Added;
             let prev_value = self

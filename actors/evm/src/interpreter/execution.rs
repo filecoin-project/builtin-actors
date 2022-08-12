@@ -127,7 +127,7 @@ pub fn execute<'r, BS: Blockstore>(
             OpCode::SSTORE => storage::sstore(runtime, system)?,
             OpCode::GAS => control::gas(runtime),
             OpCode::JUMPDEST => {} // marker opcode for valid jumps addresses
-            OpCode::PUSH1 => pc += push1(&mut runtime.stack, bytecode[pc + 1]),
+            OpCode::PUSH1 => pc += push::<1>(&mut runtime.stack, &bytecode[pc + 1..]),
             OpCode::PUSH2 => pc += push::<2>(&mut runtime.stack, &bytecode[pc + 1..]),
             OpCode::PUSH3 => pc += push::<3>(&mut runtime.stack, &bytecode[pc + 1..]),
             OpCode::PUSH4 => pc += push::<4>(&mut runtime.stack, &bytecode[pc + 1..]),
@@ -158,7 +158,7 @@ pub fn execute<'r, BS: Blockstore>(
             OpCode::PUSH29 => pc += push::<29>(&mut runtime.stack, &bytecode[pc + 1..]),
             OpCode::PUSH30 => pc += push::<30>(&mut runtime.stack, &bytecode[pc + 1..]),
             OpCode::PUSH31 => pc += push::<31>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH32 => pc += push32(&mut runtime.stack, &bytecode[pc + 1..]),
+            OpCode::PUSH32 => pc += push::<32>(&mut runtime.stack, &bytecode[pc + 1..]),
             OpCode::DUP1 => dup::<1>(&mut runtime.stack),
             OpCode::DUP2 => dup::<2>(&mut runtime.stack),
             OpCode::DUP3 => dup::<3>(&mut runtime.stack),

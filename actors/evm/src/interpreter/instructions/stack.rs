@@ -2,20 +2,17 @@ use {crate::interpreter::stack::Stack, crate::interpreter::U256};
 
 #[inline]
 pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> usize {
-    stack.push(U256::from_big_endian(&code[..LEN]));
+    let pushval = &code[..LEN];
+    stack.push(match pushval.len() {
+        0 => U256::zero(),
+        32 => U256::from_big_endian(pushval),
+        _ => {
+            let mut padded = [0; 32];
+            padded[32 - pushval.len()..].copy_from_slice(pushval);
+            U256::from_big_endian(&padded)
+        }
+    });
     LEN
-}
-
-#[inline]
-pub(crate) fn push1(stack: &mut Stack, v: u8) -> usize {
-    stack.push(v.into());
-    1
-}
-
-#[inline]
-pub(crate) fn push32(stack: &mut Stack, code: &[u8]) -> usize {
-    stack.push(U256::from_big_endian(&code[0..32]));
-    32
 }
 
 #[inline]

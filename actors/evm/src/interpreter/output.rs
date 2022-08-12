@@ -2,11 +2,12 @@ use {
     bytes::Bytes,
     fvm_ipld_encoding::Cbor,
     serde::{Deserialize, Serialize},
+    std::fmt::Debug,
     strum_macros::Display,
 };
 
 /// Output of EVM execution.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Output {
     /// EVM exited with this status code.
     pub status_code: StatusCode,
@@ -17,6 +18,18 @@ pub struct Output {
     // indicates if revert was requested
     pub reverted: bool,
 }
+
+impl Debug for Output {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Output")
+            .field("status_code", &self.status_code)
+            .field("gas_left", &self.gas_left)
+            .field("output_data", &hex::encode(&self.output_data))
+            .field("reverted", &self.reverted)
+            .finish()
+    }
+}
+
 
 /// Message status code.
 #[must_use]

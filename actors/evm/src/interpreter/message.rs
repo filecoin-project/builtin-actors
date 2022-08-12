@@ -86,7 +86,7 @@ pub struct EvmContractRuntimeConstructor {
 impl Debug for EvmContractRuntimeConstructor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EvmContractRuntimeConstructor")
-            .field("initial_state", &self.initial_state)
+            .field("initial_state", &self.initial_state.to_string())
             .field("bytecode", &hex::encode(&self.bytecode))
             .field("registry", &self.registry)
             .field("address", &self.address)

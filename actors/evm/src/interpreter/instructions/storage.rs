@@ -20,10 +20,26 @@ fn ok_or_out_of_gas(gas_left: i64) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn sload<'r, BS: Blockstore>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS>,
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS>,
 ) -> Result<(), StatusCode> {
-    todo!();
+    // where?
+    let location = state.stack.pop();
+
+    // how much it will cost
+    const ADDITIONAL_COLD_SLOAD_COST: u16 = COLD_SLOAD_COST - WARM_STORAGE_READ_COST;
+    let is_cold =
+        platform.access_storage(state.message.recipient, location) == AccessStatus::Cold;
+    let additional_cost = is_cold as i64 * ADDITIONAL_COLD_SLOAD_COST as i64;
+
+    // get from storage and place on stack
+    state
+        .stack
+        .push(platform.get_storage(state.message.recipient, location)?);
+
+    // accuont for gas
+    state.gas_left -= additional_cost;
+    ok_or_out_of_gas(state.gas_left)
 }
 
 #[inline]
