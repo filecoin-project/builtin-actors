@@ -1,22 +1,23 @@
 use {
-    crate::abort,
-    crate::interpreter::uints::H160,
     cid::Cid,
-    fvm_ipld_encoding::{to_vec, Cbor, RawBytes, DAG_CBOR},
-    fvm_sdk::{ipld, sself},
-    fvm_shared::address::Address,
+    fil_actors_runtime::make_empty_map,
+    fvm_ipld_blockstore::Blockstore,
+    fvm_ipld_encoding::{Cbor, CborStore, RawBytes},
+    fvm_ipld_encoding::tuple::*,
+    fvm_ipld_blockstore::Block,
+    fvm_ipld_hamt::Hamt,
+    fvm_shared::HAMT_BIT_WIDTH,
     multihash::Code,
     serde_tuple::{Deserialize_tuple, Serialize_tuple},
+    crate::interpreter::U256,
 };
+
+pub const RAW: u64 = 0x55;
 
 /// Data stored by an EVM contract.
 /// This runs on the fvm-evm-runtime actor code cid.
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
-pub struct ContractState {
-    /// Address of the bridge actor that stores EVM <--> FVM
-    /// account mappings.
-    pub bridge: Address,
-
+pub struct State {
     /// The EVM contract bytecode resulting from calling the
     /// initialization code by the constructor.
     pub bytecode: Cid,
@@ -25,62 +26,25 @@ pub struct ContractState {
     /// All eth contract state is a map of U256 -> U256 values.
     ///
     /// HAMT<U256, U256>
-    pub state: Cid,
-
-    /// EVM address of the current contract
-    pub self_address: H160,
+    pub contract_state: Cid,
 }
 
-impl Cbor for ContractState {}
+impl Cbor for State {}
 
-impl ContractState {
-    /// Called by the actor constructor during the creation of a new
-    /// EVM contract. This method will execute the initialization code
-    /// and store the contract bytecode, and the EVM constructor state
-    /// in the state HAMT.
-    pub fn new(
-        bytecode: &(impl AsRef<[u8]> + ?Sized),
-        bridge: Address,
-        self_address: H160,
-        initial_state: Cid,
+impl State {
+    pub fn new<BS: Blockstore>(
+        store: &BS,
+        bytecode: RawBytes,
     ) -> anyhow::Result<Self> {
-        let this = Self {
-            bridge,
-            self_address,
-            bytecode: ipld::put(
-                Code::Blake2b256.into(),
-                32,
-                DAG_CBOR,
-                &RawBytes::serialize(bytecode.as_ref())?,
-            )?,
-            state: initial_state,
-        };
-
-        sself::set_root(&ipld::put(
-            Code::Blake2b256.into(),
-            32,
-            DAG_CBOR,
-            &RawBytes::serialize(&this)?,
-        )?)?;
-        Ok(this)
-    }
-
-    pub fn _save(&self) -> Cid {
-        let serialized = match to_vec(self) {
-            Ok(s) => s,
-            Err(err) => {
-                abort!(USR_SERIALIZATION, "failed to serialize state: {:?}", err)
-            }
-        };
-        let cid = match ipld::put(Code::Blake2b256.into(), 32, DAG_CBOR, serialized.as_slice()) {
-            Ok(cid) => cid,
-            Err(err) => {
-                abort!(USR_SERIALIZATION, "failed to store initial state: {:}", err)
-            }
-        };
-        if let Err(err) = sself::set_root(&cid) {
-            abort!(USR_ILLEGAL_STATE, "failed to set root ciid: {:}", err);
-        }
-        cid
+        let bytecode_cid = store.put(
+            Code::Blake2b256,
+            &Block::new(RAW, bytecode.to_vec()),
+        )?;
+        let contract_state_hamt: Hamt<_, U256> = make_empty_map(&store, HAMT_BIT_WIDTH);
+        let contract_state_cid = store.put_cbor(&contract_state_hamt, Code::Blake2b256)?;
+        Ok(Self {
+            bytecode: bytecode_cid,
+            contract_state: contract_state_cid,
+        })
     }
 }

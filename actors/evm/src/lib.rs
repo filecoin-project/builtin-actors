@@ -2,16 +2,19 @@ mod interpreter;
 mod state;
 
 use {
-    crate::state::ContractState,
+    crate::state::State,
     fil_actors_runtime::{
         actor_error,
         runtime::{ActorCode, Runtime},
         ActorError,
+        ActorDowncast,
+        cbor
     },
     fvm_ipld_blockstore::Blockstore,
-    fvm_ipld_encoding::{from_slice, RawBytes},
+    fvm_ipld_encoding::RawBytes,
+    fvm_ipld_encoding::tuple::*,
     fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
-    interpreter::EvmContractRuntimeConstructor,
+    fvm_shared::error::*,
     num_derive::FromPrimitive,
     num_traits::FromPrimitive,
 };
@@ -21,7 +24,7 @@ fil_actors_runtime::wasm_trampoline!(EvmRuntimeActor);
 
 /// Maximum allowed EVM bytecode size.
 /// The contract code size limit is 24kB.
-const MAX_CODE_SIZE: usize = 0x6000;
+const MAX_CODE_SIZE: usize = 24 << 10;
 
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -34,34 +37,30 @@ pub struct EvmRuntimeActor;
 impl EvmRuntimeActor {
     pub fn constructor<BS, RT>(
         rt: &mut RT,
-        args: &EvmContractRuntimeConstructor,
+        params: ConstructorParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        fvm_sdk::debug::log(format!("Inside FVM Runtime actor constructor! params: {args:?}"));
         rt.validate_immediate_caller_accept_any()?;
 
-        if args.bytecode.len() > MAX_CODE_SIZE {
+        if params.bytecode.len() > MAX_CODE_SIZE {
             return Err(ActorError::illegal_argument(format!(
                 "EVM byte code length ({}) is exceeding the maximum allowed of {MAX_CODE_SIZE}",
-                args.bytecode.len()
+                params.bytecode.len()
             )));
         }
 
-        if args.bytecode.is_empty() {
+        if params.bytecode.is_empty() {
             return Err(ActorError::illegal_argument("no bytecode provided".into()));
         }
 
-        if args.initial_state == cid::Cid::default() {
-            return Err(ActorError::illegal_state(
-                "EVM Actor must be initialized to some initial state".into(),
-            ));
-        }
-
-        ContractState::new(&args.bytecode, args.registry, args.address, args.initial_state)
-            .map_err(|e| ActorError::illegal_state(e.to_string()))?;
+        let state = State::new(rt.store(), params.bytecode)
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
+            })?;
+        rt.create(&state)?;
 
         Ok(())
     }
@@ -124,11 +123,16 @@ impl ActorCode for EvmRuntimeActor {
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, &from_slice(&params)?)?;
+                Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::InvokeContract) => Self::invoke_contract(rt, params),
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ConstructorParams {
+    pub bytecode: RawBytes,
 }

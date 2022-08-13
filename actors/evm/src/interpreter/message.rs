@@ -71,25 +71,3 @@ impl TryFrom<SignedTransaction> for Message {
         })
     }
 }
-
-/// This type is used to construct a new instance of an EVM contract.
-/// Instances of this type are created by the bridge actor after a successful
-/// invocation of EVM contract constructor.
-#[derive(serde_tuple::Serialize_tuple, serde_tuple::Deserialize_tuple)]
-pub struct EvmContractRuntimeConstructor {
-    pub initial_state: cid::Cid,
-    pub bytecode: bytes::Bytes,
-    pub registry: fvm_shared::address::Address,
-    pub address: H160,
-}
-
-impl Debug for EvmContractRuntimeConstructor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EvmContractRuntimeConstructor")
-            .field("initial_state", &self.initial_state.to_string())
-            .field("bytecode", &hex::encode(&self.bytecode))
-            .field("registry", &self.registry)
-            .field("address", &self.address)
-            .finish()
-    }
-}

@@ -15,7 +15,7 @@ pub use {
     account::{AccountKind, EthereumAccount},
     bytecode::Bytecode,
     execution::{execute, ExecutionState},
-    message::{CallKind, EvmContractRuntimeConstructor, Message},
+    message::{CallKind, Message},
     output::{Output, StatusCode},
     system::System,
     transaction::{
