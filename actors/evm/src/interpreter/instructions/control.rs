@@ -1,10 +1,7 @@
 use {
-    super::memory::{get_memory_region, num_words},
-    crate::interpreter::output::StatusCode,
-    crate::interpreter::stack::Stack,
-    crate::interpreter::Bytecode,
-    crate::interpreter::ExecutionState,
-    crate::interpreter::U256,
+    super::memory::get_memory_region, crate::interpreter::output::StatusCode,
+    crate::interpreter::stack::Stack, crate::interpreter::Bytecode,
+    crate::interpreter::ExecutionState, crate::interpreter::U256,
 };
 
 #[inline]
@@ -45,12 +42,6 @@ pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
     }
 
     if let Some(region) = region {
-        let copy_cost = num_words(region.size.get()) * 3;
-        state.gas_left -= copy_cost as i64;
-        if state.gas_left < 0 {
-            return Err(StatusCode::OutOfGas);
-        }
-
         state.memory[region.offset..region.offset + region.size.get()]
             .copy_from_slice(&state.return_data[src..src + region.size.get()]);
     }
@@ -59,8 +50,8 @@ pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn gas(state: &mut ExecutionState) {
-    state.stack.push(U256::from(state.gas_left))
+pub fn gas(_state: &mut ExecutionState) {
+    todo!()
 }
 
 #[inline]

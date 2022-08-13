@@ -142,15 +142,6 @@ pub fn exp(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let mut base = state.stack.pop();
     let mut power = state.stack.pop();
 
-    if power > U256::zero() {
-        let factor = 50;
-        let additional_gas = factor * (log2floor(power) / 8 + 1);
-        state.gas_left -= additional_gas as i64;
-        if state.gas_left < 0 {
-            return Err(StatusCode::OutOfGas);
-        }
-    }
-
     let mut v = U256::from(1);
 
     while power > U256::zero() {

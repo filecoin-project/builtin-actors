@@ -1,6 +1,8 @@
 use {
-    crate::interpreter::ExecutionState, crate::interpreter::StatusCode, crate::interpreter::System,
-    crate::interpreter::U256, fvm_ipld_blockstore::Blockstore, std::num::NonZeroUsize,
+    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    fil_actors_runtime::runtime::Runtime,
+    fvm_ipld_blockstore::Blockstore,
+    std::num::NonZeroUsize,
 };
 
 /// The size of the EVM 256-bit word in bytes.
@@ -21,19 +23,7 @@ pub fn num_words(size_in_bytes: usize) -> usize {
 #[inline]
 fn grow_memory(state: &mut ExecutionState, new_size: usize) -> Result<(), ()> {
     let new_words = num_words(new_size);
-    let current_words = state.memory.len() / WORD_SIZE;
-    let new_cost = 3 * new_words + new_words * new_words / 512;
-    let current_cost = 3 * current_words + current_words * current_words / 512;
-    let cost = new_cost - current_cost;
-
-    state.gas_left -= cost as i64;
-
-    if state.gas_left < 0 {
-        return Err(());
-    }
-
     state.memory.grow((new_words * WORD_SIZE) as usize);
-
     Ok(())
 }
 
@@ -122,9 +112,9 @@ pub fn msize(state: &mut ExecutionState) {
     state.stack.push(u64::try_from(state.memory.len()).unwrap().into());
 }
 
-pub fn extcodecopy<'r, BS: Blockstore>(
+pub fn extcodecopy<'r, BS: Blockstore, RT: Runtime<BS>>(
     _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS>,
+    _platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
     todo!();
 }

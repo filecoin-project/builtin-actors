@@ -2,7 +2,9 @@ mod interpreter;
 mod state;
 
 use {
+    crate::interpreter::{execute, Bytecode, ExecutionState, StatusCode, System, U256},
     crate::state::State,
+    bytes::Bytes,
     fil_actors_runtime::{
         actor_error, cbor,
         runtime::{ActorCode, Runtime},
@@ -11,6 +13,7 @@ use {
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::tuple::*,
     fvm_ipld_encoding::RawBytes,
+    fvm_ipld_hamt::Hamt,
     fvm_shared::error::*,
     fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
     num_derive::FromPrimitive,
@@ -51,12 +54,48 @@ impl EvmRuntimeActor {
             return Err(ActorError::illegal_argument("no bytecode provided".into()));
         }
 
-        let state = State::new(rt.store(), params.bytecode).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
+        // initialize contract state
+        let init_contract_state_cid =
+            Hamt::<_, U256, U256>::new(rt.store()).flush().map_err(|e| {
+                ActorError::unspecified(format!("failed to flush contract state: {e:?}"))
+            })?;
+        // create an instance of the platform abstraction layer -- note: do we even need this?
+        let system = System::new(rt, init_contract_state_cid).map_err(|e| {
+            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
-        rt.create(&state)?;
+        // create a new execution context
+        let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
+        // identify bytecode valid jump destinations
+        let bytecode = Bytecode::new(&params.bytecode)
+            .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
+        // invoke the contract constructor
+        let exec_status = execute(&bytecode, &mut exec_state, &system)
+            .map_err(|e| ActorError::unspecified(format!("EVM execution error: {e:?}")))?;
 
-        Ok(())
+        if !exec_status.reverted
+            && exec_status.status_code == StatusCode::Success
+            && !exec_status.output_data.is_empty()
+        {
+            // constructor ran to completion successfully and returned
+            // the resulting bytecode.
+            let contract_bytecode = exec_status.output_data.clone();
+
+            let contract_state_cid = system.flush_state()?;
+
+            let state = State::new(
+                rt.store(),
+                RawBytes::new(contract_bytecode.to_vec()),
+                contract_state_cid,
+            )
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
+            })?;
+            rt.create(&state)?;
+
+            Ok(())
+        } else {
+            Err(ActorError::unspecified("EVM constructor failed".to_string()))
+        }
     }
 
     pub fn invoke_contract<BS, RT>(rt: &mut RT, _params: &RawBytes) -> Result<RawBytes, ActorError>
@@ -129,4 +168,5 @@ impl ActorCode for EvmRuntimeActor {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ConstructorParams {
     pub bytecode: RawBytes,
+    pub input_data: RawBytes,
 }

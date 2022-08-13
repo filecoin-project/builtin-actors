@@ -11,8 +11,6 @@ use {
 pub struct Output {
     /// EVM exited with this status code.
     pub status_code: StatusCode,
-    /// How much gas was left after execution
-    pub gas_left: i64,
     /// Output data returned.
     pub output_data: Bytes,
     // indicates if revert was requested
@@ -23,7 +21,6 @@ impl Debug for Output {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Output")
             .field("status_code", &self.status_code)
-            .field("gas_left", &self.gas_left)
             .field("output_data", &hex::encode(&self.output_data))
             .field("reverted", &self.reverted)
             .finish()

@@ -8,41 +8,39 @@ use {
     crate::interpreter::instructions::log::*,
     crate::interpreter::instructions::stack::*,
     crate::interpreter::memory::Memory,
-    crate::interpreter::message::Message,
     crate::interpreter::stack::Stack,
     crate::interpreter::{Bytecode, Output, System},
     bytes::Bytes,
+    fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
 };
 
 /// EVM execution runtime.
 #[derive(Clone, Debug)]
-pub struct ExecutionState<'m> {
-    pub gas_left: i64,
+pub struct ExecutionState {
     pub stack: Stack,
     pub memory: Memory,
-    pub message: &'m Message,
+    pub input_data: Bytes,
     pub return_data: Bytes,
     pub output_data: Bytes,
 }
 
-impl<'m> ExecutionState<'m> {
-    pub fn new(message: &'m Message) -> Self {
+impl ExecutionState {
+    pub fn new(input_data: Bytes) -> Self {
         Self {
-            gas_left: message.gas,
             stack: Stack::default(),
             memory: Memory::default(),
-            message,
+            input_data,
             return_data: Default::default(),
             output_data: Bytes::new(),
         }
     }
 }
 
-pub fn execute<'r, BS: Blockstore>(
+pub fn execute<'r, BS: Blockstore, RT: Runtime<BS>>(
     bytecode: &Bytecode,
     runtime: &mut ExecutionState,
-    system: &'r System<'r, BS>,
+    system: &'r System<'r, BS, RT>,
 ) -> Result<Output, StatusCode> {
     let mut pc = 0; // program counter
     let mut reverted = false;
@@ -218,7 +216,6 @@ pub fn execute<'r, BS: Blockstore>(
     Ok(Output {
         reverted,
         status_code: StatusCode::Success,
-        gas_left: runtime.gas_left,
         output_data: runtime.output_data.clone(),
     })
 }

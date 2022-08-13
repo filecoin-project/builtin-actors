@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use {
     fixed_hash::construct_fixed_hash,
     impl_serde::{impl_fixed_hash_serde, impl_uint_serde},

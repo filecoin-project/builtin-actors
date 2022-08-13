@@ -1,18 +1,14 @@
 use {
-    super::memory::{get_memory_region, num_words},
-    crate::interpreter::output::StatusCode,
-    crate::interpreter::stack::Stack,
-    crate::interpreter::CallKind,
-    crate::interpreter::ExecutionState,
-    crate::interpreter::System,
-    crate::interpreter::U256,
-    fvm_ipld_blockstore::Blockstore,
+    super::memory::get_memory_region, crate::interpreter::output::StatusCode,
+    crate::interpreter::stack::Stack, crate::interpreter::CallKind,
+    crate::interpreter::ExecutionState, crate::interpreter::System, crate::interpreter::U256,
+    fil_actors_runtime::runtime::Runtime, fvm_ipld_blockstore::Blockstore,
 };
 
 #[inline]
 pub fn calldataload(state: &mut ExecutionState) {
     let index = state.stack.pop();
-    let input_len = state.message.input_data.len();
+    let input_len = state.input_data.len();
 
     state.stack.push({
         if index > U256::from(input_len) {
@@ -22,7 +18,7 @@ pub fn calldataload(state: &mut ExecutionState) {
             let end = core::cmp::min(index_usize + 32, input_len);
 
             let mut data = [0; 32];
-            data[..end - index_usize].copy_from_slice(&state.message.input_data[index_usize..end]);
+            data[..end - index_usize].copy_from_slice(&state.input_data[index_usize..end]);
 
             U256::from_big_endian(&data)
         }
@@ -31,7 +27,7 @@ pub fn calldataload(state: &mut ExecutionState) {
 
 #[inline]
 pub fn calldatasize(state: &mut ExecutionState) {
-    state.stack.push(u128::try_from(state.message.input_data.len()).unwrap().into());
+    state.stack.push(u128::try_from(state.input_data.len()).unwrap().into());
 }
 
 #[inline]
@@ -43,20 +39,14 @@ pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let region = get_memory_region(state, mem_index, size).map_err(|_| StatusCode::OutOfGas)?;
 
     if let Some(region) = &region {
-        let copy_cost = num_words(region.size.get()) * 3;
-        state.gas_left -= copy_cost as i64;
-        if state.gas_left < 0 {
-            return Err(StatusCode::OutOfGas);
-        }
-
-        let input_len = U256::from(state.message.input_data.len());
+        let input_len = U256::from(state.input_data.len());
         let src = core::cmp::min(input_len, input_index);
         let copy_size = core::cmp::min(size, input_len - src).as_usize();
         let src = src.as_usize();
 
         if copy_size > 0 {
             state.memory[region.offset..region.offset + copy_size]
-                .copy_from_slice(&state.message.input_data[src..src + copy_size]);
+                .copy_from_slice(&state.input_data[src..src + copy_size]);
         }
 
         if region.size.get() > copy_size {
@@ -84,12 +74,6 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
         let src = core::cmp::min(U256::from(code.len()), input_index).as_usize();
         let copy_size = core::cmp::min(region.size.get(), code.len() - src);
 
-        let copy_cost = num_words(region.size.get()) * 3;
-        state.gas_left -= copy_cost as i64;
-        if state.gas_left < 0 {
-            return Err(StatusCode::OutOfGas);
-        }
-
         if copy_size > 0 {
             state.memory[region.offset..region.offset + copy_size]
                 .copy_from_slice(&code[src..src + copy_size]);
@@ -104,9 +88,9 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
 }
 
 #[inline]
-pub fn call<'r, BS: Blockstore>(
+pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS>,
+    _platform: &'r System<'r, BS, RT>,
     _kind: CallKind,
     _is_static: bool,
 ) -> Result<(), StatusCode> {
