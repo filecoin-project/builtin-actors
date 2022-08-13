@@ -1,6 +1,6 @@
 use {
-    crate::interpreter::output::StatusCode, crate::interpreter::stack::Stack, crate::interpreter::uints::*,
-    crate::interpreter::ExecutionState, crate::interpreter::U256,
+    crate::interpreter::output::StatusCode, crate::interpreter::stack::Stack,
+    crate::interpreter::uints::*, crate::interpreter::ExecutionState, crate::interpreter::U256,
 };
 
 #[inline]

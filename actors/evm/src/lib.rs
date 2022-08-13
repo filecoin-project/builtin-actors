@@ -4,17 +4,15 @@ mod state;
 use {
     crate::state::State,
     fil_actors_runtime::{
-        actor_error,
+        actor_error, cbor,
         runtime::{ActorCode, Runtime},
-        ActorError,
-        ActorDowncast,
-        cbor
+        ActorDowncast, ActorError,
     },
     fvm_ipld_blockstore::Blockstore,
-    fvm_ipld_encoding::RawBytes,
     fvm_ipld_encoding::tuple::*,
-    fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
+    fvm_ipld_encoding::RawBytes,
     fvm_shared::error::*,
+    fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
     num_derive::FromPrimitive,
     num_traits::FromPrimitive,
 };
@@ -35,10 +33,7 @@ pub enum Method {
 
 pub struct EvmRuntimeActor;
 impl EvmRuntimeActor {
-    pub fn constructor<BS, RT>(
-        rt: &mut RT,
-        params: ConstructorParams,
-    ) -> Result<(), ActorError>
+    pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -56,10 +51,9 @@ impl EvmRuntimeActor {
             return Err(ActorError::illegal_argument("no bytecode provided".into()));
         }
 
-        let state = State::new(rt.store(), params.bytecode)
-            .map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
-            })?;
+        let state = State::new(rt.store(), params.bytecode).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
+        })?;
         rt.create(&state)?;
 
         Ok(())

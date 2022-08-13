@@ -28,14 +28,11 @@ pub fn sload<'r, BS: Blockstore>(
 
     // how much it will cost
     const ADDITIONAL_COLD_SLOAD_COST: u16 = COLD_SLOAD_COST - WARM_STORAGE_READ_COST;
-    let is_cold =
-        platform.access_storage(state.message.recipient, location) == AccessStatus::Cold;
+    let is_cold = platform.access_storage(state.message.recipient, location) == AccessStatus::Cold;
     let additional_cost = is_cold as i64 * ADDITIONAL_COLD_SLOAD_COST as i64;
 
     // get from storage and place on stack
-    state
-        .stack
-        .push(platform.get_storage(state.message.recipient, location)?);
+    state.stack.push(platform.get_storage(state.message.recipient, location)?);
 
     // accuont for gas
     state.gas_left -= additional_cost;

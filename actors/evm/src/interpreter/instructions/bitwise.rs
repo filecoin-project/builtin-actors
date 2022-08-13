@@ -1,6 +1,6 @@
 use {
-    crate::interpreter::stack::Stack, crate::interpreter::uints::Sign, crate::interpreter::uints::*,
-    crate::interpreter::U256,
+    crate::interpreter::stack::Stack, crate::interpreter::uints::Sign,
+    crate::interpreter::uints::*, crate::interpreter::U256,
 };
 
 #[inline]

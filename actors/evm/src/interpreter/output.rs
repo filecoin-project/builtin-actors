@@ -30,7 +30,6 @@ impl Debug for Output {
     }
 }
 
-
 /// Message status code.
 #[must_use]
 #[derive(Clone, Debug, Display, PartialEq, Serialize, Deserialize)]

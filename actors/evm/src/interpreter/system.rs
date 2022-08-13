@@ -128,15 +128,13 @@ impl<'r, BS: Blockstore> System<'r, BS> {
         ));
 
         if address == self.self_address {
-            Ok(
-                self
-                    .state
-                    .borrow()
-                    .get(&key)
-                    .map_err(|e| StatusCode::InternalError(e.to_string()))?
-                    .cloned()
-                    .unwrap_or_default(),
-            )
+            Ok(self
+                .state
+                .borrow()
+                .get(&key)
+                .map_err(|e| StatusCode::InternalError(e.to_string()))?
+                .cloned()
+                .unwrap_or_default())
         } else {
             unimplemented!("reading storage across contracts is not supported yet");
         }
