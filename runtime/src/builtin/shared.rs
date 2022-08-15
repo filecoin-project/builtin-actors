@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use anyhow::Ok;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::address::Address;
 use fvm_shared::METHOD_SEND;
@@ -19,17 +20,19 @@ where
 {
     // if we are able to resolve it to an ID address, return the resolved address
     if let Some(addr) = rt.resolve_address(address) {
-        return Ok(addr);
+        return Ok(Address::new_id(addr));
     }
 
     // send 0 balance to the account so an ID address for it is created and then try to resolve
     rt.send(*address, METHOD_SEND, Default::default(), Default::default())
         .map_err(|e| e.wrap(&format!("failed to send zero balance to address {}", address)))?;
 
-    rt.resolve_address(address).ok_or_else(|| {
-        anyhow::anyhow!(
+    if let Some(addr) = rt.resolve_address(address) {
+        return Ok(Address::new_id(addr));
+    }
+
+    Err(anyhow::anyhow!(
             "failed to resolve address {} to ID address even after sending zero balance",
             address,
-        )
-    })
+    ))
 }

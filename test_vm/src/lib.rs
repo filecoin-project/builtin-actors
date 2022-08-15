@@ -32,7 +32,7 @@ use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::actor::builtin::Manifest;
 use fvm_shared::actor::builtin::Type;
-use fvm_shared::address::{Address, Protocol};
+use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
@@ -763,8 +763,14 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         self.v.get_actor(self.to()).unwrap().balance
     }
 
-    fn resolve_address(&self, addr: &Address) -> Option<Address> {
-        self.v.normalize_address(addr)
+    fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
+        if let Some(normalize_addr) = self.v.normalize_address(addr) {
+            if let &Payload::ID(id) = normalize_addr.payload() {
+                return Some(id);
+            }
+        }
+
+        return None
     }
 
     fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {

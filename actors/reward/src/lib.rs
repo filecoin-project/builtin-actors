@@ -8,6 +8,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{Integer, Sign};
 use fvm_shared::econ::TokenAmount;
@@ -158,7 +159,7 @@ impl Actor {
         // if this fails, we can assume the miner is responsible and avoid failing here.
         let reward_params = ext::miner::ApplyRewardParams { reward: total_reward.clone(), penalty };
         let res = rt.send(
-            miner_addr,
+            Address::new_id(miner_addr),
             ext::miner::APPLY_REWARDS_METHOD,
             RawBytes::serialize(&reward_params)?,
             total_reward.clone(),

@@ -4008,7 +4008,7 @@ where
         .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
 
     let owner_code = rt
-        .get_actor_code_cid(&resolved)
+        .get_actor_code_cid(&Address::new_id(resolved))
         .ok_or_else(|| actor_error!(illegal_argument, "no code for address: {}", resolved))?;
 
     let is_principal = rt
@@ -4025,7 +4025,7 @@ where
         ));
     }
 
-    Ok(resolved)
+    Ok(Address::new_id(resolved))
 }
 
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
@@ -4040,7 +4040,7 @@ where
         .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
 
     let worker_code = rt
-        .get_actor_code_cid(&resolved)
+        .get_actor_code_cid(&Address::new_id(resolved))
         .ok_or_else(|| actor_error!(illegal_argument, "no code for address: {}", resolved))?;
     if rt.resolve_builtin_actor_type(&worker_code) != Some(Type::Account) {
         return Err(actor_error!(
@@ -4052,7 +4052,7 @@ where
 
     if raw.protocol() != Protocol::BLS {
         let ret = rt.send(
-            resolved,
+            Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
             RawBytes::default(),
             TokenAmount::zero(),
@@ -4067,7 +4067,7 @@ where
             ));
         }
     }
-    Ok(resolved)
+    Ok(Address::new_id(resolved))
 }
 
 fn burn_funds<BS, RT>(rt: &mut RT, amount: TokenAmount) -> Result<(), ActorError>

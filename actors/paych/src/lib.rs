@@ -148,7 +148,7 @@ impl Actor {
                 sv.channel_addr
             )
         })?;
-        if pch_addr != svpch_id_addr {
+        if pch_addr != Address::new_id(svpch_id_addr) {
             return Err(actor_error!(illegal_argument;
                     "voucher payment channel address {} does not match receiver {}",
                     svpch_id_addr, pch_addr));

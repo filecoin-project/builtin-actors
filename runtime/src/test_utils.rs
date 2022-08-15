@@ -12,7 +12,7 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_shared::actor::builtin::Type;
-use fvm_shared::address::{Address, Protocol};
+use fvm_shared::address::{Address, Protocol, Payload};
 use fvm_shared::clock::ChainEpoch;
 
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
@@ -765,12 +765,12 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         self.balance.borrow().clone()
     }
 
-    fn resolve_address(&self, address: &Address) -> Option<Address> {
+    fn resolve_address(&self, address: &Address) -> Option<ActorID> {
         self.require_in_call();
-        if address.protocol() == Protocol::ID {
-            return Some(*address);
+        if let &Payload::ID(id) = address.payload() {
+            return Some(id);
         }
-        self.id_addresses.get(address).cloned()
+        return None;
     }
 
     fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {

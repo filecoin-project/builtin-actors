@@ -234,7 +234,7 @@ impl Actor {
         })?;
 
         let code_id = rt
-            .get_actor_code_cid(&provider)
+            .get_actor_code_cid(&Address::new_id(provider))
             .ok_or_else(|| actor_error!(illegal_argument, "no code ID for address {}", provider))?;
 
         if rt.resolve_builtin_actor_type(&code_id) != Some(Type::Miner) {
@@ -244,7 +244,7 @@ impl Actor {
             ));
         }
 
-        let (_, worker, controllers) = request_miner_control_addrs(rt, provider)?;
+        let (_, worker, controllers) = request_miner_control_addrs(rt, Address::new_id(provider))?;
         let caller = rt.message().caller();
         let mut caller_ok = caller == worker;
         for controller in controllers.iter() {
@@ -290,14 +290,14 @@ impl Actor {
                 continue;
             }
 
-            if deal.proposal.provider != provider && deal.proposal.provider != provider_raw {
+            if deal.proposal.provider != Address::new_id(provider) && deal.proposal.provider != provider_raw {
                 info!(
                     "invalid deal {}: cannot publish deals from multiple providers in one batch",
                     di
                 );
                 continue;
             }
-            let client = match rt.resolve_address(&deal.proposal.client) {
+            let client_id = match rt.resolve_address(&deal.proposal.client) {
                 Some(client) => client,
                 _ => {
                     info!(
@@ -309,12 +309,11 @@ impl Actor {
             };
 
             // drop deals with insufficient lock up to cover costs
-            let client_id = client.id().expect("resolved address should be an ID address");
             let mut client_lockup =
                 total_client_lockup.get(&client_id).cloned().unwrap_or_default();
             client_lockup += deal.proposal.client_balance_requirement();
 
-            let client_balance_ok = msm.balance_covered(client, &client_lockup).map_err(|e| {
+            let client_balance_ok = msm.balance_covered(deal.proposal.client, &client_lockup).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to check client balance coverage",
@@ -329,7 +328,7 @@ impl Actor {
             let mut provider_lockup = total_provider_lockup.clone();
             provider_lockup += &deal.proposal.provider_collateral;
             let provider_balance_ok =
-                msm.balance_covered(provider, &provider_lockup).map_err(|e| {
+                msm.balance_covered(provider_raw, &provider_lockup).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check provider balance coverage",
@@ -345,8 +344,8 @@ impl Actor {
             // Normalise provider and client addresses in the proposal stored on chain.
             // Must happen after signature verification and before taking cid.
 
-            deal.proposal.provider = provider;
-            deal.proposal.client = client;
+            deal.proposal.provider = provider_raw;
+            deal.proposal.client = deal.proposal.client;
             let pcid = deal.proposal.cid().map_err(
                 |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
             )?;
@@ -373,7 +372,7 @@ impl Actor {
                     *VERIFIED_REGISTRY_ACTOR_ADDR,
                     crate::ext::verifreg::USE_BYTES_METHOD as u64,
                     RawBytes::serialize(UseBytesParams {
-                        address: client,
+                        address: deal.proposal.client,
                         deal_size: BigInt::from(deal.proposal.piece_size.0),
                     })?,
                     TokenAmount::zero(),
@@ -1307,17 +1306,19 @@ where
         .resolve_address(addr)
         .ok_or_else(|| actor_error!(illegal_argument, "failed to resolve address {}", addr))?;
 
+    let nominal_addr = Address::new_id(nominal);
+
     let code_id = rt
-        .get_actor_code_cid(&nominal)
-        .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", nominal))?;
+        .get_actor_code_cid(&nominal_addr)
+        .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", nominal_addr))?;
 
     if rt.resolve_builtin_actor_type(&code_id) == Some(Type::Miner) {
         // Storage miner actor entry; implied funds recipient is the associated owner address.
-        let (owner_addr, worker_addr, _) = request_miner_control_addrs(rt, nominal)?;
-        return Ok((nominal, owner_addr, vec![owner_addr, worker_addr]));
+        let (owner_addr, worker_addr, _) = request_miner_control_addrs(rt, nominal_addr)?;
+        return Ok((nominal_addr, owner_addr, vec![owner_addr, worker_addr]));
     }
 
-    Ok((nominal, nominal, vec![nominal]))
+    Ok((nominal_addr, nominal_addr, vec![nominal_addr]))
 }
 
 /// Requests the current epoch target block reward from the reward actor.

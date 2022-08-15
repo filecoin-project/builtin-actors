@@ -57,7 +57,7 @@ impl Actor {
             .resolve_address(&root_key)
             .ok_or_else(|| actor_error!(illegal_argument, "root should be an ID address"))?;
 
-        let st = State::new(rt.store(), id_addr).map_err(|e| {
+        let st = State::new(rt.store(), Address::new_id(id_addr)).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create verifreg state")
         })?;
 

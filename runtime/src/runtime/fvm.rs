@@ -156,8 +156,8 @@ where
         fvm::sself::current_balance()
     }
 
-    fn resolve_address(&self, address: &Address) -> Option<Address> {
-        fvm::actor::resolve_address(address).map(Address::new_id)
+    fn resolve_address(&self, address: &Address) -> Option<ActorID> {
+        fvm::actor::resolve_address(address)
     }
 
     fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
