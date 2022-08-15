@@ -7,7 +7,7 @@ use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 use std::ops::Sub;
 
-#[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct BeneficiaryTerm {
     /// The total amount the current beneficiary can withdraw. Monotonic, but reset when beneficiary changes.
     #[serde(with = "bigint_ser")]
@@ -51,7 +51,7 @@ impl BeneficiaryTerm {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct PendingBeneficiaryChange {
     pub new_beneficiary: Address,
     #[serde(with = "bigint_ser")]

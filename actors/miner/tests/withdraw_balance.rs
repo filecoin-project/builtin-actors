@@ -123,7 +123,7 @@ fn successfully_withdraw_allow_zero() {
 }
 
 #[test]
-fn successfully_withdraw_more_than_quota() {
+fn successfully_withdraw_limited_to_quota() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
     rt.set_balance(TokenAmount::from(BIG_BALANCE));

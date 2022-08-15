@@ -12,20 +12,20 @@ use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
-    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, Actor,
-    ApplyRewardParams, BeneficiaryTerm, BitFieldQueue, ChangeBeneficiaryParams,
+    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, ActiveBeneficiary,
+    Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue, ChangeBeneficiaryParams,
     ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams,
     CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
     CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
     ExpirationQueue, ExpirationSet, ExtendSectorExpirationParams, FaultDeclaration,
     GetBeneficiaryReturn, GetControlAddressesReturn, Method,
-    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PoStPartition, PowerPair,
-    PreCommitSectorBatchParams, PreCommitSectorParams, ProveCommitSectorParams,
-    RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
-    VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
-    CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
+    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
+    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
+    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
+    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
+    TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
+    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -2088,7 +2088,7 @@ impl ActorHarness {
         &mut self,
         rt: &mut MockRuntime,
         expect_caller: Address,
-        beneficiary_change: BeneficiaryChange,
+        beneficiary_change: &BeneficiaryChange,
         expect_beneficiary_addr: Option<Address>,
     ) -> Result<RawBytes, ActorError> {
         rt.set_address_actor_type(
@@ -2098,7 +2098,7 @@ impl ActorHarness {
         let caller_id = rt.get_id_address(&expect_caller).unwrap();
         let param = ChangeBeneficiaryParams {
             new_beneficiary: beneficiary_change.beneficiary_addr,
-            new_quota: beneficiary_change.quota,
+            new_quota: beneficiary_change.quota.clone(),
             new_expiration: beneficiary_change.expiration,
         };
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller_id);
@@ -2109,6 +2109,8 @@ impl ActorHarness {
         rt.verify();
 
         if let Some(beneficiary) = expect_beneficiary_addr {
+            let beneficiary_return = self.get_beneficiary(rt)?;
+            assert_eq!(beneficiary, beneficiary_return.active.beneficiary);
             self.beneficiary = beneficiary.clone();
         }
 
@@ -2120,7 +2122,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
     ) -> Result<GetBeneficiaryReturn, ActorError> {
         rt.expect_validate_caller_any();
-        let ret = rt.call::<Actor>(Method::ChangeBeneficiary as u64, &RawBytes::default())?;
+        let ret = rt.call::<Actor>(Method::GetBeneficiary as u64, &RawBytes::default())?;
         rt.verify();
         Ok(ret.deserialize::<GetBeneficiaryReturn>().unwrap())
     }
@@ -2347,7 +2349,7 @@ pub struct PoStDisputeResult {
     pub expected_reward: Option<TokenAmount>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BeneficiaryChange {
     pub beneficiary_addr: Address,
     pub quota: TokenAmount,
@@ -2358,6 +2360,24 @@ impl BeneficiaryChange {
     #[allow(dead_code)]
     pub fn new(beneficiary_addr: Address, quota: TokenAmount, expiration: ChainEpoch) -> Self {
         BeneficiaryChange { beneficiary_addr, quota, expiration }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_pending(pending_beneficiary: &PendingBeneficiaryChange) -> Self {
+        BeneficiaryChange {
+            beneficiary_addr: pending_beneficiary.new_beneficiary,
+            quota: pending_beneficiary.new_quota.clone(),
+            expiration: pending_beneficiary.new_expiration,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_active(info: &ActiveBeneficiary) -> Self {
+        BeneficiaryChange {
+            beneficiary_addr: info.beneficiary,
+            quota: info.term.quota.clone(),
+            expiration: info.term.expiration,
+        }
     }
 }
 

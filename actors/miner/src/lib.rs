@@ -33,6 +33,7 @@ use fvm_shared::econ::TokenAmount;
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
+
 pub use beneficiary::*;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
@@ -3286,36 +3287,30 @@ impl Actor {
                 // Verify unlocked funds cover both InitialPledgeRequirement and FeeDebt
                 // and repay fee debt now.
                 let fee_to_burn = repay_debts_or_abort(rt, state)?;
-                let mut amount_withdrawn = std::cmp::min(&available_balance, &params.amount_requested);
+                let mut amount_withdrawn =
+                    std::cmp::min(&available_balance, &params.amount_requested);
                 if amount_withdrawn.is_negative() {
-                        return Err(actor_error!(
-                            illegal_state,
-                            "negative amount to withdraw: {}",
-                            amount_withdrawn
-                        ));
+                    return Err(actor_error!(
+                        illegal_state,
+                        "negative amount to withdraw: {}",
+                        amount_withdrawn
+                    ));
                 }
                 if info.beneficiary != info.owner {
+                    // remaining_quota always zero and positive
                     let remaining_quota = info.beneficiary_term.available(rt.curr_epoch());
-                    if remaining_quota.is_negative() {
-                        return Err(actor_error!(
-                            forbidden,
-                            "quota not enough beneficiary {}  quota {} used quota {} expiration epoch {}  current epoch {}",
-                            info.beneficiary,
-                            info.beneficiary_term.quota,
-                            info.beneficiary_term.used_quota,
-                            info.beneficiary_term.expiration,
-                            rt.curr_epoch()
-                        ));
-                    }
                     amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
                     if amount_withdrawn.is_positive() {
                         info.beneficiary_term.used_quota += amount_withdrawn;
                         state.save_info(rt.store(), &info).map_err(|e| {
-                            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
+                            e.downcast_default(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "failed to save miner info",
+                            )
                         })?;
                     }
                     Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
-                }else{
+                } else {
                     Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
                 }
             })?;
@@ -3444,7 +3439,7 @@ impl Actor {
             }
 
             state.save_info(rt.store(), &info).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
+                e.downcast_default(ExitCode::USR_FORBIDDEN, "failed to save miner info")
             })?;
             Ok(())
         })
