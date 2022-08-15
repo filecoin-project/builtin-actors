@@ -33,7 +33,7 @@ pub fn shl(stack: &mut Stack) {
     if *value == U256::zero() || shift >= U256::from(256) {
         *value = U256::zero();
     } else {
-        *value <<= U256::from(shift)
+        *value <<= shift
     };
 }
 
@@ -45,7 +45,7 @@ pub fn shr(stack: &mut Stack) {
     if *value == U256::zero() || shift >= U256::from(256) {
         *value = U256::zero()
     } else {
-        *value >>= U256::from(shift)
+        *value >>= shift
     };
 }
 
@@ -80,7 +80,7 @@ pub fn sar(stack: &mut Stack) {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::uints::u128_words_to_u256};
+    use {super::*, crate::interpreter::uints::u128_words_to_u256};
 
     #[test]
     fn test_instruction_byte() {

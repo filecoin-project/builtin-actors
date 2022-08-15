@@ -42,6 +42,8 @@ hex = "0.4.3"
 
 [dev-dependencies]
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
+libsecp256k1 = { version = "0.7.0", features = ["static-context"] }
+hex-literal = "0.3.4"
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

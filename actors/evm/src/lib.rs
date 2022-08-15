@@ -78,7 +78,7 @@ impl EvmRuntimeActor {
         {
             // constructor ran to completion successfully and returned
             // the resulting bytecode.
-            let contract_bytecode = exec_status.output_data.clone();
+            let contract_bytecode = exec_status.output_data;
 
             let contract_state_cid = system.flush_state()?;
 

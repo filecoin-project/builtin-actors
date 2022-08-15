@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+// to silence construct_uint! clippy warnings
+// see https://github.com/paritytech/parity-common/issues/660
+#![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern)]
+
 use {
     fixed_hash::construct_fixed_hash,
     impl_serde::{impl_fixed_hash_serde, impl_uint_serde},

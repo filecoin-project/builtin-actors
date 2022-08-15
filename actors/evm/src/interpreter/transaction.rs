@@ -570,7 +570,7 @@ impl Debug for Transaction {
 #[cfg(test)]
 mod tests {
     use {
-        crate::{
+        crate::interpreter::{
             transaction::{AccessListItem, Transaction, TransactionAction},
             SignedTransaction, H160, H256, U256,
         },
@@ -641,7 +641,7 @@ mod tests {
                 &input
             );
         } else {
-            assert!(false, "decoded into wrong transaction type");
+            panic!("decoded into wrong transaction type");
         }
     }
 
@@ -719,7 +719,7 @@ mod tests {
                 access_list
             )
         } else {
-            assert!(false, "decoded into wrong transaction type");
+            panic!("decoded into wrong transaction type");
         }
     }
 
@@ -779,7 +779,7 @@ mod tests {
                 action
             );
         } else {
-            assert!(false, "decoded into wrong transaction type");
+            panic!("decoded into wrong transaction type");
         }
     }
 }

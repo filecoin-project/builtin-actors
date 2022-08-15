@@ -38,7 +38,7 @@ pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
 
 impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
     pub fn new(rt: &'r RT, state_cid: Cid) -> anyhow::Result<Self> {
-        Ok(Self { rt: rt, state: RefCell::new(Hamt::load(&state_cid, rt.store())?) })
+        Ok(Self { rt, state: RefCell::new(Hamt::load(&state_cid, rt.store())?) })
     }
 
     pub fn flush_state(&self) -> Result<Cid, ActorError> {

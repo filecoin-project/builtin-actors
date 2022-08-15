@@ -109,12 +109,12 @@ pub fn execute<'r, BS: Blockstore, RT: Runtime<BS>>(
             OpCode::MSTORE => memory::mstore(runtime)?,
             OpCode::MSTORE8 => memory::mstore8(runtime)?,
             OpCode::JUMP => {
-                pc = control::jump(&mut runtime.stack, &bytecode)?;
+                pc = control::jump(&mut runtime.stack, bytecode)?;
                 continue; // don't increment PC after the jump
             }
             OpCode::JUMPI => {
                 // conditional jump
-                if let Some(dest) = control::jumpi(&mut runtime.stack, &bytecode)? {
+                if let Some(dest) = control::jumpi(&mut runtime.stack, bytecode)? {
                     pc = dest; // condition met, set program counter
                     continue; // don't increment PC after jump
                 }
