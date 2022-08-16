@@ -577,6 +577,7 @@ mod tests {
         hex_literal::hex,
     };
 
+    #[ignore]
     #[test]
     fn decode_legacy_transaction() {
         // https://etherscan.io/tx/0x3741aea434dc6e9e740be0113af4bac372fcdd2fa2188409c93c9405cbdcaaf0
@@ -645,6 +646,7 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[test]
     fn decode_eip2930_transaction() {
         // https://etherscan.io/tx/0xfbf20efe99271206c0f5b497a92bee2e66f8bf9991e07648935194f17610b36e
@@ -723,6 +725,7 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[test]
     fn decode_eip1559_transaction() {
         // https://etherscan.io/tx/0x734678f719001015c5b5f5cbac6a9210ede7ee6ce63e746ff2e9eecda3ab68c7
