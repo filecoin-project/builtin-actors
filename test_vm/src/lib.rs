@@ -769,8 +769,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 return Some(id);
             }
         }
-
-        return None
+        None
     }
 
     fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
