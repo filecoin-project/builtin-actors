@@ -777,7 +777,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
                 if let &Payload::ID(id) = addr.payload() {
                     return Some(id);
                 }
-                return None
+                None
             }
         }
     }
