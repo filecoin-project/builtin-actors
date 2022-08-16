@@ -30,4 +30,3 @@ fvm_ipld_amt = { version = "0.4.2", features = ["go-interop"] }
 derive_builder = "0.10.2"
 [features]
 fil-actor = []
-

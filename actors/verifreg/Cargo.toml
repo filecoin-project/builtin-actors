@@ -30,4 +30,3 @@ fvm_ipld_encoding = "0.2.2"
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 [features]
 fil-actor = []
-

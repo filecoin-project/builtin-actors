@@ -28,4 +28,3 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 [features]
 fil-actor = []
-
