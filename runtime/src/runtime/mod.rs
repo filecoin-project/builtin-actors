@@ -65,7 +65,7 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     fn resolve_address(&self, address: &Address) -> Option<ActorID>;
 
     /// Look up the code ID at an actor address.
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid>;
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid>;
 
     /// Randomness returns a (pseudo)random byte array drawing from the latest
     /// ticket chain from a given epoch and incorporating requisite entropy.

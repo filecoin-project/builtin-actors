@@ -94,7 +94,7 @@ impl Actor {
                 typ
             ))
         } else {
-            Ok(resolved)
+            Ok(Address::new_id(resolved))
         }
     }
 

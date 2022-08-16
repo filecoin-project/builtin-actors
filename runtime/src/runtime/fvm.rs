@@ -140,7 +140,15 @@ where
         self.assert_not_validated()?;
         let caller_cid = {
             let caller_addr = self.message().caller();
-            self.get_actor_code_cid(&caller_addr).expect("failed to lookup caller code")
+            // let caller_id
+            match caller_addr.id() {
+                Ok(id) => {
+                    self.get_actor_code_cid(&id).expect("failed to lookup caller code")
+                }
+                Err(e) => {
+                    return Err(actor_error!(forbidden; "caller {} transfer to id address is not support, {}", caller_addr, e))
+                }
+            }
         };
 
         match self.resolve_builtin_actor_type(&caller_cid) {
@@ -161,8 +169,8 @@ where
         fvm::actor::resolve_address(address)
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
-        fvm::actor::get_actor_code_cid(addr)
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
+        fvm::actor::get_actor_code_cid(&Address::new_id(*id))
     }
 
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {

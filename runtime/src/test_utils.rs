@@ -781,9 +781,9 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         }
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         self.require_in_call();
-        self.actor_code_cids.get(addr).cloned()
+        self.actor_code_cids.get(&Address::new_id(*id)).cloned()
     }
 
     fn get_randomness_from_tickets(

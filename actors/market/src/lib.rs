@@ -53,14 +53,14 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 
 fn request_miner_control_addrs<BS, RT>(
     rt: &mut RT,
-    miner_addr: Address,
+    miner_addr: ActorID,
 ) -> Result<(Address, Address, Vec<Address>), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     let ret = rt.send(
-        miner_addr,
+        Address::new_id(miner_addr),
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
         TokenAmount::zero(),
@@ -234,7 +234,7 @@ impl Actor {
         })?;
 
         let code_id = rt
-            .get_actor_code_cid(&Address::new_id(provider))
+            .get_actor_code_cid(&provider)
             .ok_or_else(|| actor_error!(illegal_argument, "no code ID for address {}", provider))?;
 
         if rt.resolve_builtin_actor_type(&code_id) != Some(Type::Miner) {
@@ -244,7 +244,7 @@ impl Actor {
             ));
         }
 
-        let (_, worker, controllers) = request_miner_control_addrs(rt, Address::new_id(provider))?;
+        let (_, worker, controllers) = request_miner_control_addrs(rt, provider)?;
         let caller = rt.message().caller();
         let mut caller_ok = caller == worker;
         for controller in controllers.iter() {
@@ -1309,12 +1309,12 @@ where
     let nominal_addr = Address::new_id(nominal);
 
     let code_id = rt
-        .get_actor_code_cid(&nominal_addr)
-        .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", nominal_addr))?;
+        .get_actor_code_cid(&nominal)
+        .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", nominal))?;
 
     if rt.resolve_builtin_actor_type(&code_id) == Some(Type::Miner) {
         // Storage miner actor entry; implied funds recipient is the associated owner address.
-        let (owner_addr, worker_addr, _) = request_miner_control_addrs(rt, nominal_addr)?;
+        let (owner_addr, worker_addr, _) = request_miner_control_addrs(rt, nominal)?;
         return Ok((nominal_addr, owner_addr, vec![owner_addr, worker_addr]));
     }
 

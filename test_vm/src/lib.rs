@@ -772,8 +772,8 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         None
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
-        let maybe_act = self.v.get_actor(*addr);
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
+        let maybe_act = self.v.get_actor(Address::new_id(*id));
         match maybe_act {
             None => None,
             Some(act) => Some(act.code),

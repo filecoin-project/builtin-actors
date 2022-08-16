@@ -4008,7 +4008,7 @@ where
         .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
 
     let owner_code = rt
-        .get_actor_code_cid(&Address::new_id(resolved))
+        .get_actor_code_cid(&resolved)
         .ok_or_else(|| actor_error!(illegal_argument, "no code for address: {}", resolved))?;
 
     let is_principal = rt
@@ -4040,7 +4040,7 @@ where
         .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
 
     let worker_code = rt
-        .get_actor_code_cid(&Address::new_id(resolved))
+        .get_actor_code_cid(&resolved)
         .ok_or_else(|| actor_error!(illegal_argument, "no code for address: {}", resolved))?;
     if rt.resolve_builtin_actor_type(&worker_code) != Some(Type::Account) {
         return Err(actor_error!(

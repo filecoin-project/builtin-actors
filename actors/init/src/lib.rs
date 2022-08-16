@@ -61,7 +61,19 @@ impl Actor {
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
 
-        let caller_code = rt.get_actor_code_cid(&rt.message().caller()).ok_or_else(|| {
+        let caller_addr = rt.message().caller();
+
+        let caller_id;
+        match caller_addr.id() {
+            Ok(id) => {
+                caller_id = id;
+            }
+            Err(e) => {
+                return Err(actor_error!(forbidden; "caller {} transfer to id address is not support, {}", caller_addr, e))
+            }
+        }
+
+        let caller_code = rt.get_actor_code_cid(&caller_id).ok_or_else(|| {
             actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
         })?;
 

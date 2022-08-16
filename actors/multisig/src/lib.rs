@@ -79,12 +79,12 @@ impl Actor {
                     format!("failed to resolve addr {} to ID addr", signer),
                 )
             })?;
-            if !dedup_signers.insert(resolved.id().expect("address should be resolved")) {
+            if !dedup_signers.insert(resolved) {
                 return Err(
                     actor_error!(illegal_argument; "duplicate signer not allowed: {}", signer),
                 );
             }
-            resolved_signers.push(resolved);
+            resolved_signers.push(Address::new_id(resolved));
         }
 
         if params.num_approvals_threshold > params.signers.len() as u64 {
@@ -306,6 +306,8 @@ impl Actor {
             )
         })?;
 
+        let resolved_new_signer = Address::new_id(resolved_new_signer);
+
         rt.transaction(|st: &mut State, _| {
             if st.signers.len() >= SIGNERS_MAX {
                 return Err(actor_error!(
@@ -342,6 +344,8 @@ impl Actor {
                 format!("failed to resolve address {}", params.signer),
             )
         })?;
+        
+        let resolved_old_signer = Address::new_id(resolved_old_signer);
 
         rt.transaction(|st: &mut State, rt| {
             if !st.is_signer(&resolved_old_signer) {
@@ -410,6 +414,9 @@ impl Actor {
         })?;
 
         rt.transaction(|st: &mut State, rt| {
+            let from_resolved = Address::new_id(from_resolved);
+            let to_resolved = Address::new_id(to_resolved);
+
             if !st.is_signer(&from_resolved) {
                 return Err(actor_error!(forbidden; "{} is not a signer", from_resolved));
             }

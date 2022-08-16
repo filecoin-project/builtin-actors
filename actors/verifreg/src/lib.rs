@@ -86,6 +86,8 @@ impl Actor {
             )
         })?;
 
+        let verifier = Address::new_id(verifier);
+
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
 
@@ -150,6 +152,8 @@ impl Actor {
             )
         })?;
 
+        let verifier = Address::new_id(verifier);
+
         let state: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&state.root_key))?;
 
@@ -206,6 +210,8 @@ impl Actor {
                 format!("failed to resolve addr {} to ID addr", params.address),
             )
         })?;
+
+        let client = Address::new_id(client);
 
         let st: State = rt.state()?;
         if client == st.root_key {
@@ -328,6 +334,8 @@ impl Actor {
             )
         })?;
 
+        let client = Address::new_id(client);
+
         if params.deal_size < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
                 illegal_argument,
@@ -436,6 +444,8 @@ impl Actor {
             )
         })?;
 
+        let client = Address::new_id(client);
+
         let st: State = rt.state()?;
         if client == st.root_key {
             return Err(actor_error!(illegal_argument, "Cannot restore allowance for Rootkey"));
@@ -520,6 +530,8 @@ impl Actor {
             )
         })?;
 
+        let client = Address::new_id(client);
+
         let verifier_1 =
             resolve_to_id_addr(rt, &params.verifier_request_1.verifier).map_err(|e| {
                 e.downcast_default(
@@ -531,6 +543,8 @@ impl Actor {
                 )
             })?;
 
+        let verifier_1 = Address::new_id(verifier_1);
+
         let verifier_2 =
             resolve_to_id_addr(rt, &params.verifier_request_2.verifier).map_err(|e| {
                 e.downcast_default(
@@ -541,6 +555,8 @@ impl Actor {
                     ),
                 )
             })?;
+
+        let verifier_2 = Address::new_id(verifier_2);
 
         if verifier_1 == verifier_2 {
             return Err(actor_error!(
