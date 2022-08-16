@@ -1,3 +1,5 @@
+#!allow[clippy::result-unit-err]
+
 use {
     crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::Runtime,
