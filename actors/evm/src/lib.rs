@@ -21,7 +21,7 @@ use {
 };
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(EvmRuntimeActor);
+fil_actors_runtime::wasm_trampoline!(EvmContractActor);
 
 /// Maximum allowed EVM bytecode size.
 /// The contract code size limit is 24kB.
@@ -34,8 +34,8 @@ pub enum Method {
     InvokeContract = 2,
 }
 
-pub struct EvmRuntimeActor;
-impl EvmRuntimeActor {
+pub struct EvmContractActor;
+impl EvmContractActor {
     pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -144,7 +144,7 @@ impl EvmRuntimeActor {
     }
 }
 
-impl ActorCode for EvmRuntimeActor {
+impl ActorCode for EvmContractActor {
     fn invoke_method<BS, RT>(
         rt: &mut RT,
         method: MethodNum,
