@@ -140,7 +140,7 @@ impl EvmContractActor {
                     ActorError::unspecified(format!("failed to serialize return data: {e:?}"))
                 })?;
 
-                if !!exec_status.reverted {
+                if !exec_status.reverted {
                     state.contract_state = system.flush_state()?;
                 }
 
