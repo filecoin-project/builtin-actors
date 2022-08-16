@@ -6,6 +6,7 @@ pub mod memory;
 pub mod message;
 pub mod opcode;
 pub mod output;
+mod precompiles;
 pub mod stack;
 pub mod system;
 pub mod transaction;
