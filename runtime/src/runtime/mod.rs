@@ -4,7 +4,6 @@
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, RawBytes};
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
@@ -22,17 +21,17 @@ use fvm_shared::{ActorID, MethodNum};
 pub use self::actor_code::*;
 pub use self::policy::*;
 pub use self::randomness::DomainSeparationTag;
+use crate::runtime::builtins::Type;
 use crate::ActorError;
-
-mod actor_code;
-
-#[cfg(feature = "fil-actor")]
-pub mod fvm;
 
 #[cfg(feature = "fil-actor")]
 mod actor_blockstore;
-
+#[cfg(feature = "fil-actor")]
+pub mod builtins;
+pub mod fvm;
 pub mod policy;
+
+mod actor_code;
 mod randomness;
 
 /// Runtime is the VM's internal runtime object.

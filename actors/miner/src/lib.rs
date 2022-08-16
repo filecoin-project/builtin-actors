@@ -18,8 +18,8 @@ pub use deadlines::*;
 pub use expiration_queue::*;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
@@ -34,7 +34,7 @@ use fvm_shared::econ::TokenAmount;
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
-use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
+use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::error::*;
 use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
@@ -3880,7 +3880,7 @@ where
     let is_principal = rt
         .resolve_builtin_actor_type(&owner_code)
         .as_ref()
-        .map(Type::is_principal)
+        .map(|t| CALLER_TYPES_SIGNABLE.contains(t))
         .unwrap_or(false);
 
     if !is_principal {
