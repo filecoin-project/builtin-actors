@@ -24,6 +24,7 @@ fil_actor_power = { version = "10.0.0-alpha.1", path = "../actors/power" }
 fil_actor_market = { version = "10.0.0-alpha.1", path = "../actors/market" }
 fil_actor_verifreg = { version = "10.0.0-alpha.1", path = "../actors/verifreg" }
 fil_actor_miner = { version = "10.0.0-alpha.1", path = "../actors/miner" }
+fil_actor_evm = { version = "10.0.0-alpha.1", path = "../actors/evm" }
 lazy_static = "1.4.0"
 fvm_shared = { version = "0.9.0", default-features = false }
 fvm_ipld_encoding = { version = "0.2.2", default-features = false }
