@@ -7,7 +7,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, RawBytes};
-use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
@@ -23,10 +22,12 @@ use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
 use fil_actors_runtime::cbor::serialize_vec;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE,
+    CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 use crate::ext::verifreg::UseBytesParams;
@@ -36,16 +37,15 @@ use self::policy::*;
 pub use self::state::*;
 pub use self::types::*;
 
+// exports for testing
 pub mod balance_table;
-// export for testing
-mod deal;
 #[doc(hidden)]
 pub mod ext;
-// export for testing
 pub mod policy;
-// export for testing
-mod state;
 pub mod testing;
+
+mod deal;
+mod state;
 mod types;
 
 #[cfg(feature = "fil-actor")]
