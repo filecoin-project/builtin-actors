@@ -2043,6 +2043,7 @@ dependencies = [
  "cid",
  "fil_actor_account",
  "fil_actor_cron",
+ "fil_actor_evm",
  "fil_actor_init",
  "fil_actor_market",
  "fil_actor_miner",
