@@ -52,6 +52,7 @@ lazy_static! {
     pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/multisig");
     pub static ref REWARD_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/reward");
     pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/verifiedregistry");
+    pub static ref EVM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/evm");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -65,6 +66,7 @@ lazy_static! {
         map.insert(*MULTISIG_ACTOR_CODE_ID, Type::Multisig);
         map.insert(*REWARD_ACTOR_CODE_ID, Type::Reward);
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
+        map.insert(*EVM_ACTOR_CODE_ID, Type::EVM);
         map
     };
     pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
