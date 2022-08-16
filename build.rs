@@ -23,6 +23,7 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("paych", "paymentchannel"),
     ("reward", "reward"),
     ("verifreg", "verifiedregistry"),
+    ("evm", "evm"),
 ];
 
 const WASM_FEATURES: &[&str] = &["+bulk-memory", "+crt-static"];
