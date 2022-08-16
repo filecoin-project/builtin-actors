@@ -25,7 +25,7 @@ pub fn call_value<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
 ) {
-    state.stack.push(U256::from(&platform.rt.value_received()));
+    state.stack.push(U256::from(&platform.rt.message().value_received()));
 }
 
 #[inline]
@@ -41,7 +41,7 @@ pub fn origin<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
 ) {
-    state.stack.push(U256::from(platform.rt.caller().id().unwrap()))
+    state.stack.push(U256::from(platform.rt.message().caller().id().unwrap()))
 }
 
 #[inline]
