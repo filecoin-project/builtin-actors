@@ -5,7 +5,6 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{to_vec, Cbor, CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
@@ -19,10 +18,12 @@ use fvm_shared::sector::{
 };
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
+use num_traits::FromPrimitive;
 #[cfg(feature = "fake-proofs")]
 use sha2::{Digest, Sha256};
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
+use crate::runtime::builtins::Type;
 use crate::runtime::{
     ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
     Verifier,
@@ -165,11 +166,12 @@ where
     }
 
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
-        fvm::actor::get_builtin_actor_type(code_id)
+        fvm::actor::get_builtin_actor_type(code_id).and_then(|t| Type::from_i32(t as i32))
     }
 
     fn get_code_cid_for_type(&self, typ: Type) -> Cid {
-        fvm::actor::get_code_cid_for_type(typ)
+        let t = fvm_shared::actor::builtin::Type::from_i32(typ as i32).unwrap();
+        fvm::actor::get_code_cid_for_type(t)
     }
 
     fn get_randomness_from_tickets(

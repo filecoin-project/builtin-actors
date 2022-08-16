@@ -839,6 +839,7 @@ name = "fil_builtin_actors_state"
 version = "9.0.0-alpha.1"
 dependencies = [
  "anyhow",
+ "bimap",
  "cid",
  "fil_actor_account",
  "fil_actor_cron",
@@ -1774,6 +1775,7 @@ name = "test_vm"
 version = "9.0.0-alpha.1"
 dependencies = [
  "anyhow",
+ "bimap",
  "blake2b_simd",
  "cid",
  "fil_actor_account",
