@@ -771,13 +771,15 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             return Some(id);
         }
 
-        if let Some(addr) = self.get_id_address(address) {
-            if let &Payload::ID(id) = addr.payload() {
-                return Some(id);
+        match self.get_id_address(address) {
+            None => None,
+            Some(addr) => {
+                if let &Payload::ID(id) = addr.payload() {
+                    return Some(id);
+                }
+                return None
             }
         }
-
-        return None;
     }
 
     fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
