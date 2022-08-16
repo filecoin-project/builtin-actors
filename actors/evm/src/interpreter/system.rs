@@ -32,7 +32,7 @@ pub enum Call<'a> {
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
 pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
-    rt: &'r RT,
+    pub rt: &'r RT,
     state: RefCell<Hamt<&'r BS, U256, U256>>,
 }
 

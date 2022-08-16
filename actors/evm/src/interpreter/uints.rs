@@ -8,6 +8,7 @@ use {
     impl_serde::{impl_fixed_hash_serde, impl_uint_serde},
     std::cmp::Ordering,
     uint::construct_uint,
+    fvm_shared::econ::TokenAmount,
 };
 
 construct_uint! { pub struct U256(4); } // ethereum word size
@@ -15,6 +16,13 @@ construct_uint! { pub struct U512(8); } // used for addmod and mulmod opcodes
 
 construct_fixed_hash! { pub struct H160(20); } // ethereum address
 construct_fixed_hash! { pub struct H256(32); } // Keccak256
+
+impl From<&TokenAmount> for U256 {
+    fn from(amount: &TokenAmount) -> U256 {
+        let (_, bytes) = amount.to_bytes_be();
+        U256::from(bytes.as_slice())
+    }
+}
 
 // make ETH uints serde serializable,
 // so it can work with Hamt and other

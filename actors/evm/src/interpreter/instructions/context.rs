@@ -1,5 +1,5 @@
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System},
+    crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
 };
@@ -22,10 +22,10 @@ pub fn caller<'r, BS: Blockstore, RT: Runtime<BS>>(
 
 #[inline]
 pub fn call_value<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
 ) {
-    todo!()
+    state.stack.push(U256::from(&platform.rt.value_received()));
 }
 
 #[inline]
@@ -38,10 +38,10 @@ pub fn address<'r, BS: Blockstore, RT: Runtime<BS>>(
 
 #[inline]
 pub fn origin<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
 ) {
-    todo!()
+    state.stack.push(U256::from(platform.rt.caller().id().unwrap()))
 }
 
 #[inline]
