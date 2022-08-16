@@ -98,49 +98,48 @@ impl EvmContractActor {
         }
     }
 
-    pub fn invoke_contract<BS, RT>(rt: &mut RT, _params: &RawBytes) -> Result<RawBytes, ActorError>
+    pub fn invoke_contract<BS, RT>(rt: &mut RT, params: InvokeParams) -> Result<RawBytes, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_accept_any()?;
-        // let state: ContractState = rt.state()?;
-        // let message = Message {
-        //   kind: fvm_evm::CallKind::Call,
-        //   is_static: false,
-        //   depth: 1,
-        //   gas: 2100,
-        //   recipient: H160::zero(),
-        //   sender: H160::zero(),
-        //   input_data: Bytes::new(),
-        //   value: U256::zero(),
-        // };
 
-        // let bytecode: Vec<_> = from_slice(&ipld::get(&state.bytecode).map_err(|e| {
-        //   ActorError::illegal_state(format!("failed to load bytecode: {e:?}"))
-        // })?)
-        // .map_err(|e| ActorError::unspecified(format!("failed to load bytecode:
-        // {e:?}")))?;
+        // TODO this is fine in a transaction for now, as we don't have yet cross-contact calls
+        //      some refactoring will be needed when we start making cross contract calls.
+        rt.transaction(|state: &mut State, rt| {
+            let bytecode: Vec<u8> = match rt.store().get(&state.bytecode)
+                .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))? {
+                    Some(bytes) => bytes,
+                    None => return Err(ActorError::unspecified("missing bytecode".to_string()))
+                };
 
-        // // EVM contract bytecode
-        // let bytecode = Bytecode::new(&bytecode)
-        //   .map_err(|e| ActorError::unspecified(format!("invalid bytecode: {e:?}")))?;
+            let bytecode = Bytecode::new(&bytecode)
+                .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
 
-        // // the execution state of the EVM, stack, heap, etc.
-        // let mut runtime = ExecutionState::new(&message);
+            let system = System::new(rt, state.contract_state).map_err(|e| {
+                ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
+            })?;
 
-        // // the interface between the EVM interpretter and the FVM system
-        // let mut system = System::new(state.state, rt, state.bridge,
-        // state.self_address)   .map_err(|e|
-        // ActorError::unspecified(format!("failed to create runtime: {e:?}")))?;
+            let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
 
-        // // invoke the bytecode using the current state and the platform interface
-        // let output = execute(&bytecode, &mut runtime, &mut system)
-        //   .map_err(|e| ActorError::unspecified(format!("contract execution error:
-        // {e:?}")))?;
+            let exec_status = execute(&bytecode, &mut exec_state, &system)
+                .map_err(|e| ActorError::unspecified(format!("EVM execution error: {e:?}")))?;
 
-        // log(format!("evm output: {output:?}"));
-        Ok(RawBytes::default())
+            if !exec_status.reverted
+                && exec_status.status_code == StatusCode::Success
+            {
+                let result = RawBytes::serialize(U256::from_big_endian(&exec_status.output_data))
+                    .map_err(|e| {
+                        ActorError::unspecified(format!("failed to execute contract: {e:?}"))
+                    })?;
+                state.contract_state = system.flush_state()?;
+
+                Ok(result)
+            } else {
+                Err(ActorError::unspecified("EVM contract invocation failed".to_string()))
+            }
+        })
     }
 }
 
@@ -159,7 +158,7 @@ impl ActorCode for EvmContractActor {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::InvokeContract) => Self::invoke_contract(rt, params),
+            Some(Method::InvokeContract) => Self::invoke_contract(rt, cbor::deserialize_params(params)?),
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
@@ -168,5 +167,10 @@ impl ActorCode for EvmContractActor {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ConstructorParams {
     pub bytecode: RawBytes,
+    pub input_data: RawBytes,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct InvokeParams {
     pub input_data: RawBytes,
 }
