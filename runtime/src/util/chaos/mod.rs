@@ -4,7 +4,6 @@
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
@@ -13,6 +12,7 @@ use num_traits::FromPrimitive;
 pub use state::*;
 pub use types::*;
 
+use crate::runtime::builtins::Type;
 use crate::runtime::{ActorCode, Runtime};
 use crate::{actor_error, cbor, ActorError};
 
