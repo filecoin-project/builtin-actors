@@ -5,10 +5,10 @@
 
 use {
     fixed_hash::construct_fixed_hash,
+    fvm_shared::econ::TokenAmount,
     impl_serde::{impl_fixed_hash_serde, impl_uint_serde},
     std::cmp::Ordering,
     uint::construct_uint,
-    fvm_shared::econ::TokenAmount,
 };
 
 construct_uint! { pub struct U256(4); } // ethereum word size

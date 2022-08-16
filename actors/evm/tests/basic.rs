@@ -1,8 +1,8 @@
+use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use evm::interpreter::U256;
 
 #[test]
 fn basic_contract_construction_and_invocation() {
@@ -11,9 +11,7 @@ fn basic_contract_construction_and_invocation() {
     let contract = Address::new_id(100);
 
     let params = evm::ConstructorParams {
-        bytecode: hex::decode(include_str!("simplecoin.hex"))
-            .unwrap()
-            .into(),
+        bytecode: hex::decode(include_str!("simplecoin.hex")).unwrap().into(),
         input_data: RawBytes::default(),
     };
 
@@ -22,7 +20,10 @@ fn basic_contract_construction_and_invocation() {
     rt.expect_validate_caller_any();
 
     let result = rt
-        .call::<evm::EvmContractActor>(evm::Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
+        .call::<evm::EvmContractActor>(
+            evm::Method::Constructor as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
         .unwrap();
     expect_empty(result);
     rt.verify();
@@ -30,18 +31,19 @@ fn basic_contract_construction_and_invocation() {
     // invoke contract -- getBalance
     let mut solidity_params = vec![];
     solidity_params.append(&mut hex::decode("f8b2cb4f").unwrap()); // function selector
-    // caller id address in U256 form
+                                                                   // caller id address in U256 form
     let mut arg0 = vec![0u8; 32];
     //arg0[31] = 100;
     solidity_params.append(&mut arg0);
 
-    let params = evm::InvokeParams {
-        input_data: RawBytes::from(solidity_params),
-    };
+    let params = evm::InvokeParams { input_data: RawBytes::from(solidity_params) };
 
     rt.expect_validate_caller_any();
     let result = rt
-        .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &RawBytes::serialize(params).unwrap())
+        .call::<evm::EvmContractActor>(
+            evm::Method::InvokeContract as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
         .unwrap();
 
     assert_eq!(RawBytes::deserialize::<U256>(&result).unwrap(), U256::from(10000));

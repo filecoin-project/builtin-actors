@@ -137,8 +137,8 @@ impl EvmContractActor {
             if exec_status.status_code == StatusCode::Success {
                 let result = RawBytes::serialize(U256::from_big_endian(&exec_status.output_data))
                     .map_err(|e| {
-                        ActorError::unspecified(format!("failed to serialize return data: {e:?}"))
-                    })?;
+                    ActorError::unspecified(format!("failed to serialize return data: {e:?}"))
+                })?;
 
                 if !!exec_status.reverted {
                     state.contract_state = system.flush_state()?;
@@ -146,7 +146,10 @@ impl EvmContractActor {
 
                 Ok(result)
             } else {
-                Err(ActorError::unspecified(format!("EVM contract invocation failed: status: {}", exec_status.status_code)))
+                Err(ActorError::unspecified(format!(
+                    "EVM contract invocation failed: status: {}",
+                    exec_status.status_code
+                )))
             }
         })
     }
