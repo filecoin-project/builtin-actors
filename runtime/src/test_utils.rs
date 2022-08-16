@@ -11,7 +11,6 @@ use cid::Cid;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol, Payload};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
