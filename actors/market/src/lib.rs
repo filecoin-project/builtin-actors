@@ -313,7 +313,7 @@ impl Actor {
                 total_client_lockup.get(&client_id).cloned().unwrap_or_default();
             client_lockup += deal.proposal.client_balance_requirement();
 
-            let client_balance_ok = msm.balance_covered(deal.proposal.client, &client_lockup).map_err(|e| {
+            let client_balance_ok = msm.balance_covered(Address::new_id(client_id), &client_lockup).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to check client balance coverage",
@@ -328,7 +328,7 @@ impl Actor {
             let mut provider_lockup = total_provider_lockup.clone();
             provider_lockup += &deal.proposal.provider_collateral;
             let provider_balance_ok =
-                msm.balance_covered(provider_raw, &provider_lockup).map_err(|e| {
+                msm.balance_covered(Address::new_id(provider), &provider_lockup).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check provider balance coverage",
@@ -344,8 +344,8 @@ impl Actor {
             // Normalise provider and client addresses in the proposal stored on chain.
             // Must happen after signature verification and before taking cid.
 
-            deal.proposal.provider = provider_raw;
-            deal.proposal.client = deal.proposal.client;
+            deal.proposal.provider = Address::new_id(provider);
+            deal.proposal.client = Address::new_id(client_id);
             let pcid = deal.proposal.cid().map_err(
                 |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
             )?;
@@ -372,7 +372,7 @@ impl Actor {
                     *VERIFIED_REGISTRY_ACTOR_ADDR,
                     crate::ext::verifreg::USE_BYTES_METHOD as u64,
                     RawBytes::serialize(UseBytesParams {
-                        address: deal.proposal.client,
+                        address: Address::new_id(client_id),
                         deal_size: BigInt::from(deal.proposal.piece_size.0),
                     })?,
                     TokenAmount::zero(),

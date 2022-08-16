@@ -770,6 +770,13 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         if let &Payload::ID(id) = address.payload() {
             return Some(id);
         }
+
+        if let Some(addr) = self.get_id_address(address) {
+            if let &Payload::ID(id) = addr.payload() {
+                return Some(id);
+            }
+        }
+
         return None;
     }
 
