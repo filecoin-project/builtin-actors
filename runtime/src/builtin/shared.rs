@@ -15,6 +15,12 @@ pub const HAMT_BIT_WIDTH: u32 = 5;
 /// user-programmable actors.
 pub const CALLER_TYPES_SIGNABLE: &[Type] = &[Type::Account, Type::Multisig];
 
+// TODO: use the fvm_dispatch crate here when we can depend on a published crate.
+// This method number comes from taking the name as "TokensReceived" and applying
+// the transformation described in https://github.com/filecoin-project/FIPs/pull/399.
+// This matches the value in the fungible token library used by the datacap token actor.
+pub const FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM: u64 = 1361519036;
+
 /// ResolveToIDAddr resolves the given address to it's ID address form.
 /// If an ID address for the given address dosen't exist yet, it tries to create one by sending
 /// a zero balance to the given address.
