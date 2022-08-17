@@ -49,6 +49,7 @@ fn get_memory_region_u64(
 }
 
 #[inline]
+#[allow(clippy::result_unit_err)]
 pub fn get_memory_region(
     state: &mut ExecutionState,
     offset: U256,
