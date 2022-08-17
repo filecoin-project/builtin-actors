@@ -7,7 +7,8 @@ use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorDowncast,
-    ActorError, Map, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR,
+    ActorError, Map, CALLER_TYPES_SIGNABLE, FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM,
+    INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -44,6 +45,7 @@ pub enum Method {
     SwapSigner = 7,
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
+    FungibleTokenReceiverHook = FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM,
 }
 
 /// Multisig Actor
@@ -541,6 +543,19 @@ impl Actor {
 
         execute_transaction_if_approved(rt, &st, tx_id, &txn)
     }
+
+    // Always succeeds, accepting any token transfers.
+    pub fn fungible_token_receiver_hook<BS, RT>(
+        rt: &mut RT,
+        _params: &RawBytes,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_accept_any()?;
+        Ok(())
+    }
 }
 
 fn execute_transaction_if_approved<BS, RT>(
@@ -698,6 +713,10 @@ impl ActorCode for Actor {
             }
             Some(Method::LockBalance) => {
                 Self::lock_balance(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::FungibleTokenReceiverHook) => {
+                Self::fungible_token_receiver_hook(rt, params)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
