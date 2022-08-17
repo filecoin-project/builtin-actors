@@ -140,15 +140,7 @@ where
         self.assert_not_validated()?;
         let caller_cid = {
             let caller_addr = self.message().caller();
-            // let caller_id
-            match caller_addr.id() {
-                Ok(id) => {
-                    self.get_actor_code_cid(&id).expect("failed to lookup caller code")
-                }
-                Err(e) => {
-                    return Err(actor_error!(forbidden; "caller {} transfer to id address is not support, {}", caller_addr, e))
-                }
-            }
+            self.get_actor_code_cid(&caller_addr.id().unwrap()).expect("failed to lookup caller code")
         };
 
         match self.resolve_builtin_actor_type(&caller_cid) {

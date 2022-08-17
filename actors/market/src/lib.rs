@@ -235,7 +235,7 @@ impl Actor {
 
         let code_id = rt
             .get_actor_code_cid(&provider)
-            .ok_or_else(|| actor_error!(illegal_argument, "no code ID for address {}", provider))?;
+            .ok_or_else(|| actor_error!(not_found, "no code ID for address {}", provider))?;
 
         if rt.resolve_builtin_actor_type(&code_id) != Some(Type::Miner) {
             return Err(actor_error!(
@@ -313,7 +313,7 @@ impl Actor {
                 total_client_lockup.get(&client_id).cloned().unwrap_or_default();
             client_lockup += deal.proposal.client_balance_requirement();
 
-            let client_balance_ok = msm.balance_covered(Address::new_id(client_id), &client_lockup).map_err(|e| {
+            let client_balance_ok = msm.balance_covered(client_id, &client_lockup).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to check client balance coverage",
@@ -328,7 +328,7 @@ impl Actor {
             let mut provider_lockup = total_provider_lockup.clone();
             provider_lockup += &deal.proposal.provider_collateral;
             let provider_balance_ok =
-                msm.balance_covered(Address::new_id(provider), &provider_lockup).map_err(|e| {
+                msm.balance_covered(provider, &provider_lockup).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check provider balance coverage",
@@ -1306,11 +1306,11 @@ where
         .resolve_address(addr)
         .ok_or_else(|| actor_error!(illegal_argument, "failed to resolve address {}", addr))?;
 
-    let nominal_addr = Address::new_id(nominal);
-
     let code_id = rt
         .get_actor_code_cid(&nominal)
         .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", nominal))?;
+
+    let nominal_addr = Address::new_id(nominal);
 
     if rt.resolve_builtin_actor_type(&code_id) == Some(Type::Miner) {
         // Storage miner actor entry; implied funds recipient is the associated owner address.

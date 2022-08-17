@@ -146,7 +146,7 @@ impl Actor {
         }
 
         let (txn_id, txn) = rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&proposer) {
+            if !st.is_signer(&proposer.id().unwrap()) {
                 return Err(actor_error!(forbidden, "{} is not a signer", proposer));
             }
 
@@ -201,7 +201,7 @@ impl Actor {
 
         let id = params.id;
         let (st, txn) = rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&approver) {
+            if !st.is_signer(&approver.id().unwrap()) {
                 return Err(actor_error!(forbidden; "{} is not a signer", approver));
             }
 
@@ -240,7 +240,7 @@ impl Actor {
         let caller_addr: Address = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&caller_addr) {
+            if !st.is_signer(&caller_addr.id().unwrap()) {
                 return Err(actor_error!(forbidden; "{} is not a signer", caller_addr));
             }
 
@@ -306,8 +306,6 @@ impl Actor {
             )
         })?;
 
-        let resolved_new_signer = Address::new_id(resolved_new_signer);
-
         rt.transaction(|st: &mut State, _| {
             if st.signers.len() >= SIGNERS_MAX {
                 return Err(actor_error!(
@@ -321,7 +319,7 @@ impl Actor {
             }
 
             // Add signer and increase threshold if set
-            st.signers.push(resolved_new_signer);
+            st.signers.push(Address::new_id(resolved_new_signer));
             if params.increase {
                 st.num_approvals_threshold += 1;
             }
@@ -344,8 +342,6 @@ impl Actor {
                 format!("failed to resolve address {}", params.signer),
             )
         })?;
-        
-        let resolved_old_signer = Address::new_id(resolved_old_signer);
 
         rt.transaction(|st: &mut State, rt| {
             if !st.is_signer(&resolved_old_signer) {
@@ -378,13 +374,13 @@ impl Actor {
             }
 
             // Remove approvals from removed signer
-            st.purge_approvals(rt.store(), &resolved_old_signer).map_err(|e| {
+            st.purge_approvals(rt.store(), &Address::new_id(resolved_old_signer)).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to purge approvals of removed signer",
                 )
             })?;
-            st.signers.retain(|s| s != &resolved_old_signer);
+            st.signers.retain(|s| s != &Address::new_id(resolved_old_signer));
 
             Ok(())
         })?;
@@ -414,9 +410,6 @@ impl Actor {
         })?;
 
         rt.transaction(|st: &mut State, rt| {
-            let from_resolved = Address::new_id(from_resolved);
-            let to_resolved = Address::new_id(to_resolved);
-
             if !st.is_signer(&from_resolved) {
                 return Err(actor_error!(forbidden; "{} is not a signer", from_resolved));
             }
@@ -426,12 +419,12 @@ impl Actor {
             }
 
             // Remove signer from state (retain preserves order of elements)
-            st.signers.retain(|s| s != &from_resolved);
+            st.signers.retain(|s| s != &Address::new_id(from_resolved));
 
             // Add new signer
-            st.signers.push(to_resolved);
+            st.signers.push(Address::new_id(to_resolved));
 
-            st.purge_approvals(rt.store(), &from_resolved).map_err(|e| {
+            st.purge_approvals(rt.store(), &Address::new_id(from_resolved)).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to purge approvals of removed signer",

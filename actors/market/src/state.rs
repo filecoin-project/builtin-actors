@@ -12,6 +12,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
+use fvm_shared::ActorID;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
@@ -528,13 +529,13 @@ where
     // Return true when the funds in escrow for the input address can cover an additional lockup of amountToLock
     pub(super) fn balance_covered(
         &self,
-        addr: Address,
+        addr: ActorID,
         amount_to_lock: &TokenAmount,
     ) -> anyhow::Result<bool> {
-        let prev_locked = self.locked_table.as_ref().unwrap().get(&addr).map_err(|e| {
+        let prev_locked = self.locked_table.as_ref().unwrap().get(&Address::new_id(addr)).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
         })?;
-        let escrow_balance = self.escrow_table.as_ref().unwrap().get(&addr).map_err(|e| {
+        let escrow_balance = self.escrow_table.as_ref().unwrap().get(&Address::new_id(addr)).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")
         })?;
         Ok((prev_locked + amount_to_lock) <= escrow_balance)

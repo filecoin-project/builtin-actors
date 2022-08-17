@@ -7,6 +7,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
+use fvm_shared::ActorID;
 use fvm_shared::bigint::{bigint_ser, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -35,8 +36,8 @@ pub struct State {
 
 impl State {
     /// Checks if `address` is in the list of signers
-    pub fn is_signer(&self, address: &Address) -> bool {
-        self.signers.contains(address)
+    pub fn is_signer(&self, id: &ActorID) -> bool {
+        self.signers.contains(&Address::new_id(*id))
     }
 
     /// Set locked amount in multisig state.

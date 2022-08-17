@@ -1,5 +1,5 @@
 // Copyright 2019-2022 ChainSafe Systems
-// SPDX-License-Identifier: Apache-2.0, MIT
+// SPDX-License-Identi&fier: Apache-2.0, MIT
 
 use core::fmt;
 use std::cell::RefCell;
@@ -11,7 +11,8 @@ use cid::Cid;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
-use fvm_shared::address::{Address, Protocol, Payload};
+use fvm_shared::address::{Address, Protocol};
+use fvm_shared::address::Payload;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;

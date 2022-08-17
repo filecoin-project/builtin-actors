@@ -374,7 +374,7 @@ fn fail_to_resolve_provider_address() {
 
     let mut rt = setup();
     let mut deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
-    deal.provider = new_bls_addr(100);
+    deal.provider = Address::new_id(100);
 
     let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
     let params = PublishStorageDealsParams {
