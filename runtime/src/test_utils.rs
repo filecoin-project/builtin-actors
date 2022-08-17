@@ -1,5 +1,5 @@
 // Copyright 2019-2022 ChainSafe Systems
-// SPDX-License-Identi&fier: Apache-2.0, MIT
+// SPDX-License-Identifier: Apache-2.0, MIT
 
 use core::fmt;
 use std::cell::RefCell;
