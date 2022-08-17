@@ -1,4 +1,3 @@
-pub mod account;
 pub mod bytecode;
 pub mod execution;
 pub mod instructions;
@@ -12,7 +11,6 @@ pub mod transaction;
 pub mod uints;
 
 pub use {
-    account::{AccountKind, EthereumAccount},
     bytecode::Bytecode,
     execution::{execute, ExecutionState},
     message::{CallKind, Message},
