@@ -337,7 +337,9 @@ pub struct SectorOnChainInfo {
     /// Epoch during which the sector proof was accepted
     pub activation: ChainEpoch,
     /// Epoch during which the sector expires
-    pub expiration: ChainEpoch,
+    pub commitment_expiration: ChainEpoch,
+    /// Epoch during which the sector proof validity expires
+    pub proof_expiration: ChainEpoch,
     /// Integral of active deals over sector lifetime
     #[serde(with = "bigint_ser")]
     pub deal_weight: DealWeight,
@@ -364,8 +366,8 @@ impl SectorOnChainInfo {
     pub fn possible_proof_expirations(&self, now: ChainEpoch) -> Vec<ChainEpoch> {
         let delta_e = network::EPOCHS_IN_YEAR; // TODO correct value
         if now - self.activation < network::EPOCHS_IN_YEAR / 2 {
-            return vec![std::min(
-                self.expiration,
+            return vec![min(
+                self.commitment_expiration,
                 self.activation + network::EPOCHS_IN_YEAR + network::EPOCHS_IN_YEAR / 2,
             )];
         }
@@ -375,12 +377,12 @@ impl SectorOnChainInfo {
         let e1 = quant.quantize_up(now);
         let e2 = e1 + delta_e;
 
-        if self.expiration < e1 {
-            vec![self.expiration]
-        } else if self.expiration < e2 {
-            vec![e1, self.expiration]
+        if self.commitment_expiration < e1 {
+            vec![self.commitment_expiration]
+        } else if self.commitment_expiration < e2 {
+            vec![e1, self.commitment_expiration]
         } else {
-            veec![e1, e2]
+            vec![e1, e2]
         }
     }
 }

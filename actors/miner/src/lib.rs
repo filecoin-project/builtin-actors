@@ -1133,7 +1133,7 @@ impl Actor {
             let deal_spaces = match activate_deals_and_claim_allocations(
                 rt,
                 update.deals.clone(),
-                sector_info.expiration,
+                sector_info.commitment_expiration,
                 sector_info.sector_number,
             )? {
                 Some(deal_spaces) => deal_spaces,
@@ -1146,7 +1146,7 @@ impl Actor {
                 }
             };
 
-            let expiration = sector_info.expiration;
+            let expiration = sector_info.commitment_expiration;
             let seal_proof = sector_info.seal_proof;
             validated_updates.push(UpdateAndSectorInfo { update, sector_info, deal_spaces });
 
@@ -1287,7 +1287,7 @@ impl Actor {
                     new_sector_info.deal_ids = with_details.update.deals.clone();
                     new_sector_info.activation = rt.curr_epoch();
 
-                    let duration = new_sector_info.expiration - new_sector_info.activation;
+                    let duration = new_sector_info.commitment_expiration - new_sector_info.activation;
 
                     new_sector_info.deal_weight = with_details.deal_spaces.deal_space.clone() * duration;
                     new_sector_info.verified_deal_weight = with_details.deal_spaces.verified_deal_space.clone() * duration;
@@ -1821,7 +1821,7 @@ impl Actor {
             // This could make sector maximum lifetime validation more lenient if the maximum sector limit isn't hit first.
             let max_activation = curr_epoch
                 + max_prove_commit_duration(rt.policy(), precommit.seal_proof).unwrap_or_default();
-            validate_expiration(
+            validate_commitment_expiration(
                 rt.policy(),
                 curr_epoch,
                 max_activation,
@@ -4071,9 +4071,9 @@ fn handle_proving_deadline(
     Ok(())
 }
 
-fn validate_expiration(
-    policy: &Policy,
-    curr_epoch: ChainEpoch,
+/// Check expiry is exactly *the epoch before* the start of a proving period.
+fn validate_commitment_expiration<BS, RT>(
+    rt: &RT,
     activation: ChainEpoch,
     expiration: ChainEpoch,
     seal_proof: RegisteredSealProof,
@@ -4089,25 +4089,25 @@ fn validate_expiration(
     }
 
     // expiration cannot be less than minimum after activation
-    if expiration - activation < policy.min_sector_expiration {
+    if expiration - activation < policy.min_sector_commitment {
         return Err(actor_error!(
             illegal_argument,
             "invalid expiration {}, total sector lifetime ({}) must exceed {} after activation {}",
             expiration,
             expiration - activation,
-            policy.min_sector_expiration,
+            policy.min_sector_commitment,
             activation
         ));
     }
 
     // expiration cannot exceed MaxSectorExpirationExtension from now
-    if expiration > curr_epoch + policy.max_sector_expiration_extension {
+    if expiration > rt.curr_epoch() + policy.max_sector_commitment_extension {
         return Err(actor_error!(
             illegal_argument,
             "invalid expiration {}, cannot be more than {} past current epoch {}",
             expiration,
-            policy.max_sector_expiration_extension,
-            curr_epoch
+            policy.max_sector_commitment_extension,
+            rt.curr_epoch()
         ));
     }
 
@@ -4730,10 +4730,10 @@ fn confirm_sector_proofs_valid_internal(
             let duration = pre_commit.info.expiration - activation;
 
             // This should have been caught in precommit, but don't let other sectors fail because of it.
-            if duration < policy.min_sector_expiration {
+            if duration < policy.min_sector_commitment {
                 warn!(
                     "precommit {} has lifetime {} less than minimum {}. ignoring",
-                    pre_commit.info.sector_number, duration, policy.min_sector_expiration,
+                    pre_commit.info.sector_number, duration, policy.min_sector_commitment,
                 );
                 continue;
             }
@@ -4781,7 +4781,8 @@ fn confirm_sector_proofs_valid_internal(
                 seal_proof: pre_commit.info.seal_proof,
                 sealed_cid: pre_commit.info.sealed_cid,
                 deal_ids: pre_commit.info.deal_ids,
-                expiration: pre_commit.info.expiration,
+                commitment_expiration: pre_commit.info.expiration,
+                proof_expiration: activation + policy.max_proof_validity,
                 activation,
                 deal_weight,
                 verified_deal_weight,

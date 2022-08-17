@@ -80,7 +80,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                         deal,
                         DealSummary {
                             sector_start: sector.activation,
-                            sector_expiration: sector.expiration,
+                            sector_expiration: sector.commitment_expiration,
                         },
                     );
                 });
@@ -632,7 +632,7 @@ impl ExpirationQueueStateSummary {
 
                 // check expiring sectors are still alive
                 if let Some(sector) = live_sectors.get(&sector_number) {
-                    let target = quant.quantize_up(sector.expiration);
+                    let target = quant.quantize_up(sector.commitment_expiration);
                     acc.require(epoch == target, format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
                     on_time_sectors_pledge += sector.initial_pledge.clone();
                 } else {
@@ -651,7 +651,7 @@ impl ExpirationQueueStateSummary {
 
                 // check expiring sectors are still alive
                 if let Some(sector) = live_sectors.get(&sector_number) {
-                    let target = quant.quantize_up(sector.expiration);
+                    let target = quant.quantize_up(sector.commitment_expiration);
                     acc.require(epoch < target, format!("invalid early expiration {epoch} for sector {sector_number}, expected < {target}"));
                 } else {
                     acc.add(format!("on time expiration sector {sector_number} isn't live"));

@@ -1132,7 +1132,7 @@ impl ActorHarness {
                 let duration = pc.info.expiration - rt.epoch;
                 let deal_weight = spaces.deal_space * duration;
                 let verified_deal_weight = spaces.verified_deal_space * duration;
-                if duration >= rt.policy.min_sector_expiration {
+                if duration >= rt.policy.min_sector_commitment {
                     let qa_power_delta = qa_power_for_weight(
                         self.sector_size,
                         duration,
@@ -2369,7 +2369,7 @@ impl ActorHarness {
             for sector_nr in extension.sectors.validate().unwrap().iter() {
                 let sector = self.get_sector(&rt, sector_nr);
                 let mut new_sector = sector.clone();
-                new_sector.expiration = extension.new_expiration;
+                new_sector.commitment_expiration = extension.new_expiration;
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }
@@ -2931,7 +2931,7 @@ pub fn test_sector(
     pledge: u64,
 ) -> SectorOnChainInfo {
     SectorOnChainInfo {
-        expiration,
+        commitment_expiration: expiration,
         sector_number,
         deal_weight: DealWeight::from(deal_weight),
         verified_deal_weight: DealWeight::from(verified_deal_weight),
