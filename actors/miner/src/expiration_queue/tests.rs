@@ -62,7 +62,7 @@ fn test_sector(
     initial_pledge: u64,
 ) -> SectorOnChainInfo {
     SectorOnChainInfo {
-        expiration,
+        commitment_expiration: expiration,
         sector_number,
         deal_weight: DealWeight::from(deal_weight),
         verified_deal_weight: DealWeight::from(verified_deal_weight),

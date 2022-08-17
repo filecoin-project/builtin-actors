@@ -89,7 +89,7 @@ fn prove_single_sector() {
     assert_eq!(precommit.info.sealed_cid, sector.sealed_cid);
     assert_eq!(precommit.info.deal_ids, sector.deal_ids);
     assert_eq!(rt.epoch, sector.activation);
-    assert_eq!(precommit.info.expiration, sector.expiration);
+    assert_eq!(precommit.info.expiration, sector.commitment_expiration);
 
     // expect precommit to have been removed
     let st = h.get_state(&rt);
@@ -585,7 +585,7 @@ fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
         .unwrap();
 
     // it fails up to the miniumum expiration
-    rt.set_epoch(precommit.info.expiration - rt.policy.min_sector_expiration + 1);
+    rt.set_epoch(precommit.info.expiration - rt.policy.min_sector_commitment + 1);
     h.confirm_sector_proofs_valid(&mut rt, ProveCommitConfig::empty(), vec![precommit.clone()])
         .unwrap();
     let st = h.get_state(&rt);
