@@ -109,7 +109,7 @@ fn new_sector_on_chain_info(
         sealed_cid,
         deal_ids: vec![],
         activation,
-        expiration: ChainEpoch::from(1),
+        commitment_expiration: ChainEpoch::from(1),
         deal_weight: weight.clone(),
         verified_deal_weight: weight,
         ..Default::default()
