@@ -4,6 +4,10 @@ SHELL=/usr/bin/env bash
 BUMP ?= patch
 VERSION ?= $(error VERSION environment variable must be set)
 
+# Run cargo fmt
+rustfmt: deps-build
+	cargo fmt -- --check
+
 # Run cargo check
 check: deps-build
 	cargo clippy --all --all-targets -- -D warnings
@@ -11,7 +15,7 @@ check: deps-build
 # Ensure we have the build dependencies
 deps-build:
 	rustup target add wasm32-unknown-unknown
-	rustup component add clippy
+	rustup component add clippy rustfmt
 
 # Run cargo test
 test: deps-build
