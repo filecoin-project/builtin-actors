@@ -29,7 +29,7 @@ fn new_sector_on_chain_info(
         seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
         sealed_cid,
         activation,
-        expiration: 1,
+        commitment_expiration: 1,
         deal_weight: weight.clone(),
         verified_deal_weight: weight,
         ..SectorOnChainInfo::default()

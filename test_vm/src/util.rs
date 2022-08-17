@@ -254,7 +254,7 @@ pub fn precommit_sectors_v2(
     let expiration = match exp {
         None => {
             v.get_epoch()
-                + Policy::default().min_sector_expiration
+                + Policy::default().min_sector_commitment
                 + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
         }
         Some(e) => e,
