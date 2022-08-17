@@ -36,7 +36,7 @@ pub struct ExpirationSet {
     /// Sectors expiring "on time" at the end of their committed life
     pub on_time_sectors: BitField,
     /// Sectors expiring "early" due to being faulty for too long
-    pub early_sectors: BitField,
+    pub faulty_sectors: BitField,
     /// Pledge total for the on-time sectors
     pub on_time_pledge: TokenAmount,
     /// Power that is currently active (not faulty)
@@ -54,13 +54,13 @@ impl ExpirationSet {
     pub fn add(
         &mut self,
         on_time_sectors: &BitField,
-        early_sectors: &BitField,
+        faulty_sectors: &BitField,
         on_time_pledge: &TokenAmount,
         active_power: &PowerPair,
         faulty_power: &PowerPair,
     ) -> anyhow::Result<()> {
         self.on_time_sectors |= on_time_sectors;
-        self.early_sectors |= early_sectors;
+        self.faulty_sectors |= faulty_sectors;
         self.on_time_pledge += on_time_pledge;
         self.active_power += active_power;
         self.faulty_power += faulty_power;
@@ -71,7 +71,7 @@ impl ExpirationSet {
 
     pub fn combine(&mut self, other: &Self) -> anyhow::Result<()> {
         self.on_time_sectors |= &other.on_time_sectors;
-        self.early_sectors |= &other.early_sectors;
+        self.faulty_sectors |= &other.faulty_sectors;
         self.on_time_pledge += &other.on_time_pledge;
         self.active_power += &other.active_power;
         self.faulty_power += &other.faulty_power;
@@ -84,7 +84,7 @@ impl ExpirationSet {
     pub fn remove(
         &mut self,
         on_time_sectors: &BitField,
-        early_sectors: &BitField,
+        faulty_sectors: &BitField,
         on_time_pledge: &TokenAmount,
         active_power: &PowerPair,
         faulty_power: &PowerPair,
@@ -97,16 +97,16 @@ impl ExpirationSet {
                 self.on_time_sectors
             ));
         }
-        if !self.early_sectors.contains_all(early_sectors) {
+        if !self.faulty_sectors.contains_all(faulty_sectors) {
             return Err(anyhow!(
                 "removing early sectors {:?} not contained in {:?}",
-                early_sectors,
-                self.early_sectors
+                faulty_sectors,
+                self.faulty_sectors
             ));
         }
 
         self.on_time_sectors -= on_time_sectors;
-        self.early_sectors -= early_sectors;
+        self.faulty_sectors -= faulty_sectors;
         self.on_time_pledge -= on_time_pledge;
         self.active_power -= active_power;
         self.faulty_power -= faulty_power;
@@ -125,12 +125,12 @@ impl ExpirationSet {
     /// A set is empty if it has no sectors.
     /// The power and pledge are not checked, but are expected to be zero.
     pub fn is_empty(&self) -> bool {
-        self.on_time_sectors.is_empty() && self.early_sectors.is_empty()
+        self.on_time_sectors.is_empty() && self.faulty_sectors.is_empty()
     }
 
     /// Counts all sectors in the expiration set.
     pub fn len(&self) -> u64 {
-        self.on_time_sectors.len() + self.early_sectors.len()
+        self.on_time_sectors.len() + self.faulty_sectors.len()
     }
 
     /// validates a set of assertions that must hold for expiration sets
@@ -286,11 +286,11 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         if !sectors_total.is_empty() {
             // Add sectors to new expiration as early-terminating and faulty.
-            let early_sectors = BitField::try_from_bits(sectors_total)?;
+            let faulty_sectors = BitField::try_from_bits(sectors_total)?;
             self.add(
                 new_expiration,
                 &BitField::new(),
-                &early_sectors,
+                &faulty_sectors,
                 &PowerPair::zero(),
                 &rescheduled_power,
                 &TokenAmount::zero(),
@@ -322,7 +322,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             } else {
                 rescheduled_epochs.push(e);
                 // sanity check to make sure we're not trying to re-schedule already faulty sectors.
-                if !expiration_set.early_sectors.is_empty() {
+                if !expiration_set.faulty_sectors.is_empty() {
                     return Err(anyhow!(
                         "attempted to re-schedule early expirations to an earlier epoch"
                     ));
@@ -399,15 +399,15 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
                 recovered_power += &power;
             }
-            let mut early_unset = Vec::new();
-            for sector_number in expiration_set.early_sectors.iter() {
+            let mut faulty_unset = Vec::new();
+            for sector_number in expiration_set.faulty_sectors.iter() {
                 let sector = match remaining.remove(&sector_number) {
                     Some(s) => s,
                     None => continue,
                 };
                 // If the sector expires early at this epoch, remove it for re-scheduling.
                 // It's not part of the on-time pledge number here.
-                early_unset.push(sector_number);
+                faulty_unset.push(sector_number);
                 let power = power_for_sector(sector_size, sector);
                 faulty_power_delta -= &power;
                 sectors_rescheduled.push(sector);
@@ -532,15 +532,15 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         // queue is quantized, we should be able to stop traversing the queue
         // after 14 entries.
         self.iter_while_mut(|_epoch, expiration_set| {
-            let on_time_sectors: BTreeSet<SectorNumber> = expiration_set
+            let on_time_sector_nums: BTreeSet<SectorNumber> = expiration_set
                 .on_time_sectors
                 .bounded_iter(ENTRY_SECTORS_MAX)
                 .context("too many on-time sectors to expand")?
                 .map(|i| i as SectorNumber)
                 .collect();
 
-            let early_sectors: BTreeSet<SectorNumber> = expiration_set
-                .early_sectors
+            let faulty_sector_nums: BTreeSet<SectorNumber> = expiration_set
+                .faulty_sectors
                 .bounded_iter(ENTRY_SECTORS_MAX)
                 .context("too many early sectors to expand")?
                 .map(|i| i as SectorNumber)
@@ -553,16 +553,16 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 let sector_number = sector.sector_number;
                 let mut found = false;
 
-                if on_time_sectors.contains(&sector_number) {
+                if on_time_sector_nums.contains(&sector_number) {
                     found = true;
                     expiration_set.on_time_sectors.unset(sector_number);
                     removed.on_time_sectors.set(sector_number);
                     expiration_set.on_time_pledge -= &sector.initial_pledge;
                     removed.on_time_pledge += &sector.initial_pledge;
-                } else if early_sectors.contains(&sector_number) {
+                } else if faulty_sector_nums.contains(&sector_number) {
                     found = true;
-                    expiration_set.early_sectors.unset(sector_number);
-                    removed.early_sectors.set(sector_number);
+                    expiration_set.faulty_sectors.unset(sector_number);
+                    removed.faulty_sectors.set(sector_number);
                 }
 
                 if found {
@@ -622,7 +622,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         &mut self,
         raw_epoch: ChainEpoch,
         on_time_sectors: &BitField,
-        early_sectors: &BitField,
+        faulty_sectors: &BitField,
         active_power: &PowerPair,
         faulty_power: &PowerPair,
         pledge: &TokenAmount,
@@ -631,7 +631,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut expiration_set = self.may_get(epoch)?;
 
         expiration_set
-            .add(on_time_sectors, early_sectors, pledge, active_power, faulty_power)
+            .add(on_time_sectors, faulty_sectors, pledge, active_power, faulty_power)
             .map_err(|e| anyhow!("failed to add expiration values for epoch {}: {}", epoch, e))?;
 
         self.must_update(epoch, expiration_set)?;
@@ -642,7 +642,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         &mut self,
         raw_epoch: ChainEpoch,
         on_time_sectors: &BitField,
-        early_sectors: &BitField,
+        faulty_sectors: &BitField,
         active_power: &PowerPair,
         faulty_power: &PowerPair,
         pledge: &TokenAmount,
@@ -655,7 +655,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             .ok_or_else(|| anyhow!("missing expected expiration set at epoch {}", epoch))?
             .clone();
         expiration_set
-            .remove(on_time_sectors, early_sectors, pledge, active_power, faulty_power)
+            .remove(on_time_sectors, faulty_sectors, pledge, active_power, faulty_power)
             .map_err(|e| {
             anyhow!("failed to remove expiration values for queue epoch {}: {}", epoch, e)
         })?;
@@ -816,7 +816,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 // Sector should not be found in EarlyExpirations which holds faults. An implicit assumption
                 // of grouping is that it only returns sectors with active power. ExpirationQueue should not
                 // provide operations that allow this to happen.
-                check_no_early_sectors(&all_remaining, es)?;
+                check_no_faulty_sectors(&all_remaining, es)?;
 
                 let group = group_expiration_set(
                     sector_size,
@@ -936,8 +936,8 @@ fn group_expiration_set(
 }
 
 /// Checks for invalid overlap between bitfield and a set's early sectors.
-fn check_no_early_sectors(set: &BTreeSet<u64>, es: &ExpirationSet) -> anyhow::Result<()> {
-    for u in es.early_sectors.iter() {
+fn check_no_faulty_sectors(set: &BTreeSet<u64>, es: &ExpirationSet) -> anyhow::Result<()> {
+    for u in es.faulty_sectors.iter() {
         if set.contains(&(u as u64)) {
             return Err(anyhow!("Invalid attempt to group sector {} with an early expiration", u));
         }

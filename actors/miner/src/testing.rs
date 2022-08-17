@@ -548,7 +548,7 @@ impl PartitionStateSummary {
                 expiration_epochs = queue_summary.expiration_epochs;
                 // check the queue is compatible with partition fields
                 let queue_sectors =
-                    BitField::union([&queue_summary.on_time_sectors, &queue_summary.early_sectors]);
+                    BitField::union([&queue_summary.on_time_sectors, &queue_summary.faulty_sectors]);
                 require_equal(&live, &queue_sectors, acc, "live does not equal all expirations");
             }
             Err(err) => {
@@ -587,7 +587,7 @@ impl PartitionStateSummary {
 #[derive(Default)]
 struct ExpirationQueueStateSummary {
     pub on_time_sectors: BitField,
-    pub early_sectors: BitField,
+    pub faulty_sectors: BitField,
     #[allow(dead_code)]
     pub active_power: PowerPair,
     #[allow(dead_code)]
@@ -640,7 +640,7 @@ impl ExpirationQueueStateSummary {
                 }
             }
 
-            for sector_number in expiration_set.early_sectors.iter() {
+            for sector_number in expiration_set.faulty_sectors.iter() {
                 // check sectors are present only once
                 if !seen_sectors.insert(sector_number) {
                     acc.add(format!("sector {sector_number} in expiration queue twice"));
@@ -660,7 +660,7 @@ impl ExpirationQueueStateSummary {
 
 
             // validate power and pledge
-            let all = BitField::union([&expiration_set.on_time_sectors, &expiration_set.early_sectors]);
+            let all = BitField::union([&expiration_set.on_time_sectors, &expiration_set.faulty_sectors]);
             let all_active = &all - partition_faults;
             let (active_sectors, missing) = select_sectors_map(live_sectors, &all_active);
             acc.require(missing.is_empty(), format!("active sectors missing from live: {missing:?}"));
@@ -678,7 +678,7 @@ impl ExpirationQueueStateSummary {
             acc.require(expiration_set.on_time_pledge == on_time_sectors_pledge, format!("on time pledge recorded {} doesn't match computed: {on_time_sectors_pledge}", expiration_set.on_time_pledge));
 
             all_on_time.push(expiration_set.on_time_sectors.clone());
-            all_early.push(expiration_set.early_sectors.clone());
+            all_early.push(expiration_set.faulty_sectors.clone());
             all_active_power += &expiration_set.active_power;
             all_faulty_power += &expiration_set.faulty_power;
             all_on_time_pledge += &expiration_set.on_time_pledge;
@@ -692,7 +692,7 @@ impl ExpirationQueueStateSummary {
 
         Self {
             on_time_sectors: union_on_time,
-            early_sectors: union_early,
+            faulty_sectors: union_early,
             active_power: all_active_power,
             faulty_power: all_faulty_power,
             on_time_pledge: all_on_time_pledge,

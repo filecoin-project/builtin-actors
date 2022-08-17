@@ -1153,7 +1153,7 @@ impl State {
         // Faulty power has already been lost, so the amount expiring can be excluded from the delta.
         power_delta -= &expired.active_power;
 
-        let no_early_terminations = expired.early_sectors.is_empty();
+        let no_early_terminations = expired.faulty_sectors.is_empty();
         if !no_early_terminations {
             self.early_terminations.set(dl_info.index);
         }
