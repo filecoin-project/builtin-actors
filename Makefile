@@ -6,11 +6,12 @@ VERSION ?= $(error VERSION environment variable must be set)
 
 # Run cargo check
 check: deps-build
-	cargo check --workspace --tests --benches --lib --bins --examples
+	cargo clippy --all --all-targets -- -D warnings
 
 # Ensure we have the build dependencies
 deps-build:
 	rustup target add wasm32-unknown-unknown
+	rustup component add clippy
 
 # Run cargo test
 test: deps-build
