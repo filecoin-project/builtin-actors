@@ -504,7 +504,7 @@ impl Partition {
             .flush()
             .map_err(|e| e.downcast_wrap("failed to save sector expirations"))?;
 
-        let removed_sectors = &removed.on_time_sectors | &removed.early_sectors;
+        let removed_sectors = &removed.on_time_sectors | &removed.faulty_sectors;
 
         // Record early termination.
         self.record_early_termination(store, epoch, &removed_sectors)
@@ -557,7 +557,7 @@ impl Partition {
         })?;
         self.expirations_epochs = expirations.amt.flush()?;
 
-        let expired_sectors = &popped.on_time_sectors | &popped.early_sectors;
+        let expired_sectors = &popped.on_time_sectors | &popped.faulty_sectors;
 
         // There shouldn't be any recovering sectors or power if this is invoked at deadline end.
         // Either the partition was PoSted and the recovering became recovered, or the partition was not PoSted
@@ -582,7 +582,7 @@ impl Partition {
         self.faulty_power -= &popped.faulty_power;
 
         // Record the epoch of any sectors expiring early, for termination fee calculation later.
-        self.record_early_termination(store, until, &popped.early_sectors)
+        self.record_early_termination(store, until, &popped.faulty_sectors)
             .map_err(|e| e.downcast_wrap("failed to record early terminations"))?;
 
         // check invariants

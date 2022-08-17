@@ -101,7 +101,7 @@ fn assert_partition_expiration_queue(
         let set = queue.pop_until(group.expiration).unwrap();
 
         // We only care whether the sectors are in the queue or not. ExpirationQueue tests can deal with early or on time.
-        let all_sectors = &set.on_time_sectors | &set.early_sectors;
+        let all_sectors = &set.on_time_sectors | &set.faulty_sectors;
         assert_eq!(group.sectors, all_sectors);
     }
 }
@@ -761,7 +761,7 @@ mod miner_actor_test_partitions {
         let expset = partition.pop_expired_sectors(&rt.store, expire_epoch, QUANT_SPEC).unwrap();
 
         assert_bitfield_equals(&expset.on_time_sectors, &[1, 2]);
-        assert_bitfield_equals(&expset.early_sectors, &[4]);
+        assert_bitfield_equals(&expset.faulty_sectors, &[4]);
         assert_eq!(TokenAmount::from_atto(1000u64 + 1001), expset.on_time_pledge);
 
         // active power only contains power from non-faulty sectors
