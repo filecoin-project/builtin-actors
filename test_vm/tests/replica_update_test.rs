@@ -193,7 +193,7 @@ fn prove_replica_update_multi_dline() {
     let batch_size = 100;
     let first_sector_number_p1 = 0;
     let first_sector_number_p2 = seal_proof.window_post_partitions_sector().unwrap();
-    let expiration = v.get_epoch() + policy.max_sector_expiration_extension;
+    let expiration = v.get_epoch() + policy.max_sector_commitment_extension;
 
     let new_precommits = precommit_sectors(
         &mut v,
@@ -724,7 +724,7 @@ fn extend_after_upgrade() {
             deadline: deadline_index,
             partition: partition_index,
             sectors: make_bitfield(&[sector_number]),
-            new_expiration: v.get_epoch() + policy.max_sector_expiration_extension - 1,
+            new_expiration: v.get_epoch() + policy.max_sector_commitment_extension - 1,
         }],
     };
 
@@ -740,8 +740,8 @@ fn extend_after_upgrade() {
     let miner_state = v.get_state::<MinerState>(miner_id).unwrap();
     let final_sector_info = miner_state.get_sector(store, sector_number).unwrap().unwrap();
     assert_eq!(
-        policy.max_sector_expiration_extension - 1,
-        final_sector_info.expiration - final_sector_info.activation
+        policy.max_sector_commitment_extension - 1,
+        final_sector_info.commitment_expiration - final_sector_info.activation
     );
     v.assert_state_invariants();
 }
@@ -1269,7 +1269,7 @@ fn create_sector(
     seal_proof: RegisteredSealProof,
 ) -> (VM, u64, u64) {
     // precommit
-    let exp = v.get_epoch() + Policy::default().max_sector_expiration_extension;
+    let exp = v.get_epoch() + Policy::default().max_sector_commitment_extension;
     let precommits =
         precommit_sectors(&mut v, 1, 1, worker, maddr, seal_proof, sector_number, true, Some(exp));
     assert_eq!(1, precommits.len());

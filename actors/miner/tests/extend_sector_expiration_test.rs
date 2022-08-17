@@ -60,7 +60,7 @@ fn rejects_negative_extensions(v2: bool) {
     let sector = commit_sector(&mut h, &mut rt);
 
     // attempt to shorten epoch
-    let new_expiration = sector.expiration - rt.policy().wpost_proving_period;
+    let new_expiration = sector.commitment_expiration - rt.policy().wpost_proving_period;
 
     // find deadline and partition
     let state: State = rt.get_state();
@@ -92,8 +92,8 @@ fn rejects_extension_too_far_in_future(v2: bool) {
     let sector = commit_sector(&mut h, &mut rt);
 
     // extend by even proving period after max
-    rt.set_epoch(sector.expiration);
-    let extension = rt.policy().wpost_proving_period + rt.policy().max_sector_expiration_extension;
+    rt.set_epoch(sector.commitment_expiration);
+    let extension = rt.policy().wpost_proving_period + rt.policy().max_sector_commitment_extension;
     let new_expiration = rt.epoch + extension;
 
     // find deadline and partition
@@ -115,7 +115,7 @@ fn rejects_extension_too_far_in_future(v2: bool) {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         &format!(
             "cannot be more than {} past current epoch",
-            rt.policy().max_sector_expiration_extension
+            rt.policy().max_sector_commitment_extension
         ),
         res,
     );
@@ -137,10 +137,10 @@ fn rejects_extension_past_max_for_seal_proof(v2: bool) {
         state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
 
     // extend sector until just below threshold
-    rt.set_epoch(sector.expiration);
-    let extension = rt.policy().min_sector_expiration;
+    rt.set_epoch(sector.commitment_expiration);
+    let extension = rt.policy().min_sector_commitment;
 
-    let mut expiration = sector.expiration + extension;
+    let mut expiration = sector.commitment_expiration + extension;
     while expiration - sector.activation < max_lifetime {
         let params = ExtendSectorExpirationParams {
             extensions: vec![ExpirationExtension {
@@ -151,7 +151,7 @@ fn rejects_extension_past_max_for_seal_proof(v2: bool) {
             }],
         };
         h.extend_sectors(&mut rt, params).unwrap();
-        sector.expiration = expiration;
+        sector.commitment_expiration = expiration;
 
         expiration += extension;
     }
@@ -184,7 +184,7 @@ fn updates_expiration_with_valid_params(v2: bool) {
         state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
-    let new_expiration = old_sector.expiration + extension;
+    let new_expiration = old_sector.commitment_expiration + extension;
 
     let params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
@@ -199,7 +199,7 @@ fn updates_expiration_with_valid_params(v2: bool) {
 
     // assert sector expiration is set to the new value
     let new_sector = h.get_sector(&rt, old_sector.sector_number);
-    assert_eq!(new_expiration, new_sector.expiration);
+    assert_eq!(new_expiration, new_sector.commitment_expiration);
 
     let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
 
@@ -236,7 +236,8 @@ fn updates_many_sectors(v2: bool) {
     );
     h.advance_and_submit_posts(&mut rt, &sector_infos);
 
-    let new_expiration = sector_infos[0].expiration + 42 * rt.policy().wpost_proving_period;
+    let new_expiration =
+        sector_infos[0].commitment_expiration + 42 * rt.policy().wpost_proving_period;
     let mut extensions: Vec<ExpirationExtension> = Vec::new();
 
     let state: State = rt.get_state();
@@ -316,7 +317,7 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
         state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period + rt.policy().wpost_proving_period / 3;
-    let new_expiration = old_sector.expiration + extension;
+    let new_expiration = old_sector.commitment_expiration + extension;
 
     let params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
@@ -332,10 +333,10 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
     // assert sector expiration is set to the new value
     let mut state: State = rt.get_state();
     let new_sector = h.get_sector(&rt, old_sector.sector_number);
-    assert_eq!(new_expiration, new_sector.expiration);
+    assert_eq!(new_expiration, new_sector.commitment_expiration);
 
     // advance clock to expiration
-    rt.set_epoch(new_sector.expiration);
+    rt.set_epoch(new_sector.commitment_expiration);
     state.proving_period_start += rt.policy().wpost_proving_period
         * ((rt.epoch - state.proving_period_start) / rt.policy().wpost_proving_period + 1);
     rt.replace_state(&state);

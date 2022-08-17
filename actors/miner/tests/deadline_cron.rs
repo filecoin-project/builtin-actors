@@ -54,7 +54,7 @@ fn sector_expires() {
 
     let mut st = h.get_state(&rt);
     let initial_pledge = &st.initial_pledge;
-    let expiration_raw = sectors[0].expiration;
+    let expiration_raw = sectors[0].commitment_expiration;
     assert!(st.deadline_cron_active);
 
     // setup state to simulate moving forward all the way to expiry
@@ -101,7 +101,7 @@ fn sector_expires_and_repays_fee_debt() {
 
     let mut st = h.get_state(&rt);
     let initial_pledge = &st.initial_pledge;
-    let expiration_raw = sectors[0].expiration;
+    let expiration_raw = sectors[0].commitment_expiration;
     assert!(st.deadline_cron_active);
 
     // setup state to simulate moving forward all the way to expiry
