@@ -341,7 +341,7 @@ impl Deadline {
                     ))
                 })?;
 
-            if !partition_expiration.early_sectors.is_empty() {
+            if !partition_expiration.faulty_sectors.is_empty() {
                 partitions_with_early_terminations.push(partition_idx);
             }
 
@@ -358,7 +358,7 @@ impl Deadline {
 
         // Update live sector count.
         let on_time_count = all_epirations.on_time_sectors.len();
-        let early_count = all_epirations.early_sectors.len();
+        let early_count = all_epirations.faulty_sectors.len();
         self.live_sectors -= on_time_count + early_count;
 
         self.faulty_power -= &all_epirations.faulty_power;

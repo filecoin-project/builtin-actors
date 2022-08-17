@@ -150,7 +150,7 @@ fn prove_single_sector() {
     let p_queue = h.collect_partition_expirations(&rt, &partition);
     let entry = &p_queue[&quantized_expiration];
     assert_bitfield_equals(&entry.on_time_sectors, &[sector_no]);
-    assert!(entry.early_sectors.is_empty());
+    assert!(entry.faulty_sectors.is_empty());
     assert_eq!(expected_initial_pledge, entry.on_time_pledge);
     assert_eq!(sector_power, entry.active_power);
     assert!(entry.faulty_power.is_zero());

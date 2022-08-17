@@ -598,7 +598,7 @@ fn faulty_sectors_expire() {
         .expect("failed to pop expired sectors");
 
     assert_bitfield_equals(&expired.on_time_sectors, &[1, 2, 3, 4, 5, 8, 9]);
-    assert_bitfield_equals(&expired.early_sectors, &[6]);
+    assert_bitfield_equals(&expired.faulty_sectors, &[6]);
 
     deadline_state()
         .with_terminations(&[1, 2, 3, 4, 5, 6, 8, 9])
