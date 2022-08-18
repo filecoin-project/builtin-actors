@@ -290,7 +290,9 @@ impl Actor {
                 continue;
             }
 
-            if deal.proposal.provider != Address::new_id(provider) && deal.proposal.provider != provider_raw {
+            if deal.proposal.provider != Address::new_id(provider)
+                && deal.proposal.provider != provider_raw
+            {
                 info!(
                     "invalid deal {}: cannot publish deals from multiple providers in one batch",
                     di
@@ -313,12 +315,13 @@ impl Actor {
                 total_client_lockup.get(&client_id).cloned().unwrap_or_default();
             client_lockup += deal.proposal.client_balance_requirement();
 
-            let client_balance_ok = msm.balance_covered(client_id, &client_lockup).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to check client balance coverage",
-                )
-            })?;
+            let client_balance_ok =
+                msm.balance_covered(client_id, &client_lockup).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to check client balance coverage",
+                    )
+                })?;
 
             if !client_balance_ok {
                 info!("invalid deal: {}: insufficient client funds to cover proposal cost", di);

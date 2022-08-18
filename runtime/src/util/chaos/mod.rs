@@ -137,10 +137,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_accept_any()?;
         let resolved = rt.resolve_address(&args);
-        Ok(ResolveAddressResponse {
-            address: resolved.unwrap_or(0),
-            success: resolved.is_some(),
-        })
+        Ok(ResolveAddressResponse { address: resolved.unwrap_or(0), success: resolved.is_some() })
     }
 
     pub fn delete_actor<BS, RT>(rt: &mut RT, beneficiary: Address) -> Result<(), ActorError>

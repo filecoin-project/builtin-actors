@@ -140,7 +140,8 @@ where
         self.assert_not_validated()?;
         let caller_cid = {
             let caller_addr = self.message().caller();
-            self.get_actor_code_cid(&caller_addr.id().unwrap()).expect("failed to lookup caller code")
+            self.get_actor_code_cid(&caller_addr.id().unwrap())
+                .expect("failed to lookup caller code")
         };
 
         match self.resolve_builtin_actor_type(&caller_cid) {

@@ -729,7 +729,8 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     rt.set_epoch(start_epoch);
 
-    let mut deal = generate_deal_proposal(client_resolved, provider_resolved, start_epoch, end_epoch);
+    let mut deal =
+        generate_deal_proposal(client_resolved, provider_resolved, start_epoch, end_epoch);
     deal.verified_deal = true;
 
     // add funds for cient using it's BLS address -> will be resolved and persisted

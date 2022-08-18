@@ -26,7 +26,7 @@ use test_vm::util::{
 use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 #[test]
-fn create_miner_test () {
+fn create_miner_test() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
 

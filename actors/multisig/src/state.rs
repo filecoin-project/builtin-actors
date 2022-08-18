@@ -7,10 +7,10 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
-use fvm_shared::ActorID;
 use fvm_shared::bigint::{bigint_ser, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::ActorID;
 use indexmap::IndexMap;
 use num_traits::Zero;
 

@@ -61,9 +61,10 @@ impl Actor {
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
 
-        let caller_code = rt.get_actor_code_cid(&rt.message().caller().id().unwrap()).ok_or_else(|| {
-            actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
-        })?;
+        let caller_code =
+            rt.get_actor_code_cid(&rt.message().caller().id().unwrap()).ok_or_else(|| {
+                actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
+            })?;
 
         log::trace!("caller code CID: {:?}", &caller_code);
 

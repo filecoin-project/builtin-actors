@@ -4,8 +4,8 @@
 use anyhow::Ok;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::address::Address;
-use fvm_shared::METHOD_SEND;
 use fvm_shared::ActorID;
+use fvm_shared::METHOD_SEND;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::Runtime;
@@ -39,7 +39,7 @@ where
     }
 
     Err(anyhow::anyhow!(
-            "failed to resolve address {} to ID address even after sending zero balance",
-            address,
+        "failed to resolve address {} to ID address even after sending zero balance",
+        address,
     ))
 }
