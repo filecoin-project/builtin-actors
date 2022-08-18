@@ -1,21 +1,27 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_id_addr, ActorDowncast,
-    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_id_addr, ActorContext,
+    ActorDowncast, ActorError, AsActorError, BatchReturnGen, Map, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
+pub use self::state::Allocation;
+pub use self::state::Claim;
 pub use self::state::State;
 pub use self::types::*;
 
@@ -36,9 +42,11 @@ pub enum Method {
     AddVerifier = 2,
     RemoveVerifier = 3,
     AddVerifiedClient = 4,
-    UseBytes = 5,
-    RestoreBytes = 6,
+    UseBytes = 5,     // Deprecated
+    RestoreBytes = 6, // Deprecated
     RemoveVerifiedClientDataCap = 7,
+    RemoveExpiredAllocations = 8,
+    ClaimAllocations = 9,
 }
 
 pub struct Actor;
@@ -675,6 +683,158 @@ impl Actor {
             data_cap_removed: removed_data_cap_amount,
         })
     }
+
+    // An allocation may be removed after its expiration epoch has passed (by anyone).
+    // When removed, the DataCap tokens are transferred back to the client.
+    pub fn remove_expired_allocations<BS, RT>(
+        rt: &mut RT,
+        params: RemoveExpiredAllocationsParams,
+    ) -> Result<RemoveExpiredAllocationsReturn, ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        // since the alloc is expired this should be safe to publically cleanup
+        rt.validate_immediate_caller_accept_any()?;
+        let mut ret_gen = BatchReturnGen::new(params.allocation_ids.len());
+        rt.transaction(|st: &mut State, rt| {
+            let mut allocs = st.load_allocs(rt.store())?;
+            for alloc_id in params.allocation_ids {
+                let maybe_alloc = allocs.get(params.client, alloc_id).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "HAMT lookup failure getting allocation",
+                )?;
+                let alloc = match maybe_alloc {
+                    None => {
+                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                        info!(
+                            "claim references allocation id {} that does not belong to client {}",
+                            alloc_id, params.client,
+                        );
+                        continue;
+                    }
+                    Some(a) => a,
+                };
+                if alloc.expiration > rt.curr_epoch() {
+                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                    info!("cannot revoke allocation {} that has not expired", alloc_id);
+                    continue;
+                }
+                allocs.remove(params.client, alloc_id).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to remove allocation {}", alloc_id),
+                )?;
+                ret_gen.add_success();
+            }
+            st.allocations = allocs
+                .flush()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;
+            Ok(())
+        })
+        .context("state transaction failed")?;
+        Ok(ret_gen.gen())
+    }
+
+    // Called by storage provider actor to claim allocations for data provably committed to storage.
+    // For each allocation claim, the registry checks that the provided piece CID
+    // and size match that of the allocation.
+    pub fn claim_allocation<BS, RT>(
+        rt: &mut RT,
+        params: ClaimAllocationParams,
+    ) -> Result<ClaimAllocationReturn, ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
+        let provider = rt.message().caller();
+        if params.sectors.is_empty() {
+            return Err(actor_error!(illegal_argument, "claim allocations called with no claims"));
+        }
+        let mut client_burns = DataCap::zero();
+        let mut ret_gen = BatchReturnGen::new(params.sectors.len());
+        rt.transaction(|st: &mut State, rt| {
+            let mut claims = st.load_claims(rt.store())?;
+            let mut allocs = st.load_allocs(rt.store())?;
+
+            for claim_alloc in params.sectors {
+                let maybe_alloc =
+                    allocs.get(claim_alloc.client, claim_alloc.allocation_id).context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "HAMT lookup failure getting allocation",
+                    )?;
+
+                let alloc: &Allocation = match maybe_alloc {
+                    None => {
+                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                        info!(
+                            "no allocation {} for client {}",
+                            claim_alloc.allocation_id, claim_alloc.client,
+                        );
+                        continue;
+                    }
+                    Some(a) => a,
+                };
+
+                if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
+                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                    info!(
+                        "invalid sector {:?} for allocation {}",
+                        claim_alloc.sector_id, claim_alloc.allocation_id,
+                    );
+                    continue;
+                }
+
+                let new_claim = Claim {
+                    provider,
+                    client: alloc.client,
+                    data: alloc.data,
+                    size: alloc.size,
+                    term_min: alloc.term_min,
+                    term_max: alloc.term_max,
+                    term_start: rt.curr_epoch(),
+                    sector: claim_alloc.sector_id.clone(),
+                };
+
+                let inserted = claims
+                    .put_if_absent(provider, claim_alloc.allocation_id, new_claim)
+                    .context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to write claim {}", claim_alloc.allocation_id),
+                    )?;
+                if !inserted {
+                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE); // should be unreachable since claim and alloc can't exist at once
+                    info!(
+                        "claim for allocation {} could not be inserted as it already exists",
+                        claim_alloc.allocation_id,
+                    );
+                    continue;
+                }
+
+                allocs.remove(claim_alloc.client, claim_alloc.allocation_id).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to remove allocation {}", claim_alloc.allocation_id),
+                )?;
+
+                client_burns += DataCap::from(&claim_alloc);
+                ret_gen.add_success();
+            }
+            st.allocations = allocs
+                .flush()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;
+            st.claims = claims
+                .flush()
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims table")?;
+            Ok(())
+        })
+        .context("state transaction failed")?;
+        let st: State = rt.state()?;
+        _ = st;
+        // TODO uncomment when datacap token integration lands in #514 and burn helper is implemented
+        //burn(st.token, client, dc_burn)
+        _ = client_burns;
+        Ok(ret_gen.gen())
+    }
 }
 
 fn is_verifier<BS, RT>(rt: &RT, st: &State, address: Address) -> Result<bool, ActorError>
@@ -767,6 +927,23 @@ where
     )
 }
 
+fn can_claim_alloc(
+    claim_alloc: &SectorAllocationClaim,
+    provider: Address,
+    alloc: &Allocation,
+    curr_epoch: ChainEpoch,
+) -> bool {
+    let sector_lifetime = claim_alloc.sector_expiry - curr_epoch;
+
+    provider == alloc.provider
+        && claim_alloc.client == alloc.client
+        && claim_alloc.piece_cid == alloc.data
+        && claim_alloc.piece_size == alloc.size
+        && curr_epoch < alloc.expiration
+        && sector_lifetime >= alloc.term_min
+        && sector_lifetime <= alloc.term_max
+}
+
 impl ActorCode for Actor {
     fn invoke_method<BS, RT>(
         rt: &mut RT,
@@ -805,6 +982,14 @@ impl ActorCode for Actor {
             Some(Method::RemoveVerifiedClientDataCap) => {
                 let res =
                     Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::RemoveExpiredAllocations) => {
+                let res = Self::remove_expired_allocations(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::ClaimAllocations) => {
+                let res = Self::claim_allocation(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

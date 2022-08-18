@@ -10,6 +10,7 @@ lazy_static! {
     static ref CLIENT2: Address = Address::new_id(302);
     static ref CLIENT3: Address = Address::new_id(303);
     static ref CLIENT4: Address = Address::new_id(304);
+    static ref PROVIDER: Address = Address::new_id(305);
 }
 
 mod util {
@@ -421,6 +422,98 @@ mod clients {
         );
 
         h.check_state(&rt);
+    }
+}
+
+mod claims {
+    use crate::*;
+    use fil_actor_verifreg::{
+        Allocation, AllocationID, Claim, ClaimID, SectorAllocationClaim, State,
+    };
+    use fil_actors_runtime::runtime::Runtime;
+    use fil_actors_runtime::test_utils::make_piece_cid;
+    use fil_actors_runtime::MapMap;
+    use fvm_shared::clock::ChainEpoch;
+    use fvm_shared::error::ExitCode;
+    use fvm_shared::piece::PaddedPieceSize;
+    use fvm_shared::sector::SectorID;
+    use fvm_shared::HAMT_BIT_WIDTH;
+    use harness::*;
+
+    fn make_alloc(expected_id: AllocationID, provider: Address) -> Allocation {
+        Allocation {
+            client: *CLIENT,
+            provider,
+            data: make_piece_cid(format!("{}", expected_id).as_bytes()),
+            size: PaddedPieceSize(128),
+            term_min: 1000,
+            term_max: 2000,
+            expiration: 100,
+        }
+    }
+
+    fn make_claim(
+        id: AllocationID,
+        alloc: Allocation,
+        sector_id: SectorID,
+        sector_expiry: ChainEpoch,
+    ) -> SectorAllocationClaim {
+        SectorAllocationClaim {
+            client: alloc.client,
+            allocation_id: id,
+            piece_cid: alloc.data,
+            piece_size: alloc.size,
+            sector_id,
+            sector_expiry,
+        }
+    }
+
+    fn sector_id(provider: Address, number: u64) -> SectorID {
+        SectorID { miner: provider.id().unwrap(), number }
+    }
+
+    #[test]
+    fn claim_allocs() {
+        let (h, mut rt) = new_harness();
+        let provider = *PROVIDER;
+
+        let alloc1 = make_alloc(1, provider);
+        let alloc2 = make_alloc(2, provider);
+        let alloc3 = make_alloc(3, provider);
+
+        h.create_alloc(&mut rt, alloc1.clone()).unwrap();
+        h.create_alloc(&mut rt, alloc2.clone()).unwrap();
+        h.create_alloc(&mut rt, alloc3.clone()).unwrap();
+
+        let ret = h
+            .claim_allocations(
+                &mut rt,
+                provider,
+                vec![
+                    make_claim(1, alloc1, sector_id(provider, 1000), 1500),
+                    make_claim(2, alloc2, sector_id(provider, 1000), 1500),
+                    make_claim(3, alloc3, sector_id(provider, 1000), 1500),
+                ],
+            )
+            .unwrap();
+
+        assert_eq!(ret.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK]);
+
+        // check that state is as expected
+        let st: State = rt.get_state();
+        let mut allocs: MapMap<'_, _, Allocation, Address, AllocationID> =
+            MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
+        // allocs deleted
+        assert!(allocs.get(*CLIENT, 1).unwrap().is_none());
+        assert!(allocs.get(*CLIENT, 2).unwrap().is_none());
+        assert!(allocs.get(*CLIENT, 3).unwrap().is_none());
+
+        // claims inserted
+        let mut claims: MapMap<'_, _, Claim, Address, ClaimID> =
+            MapMap::from_root(rt.store(), &st.claims, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
+        assert_eq!(claims.get(provider, 1).unwrap().unwrap().client, *CLIENT);
+        assert_eq!(claims.get(provider, 2).unwrap().unwrap().client, *CLIENT);
+        assert_eq!(claims.get(provider, 3).unwrap().unwrap().client, *CLIENT);
     }
 }
 

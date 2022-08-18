@@ -1,13 +1,21 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use cid::Cid;
+use fil_actors_runtime::BatchReturn;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorID;
 use fvm_shared::sector::StoragePower;
 use serde::{Deserialize, Serialize};
+
+pub type AllocationID = u64;
+pub type ClaimID = u64;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifierParams {
@@ -95,3 +103,48 @@ impl AddrPairKey {
         first
     }
 }
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveExpiredAllocationsParams {
+    pub client: Address,
+    pub allocation_ids: Vec<AllocationID>,
+}
+
+pub type RemoveExpiredAllocationsReturn = BatchReturn;
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorAllocationClaim {
+    pub client: Address,
+    pub allocation_id: AllocationID,
+    pub piece_cid: Cid,
+    pub piece_size: PaddedPieceSize,
+    pub sector_id: SectorID,
+    pub sector_expiry: ChainEpoch,
+}
+
+impl From<&SectorAllocationClaim> for DataCap {
+    fn from(c: &SectorAllocationClaim) -> Self {
+        DataCap::from(c.piece_size.0)
+    }
+}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimAllocationParams {
+    pub sectors: Vec<SectorAllocationClaim>,
+}
+
+pub type ClaimAllocationReturn = BatchReturn;
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimTerm {
+    provider: Address,
+    claim_id: ClaimID,
+    term_max: ChainEpoch,
+}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ExtendClaimTermsParams {
+    pub claims: Vec<ClaimTerm>,
+}
+
+pub type ExtendClaimTermsReturn = BatchReturn;
