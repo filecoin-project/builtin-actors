@@ -36,9 +36,12 @@ pub enum Method {
     AddVerifier = 2,
     RemoveVerifier = 3,
     AddVerifiedClient = 4,
-    UseBytes = 5,
-    RestoreBytes = 6,
+    UseBytes = 5, // Deprecated
+    RestoreBytes = 6, // Deprecated 
     RemoveVerifiedClientDataCap = 7,
+    RevokeExpiredAllocations = 8,
+    ClaimAllocations = 9,
+    ExtendClaimTerms = 10,
 }
 
 pub struct Actor;
@@ -675,7 +678,50 @@ impl Actor {
             data_cap_removed: removed_data_cap_amount,
         })
     }
+
+    pub fn revoke_expired_allocations<BS, RT>(
+        rt: &mut RT,
+        params: RevokeExpiredAllocationsParams,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        Ok(())
+    }
+
+    pub fn claim_allocation<BS, RT>(
+        rt: &mut RT,
+        params: ClaimAllocationParams,
+    ) -> Result<(), ActorError>
+    where  
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        Ok(())
+    }
+
+    pub fn extend_claim_terms<BS, RT> (
+        rt: &mut RT,
+        params: ExtendClaimTermsParams,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+            Ok(())
+    }
 }
+
+
+// pub fn remove_verified_client_data_cap<BS, RT>(
+//     rt: &mut RT,
+//     params: RemoveDataCapParams,
+// ) -> Result<RemoveDataCapReturn, ActorError>
+// where
+//     BS: Blockstore,
+//     RT: Runtime<BS>,
+// {
 
 fn is_verifier<BS, RT>(rt: &RT, st: &State, address: Address) -> Result<bool, ActorError>
 where
@@ -767,6 +813,8 @@ where
     )
 }
 
+
+
 impl ActorCode for Actor {
     fn invoke_method<BS, RT>(
         rt: &mut RT,
@@ -806,6 +854,18 @@ impl ActorCode for Actor {
                 let res =
                     Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::RevokeExpiredAllocations) => {
+                Self::revoke_expired_allocations(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::ClaimAllocations) => {
+                Self::claim_allocation(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default()) // xxx return value
+            }
+            Some(Method::ExtendClaimTerms) => {
+                Self::extend_claim_terms(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default()) // xxx return value
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }

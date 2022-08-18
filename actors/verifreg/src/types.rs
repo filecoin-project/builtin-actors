@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
@@ -8,6 +9,11 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::sector::StoragePower;
 use serde::{Deserialize, Serialize};
+use fvm_shared::sector::SectorID;
+use fvm_shared::clock::{ChainEpoch};
+
+pub type AllocationID = u64;
+pub type ClaimID = u64;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifierParams {
@@ -94,4 +100,37 @@ impl AddrPairKey {
         first.append(&mut second);
         first
     }
+}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct RevokeExpiredAllocationsParams {
+    pub client: Address,
+    pub allocation_ids: Vec<AllocationID>,
+}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorAllocationClaim {
+    provider: Address,
+    allocation_id: AllocationID,
+    piece_cid: Cid,
+    piece_size: u64,
+    // TODO include offset and inclusion proof when adding sector ranges
+    sector_id: SectorID,    
+}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimAllocationParams {
+    pub sectors: Vec<SectorAllocationClaim>,
+}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimTerm {
+    provider: Address,
+    claim_id: ClaimID,
+    term_max: ChainEpoch,
+}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ExtendClaimTermsParams {
+    claims: Vec<ClaimTerm>,
 }

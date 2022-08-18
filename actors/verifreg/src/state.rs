@@ -8,6 +8,8 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::sector::SectorID;
+use fvm_shared::clock::{ChainEpoch};
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct State {
@@ -15,6 +17,9 @@ pub struct State {
     pub verifiers: Cid,
     pub verified_clients: Cid,
     pub remove_data_cap_proposal_ids: Cid,
+    pub allocations: Cid, // HAMT[Address]AMT[AllocationID]Allocation
+    pub next_allocation_id: u64,
+    pub claims: Cid, // HAMT[Address]AMT[ClaimID]Claim
 }
 
 impl State {
@@ -28,8 +33,37 @@ impl State {
             verifiers: empty_map,
             verified_clients: empty_map,
             remove_data_cap_proposal_ids: empty_map,
+            allocations: empty_map,
+            next_allocation_id: 0,
+            claims: empty_map,
         })
     }
+}
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct Claim {
+    pub provider: Address,
+    pub client: Address,
+    pub data: Cid,
+    pub size: u64,
+    // The min period which the provider must commit to storing data
+    pub term_min: u64,
+    // The max period for which provider can earn QA-power for the data
+    pub term_max: u64,
+    pub term_start: ChainEpoch,
+    // TODO: figure out ranges in a follow up PR
+    pub sector: SectorID, 
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct Allocation {
+    pub client: Address,
+    pub provider: Address,
+    pub data: Cid,
+    pub size: u64,
+    pub term_min: u64,
+    pub term_max: u64,
+    pub expiration: u64,
+    // TODO add allow ranges in a follow up PR
 }
 
 impl Cbor for State {}
