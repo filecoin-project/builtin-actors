@@ -1,9 +1,12 @@
-use super::{Message, TransactionAction, H160};
+use std::ops::Mul;
+
+use super::{output, Message, TransactionAction, H160};
 use bytes::Bytes;
 use fvm_shared::crypto::{
     hash::SupportedHashes,
     signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
 };
+use substrate_bn::{AffineG1, Fq, Fr, Group, G1};
 
 // TODO probably have a different type of input here (probably a deserialized message)
 pub fn is_precompiled(msg: &TransactionAction) -> bool {
@@ -52,7 +55,7 @@ fn ecrecover(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let mut hash = [0u8; SECP_SIG_MESSAGE_HASH_SIZE];
     let mut sig = [0u8; SECP_SIG_LEN];
 
-    hash.copy_from_slice(&input[..32]); 
+    hash.copy_from_slice(&input[..32]);
     sig.copy_from_slice(&input[64..]);
 
     // recovery byte means one byte value is 32 bytes long, sad
@@ -77,31 +80,22 @@ fn test() {
 fn sha256(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let cost = linear_gas_cost(input.len(), 60, 12);
 
-    Ok(PrecompileOutput {
-        cost,
-        output: fvm_sdk::crypto::hash(SupportedHashes::Keccak256, input),
-    })
+    Ok(PrecompileOutput { cost, output: fvm_sdk::crypto::hash(SupportedHashes::Keccak256, input) })
 }
 
 fn ripemd160(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let cost = linear_gas_cost(input.len(), 600, 120);
 
-    Ok(PrecompileOutput {
-        cost,
-        output: fvm_sdk::crypto::hash(SupportedHashes::Ripemd160, input),
-    })
+    Ok(PrecompileOutput { cost, output: fvm_sdk::crypto::hash(SupportedHashes::Ripemd160, input) })
 }
 
 fn identity(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let cost = linear_gas_cost(input.len(), 15, 3);
     if cost > gas_limit {
-        return Err(())
+        return Err(());
     }
-    
-    Ok(PrecompileOutput {
-        cost,
-        output: Vec::from(input)
-    })
+
+    Ok(PrecompileOutput { cost, output: Vec::from(input) })
 }
 
 // fn modexp_gas(input: &[u8], gas_limit: u64) -> PrecompileResult {
@@ -128,10 +122,10 @@ fn identity(input: &[u8], gas_limit: u64) -> PrecompileResult {
 
 fn fmodexp(base: u64, exp: u64, modu: u64) -> u64 {
     if modu == 1 {
-        return 0
+        return 0;
     }
 
-    assert!((modu - 1 ) * (modu - 1) > u64::MAX);
+    assert!((modu - 1) * (modu - 1) > u64::MAX);
     todo!()
 }
 
@@ -139,6 +133,66 @@ fn modexp(input: &[u8], gas_limit: u64) -> PrecompileResult {
     todo!()
 }
 
+fn bytes_to_point(x: &[u8; 32], y: &[u8; 32]) -> Result<G1, ()> {
+    let x = Fq::from_slice(x).map_err(|_| {})?;
+    let y = Fq::from_slice(y).map_err(|_| {})?;
+
+    Ok(if x.is_zero() && y.is_zero() {
+        G1::zero()
+    } else {
+        AffineG1::new(x, y).map_err(|_| {})?.into()
+    })
+}
+
+/// add 2 points together on `alt_bn128`
+fn ecAdd(input: &[u8], gas_limit: u64) -> PrecompileResult {
+    let mut cost = 150; // TODO consume all gas on any op fail
+
+    let mut x_buf = [0u8; 32];
+    let mut y_buf = [0u8; 32];
+
+    x_buf.copy_from_slice(&input[..31]);
+    y_buf.copy_from_slice(&input[32..63]);
+    let point1 = bytes_to_point(&x_buf, &y_buf)?;
+
+    x_buf.copy_from_slice(&input[64..95]);
+    y_buf.copy_from_slice(&input[96..128]);
+    let point2 = bytes_to_point(&x_buf, &y_buf)?;
+
+    // TODO zeroed array or empty vec?
+    let output = AffineG1::from_jacobian(point1 + point2).map_or(vec![0; 64], |sum| {
+        let mut output = vec![0; 64];
+        // TODO make sure this cant panic
+        sum.x().to_big_endian(&mut output[..32]).unwrap();
+        sum.y().to_big_endian(&mut output[32..]).unwrap();
+        output
+    });
+
+    Ok(PrecompileOutput { cost, output })
+}
+
+/// multiply a scalar and a point on `alt_bn128`
+fn ecMul(input: &[u8], gas_limit: u64) -> PrecompileResult {
+    let mut cost = 6_000; // TODO consume all gas on any op fail
+
+    let mut x_buf = [0u8; 32];
+    let mut y_buf = [0u8; 32];
+
+    x_buf.copy_from_slice(&input[..31]);
+    y_buf.copy_from_slice(&input[32..63]);
+    let point1 = bytes_to_point(&x_buf, &y_buf)?;
+
+    let scalar = Fr::from_slice(&input[64..95]).map_err(|_| {})?;
+
+    let mut output = vec![0; 64];
+    if let Some(product) = AffineG1::from_jacobian(point1.mul(scalar)) {
+        // TODO make sure this cant panic
+        product.x().to_big_endian(&mut output[..32]).unwrap();
+        product.y().to_big_endian(&mut output[32..]).unwrap();
+    }
+
+    Ok(PrecompileOutput { cost, output })
+}
 
 use fvm_sdk::crypto::recover_secp_public_key;
 
@@ -148,9 +202,9 @@ const PRECOMPILES: [PrecompileFn; 9] = [
     sha256,    // SHA256 (Keccak) 0x02
     ripemd160, // ripemd160 0x03
     identity,  // identity 0x04
-    modexp,       // modexp 0x05
-    nop,       // ecAdd 0x06
-    nop,       // ecMul 0x07
+    modexp,    // modexp 0x05
+    ecAdd,     // ecAdd 0x06
+    ecMul,     // ecMul 0x07
     nop,       // ecPairing 0x08
     nop,       // blake2f 0x09
 ];
