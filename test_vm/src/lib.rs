@@ -520,6 +520,9 @@ impl MessageInfo for InvocationCtx<'_, '_> {
     fn caller(&self) -> Address {
         self.msg.from
     }
+    fn origin(&self) -> Address {
+        self.resolve_address(&self.top.originator_stable_addr).unwrap()
+    }
     fn receiver(&self) -> Address {
         self.to()
     }

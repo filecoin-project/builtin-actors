@@ -85,6 +85,10 @@ impl MessageInfo for FvmMessage {
         Address::new_id(fvm::message::caller())
     }
 
+    fn origin(&self) -> Address {
+        Address::new_id(fvm::message::origin())
+    }
+
     fn receiver(&self) -> Address {
         Address::new_id(fvm::message::receiver())
     }
