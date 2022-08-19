@@ -113,6 +113,7 @@ pub struct MockRuntime {
     pub receiver: Address,
     pub caller: Address,
     pub caller_type: Cid,
+    pub origin: Address,
     pub value_received: TokenAmount,
     #[allow(clippy::type_complexity)]
     pub hash_func: Box<dyn Fn(&[u8]) -> [u8; 32]>,
@@ -259,6 +260,7 @@ impl Default for MockRuntime {
             receiver: Address::new_id(0),
             caller: Address::new_id(0),
             caller_type: Default::default(),
+            origin: Address::new_id(0),
             value_received: Default::default(),
             hash_func: Box::new(blake2b_256),
             network_version: NetworkVersion::V0,
@@ -422,6 +424,10 @@ impl MockRuntime {
         self.caller = address;
         self.caller_type = code_id;
         self.actor_code_cids.insert(address, code_id);
+    }
+
+    pub fn set_origin(&mut self, address: Address) {
+        self.origin = address;
     }
 
     pub fn set_address_actor_type(&mut self, address: Address, actor_type: Cid) {
@@ -658,6 +664,9 @@ impl MockRuntime {
 impl MessageInfo for MockRuntime {
     fn caller(&self) -> Address {
         self.caller
+    }
+    fn origin(&self) -> Address {
+        self.origin
     }
     fn receiver(&self) -> Address {
         self.receiver

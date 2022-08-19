@@ -173,6 +173,9 @@ pub trait MessageInfo {
     /// The address of the immediate calling actor. Always an ID-address.
     fn caller(&self) -> Address;
 
+    /// The address of the origin of the current invocation. Always an ID-address
+    fn origin(&self) -> Address;
+
     /// The address of the actor receiving the message. Always an ID-address.
     fn receiver(&self) -> Address;
 
