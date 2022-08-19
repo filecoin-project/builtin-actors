@@ -1,4 +1,4 @@
-use std::ops::Mul;
+use std::{ops::Mul, borrow::Cow};
 
 use super::{Message, TransactionAction, H160};
 use fvm_shared::crypto::{
@@ -6,6 +6,8 @@ use fvm_shared::crypto::{
     signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
 };
 use substrate_bn::{AffineG1, Fq, Fr, Group, G1};
+
+// TODO it would probably be better to have a deserializer/reader for inputs rather than taking out chunks of arrays
 
 // TODO probably have a different type of input here (probably a deserialized message)
 pub fn is_precompiled(msg: &TransactionAction) -> bool {
@@ -23,13 +25,20 @@ pub struct PrecompileOutput {
     pub output: Vec<u8>,
 }
 
-enum ExitReason {
+pub enum ExitReason {
     Success,
     OutOfGas,
+    Other(Cow<'static, str>)
+}
+
+impl From<&'static str> for ExitReason {
+    fn from(src: &'static str) -> Self {
+        ExitReason::Other(Cow::Borrowed(src))
+    }
 }
 
 pub type PrecompileFn = fn(&[u8], u64) -> PrecompileResult; // TODO useful error
-pub type PrecompileResult = Result<PrecompileOutput, ()>;
+pub type PrecompileResult = Result<PrecompileOutput, ExitReason>;
 
 pub fn linear_gas_cost(len: usize, base: u64, word: u64) -> u64 {
     ((len as u64 + 32 - 1) / 32 * word) + base
@@ -42,7 +51,7 @@ pub fn assert_gas(cost: u64, limit: u64) -> Result<(), ()> {
     }
 }
 
-fn nop(inp: &[u8], gas_limit: u64) -> Result<PrecompileOutput, ()> {
+fn nop(inp: &[u8], gas_limit: u64) -> PrecompileResult {
     todo!()
 }
 
@@ -85,7 +94,7 @@ fn ripemd160(input: &[u8], gas_limit: u64) -> PrecompileResult {
 fn identity(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let cost = linear_gas_cost(input.len(), 15, 3);
     if cost > gas_limit {
-        return Err(());
+        return Err(ExitReason::OutOfGas);
     }
     Ok(PrecompileOutput { cost, output: Vec::from(input) })
 }
@@ -142,14 +151,16 @@ fn modexp(input: &[u8], gas_limit: u64) -> PrecompileResult {
     todo!()
 }
 
-fn bytes_to_point(x: &[u8; 32], y: &[u8; 32]) -> Result<G1, ()> {
-    let x = Fq::from_slice(x).map_err(|_| {})?;
-    let y = Fq::from_slice(y).map_err(|_| {})?;
+
+
+fn bytes_to_point(x: &[u8; 32], y: &[u8; 32]) -> Result<G1, ExitReason> {
+    let x = Fq::from_slice(x).map_err(|_| {"todo"})?;
+    let y = Fq::from_slice(y).map_err(|_| {"todo"})?;
 
     Ok(if x.is_zero() && y.is_zero() {
         G1::zero()
     } else {
-        AffineG1::new(x, y).map_err(|_| {})?.into()
+        AffineG1::new(x, y).map_err(|_| {"todo"})?.into()
     })
 }
 
@@ -191,7 +202,7 @@ fn ec_mul(input: &[u8], gas_limit: u64) -> PrecompileResult {
     y_buf.copy_from_slice(&input[32..63]);
     let point1 = bytes_to_point(&x_buf, &y_buf)?;
 
-    let scalar = Fr::from_slice(&input[64..95]).map_err(|_| {})?;
+    let scalar = Fr::from_slice(&input[64..95]).map_err(|_| {"todo"})?;
 
     let mut output = vec![0; 64];
     if let Some(product) = AffineG1::from_jacobian(point1.mul(scalar)) {
@@ -206,6 +217,14 @@ fn ec_mul(input: &[u8], gas_limit: u64) -> PrecompileResult {
 fn ecpairing(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let cost = 45_000;
 
+    todo!()
+}
+
+fn blake2f(input: &[u8], gas_limit: u64) -> PrecompileResult {
+    let mut a = near_blake2::VarBlake2b::default();
+    // a.blake2_f(rounds, h, m, t, f);
+
+    let output = a.output().to_vec();
     todo!()
 }
 

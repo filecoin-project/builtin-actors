@@ -39,6 +39,8 @@ fixed-hash = { version = "0.7.0", default-features = false }
 impl-serde = { version = "0.3.2", default-features = false }
 arrayvec = { version = "0.7.2", features = ["serde"] }
 hex = "0.4.3"
+substrate-bn = "0.6.0"
+near-blake2 = {version = "0.9.1", git = "https://github.com/mrLSD/near-blake2.git", rev = "47a58e5061ba6d6c1132f535188b7fde2f67bcb2"}
 
 [dev-dependencies]
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }

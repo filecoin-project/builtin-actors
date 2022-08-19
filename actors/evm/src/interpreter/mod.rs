@@ -9,6 +9,9 @@ pub mod stack;
 pub mod system;
 pub mod transaction;
 pub mod uints;
+pub mod precompiles;
+
+
 
 pub use {
     bytecode::Bytecode,
