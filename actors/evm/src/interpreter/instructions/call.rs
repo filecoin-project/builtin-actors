@@ -1,8 +1,16 @@
 use {
-    super::memory::get_memory_region, crate::interpreter::output::StatusCode,
-    crate::interpreter::stack::Stack, crate::interpreter::CallKind,
-    crate::interpreter::ExecutionState, crate::interpreter::System, crate::interpreter::U256,
-    fil_actors_runtime::runtime::Runtime, fvm_ipld_blockstore::Blockstore,
+    super::memory::get_memory_region,
+    crate::interpreter::instructions::memory::MemoryRegion,
+    crate::interpreter::output::StatusCode,
+    crate::interpreter::precompiles,
+    crate::interpreter::stack::Stack,
+    crate::interpreter::CallKind,
+    crate::interpreter::ExecutionState,
+    crate::interpreter::Message,
+    crate::interpreter::System,
+    crate::interpreter::{H160, U256},
+    fil_actors_runtime::runtime::Runtime,
+    fvm_ipld_blockstore::Blockstore,
 };
 
 #[inline]
@@ -89,10 +97,81 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
 
 #[inline]
 pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
+    state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
-    _kind: CallKind,
-    _is_static: bool,
+    kind: CallKind,
+    is_static: bool,
 ) -> Result<(), StatusCode> {
+    let gas = state.stack.pop();
+    let dst: H160 = crate::interpreter::uints::_u256_to_address(state.stack.pop());
+    let value = if is_static || matches!(kind, CallKind::DelegateCall) {
+        U256::zero()
+    } else {
+        state.stack.pop()
+    };
+    let has_value = !value.is_zero();
+    let input_offset = state.stack.pop();
+    let input_size = state.stack.pop();
+    let output_offset = state.stack.pop();
+    let output_size = state.stack.pop();
+
+    state.stack.push(U256::zero()); // Assume failure. TODO
+
+    // if state.evm_revision >= Revision::Berlin
+    //         && ResumeDataVariant::into_access_account_status(
+    //             $co.yield_(InterruptDataVariant::AccessAccount(AccessAccount {
+    //                 address: dst,
+    //             }))
+    //             .await,
+    //         )
+    //         .unwrap()
+    //         .status
+    //             == AccessStatus::Cold
+    //     {
+    //         $state.gas_left -= i64::from(ADDITIONAL_COLD_ACCOUNT_ACCESS_COST);
+    //         if $state.gas_left < 0 {
+    //             return Err(StatusCode::OutOfGas);
+    //         }
+    //     }
+
+    // $state.gas_left -= i64::from(ADDITIONAL_COLD_ACCOUNT_ACCESS_COST);
+    //         if $state.gas_left < 0 {
+    //             return Err(StatusCode::OutOfGas);
+    //         }
+
+    //TODO Errs
+    let input_region = get_memory_region(state, input_offset, input_size).unwrap();
+    let output_region = get_memory_region(state, output_offset, output_size).unwrap();
+
+    // let input_region = memory::verify_memory_region(state, input_offset, input_size)
+    //     .map_err(|_| StatusCode::OutOfGas)?;
+    // let output_region = memory::verify_memory_region(state, output_offset, output_size)
+    //     .map_err(|_| StatusCode::OutOfGas)?;
+
+    let mut msg = Message {
+        kind: kind,
+        is_static: is_static, // ?? || state.message.is_static,
+        depth: state.message.depth + 1,
+        recipient: if matches!(kind, CallKind::Call) { dst } else { state.message.recipient },
+        sender: if matches!(kind, CallKind::DelegateCall) {
+            state.message.sender
+        } else {
+            state.message.recipient
+        },
+        gas: i64::MAX,
+        value: if matches!(kind, CallKind::DelegateCall) { state.message.value } else { value },
+        input_data: input_region
+            .map(|MemoryRegion { offset, size }| {
+                state.memory[offset..offset + size.get()].to_vec().into()
+            })
+            .unwrap_or_default(),
+    };
+
+    if dst <= precompiles::MAX_PRECOMPILE {
+        precompiles::call_precompile(&mut msg);
+    } else {
+        todo!()
+    }
+    // TODO do things after message
     todo!();
 }

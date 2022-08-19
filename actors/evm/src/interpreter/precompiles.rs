@@ -1,4 +1,4 @@
-use std::{ops::Mul, borrow::Cow};
+use std::{borrow::Cow, ops::Mul};
 
 use super::{Message, TransactionAction, H160};
 use fvm_shared::crypto::{
@@ -28,7 +28,7 @@ pub struct PrecompileOutput {
 pub enum ExitReason {
     Success,
     OutOfGas,
-    Other(Cow<'static, str>)
+    Other(Cow<'static, str>),
 }
 
 impl From<&'static str> for ExitReason {
@@ -151,16 +151,14 @@ fn modexp(input: &[u8], gas_limit: u64) -> PrecompileResult {
     todo!()
 }
 
-
-
 fn bytes_to_point(x: &[u8; 32], y: &[u8; 32]) -> Result<G1, ExitReason> {
-    let x = Fq::from_slice(x).map_err(|_| {"todo"})?;
-    let y = Fq::from_slice(y).map_err(|_| {"todo"})?;
+    let x = Fq::from_slice(x).map_err(|_| "todo")?;
+    let y = Fq::from_slice(y).map_err(|_| "todo")?;
 
     Ok(if x.is_zero() && y.is_zero() {
         G1::zero()
     } else {
-        AffineG1::new(x, y).map_err(|_| {"todo"})?.into()
+        AffineG1::new(x, y).map_err(|_| "todo")?.into()
     })
 }
 
@@ -202,7 +200,7 @@ fn ec_mul(input: &[u8], gas_limit: u64) -> PrecompileResult {
     y_buf.copy_from_slice(&input[32..63]);
     let point1 = bytes_to_point(&x_buf, &y_buf)?;
 
-    let scalar = Fr::from_slice(&input[64..95]).map_err(|_| {"todo"})?;
+    let scalar = Fr::from_slice(&input[64..95]).map_err(|_| "todo")?;
 
     let mut output = vec![0; 64];
     if let Some(product) = AffineG1::from_jacobian(point1.mul(scalar)) {
@@ -229,19 +227,19 @@ fn blake2f(input: &[u8], gas_limit: u64) -> PrecompileResult {
 }
 
 /// List of precompile smart contracts, index + 1 is the address (another option is to make an enum)
-const PRECOMPILES: [PrecompileFn; 9] = [
+pub const PRECOMPILES: [PrecompileFn; 9] = [
     ec_recover, // ecrecover 0x01
-    sha256,    // SHA256 (Keccak) 0x02
-    ripemd160, // ripemd160 0x03
-    identity,  // identity 0x04
-    modexp,    // modexp 0x05
+    sha256,     // SHA256 (Keccak) 0x02
+    ripemd160,  // ripemd160 0x03
+    identity,   // identity 0x04
+    modexp,     // modexp 0x05
     ec_add,     // ecAdd 0x06
     ec_mul,     // ecMul 0x07
-    nop,       // ecPairing 0x08
-    nop,       // blake2f 0x09
+    nop,        // ecPairing 0x08
+    nop,        // blake2f 0x09
 ];
 
-const MAX_PRECOMPILE: H160 = {
+pub const MAX_PRECOMPILE: H160 = {
     let mut bytes = [0u8; 20];
     bytes[0] = PRECOMPILES.len() as u8;
     H160(bytes)
