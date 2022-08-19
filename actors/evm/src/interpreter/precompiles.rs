@@ -1,7 +1,6 @@
 use std::ops::Mul;
 
-use super::{output, Message, TransactionAction, H160};
-use bytes::Bytes;
+use super::{Message, TransactionAction, H160};
 use fvm_shared::crypto::{
     hash::SupportedHashes,
     signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
@@ -47,7 +46,7 @@ fn nop(inp: &[u8], gas_limit: u64) -> Result<PrecompileOutput, ()> {
     todo!()
 }
 
-fn ecrecover(input: &[u8], gas_limit: u64) -> PrecompileResult {
+fn ec_recover(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let cost = 3_000;
     let mut buf = [0u8; 128];
     buf[..input.len().min(128)].copy_from_slice(&input[..input.len().min(128)]);
@@ -58,7 +57,7 @@ fn ecrecover(input: &[u8], gas_limit: u64) -> PrecompileResult {
     hash.copy_from_slice(&input[..32]);
     sig.copy_from_slice(&input[64..]);
 
-    // recovery byte means one byte value is 32 bytes long, sad
+    // recovery byte means a single byte value is 32 bytes long, sad
     if input[32..63] != [0u8; 31] || !matches!(input[63], 23 | 28) {
         return Ok(PrecompileOutput { cost, output: Vec::new() });
     }
@@ -69,12 +68,6 @@ fn ecrecover(input: &[u8], gas_limit: u64) -> PrecompileResult {
     // revm does this, why shouldnt this error be propigated? signature recovery failed.
 
     Ok(PrecompileOutput { cost, output: recovered.to_vec() })
-}
-
-#[test]
-fn test() {
-    let inp = [0u8; 128];
-    ecrecover(&inp, 0).ok();
 }
 
 fn sha256(input: &[u8], gas_limit: u64) -> PrecompileResult {
@@ -94,7 +87,6 @@ fn identity(input: &[u8], gas_limit: u64) -> PrecompileResult {
     if cost > gas_limit {
         return Err(());
     }
-
     Ok(PrecompileOutput { cost, output: Vec::from(input) })
 }
 
@@ -125,11 +117,28 @@ fn fmodexp(base: u64, exp: u64, modu: u64) -> u64 {
         return 0;
     }
 
-    assert!((modu - 1) * (modu - 1) > u64::MAX);
+    // assert!((modu - 1) * (modu - 1) > u64::MAX);
     todo!()
 }
 
 fn modexp(input: &[u8], gas_limit: u64) -> PrecompileResult {
+    let cost = 40;
+
+    let mut buf = [0u8; 4];
+    // 32 bits for wasm
+    buf.copy_from_slice(&input[..31]);
+    let b_size = u32::from_be_bytes(buf) as usize;
+    buf.copy_from_slice(&input[32..63]);
+    let e_size = u32::from_be_bytes(buf) as usize;
+    buf.copy_from_slice(&input[64..95]);
+    let m_size = u32::from_be_bytes(buf) as usize;
+
+    if m_size == 0 {
+        return Ok(PrecompileOutput { cost, output: Vec::new() });
+    }
+
+    let output = vec![0; m_size];
+
     todo!()
 }
 
@@ -145,7 +154,7 @@ fn bytes_to_point(x: &[u8; 32], y: &[u8; 32]) -> Result<G1, ()> {
 }
 
 /// add 2 points together on `alt_bn128`
-fn ecAdd(input: &[u8], gas_limit: u64) -> PrecompileResult {
+fn ec_add(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let mut cost = 150; // TODO consume all gas on any op fail
 
     let mut x_buf = [0u8; 32];
@@ -172,7 +181,7 @@ fn ecAdd(input: &[u8], gas_limit: u64) -> PrecompileResult {
 }
 
 /// multiply a scalar and a point on `alt_bn128`
-fn ecMul(input: &[u8], gas_limit: u64) -> PrecompileResult {
+fn ec_mul(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let mut cost = 6_000; // TODO consume all gas on any op fail
 
     let mut x_buf = [0u8; 32];
@@ -194,17 +203,21 @@ fn ecMul(input: &[u8], gas_limit: u64) -> PrecompileResult {
     Ok(PrecompileOutput { cost, output })
 }
 
-use fvm_sdk::crypto::recover_secp_public_key;
+fn ecpairing(input: &[u8], gas_limit: u64) -> PrecompileResult {
+    let cost = 45_000;
+
+    todo!()
+}
 
 /// List of precompile smart contracts, index + 1 is the address (another option is to make an enum)
 const PRECOMPILES: [PrecompileFn; 9] = [
-    ecrecover, // ecrecover 0x01
+    ec_recover, // ecrecover 0x01
     sha256,    // SHA256 (Keccak) 0x02
     ripemd160, // ripemd160 0x03
     identity,  // identity 0x04
     modexp,    // modexp 0x05
-    ecAdd,     // ecAdd 0x06
-    ecMul,     // ecMul 0x07
+    ec_add,     // ecAdd 0x06
+    ec_mul,     // ecMul 0x07
     nop,       // ecPairing 0x08
     nop,       // blake2f 0x09
 ];
@@ -216,6 +229,7 @@ const MAX_PRECOMPILE: H160 = {
 };
 
 pub fn call_precompile(msg: &mut Message) {
+    // TODO probably different call params
     let precompile_num = msg.recipient.0[0] as usize;
 
     let res = PRECOMPILES[precompile_num - 1](&msg.input_data, 0);
