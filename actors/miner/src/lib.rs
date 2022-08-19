@@ -3853,7 +3853,7 @@ where
 
     // Regenerate challenge randomness, which must match that generated for the proof.
     let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
-    let randomness: PoStRandomness = rt.get_randomness_from_beacon(
+    let randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::WindowedPoStChallengeSeed,
         challenge_epoch,
         &entropy,
@@ -3900,12 +3900,12 @@ where
         ));
     };
     let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
-    let randomness: SealRandomness = rt.get_randomness_from_tickets(
+    let randomness = rt.get_randomness_from_tickets(
         DomainSeparationTag::SealRandomness,
         params.seal_rand_epoch,
         &entropy,
     )?;
-    let interactive_randomness: InteractiveSealRandomness = rt.get_randomness_from_beacon(
+    let interactive_randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::InteractiveSealChallengeSeed,
         params.interactive_epoch,
         &entropy,

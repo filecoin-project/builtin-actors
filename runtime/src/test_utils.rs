@@ -19,7 +19,7 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, RegisteredSealProof,
     ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
@@ -331,7 +331,7 @@ pub struct ExpectRandomness {
     tag: DomainSeparationTag,
     epoch: ChainEpoch,
     entropy: Vec<u8>,
-    out: Randomness,
+    out: [u8; RANDOMNESS_LENGTH],
 }
 
 #[derive(Debug)]
@@ -586,7 +586,7 @@ impl MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
-        out: Randomness,
+        out: [u8; RANDOMNESS_LENGTH],
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_tickets.push_back(a);
@@ -598,7 +598,7 @@ impl MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
-        out: Randomness,
+        out: [u8; RANDOMNESS_LENGTH],
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_beacon.push_back(a);
@@ -782,7 +782,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         let expected = self
             .expectations
             .borrow_mut()
@@ -815,7 +815,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         let expected = self
             .expectations
             .borrow_mut()

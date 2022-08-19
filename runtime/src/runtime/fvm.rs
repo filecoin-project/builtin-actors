@@ -12,6 +12,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
@@ -179,7 +180,7 @@ where
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         // Note: For Go actors, Lotus treated all failures to get randomness as "fatal" errors,
         // which it then translated into exit code SysErrReserved1 (= 4, and now known as
         // SYS_ILLEGAL_INSTRUCTION), rather than just aborting with an appropriate exit code.
@@ -210,7 +211,7 @@ where
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         // See note on exit codes in get_randomness_from_tickets.
         fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
             if self.network_version() < NetworkVersion::V16 {

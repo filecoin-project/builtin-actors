@@ -41,6 +41,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     StoragePower, WindowPoStVerifyInfo,
@@ -814,8 +815,8 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         _personalization: DomainSeparationTag,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
-        Ok(Randomness(TEST_VM_RAND_STRING.as_bytes().to_vec()))
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_STRING.as_bytes().to_vec())
     }
 
     fn get_randomness_from_beacon(
@@ -823,8 +824,8 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         _personalization: DomainSeparationTag,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
-        Ok(Randomness(TEST_VM_RAND_STRING.as_bytes().to_vec()))
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_STRING.as_bytes().to_vec())
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
