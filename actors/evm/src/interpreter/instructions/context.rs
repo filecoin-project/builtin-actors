@@ -14,10 +14,10 @@ pub fn blockhash<'r, BS: Blockstore, RT: Runtime<BS>>(
 
 #[inline]
 pub fn caller<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    todo!()
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
+) {
+    state.stack.push(U256::from(platform.rt.message().caller().id().unwrap()))
 }
 
 #[inline]
@@ -30,10 +30,10 @@ pub fn call_value<'r, BS: Blockstore, RT: Runtime<BS>>(
 
 #[inline]
 pub fn address<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    todo!()
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
+) {
+    state.stack.push(U256::from(platform.rt.message().receiver().id().unwrap()))
 }
 
 #[inline]
@@ -41,7 +41,7 @@ pub fn origin<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
 ) {
-    state.stack.push(U256::from(platform.rt.message().caller().id().unwrap()))
+    state.stack.push(U256::from(platform.rt.message().origin().id().unwrap()))
 }
 
 #[inline]
