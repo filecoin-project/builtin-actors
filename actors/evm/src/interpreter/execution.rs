@@ -3,8 +3,8 @@
 use {
     super::instructions::*,
     super::opcode::OpCode,
-    super::CallKind,
     super::StatusCode,
+    crate::interpreter::instructions::call::CallKind,
     crate::interpreter::instructions::log::*,
     crate::interpreter::instructions::stack::*,
     crate::interpreter::memory::Memory,

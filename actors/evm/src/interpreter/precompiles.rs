@@ -1,6 +1,6 @@
 use std::{borrow::Cow, ops::Mul};
 
-use super::{Message, TransactionAction, H160, U256};
+use super::{TransactionAction, H160, U256};
 use fvm_shared::crypto::{
     hash::SupportedHashes,
     signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
@@ -18,9 +18,9 @@ pub fn is_precompiled(msg: &TransactionAction) -> bool {
     }
 }
 
-/// read 32 bytes (u256) from buffer, pass in exit reason that is desired 
+/// read 32 bytes (u256) from buffer, pass in exit reason that is desired
 fn read_u256(buf: &[u8], start: usize, err: ExitReason) -> Result<U256, ExitReason> {
-    let slice = buf.get(start..start+31).ok_or(err)?;
+    let slice = buf.get(start..start + 31).ok_or(err)?;
     Ok(U256::from_big_endian(slice))
 }
 
@@ -141,7 +141,7 @@ fn modexp(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let mut buf = [0u8; 4];
     let err = ExitReason::Other(Cow::Borrowed("im lazy"));
     // 32 bits for wasm
-    
+
     let b_size = read_u256(input, 0, err)?.as_usize();
     let e_size = read_u256(input, 32, err)?.as_usize();
     let m_size = read_u256(input, 64, err)?.as_usize();
@@ -246,11 +246,10 @@ pub const MAX_PRECOMPILE: H160 = {
     H160(bytes)
 };
 
-pub fn call_precompile(msg: &mut Message) {
+pub fn call_precompile(precompile_addr: H160, input: &[u8], gas_limit: u64) -> PrecompileResult {
     // TODO probably different call params
-    let precompile_num = msg.recipient.0[0] as usize;
 
-    let res = PRECOMPILES[precompile_num - 1](&msg.input_data, 0);
+    let res = PRECOMPILES[precompile_addr.0[0] as usize - 1](input, gas_limit);
 
-    todo!()
+    res
 }

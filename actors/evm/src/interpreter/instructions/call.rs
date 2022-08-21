@@ -4,14 +4,22 @@ use {
     crate::interpreter::output::StatusCode,
     crate::interpreter::precompiles,
     crate::interpreter::stack::Stack,
-    crate::interpreter::CallKind,
     crate::interpreter::ExecutionState,
-    crate::interpreter::Message,
     crate::interpreter::System,
     crate::interpreter::{H160, U256},
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
 };
+
+/// The kind of call-like instruction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CallKind {
+    Call,
+    DelegateCall,
+    CallCode,
+    Create,
+    Create2 { salt: U256 },
+}
 
 #[inline]
 pub fn calldataload(state: &mut ExecutionState) {
@@ -148,24 +156,24 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     // let output_region = memory::verify_memory_region(state, output_offset, output_size)
     //     .map_err(|_| StatusCode::OutOfGas)?;
 
-    let mut msg = Message {
-        kind: kind,
-        is_static: is_static, // ?? || state.message.is_static,
-        depth: state.message.depth + 1,
-        recipient: if matches!(kind, CallKind::Call) { dst } else { state.message.recipient },
-        sender: if matches!(kind, CallKind::DelegateCall) {
-            state.message.sender
-        } else {
-            state.message.recipient
-        },
-        gas: i64::MAX,
-        value: if matches!(kind, CallKind::DelegateCall) { state.message.value } else { value },
-        input_data: input_region
-            .map(|MemoryRegion { offset, size }| {
-                state.memory[offset..offset + size.get()].to_vec().into()
-            })
-            .unwrap_or_default(),
-    };
+    // let mut msg = Message {
+    //     kind: kind,
+    //     is_static: is_static, // ?? || state.message.is_static,
+    //     depth: state.message.depth + 1,
+    //     recipient: if matches!(kind, CallKind::Call) { dst } else { state.message.recipient },
+    //     sender: if matches!(kind, CallKind::DelegateCall) {
+    //         state.message.sender
+    //     } else {
+    //         state.message.recipient
+    //     },
+    //     gas: i64::MAX,
+    //     value: if matches!(kind, CallKind::DelegateCall) { state.message.value } else { value },
+    //     input_data: input_region
+    //         .map(|MemoryRegion { offset, size }| {
+    //             state.memory[offset..offset + size.get()].to_vec().into()
+    //         })
+    //         .unwrap_or_default(),
+    // };
 
     if dst <= precompiles::MAX_PRECOMPILE {
         precompiles::call_precompile(&mut msg);

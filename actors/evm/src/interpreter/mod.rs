@@ -2,7 +2,6 @@ pub mod bytecode;
 pub mod execution;
 pub mod instructions;
 pub mod memory;
-pub mod message;
 pub mod opcode;
 pub mod output;
 pub mod precompiles;
@@ -14,7 +13,6 @@ pub mod uints;
 pub use {
     bytecode::Bytecode,
     execution::{execute, ExecutionState},
-    message::{CallKind, Message},
     output::{Output, StatusCode},
     system::System,
     transaction::{
