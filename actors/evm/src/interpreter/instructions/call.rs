@@ -175,11 +175,29 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     //         .unwrap_or_default(),
     // };
 
-    if dst <= precompiles::MAX_PRECOMPILE {
-        precompiles::call_precompile(&mut msg);
+    let input_data = input_region
+        .map(|MemoryRegion { offset, size }| {
+            state.memory[offset..offset + size.get()].to_vec()
+        })
+        .unwrap_or_default();
+
+    let mut output_data = output_region
+        .map(|MemoryRegion { offset, size }| {
+            state.memory[offset..offset + size.get()].to_vec() 
+        })
+        .unwrap_or_default();
+
+    let output = if dst <= precompiles::MAX_PRECOMPILE {
+        let precompile_out = precompiles::call_precompile(dst, &input_data, gas.as_u64()); // TODO as_u64 fine here?
+        // TODO Errors
+        let out = precompile_out.unwrap();
+        out.output
     } else {
         todo!()
-    }
+    };
+
+    // i dont like writing out into a vec like this, weird
+    // output_data. 
     // TODO do things after message
     todo!();
 }
