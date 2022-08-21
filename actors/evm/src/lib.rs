@@ -135,10 +135,7 @@ impl EvmContractActor {
 
             // XXX is this correct handling of reverts? or should we fail execution?
             if exec_status.status_code == StatusCode::Success {
-                let result = RawBytes::serialize(U256::from_big_endian(&exec_status.output_data))
-                    .map_err(|e| {
-                    ActorError::unspecified(format!("failed to serialize return data: {e:?}"))
-                })?;
+                let result = RawBytes::from(exec_status.output_data.to_vec());
 
                 if !exec_status.reverted {
                     state.contract_state = system.flush_state()?;
