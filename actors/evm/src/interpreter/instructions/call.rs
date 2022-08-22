@@ -52,7 +52,7 @@ pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let input_index = state.stack.pop();
     let size = state.stack.pop();
 
-    let region = get_memory_region(state, mem_index, size).map_err(|_| StatusCode::OutOfGas)?;
+    let region = get_memory_region(&mut state.memory, mem_index, size).map_err(|_| StatusCode::OutOfGas)?;
 
     if let Some(region) = &region {
         let input_len = U256::from(state.input_data.len());
@@ -84,7 +84,7 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
     let input_index = state.stack.pop();
     let size = state.stack.pop();
 
-    let region = get_memory_region(state, mem_index, size).map_err(|_| StatusCode::OutOfGas)?;
+    let region = get_memory_region(&mut state.memory, mem_index, size).map_err(|_| StatusCode::OutOfGas)?;
 
     if let Some(region) = region {
         let src = core::cmp::min(U256::from(code.len()), input_index).as_usize();
@@ -110,20 +110,22 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     kind: CallKind,
     is_static: bool,
 ) -> Result<(), StatusCode> {
-    let gas = state.stack.pop();
-    let dst: H160 = crate::interpreter::uints::_u256_to_address(state.stack.pop());
+    let ExecutionState { stack, memory, .. } = state;
+
+    let gas = stack.pop();
+    let dst: H160 = crate::interpreter::uints::_u256_to_address(stack.pop());
     let value = if is_static || matches!(kind, CallKind::DelegateCall) {
         U256::zero()
     } else {
-        state.stack.pop()
+        stack.pop()
     };
     let has_value = !value.is_zero();
-    let input_offset = state.stack.pop();
-    let input_size = state.stack.pop();
-    let output_offset = state.stack.pop();
-    let output_size = state.stack.pop();
+    let input_offset = stack.pop();
+    let input_size = stack.pop();
+    let output_offset = stack.pop();
+    let output_size = stack.pop();
 
-    state.stack.push(U256::zero()); // Assume failure. TODO
+    stack.push(U256::zero()); // Assume failure. TODO wha
 
     // if state.evm_revision >= Revision::Berlin
     //         && ResumeDataVariant::into_access_account_status(
@@ -148,8 +150,8 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     //         }
 
     //TODO Errs
-    let input_region = get_memory_region(state, input_offset, input_size).unwrap();
-    let output_region = get_memory_region(state, output_offset, output_size).unwrap();
+    let input_region = get_memory_region(memory, input_offset, input_size).unwrap();
+    let output_region = get_memory_region(memory, output_offset, output_size).unwrap();
 
     // let input_region = memory::verify_memory_region(state, input_offset, input_size)
     //     .map_err(|_| StatusCode::OutOfGas)?;
@@ -175,29 +177,33 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     //         .unwrap_or_default(),
     // };
 
-    let input_data = input_region
-        .map(|MemoryRegion { offset, size }| {
-            state.memory[offset..offset + size.get()].to_vec()
-        })
-        .unwrap_or_default();
+    let output = {
+        // drop input data so we can mutate with output
+        let input_data = input_region
+            .map(|MemoryRegion { offset, size }| &memory[offset..offset + size.get()])
+            .unwrap_or_default();
 
-    let mut output_data = output_region
-        .map(|MemoryRegion { offset, size }| {
-            state.memory[offset..offset + size.get()].to_vec() 
-        })
-        .unwrap_or_default();
+        let output = if dst <= precompiles::MAX_PRECOMPILE {
+            precompiles::call_precompile(dst, &input_data, gas.as_u64())
+        } else {
+            todo!()
+        };
 
-    let output = if dst <= precompiles::MAX_PRECOMPILE {
-        let precompile_out = precompiles::call_precompile(dst, &input_data, gas.as_u64()); // TODO as_u64 fine here?
-        // TODO Errors
-        let out = precompile_out.unwrap();
-        out.output
-    } else {
-        todo!()
+        output.unwrap().output
     };
 
+    let output_data = output_region
+        .map(|MemoryRegion { offset, size }| {
+
+
+            &mut memory[offset..offset + size.get()] // would like to use get for this to err instead of panic
+        })
+        .unwrap_or_default();
+
+    
+    
     // i dont like writing out into a vec like this, weird
-    // output_data. 
+    // output_data.
     // TODO do things after message
     todo!();
 }

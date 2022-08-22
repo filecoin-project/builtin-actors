@@ -1,6 +1,6 @@
 use std::{borrow::Cow, ops::Mul};
 
-use super::{TransactionAction, H160, U256};
+use super::{ExecutionState, StatusCode, TransactionAction, H160, U256};
 use fvm_shared::crypto::{
     hash::SupportedHashes,
     signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
@@ -19,7 +19,7 @@ pub fn is_precompiled(msg: &TransactionAction) -> bool {
 }
 
 /// read 32 bytes (u256) from buffer, pass in exit reason that is desired
-fn read_u256(buf: &[u8], start: usize, err: ExitReason) -> Result<U256, ExitReason> {
+fn read_u256(buf: &[u8], start: usize, err: StatusCode) -> Result<U256, StatusCode> {
     let slice = buf.get(start..start + 31).ok_or(err)?;
     Ok(U256::from_big_endian(slice))
 }
@@ -31,27 +31,15 @@ pub struct PrecompileOutput {
     pub output: Vec<u8>,
 }
 
-pub enum ExitReason {
-    Success,
-    OutOfGas, // TODO is this the same as consuming all gas? (what happens with overages)
-    Other(Cow<'static, str>),
-}
-
-impl From<&'static str> for ExitReason {
-    fn from(src: &'static str) -> Self {
-        ExitReason::Other(Cow::Borrowed(src))
-    }
-}
-
 pub type PrecompileFn = fn(&[u8], u64) -> PrecompileResult; // TODO useful error
-pub type PrecompileResult = Result<PrecompileOutput, ExitReason>;
+pub type PrecompileResult = Result<PrecompileOutput, StatusCode>;
 
 pub fn linear_gas_cost(len: usize, base: u64, word: u64) -> u64 {
     ((len as u64 + 32 - 1) / 32 * word) + base
 }
-pub fn assert_gas(cost: u64, limit: u64) -> Result<(), ExitReason> {
+pub fn assert_gas(cost: u64, limit: u64) -> Result<(), StatusCode> {
     if cost > limit {
-        Err(ExitReason::OutOfGas)
+        Err(StatusCode::OutOfGas)
     } else {
         Ok(())
     }
@@ -99,7 +87,7 @@ fn ripemd160(input: &[u8], gas_limit: u64) -> PrecompileResult {
 fn identity(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let cost = linear_gas_cost(input.len(), 15, 3);
     if cost > gas_limit {
-        return Err(ExitReason::OutOfGas);
+        return Err(StatusCode::OutOfGas);
     }
     Ok(PrecompileOutput { cost, output: Vec::from(input) })
 }
@@ -138,9 +126,8 @@ fn fmodexp(base: u64, exp: u64, modu: u64) -> u64 {
 fn modexp(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let cost = 40;
 
-    let mut buf = [0u8; 4];
-    let err = ExitReason::Other(Cow::Borrowed("im lazy"));
     // 32 bits for wasm
+    let err = StatusCode::OutOfGas;
 
     let b_size = read_u256(input, 0, err)?.as_usize();
     let e_size = read_u256(input, 32, err)?.as_usize();
@@ -157,14 +144,14 @@ fn modexp(input: &[u8], gas_limit: u64) -> PrecompileResult {
 
 /// converts 2 byte arrays (U256) into a point on a field
 /// exits with OutOfGas for any failed operation
-fn uint_to_point(x: U256, y: U256) -> Result<G1, ExitReason> {
-    let x = Fq::from_u256(x.0.into()).map_err(|_| ExitReason::OutOfGas)?;
-    let y = Fq::from_u256(y.0.into()).map_err(|_| ExitReason::OutOfGas)?;
+fn uint_to_point(x: U256, y: U256) -> Result<G1, StatusCode> {
+    let x = Fq::from_u256(x.0.into()).map_err(|_| StatusCode::OutOfGas)?;
+    let y = Fq::from_u256(y.0.into()).map_err(|_| StatusCode::OutOfGas)?;
 
     Ok(if x.is_zero() && y.is_zero() {
         G1::zero()
     } else {
-        AffineG1::new(x, y).map_err(|_| ExitReason::OutOfGas)?.into()
+        AffineG1::new(x, y).map_err(|_| StatusCode::OutOfGas)?.into()
     })
 }
 
@@ -172,7 +159,7 @@ fn uint_to_point(x: U256, y: U256) -> Result<G1, ExitReason> {
 fn ec_add(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let mut cost = 150; // TODO consume all gas on any op fail
 
-    let err = ExitReason::OutOfGas;
+    let err = StatusCode::OutOfGas;
 
     let x1 = read_u256(input, 0, err)?;
     let y1 = read_u256(input, 32, err)?;
@@ -196,7 +183,7 @@ fn ec_add(input: &[u8], gas_limit: u64) -> PrecompileResult {
 fn ec_mul(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let mut cost = 6_000; // TODO consume all gas on any op fail
 
-    let err = ExitReason::OutOfGas;
+    let err = StatusCode::OutOfGas;
 
     let x = read_u256(input, 0, err)?;
     let y = read_u256(input, 32, err)?;
