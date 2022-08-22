@@ -1,4 +1,4 @@
-use std::{ops::Mul, mem::transmute};
+use std::{mem::transmute, ops::Mul};
 
 use super::{StatusCode, H160, U256};
 use fvm_shared::crypto::{
@@ -212,11 +212,11 @@ fn blake2f(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let mut start = 0;
     rounds.copy_from_slice(&input[..4]);
     start += 4;
-    h.copy_from_slice(&input[start..start+64]);
+    h.copy_from_slice(&input[start..start + 64]);
     start += 64;
-    m.copy_from_slice(&input[start..start+128]);
+    m.copy_from_slice(&input[start..start + 128]);
     start += 128;
-    t.copy_from_slice(&input[start..start+16]);
+    t.copy_from_slice(&input[start..start + 16]);
     start += 16;
     let f = input[start] != 0;
 
@@ -225,13 +225,13 @@ fn blake2f(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let h: [u64; 8] = unsafe { transmute(h) };
     let m: [u64; 16] = unsafe { transmute(m) };
     let t: [u64; 2] = unsafe { transmute(t) };
-    
+
     let cost = GFROUND * rounds as u64;
 
     // TODO gas failure
     hasher.blake2_f(rounds, h, m, t, f);
     let output = hasher.output().to_vec();
-    Ok(PrecompileOutput{ cost, output })
+    Ok(PrecompileOutput { cost, output })
 }
 
 /// List of precompile smart contracts, index + 1 is the address (another option is to make an enum)

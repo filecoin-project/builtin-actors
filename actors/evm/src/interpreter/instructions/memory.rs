@@ -1,8 +1,7 @@
 #!allow[clippy::result-unit-err]
 
-use crate::interpreter::memory::Memory;
-
 use {
+    crate::interpreter::memory::Memory,
     crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
@@ -72,8 +71,9 @@ pub fn get_memory_region(
 pub fn mload(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let index = state.stack.pop();
 
-    let region = get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
-        .map_err(|_| StatusCode::OutOfGas)?;
+    let region =
+        get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
+            .map_err(|_| StatusCode::OutOfGas)?;
     let value =
         U256::from_big_endian(&state.memory[region.offset..region.offset + region.size.get()]);
 
@@ -87,8 +87,9 @@ pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let index = state.stack.pop();
     let value = state.stack.pop();
 
-    let region = get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
-        .map_err(|_| StatusCode::OutOfGas)?;
+    let region =
+        get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
+            .map_err(|_| StatusCode::OutOfGas)?;
 
     let mut bytes = [0u8; WORD_SIZE];
     value.to_big_endian(&mut bytes);
