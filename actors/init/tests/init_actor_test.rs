@@ -49,6 +49,63 @@ fn abort_cant_call_exec() {
 }
 
 #[test]
+fn repeated_robust_address() {
+    let mut rt = construct_runtime();
+    construct_and_verify(&mut rt);
+
+    // setup one msig actor
+    let unique_address = Address::new_actor(b"multisig");
+    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
+    {
+        // Actor creating multisig actor
+        let some_acc_actor = Address::new_id(1234);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, some_acc_actor);
+
+        rt.new_actor_addr = Some(unique_address);
+
+        // Next id
+        let expected_id = 100;
+        let expected_id_addr = Address::new_id(expected_id);
+        rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id);
+
+        // Expect a send to the multisig actor constructor
+        rt.expect_send(
+            expected_id_addr,
+            METHOD_CONSTRUCTOR,
+            RawBytes::serialize(&fake_params).unwrap(),
+            0u8.into(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // Return should have been successful. Check the returned addresses
+        let exec_ret = exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
+        let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
+        assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
+        assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
+        check_state(&rt);
+    }
+
+    // Simulate repeated robust address, as it could be a case with predictable address generation
+    {
+        rt.new_actor_addr = Some(unique_address);
+
+        rt.expect_validate_caller_any();
+        let exec_params = ExecParams {
+            code_cid: *MULTISIG_ACTOR_CODE_ID,
+            constructor_params: RawBytes::serialize(&fake_params).unwrap(),
+        };
+
+        let ret =
+            rt.call::<InitActor>(Method::Exec as u64, &RawBytes::serialize(&exec_params).unwrap());
+
+        rt.verify();
+        assert!(ret.is_err());
+        assert_eq!(ret.unwrap_err().exit_code(), ExitCode::USR_FORBIDDEN)
+    }
+}
+
+#[test]
 fn create_2_payment_channels() {
     let mut rt = construct_runtime();
     construct_and_verify(&mut rt);

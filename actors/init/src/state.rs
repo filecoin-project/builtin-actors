@@ -6,14 +6,13 @@ use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::{
-    make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
+    actor_error, make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 #[cfg(feature = "m2-native")]
 use fvm_ipld_encoding::CborStore;
-use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 
@@ -44,17 +43,28 @@ impl State {
     }
 
     /// Allocates a new ID address and stores a mapping of the argument address to it.
+    /// Fails if the argument address is already present in the map to facilitate a tombstone
+    /// for when the predictable robust address generation is implemented.
     /// Returns the newly-allocated address.
     pub fn map_address_to_new_id<BS: Blockstore>(
         &mut self,
         store: &BS,
         addr: &Address,
-    ) -> Result<ActorID, HamtError> {
+    ) -> anyhow::Result<ActorID> {
         let id = self.next_id;
         self.next_id += 1;
 
         let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)?;
-        map.set(addr.to_bytes().into(), id)?;
+        let is_new = map.set_if_absent(addr.to_bytes().into(), id)?;
+        if !is_new {
+            // this is impossible today as the robust address is a hash of unique inputs
+            // but in close future predictable address generation will make this possible
+            return Err(anyhow!(actor_error!(
+                forbidden,
+                "robust address {} is already allocated in the address map",
+                addr
+            )));
+        }
         self.address_map = map.flush()?;
 
         Ok(id)
