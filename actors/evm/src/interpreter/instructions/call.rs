@@ -127,14 +127,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
     stack.push(U256::zero()); // Assume failure. TODO wha
 
-
-    // TODO why is this?
-    // $state.gas_left -= i64::from(ADDITIONAL_COLD_ACCOUNT_ACCESS_COST);
-    //         if $state.gas_left < 0 {
-    //             return Err(StatusCode::OutOfGas);
-    //         }
-
-    //TODO Errs
+    // TODO Errs
     let input_region = get_memory_region(memory, input_offset, input_size).unwrap();
     let output_region = get_memory_region(memory, output_offset, output_size).unwrap();
 

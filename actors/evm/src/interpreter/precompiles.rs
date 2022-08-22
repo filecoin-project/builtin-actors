@@ -14,7 +14,7 @@ pub fn is_precompile(addr: &H160) -> bool {
 /// read 32 bytes (u256) from buffer, pass in exit reason that is desired
 /// TODO passing in err value is debatable
 fn read_u256(buf: &[u8], start: usize, err: StatusCode) -> Result<U256, StatusCode> {
-    let slice = buf.get(start..start + 31).ok_or(err)?;
+    let slice = buf.get(start..start + 32).ok_or(err)?;
     Ok(U256::from_big_endian(slice))
 }
 
@@ -221,7 +221,7 @@ fn blake2f(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let f = input[start] != 0;
 
     let rounds = u32::from_be_bytes(rounds);
-    // SAFETY: assumes Little Endian
+    // SAFETY: assumes runtime is Little Endian
     let h: [u64; 8] = unsafe { transmute(h) };
     let m: [u64; 16] = unsafe { transmute(m) };
     let t: [u64; 2] = unsafe { transmute(t) };
