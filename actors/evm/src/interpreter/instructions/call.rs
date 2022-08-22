@@ -127,23 +127,8 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
     stack.push(U256::zero()); // Assume failure. TODO wha
 
-    // if state.evm_revision >= Revision::Berlin
-    //         && ResumeDataVariant::into_access_account_status(
-    //             $co.yield_(InterruptDataVariant::AccessAccount(AccessAccount {
-    //                 address: dst,
-    //             }))
-    //             .await,
-    //         )
-    //         .unwrap()
-    //         .status
-    //             == AccessStatus::Cold
-    //     {
-    //         $state.gas_left -= i64::from(ADDITIONAL_COLD_ACCOUNT_ACCESS_COST);
-    //         if $state.gas_left < 0 {
-    //             return Err(StatusCode::OutOfGas);
-    //         }
-    //     }
 
+    // TODO why is this?
     // $state.gas_left -= i64::from(ADDITIONAL_COLD_ACCOUNT_ACCESS_COST);
     //         if $state.gas_left < 0 {
     //             return Err(StatusCode::OutOfGas);
@@ -153,37 +138,13 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let input_region = get_memory_region(memory, input_offset, input_size).unwrap();
     let output_region = get_memory_region(memory, output_offset, output_size).unwrap();
 
-    // let input_region = memory::verify_memory_region(state, input_offset, input_size)
-    //     .map_err(|_| StatusCode::OutOfGas)?;
-    // let output_region = memory::verify_memory_region(state, output_offset, output_size)
-    //     .map_err(|_| StatusCode::OutOfGas)?;
-
-    // let mut msg = Message {
-    //     kind: kind,
-    //     is_static: is_static, // ?? || state.message.is_static,
-    //     depth: state.message.depth + 1,
-    //     recipient: if matches!(kind, CallKind::Call) { dst } else { state.message.recipient },
-    //     sender: if matches!(kind, CallKind::DelegateCall) {
-    //         state.message.sender
-    //     } else {
-    //         state.message.recipient
-    //     },
-    //     gas: i64::MAX,
-    //     value: if matches!(kind, CallKind::DelegateCall) { state.message.value } else { value },
-    //     input_data: input_region
-    //         .map(|MemoryRegion { offset, size }| {
-    //             state.memory[offset..offset + size.get()].to_vec().into()
-    //         })
-    //         .unwrap_or_default(),
-    // };
-
     let output = {
-        // drop input data so we can mutate with output
+        // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = input_region
             .map(|MemoryRegion { offset, size }| &memory[offset..offset + size.get()])
             .unwrap_or_default();
 
-        let output = if dst <= precompiles::MAX_PRECOMPILE {
+        let output = if precompiles::is_precompile(&dst) {
             precompiles::call_precompile(dst, &input_data, gas.as_u64())
         } else {
             todo!()
@@ -194,16 +155,14 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
     let output_data = output_region
         .map(|MemoryRegion { offset, size }| {
-
-
             &mut memory[offset..offset + size.get()] // would like to use get for this to err instead of panic
         })
         .unwrap_or_default();
 
+    // TODO errs
+    output_data.get_mut(..output.len()).unwrap().copy_from_slice(&output);
+
     
-    
-    // i dont like writing out into a vec like this, weird
-    // output_data.
-    // TODO do things after message
+    // TODO do things after writing into output
     todo!();
 }

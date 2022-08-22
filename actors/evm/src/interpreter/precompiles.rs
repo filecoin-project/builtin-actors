@@ -1,37 +1,31 @@
-use std::{borrow::Cow, ops::Mul};
+use std::ops::Mul;
 
-use super::{ExecutionState, StatusCode, TransactionAction, H160, U256};
+use super::{StatusCode, H160, U256};
 use fvm_shared::crypto::{
     hash::SupportedHashes,
     signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
 };
 use substrate_bn::{AffineG1, Fq, Fr, Group, G1};
 
-// TODO it would probably be better to have a deserializer/reader for inputs rather than taking out chunks of arrays
-
-// TODO probably have a different type of input here (probably a deserialized message)
-pub fn is_precompiled(msg: &TransactionAction) -> bool {
-    if let TransactionAction::Call(addr) = msg {
-        !addr.is_zero() && addr <= &MAX_PRECOMPILE
-    } else {
-        false
-    }
+pub fn is_precompile(addr: &H160) -> bool {
+    !addr.is_zero() && addr <= &MAX_PRECOMPILE
 }
 
 /// read 32 bytes (u256) from buffer, pass in exit reason that is desired
+/// TODO passing in err value is debatable
 fn read_u256(buf: &[u8], start: usize, err: StatusCode) -> Result<U256, StatusCode> {
     let slice = buf.get(start..start + 31).ok_or(err)?;
     Ok(U256::from_big_endian(slice))
 }
 
-// TODO cleanup
+// TODO i dont like Vec
 #[derive(Debug)]
 pub struct PrecompileOutput {
     pub cost: u64,
     pub output: Vec<u8>,
 }
 
-pub type PrecompileFn = fn(&[u8], u64) -> PrecompileResult; // TODO useful error
+pub type PrecompileFn = fn(&[u8], u64) -> PrecompileResult;
 pub type PrecompileResult = Result<PrecompileOutput, StatusCode>;
 
 pub fn linear_gas_cost(len: usize, base: u64, word: u64) -> u64 {
@@ -45,7 +39,7 @@ pub fn assert_gas(cost: u64, limit: u64) -> Result<(), StatusCode> {
     }
 }
 
-fn nop(inp: &[u8], gas_limit: u64) -> PrecompileResult {
+fn nop(_: &[u8], _: u64) -> PrecompileResult {
     todo!()
 }
 
@@ -123,15 +117,17 @@ fn fmodexp(base: u64, exp: u64, modu: u64) -> u64 {
     todo!()
 }
 
+// value alias that will be inlined instead of cloning
+const OOG: StatusCode = StatusCode::OutOfGas;
+
 fn modexp(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let cost = 40;
 
     // 32 bits for wasm
-    let err = StatusCode::OutOfGas;
 
-    let b_size = read_u256(input, 0, err)?.as_usize();
-    let e_size = read_u256(input, 32, err)?.as_usize();
-    let m_size = read_u256(input, 64, err)?.as_usize();
+    let b_size = read_u256(input, 0, OOG)?.as_usize();
+    let e_size = read_u256(input, 32, OOG)?.as_usize();
+    let m_size = read_u256(input, 64, OOG)?.as_usize();
 
     if m_size == 0 {
         return Ok(PrecompileOutput { cost, output: Vec::new() });
@@ -145,13 +141,13 @@ fn modexp(input: &[u8], gas_limit: u64) -> PrecompileResult {
 /// converts 2 byte arrays (U256) into a point on a field
 /// exits with OutOfGas for any failed operation
 fn uint_to_point(x: U256, y: U256) -> Result<G1, StatusCode> {
-    let x = Fq::from_u256(x.0.into()).map_err(|_| StatusCode::OutOfGas)?;
-    let y = Fq::from_u256(y.0.into()).map_err(|_| StatusCode::OutOfGas)?;
+    let x = Fq::from_u256(x.0.into()).map_err(|_| OOG)?;
+    let y = Fq::from_u256(y.0.into()).map_err(|_| OOG)?;
 
     Ok(if x.is_zero() && y.is_zero() {
         G1::zero()
     } else {
-        AffineG1::new(x, y).map_err(|_| StatusCode::OutOfGas)?.into()
+        AffineG1::new(x, y).map_err(|_| OOG)?.into()
     })
 }
 
@@ -159,14 +155,12 @@ fn uint_to_point(x: U256, y: U256) -> Result<G1, StatusCode> {
 fn ec_add(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let mut cost = 150; // TODO consume all gas on any op fail
 
-    let err = StatusCode::OutOfGas;
-
-    let x1 = read_u256(input, 0, err)?;
-    let y1 = read_u256(input, 32, err)?;
+    let x1 = read_u256(input, 0, OOG)?;
+    let y1 = read_u256(input, 32, OOG)?;
     let point1 = uint_to_point(x1, y1)?;
 
-    let x2 = read_u256(input, 64, err)?;
-    let y2 = read_u256(input, 96, err)?;
+    let x2 = read_u256(input, 64, OOG)?;
+    let y2 = read_u256(input, 96, OOG)?;
     let point2 = uint_to_point(x2, y2)?;
 
     let output = AffineG1::from_jacobian(point1 + point2).map_or(vec![0; 64], |sum| {
@@ -183,13 +177,11 @@ fn ec_add(input: &[u8], gas_limit: u64) -> PrecompileResult {
 fn ec_mul(input: &[u8], gas_limit: u64) -> PrecompileResult {
     let mut cost = 6_000; // TODO consume all gas on any op fail
 
-    let err = StatusCode::OutOfGas;
-
-    let x = read_u256(input, 0, err)?;
-    let y = read_u256(input, 32, err)?;
+    let x = read_u256(input, 0, OOG)?;
+    let y = read_u256(input, 32, OOG)?;
     let point = uint_to_point(x, y)?;
 
-    let scalar = Fr::from_slice(&input[64..95]).map_err(|_| err)?;
+    let scalar = Fr::from_slice(&input[64..95]).map_err(|_| OOG)?;
 
     let mut output = vec![0; 64];
     if let Some(product) = AffineG1::from_jacobian(point.mul(scalar)) {
