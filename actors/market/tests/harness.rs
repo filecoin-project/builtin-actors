@@ -7,7 +7,7 @@ use std::{cell::RefCell, collections::HashMap};
 
 use fil_actor_market::{
     balance_table::BalanceTable, ext, ext::miner::GetControlAddressesReturnParams,
-    gen_rand_next_epoch, testing::check_state_invariants, ActivateDealsParams,
+    gen_rand_next_epoch, testing::check_state_invariants, ActivateDealsParams, ActivateDealsResult,
     Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
     Label, Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
     PublishStorageDealsReturn, SectorDeals, State, VerifyDealsForActivationParams,
@@ -30,7 +30,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
-use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::FilterEstimate;
@@ -263,9 +263,9 @@ pub fn activate_deals(
     provider: Address,
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
-) {
+) -> ActivateDealsResult {
     let ret = activate_deals_raw(rt, sector_expiry, provider, current_epoch, deal_ids).unwrap();
-    assert_eq!(ret, RawBytes::default());
+    ret.deserialize().expect("VerifyDealsForActivation failed!")
 }
 
 pub fn activate_deals_raw(
@@ -275,6 +275,7 @@ pub fn activate_deals_raw(
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
 ) -> Result<RawBytes, ActorError> {
+    rt.set_epoch(current_epoch);
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
 
@@ -918,15 +919,31 @@ pub fn assert_account_zero(rt: &mut MockRuntime, addr: Address) {
     assert!(get_locked_balance(rt, addr).is_zero());
 }
 
-pub fn verify_deals_for_activation(
+pub fn verify_deals_for_activation<F>(
     rt: &mut MockRuntime,
     provider: Address,
     sector_deals: Vec<SectorDeals>,
-) -> VerifyDealsForActivationReturn {
-    let param = VerifyDealsForActivationParams { sectors: sector_deals };
+    piece_info_override: F,
+) -> VerifyDealsForActivationReturn
+where
+    F: Fn(usize) -> Option<Vec<PieceInfo>>,
+{
     rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
 
+    for (i, sd) in sector_deals.iter().enumerate() {
+        let pi = piece_info_override(i).unwrap_or_else(|| {
+            vec![PieceInfo { cid: make_piece_cid("1".as_bytes()), size: PaddedPieceSize(2048) }]
+        });
+        rt.expect_compute_unsealed_sector_cid(
+            sd.sector_type,
+            pi,
+            make_piece_cid("1".as_bytes()),
+            ExitCode::OK,
+        )
+    }
+
+    let param = VerifyDealsForActivationParams { sectors: sector_deals };
     let ret: VerifyDealsForActivationReturn = rt
         .call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,

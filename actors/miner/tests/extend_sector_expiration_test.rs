@@ -25,6 +25,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
 
     let mut h = ActorHarness::new(period_offset);
     // reduce the partition size
+    // if changed to V1P1 the rejects_extension_past_max_for_seal_proof test fails
     h.set_proof_type(RegisteredSealProof::StackedDRG512MiBV1);
     let mut rt = h.new_runtime();
     rt.balance.replace(TokenAmount::from(big_balance));

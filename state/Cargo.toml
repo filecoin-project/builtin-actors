@@ -31,6 +31,7 @@ fvm_ipld_encoding = "0.2.2"
 fvm_ipld_blockstore = "0.1.1"
 num-traits = "0.2.14"
 anyhow = "1.0.56"
+bimap = { version = "0.6.2" }
 num-derive = "0.3.3"
 serde = { version = "1.0.136", features = ["derive"] }
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }

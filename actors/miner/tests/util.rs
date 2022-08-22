@@ -2,9 +2,9 @@
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivateDealsParams, ComputeDataCommitmentParams, ComputeDataCommitmentReturn,
-    Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDataSpec, SectorDeals,
-    SectorWeights, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    ActivateDealsParams, ActivateDealsResult, DealWeights, Method as MarketMethod,
+    OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifyDealsForActivationParams,
+    VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
@@ -319,18 +319,19 @@ impl ActorHarness {
             let sector_no = self.next_sector_no;
             let sector_deal_ids =
                 deal_ids.get(i).and_then(|ids| Some(ids.clone())).unwrap_or_default();
+            let has_deals = !sector_deal_ids.is_empty();
             let params = self.make_pre_commit_params(
                 sector_no,
                 precommit_epoch - 1,
                 expiration,
                 sector_deal_ids,
             );
-            let precommit = self.pre_commit_sector_and_get(
-                rt,
-                params,
-                PreCommitConfig::default(),
-                first && i == 0,
-            );
+            let pcc = if !has_deals {
+                PreCommitConfig::new(None)
+            } else {
+                PreCommitConfig::new(Some(make_piece_cid("1".as_bytes())))
+            };
+            let precommit = self.pre_commit_sector_and_get(rt, params, pcc, first && i == 0);
             precommits.push(precommit);
             self.next_sector_no += 1;
         }
@@ -457,43 +458,33 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
         let mut sector_deals = Vec::new();
-        let mut sector_weights = Vec::new();
+        let mut sector_deal_data = Vec::new();
         let mut any_deals = false;
         for (i, sector) in params.sectors.iter().enumerate() {
             sector_deals.push(SectorDeals {
+                sector_type: sector.seal_proof,
                 sector_expiry: sector.expiration,
                 deal_ids: sector.deal_ids.clone(),
             });
 
-            if conf.sector_weights.len() > i {
-                sector_weights.push(conf.sector_weights[i].clone());
+            if conf.sector_deal_data.len() > i {
+                sector_deal_data.push(conf.sector_deal_data[i].clone());
             } else {
-                sector_weights.push(SectorWeights {
-                    deal_space: 0,
-                    deal_weight: DealWeight::zero(),
-                    verified_deal_weight: DealWeight::zero(),
-                });
+                sector_deal_data.push(SectorDealData { commd: None });
             }
 
             // Sanity check on expectations
             let sector_has_deals = !sector.deal_ids.is_empty();
-            let deal_total_weight =
-                &sector_weights[i].deal_weight + &sector_weights[i].verified_deal_weight;
             assert_eq!(
                 sector_has_deals,
-                !deal_total_weight.is_zero(),
-                "sector deals inconsistent with configured weight"
-            );
-            assert_eq!(
-                sector_has_deals,
-                (sector_weights[i].deal_space != 0),
-                "sector deals inconsistent with configured space"
+                conf.sector_deal_data.get(i).and_then(|dd| { dd.commd }).is_some(),
+                "sector deals inconsistent with result from verification"
             );
             any_deals |= sector_has_deals;
         }
         if any_deals {
             let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
-            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_weights };
+            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
             rt.expect_send(
                 *STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
@@ -573,17 +564,12 @@ impl ActorHarness {
         if !params.deal_ids.is_empty() {
             let vdparams = VerifyDealsForActivationParams {
                 sectors: vec![SectorDeals {
+                    sector_type: params.seal_proof,
                     sector_expiry: params.expiration,
                     deal_ids: params.deal_ids.clone(),
                 }],
             };
-            let vdreturn = VerifyDealsForActivationReturn {
-                sectors: vec![SectorWeights {
-                    deal_space: conf.deal_space as u64,
-                    deal_weight: conf.deal_weight,
-                    verified_deal_weight: conf.verified_deal_weight,
-                }],
-            };
+            let vdreturn = VerifyDealsForActivationReturn { sectors: vec![conf.0] };
 
             rt.expect_send(
                 *STORAGE_MARKET_ACTOR_ADDR,
@@ -710,25 +696,11 @@ impl ActorHarness {
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
     ) -> Result<(), ActorError> {
-        let commd = make_piece_cid(b"commd");
         let seal_rand = Randomness(vec![1, 2, 3, 4]);
         let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
         let interactive_epoch = pc.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
 
         // Prepare for and receive call to ProveCommitSector
-        let input =
-            SectorDataSpec { deal_ids: pc.info.deal_ids.clone(), sector_type: pc.info.seal_proof };
-        let cdc_params = ComputeDataCommitmentParams { inputs: vec![input] };
-        let cdc_ret = ComputeDataCommitmentReturn { commds: vec![commd] };
-        rt.expect_send(
-            *STORAGE_MARKET_ACTOR_ADDR,
-            MarketMethod::ComputeDataCommitment as u64,
-            RawBytes::serialize(cdc_params).unwrap(),
-            TokenAmount::from(0u8),
-            RawBytes::serialize(cdc_ret).unwrap(),
-            ExitCode::OK,
-        );
-
         let entropy = RawBytes::serialize(self.receiver).unwrap();
         rt.expect_get_randomness_from_tickets(
             DomainSeparationTag::SealRandomness,
@@ -752,7 +724,7 @@ impl ActorHarness {
             deal_ids: pc.info.deal_ids.clone(),
             randomness: seal_rand,
             interactive_randomness: seal_int_rand,
-            unsealed_cid: commd,
+            unsealed_cid: pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap(),
         };
         rt.expect_send(
             *STORAGE_POWER_ACTOR_ADDR,
@@ -780,28 +752,11 @@ impl ActorHarness {
         params: ProveCommitAggregateParams,
         base_fee: BigInt,
     ) -> Result<(), ActorError> {
-        // recieve call to ComputeDataCommittments
-        let mut comm_ds = Vec::new();
-        let mut cdc_inputs = Vec::new();
-        for (i, precommit) in precommits.iter().enumerate() {
-            let sector_data = SectorDataSpec {
-                deal_ids: precommit.info.deal_ids.clone(),
-                sector_type: precommit.info.seal_proof,
-            };
-            cdc_inputs.push(sector_data);
-            let comm_d = make_piece_cid(format!("commd-{}", i).as_bytes());
-            comm_ds.push(comm_d);
-        }
-        let cdc_params = ComputeDataCommitmentParams { inputs: cdc_inputs };
-        let cdc_ret = ComputeDataCommitmentReturn { commds: comm_ds.clone() };
-        rt.expect_send(
-            *STORAGE_MARKET_ACTOR_ADDR,
-            MarketMethod::ComputeDataCommitment as u64,
-            RawBytes::serialize(cdc_params)?,
-            BigInt::zero(),
-            RawBytes::serialize(cdc_ret)?,
-            ExitCode::OK,
-        );
+        let comm_ds: Vec<_> = precommits
+            .iter()
+            .map(|pc| pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap())
+            .collect();
+
         self.expect_query_network_info(rt);
 
         // expect randomness queries for provided precommits
@@ -926,12 +881,20 @@ impl ActorHarness {
                     }
                 }
 
+                let ret = ActivateDealsResult {
+                    weights: cfg
+                        .deal_weights
+                        .get(&pc.info.sector_number)
+                        .cloned()
+                        .unwrap_or_default(),
+                };
+
                 rt.expect_send(
                     *STORAGE_MARKET_ACTOR_ADDR,
                     MarketMethod::ActivateDeals as u64,
                     RawBytes::serialize(params).unwrap(),
                     TokenAmount::from(0u8),
-                    RawBytes::default(),
+                    RawBytes::serialize(ret).unwrap(),
                     exit,
                 );
             } else {
@@ -945,14 +908,16 @@ impl ActorHarness {
             let mut expected_raw_power = BigInt::from(0);
 
             for pc in valid_pcs {
-                let pc_on_chain = self.get_precommit(rt, pc.info.sector_number);
+                let weights =
+                    cfg.deal_weights.get(&pc.info.sector_number).cloned().unwrap_or_default();
+
                 let duration = pc.info.expiration - rt.epoch;
                 if duration >= rt.policy.min_sector_expiration {
                     let qa_power_delta = qa_power_for_weight(
                         self.sector_size,
                         duration,
-                        &pc_on_chain.deal_weight,
-                        &pc_on_chain.verified_deal_weight,
+                        &weights.deal_weight,
+                        &weights.verified_deal_weight,
                     );
                     expected_qa_power += &qa_power_delta;
                     expected_raw_power += self.sector_size as u64;
@@ -963,17 +928,6 @@ impl ActorHarness {
                         &self.epoch_qa_power_smooth,
                         &rt.total_fil_circ_supply(),
                     );
-
-                    if pc_on_chain.info.replace_capacity {
-                        let replaced = self.get_sector(rt, pc_on_chain.info.replace_sector_number);
-                        // Note: following snap deals, this behavior is *strictly* deprecated;
-                        // if we get here, fail the test -- as opposed to the obsolete original
-                        // test logic that would go like this:
-                        // if replaced.initial_pledge > pledge {
-                        //     pledge = replaced.initial_pledge;
-                        // }
-                        assert!(replaced.initial_pledge <= pledge);
-                    }
 
                     expected_pledge += pledge;
                 }
@@ -2224,54 +2178,39 @@ impl PoStConfig {
 }
 
 #[derive(Default)]
-pub struct PreCommitConfig {
-    pub deal_weight: DealWeight,
-    pub verified_deal_weight: DealWeight,
-    pub deal_space: u64,
-}
+pub struct PreCommitConfig(pub SectorDealData);
 
 #[allow(dead_code)]
 impl PreCommitConfig {
     pub fn empty() -> PreCommitConfig {
-        PreCommitConfig {
-            deal_weight: DealWeight::from(0),
-            verified_deal_weight: DealWeight::from(0),
-            deal_space: 0,
-        }
+        Self::new(None)
     }
 
-    pub fn new(
-        deal_weight: DealWeight,
-        verified_deal_weight: DealWeight,
-        deal_space: SectorSize,
-    ) -> PreCommitConfig {
-        PreCommitConfig { deal_weight, verified_deal_weight, deal_space: deal_space as u64 }
+    pub fn new(commd: Option<Cid>) -> PreCommitConfig {
+        PreCommitConfig { 0: SectorDealData { commd } }
     }
 
     pub fn default() -> PreCommitConfig {
-        PreCommitConfig {
-            deal_weight: DealWeight::from(0),
-            verified_deal_weight: DealWeight::from(0),
-            deal_space: SectorSize::_2KiB as u64,
-        }
+        Self::empty()
     }
 }
 
 #[derive(Default, Clone)]
 pub struct ProveCommitConfig {
     pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
+    pub deal_weights: HashMap<SectorNumber, DealWeights>,
 }
 
 #[allow(dead_code)]
 impl ProveCommitConfig {
     pub fn empty() -> ProveCommitConfig {
-        ProveCommitConfig { verify_deals_exit: HashMap::new() }
+        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_weights: HashMap::new() }
     }
 }
 
 #[derive(Default)]
 pub struct PreCommitBatchConfig {
-    pub sector_weights: Vec<SectorWeights>,
+    pub sector_deal_data: Vec<SectorDealData>,
     pub first_for_miner: bool,
 }
 

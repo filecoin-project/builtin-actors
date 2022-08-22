@@ -11,10 +11,8 @@ use cid::Cid;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
-
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::signature::Signature;
@@ -34,6 +32,7 @@ use multihash::MultihashDigest;
 
 use rand::prelude::*;
 
+use crate::runtime::builtins::Type;
 use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier,
@@ -1075,7 +1074,9 @@ impl Primitives for MockRuntime {
         assert_eq!(exp.reg, reg, "Unexpected compute_unsealed_sector_cid : reg mismatch");
         assert!(
             exp.pieces[..].eq(pieces),
-            "Unexpected compute_unsealed_sector_cid : pieces mismatch"
+            "Unexpected compute_unsealed_sector_cid : pieces mismatch, exp: {:?}, got: {:?}",
+            exp.pieces,
+            pieces,
         );
 
         if exp.exit_code != ExitCode::OK {

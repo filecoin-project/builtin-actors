@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use crate::commd::CompactCommD;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::UnvalidatedBitField;
@@ -245,12 +246,33 @@ pub struct WorkerKeyChange {
     pub effective_at: ChainEpoch,
 }
 
-pub type PreCommitSectorParams = SectorPreCommitInfo;
+#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct PreCommitSectorParams {
+    pub seal_proof: RegisteredSealProof,
+    pub sector_number: SectorNumber,
+    /// CommR
+    pub sealed_cid: Cid,
+    pub seal_rand_epoch: ChainEpoch,
+    pub deal_ids: Vec<DealID>,
+    pub expiration: ChainEpoch,
+    /// Deprecated:
+    /// Whether to replace a "committed capacity" no-deal sector (requires non-empty DealIDs)
+    pub replace_capacity: bool,
+    /// Deprecated:
+    /// The committed capacity sector to replace, and its deadline/partition location
+    pub replace_sector_deadline: u64,
+    pub replace_sector_partition: u64,
+    pub replace_sector_number: SectorNumber,
+}
 
 impl Cbor for PreCommitSectorParams {}
 
 #[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct PreCommitSectorBatchParams {
+    pub sectors: Vec<PreCommitSectorParams>,
+}
+#[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct PreCommitSectorBatchParams2 {
     pub sectors: Vec<SectorPreCommitInfo>,
 }
 
@@ -265,12 +287,8 @@ pub struct SectorPreCommitInfo {
     pub seal_rand_epoch: ChainEpoch,
     pub deal_ids: Vec<DealID>,
     pub expiration: ChainEpoch,
-    /// Whether to replace a "committed capacity" no-deal sector (requires non-empty DealIDs)
-    pub replace_capacity: bool,
-    /// The committed capacity sector to replace, and its deadline/partition location
-    pub replace_sector_deadline: u64,
-    pub replace_sector_partition: u64,
-    pub replace_sector_number: SectorNumber,
+    /// CommD
+    pub unsealed_cid: CompactCommD,
 }
 
 /// Information stored on-chain for a pre-committed sector.
@@ -280,12 +298,6 @@ pub struct SectorPreCommitOnChainInfo {
     #[serde(with = "bigint_ser")]
     pub pre_commit_deposit: TokenAmount,
     pub pre_commit_epoch: ChainEpoch,
-    /// Integral of active deals over sector lifetime, 0 if CommittedCapacity sector
-    #[serde(with = "bigint_ser")]
-    pub deal_weight: DealWeight,
-    /// Integral of active verified deals over sector lifetime
-    #[serde(with = "bigint_ser")]
-    pub verified_deal_weight: DealWeight,
 }
 
 /// Information stored on-chain for a proven sector.
@@ -375,3 +387,23 @@ pub struct ProveReplicaUpdatesParams {
 }
 
 impl Cbor for ProveReplicaUpdatesParams {}
+
+#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct ReplicaUpdate2 {
+    pub sector_number: SectorNumber,
+    pub deadline: u64,
+    pub partition: u64,
+    pub new_sealed_cid: Cid,
+    pub new_unsealed_cid: Cid,
+    pub deals: Vec<DealID>,
+    pub update_proof_type: RegisteredUpdateProof,
+    #[serde(with = "serde_bytes")]
+    pub replica_proof: Vec<u8>,
+}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ProveReplicaUpdatesParams2 {
+    pub updates: Vec<ReplicaUpdate2>,
+}
+
+impl Cbor for ProveReplicaUpdatesParams2 {}
