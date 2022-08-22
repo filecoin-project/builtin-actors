@@ -3326,11 +3326,10 @@ impl Actor {
         Ok(WithdrawBalanceReturn { amount_withdrawn })
     }
 
-    /// Proposes or confirms a change of owner address.
-    /// If invoked by the current owner, proposes a new owner address for confirmation. If the proposed address is the
-    /// current owner address, revokes any existing proposal.
-    /// If invoked by the previously proposed address, with the same proposal, changes the current owner address to be
-    /// that proposed address.
+    /// Proposes or confirms a change of beneficiary address.
+    /// A proposal must be submitted by the owner, and takes effect after approval of both the proposed beneficiary and current beneficiary,
+    /// if applicable, any current beneficiary that has time and quota remaining.
+    //// See FIP-0029, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0029.md
     fn change_beneficiary<BS, RT>(
         rt: &mut RT,
         params: ChangeBeneficiaryParams,
@@ -3339,13 +3338,14 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        let caller = rt.message().caller();
         let new_beneficiary = rt.resolve_address(&params.new_beneficiary).ok_or_else(|| {
             actor_error!(illegal_argument, "unable to resolve address: {}", params.new_beneficiary)
         })?;
 
         rt.transaction(|state: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), state)?;
-            if rt.message().caller() == info.owner {
+            if caller == info.owner {
                 // This is a ChangeBeneficiary proposal when the caller is Owner
                 if new_beneficiary != info.owner {
                     // When beneficiary is not owner, just check quota in params,
@@ -3387,6 +3387,16 @@ impl Actor {
                 }
                 info.pending_beneficiary_term = Some(pending_beneficiary_term);
             } else if let Some(pending_term) = &info.pending_beneficiary_term {
+                if caller != info.beneficiary && caller != pending_term.new_beneficiary {
+                    return Err(actor_error!(
+                        forbidden,
+                        "message caller {} is neither proposal beneficiary{} nor current beneficiary{}",
+                        caller,
+                        params.new_beneficiary,
+                        info.beneficiary
+                    ));
+                }
+
                 if pending_term.new_beneficiary != new_beneficiary {
                     return Err(actor_error!(
                         illegal_argument,
@@ -3416,11 +3426,11 @@ impl Actor {
             }
 
             if let Some(pending_term) = info.pending_beneficiary_term.as_mut() {
-                if rt.message().caller() == info.beneficiary {
+                if caller == info.beneficiary {
                     pending_term.approved_by_beneficiary = true
                 }
 
-                if rt.message().caller() == new_beneficiary {
+                if caller == new_beneficiary {
                     pending_term.approved_by_nominee = true
                 }
 
@@ -3439,7 +3449,7 @@ impl Actor {
             }
 
             state.save_info(rt.store(), &info).map_err(|e| {
-                e.downcast_default(ExitCode::USR_FORBIDDEN, "failed to save miner info")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
             })?;
             Ok(())
         })
