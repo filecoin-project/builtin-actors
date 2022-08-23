@@ -140,12 +140,12 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
             .unwrap_or_default();
 
         let output = if precompiles::is_precompile(&dst) {
-            precompiles::call_precompile(dst, &input_data, gas.as_u64())
+            precompiles::call_precompile(dst, &input_data)
         } else {
             todo!()
         };
 
-        output.unwrap().output
+        output.unwrap()
     };
 
     let output_data = output_region

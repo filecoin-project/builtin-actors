@@ -1,18 +1,16 @@
-use std::{
-    mem::transmute,
-    ops::{BitAnd, Mul},
-};
+use std::ops::Mul;
 
-use super::{StatusCode, H160, U256};
+use super::{H160, U256};
 use fvm_shared::{
-    bigint::{self, BigUint},
+    bigint::BigUint,
     crypto::{
         hash::SupportedHashes,
         signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
     },
 };
-use num_traits::{Zero, One};
-use substrate_bn::{AffineG1, Fq, Fr, Group, G1};
+use num_traits::{One, Zero};
+use substrate_bn::{pairing, pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
+use uint::byteorder::{ByteOrder, LE};
 
 pub fn is_precompile(addr: &H160) -> bool {
     !addr.is_zero() && addr <= &MAX_PRECOMPILE
@@ -20,13 +18,19 @@ pub fn is_precompile(addr: &H160) -> bool {
 
 /// read 32 bytes (u256) from buffer, pass in exit reason that is desired
 /// TODO passing in err value is debatable
-fn read_u256(buf: &[u8], start: usize, err: StatusCode) -> Result<U256, StatusCode> {
-    let slice = buf.get(start..start + 32).ok_or(err)?;
+fn read_u256(buf: &[u8], start: usize) -> Result<U256, PrecompileError> {
+    let slice = buf.get(start..start + 32).ok_or(PrecompileError::MemoryRange)?;
     Ok(U256::from_big_endian(slice))
 }
 
+#[derive(Debug)]
+pub enum PrecompileError {
+    EcErr,
+    MemoryRange,
+}
+
 pub type PrecompileFn = fn(&[u8]) -> PrecompileResult;
-pub type PrecompileResult = Result<Vec<u8>, StatusCode>; // TODO i dont like vec
+pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont like vec
 
 fn nop(_: &[u8]) -> PrecompileResult {
     todo!()
@@ -66,19 +70,17 @@ fn identity(input: &[u8]) -> PrecompileResult {
     Ok(Vec::from(input))
 }
 
-// value alias that will be inlined instead of cloning
-const OOG: StatusCode = StatusCode::OutOfGas;
-
 // https://eips.ethereum.org/EIPS/eip-198
 fn modexp(input: &[u8]) -> PrecompileResult {
-    let base_len = read_u256(input, 0, OOG)?.as_usize();
-    let exponent_len = read_u256(input, 32, OOG)?.as_usize();
-    let mod_len = read_u256(input, 64, OOG)?.as_usize();
+    let base_len = read_u256(input, 0)?.as_usize();
+    let exponent_len = read_u256(input, 32)?.as_usize();
+    let mod_len = read_u256(input, 64)?.as_usize();
 
     if mod_len == 0 {
         return Ok(Vec::new());
     }
 
+    // TODO bounds checking
     let mut start = 96;
     let base = BigUint::from_bytes_be(&input[start..start + base_len]);
     start += base_len;
@@ -104,25 +106,25 @@ fn modexp(input: &[u8]) -> PrecompileResult {
 
 /// converts 2 byte arrays (U256) into a point on a field
 /// exits with OutOfGas for any failed operation
-fn uint_to_point(x: U256, y: U256) -> Result<G1, StatusCode> {
-    let x = Fq::from_u256(x.0.into()).map_err(|_| OOG)?;
-    let y = Fq::from_u256(y.0.into()).map_err(|_| OOG)?;
+fn uint_to_point(x: U256, y: U256) -> Result<G1, PrecompileError> {
+    let x = Fq::from_u256(x.0.into()).map_err(|_| PrecompileError::EcErr)?;
+    let y = Fq::from_u256(y.0.into()).map_err(|_| PrecompileError::EcErr)?;
 
     Ok(if x.is_zero() && y.is_zero() {
         G1::zero()
     } else {
-        AffineG1::new(x, y).map_err(|_| OOG)?.into()
+        AffineG1::new(x, y).map_err(|_| PrecompileError::EcErr)?.into()
     })
 }
 
 /// add 2 points together on `alt_bn128`
 fn ec_add(input: &[u8]) -> PrecompileResult {
-    let x1 = read_u256(input, 0, OOG)?;
-    let y1 = read_u256(input, 32, OOG)?;
+    let x1 = read_u256(input, 0)?;
+    let y1 = read_u256(input, 32)?;
     let point1 = uint_to_point(x1, y1)?;
 
-    let x2 = read_u256(input, 64, OOG)?;
-    let y2 = read_u256(input, 96, OOG)?;
+    let x2 = read_u256(input, 64)?;
+    let y2 = read_u256(input, 96)?;
     let point2 = uint_to_point(x2, y2)?;
 
     let output = AffineG1::from_jacobian(point1 + point2).map_or(vec![0; 64], |sum| {
@@ -137,13 +139,11 @@ fn ec_add(input: &[u8]) -> PrecompileResult {
 
 /// multiply a scalar and a point on `alt_bn128`
 fn ec_mul(input: &[u8]) -> PrecompileResult {
-    let mut cost = 6_000; // TODO consume all gas on any op fail
-
-    let x = read_u256(input, 0, OOG)?;
-    let y = read_u256(input, 32, OOG)?;
+    let x = read_u256(input, 0)?;
+    let y = read_u256(input, 32)?;
     let point = uint_to_point(x, y)?;
 
-    let scalar = Fr::from_slice(&input[64..95]).map_err(|_| OOG)?;
+    let scalar = Fr::from_slice(&input[64..95]).map_err(|_| PrecompileError::EcErr)?;
 
     let mut output = vec![0; 64];
     if let Some(product) = AffineG1::from_jacobian(point.mul(scalar)) {
@@ -155,41 +155,102 @@ fn ec_mul(input: &[u8]) -> PrecompileResult {
 }
 
 fn ecpairing(input: &[u8]) -> PrecompileResult {
+    fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
+        let x1 = read_u256(input, 0)?;
+        let y1 = read_u256(input, 32)?;
 
-    todo!()
+        let y2 = read_u256(input, 64)?;
+        let x2 = read_u256(input, 96)?;
+        let y3 = read_u256(input, 128)?;
+        let x3 = read_u256(input, 160)?;
+
+        // TODO errs
+        let ax = Fq::from_u256(x1.0.into()).unwrap();
+        let ay = Fq::from_u256(y1.0.into()).unwrap();
+
+        let twisted_ax = Fq::from_u256(x2.0.into()).unwrap();
+        let twisted_ay = Fq::from_u256(y2.0.into()).unwrap();
+        let twisted_bx = Fq::from_u256(x3.0.into()).unwrap();
+        let twisted_by = Fq::from_u256(y3.0.into()).unwrap();
+
+        let twisted_a = Fq2::new(twisted_ax, twisted_ay);
+        let twisted_b = Fq2::new(twisted_bx, twisted_by);
+
+        let twisted = {
+            if twisted_a.is_zero() && twisted_b.is_zero() {
+                G2::zero()
+            } else {
+                AffineG2::new(twisted_a, twisted_b).unwrap().into()
+            }
+        };
+
+        let a = {
+            if ax.is_zero() && ay.is_zero() {
+                substrate_bn::G1::zero()
+            } else {
+                AffineG1::new(ax, ay).unwrap().into()
+            }
+        };
+
+        Ok((a, twisted))
+    }
+
+    const GROUP_BYTE_LEN: usize = 192;
+
+    if input.len() % GROUP_BYTE_LEN != 0 {
+        return Err(PrecompileError::EcErr);
+    }
+
+    let mut groups = Vec::new();
+    for i in 0..input.len() / GROUP_BYTE_LEN {
+        let offset = i * GROUP_BYTE_LEN;
+        groups.push(read_group(&input[offset..offset + GROUP_BYTE_LEN])?);
+    }
+
+    let accumulated = pairing_batch(&groups);
+
+    let output = if accumulated == Gt::one() { U256::one() } else { U256::zero() };
+    let mut buf = [0u8; 32];
+    output.to_big_endian(&mut buf);
+    Ok(buf.to_vec())
 }
 
 // https://eips.ethereum.org/EIPS/eip-152
 fn blake2f(input: &[u8]) -> PrecompileResult {
-    const GFROUND: u64 = 1;
     let mut hasher = near_blake2::VarBlake2b::default();
 
     let mut rounds = [0u8; 4];
-    let mut h = [0u8; 64];
-    let mut m = [0u8; 128];
-    let mut t = [0u8; 16];
 
-    // TODO bounds check maybe?
+    // TODO bounds check
     let mut start = 0;
     rounds.copy_from_slice(&input[..4]);
     start += 4;
-    h.copy_from_slice(&input[start..start + 64]);
+
+    let h = &input[start..start + 64];
     start += 64;
-    m.copy_from_slice(&input[start..start + 128]);
+    let m = &input[start..start + 128];
     start += 128;
-    t.copy_from_slice(&input[start..start + 16]);
+    let t = &input[start..start + 16];
     start += 16;
     let f = input[start] != 0;
 
     let rounds = u32::from_be_bytes(rounds);
-    // SAFETY: assumes runtime is Little Endian
-    let h: [u64; 8] = unsafe { transmute(h) };
-    let m: [u64; 16] = unsafe { transmute(m) };
-    let t: [u64; 2] = unsafe { transmute(t) };
+    let h = {
+        let mut ret = [0u64; 8];
+        LE::read_u64_into(h, &mut ret);
+        ret
+    };
+    let m = {
+        let mut ret = [0u64; 16];
+        LE::read_u64_into(m, &mut ret);
+        ret
+    };
+    let t = {
+        let mut ret = [0u64; 2];
+        LE::read_u64_into(t, &mut ret);
+        ret
+    };
 
-    let cost = GFROUND * rounds as u64;
-
-    // TODO gas failure
     hasher.blake2_f(rounds, h, m, t, f);
     let output = hasher.output().to_vec();
     Ok(output)
@@ -204,7 +265,7 @@ pub const PRECOMPILES: [PrecompileFn; 9] = [
     modexp,     // modexp 0x05
     ec_add,     // ecAdd 0x06
     ec_mul,     // ecMul 0x07
-    nop,        // ecPairing 0x08
+    ecpairing,  // ecPairing 0x08
     blake2f,    // blake2f 0x09
 ];
 
