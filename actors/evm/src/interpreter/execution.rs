@@ -207,7 +207,6 @@ pub fn execute<'r, BS: Blockstore, RT: Runtime<BS>>(
             }
             OpCode::INVALID => return Err(StatusCode::InvalidInstruction),
             OpCode::SELFDESTRUCT => storage::selfdestruct(runtime, system)?,
-            _ => return Err(StatusCode::UndefinedInstruction),
         }
 
         pc += 1; // advance
