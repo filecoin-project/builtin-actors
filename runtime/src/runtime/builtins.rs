@@ -19,4 +19,6 @@ pub enum Type {
     Multisig = 9,
     Reward = 10,
     VerifiedRegistry = 11,
+    // EVM = 12,
+    DataCap = 13,
 }

@@ -23,7 +23,9 @@ use crate::{AllocationID, ClaimID};
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct State {
     pub root_key: Address,
+    // Address of the data cap token actor
     pub token: Address,
+    // Maps verifier addresses to data cap minting allowance (in bytes).
     pub verifiers: Cid,
     pub remove_data_cap_proposal_ids: Cid,
     pub allocations: Cid, // HAMT[Address]HAMT[AllocationID]Allocation

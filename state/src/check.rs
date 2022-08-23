@@ -6,6 +6,7 @@ use bimap::BiBTreeMap;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
 use fil_actor_cron::State as CronState;
+use fil_actor_datacap::State as DataCapState;
 use fil_actor_init::State as InitState;
 use fil_actor_market::State as MarketState;
 use fil_actor_miner::CronEventPayload;
@@ -39,6 +40,7 @@ use fvm_shared::bigint::bigint_ser;
 
 use fil_actor_account::testing as account;
 use fil_actor_cron::testing as cron;
+use fil_actor_datacap::testing as datacap;
 use fil_actor_init::testing as init;
 use fil_actor_market::testing as market;
 use fil_actor_miner::testing as miner;
@@ -127,6 +129,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
     let mut multisig_summaries = Vec::<multisig::StateSummary>::new();
     let mut reward_summary: Option<reward::StateSummary> = None;
     let mut verifreg_summary: Option<verifreg::StateSummary> = None;
+    let mut datacap_summary: Option<datacap::StateSummary> = None;
 
     tree.for_each(|key, actor| {
         let acc = acc.with_prefix(format!("{key} "));
@@ -205,6 +208,12 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
                 let (summary, msgs) = verifreg::check_state_invariants(&state, tree.store);
                 acc.with_prefix("verifreg: ").add_all(&msgs);
                 verifreg_summary = Some(summary);
+            }
+            Some(Type::DataCap) => {
+                let state = get_state!(tree, actor, DataCapState);
+                let (summary, msgs) = datacap::check_state_invariants(&state, tree.store);
+                acc.with_prefix("datacap: ").add_all(&msgs);
+                datacap_summary = Some(summary);
             }
             None => {
                 bail!("unexpected actor code CID {} for address {}", actor.code, key);
