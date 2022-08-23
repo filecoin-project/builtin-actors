@@ -50,6 +50,9 @@ all-bundles: bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-cal
 bundle-mainnet: deps-build
 	BUILD_FIL_NETWORK=mainnet cargo run -- -o output/builtin-actors-mainnet.car
 
+bundle-mainnet-repro:
+	docker run --rm -it -v `pwd`:/usr/src/builtin-actors -v `pwd`/output:/usr/src/builtin-actors/output:rshared builtin-actors "make bundle-mainnet"
+
 bundle-caterpillarnet: deps-build
 	BUILD_FIL_NETWORK=caterpillarnet cargo run -- -o output/builtin-actors-caterpillarnet.car
 
