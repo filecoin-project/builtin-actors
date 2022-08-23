@@ -11,10 +11,6 @@ pub struct OpCode {
     /// the byte representing the opcode in binary
     pub code: u8,
 
-    /// cost of executing the opcode, subtracted from the
-    /// total gas limit when running bytecode.
-    pub price: u16,
-
     /// The number of stack items the instruction accesses during execution.
     pub stack_height_required: u8,
 
@@ -24,6 +20,9 @@ pub struct OpCode {
 
     /// Human readable name of the opcode.
     pub name: &'static str,
+
+    /// Reserved/Undefined opcode indicator
+    pub reserved: bool,
 }
 
 impl From<OpCode> for u8 {
@@ -38,1012 +37,546 @@ impl PartialEq<u8> for OpCode {
     }
 }
 
-const _COLD_SLOAD_COST: u16 = 2100;
-const _COLD_ACCOUNT_ACCESS_COST: u16 = 2600;
-const WARM_STORAGE_READ_COST: u16 = 100;
+macro_rules! def_opcode {
+    ($id:ident, $code:literal, $sk_required:literal, $sk_change:literal) => {
+        pub const $id: OpCode = OpCode {
+            code: $code,
+            stack_height_required: $sk_required,
+            stack_height_change: $sk_change,
+            name: stringify!($id),
+            reserved: false,
+        };
+    };
+}
+
+macro_rules! def_reserved {
+    ($id:ident, $code:literal) => {
+        pub const $id: OpCode = OpCode {
+            code: $code,
+            stack_height_required: 0,
+            stack_height_change: 0,
+            name: "RESERVED",
+            reserved: true,
+        };
+    };
+}
 
 impl OpCode {
-    pub const ADD: OpCode = OpCode {
-        code: 0x01,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "ADD",
-    };
-    pub const ADDMOD: OpCode = OpCode {
-        code: 0x08,
-        price: 8,
-        stack_height_required: 3,
-        stack_height_change: -2,
-        name: "ADDMOD",
-    };
-    pub const ADDRESS: OpCode = OpCode {
-        code: 0x30,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "ADDRESS",
-    };
-    pub const AND: OpCode = OpCode {
-        code: 0x16,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "AND",
-    };
-    pub const BALANCE: OpCode = OpCode {
-        code: 0x31,
-        price: WARM_STORAGE_READ_COST,
-        stack_height_required: 1,
-        stack_height_change: 0,
-        name: "BALANCE",
-    };
-    pub const BASEFEE: OpCode = OpCode {
-        code: 0x48,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "BASEFEE",
-    };
-    pub const BLOCKHASH: OpCode = OpCode {
-        code: 0x40,
-        price: 20,
-        stack_height_required: 1,
-        stack_height_change: 0,
-        name: "BLOCKHASH",
-    };
-    pub const BYTE: OpCode = OpCode {
-        code: 0x1a,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "BYTE",
-    };
-    pub const CALL: OpCode = OpCode {
-        code: 0xf1,
-        price: WARM_STORAGE_READ_COST,
-        stack_height_required: 7,
-        stack_height_change: -6,
-        name: "CALL",
-    };
-    pub const CALLCODE: OpCode = OpCode {
-        code: 0xf2,
-        price: WARM_STORAGE_READ_COST,
-        stack_height_required: 7,
-        stack_height_change: -6,
-        name: "CALLCODE",
-    };
-    pub const CALLDATACOPY: OpCode = OpCode {
-        code: 0x37,
-        price: 3,
-        stack_height_required: 3,
-        stack_height_change: -3,
-        name: "CALLDATACOPY",
-    };
-    pub const CALLDATALOAD: OpCode = OpCode {
-        code: 0x35,
-        price: 3,
-        stack_height_required: 1,
-        stack_height_change: 0,
-        name: "CALLDATALOAD",
-    };
-    pub const CALLDATASIZE: OpCode = OpCode {
-        code: 0x36,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "CALLDATASIZE",
-    };
-    pub const CALLER: OpCode = OpCode {
-        code: 0x33,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "CALLER",
-    };
-    pub const CALLVALUE: OpCode = OpCode {
-        code: 0x34,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "CALLVALUE",
-    };
-    pub const CHAINID: OpCode = OpCode {
-        code: 0x46,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "CHAINID",
-    };
-    pub const CODECOPY: OpCode = OpCode {
-        code: 0x39,
-        price: 3,
-        stack_height_required: 3,
-        stack_height_change: -3,
-        name: "CODECOPY",
-    };
-    pub const CODESIZE: OpCode = OpCode {
-        code: 0x38,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "CODESIZE",
-    };
-    pub const COINBASE: OpCode = OpCode {
-        code: 0x41,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "COINBASE",
-    };
-    pub const CREATE: OpCode = OpCode {
-        code: 0xf0,
-        price: 32000,
-        stack_height_required: 3,
-        stack_height_change: -2,
-        name: "CREATE",
-    };
-    pub const CREATE2: OpCode = OpCode {
-        code: 0xf5,
-        price: 32000,
-        stack_height_required: 4,
-        stack_height_change: -3,
-        name: "CREATE2",
-    };
-    pub const DELEGATECALL: OpCode = OpCode {
-        code: 0xf4,
-        price: WARM_STORAGE_READ_COST,
-        stack_height_required: 6,
-        stack_height_change: -5,
-        name: "DELEGATECALL",
-    };
-    pub const DIFFICULTY: OpCode = OpCode {
-        code: 0x44,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "DIFFICULTY",
-    };
-    pub const DIV: OpCode = OpCode {
-        code: 0x04,
-        price: 5,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "DIV",
-    };
-    pub const DUP1: OpCode = OpCode {
-        code: 0x80,
-        price: 3,
-        stack_height_required: 1,
-        stack_height_change: 1,
-        name: "DUP1",
-    };
-    pub const DUP10: OpCode = OpCode {
-        code: 0x89,
-        price: 3,
-        stack_height_required: 10,
-        stack_height_change: 1,
-        name: "DUP10",
-    };
-    pub const DUP11: OpCode = OpCode {
-        code: 0x8a,
-        price: 3,
-        stack_height_required: 11,
-        stack_height_change: 1,
-        name: "DUP11",
-    };
-    pub const DUP12: OpCode = OpCode {
-        code: 0x8b,
-        price: 3,
-        stack_height_required: 12,
-        stack_height_change: 1,
-        name: "DUP12",
-    };
-    pub const DUP13: OpCode = OpCode {
-        code: 0x8c,
-        price: 3,
-        stack_height_required: 13,
-        stack_height_change: 1,
-        name: "DUP13",
-    };
-    pub const DUP14: OpCode = OpCode {
-        code: 0x8d,
-        price: 3,
-        stack_height_required: 14,
-        stack_height_change: 1,
-        name: "DUP14",
-    };
-    pub const DUP15: OpCode = OpCode {
-        code: 0x8e,
-        price: 3,
-        stack_height_required: 15,
-        stack_height_change: 1,
-        name: "DUP15",
-    };
-    pub const DUP16: OpCode = OpCode {
-        code: 0x8f,
-        price: 3,
-        stack_height_required: 16,
-        stack_height_change: 1,
-        name: "DUP16",
-    };
-    pub const DUP2: OpCode = OpCode {
-        code: 0x81,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: 1,
-        name: "DUP2",
-    };
-    pub const DUP3: OpCode = OpCode {
-        code: 0x82,
-        price: 3,
-        stack_height_required: 3,
-        stack_height_change: 1,
-        name: "DUP3",
-    };
-    pub const DUP4: OpCode = OpCode {
-        code: 0x83,
-        price: 3,
-        stack_height_required: 4,
-        stack_height_change: 1,
-        name: "DUP4",
-    };
-    pub const DUP5: OpCode = OpCode {
-        code: 0x84,
-        price: 3,
-        stack_height_required: 5,
-        stack_height_change: 1,
-        name: "DUP5",
-    };
-    pub const DUP6: OpCode = OpCode {
-        code: 0x85,
-        price: 3,
-        stack_height_required: 6,
-        stack_height_change: 1,
-        name: "DUP6",
-    };
-    pub const DUP7: OpCode = OpCode {
-        code: 0x86,
-        price: 3,
-        stack_height_required: 7,
-        stack_height_change: 1,
-        name: "DUP7",
-    };
-    pub const DUP8: OpCode = OpCode {
-        code: 0x87,
-        price: 3,
-        stack_height_required: 8,
-        stack_height_change: 1,
-        name: "DUP8",
-    };
-    pub const DUP9: OpCode = OpCode {
-        code: 0x88,
-        price: 3,
-        stack_height_required: 9,
-        stack_height_change: 1,
-        name: "DUP9",
-    };
-    pub const EQ: OpCode = OpCode {
-        code: 0x14,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "EQ",
-    };
-    pub const EXP: OpCode = OpCode {
-        code: 0x0a,
-        price: 10,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "EXP",
-    };
-    pub const EXTCODECOPY: OpCode = OpCode {
-        code: 0x3c,
-        price: WARM_STORAGE_READ_COST,
-        stack_height_required: 4,
-        stack_height_change: -4,
-        name: "EXTCODECOPY",
-    };
-    pub const EXTCODEHASH: OpCode = OpCode {
-        code: 0x3f,
-        price: WARM_STORAGE_READ_COST,
-        stack_height_required: 1,
-        stack_height_change: 0,
-        name: "EXTCODEHASH",
-    };
-    pub const EXTCODESIZE: OpCode = OpCode {
-        code: 0x3b,
-        price: WARM_STORAGE_READ_COST,
-        stack_height_required: 1,
-        stack_height_change: 0,
-        name: "EXTCODESIZE",
-    };
-    pub const GAS: OpCode = OpCode {
-        code: 0x5a,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "GAS",
-    };
-    pub const GASLIMIT: OpCode = OpCode {
-        code: 0x45,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "GASLIMIT",
-    };
-    pub const GASPRICE: OpCode = OpCode {
-        code: 0x3a,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "GASPRICE",
-    };
-    pub const GT: OpCode = OpCode {
-        code: 0x11,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "GT",
-    };
-    pub const INVALID: OpCode = OpCode {
-        code: 0xfe,
-        price: 0,
-        stack_height_required: 0,
-        stack_height_change: 0,
-        name: "INVALID",
-    };
-    pub const ISZERO: OpCode = OpCode {
-        code: 0x15,
-        price: 3,
-        stack_height_required: 1,
-        stack_height_change: 0,
-        name: "ISZERO",
-    };
-    pub const JUMP: OpCode = OpCode {
-        code: 0x56,
-        price: 8,
-        stack_height_required: 1,
-        stack_height_change: -1,
-        name: "JUMP",
-    };
-    pub const JUMPDEST: OpCode = OpCode {
-        code: 0x5b,
-        price: 1,
-        stack_height_required: 0,
-        stack_height_change: 0,
-        name: "JUMPDEST",
-    };
-    pub const JUMPI: OpCode = OpCode {
-        code: 0x57,
-        price: 10,
-        stack_height_required: 2,
-        stack_height_change: -2,
-        name: "JUMPI",
-    };
-    pub const KECCAK256: OpCode = OpCode {
-        code: 0x20,
-        price: 30,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "KECCAK256",
-    };
-    pub const LOG0: OpCode = OpCode {
-        code: 0xa0,
-        price: 375,
-        stack_height_required: 2,
-        stack_height_change: -2,
-        name: "LOG0",
-    };
-    pub const LOG1: OpCode = OpCode {
-        code: 0xa1,
-        price: 2 * 375,
-        stack_height_required: 3,
-        stack_height_change: -3,
-        name: "LOG1",
-    };
-    pub const LOG2: OpCode = OpCode {
-        code: 0xa2,
-        price: 3 * 375,
-        stack_height_required: 4,
-        stack_height_change: -4,
-        name: "LOG2",
-    };
-    pub const LOG3: OpCode = OpCode {
-        code: 0xa3,
-        price: 4 * 375,
-        stack_height_required: 5,
-        stack_height_change: -5,
-        name: "LOG3",
-    };
-    pub const LOG4: OpCode = OpCode {
-        code: 0xa4,
-        price: 5 * 375,
-        stack_height_required: 6,
-        stack_height_change: -6,
-        name: "LOG4",
-    };
-    pub const LT: OpCode = OpCode {
-        code: 0x10,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "LT",
-    };
-    pub const MLOAD: OpCode = OpCode {
-        code: 0x51,
-        price: 3,
-        stack_height_required: 1,
-        stack_height_change: 0,
-        name: "MLOAD",
-    };
-    pub const MOD: OpCode = OpCode {
-        code: 0x06,
-        price: 5,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "MOD",
-    };
-    pub const MSIZE: OpCode = OpCode {
-        code: 0x59,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "MSIZE",
-    };
-    pub const MSTORE: OpCode = OpCode {
-        code: 0x52,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -2,
-        name: "MSTORE",
-    };
-    pub const MSTORE8: OpCode = OpCode {
-        code: 0x53,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -2,
-        name: "MSTORE8",
-    };
-    pub const MUL: OpCode = OpCode {
-        code: 0x02,
-        price: 5,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "MUL",
-    };
-    pub const MULMOD: OpCode = OpCode {
-        code: 0x09,
-        price: 8,
-        stack_height_required: 3,
-        stack_height_change: -2,
-        name: "MULMOD",
-    };
-    pub const NOT: OpCode = OpCode {
-        code: 0x19,
-        price: 3,
-        stack_height_required: 1,
-        stack_height_change: 0,
-        name: "NOT",
-    };
-    pub const NUMBER: OpCode = OpCode {
-        code: 0x43,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "NUMBER",
-    };
-    pub const OR: OpCode = OpCode {
-        code: 0x17,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "OR",
-    };
-    pub const ORIGIN: OpCode = OpCode {
-        code: 0x32,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "ORIGIN",
-    };
-    pub const PC: OpCode = OpCode {
-        code: 0x58,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PC",
-    };
-    pub const POP: OpCode = OpCode {
-        code: 0x50,
-        price: 2,
-        stack_height_required: 1,
-        stack_height_change: -1,
-        name: "POP",
-    };
-    pub const PUSH1: OpCode = OpCode {
-        code: 0x60,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH1",
-    };
-    pub const PUSH10: OpCode = OpCode {
-        code: 0x69,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH10",
-    };
-    pub const PUSH11: OpCode = OpCode {
-        code: 0x6a,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH11",
-    };
-    pub const PUSH12: OpCode = OpCode {
-        code: 0x6b,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH12",
-    };
-    pub const PUSH13: OpCode = OpCode {
-        code: 0x6c,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH13",
-    };
-    pub const PUSH14: OpCode = OpCode {
-        code: 0x6d,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH14",
-    };
-    pub const PUSH15: OpCode = OpCode {
-        code: 0x6e,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH15",
-    };
-    pub const PUSH16: OpCode = OpCode {
-        code: 0x6f,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH16",
-    };
-    pub const PUSH17: OpCode = OpCode {
-        code: 0x70,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH17",
-    };
-    pub const PUSH18: OpCode = OpCode {
-        code: 0x71,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH18",
-    };
-    pub const PUSH19: OpCode = OpCode {
-        code: 0x72,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH19",
-    };
-    pub const PUSH2: OpCode = OpCode {
-        code: 0x61,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH2",
-    };
-    pub const PUSH20: OpCode = OpCode {
-        code: 0x73,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH20",
-    };
-    pub const PUSH21: OpCode = OpCode {
-        code: 0x74,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH21",
-    };
-    pub const PUSH22: OpCode = OpCode {
-        code: 0x75,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH22",
-    };
-    pub const PUSH23: OpCode = OpCode {
-        code: 0x76,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH23",
-    };
-    pub const PUSH24: OpCode = OpCode {
-        code: 0x77,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH24",
-    };
-    pub const PUSH25: OpCode = OpCode {
-        code: 0x78,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH25",
-    };
-    pub const PUSH26: OpCode = OpCode {
-        code: 0x79,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH26",
-    };
-    pub const PUSH27: OpCode = OpCode {
-        code: 0x7a,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH27",
-    };
-    pub const PUSH28: OpCode = OpCode {
-        code: 0x7b,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH28",
-    };
-    pub const PUSH29: OpCode = OpCode {
-        code: 0x7c,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH29",
-    };
-    pub const PUSH3: OpCode = OpCode {
-        code: 0x62,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH3",
-    };
-    pub const PUSH30: OpCode = OpCode {
-        code: 0x7d,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH30",
-    };
-    pub const PUSH31: OpCode = OpCode {
-        code: 0x7e,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH31",
-    };
-    pub const PUSH32: OpCode = OpCode {
-        code: 0x7f,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH32",
-    };
-    pub const PUSH4: OpCode = OpCode {
-        code: 0x63,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH4",
-    };
-    pub const PUSH5: OpCode = OpCode {
-        code: 0x64,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH5",
-    };
-    pub const PUSH6: OpCode = OpCode {
-        code: 0x65,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH6",
-    };
-    pub const PUSH7: OpCode = OpCode {
-        code: 0x66,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH7",
-    };
-    pub const PUSH8: OpCode = OpCode {
-        code: 0x67,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH8",
-    };
-    pub const PUSH9: OpCode = OpCode {
-        code: 0x68,
-        price: 3,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "PUSH9",
-    };
-    pub const RETURN: OpCode = OpCode {
-        code: 0xf3,
-        price: 0,
-        stack_height_required: 2,
-        stack_height_change: -2,
-        name: "RETURN",
-    };
-    pub const RETURNDATACOPY: OpCode = OpCode {
-        code: 0x3e,
-        price: 3,
-        stack_height_required: 3,
-        stack_height_change: -3,
-        name: "RETURNDATACOPY",
-    };
-    pub const RETURNDATASIZE: OpCode = OpCode {
-        code: 0x3d,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "RETURNDATASIZE",
-    };
-    pub const REVERT: OpCode = OpCode {
-        code: 0xfd,
-        price: 0,
-        stack_height_required: 2,
-        stack_height_change: -2,
-        name: "REVERT",
-    };
-    pub const SAR: OpCode = OpCode {
-        code: 0x1d,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "SAR",
-    };
-    pub const SDIV: OpCode = OpCode {
-        code: 0x05,
-        price: 5,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "SDIV",
-    };
-    pub const SELFBALANCE: OpCode = OpCode {
-        code: 0x47,
-        price: 5,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "SELFBALANCE",
-    };
-    pub const SELFDESTRUCT: OpCode = OpCode {
-        code: 0xff,
-        price: 5000,
-        stack_height_required: 1,
-        stack_height_change: -1,
-        name: "SELFDESTRUCT",
-    };
-    pub const SGT: OpCode = OpCode {
-        code: 0x13,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "SGT",
-    };
-    pub const SHL: OpCode = OpCode {
-        code: 0x1b,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "SHL",
-    };
-    pub const SHR: OpCode = OpCode {
-        code: 0x1c,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "SHR",
-    };
-    pub const SIGNEXTEND: OpCode = OpCode {
-        code: 0x0b,
-        price: 5,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "SIGNEXTEND",
-    };
-    pub const SLOAD: OpCode = OpCode {
-        code: 0x54,
-        price: WARM_STORAGE_READ_COST,
-        stack_height_required: 1,
-        stack_height_change: 0,
-        name: "SLOAD",
-    };
-    pub const SLT: OpCode = OpCode {
-        code: 0x12,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "SLT",
-    };
-    pub const SMOD: OpCode = OpCode {
-        code: 0x07,
-        price: 5,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "SMOD",
-    };
-    pub const SSTORE: OpCode = OpCode {
-        code: 0x55,
-        price: 0,
-        stack_height_required: 2,
-        stack_height_change: -2,
-        name: "SSTORE",
-    };
-    pub const STATICCALL: OpCode = OpCode {
-        code: 0xfa,
-        price: WARM_STORAGE_READ_COST,
-        stack_height_required: 6,
-        stack_height_change: -5,
-        name: "STATICCALL",
-    };
-    pub const STOP: OpCode = OpCode {
-        code: 0x00,
-        price: 0,
-        stack_height_required: 0,
-        stack_height_change: 0,
-        name: "STOP",
-    };
-    pub const SUB: OpCode = OpCode {
-        code: 0x03,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "SUB",
-    };
-    pub const SWAP1: OpCode = OpCode {
-        code: 0x90,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: 0,
-        name: "SWAP1",
-    };
-    pub const SWAP10: OpCode = OpCode {
-        code: 0x99,
-        price: 3,
-        stack_height_required: 11,
-        stack_height_change: 0,
-        name: "SWAP10",
-    };
-    pub const SWAP11: OpCode = OpCode {
-        code: 0x9a,
-        price: 3,
-        stack_height_required: 12,
-        stack_height_change: 0,
-        name: "SWAP11",
-    };
-    pub const SWAP12: OpCode = OpCode {
-        code: 0x9b,
-        price: 3,
-        stack_height_required: 13,
-        stack_height_change: 0,
-        name: "SWAP12",
-    };
-    pub const SWAP13: OpCode = OpCode {
-        code: 0x9c,
-        price: 3,
-        stack_height_required: 14,
-        stack_height_change: 0,
-        name: "SWAP13",
-    };
-    pub const SWAP14: OpCode = OpCode {
-        code: 0x9d,
-        price: 3,
-        stack_height_required: 15,
-        stack_height_change: 0,
-        name: "SWAP14",
-    };
-    pub const SWAP15: OpCode = OpCode {
-        code: 0x9e,
-        price: 3,
-        stack_height_required: 16,
-        stack_height_change: 0,
-        name: "SWAP15",
-    };
-    pub const SWAP16: OpCode = OpCode {
-        code: 0x9f,
-        price: 3,
-        stack_height_required: 17,
-        stack_height_change: 0,
-        name: "SWAP16",
-    };
-    pub const SWAP2: OpCode = OpCode {
-        code: 0x91,
-        price: 3,
-        stack_height_required: 3,
-        stack_height_change: 0,
-        name: "SWAP2",
-    };
-    pub const SWAP3: OpCode = OpCode {
-        code: 0x92,
-        price: 3,
-        stack_height_required: 4,
-        stack_height_change: 0,
-        name: "SWAP3",
-    };
-    pub const SWAP4: OpCode = OpCode {
-        code: 0x93,
-        price: 3,
-        stack_height_required: 5,
-        stack_height_change: 0,
-        name: "SWAP4",
-    };
-    pub const SWAP5: OpCode = OpCode {
-        code: 0x94,
-        price: 3,
-        stack_height_required: 6,
-        stack_height_change: 0,
-        name: "SWAP5",
-    };
-    pub const SWAP6: OpCode = OpCode {
-        code: 0x95,
-        price: 3,
-        stack_height_required: 7,
-        stack_height_change: 0,
-        name: "SWAP6",
-    };
-    pub const SWAP7: OpCode = OpCode {
-        code: 0x96,
-        price: 3,
-        stack_height_required: 8,
-        stack_height_change: 0,
-        name: "SWAP7",
-    };
-    pub const SWAP8: OpCode = OpCode {
-        code: 0x97,
-        price: 3,
-        stack_height_required: 9,
-        stack_height_change: 0,
-        name: "SWAP8",
-    };
-    pub const SWAP9: OpCode = OpCode {
-        code: 0x98,
-        price: 3,
-        stack_height_required: 10,
-        stack_height_change: 0,
-        name: "SWAP9",
-    };
-    pub const TIMESTAMP: OpCode = OpCode {
-        code: 0x42,
-        price: 2,
-        stack_height_required: 0,
-        stack_height_change: 1,
-        name: "TIMESTAMP",
-    };
-    pub const XOR: OpCode = OpCode {
-        code: 0x18,
-        price: 3,
-        stack_height_required: 2,
-        stack_height_change: -1,
-        name: "XOR",
-    };
+    def_opcode!(STOP, 0x00, 0, 0);
+    def_opcode!(ADD, 0x01, 2, -1);
+    def_opcode!(MUL, 0x02, 2, -1);
+    def_opcode!(SUB, 0x03, 2, -1);
+    def_opcode!(DIV, 0x04, 2, -1);
+    def_opcode!(SDIV, 0x05, 2, -1);
+    def_opcode!(MOD, 0x06, 2, -1);
+    def_opcode!(SMOD, 0x07, 2, -1);
+    def_opcode!(ADDMOD, 0x08, 3, -2);
+    def_opcode!(MULMOD, 0x09, 3, -2);
+    def_opcode!(EXP, 0x0a, 2, -1);
+    def_opcode!(SIGNEXTEND, 0x0b, 2, -1);
+    def_reserved!(RESERVED_0C, 0x0c);
+    def_reserved!(RESERVED_0D, 0x0d);
+    def_reserved!(RESERVED_0E, 0x0e);
+    def_reserved!(RESERVED_0F, 0x0f);
+    def_opcode!(LT, 0x10, 2, -1);
+    def_opcode!(GT, 0x11, 2, -1);
+    def_opcode!(SLT, 0x12, 2, -1);
+    def_opcode!(SGT, 0x13, 2, -1);
+    def_opcode!(EQ, 0x14, 2, -1);
+    def_opcode!(ISZERO, 0x15, 1, 0);
+    def_opcode!(AND, 0x16, 2, -1);
+    def_opcode!(OR, 0x17, 2, -1);
+    def_opcode!(XOR, 0x18, 2, -1);
+    def_opcode!(NOT, 0x19, 1, 0);
+    def_opcode!(BYTE, 0x1a, 2, -1);
+    def_opcode!(SHL, 0x1b, 2, -1);
+    def_opcode!(SHR, 0x1c, 2, -1);
+    def_opcode!(SAR, 0x1d, 2, -1);
+    def_reserved!(RESERVED_1E, 0x1e);
+    def_reserved!(RESERVED_1F, 0x1f);
+    def_opcode!(KECCAK256, 0x20, 2, -1); // SHA3
+    def_reserved!(RESERVED_21, 0x21);
+    def_reserved!(RESERVED_22, 0x22);
+    def_reserved!(RESERVED_23, 0x23);
+    def_reserved!(RESERVED_24, 0x24);
+    def_reserved!(RESERVED_25, 0x25);
+    def_reserved!(RESERVED_26, 0x26);
+    def_reserved!(RESERVED_27, 0x27);
+    def_reserved!(RESERVED_28, 0x28);
+    def_reserved!(RESERVED_29, 0x29);
+    def_reserved!(RESERVED_2A, 0x2a);
+    def_reserved!(RESERVED_2B, 0x2b);
+    def_reserved!(RESERVED_2C, 0x2c);
+    def_reserved!(RESERVED_2D, 0x2d);
+    def_reserved!(RESERVED_2E, 0x2e);
+    def_reserved!(RESERVED_2F, 0x2f);
+    def_opcode!(ADDRESS, 0x30, 0, 1);
+    def_opcode!(BALANCE, 0x31, 1, 0);
+    def_opcode!(ORIGIN, 0x32, 0, 1);
+    def_opcode!(CALLER, 0x33, 0, 1);
+    def_opcode!(CALLVALUE, 0x34, 0, 1);
+    def_opcode!(CALLDATALOAD, 0x35, 1, 0);
+    def_opcode!(CALLDATASIZE, 0x36, 0, 1);
+    def_opcode!(CALLDATACOPY, 0x37, 3, -3);
+    def_opcode!(CODESIZE, 0x38, 0, 1);
+    def_opcode!(CODECOPY, 0x39, 3, -3);
+    def_opcode!(GASPRICE, 0x3a, 0, 1);
+    def_opcode!(EXTCODESIZE, 0x3b, 1, 0);
+    def_opcode!(EXTCODECOPY, 0x3c, 4, -4);
+    def_opcode!(RETURNDATASIZE, 0x3d, 0, 1);
+    def_opcode!(RETURNDATACOPY, 0x3e, 3, -3);
+    def_opcode!(EXTCODEHASH, 0x3f, 1, 0);
+    def_opcode!(BLOCKHASH, 0x40, 1, 0);
+    def_opcode!(COINBASE, 0x41, 0, 1);
+    def_opcode!(TIMESTAMP, 0x42, 0, 1);
+    def_opcode!(NUMBER, 0x43, 0, 1);
+    def_opcode!(DIFFICULTY, 0x44, 0, 1);
+    def_opcode!(GASLIMIT, 0x45, 0, 1);
+    def_opcode!(CHAINID, 0x46, 0, 1);
+    def_opcode!(SELFBALANCE, 0x47, 0, 1);
+    def_opcode!(BASEFEE, 0x48, 0, 1);
+    def_reserved!(RESERVED_49, 0x49);
+    def_reserved!(RESERVED_4A, 0x4a);
+    def_reserved!(RESERVED_4B, 0x4b);
+    def_reserved!(RESERVED_4C, 0x4c);
+    def_reserved!(RESERVED_4D, 0x4d);
+    def_reserved!(RESERVED_4E, 0x4e);
+    def_reserved!(RESERVED_4F, 0x4f);
+    def_opcode!(POP, 0x50, 1, -1);
+    def_opcode!(MLOAD, 0x51, 1, 0);
+    def_opcode!(MSTORE, 0x52, 2, -2);
+    def_opcode!(MSTORE8, 0x53, 2, -2);
+    def_opcode!(SLOAD, 0x54, 1, 0);
+    def_opcode!(SSTORE, 0x55, 2, -2);
+    def_opcode!(JUMP, 0x56, 1, -1);
+    def_opcode!(JUMPI, 0x57, 2, -2);
+    def_opcode!(PC, 0x58, 0, 1);
+    def_opcode!(MSIZE, 0x59, 0, 1);
+    def_opcode!(GAS, 0x5a, 0, 1);
+    def_opcode!(JUMPDEST, 0x5b, 0, 0);
+    def_reserved!(RESERVED_5C, 0x5c);
+    def_reserved!(RESERVED_5D, 0x5d);
+    def_reserved!(RESERVED_5E, 0x5e);
+    def_reserved!(RESERVED_5F, 0x5f);
+    def_opcode!(PUSH1, 0x60, 0, 1);
+    def_opcode!(PUSH2, 0x61, 0, 1);
+    def_opcode!(PUSH3, 0x62, 0, 1);
+    def_opcode!(PUSH4, 0x63, 0, 1);
+    def_opcode!(PUSH5, 0x64, 0, 1);
+    def_opcode!(PUSH6, 0x65, 0, 1);
+    def_opcode!(PUSH7, 0x66, 0, 1);
+    def_opcode!(PUSH8, 0x67, 0, 1);
+    def_opcode!(PUSH9, 0x68, 0, 1);
+    def_opcode!(PUSH10, 0x69, 0, 1);
+    def_opcode!(PUSH11, 0x6a, 0, 1);
+    def_opcode!(PUSH12, 0x6b, 0, 1);
+    def_opcode!(PUSH13, 0x6c, 0, 1);
+    def_opcode!(PUSH14, 0x6d, 0, 1);
+    def_opcode!(PUSH15, 0x6e, 0, 1);
+    def_opcode!(PUSH16, 0x6f, 0, 1);
+    def_opcode!(PUSH17, 0x70, 0, 1);
+    def_opcode!(PUSH18, 0x71, 0, 1);
+    def_opcode!(PUSH19, 0x72, 0, 1);
+    def_opcode!(PUSH20, 0x73, 0, 1);
+    def_opcode!(PUSH21, 0x74, 0, 1);
+    def_opcode!(PUSH22, 0x75, 0, 1);
+    def_opcode!(PUSH23, 0x76, 0, 1);
+    def_opcode!(PUSH24, 0x77, 0, 1);
+    def_opcode!(PUSH25, 0x78, 0, 1);
+    def_opcode!(PUSH26, 0x79, 0, 1);
+    def_opcode!(PUSH27, 0x7a, 0, 1);
+    def_opcode!(PUSH28, 0x7b, 0, 1);
+    def_opcode!(PUSH29, 0x7c, 0, 1);
+    def_opcode!(PUSH30, 0x7d, 0, 1);
+    def_opcode!(PUSH31, 0x7e, 0, 1);
+    def_opcode!(PUSH32, 0x7f, 0, 1);
+    def_opcode!(DUP1, 0x80, 1, 1);
+    def_opcode!(DUP2, 0x81, 2, 1);
+    def_opcode!(DUP3, 0x82, 3, 1);
+    def_opcode!(DUP4, 0x83, 4, 1);
+    def_opcode!(DUP5, 0x84, 5, 1);
+    def_opcode!(DUP6, 0x85, 6, 1);
+    def_opcode!(DUP7, 0x86, 7, 1);
+    def_opcode!(DUP8, 0x87, 8, 1);
+    def_opcode!(DUP9, 0x88, 9, 1);
+    def_opcode!(DUP10, 0x89, 10, 1);
+    def_opcode!(DUP11, 0x8a, 11, 1);
+    def_opcode!(DUP12, 0x8b, 12, 1);
+    def_opcode!(DUP13, 0x8c, 13, 1);
+    def_opcode!(DUP14, 0x8d, 14, 1);
+    def_opcode!(DUP15, 0x8e, 15, 1);
+    def_opcode!(DUP16, 0x8f, 16, 1);
+    def_opcode!(SWAP1, 0x90, 2, 0);
+    def_opcode!(SWAP2, 0x91, 3, 0);
+    def_opcode!(SWAP3, 0x92, 4, 0);
+    def_opcode!(SWAP4, 0x93, 5, 0);
+    def_opcode!(SWAP5, 0x94, 6, 0);
+    def_opcode!(SWAP6, 0x95, 7, 0);
+    def_opcode!(SWAP7, 0x96, 8, 0);
+    def_opcode!(SWAP8, 0x97, 9, 0);
+    def_opcode!(SWAP9, 0x98, 10, 0);
+    def_opcode!(SWAP10, 0x99, 11, 0);
+    def_opcode!(SWAP11, 0x9a, 12, 0);
+    def_opcode!(SWAP12, 0x9b, 13, 0);
+    def_opcode!(SWAP13, 0x9c, 14, 0);
+    def_opcode!(SWAP14, 0x9d, 15, 0);
+    def_opcode!(SWAP15, 0x9e, 16, 0);
+    def_opcode!(SWAP16, 0x9f, 17, 0);
+    def_opcode!(LOG0, 0xa0, 2, -2);
+    def_opcode!(LOG1, 0xa1, 3, -3);
+    def_opcode!(LOG2, 0xa2, 4, -4);
+    def_opcode!(LOG3, 0xa3, 5, -5);
+    def_opcode!(LOG4, 0xa4, 6, -6);
+    def_reserved!(RESERVED_A5, 0xa5);
+    def_reserved!(RESERVED_A6, 0xa6);
+    def_reserved!(RESERVED_A7, 0xa7);
+    def_reserved!(RESERVED_A8, 0xa8);
+    def_reserved!(RESERVED_A9, 0xa9);
+    def_reserved!(RESERVED_AA, 0xaa);
+    def_reserved!(RESERVED_AB, 0xab);
+    def_reserved!(RESERVED_AC, 0xac);
+    def_reserved!(RESERVED_AD, 0xad);
+    def_reserved!(RESERVED_AE, 0xae);
+    def_reserved!(RESERVED_AF, 0xaf);
+    def_reserved!(RESERVED_B0, 0xb0);
+    def_reserved!(RESERVED_B1, 0xb1);
+    def_reserved!(RESERVED_B2, 0xb2);
+    def_reserved!(RESERVED_B3, 0xb3);
+    def_reserved!(RESERVED_B4, 0xb4);
+    def_reserved!(RESERVED_B5, 0xb5);
+    def_reserved!(RESERVED_B6, 0xb6);
+    def_reserved!(RESERVED_B7, 0xb7);
+    def_reserved!(RESERVED_B8, 0xb8);
+    def_reserved!(RESERVED_B9, 0xb9);
+    def_reserved!(RESERVED_BA, 0xba);
+    def_reserved!(RESERVED_BB, 0xbb);
+    def_reserved!(RESERVED_BC, 0xbc);
+    def_reserved!(RESERVED_BD, 0xbd);
+    def_reserved!(RESERVED_BE, 0xbe);
+    def_reserved!(RESERVED_BF, 0xbf);
+    def_reserved!(RESERVED_C0, 0xc0);
+    def_reserved!(RESERVED_C1, 0xc1);
+    def_reserved!(RESERVED_C2, 0xc2);
+    def_reserved!(RESERVED_C3, 0xc3);
+    def_reserved!(RESERVED_C4, 0xc4);
+    def_reserved!(RESERVED_C5, 0xc5);
+    def_reserved!(RESERVED_C6, 0xc6);
+    def_reserved!(RESERVED_C7, 0xc7);
+    def_reserved!(RESERVED_C8, 0xc8);
+    def_reserved!(RESERVED_C9, 0xc9);
+    def_reserved!(RESERVED_CA, 0xca);
+    def_reserved!(RESERVED_CB, 0xcb);
+    def_reserved!(RESERVED_CC, 0xcc);
+    def_reserved!(RESERVED_CD, 0xcd);
+    def_reserved!(RESERVED_CE, 0xce);
+    def_reserved!(RESERVED_CF, 0xcf);
+    def_reserved!(RESERVED_D0, 0xd0);
+    def_reserved!(RESERVED_D1, 0xd1);
+    def_reserved!(RESERVED_D2, 0xd2);
+    def_reserved!(RESERVED_D3, 0xd3);
+    def_reserved!(RESERVED_D4, 0xd4);
+    def_reserved!(RESERVED_D5, 0xd5);
+    def_reserved!(RESERVED_D6, 0xd6);
+    def_reserved!(RESERVED_D7, 0xd7);
+    def_reserved!(RESERVED_D8, 0xd8);
+    def_reserved!(RESERVED_D9, 0xd9);
+    def_reserved!(RESERVED_DA, 0xda);
+    def_reserved!(RESERVED_DB, 0xdb);
+    def_reserved!(RESERVED_DC, 0xdc);
+    def_reserved!(RESERVED_DD, 0xdd);
+    def_reserved!(RESERVED_DE, 0xde);
+    def_reserved!(RESERVED_DF, 0xdf);
+    def_reserved!(RESERVED_E0, 0xe0);
+    def_reserved!(RESERVED_E1, 0xe1);
+    def_reserved!(RESERVED_E2, 0xe2);
+    def_reserved!(RESERVED_E3, 0xe3);
+    def_reserved!(RESERVED_E4, 0xe4);
+    def_reserved!(RESERVED_E5, 0xe5);
+    def_reserved!(RESERVED_E6, 0xe6);
+    def_reserved!(RESERVED_E7, 0xe7);
+    def_reserved!(RESERVED_E8, 0xe8);
+    def_reserved!(RESERVED_E9, 0xe9);
+    def_reserved!(RESERVED_EA, 0xea);
+    def_reserved!(RESERVED_EB, 0xeb);
+    def_reserved!(RESERVED_EC, 0xec);
+    def_reserved!(RESERVED_ED, 0xed);
+    def_reserved!(RESERVED_EE, 0xee);
+    def_reserved!(RESERVED_EF, 0xef);
+    def_opcode!(CREATE, 0xf0, 3, -2);
+    def_opcode!(CALL, 0xf1, 7, -6);
+    def_opcode!(CALLCODE, 0xf2, 7, -6);
+    def_opcode!(RETURN, 0xf3, 2, -2);
+    def_opcode!(DELEGATECALL, 0xf4, 6, -5);
+    def_opcode!(CREATE2, 0xf5, 4, -3);
+    def_reserved!(RESERVED_F6, 0xf6);
+    def_reserved!(RESERVED_F7, 0xf7);
+    def_reserved!(RESERVED_F8, 0xf8);
+    def_reserved!(RESERVED_F9, 0xf9);
+    def_opcode!(STATICCALL, 0xfa, 6, -5);
+    def_reserved!(RESERVED_FB, 0xfb);
+    def_reserved!(RESERVED_FC, 0xfc);
+    def_opcode!(REVERT, 0xfd, 2, -2);
+    def_opcode!(INVALID, 0xfe, 0, 0);
+    def_opcode!(SELFDESTRUCT, 0xff, 1, -1);
+
+    const OPCODES: [OpCode; 256] = [
+        OpCode::STOP,
+        OpCode::ADD,
+        OpCode::MUL,
+        OpCode::SUB,
+        OpCode::DIV,
+        OpCode::SDIV,
+        OpCode::MOD,
+        OpCode::SMOD,
+        OpCode::ADDMOD,
+        OpCode::MULMOD,
+        OpCode::EXP,
+        OpCode::SIGNEXTEND,
+        OpCode::RESERVED_0C,
+        OpCode::RESERVED_0D,
+        OpCode::RESERVED_0E,
+        OpCode::RESERVED_0F,
+        OpCode::LT,
+        OpCode::GT,
+        OpCode::SLT,
+        OpCode::SGT,
+        OpCode::EQ,
+        OpCode::ISZERO,
+        OpCode::AND,
+        OpCode::OR,
+        OpCode::XOR,
+        OpCode::NOT,
+        OpCode::BYTE,
+        OpCode::SHL,
+        OpCode::SHR,
+        OpCode::SAR,
+        OpCode::RESERVED_1E,
+        OpCode::RESERVED_1F,
+        OpCode::KECCAK256,
+        OpCode::RESERVED_21,
+        OpCode::RESERVED_22,
+        OpCode::RESERVED_23,
+        OpCode::RESERVED_24,
+        OpCode::RESERVED_25,
+        OpCode::RESERVED_26,
+        OpCode::RESERVED_27,
+        OpCode::RESERVED_28,
+        OpCode::RESERVED_29,
+        OpCode::RESERVED_2A,
+        OpCode::RESERVED_2B,
+        OpCode::RESERVED_2C,
+        OpCode::RESERVED_2D,
+        OpCode::RESERVED_2E,
+        OpCode::RESERVED_2F,
+        OpCode::ADDRESS,
+        OpCode::BALANCE,
+        OpCode::ORIGIN,
+        OpCode::CALLER,
+        OpCode::CALLVALUE,
+        OpCode::CALLDATALOAD,
+        OpCode::CALLDATASIZE,
+        OpCode::CALLDATACOPY,
+        OpCode::CODESIZE,
+        OpCode::CODECOPY,
+        OpCode::GASPRICE,
+        OpCode::EXTCODESIZE,
+        OpCode::EXTCODECOPY,
+        OpCode::RETURNDATASIZE,
+        OpCode::RETURNDATACOPY,
+        OpCode::EXTCODEHASH,
+        OpCode::BLOCKHASH,
+        OpCode::COINBASE,
+        OpCode::TIMESTAMP,
+        OpCode::NUMBER,
+        OpCode::DIFFICULTY,
+        OpCode::GASLIMIT,
+        OpCode::CHAINID,
+        OpCode::SELFBALANCE,
+        OpCode::BASEFEE,
+        OpCode::RESERVED_49,
+        OpCode::RESERVED_4A,
+        OpCode::RESERVED_4B,
+        OpCode::RESERVED_4C,
+        OpCode::RESERVED_4D,
+        OpCode::RESERVED_4E,
+        OpCode::RESERVED_4F,
+        OpCode::POP,
+        OpCode::MLOAD,
+        OpCode::MSTORE,
+        OpCode::MSTORE8,
+        OpCode::SLOAD,
+        OpCode::SSTORE,
+        OpCode::JUMP,
+        OpCode::JUMPI,
+        OpCode::PC,
+        OpCode::MSIZE,
+        OpCode::GAS,
+        OpCode::JUMPDEST,
+        OpCode::RESERVED_5C,
+        OpCode::RESERVED_5D,
+        OpCode::RESERVED_5E,
+        OpCode::RESERVED_5F,
+        OpCode::PUSH1,
+        OpCode::PUSH2,
+        OpCode::PUSH3,
+        OpCode::PUSH4,
+        OpCode::PUSH5,
+        OpCode::PUSH6,
+        OpCode::PUSH7,
+        OpCode::PUSH8,
+        OpCode::PUSH9,
+        OpCode::PUSH10,
+        OpCode::PUSH11,
+        OpCode::PUSH12,
+        OpCode::PUSH13,
+        OpCode::PUSH14,
+        OpCode::PUSH15,
+        OpCode::PUSH16,
+        OpCode::PUSH17,
+        OpCode::PUSH18,
+        OpCode::PUSH19,
+        OpCode::PUSH20,
+        OpCode::PUSH21,
+        OpCode::PUSH22,
+        OpCode::PUSH23,
+        OpCode::PUSH24,
+        OpCode::PUSH25,
+        OpCode::PUSH26,
+        OpCode::PUSH27,
+        OpCode::PUSH28,
+        OpCode::PUSH29,
+        OpCode::PUSH30,
+        OpCode::PUSH31,
+        OpCode::PUSH32,
+        OpCode::DUP1,
+        OpCode::DUP2,
+        OpCode::DUP3,
+        OpCode::DUP4,
+        OpCode::DUP5,
+        OpCode::DUP6,
+        OpCode::DUP7,
+        OpCode::DUP8,
+        OpCode::DUP9,
+        OpCode::DUP10,
+        OpCode::DUP11,
+        OpCode::DUP12,
+        OpCode::DUP13,
+        OpCode::DUP14,
+        OpCode::DUP15,
+        OpCode::DUP16,
+        OpCode::SWAP1,
+        OpCode::SWAP2,
+        OpCode::SWAP3,
+        OpCode::SWAP4,
+        OpCode::SWAP5,
+        OpCode::SWAP6,
+        OpCode::SWAP7,
+        OpCode::SWAP8,
+        OpCode::SWAP9,
+        OpCode::SWAP10,
+        OpCode::SWAP11,
+        OpCode::SWAP12,
+        OpCode::SWAP13,
+        OpCode::SWAP14,
+        OpCode::SWAP15,
+        OpCode::SWAP16,
+        OpCode::LOG0,
+        OpCode::LOG1,
+        OpCode::LOG2,
+        OpCode::LOG3,
+        OpCode::LOG4,
+        OpCode::RESERVED_A5,
+        OpCode::RESERVED_A6,
+        OpCode::RESERVED_A7,
+        OpCode::RESERVED_A8,
+        OpCode::RESERVED_A9,
+        OpCode::RESERVED_AA,
+        OpCode::RESERVED_AB,
+        OpCode::RESERVED_AC,
+        OpCode::RESERVED_AD,
+        OpCode::RESERVED_AE,
+        OpCode::RESERVED_AF,
+        OpCode::RESERVED_B0,
+        OpCode::RESERVED_B1,
+        OpCode::RESERVED_B2,
+        OpCode::RESERVED_B3,
+        OpCode::RESERVED_B4,
+        OpCode::RESERVED_B5,
+        OpCode::RESERVED_B6,
+        OpCode::RESERVED_B7,
+        OpCode::RESERVED_B8,
+        OpCode::RESERVED_B9,
+        OpCode::RESERVED_BA,
+        OpCode::RESERVED_BB,
+        OpCode::RESERVED_BC,
+        OpCode::RESERVED_BD,
+        OpCode::RESERVED_BE,
+        OpCode::RESERVED_BF,
+        OpCode::RESERVED_C0,
+        OpCode::RESERVED_C1,
+        OpCode::RESERVED_C2,
+        OpCode::RESERVED_C3,
+        OpCode::RESERVED_C4,
+        OpCode::RESERVED_C5,
+        OpCode::RESERVED_C6,
+        OpCode::RESERVED_C7,
+        OpCode::RESERVED_C8,
+        OpCode::RESERVED_C9,
+        OpCode::RESERVED_CA,
+        OpCode::RESERVED_CB,
+        OpCode::RESERVED_CC,
+        OpCode::RESERVED_CD,
+        OpCode::RESERVED_CE,
+        OpCode::RESERVED_CF,
+        OpCode::RESERVED_D0,
+        OpCode::RESERVED_D1,
+        OpCode::RESERVED_D2,
+        OpCode::RESERVED_D3,
+        OpCode::RESERVED_D4,
+        OpCode::RESERVED_D5,
+        OpCode::RESERVED_D6,
+        OpCode::RESERVED_D7,
+        OpCode::RESERVED_D8,
+        OpCode::RESERVED_D9,
+        OpCode::RESERVED_DA,
+        OpCode::RESERVED_DB,
+        OpCode::RESERVED_DC,
+        OpCode::RESERVED_DD,
+        OpCode::RESERVED_DE,
+        OpCode::RESERVED_DF,
+        OpCode::RESERVED_E0,
+        OpCode::RESERVED_E1,
+        OpCode::RESERVED_E2,
+        OpCode::RESERVED_E3,
+        OpCode::RESERVED_E4,
+        OpCode::RESERVED_E5,
+        OpCode::RESERVED_E6,
+        OpCode::RESERVED_E7,
+        OpCode::RESERVED_E8,
+        OpCode::RESERVED_E9,
+        OpCode::RESERVED_EA,
+        OpCode::RESERVED_EB,
+        OpCode::RESERVED_EC,
+        OpCode::RESERVED_ED,
+        OpCode::RESERVED_EE,
+        OpCode::RESERVED_EF,
+        OpCode::CREATE,
+        OpCode::CALL,
+        OpCode::CALLCODE,
+        OpCode::RETURN,
+        OpCode::DELEGATECALL,
+        OpCode::CREATE2,
+        OpCode::RESERVED_F6,
+        OpCode::RESERVED_F7,
+        OpCode::RESERVED_F8,
+        OpCode::RESERVED_F9,
+        OpCode::STATICCALL,
+        OpCode::RESERVED_FB,
+        OpCode::RESERVED_FC,
+        OpCode::REVERT,
+        OpCode::INVALID,
+        OpCode::SELFDESTRUCT,
+    ];
 }
 
 impl std::fmt::Display for OpCode {
@@ -1055,160 +588,13 @@ impl std::fmt::Display for OpCode {
 impl TryFrom<u8> for OpCode {
     type Error = StatusCode;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        // todo: optimize and turn it into a jump table
-        const OPCODES: [OpCode; 143] = [
-            OpCode::STOP,
-            OpCode::ADD,
-            OpCode::MUL,
-            OpCode::SUB,
-            OpCode::DIV,
-            OpCode::SDIV,
-            OpCode::MOD,
-            OpCode::SMOD,
-            OpCode::ADDMOD,
-            OpCode::MULMOD,
-            OpCode::EXP,
-            OpCode::SIGNEXTEND,
-            OpCode::LT,
-            OpCode::GT,
-            OpCode::SLT,
-            OpCode::SGT,
-            OpCode::EQ,
-            OpCode::ISZERO,
-            OpCode::AND,
-            OpCode::OR,
-            OpCode::XOR,
-            OpCode::NOT,
-            OpCode::BYTE,
-            OpCode::SHL,
-            OpCode::SHR,
-            OpCode::SAR,
-            OpCode::KECCAK256,
-            OpCode::ADDRESS,
-            OpCode::BALANCE,
-            OpCode::ORIGIN,
-            OpCode::CALLER,
-            OpCode::CALLVALUE,
-            OpCode::CALLDATALOAD,
-            OpCode::CALLDATASIZE,
-            OpCode::CALLDATACOPY,
-            OpCode::CODESIZE,
-            OpCode::CODECOPY,
-            OpCode::GASPRICE,
-            OpCode::EXTCODESIZE,
-            OpCode::EXTCODECOPY,
-            OpCode::RETURNDATASIZE,
-            OpCode::RETURNDATACOPY,
-            OpCode::EXTCODEHASH,
-            OpCode::BLOCKHASH,
-            OpCode::COINBASE,
-            OpCode::TIMESTAMP,
-            OpCode::NUMBER,
-            OpCode::DIFFICULTY,
-            OpCode::GASLIMIT,
-            OpCode::CHAINID,
-            OpCode::SELFBALANCE,
-            OpCode::BASEFEE,
-            OpCode::POP,
-            OpCode::MLOAD,
-            OpCode::MSTORE,
-            OpCode::MSTORE8,
-            OpCode::SLOAD,
-            OpCode::SSTORE,
-            OpCode::JUMP,
-            OpCode::JUMPI,
-            OpCode::PC,
-            OpCode::MSIZE,
-            OpCode::GAS,
-            OpCode::JUMPDEST,
-            OpCode::PUSH1,
-            OpCode::PUSH2,
-            OpCode::PUSH3,
-            OpCode::PUSH4,
-            OpCode::PUSH5,
-            OpCode::PUSH6,
-            OpCode::PUSH7,
-            OpCode::PUSH8,
-            OpCode::PUSH9,
-            OpCode::PUSH10,
-            OpCode::PUSH11,
-            OpCode::PUSH12,
-            OpCode::PUSH13,
-            OpCode::PUSH14,
-            OpCode::PUSH15,
-            OpCode::PUSH16,
-            OpCode::PUSH17,
-            OpCode::PUSH18,
-            OpCode::PUSH19,
-            OpCode::PUSH20,
-            OpCode::PUSH21,
-            OpCode::PUSH22,
-            OpCode::PUSH23,
-            OpCode::PUSH24,
-            OpCode::PUSH25,
-            OpCode::PUSH26,
-            OpCode::PUSH27,
-            OpCode::PUSH28,
-            OpCode::PUSH29,
-            OpCode::PUSH30,
-            OpCode::PUSH31,
-            OpCode::PUSH32,
-            OpCode::DUP1,
-            OpCode::DUP2,
-            OpCode::DUP3,
-            OpCode::DUP4,
-            OpCode::DUP5,
-            OpCode::DUP6,
-            OpCode::DUP7,
-            OpCode::DUP8,
-            OpCode::DUP9,
-            OpCode::DUP10,
-            OpCode::DUP11,
-            OpCode::DUP12,
-            OpCode::DUP13,
-            OpCode::DUP14,
-            OpCode::DUP15,
-            OpCode::DUP16,
-            OpCode::SWAP1,
-            OpCode::SWAP2,
-            OpCode::SWAP3,
-            OpCode::SWAP4,
-            OpCode::SWAP5,
-            OpCode::SWAP6,
-            OpCode::SWAP7,
-            OpCode::SWAP8,
-            OpCode::SWAP9,
-            OpCode::SWAP10,
-            OpCode::SWAP11,
-            OpCode::SWAP12,
-            OpCode::SWAP13,
-            OpCode::SWAP14,
-            OpCode::SWAP15,
-            OpCode::SWAP16,
-            OpCode::LOG0,
-            OpCode::LOG1,
-            OpCode::LOG2,
-            OpCode::LOG3,
-            OpCode::LOG4,
-            OpCode::CREATE,
-            OpCode::CALL,
-            OpCode::CALLCODE,
-            OpCode::RETURN,
-            OpCode::DELEGATECALL,
-            OpCode::CREATE2,
-            OpCode::STATICCALL,
-            OpCode::REVERT,
-            OpCode::INVALID,
-            OpCode::SELFDESTRUCT,
-        ];
+    fn try_from(op: u8) -> Result<Self, Self::Error> {
+        let opc = OpCode::OPCODES[op as usize];
 
-        for op in OPCODES {
-            if op == value {
-                return Ok(op);
-            }
+        if opc.reserved {
+            return Err(StatusCode::UndefinedInstruction);
         }
 
-        Err(StatusCode::UndefinedInstruction)
+        Ok(opc)
     }
 }
