@@ -15,11 +15,11 @@ impl<'c> Bytecode<'c> {
         let mut jumpdest = vec![false; bytecode.len()];
         let mut i = 0;
         while i < bytecode.len() {
-            if bytecode[i] == OpCode::JUMPDEST.code {
+            if bytecode[i] == OpCode::JUMPDEST as u8 {
                 jumpdest[i] = true;
                 i += 1;
-            } else if bytecode[i] >= OpCode::PUSH1.code && bytecode[i] <= OpCode::PUSH32.code {
-                i += (bytecode[i] - OpCode::PUSH1.code) as usize + 2;
+            } else if bytecode[i] >= OpCode::PUSH1 as u8 && bytecode[i] <= OpCode::PUSH32 as u8 {
+                i += (bytecode[i] - OpCode::PUSH1 as u8) as usize + 2;
             } else {
                 i += 1;
             }
