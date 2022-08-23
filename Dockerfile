@@ -8,4 +8,4 @@ WORKDIR /usr/src/builtin-actors
 # Grab the correct toolchain
 RUN rustup toolchain install nightly && rustup target add wasm32-unknown-unknown
 
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT ["/bin/bash", "-c"]
