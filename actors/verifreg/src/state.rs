@@ -48,9 +48,9 @@ pub struct Claim {
     pub data: Cid,
     pub size: u64,
     // The min period which the provider must commit to storing data
-    pub term_min: u64,
+    pub term_min: ChainEpoch,
     // The max period for which provider can earn QA-power for the data
-    pub term_max: u64,
+    pub term_max: ChainEpoch,
     pub term_start: ChainEpoch,
     pub sector: SectorID, 
 }
@@ -61,9 +61,9 @@ pub struct Allocation {
     pub provider: Address,
     pub data: Cid,
     pub size: u64,
-    pub term_min: u64,
-    pub term_max: u64,
-    pub expiration: u64,
+    pub term_min: ChainEpoch,
+    pub term_max: ChainEpoch,
+    pub expiration: ChainEpoch,
 }
 
 impl Cbor for State {}

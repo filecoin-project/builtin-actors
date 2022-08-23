@@ -7,7 +7,10 @@ pub use self::multimap::*;
 pub use self::set::Set;
 pub use self::set_multimap::SetMultimap;
 pub use self::mapmap::MapMap;
+pub use self::batch_return::BatchReturn;
+pub use self::batch_return::BatchReturnGen;
 
+mod batch_return;
 pub mod cbor;
 pub mod chaos;
 mod downcast;

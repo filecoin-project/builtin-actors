@@ -2,21 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::{
     actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_id_addr, ActorDowncast,
     ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, ActorContext, MapMap, AsActorError,
+    BatchReturnGen,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 use std::collections::{BTreeMap};
+use log::info;
+
 
 pub use self::state::State;
 pub use self::state::Allocation;
@@ -691,46 +694,85 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        // since the alloc is expired this should be safe to publically cleanup
+        rt.validate_immediate_caller_accept_any()?;
+        rt.transaction(|st: &mut State, rt| {
+            let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations talbe")?;
+            for alloc_id in params.allocation_ids {
+                let alloc = allocs.get::<Address, AllocationID, Allocation>(params.client, alloc_id)
+                .context_code(ExitCode::USR_ILLEGAL_ARGUMENT,
+                "revoke references allocations id that does not belong to client"
+                )?
+                .context_code(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+            "revoke references allocations id that does not belong to client"
+                )?;
+                if alloc.expiration > rt.curr_epoch() {
+                    return Err(actor_error!(forbidden, "cannot revoke allocation that has not expired"))
+                }
+                allocs.remove::<Address, AllocationID, Allocation>(params.client, alloc_id)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, format!("failed to remove allocation {}", alloc_id))?;
+            } 
+            st.allocations = allocs.root().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;  
+            Ok(())
+        }).context("state transaction failed")?;
         Ok(())
     }
 
     pub fn claim_allocation<BS, RT>(
         rt: &mut RT,
         params: ClaimAllocationParams,
-    ) -> Result<(), ActorError>
+    ) -> Result<ClaimAllocationReturn, ActorError>
     where  
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        // XXX I think we should do delegation to market during activate_deals 
+        // however this differs from the FIP as written
         rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
         if params.sectors.len() == 0 {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"))
         }
         let provider = params.sectors[0].provider;
         let mut client_burns = BTreeMap::<ActorID, DataCap>::new();
+        let mut ret_gen = BatchReturnGen::new();
         rt.transaction(|st: &mut State, rt| {
             let mut claims = MapMap::from_root(rt.store(), &st.claims, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims table")?;
             let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations talbe")?;
             for claim_alloc in params.sectors {
-                // check that provider matches alloc 
                 if claim_alloc.provider != provider {
-                    return Err(actor_error!(forbidden, "allocation must match provider making claim"))
+                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                    info!(
+                        "bad claim provider {} does not match others in batch {}", claim_alloc.provider, provider,
+                    );
+                    continue;
                 }
 
                 let client_id = claim_alloc.client.id().context_code(ExitCode::USR_ILLEGAL_STATE, "allocations client must be id address")?;
                 let maybe_alloc = allocs.get::<Address, AllocationID, Allocation>(claim_alloc.client, claim_alloc.allocation_id)
                 .context_code(
-                    ExitCode::USR_ILLEGAL_ARGUMENT,
-                    "claim references allocations id that does not belong to provider"
-                )?;
-                let alloc = maybe_alloc.context_code(
-                    ExitCode::USR_ILLEGAL_ARGUMENT,
-                    "claim references allocations id that does not belong to provider"
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "HAMT lookup failure getting allocation"
                 )?;
 
-                // TODO check alloc matches claim in subfunction
-                // check that expiration is not past
-                // check that min and max terms are ok (we might need more data?)
+                let alloc = match maybe_alloc {
+                    None => {
+                        ret_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                        info!(
+                            "claim references allocation id {} that does not belong to provider", claim_alloc.allocation_id,
+                        );
+                        continue;
+                    }
+                    Some(a) => a,
+                };
+   
+                if !can_claim_alloc(&claim_alloc, &alloc, rt.curr_epoch()) {
+                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                    info!(
+                        "invalid sector {:?} for allocation {}", claim_alloc.sector_id, claim_alloc.allocation_id,
+                    );
+                    continue
+                }
 
                 let new_claim = Claim{
                     provider,
@@ -744,7 +786,7 @@ impl Actor {
                 };
 
                 claims.put::<Address, ClaimID, Claim>(provider, claim_alloc.allocation_id, new_claim)
-                .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, format!("failed to write claim {}", claim_alloc.allocation_id))?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, format!("failed to write claim {}", claim_alloc.allocation_id))?;
                 
                 allocs.remove::<Address, AllocationID, Allocation>(claim_alloc.client, claim_alloc.allocation_id)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, format!("failed to remove allocation {}", claim_alloc.allocation_id))?;
@@ -754,7 +796,10 @@ impl Actor {
                     None => DataCap::zero(),
                 };
                 client_burns.insert(client_id, acc + claim_alloc.piece_size);
+                ret_gen.add_success();
             }
+            st.allocations = allocs.root().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;  
+            st.claims = claims.root().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims table")?;  
             Ok(())
         })
         .context("state transaction failed")?;
@@ -767,18 +812,20 @@ impl Actor {
             _ = client;
         }
          
-        Ok(())
+        Ok(ret_gen.gen())
     }
 
     pub fn extend_claim_terms<BS, RT> (
         rt: &mut RT,
         params: ExtendClaimTermsParams,
-    ) -> Result<(), ActorError>
+    ) -> Result<ExtendClaimTermsReturn, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-            Ok(())
+        // TODO add this logic after #514 and burn helper
+        _ = rt;
+        Ok(ExtendClaimTermsReturn{fail_codes: Vec::new(), batch_size: params.claims.len()})
     }
 }
 
@@ -870,6 +917,18 @@ where
     rt.verify_signature(&request.signature, &request.verifier, &payload).map_err(
         |e| actor_error!(illegal_argument; "invalid signature for datacap removal request: {}", e),
     )
+}
+
+fn can_claim_alloc(claim_alloc: &SectorAllocationClaim, alloc: &Allocation, curr_epoch: ChainEpoch) -> bool {
+    let sector_lifetime = claim_alloc.sector_expiry - curr_epoch;
+
+    claim_alloc.provider == alloc.provider
+    && claim_alloc.client == alloc.client 
+    && claim_alloc.piece_cid == alloc.data
+    && claim_alloc.piece_size == alloc.size 
+    && curr_epoch <= alloc.expiration
+    && sector_lifetime >= alloc.term_min
+    && sector_lifetime < alloc.term_max
 }
 
 impl ActorCode for Actor {

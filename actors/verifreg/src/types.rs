@@ -11,6 +11,7 @@ use fvm_shared::sector::StoragePower;
 use serde::{Deserialize, Serialize};
 use fvm_shared::sector::SectorID;
 use fvm_shared::clock::{ChainEpoch};
+use fil_actors_runtime::{BatchReturn};
 
 pub type AllocationID = u64;
 pub type ClaimID = u64;
@@ -115,13 +116,16 @@ pub struct SectorAllocationClaim {
     pub allocation_id: AllocationID,
     pub piece_cid: Cid,
     pub piece_size: u64,
-    pub sector_id: SectorID,    
+    pub sector_id: SectorID,
+    pub sector_expiry: ChainEpoch,    
 }
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationParams {
     pub sectors: Vec<SectorAllocationClaim>,
 }
+
+pub type ClaimAllocationReturn = BatchReturn;
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimTerm {
@@ -132,5 +136,7 @@ pub struct ClaimTerm {
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ExtendClaimTermsParams {
-    claims: Vec<ClaimTerm>,
+    pub claims: Vec<ClaimTerm>,
 }
+
+pub type  ExtendClaimTermsReturn = BatchReturn;
