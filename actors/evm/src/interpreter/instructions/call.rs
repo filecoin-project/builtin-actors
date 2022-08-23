@@ -109,19 +109,13 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
 pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
-    kind: CallKind,
-    is_static: bool,
+    _kind: CallKind,
+    _is_static: bool,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
 
-    let gas = stack.pop();
+    let _gas = stack.pop(); // EVM gas is not used in FVM
     let dst: H160 = crate::interpreter::uints::_u256_to_address(stack.pop());
-    let value = if is_static || matches!(kind, CallKind::DelegateCall) {
-        U256::zero()
-    } else {
-        stack.pop()
-    };
-    let has_value = !value.is_zero();
     let input_offset = stack.pop();
     let input_size = stack.pop();
     let output_offset = stack.pop();
@@ -140,7 +134,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
             .unwrap_or_default();
 
         let output = if precompiles::is_precompile(&dst) {
-            precompiles::call_precompile(dst, &input_data)
+            precompiles::call_precompile(dst, input_data)
         } else {
             todo!()
         };

@@ -9,7 +9,7 @@ use fvm_shared::{
     },
 };
 use num_traits::{One, Zero};
-use substrate_bn::{pairing, pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
+use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
 
 pub fn is_precompile(addr: &H160) -> bool {
@@ -19,22 +19,18 @@ pub fn is_precompile(addr: &H160) -> bool {
 /// read 32 bytes (u256) from buffer, pass in exit reason that is desired
 /// TODO passing in err value is debatable
 fn read_u256(buf: &[u8], start: usize) -> Result<U256, PrecompileError> {
-    let slice = buf.get(start..start + 32).ok_or(PrecompileError::MemoryRange)?;
+    let slice = buf.get(start..start + 32).ok_or(PrecompileError::IncorrectInputSize)?;
     Ok(U256::from_big_endian(slice))
 }
 
 #[derive(Debug)]
 pub enum PrecompileError {
     EcErr,
-    MemoryRange,
+    IncorrectInputSize,
 }
 
 pub type PrecompileFn = fn(&[u8]) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont like vec
-
-fn nop(_: &[u8]) -> PrecompileResult {
-    todo!()
-}
 
 fn ec_recover(input: &[u8]) -> PrecompileResult {
     let mut buf = [0u8; 128];
@@ -198,7 +194,7 @@ fn ecpairing(input: &[u8]) -> PrecompileResult {
     const GROUP_BYTE_LEN: usize = 192;
 
     if input.len() % GROUP_BYTE_LEN != 0 {
-        return Err(PrecompileError::EcErr);
+        return Err(PrecompileError::IncorrectInputSize);
     }
 
     let mut groups = Vec::new();
@@ -217,11 +213,13 @@ fn ecpairing(input: &[u8]) -> PrecompileResult {
 
 // https://eips.ethereum.org/EIPS/eip-152
 fn blake2f(input: &[u8]) -> PrecompileResult {
+    if input.len() != 213 {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
     let mut hasher = near_blake2::VarBlake2b::default();
 
     let mut rounds = [0u8; 4];
 
-    // TODO bounds check
     let mut start = 0;
     rounds.copy_from_slice(&input[..4]);
     start += 4;
