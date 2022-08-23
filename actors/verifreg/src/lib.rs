@@ -3,10 +3,9 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::test_utils::MINER_ACTOR_CODE_ID;
 use fil_actors_runtime::{
     actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_id_addr, ActorDowncast,
-    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, ActorContext,
+    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, ActorContext, MapMap, AsActorError,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -14,12 +13,14 @@ use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 use std::collections::{BTreeMap};
 
 pub use self::state::State;
+pub use self::state::Allocation;
+pub use self::state::Claim;
 pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
@@ -701,35 +702,70 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-        let provider = rt.message().caller();
+        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
+        if params.sectors.len() == 0 {
+            return Err(actor_error!(illegal_argument, "claim allocations called with no claims"))
+        }
+        let provider = params.sectors[0].provider;
+        let mut client_burns = BTreeMap::<ActorID, DataCap>::new();
         rt.transaction(|st: &mut State, rt| {
-            let client_burns = BTreeMap::<Address, DataCap>::new();
-            for alloc in params.sectors {
+            let mut claims = MapMap::from_root(rt.store(), &st.claims, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims table")?;
+            let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations talbe")?;
+            for claim_alloc in params.sectors {
                 // check that provider matches alloc 
-                if alloc.provider != provider {
+                if claim_alloc.provider != provider {
                     return Err(actor_error!(forbidden, "allocation must match provider making claim"))
                 }
-    
-                // MultiMap Add
-                //
-                // maybe add an AMT in the map for this provider
-                // add the claim for this allocation
-    
-                // Multimap Remove
-                //
-                // remove this allocation
-                // maybe remove the AMT in the map for this client 
-    
-                dc_to_burn += alloc.piece_size
+
+                let client_id = claim_alloc.client.id().context_code(ExitCode::USR_ILLEGAL_STATE, "allocations client must be id address")?;
+                let maybe_alloc = allocs.get::<Address, AllocationID, Allocation>(claim_alloc.client, claim_alloc.allocation_id)
+                .context_code(
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
+                    "claim references allocations id that does not belong to provider"
+                )?;
+                let alloc = maybe_alloc.context_code(
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
+                    "claim references allocations id that does not belong to provider"
+                )?;
+
+                // TODO check alloc matches claim in subfunction
+                // check that expiration is not past
+                // check that min and max terms are ok (we might need more data?)
+
+                let new_claim = Claim{
+                    provider,
+                    client: alloc.client,
+                    data: alloc.data,
+                    size: alloc.size,
+                    term_min: alloc.term_min,
+                    term_max: alloc.term_max,
+                    term_start: rt.curr_epoch(),
+                    sector: claim_alloc.sector_id,
+                };
+
+                claims.put::<Address, ClaimID, Claim>(provider, claim_alloc.allocation_id, new_claim)
+                .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, format!("failed to write claim {}", claim_alloc.allocation_id))?;
+                
+                allocs.remove::<Address, AllocationID, Allocation>(claim_alloc.client, claim_alloc.allocation_id)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, format!("failed to remove allocation {}", claim_alloc.allocation_id))?;
+
+                let acc = match client_burns.get(&client_id) {
+                    Some(dc) => dc.clone(),
+                    None => DataCap::zero(),
+                };
+                client_burns.insert(client_id, acc + claim_alloc.piece_size);
             }
             Ok(())
         })
         .context("state transaction failed")?;
-        // TODO, uncomment one #514 integrates datacap and burn is implemented
         let st: State = rt.state()?;
-
-        burn(rt, &st.token, &)
+        _ = st;
+        for (client, dc_burn) in client_burns {
+            // TODO uncomment when datacap token integration lands in #514 and burn helper is implemented
+            //burn(st.token, client, dc_burn)
+            _ = dc_burn;
+            _ = client;
+        }
          
         Ok(())
     }
@@ -835,8 +871,6 @@ where
         |e| actor_error!(illegal_argument; "invalid signature for datacap removal request: {}", e),
     )
 }
-
-
 
 impl ActorCode for Actor {
     fn invoke_method<BS, RT>(

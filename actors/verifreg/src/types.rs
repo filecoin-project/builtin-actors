@@ -115,7 +115,6 @@ pub struct SectorAllocationClaim {
     pub allocation_id: AllocationID,
     pub piece_cid: Cid,
     pub piece_size: u64,
-    // TODO include offset and inclusion proof when adding sector ranges
     pub sector_id: SectorID,    
 }
 
