@@ -94,7 +94,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         runtime: &'r mut ExecutionState,
         bytecode: &'r Bytecode,
     ) -> Self {
-        Machine { system: system, runtime: runtime, bytecode: bytecode, pc: 0, reverted: false }
+        Machine { system, runtime, bytecode, pc: 0, reverted: false }
     }
 
     pub fn execute(&mut self) -> Result<(), StatusCode> {
