@@ -28,7 +28,7 @@ pub mod verifreg {
     pub type UseBytesParams = BytesParams;
     pub type RestoreBytesParams = BytesParams;
 
-    #[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct BytesParams {
         /// Address of verified client.
         pub address: Address,

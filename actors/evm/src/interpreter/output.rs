@@ -7,7 +7,7 @@ use {
 };
 
 /// Output of EVM execution.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Output {
     /// EVM exited with this status code.
     pub status_code: StatusCode,
@@ -29,7 +29,7 @@ impl Debug for Output {
 
 /// Message status code.
 #[must_use]
-#[derive(Clone, Debug, Display, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StatusCode {
     /// Execution finished with success.
     #[strum(serialize = "success")]

@@ -1018,13 +1018,13 @@ impl RuntimePolicy for InvocationCtx<'_, '_> {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MessageResult {
     pub code: ExitCode,
     pub ret: RawBytes,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
 pub struct Actor {
     pub code: Cid,
     pub head: Cid,

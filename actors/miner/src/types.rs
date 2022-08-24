@@ -238,7 +238,7 @@ pub struct WithdrawBalanceReturn {
     pub amount_withdrawn: TokenAmount,
 }
 
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct WorkerKeyChange {
     /// Must be an ID address
     pub new_worker: Address,
@@ -249,14 +249,14 @@ pub type PreCommitSectorParams = SectorPreCommitInfo;
 
 impl Cbor for PreCommitSectorParams {}
 
-#[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct PreCommitSectorBatchParams {
     pub sectors: Vec<SectorPreCommitInfo>,
 }
 
 impl Cbor for PreCommitSectorBatchParams {}
 
-#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitInfo {
     pub seal_proof: RegisteredSealProof,
     pub sector_number: SectorNumber,
@@ -274,7 +274,7 @@ pub struct SectorPreCommitInfo {
 }
 
 /// Information stored on-chain for a pre-committed sector.
-#[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitOnChainInfo {
     pub info: SectorPreCommitInfo,
     #[serde(with = "bigint_ser")]
@@ -289,7 +289,7 @@ pub struct SectorPreCommitOnChainInfo {
 }
 
 /// Information stored on-chain for a proven sector.
-#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorOnChainInfo {
     pub sector_number: SectorNumber,
     /// The seal proof type implies the PoSt proofs
@@ -325,7 +325,7 @@ pub struct SectorOnChainInfo {
     pub sector_key_cid: Option<Cid>,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct Fault {
     pub miner: Address,
     pub fault: ChainEpoch,
@@ -342,7 +342,7 @@ pub struct ApplyRewardParams {
 
 impl Cbor for DisputeWindowedPoStParams {}
 
-#[derive(Debug, PartialEq, Clone, Copy, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize_tuple, Deserialize_tuple)]
 pub struct DisputeWindowedPoStParams {
     pub deadline: u64,
     pub post_index: u64, // only one is allowed at a time to avoid loading too many sector infos.
@@ -357,7 +357,7 @@ pub struct ProveCommitAggregateParams {
     pub aggregate_proof: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ReplicaUpdate {
     pub sector_number: SectorNumber,
     pub deadline: u64,
