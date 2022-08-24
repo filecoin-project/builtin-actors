@@ -1,7 +1,4 @@
-use {
-    crate::interpreter::stack::Stack,
-    crate::interpreter::uints::*, crate::interpreter::U256,
-};
+use {crate::interpreter::stack::Stack, crate::interpreter::uints::*, crate::interpreter::U256};
 
 #[inline]
 pub fn add(stack: &mut Stack) {
