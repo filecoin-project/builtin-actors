@@ -51,7 +51,30 @@ enum ControlFlow {
     Break,
 }
 
-type Instruction<M> = fn(&mut M) -> Result<ControlFlow, StatusCode>;
+type Instruction<M> = fn(*mut M) -> Result<ControlFlow, StatusCode>;
+
+macro_rules! def_jmptable {
+    ($($op:ident: $ins:ident),*) => {
+        let mut table: [Instruction<Machine::<'r, BS, RT>>; 256] = [Machine::<'r, BS, RT>::ins_undefined; 256];
+        $(table[OpCode::$op as usize] = Machine::<'r, BS, RT>::$ins;)*
+        table
+    }
+}
+
+macro_rules! def_ins1 {
+    ($ins:ident ($arg:ident) $body:block) => {
+        fn $ins(p: *mut Self) -> Result<ControlFlow, StatusCode> {
+            let $arg :&mut Self = unsafe { p.as_mut().unwrap() };
+            $body
+        }
+    }
+}
+
+macro_rules! def_ins {
+    ($($ins:ident ($arg:ident) $body:block)*) => {
+        $(def_ins1! { $ins($arg) $body })*
+    }
+}
 
 impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
     fn new(system: &'r System<'r, BS, RT>,
@@ -72,24 +95,737 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         Machine::<'r, BS, RT>::dispatch(op)(self)
     }
 
+    // Beware, dragons!
+    fn dispatch(op: OpCode) -> Instruction<Machine<'r, BS, RT>> {
+        Self::JMPTABLE[op as usize]
+    }
+
     const fn jmptable() -> [Instruction<Machine<'r, BS, RT>>; 256] {
-        let mut table: [Instruction<Machine::<'r, BS, RT>>; 256] = [Machine::<'r, BS, RT>::ins_undefined; 256];
-        table[OpCode::STOP as usize] = Machine::<'r, BS, RT>::ins_stop;
-        table
+        def_jmptable! {
+            STOP: ins_stop,
+            ADD: ins_add,
+            MUL: ins_mul,
+            SUB: ins_sub,
+            DIV: ins_div,
+            SDIV: ins_sdiv,
+            MOD: ins_mod,
+            SMOD: ins_smod,
+            ADDMOD: ins_addmod,
+            MULMOD: ins_mulmod,
+            EXP: ins_exp,
+            SIGNEXTEND: ins_signextend,
+            LT: ins_lt,
+            GT: ins_gt,
+            SLT: ins_slt,
+            SGT: ins_sgt,
+            EQ: ins_eq,
+            ISZERO: ins_iszero,
+            AND: ins_and,
+            OR: ins_or,
+            XOR: ins_xor,
+            NOT: ins_not,
+            BYTE: ins_byte,
+            SHL: ins_shl,
+            SHR: ins_shr,
+            SAR: ins_sar,
+            KECCAK256: ins_keccak256,
+            ADDRESS: ins_address,
+            BALANCE: ins_balance,
+            ORIGIN: ins_origin,
+            CALLER: ins_caller,
+            CALLVALUE: ins_callvalue,
+            CALLDATALOAD: ins_calldataload,
+            CALLDATASIZE: ins_calldatasize,
+            CALLDATACOPY: ins_calldatacopy,
+            CODESIZE: ins_codesize,
+            CODECOPY: ins_codecopy,
+            GASPRICE: ins_gasprice,
+            EXTCODESIZE: ins_extcodesize,
+            EXTCODECOPY: ins_extcodecopy,
+            RETURNDATASIZE: ins_returndatasize,
+            RETURNDATACOPY: ins_returndatacopy,
+            EXTCODEHASH: ins_extcodehash,
+            BLOCKHASH: ins_blockhash,
+            COINBASE: ins_coinbase,
+            TIMESTAMP: ins_timestamp,
+            NUMBER: ins_number,
+            DIFFICULTY: ins_difficulty,
+            GASLIMIT: ins_gaslimit,
+            CHAINID: ins_chainid,
+            SELFBALANCE: ins_selfbalance,
+            BASEFEE: ins_basefee,
+            POP: ins_pop,
+            MLOAD: ins_mload,
+            MSTORE: ins_mstore,
+            MSTORE8: ins_mstore8,
+            SLOAD: ins_sload,
+            SSTORE: ins_sstore,
+            JUMP: ins_jump,
+            JUMPI: ins_jumpi,
+            PC: ins_pc,
+            MSIZE: ins_msize,
+            GAS: ins_gas,
+            JUMPDEST: ins_jumpdest,
+            PUSH1: ins_push1,
+            PUSH2: ins_push2,
+            PUSH3: ins_push3,
+            PUSH4: ins_push4,
+            PUSH5: ins_push5,
+            PUSH6: ins_push6,
+            PUSH7: ins_push7,
+            PUSH8: ins_push8,
+            PUSH9: ins_push9,
+            PUSH10: ins_push10,
+            PUSH11: ins_push11,
+            PUSH12: ins_push12,
+            PUSH13: ins_push13,
+            PUSH14: ins_push14,
+            PUSH15: ins_push15,
+            PUSH16: ins_push16,
+            PUSH17: ins_push17,
+            PUSH18: ins_push18,
+            PUSH19: ins_push19,
+            PUSH20: ins_push20,
+            PUSH21: ins_push21,
+            PUSH22: ins_push22,
+            PUSH23: ins_push23,
+            PUSH24: ins_push24,
+            PUSH25: ins_push25,
+            PUSH26: ins_push26,
+            PUSH27: ins_push27,
+            PUSH28: ins_push28,
+            PUSH29: ins_push29,
+            PUSH30: ins_push30,
+            PUSH31: ins_push31,
+            PUSH32: ins_push32,
+            DUP1: ins_dup1,
+            DUP2: ins_dup2,
+            DUP3: ins_dup3,
+            DUP4: ins_dup4,
+            DUP5: ins_dup5,
+            DUP6: ins_dup6,
+            DUP7: ins_dup7,
+            DUP8: ins_dup8,
+            DUP9: ins_dup9,
+            DUP10: ins_dup10,
+            DUP11: ins_dup11,
+            DUP12: ins_dup12,
+            DUP13: ins_dup13,
+            DUP14: ins_dup14,
+            DUP15: ins_dup15,
+            DUP16: ins_dup16,
+            SWAP1: ins_swap1,
+            SWAP2: ins_swap2,
+            SWAP3: ins_swap3,
+            SWAP4: ins_swap4,
+            SWAP5: ins_swap5,
+            SWAP6: ins_swap6,
+            SWAP7: ins_swap7,
+            SWAP8: ins_swap8,
+            SWAP9: ins_swap9,
+            SWAP10: ins_swap10,
+            SWAP11: ins_swap11,
+            SWAP12: ins_swap12,
+            SWAP13: ins_swap13,
+            SWAP14: ins_swap14,
+            SWAP15: ins_swap15,
+            SWAP16: ins_swap16,
+            LOG0: ins_log0,
+            LOG1: ins_log1,
+            LOG2: ins_log2,
+            LOG3: ins_log3,
+            LOG4: ins_log4,
+            CREATE: ins_create,
+            CALL: ins_call,
+            CALLCODE: ins_callcode,
+            RETURN: ins_return,
+            DELEGATECALL: ins_delegatecall,
+            CREATE2: ins_create2,
+            STATICCALL: ins_staticcall,
+            REVERT: ins_revert,
+            INVALID: ins_invalid,
+            SELFDESTRUCT: ins_selfdestruct
+        }
     }
 
     const JMPTABLE: [Instruction<Machine<'r, BS, RT>>; 256] = Machine::<'r, BS, RT>::jmptable();
 
-    const fn dispatch(op: OpCode) -> Instruction<Machine<'r, BS, RT>> {
-        Self::JMPTABLE[op as usize]
-    }
+    def_ins! {
+        ins_undefined(_m) {
+            todo!()
+        }
 
-    fn ins_undefined(&mut self) -> Result<ControlFlow, StatusCode> {
-        todo!();
-    }
+        ins_stop(_m) {
+            todo!()
+        }
 
-    fn ins_stop(&mut self) -> Result<ControlFlow, StatusCode> {
-        todo!();
+        ins_add(_m) {
+            todo!()
+        }
+
+        ins_mul(_m) {
+            todo!()
+        }
+
+        ins_sub(_m) {
+            todo!()
+        }
+
+        ins_div(_m) {
+            todo!()
+        }
+
+        ins_sdiv(_m) {
+            todo!()
+        }
+
+        ins_mod(_m) {
+            todo!()
+        }
+
+        ins_smod(_m) {
+            todo!()
+        }
+
+        ins_addmod(_m) {
+            todo!()
+        }
+
+        ins_mulmod(_m) {
+            todo!()
+        }
+
+        ins_exp(_m) {
+            todo!()
+        }
+
+        ins_signextend(_m) {
+            todo!()
+        }
+
+        ins_lt(_m) {
+            todo!()
+        }
+
+        ins_gt(_m) {
+            todo!()
+        }
+
+        ins_slt(_m) {
+            todo!()
+        }
+
+        ins_sgt(_m) {
+            todo!()
+        }
+
+        ins_eq(_m) {
+            todo!()
+        }
+
+        ins_iszero(_m) {
+            todo!()
+        }
+
+        ins_and(_m) {
+            todo!()
+        }
+
+        ins_or(_m) {
+            todo!()
+        }
+
+        ins_xor(_m) {
+            todo!()
+        }
+
+        ins_not(_m) {
+            todo!()
+        }
+
+        ins_byte(_m) {
+            todo!()
+        }
+
+        ins_shl(_m) {
+            todo!()
+        }
+
+        ins_shr(_m) {
+            todo!()
+        }
+
+        ins_sar(_m) {
+            todo!()
+        }
+
+        ins_keccak256(_m) {
+            todo!()
+        }
+
+        ins_address(_m) {
+            todo!()
+        }
+
+        ins_balance(_m) {
+            todo!()
+        }
+
+        ins_origin(_m) {
+            todo!()
+        }
+
+        ins_caller(_m) {
+            todo!()
+        }
+
+        ins_callvalue(_m) {
+            todo!()
+        }
+
+        ins_calldataload(_m) {
+            todo!()
+        }
+
+        ins_calldatasize(_m) {
+            todo!()
+        }
+
+        ins_calldatacopy(_m) {
+            todo!()
+        }
+
+        ins_codesize(_m) {
+            todo!()
+        }
+
+        ins_codecopy(_m) {
+            todo!()
+        }
+
+        ins_gasprice(_m) {
+            todo!()
+        }
+
+        ins_extcodesize(_m) {
+            todo!()
+        }
+
+        ins_extcodecopy(_m) {
+            todo!()
+        }
+
+        ins_returndatasize(_m) {
+            todo!()
+        }
+
+        ins_returndatacopy(_m) {
+            todo!()
+        }
+
+        ins_extcodehash(_m) {
+            todo!()
+        }
+
+        ins_blockhash(_m) {
+            todo!()
+        }
+
+        ins_coinbase(_m) {
+            todo!()
+        }
+
+        ins_timestamp(_m) {
+            todo!()
+        }
+
+        ins_number(_m) {
+            todo!()
+        }
+
+        ins_difficulty(_m) {
+            todo!()
+        }
+
+        ins_gaslimit(_m) {
+            todo!()
+        }
+
+        ins_chainid(_m) {
+            todo!()
+        }
+
+        ins_selfbalance(_m) {
+            todo!()
+        }
+
+        ins_basefee(_m) {
+            todo!()
+        }
+
+        ins_pop(_m) {
+            todo!()
+        }
+
+        ins_mload(_m) {
+            todo!()
+        }
+
+        ins_mstore(_m) {
+            todo!()
+        }
+
+        ins_mstore8(_m) {
+            todo!()
+        }
+
+        ins_sload(_m) {
+            todo!()
+        }
+
+        ins_sstore(_m) {
+            todo!()
+        }
+
+        ins_jump(_m) {
+            todo!()
+        }
+
+        ins_jumpi(_m) {
+            todo!()
+        }
+
+        ins_pc(_m) {
+            todo!()
+        }
+
+        ins_msize(_m) {
+            todo!()
+        }
+
+        ins_gas(_m) {
+            todo!()
+        }
+
+        ins_jumpdest(_m) {
+            todo!()
+        }
+
+        ins_push1(_m) {
+            todo!()
+        }
+
+        ins_push2(_m) {
+            todo!()
+        }
+
+        ins_push3(_m) {
+            todo!()
+        }
+
+        ins_push4(_m) {
+            todo!()
+        }
+
+        ins_push5(_m) {
+            todo!()
+        }
+
+        ins_push6(_m) {
+            todo!()
+        }
+
+        ins_push7(_m) {
+            todo!()
+        }
+
+        ins_push8(_m) {
+            todo!()
+        }
+
+        ins_push9(_m) {
+            todo!()
+        }
+
+        ins_push10(_m) {
+            todo!()
+        }
+
+        ins_push11(_m) {
+            todo!()
+        }
+
+        ins_push12(_m) {
+            todo!()
+        }
+
+        ins_push13(_m) {
+            todo!()
+        }
+
+        ins_push14(_m) {
+            todo!()
+        }
+
+        ins_push15(_m) {
+            todo!()
+        }
+
+        ins_push16(_m) {
+            todo!()
+        }
+
+        ins_push17(_m) {
+            todo!()
+        }
+
+        ins_push18(_m) {
+            todo!()
+        }
+
+        ins_push19(_m) {
+            todo!()
+        }
+
+        ins_push20(_m) {
+            todo!()
+        }
+
+        ins_push21(_m) {
+            todo!()
+        }
+
+        ins_push22(_m) {
+            todo!()
+        }
+
+        ins_push23(_m) {
+            todo!()
+        }
+
+        ins_push24(_m) {
+            todo!()
+        }
+
+        ins_push25(_m) {
+            todo!()
+        }
+
+        ins_push26(_m) {
+            todo!()
+        }
+
+        ins_push27(_m) {
+            todo!()
+        }
+
+        ins_push28(_m) {
+            todo!()
+        }
+
+        ins_push29(_m) {
+            todo!()
+        }
+
+        ins_push30(_m) {
+            todo!()
+        }
+
+        ins_push31(_m) {
+            todo!()
+        }
+
+        ins_push32(_m) {
+            todo!()
+        }
+
+        ins_dup1(_m) {
+            todo!()
+        }
+
+        ins_dup2(_m) {
+            todo!()
+        }
+
+        ins_dup3(_m) {
+            todo!()
+        }
+
+        ins_dup4(_m) {
+            todo!()
+        }
+
+        ins_dup5(_m) {
+            todo!()
+        }
+
+        ins_dup6(_m) {
+            todo!()
+        }
+
+        ins_dup7(_m) {
+            todo!()
+        }
+
+        ins_dup8(_m) {
+            todo!()
+        }
+
+        ins_dup9(_m) {
+            todo!()
+        }
+
+        ins_dup10(_m) {
+            todo!()
+        }
+
+        ins_dup11(_m) {
+            todo!()
+        }
+
+        ins_dup12(_m) {
+            todo!()
+        }
+
+        ins_dup13(_m) {
+            todo!()
+        }
+
+        ins_dup14(_m) {
+            todo!()
+        }
+
+        ins_dup15(_m) {
+            todo!()
+        }
+
+        ins_dup16(_m) {
+            todo!()
+        }
+
+        ins_swap1(_m) {
+            todo!()
+        }
+
+        ins_swap2(_m) {
+            todo!()
+        }
+
+        ins_swap3(_m) {
+            todo!()
+        }
+
+        ins_swap4(_m) {
+            todo!()
+        }
+
+        ins_swap5(_m) {
+            todo!()
+        }
+
+        ins_swap6(_m) {
+            todo!()
+        }
+
+        ins_swap7(_m) {
+            todo!()
+        }
+
+        ins_swap8(_m) {
+            todo!()
+        }
+
+        ins_swap9(_m) {
+            todo!()
+        }
+
+        ins_swap10(_m) {
+            todo!()
+        }
+
+        ins_swap11(_m) {
+            todo!()
+        }
+
+        ins_swap12(_m) {
+            todo!()
+        }
+
+        ins_swap13(_m) {
+            todo!()
+        }
+
+        ins_swap14(_m) {
+            todo!()
+        }
+
+        ins_swap15(_m) {
+            todo!()
+        }
+
+        ins_swap16(_m) {
+            todo!()
+        }
+
+        ins_log0(_m) {
+            todo!()
+        }
+
+        ins_log1(_m) {
+            todo!()
+        }
+
+        ins_log2(_m) {
+            todo!()
+        }
+
+        ins_log3(_m) {
+            todo!()
+        }
+
+        ins_log4(_m) {
+            todo!()
+        }
+
+        ins_create(_m) {
+            todo!()
+        }
+
+        ins_call(_m) {
+            todo!()
+        }
+
+        ins_callcode(_m) {
+            todo!()
+        }
+
+        ins_return(_m) {
+            todo!()
+        }
+
+        ins_delegatecall(_m) {
+            todo!()
+        }
+
+        ins_create2(_m) {
+            todo!()
+        }
+
+        ins_staticcall(_m) {
+            todo!()
+        }
+
+        ins_revert(_m) {
+            todo!()
+        }
+
+        ins_invalid(_m) {
+            todo!()
+        }
+
+        ins_selfdestruct(_m) {
+            todo!()
+        }
     }
 }
 
