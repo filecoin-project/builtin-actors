@@ -387,6 +387,14 @@ pub struct SectorOnChainInfo {
 }
 
 impl SectorOnChainInfo {
+    pub fn expires_early(&self) -> bool {
+        self.proof_expiration < self.commitment_expiration
+    }
+
+    pub fn expires_at(&self) -> ChainEpoch {
+        min(self.proof_expiration, self.commitment_expiration)
+    }
+
     pub fn possible_proof_expirations(&self, now: ChainEpoch) -> Vec<ChainEpoch> {
         let delta_e = network::EPOCHS_IN_YEAR; // TODO correct value
         if now - self.activation < network::EPOCHS_IN_YEAR / 2 {
