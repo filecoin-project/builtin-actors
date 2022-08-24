@@ -547,8 +547,10 @@ impl PartitionStateSummary {
 
                 expiration_epochs = queue_summary.expiration_epochs;
                 // check the queue is compatible with partition fields
-                let queue_sectors =
-                    BitField::union([&queue_summary.on_time_sectors, &queue_summary.faulty_sectors]);
+                let queue_sectors = BitField::union([
+                    &queue_summary.on_time_sectors,
+                    &queue_summary.faulty_sectors,
+                ]);
                 require_equal(&live, &queue_sectors, acc, "live does not equal all expirations");
             }
             Err(err) => {

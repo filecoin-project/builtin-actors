@@ -118,7 +118,6 @@ pub struct Policy {
     /// A number of epochs before proof expiration during which the proof can be extended
     pub proof_refresh_window: i64,
 
-
     /// Ratio of sector size to maximum deals per sector.
     /// The maximum number of deals is the sector size divided by this number (2^27)
     /// which limits 32GiB sectors to 256 deals and 64GiB sectors to 512
@@ -376,7 +375,8 @@ pub mod policy_constants {
     pub const MAX_PROOF_VALIDITY: i64 = (EPOCHS_IN_YEAR * 3) / 2;
 
     /// A number of epochs before proof expiration during which the proof can be extended
-    pub const PROOF_REFRESH_WINDOW: i64 = MAX_PROOF_VALIDITY - (5*EPOCHS_IN_YEAR /* sector max life */ - MAX_PROOF_VALIDITY) / 3;
+    pub const PROOF_REFRESH_WINDOW: i64 =
+        MAX_PROOF_VALIDITY - (5*EPOCHS_IN_YEAR /* sector max life */ - MAX_PROOF_VALIDITY) / 3;
 
     /// Ratio of sector size to maximum deals per sector.
     /// The maximum number of deals is the sector size divided by this number (2^27)
