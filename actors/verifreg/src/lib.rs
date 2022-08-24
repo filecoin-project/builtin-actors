@@ -970,12 +970,12 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::RevokeExpiredAllocations) => {
-                Self::revoke_expired_allocations(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let res = Self::revoke_expired_allocations(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ClaimAllocations) => {
-                Self::claim_allocation(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default()) // xxx return value
+                let res = Self::claim_allocation(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)                
             }
             Some(Method::ExtendClaimTerms) => {
                 Self::extend_claim_terms(rt, cbor::deserialize_params(params)?)?;

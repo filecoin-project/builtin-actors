@@ -1,5 +1,6 @@
 use fvm_shared::error::ExitCode;
 use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::Cbor;
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct FailCode {
@@ -29,6 +30,9 @@ impl BatchReturn {
         ret
     }
 }
+
+impl Cbor for BatchReturn {}
+
 
 pub struct BatchReturnGen {
     idx: usize,

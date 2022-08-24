@@ -16,7 +16,7 @@ use fil_actor_verifreg::{
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, MapMap, ActorContext, AsActorError,
+    SYSTEM_ACTOR_ADDR, MapMap, BatchReturn, AsActorError,
 };
 
 lazy_static! {
@@ -240,11 +240,14 @@ impl Harness {
         let params = ClaimAllocationParams{
             sectors: claim_allocs,
         };
-        let ret = rt.call::<VerifregActor>(
+     
+        let ret_raw = rt.call::<VerifregActor>(
             Method::ClaimAllocations as MethodNum,
             &RawBytes::serialize(params).unwrap(),
-        )?.deserialize()?;
+        )?;//.deserialize().expect("failed to deserialize claim allocations return");
+        println!("got ret {:x?}\n", ret_raw.bytes());
         rt.verify();
+        let ret = ret_raw.deserialize().expect("failed to deserialize claim allocations return");
         Ok(ret)
     }
 }

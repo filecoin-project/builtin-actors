@@ -491,8 +491,6 @@ mod datacap {
     use fil_actor_verifreg::{Actor as VerifregActor, Method, RestoreBytesParams, UseBytesParams};
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
-    use fvm_shared::piece::PaddedPieceSize;
-
 
     use crate::*;
     use harness::*;
