@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use super::beneficiary::*;
-use std::cmp::min;
 use crate::commd::CompactCommD;
 use cid::Cid;
 use fil_actors_runtime::{network, DealWeight};
@@ -418,7 +417,6 @@ impl SectorOnChainInfo {
         }
     }
 }
-
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct Fault {
