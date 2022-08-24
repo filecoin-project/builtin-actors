@@ -7,14 +7,17 @@ use crate::State;
 
 pub struct StateSummary {}
 
-/// Checks internal invariants of verified registry state.
+/// Checks internal invariants of data cap token actor state.
 pub fn check_state_invariants<BS: Blockstore>(
     state: &State,
-    _store: &BS,
+    store: &BS,
 ) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
     acc.require(state.registry.protocol() == Protocol::ID, "registry must be ID address");
-    // TODO: Check invariants in token state.
+    let r = state.token.check_invariants(store);
+    if r.is_err() {
+        acc.add(r.unwrap_err().to_string());
+    }
 
     (StateSummary {}, acc)
 }
