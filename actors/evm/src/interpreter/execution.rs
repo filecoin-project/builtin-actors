@@ -66,6 +66,7 @@ macro_rules! def_jmptable {
 macro_rules! def_ins1 {
     ($ins:ident ($arg:ident) $body:block) => {
         fn $ins(p: *mut Self) -> Result<ControlFlow, StatusCode> {
+            // SAFETY: macro ensures that mut pointer is taken directly from a mutable borrow, used once, then goes out of scope immediately after
             let $arg: &mut Self = unsafe { p.as_mut().unwrap() };
             $body
         }
