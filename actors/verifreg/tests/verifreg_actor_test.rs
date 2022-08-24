@@ -430,10 +430,13 @@ mod claims {
     use harness::*;
     use util::*;
     use fil_actors_runtime::test_utils::make_piece_cid;
-    use fil_actor_verifreg::{Actor as VerifregActor, Method, Allocation, AllocationID, SectorAllocationClaim};
+    use fil_actors_runtime::{MapMap};
+    use fil_actors_runtime::runtime::Runtime;
+    use fil_actor_verifreg::{Actor as VerifregActor, Method, State, Allocation, Claim, AllocationID, SectorAllocationClaim};
     use fvm_shared::piece::PaddedPieceSize;
     use fvm_shared::sector::SectorID;
     use fvm_shared::clock::ChainEpoch;
+    use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
     use fvm_shared::error::ExitCode;
 
 
@@ -478,7 +481,23 @@ mod claims {
             make_claim(2, alloc2, sector_id(provider,1000), 1500),
             make_claim(3, alloc3, sector_id(provider, 1000), 1500)
         ]).unwrap();
-        assert_eq!(ret.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK])
+
+        assert_eq!(ret.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK]);
+
+         // check that state is as expected
+         let st: State = rt.get_state();
+         let mut allocs = MapMap::<_, Allocation>::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
+         // allocs deleted
+         assert!(allocs.get(*CLIENT, 1).unwrap().is_none());
+         assert!(allocs.get(*CLIENT, 2).unwrap().is_none());
+         assert!(allocs.get(*CLIENT, 3).unwrap().is_none());
+
+        // claims inserted
+        let mut claims = MapMap::<_, Claim>::from_root(rt.store(), &st.claims, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
+        assert_eq!(claims.get(provider, 1).unwrap().unwrap().client, *CLIENT);
+        assert_eq!(claims.get(provider, 2).unwrap().unwrap().client, *CLIENT);
+        assert_eq!(claims.get(provider, 3).unwrap().unwrap().client, *CLIENT);
+         
     }
 }
 

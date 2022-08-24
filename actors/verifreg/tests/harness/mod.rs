@@ -222,9 +222,15 @@ impl Harness {
         rt: &mut MockRuntime,
         alloc: Allocation
     ) -> Result<(), ActorError> {
-        let st :State = rt.get_state();
+        let mut st :State = rt.get_state();
+        let client = alloc.client.clone();
         let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
-        assert!(allocs.put::<Address, AllocationID>(alloc.provider, st.next_allocation_id, alloc).context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
+        assert!(allocs.put::<Address, AllocationID>(alloc.client.clone(), st.next_allocation_id, alloc).context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
+        st.next_allocation_id += 1;
+        st.allocations = allocs.flush().expect("failed flushing allocation table");
+        rt.replace_state(&st);
+
+       
         Ok(())
     }
 
@@ -241,13 +247,11 @@ impl Harness {
             sectors: claim_allocs,
         };
      
-        let ret_raw = rt.call::<VerifregActor>(
+        let ret = rt.call::<VerifregActor>(
             Method::ClaimAllocations as MethodNum,
             &RawBytes::serialize(params).unwrap(),
-        )?;//.deserialize().expect("failed to deserialize claim allocations return");
-        println!("got ret {:x?}\n", ret_raw.bytes());
+        )?.deserialize().expect("failed to deserialize claim allocations return");
         rt.verify();
-        let ret = ret_raw.deserialize().expect("failed to deserialize claim allocations return");
         Ok(ret)
     }
 }

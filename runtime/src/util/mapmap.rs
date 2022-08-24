@@ -51,7 +51,7 @@ where
 
     fn load_inner_map<K1>(& mut self, k: K1)  -> Result<& mut Map<'a, BS, V>, Error> 
     where
-        K1: Keyer,
+        K1: Keyer + std::fmt::Debug,
     {
         let in_map_thunk = || -> Result<Map<BS, V>, Error> {
             // lazy to avoid ipld operations in case of cache hit
@@ -66,7 +66,7 @@ where
 
     pub fn get<K1, K2>(& mut self, outside_k: K1, inside_k: K2) -> Result<Option<V>, Error> 
     where
-        K1: Keyer,
+        K1: Keyer+ std::fmt::Debug,
         K2: Keyer + std::fmt::Display,
     {
         let in_map = self.load_inner_map::<K1>(outside_k)?;
@@ -75,7 +75,7 @@ where
 
     pub fn put<K1, K2>(&mut self, outside_k: K1, inside_k: K2, value: V) -> Result<bool, Error> 
     where
-        K1: Keyer,
+        K1: Keyer+ std::fmt::Debug,
         K2: Keyer,
     {
         let in_map = self.load_inner_map::<K1>(outside_k)?;
@@ -90,7 +90,7 @@ where
 
     pub fn remove<K1, K2>(&mut self, outside_k: K1, inside_k: K2) -> Result<(), Error> 
     where
-        K1: Keyer,
+        K1: Keyer + std::fmt::Debug,
         K2: Keyer,
     {
         let in_map = self.load_inner_map::<K1>(outside_k)?;
@@ -100,5 +100,4 @@ where
 
         Ok(())
     }
-
 }
