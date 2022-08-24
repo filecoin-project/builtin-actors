@@ -1,4 +1,4 @@
-use std::ops::Mul;
+use std::ops::{BitAnd, Mul};
 
 use super::{H160, U256};
 use fvm_shared::{
@@ -12,15 +12,12 @@ use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
 
+/// since we are working with identity addresses, it is expected that precompile addresses are filled with 0xFF instead, with the last value being the precompile num
 pub fn is_precompile(addr: &H160) -> bool {
-    !addr.is_zero() && addr <= &MAX_PRECOMPILE
-}
-
-/// read 32 bytes (u256) from buffer, pass in exit reason that is desired
-/// TODO passing in err value is debatable
-fn read_u256(buf: &[u8], start: usize) -> Result<U256, PrecompileError> {
-    let slice = buf.get(start..start + 32).ok_or(PrecompileError::IncorrectInputSize)?;
-    Ok(U256::from_big_endian(slice))
+    let mut mask = [0u8; 20];
+    mask[0] = 0xFF;
+    let addr = addr.bitand(&H160::from_slice(&mask));
+    !addr.is_zero() && addr <= MAX_PRECOMPILE
 }
 
 #[derive(Debug)]
@@ -31,6 +28,36 @@ pub enum PrecompileError {
 
 pub type PrecompileFn = fn(&[u8]) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont like vec
+
+/// List of precompile smart contracts, index + 1 is the address (another option is to make an enum)
+pub const PRECOMPILES: [PrecompileFn; 9] = [
+    ec_recover, // ecrecover 0x01
+    sha256,     // SHA256 (Keccak) 0x02
+    ripemd160,  // ripemd160 0x03
+    identity,   // identity 0x04
+    modexp,     // modexp 0x05
+    ec_add,     // ecAdd 0x06
+    ec_mul,     // ecMul 0x07
+    ecpairing,  // ecPairing 0x08
+    blake2f,    // blake2f 0x09
+];
+
+pub const MAX_PRECOMPILE: H160 = {
+    let mut bytes = [0u8; 20];
+    bytes[0] = PRECOMPILES.len() as u8;
+    H160(bytes)
+};
+
+pub fn call_precompile(precompile_addr: H160, input: &[u8]) -> PrecompileResult {
+    PRECOMPILES[precompile_addr.0[0] as usize - 1](input)
+}
+
+/// read 32 bytes (u256) from buffer, pass in exit reason that is desired
+/// TODO passing in err value is debatable
+fn read_u256(buf: &[u8], start: usize) -> Result<U256, PrecompileError> {
+    let slice = buf.get(start..start + 32).ok_or(PrecompileError::IncorrectInputSize)?;
+    Ok(U256::from_big_endian(slice))
+}
 
 fn ec_recover(input: &[u8]) -> PrecompileResult {
     let mut buf = [0u8; 128];
@@ -252,27 +279,4 @@ fn blake2f(input: &[u8]) -> PrecompileResult {
     hasher.blake2_f(rounds, h, m, t, f);
     let output = hasher.output().to_vec();
     Ok(output)
-}
-
-/// List of precompile smart contracts, index + 1 is the address (another option is to make an enum)
-pub const PRECOMPILES: [PrecompileFn; 9] = [
-    ec_recover, // ecrecover 0x01
-    sha256,     // SHA256 (Keccak) 0x02
-    ripemd160,  // ripemd160 0x03
-    identity,   // identity 0x04
-    modexp,     // modexp 0x05
-    ec_add,     // ecAdd 0x06
-    ec_mul,     // ecMul 0x07
-    ecpairing,  // ecPairing 0x08
-    blake2f,    // blake2f 0x09
-];
-
-pub const MAX_PRECOMPILE: H160 = {
-    let mut bytes = [0u8; 20];
-    bytes[0] = PRECOMPILES.len() as u8;
-    H160(bytes)
-};
-
-pub fn call_precompile(precompile_addr: H160, input: &[u8]) -> PrecompileResult {
-    PRECOMPILES[precompile_addr.0[0] as usize - 1](input)
 }
