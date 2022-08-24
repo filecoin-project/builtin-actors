@@ -97,10 +97,7 @@ impl<'db, BS: Blockstore> BitFieldQueue<'db, BS> {
         quantized_values.dedup();
 
         for (epoch, group) in &quantized_values.into_iter().group_by(|(epoch, _)| *epoch) {
-            self.add_to_queue_values(
-                epoch,
-                group.map(|(_, sector)| sector),
-            )?;
+            self.add_to_queue_values(epoch, group.map(|(_, sector)| sector))?;
         }
 
         Ok(())
