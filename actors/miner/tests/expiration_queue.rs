@@ -43,6 +43,7 @@ fn default_set() -> ExpirationSet {
     let mut set = ExpirationSet::empty();
     set.add(
         &on_time_sectors(),
+        &BitField::new(),
         &faulty_sectors(),
         &on_time_pledge(),
         &active_power(),
@@ -77,6 +78,7 @@ fn adds_sectors_and_power_to_non_empty_set() {
 
     set.add(
         &mk_bitfield([6, 7, 11]),
+        &BitField::new(),
         &mk_bitfield([1, 4]),
         &TokenAmount::from_atto(300),
         &power_pair(3, 13),
@@ -99,6 +101,7 @@ fn removes_sectors_and_power_set() {
 
     set.remove(
         &mk_bitfield([9]),
+        &BitField::new(),
         &mk_bitfield([2]),
         &TokenAmount::from_atto(800),
         &power_pair(3, 11),
@@ -122,6 +125,7 @@ fn remove_fails_when_pledge_underflows() {
     let err = set
         .remove(
             &mk_bitfield([9]),
+            &BitField::new(),
             &mk_bitfield([2]),
             &TokenAmount::from_atto(1200),
             &power_pair(3, 11),
@@ -142,6 +146,7 @@ fn remove_fails_to_remove_sectors_it_does_not_contain() {
     let err = set
         .remove(
             &mk_bitfield([12]),
+            &BitField::new(),
             &mk_bitfield([]),
             &TokenAmount::zero(),
             &power_pair(3, 11),
@@ -157,6 +162,7 @@ fn remove_fails_to_remove_sectors_it_does_not_contain() {
     let err = set
         .remove(
             &mk_bitfield([0]),
+            &BitField::new(),
             &mk_bitfield([8]),
             &TokenAmount::zero(),
             &power_pair(3, 11),
@@ -177,6 +183,7 @@ fn remove_fails_when_active_or_fault_qa_power_underflows() {
     let err = set
         .remove(
             &mk_bitfield([9]),
+            &BitField::new(),
             &mk_bitfield([2]),
             &TokenAmount::from_atto(200),
             &power_pair(3, 12),
@@ -194,6 +201,7 @@ fn remove_fails_when_active_or_fault_qa_power_underflows() {
     let err = set
         .remove(
             &mk_bitfield([9]),
+            &BitField::new(),
             &mk_bitfield([2]),
             &TokenAmount::from_atto(200),
             &power_pair(3, 11),
@@ -215,6 +223,7 @@ fn set_is_empty_when_all_sectors_removed() {
 
     set.add(
         &on_time_sectors(),
+        &BitField::new(),
         &faulty_sectors(),
         &on_time_pledge(),
         &active_power(),
@@ -226,6 +235,7 @@ fn set_is_empty_when_all_sectors_removed() {
 
     set.remove(
         &on_time_sectors(),
+        &BitField::new(),
         &faulty_sectors(),
         &on_time_pledge(),
         &active_power(),
