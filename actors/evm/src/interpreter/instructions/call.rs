@@ -122,8 +122,8 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let output_size = stack.pop();
 
     // XXX do we need this?
-    stack.push(U256::zero()); // Assume failure. 
-    
+    stack.push(U256::zero()); // Assume failure.
+
     // TODO Errs
     let input_region = get_memory_region(memory, input_offset, input_size).unwrap();
     let output_region = get_memory_region(memory, output_offset, output_size).unwrap();
