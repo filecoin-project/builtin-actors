@@ -69,7 +69,7 @@ macro_rules! def_ins1 {
             let $arg: &mut Self = unsafe { p.as_mut().unwrap() };
             $body
         }
-    }
+    };
 }
 
 macro_rules! def_ins {
@@ -87,17 +87,12 @@ macro_rules! def_ins {
 }
 
 impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
-    pub fn new(system: &'r System<'r, BS, RT>,
-               runtime: &'r mut ExecutionState,
-               bytecode: &'r Bytecode,
+    pub fn new(
+        system: &'r System<'r, BS, RT>,
+        runtime: &'r mut ExecutionState,
+        bytecode: &'r Bytecode,
     ) -> Self {
-        Machine {
-            system: system,
-            runtime: runtime,
-            bytecode: bytecode,
-            pc: 0,
-            reverted: false,
-        }
+        Machine { system: system, runtime: runtime, bytecode: bytecode, pc: 0, reverted: false }
     }
 
     pub fn execute(&mut self) -> Result<(), StatusCode> {
