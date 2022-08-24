@@ -196,10 +196,10 @@ pub fn execute<'r, BS: Blockstore, RT: Runtime<BS>>(
             OpCode::LOG4 => log(runtime, system, 4)?,
             OpCode::CREATE => storage::create(runtime, system, false)?,
             OpCode::CREATE2 => storage::create(runtime, system, true)?,
-            OpCode::CALL => call::call(runtime, system, CallKind::Call, false)?,
-            OpCode::CALLCODE => call::call(runtime, system, CallKind::CallCode, false)?,
-            OpCode::DELEGATECALL => call::call(runtime, system, CallKind::DelegateCall, false)?,
-            OpCode::STATICCALL => call::call(runtime, system, CallKind::Call, true)?,
+            OpCode::CALL => call::call(runtime, system, CallKind::Call)?,
+            OpCode::CALLCODE => call::call(runtime, system, CallKind::CallCode)?,
+            OpCode::DELEGATECALL => call::call(runtime, system, CallKind::DelegateCall)?,
+            OpCode::STATICCALL => call::call(runtime, system, CallKind::Call)?,
             OpCode::RETURN | OpCode::REVERT => {
                 control::ret(runtime)?;
                 reverted = op == OpCode::REVERT;

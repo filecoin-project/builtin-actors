@@ -16,6 +16,7 @@ use {
 pub enum CallKind {
     Call,
     DelegateCall,
+    StaticCall,
     CallCode,
     Create,
     Create2 { salt: U256 },
@@ -110,7 +111,6 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
     _kind: CallKind,
-    _is_static: bool,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
 
