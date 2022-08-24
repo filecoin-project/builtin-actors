@@ -36,7 +36,7 @@ pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let input_index = state.stack.pop();
     let size = state.stack.pop();
 
-    let region = get_memory_region(state, mem_index, size).map_err(|_| StatusCode::OutOfGas)?;
+    let region = get_memory_region(state, mem_index, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     if let Some(region) = &region {
         let input_len = U256::from(state.input_data.len());
@@ -68,7 +68,7 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
     let input_index = state.stack.pop();
     let size = state.stack.pop();
 
-    let region = get_memory_region(state, mem_index, size).map_err(|_| StatusCode::OutOfGas)?;
+    let region = get_memory_region(state, mem_index, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     if let Some(region) = region {
         let src = core::cmp::min(U256::from(code.len()), input_index).as_usize();

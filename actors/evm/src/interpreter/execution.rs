@@ -46,9 +46,9 @@ struct Machine<'r, BS: Blockstore, RT: Runtime<BS>> {
 }
 
 enum ControlFlow {
-    Advance,
     Continue,
-    Break,
+    Jump,
+    Exit,
 }
 
 type Instruction<M> = fn(*mut M) -> Result<ControlFlow, StatusCode>;
@@ -64,7 +64,7 @@ macro_rules! def_jmptable {
 macro_rules! def_ins1 {
     ($ins:ident ($arg:ident) $body:block) => {
         fn $ins(p: *mut Self) -> Result<ControlFlow, StatusCode> {
-            let $arg :&mut Self = unsafe { p.as_mut().unwrap() };
+            let $arg: &mut Self = unsafe { p.as_mut().unwrap() };
             $body
         }
     }
@@ -77,9 +77,9 @@ macro_rules! def_ins {
 }
 
 impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
-    fn new(system: &'r System<'r, BS, RT>,
-           runtime: &'r mut ExecutionState,
-           bytecode: &'r Bytecode,
+    pub fn new(system: &'r System<'r, BS, RT>,
+               runtime: &'r mut ExecutionState,
+               bytecode: &'r Bytecode,
     ) -> Self {
         Machine {
             system: system,
@@ -88,6 +88,26 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
             pc: 0,
             reverted: false,
         }
+    }
+
+    pub fn execute(&mut self) -> Result<(), StatusCode> {
+        loop {
+            if self.pc >= self.bytecode.len() {
+                break;
+            }
+
+            match self.step()? {
+                ControlFlow::Continue => {
+                    self.pc += 1;
+                }
+                ControlFlow::Jump => {}
+                ControlFlow::Exit => {
+                    break;
+                }
+            };
+        }
+
+        Ok(())
     }
 
     fn step(&mut self) -> Result<ControlFlow, StatusCode> {
@@ -252,761 +272,739 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
 
     def_ins! {
         ins_undefined(_m) {
-            todo!()
+            Err(StatusCode::UndefinedInstruction)
         }
 
         ins_stop(_m) {
-            todo!()
+            Ok(ControlFlow::Exit)
         }
 
-        ins_add(_m) {
-            todo!()
+        ins_add(m) {
+            arithmetic::add(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_mul(_m) {
-            todo!()
+        ins_mul(m) {
+            arithmetic::mul(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_sub(_m) {
-            todo!()
+        ins_sub(m) {
+            arithmetic::sub(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_div(_m) {
-            todo!()
+        ins_div(m) {
+            arithmetic::div(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_sdiv(_m) {
-            todo!()
+        ins_sdiv(m) {
+            arithmetic::sdiv(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_mod(_m) {
-            todo!()
+        ins_mod(m) {
+            arithmetic::modulo(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_smod(_m) {
-            todo!()
+        ins_smod(m) {
+            arithmetic::smod(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_addmod(_m) {
-            todo!()
+        ins_addmod(m) {
+            arithmetic::addmod(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_mulmod(_m) {
-            todo!()
+        ins_mulmod(m) {
+            arithmetic::mulmod(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_exp(_m) {
-            todo!()
+        ins_exp(m) {
+            arithmetic::exp(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_signextend(_m) {
-            todo!()
+        ins_signextend(m) {
+            arithmetic::signextend(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_lt(_m) {
-            todo!()
+        ins_lt(m) {
+            boolean::lt(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_gt(_m) {
-            todo!()
+        ins_gt(m) {
+            boolean::gt(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_slt(_m) {
-            todo!()
+        ins_slt(m) {
+            boolean::slt(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_sgt(_m) {
-            todo!()
+        ins_sgt(m) {
+            boolean::sgt(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_eq(_m) {
-            todo!()
+        ins_eq(m) {
+            boolean::eq(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_iszero(_m) {
-            todo!()
+        ins_iszero(m) {
+            boolean::iszero(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_and(_m) {
-            todo!()
+        ins_and(m) {
+            boolean::and(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_or(_m) {
-            todo!()
+        ins_or(m) {
+            boolean::or(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_xor(_m) {
-            todo!()
+        ins_xor(m) {
+            boolean::xor(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_not(_m) {
-            todo!()
+        ins_not(m) {
+            boolean::not(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_byte(_m) {
-            todo!()
+        ins_byte(m) {
+            bitwise::byte(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_shl(_m) {
-            todo!()
+        ins_shl(m) {
+            bitwise::shl(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_shr(_m) {
-            todo!()
+        ins_shr(m) {
+            bitwise::shr(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_sar(_m) {
-            todo!()
+        ins_sar(m) {
+            bitwise::sar(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_keccak256(_m) {
-            todo!()
+        ins_keccak256(m) {
+            hash::keccak256(m.runtime)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_address(_m) {
-            todo!()
+        ins_address(m) {
+            context::address(m.runtime, m.system);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_balance(_m) {
-            todo!()
+        ins_balance(m) {
+            storage::balance(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_origin(_m) {
-            todo!()
+        ins_origin(m) {
+            context::origin(m.runtime, m.system);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_caller(_m) {
-            todo!()
+        ins_caller(m) {
+            context::caller(m.runtime, m.system);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_callvalue(_m) {
-            todo!()
+        ins_callvalue(m) {
+            context::call_value(m.runtime, m.system);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_calldataload(_m) {
-            todo!()
+        ins_calldataload(m) {
+            call::calldataload(m.runtime);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_calldatasize(_m) {
-            todo!()
+        ins_calldatasize(m) {
+            call::calldatasize(m.runtime);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_calldatacopy(_m) {
-            todo!()
+        ins_calldatacopy(m) {
+            call::calldatacopy(m.runtime)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_codesize(_m) {
-            todo!()
+        ins_codesize(m) {
+            call::codesize(&mut m.runtime.stack, m.bytecode.as_ref());
+            Ok(ControlFlow::Continue)
         }
 
-        ins_codecopy(_m) {
-            todo!()
+        ins_codecopy(m) {
+            call::codecopy(m.runtime, m.bytecode.as_ref())?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_gasprice(_m) {
-            todo!()
+        ins_gasprice(m) {
+            context::gas_price(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_extcodesize(_m) {
-            todo!()
+        ins_extcodesize(m) {
+            storage::extcodesize(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_extcodecopy(_m) {
-            todo!()
+        ins_extcodecopy(m) {
+            memory::extcodecopy(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_returndatasize(_m) {
-            todo!()
+        ins_returndatasize(m) {
+            control::returndatasize(m.runtime);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_returndatacopy(_m) {
-            todo!()
+        ins_returndatacopy(m) {
+            control::returndatacopy(m.runtime)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_extcodehash(_m) {
-            todo!()
+        ins_extcodehash(m) {
+            storage::extcodehash(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_blockhash(_m) {
-            todo!()
+        ins_blockhash(m) {
+            context::blockhash(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_coinbase(_m) {
-            todo!()
+        ins_coinbase(m) {
+            context::coinbase(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_timestamp(_m) {
-            todo!()
+        ins_timestamp(m) {
+            context::timestamp(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_number(_m) {
-            todo!()
+        ins_number(m) {
+            context::block_number(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_difficulty(_m) {
-            todo!()
+        ins_difficulty(m) {
+            context::difficulty(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_gaslimit(_m) {
-            todo!()
+        ins_gaslimit(m) {
+            context::gas_limit(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_chainid(_m) {
-            todo!()
+        ins_chainid(m) {
+            context::chain_id(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_selfbalance(_m) {
-            todo!()
+        ins_selfbalance(m) {
+            storage::selfbalance(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_basefee(_m) {
-            todo!()
+        ins_basefee(m) {
+            context::base_fee(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_pop(_m) {
-            todo!()
+        ins_pop(m) {
+            stack::pop(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_mload(_m) {
-            todo!()
+        ins_mload(m) {
+            memory::mload(m.runtime)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_mstore(_m) {
-            todo!()
+        ins_mstore(m) {
+            memory::mstore(m.runtime)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_mstore8(_m) {
-            todo!()
+        ins_mstore8(m) {
+            memory::mstore8(m.runtime)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_sload(_m) {
-            todo!()
+        ins_sload(m) {
+            storage::sload(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_sstore(_m) {
-            todo!()
+        ins_sstore(m) {
+            storage::sstore(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_jump(_m) {
-            todo!()
+        ins_jump(m) {
+            m.pc = control::jump(&mut m.runtime.stack, m.bytecode)?;
+            Ok(ControlFlow::Jump)
         }
 
-        ins_jumpi(_m) {
-            todo!()
+        ins_jumpi(m) {
+            if let Some(dest) = control::jumpi(&mut m.runtime.stack, m.bytecode)? {
+                m.pc = dest;
+                Ok(ControlFlow::Jump)
+            } else {
+                Ok(ControlFlow::Continue)
+            }
         }
 
-        ins_pc(_m) {
-            todo!()
+        ins_pc(m) {
+            control::pc(&mut m.runtime.stack, m.pc);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_msize(_m) {
-            todo!()
+        ins_msize(m) {
+            memory::msize(m.runtime);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_gas(_m) {
-            todo!()
+        ins_gas(m) {
+            control::gas(m.runtime);
+            Ok(ControlFlow::Continue)
         }
 
         ins_jumpdest(_m) {
-            todo!()
+            // marker opcode for valid jumps addresses
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push1(_m) {
-            todo!()
+        ins_push1(m) {
+            m.pc += push::<1>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push2(_m) {
-            todo!()
+        ins_push2(m) {
+            m.pc += push::<2>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push3(_m) {
-            todo!()
+        ins_push3(m) {
+            m.pc += push::<3>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push4(_m) {
-            todo!()
+        ins_push4(m) {
+            m.pc += push::<4>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push5(_m) {
-            todo!()
+        ins_push5(m) {
+            m.pc += push::<5>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push6(_m) {
-            todo!()
+        ins_push6(m) {
+            m.pc += push::<6>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push7(_m) {
-            todo!()
+        ins_push7(m) {
+            m.pc += push::<7>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push8(_m) {
-            todo!()
+        ins_push8(m) {
+            m.pc += push::<8>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push9(_m) {
-            todo!()
+        ins_push9(m) {
+            m.pc += push::<9>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push10(_m) {
-            todo!()
+        ins_push10(m) {
+            m.pc += push::<10>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push11(_m) {
-            todo!()
+        ins_push11(m) {
+            m.pc += push::<11>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push12(_m) {
-            todo!()
+        ins_push12(m) {
+            m.pc += push::<12>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push13(_m) {
-            todo!()
+        ins_push13(m) {
+            m.pc += push::<13>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push14(_m) {
-            todo!()
+        ins_push14(m) {
+            m.pc += push::<14>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push15(_m) {
-            todo!()
+        ins_push15(m) {
+            m.pc += push::<15>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push16(_m) {
-            todo!()
+        ins_push16(m) {
+            m.pc += push::<16>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push17(_m) {
-            todo!()
+        ins_push17(m) {
+            m.pc += push::<17>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push18(_m) {
-            todo!()
+        ins_push18(m) {
+            m.pc += push::<18>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push19(_m) {
-            todo!()
+        ins_push19(m) {
+            m.pc += push::<19>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push20(_m) {
-            todo!()
+        ins_push20(m) {
+            m.pc += push::<20>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push21(_m) {
-            todo!()
+        ins_push21(m) {
+            m.pc += push::<21>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push22(_m) {
-            todo!()
+        ins_push22(m) {
+            m.pc += push::<22>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push23(_m) {
-            todo!()
+        ins_push23(m) {
+            m.pc += push::<23>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push24(_m) {
-            todo!()
+        ins_push24(m) {
+            m.pc += push::<24>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push25(_m) {
-            todo!()
+        ins_push25(m) {
+            m.pc += push::<25>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push26(_m) {
-            todo!()
+        ins_push26(m) {
+            m.pc += push::<26>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push27(_m) {
-            todo!()
+        ins_push27(m) {
+            m.pc += push::<27>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push28(_m) {
-            todo!()
+        ins_push28(m) {
+            m.pc += push::<28>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push29(_m) {
-            todo!()
+        ins_push29(m) {
+            m.pc += push::<29>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push30(_m) {
-            todo!()
+        ins_push30(m) {
+            m.pc += push::<30>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push31(_m) {
-            todo!()
+        ins_push31(m) {
+            m.pc += push::<31>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_push32(_m) {
-            todo!()
+        ins_push32(m) {
+            m.pc += push::<32>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup1(_m) {
-            todo!()
+        ins_dup1(m) {
+            dup::<1>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup2(_m) {
-            todo!()
+        ins_dup2(m) {
+            dup::<2>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup3(_m) {
-            todo!()
+        ins_dup3(m) {
+            dup::<3>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup4(_m) {
-            todo!()
+        ins_dup4(m) {
+            dup::<4>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup5(_m) {
-            todo!()
+        ins_dup5(m) {
+            dup::<5>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup6(_m) {
-            todo!()
+        ins_dup6(m) {
+            dup::<6>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup7(_m) {
-            todo!()
+        ins_dup7(m) {
+            dup::<7>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup8(_m) {
-            todo!()
+        ins_dup8(m) {
+            dup::<8>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup9(_m) {
-            todo!()
+        ins_dup9(m) {
+            dup::<9>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup10(_m) {
-            todo!()
+        ins_dup10(m) {
+            dup::<10>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup11(_m) {
-            todo!()
+        ins_dup11(m) {
+            dup::<11>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup12(_m) {
-            todo!()
+        ins_dup12(m) {
+            dup::<12>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup13(_m) {
-            todo!()
+        ins_dup13(m) {
+            dup::<13>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup14(_m) {
-            todo!()
+        ins_dup14(m) {
+            dup::<14>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup15(_m) {
-            todo!()
+        ins_dup15(m) {
+            dup::<15>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_dup16(_m) {
-            todo!()
+        ins_dup16(m) {
+            dup::<16>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap1(_m) {
-            todo!()
+        ins_swap1(m) {
+            swap::<1>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap2(_m) {
-            todo!()
+        ins_swap2(m) {
+            swap::<2>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap3(_m) {
-            todo!()
+        ins_swap3(m) {
+            swap::<3>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap4(_m) {
-            todo!()
+        ins_swap4(m) {
+            swap::<4>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap5(_m) {
-            todo!()
+        ins_swap5(m) {
+            swap::<5>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap6(_m) {
-            todo!()
+        ins_swap6(m) {
+            swap::<6>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap7(_m) {
-            todo!()
+        ins_swap7(m) {
+            swap::<7>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap8(_m) {
-            todo!()
+        ins_swap8(m) {
+            swap::<8>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap9(_m) {
-            todo!()
+        ins_swap9(m) {
+            swap::<9>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap10(_m) {
-            todo!()
+        ins_swap10(m) {
+            swap::<10>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap11(_m) {
-            todo!()
+        ins_swap11(m) {
+            swap::<11>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap12(_m) {
-            todo!()
+        ins_swap12(m) {
+            swap::<12>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap13(_m) {
-            todo!()
+        ins_swap13(m) {
+            swap::<13>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap14(_m) {
-            todo!()
+        ins_swap14(m) {
+            swap::<14>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap15(_m) {
-            todo!()
+        ins_swap15(m) {
+            swap::<15>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_swap16(_m) {
-            todo!()
+        ins_swap16(m) {
+            swap::<16>(&mut m.runtime.stack);
+            Ok(ControlFlow::Continue)
         }
 
-        ins_log0(_m) {
-            todo!()
+        ins_log0(m) {
+            log(m.runtime, m.system, 0)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_log1(_m) {
-            todo!()
+        ins_log1(m) {
+            log(m.runtime, m.system, 1)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_log2(_m) {
-            todo!()
+        ins_log2(m) {
+            log(m.runtime, m.system, 2)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_log3(_m) {
-            todo!()
+        ins_log3(m) {
+            log(m.runtime, m.system, 3)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_log4(_m) {
-            todo!()
+        ins_log4(m) {
+            log(m.runtime, m.system, 4)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_create(_m) {
-            todo!()
+        ins_create(m) {
+            storage::create(m.runtime, m.system, false)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_call(_m) {
-            todo!()
+        ins_call(m) {
+            call::call(m.runtime, m.system, CallKind::Call, false)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_callcode(_m) {
-            todo!()
+        ins_callcode(m) {
+            call::call(m.runtime, m.system, CallKind::CallCode, false)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_return(_m) {
-            todo!()
+        ins_return(m) {
+            control::ret(m.runtime)?;
+            Ok(ControlFlow::Exit)
         }
 
-        ins_delegatecall(_m) {
-            todo!()
+        ins_delegatecall(m) {
+            call::call(m.runtime, m.system, CallKind::DelegateCall, false)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_create2(_m) {
-            todo!()
+        ins_create2(m) {
+            storage::create(m.runtime, m.system, true)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_staticcall(_m) {
-            todo!()
+        ins_staticcall(m) {
+            call::call(m.runtime, m.system, CallKind::Call, true)?;
+            Ok(ControlFlow::Continue)
         }
 
-        ins_revert(_m) {
-            todo!()
+        ins_revert(m) {
+            control::ret(m.runtime)?;
+            m.reverted = true;
+            Ok(ControlFlow::Exit)
         }
 
         ins_invalid(_m) {
-            todo!()
+            Err(StatusCode::InvalidInstruction)
         }
 
-        ins_selfdestruct(_m) {
-            todo!()
+        ins_selfdestruct(m) {
+            storage::selfdestruct(m.runtime, m.system)?;
+            Ok(ControlFlow::Continue)
         }
     }
 }
 
 pub fn execute<'r, BS: Blockstore, RT: Runtime<BS>>(
-    bytecode: &Bytecode,
-    runtime: &mut ExecutionState,
+    bytecode: &'r Bytecode,
+    runtime: &'r mut ExecutionState,
     system: &'r System<'r, BS, RT>,
 ) -> Result<Output, StatusCode> {
-    let mut pc = 0; // program counter
-    let mut reverted = false;
-
-    loop {
-        if pc >= bytecode.len() {
-            break;
-        }
-
-        let op = OpCode::try_from(bytecode[pc])?;
-        match op {
-            OpCode::STOP => break,
-            OpCode::ADD => arithmetic::add(&mut runtime.stack),
-            OpCode::MUL => arithmetic::mul(&mut runtime.stack),
-            OpCode::SUB => arithmetic::sub(&mut runtime.stack),
-            OpCode::DIV => arithmetic::div(&mut runtime.stack),
-            OpCode::SDIV => arithmetic::sdiv(&mut runtime.stack),
-            OpCode::MOD => arithmetic::modulo(&mut runtime.stack),
-            OpCode::SMOD => arithmetic::smod(&mut runtime.stack),
-            OpCode::ADDMOD => arithmetic::addmod(&mut runtime.stack),
-            OpCode::MULMOD => arithmetic::mulmod(&mut runtime.stack),
-            OpCode::EXP => arithmetic::exp(runtime)?,
-            OpCode::SIGNEXTEND => arithmetic::signextend(&mut runtime.stack),
-            OpCode::LT => boolean::lt(&mut runtime.stack),
-            OpCode::GT => boolean::gt(&mut runtime.stack),
-            OpCode::SLT => boolean::slt(&mut runtime.stack),
-            OpCode::SGT => boolean::sgt(&mut runtime.stack),
-            OpCode::EQ => boolean::eq(&mut runtime.stack),
-            OpCode::ISZERO => boolean::iszero(&mut runtime.stack),
-            OpCode::AND => boolean::and(&mut runtime.stack),
-            OpCode::OR => boolean::or(&mut runtime.stack),
-            OpCode::XOR => boolean::xor(&mut runtime.stack),
-            OpCode::NOT => boolean::not(&mut runtime.stack),
-            OpCode::BYTE => bitwise::byte(&mut runtime.stack),
-            OpCode::SHL => bitwise::shl(&mut runtime.stack),
-            OpCode::SHR => bitwise::shr(&mut runtime.stack),
-            OpCode::SAR => bitwise::sar(&mut runtime.stack),
-            OpCode::KECCAK256 => hash::keccak256(runtime)?,
-            OpCode::ADDRESS => context::address(runtime, system),
-            OpCode::BALANCE => storage::balance(runtime, system)?,
-            OpCode::CALLER => context::caller(runtime, system),
-            OpCode::CALLVALUE => context::call_value(runtime, system),
-            OpCode::CALLDATALOAD => call::calldataload(runtime),
-            OpCode::CALLDATASIZE => call::calldatasize(runtime),
-            OpCode::CALLDATACOPY => call::calldatacopy(runtime)?,
-            OpCode::CODESIZE => call::codesize(&mut runtime.stack, bytecode.as_ref()),
-            OpCode::CODECOPY => call::codecopy(runtime, bytecode.as_ref())?,
-            OpCode::EXTCODESIZE => storage::extcodesize(runtime, system)?,
-            OpCode::EXTCODECOPY => memory::extcodecopy(runtime, system)?,
-            OpCode::RETURNDATASIZE => control::returndatasize(runtime),
-            OpCode::RETURNDATACOPY => control::returndatacopy(runtime)?,
-            OpCode::EXTCODEHASH => storage::extcodehash(runtime, system)?,
-            OpCode::BLOCKHASH => context::blockhash(runtime, system)?,
-            OpCode::ORIGIN => context::origin(runtime, system),
-            OpCode::COINBASE => context::coinbase(runtime, system)?,
-            OpCode::GASPRICE => context::gas_price(runtime, system)?,
-            OpCode::TIMESTAMP => context::timestamp(runtime, system)?,
-            OpCode::NUMBER => context::block_number(runtime, system)?,
-            OpCode::DIFFICULTY => context::difficulty(runtime, system)?,
-            OpCode::GASLIMIT => context::gas_limit(runtime, system)?,
-            OpCode::CHAINID => context::chain_id(runtime, system)?,
-            OpCode::BASEFEE => context::base_fee(runtime, system)?,
-            OpCode::SELFBALANCE => storage::selfbalance(runtime, system)?,
-            OpCode::POP => stack::pop(&mut runtime.stack),
-            OpCode::MLOAD => memory::mload(runtime)?,
-            OpCode::MSTORE => memory::mstore(runtime)?,
-            OpCode::MSTORE8 => memory::mstore8(runtime)?,
-            OpCode::JUMP => {
-                pc = control::jump(&mut runtime.stack, bytecode)?;
-                continue; // don't increment PC after the jump
-            }
-            OpCode::JUMPI => {
-                // conditional jump
-                if let Some(dest) = control::jumpi(&mut runtime.stack, bytecode)? {
-                    pc = dest; // condition met, set program counter
-                    continue; // don't increment PC after jump
-                }
-            }
-            OpCode::PC => control::pc(&mut runtime.stack, pc),
-            OpCode::MSIZE => memory::msize(runtime),
-            OpCode::SLOAD => storage::sload(runtime, system)?,
-            OpCode::SSTORE => storage::sstore(runtime, system)?,
-            OpCode::GAS => control::gas(runtime),
-            OpCode::JUMPDEST => {} // marker opcode for valid jumps addresses
-            OpCode::PUSH1 => pc += push::<1>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH2 => pc += push::<2>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH3 => pc += push::<3>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH4 => pc += push::<4>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH5 => pc += push::<5>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH6 => pc += push::<6>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH7 => pc += push::<7>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH8 => pc += push::<8>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH9 => pc += push::<9>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH10 => pc += push::<10>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH11 => pc += push::<11>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH12 => pc += push::<12>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH13 => pc += push::<13>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH14 => pc += push::<14>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH15 => pc += push::<15>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH16 => pc += push::<16>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH17 => pc += push::<17>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH18 => pc += push::<18>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH19 => pc += push::<19>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH20 => pc += push::<20>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH21 => pc += push::<21>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH22 => pc += push::<22>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH23 => pc += push::<23>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH24 => pc += push::<24>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH25 => pc += push::<25>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH26 => pc += push::<26>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH27 => pc += push::<27>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH28 => pc += push::<28>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH29 => pc += push::<29>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH30 => pc += push::<30>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH31 => pc += push::<31>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::PUSH32 => pc += push::<32>(&mut runtime.stack, &bytecode[pc + 1..]),
-            OpCode::DUP1 => dup::<1>(&mut runtime.stack),
-            OpCode::DUP2 => dup::<2>(&mut runtime.stack),
-            OpCode::DUP3 => dup::<3>(&mut runtime.stack),
-            OpCode::DUP4 => dup::<4>(&mut runtime.stack),
-            OpCode::DUP5 => dup::<5>(&mut runtime.stack),
-            OpCode::DUP6 => dup::<6>(&mut runtime.stack),
-            OpCode::DUP7 => dup::<7>(&mut runtime.stack),
-            OpCode::DUP8 => dup::<8>(&mut runtime.stack),
-            OpCode::DUP9 => dup::<9>(&mut runtime.stack),
-            OpCode::DUP10 => dup::<10>(&mut runtime.stack),
-            OpCode::DUP11 => dup::<11>(&mut runtime.stack),
-            OpCode::DUP12 => dup::<12>(&mut runtime.stack),
-            OpCode::DUP13 => dup::<13>(&mut runtime.stack),
-            OpCode::DUP14 => dup::<14>(&mut runtime.stack),
-            OpCode::DUP15 => dup::<15>(&mut runtime.stack),
-            OpCode::DUP16 => dup::<16>(&mut runtime.stack),
-            OpCode::SWAP1 => swap::<1>(&mut runtime.stack),
-            OpCode::SWAP2 => swap::<2>(&mut runtime.stack),
-            OpCode::SWAP3 => swap::<3>(&mut runtime.stack),
-            OpCode::SWAP4 => swap::<4>(&mut runtime.stack),
-            OpCode::SWAP5 => swap::<5>(&mut runtime.stack),
-            OpCode::SWAP6 => swap::<6>(&mut runtime.stack),
-            OpCode::SWAP7 => swap::<7>(&mut runtime.stack),
-            OpCode::SWAP8 => swap::<8>(&mut runtime.stack),
-            OpCode::SWAP9 => swap::<9>(&mut runtime.stack),
-            OpCode::SWAP10 => swap::<10>(&mut runtime.stack),
-            OpCode::SWAP11 => swap::<11>(&mut runtime.stack),
-            OpCode::SWAP12 => swap::<12>(&mut runtime.stack),
-            OpCode::SWAP13 => swap::<13>(&mut runtime.stack),
-            OpCode::SWAP14 => swap::<14>(&mut runtime.stack),
-            OpCode::SWAP15 => swap::<15>(&mut runtime.stack),
-            OpCode::SWAP16 => swap::<16>(&mut runtime.stack),
-            OpCode::LOG0 => log(runtime, system, 0)?,
-            OpCode::LOG1 => log(runtime, system, 1)?,
-            OpCode::LOG2 => log(runtime, system, 2)?,
-            OpCode::LOG3 => log(runtime, system, 3)?,
-            OpCode::LOG4 => log(runtime, system, 4)?,
-            OpCode::CREATE => storage::create(runtime, system, false)?,
-            OpCode::CREATE2 => storage::create(runtime, system, true)?,
-            OpCode::CALL => call::call(runtime, system, CallKind::Call, false)?,
-            OpCode::CALLCODE => call::call(runtime, system, CallKind::CallCode, false)?,
-            OpCode::DELEGATECALL => call::call(runtime, system, CallKind::DelegateCall, false)?,
-            OpCode::STATICCALL => call::call(runtime, system, CallKind::Call, true)?,
-            OpCode::RETURN | OpCode::REVERT => {
-                control::ret(runtime)?;
-                reverted = op == OpCode::REVERT;
-                break;
-            }
-            OpCode::INVALID => return Err(StatusCode::InvalidInstruction),
-            OpCode::SELFDESTRUCT => storage::selfdestruct(runtime, system)?,
-        }
-
-        pc += 1; // advance
-    }
-
+    let mut m = Machine::new(system, runtime, bytecode);
+    m.execute()?;
     Ok(Output {
-        reverted,
+        reverted: m.reverted,
         status_code: StatusCode::Success,
-        output_data: runtime.output_data.clone(),
+        output_data: m.runtime.output_data.clone(),
     })
 }
