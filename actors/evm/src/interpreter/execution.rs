@@ -802,12 +802,12 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         CALL(m) {
-            call::call(m.runtime, m.system, CallKind::Call, false)?;
+            call::call(m.runtime, m.system, CallKind::Call)?;
             Ok(ControlFlow::Continue)
         }
 
         CALLCODE(m) {
-            call::call(m.runtime, m.system, CallKind::CallCode, false)?;
+            call::call(m.runtime, m.system, CallKind::CallCode)?;
             Ok(ControlFlow::Continue)
         }
 
@@ -817,7 +817,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         DELEGATECALL(m) {
-            call::call(m.runtime, m.system, CallKind::DelegateCall, false)?;
+            call::call(m.runtime, m.system, CallKind::DelegateCall)?;
             Ok(ControlFlow::Continue)
         }
 
@@ -827,7 +827,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         STATICCALL(m) {
-            call::call(m.runtime, m.system, CallKind::Call, true)?;
+            call::call(m.runtime, m.system, CallKind::StaticCall)?;
             Ok(ControlFlow::Continue)
         }
 
