@@ -121,8 +121,9 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let output_offset = stack.pop();
     let output_size = stack.pop();
 
-    stack.push(U256::zero()); // Assume failure. TODO wha
-
+    // XXX do we need this?
+    stack.push(U256::zero()); // Assume failure. 
+    
     // TODO Errs
     let input_region = get_memory_region(memory, input_offset, input_size).unwrap();
     let output_region = get_memory_region(memory, output_offset, output_size).unwrap();
@@ -130,7 +131,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let output = {
         // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = input_region
-            .map(|MemoryRegion { offset, size }| &memory[offset..offset + size.get()])
+            .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
             .unwrap_or_default();
 
         let output = if precompiles::is_precompile(&dst) {
@@ -144,7 +145,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
     let output_data = output_region
         .map(|MemoryRegion { offset, size }| {
-            &mut memory[offset..offset + size.get()] // would like to use get for this to err instead of panic
+            &mut memory[offset..][..size.get()] // would like to use get for this to err instead of panic
         })
         .unwrap_or_default();
 
