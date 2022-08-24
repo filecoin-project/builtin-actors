@@ -28,7 +28,7 @@ impl State {
             .flush()
             .map_err(|e| anyhow::anyhow!("Failed to create empty map: {}", e))?;
 
-        let empty_mapmap = MapMap::new(store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).root().map_err(|e| anyhow::anyhow!("Failed to create empty multi map: {}", e))?;
+        let empty_mapmap = MapMap::<_, ()>::new(store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).flush().map_err(|e| anyhow::anyhow!("Failed to create empty multi map: {}", e))?;
 
         Ok(State {
             root_key,
@@ -55,7 +55,7 @@ pub struct Claim {
     pub sector: SectorID, 
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq)]
 pub struct Allocation {
     pub client: Address,
     pub provider: Address,

@@ -109,6 +109,8 @@ pub struct RevokeExpiredAllocationsParams {
     pub allocation_ids: Vec<AllocationID>,
 }
 
+pub type RevokeExpiredAllocationsReturn = BatchReturn;
+
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorAllocationClaim {
     pub client: Address,
