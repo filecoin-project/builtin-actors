@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use fvm_shared::sector::SectorID;
 use fvm_shared::clock::{ChainEpoch};
 use fil_actors_runtime::{BatchReturn};
+use fvm_shared::piece::PaddedPieceSize;
 
 pub type AllocationID = u64;
 pub type ClaimID = u64;
@@ -114,10 +115,9 @@ pub type RevokeExpiredAllocationsReturn = BatchReturn;
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorAllocationClaim {
     pub client: Address,
-    pub provider: Address,
     pub allocation_id: AllocationID,
     pub piece_cid: Cid,
-    pub piece_size: u64,
+    pub piece_size: PaddedPieceSize,
     pub sector_id: SectorID,
     pub sector_expiry: ChainEpoch,    
 }

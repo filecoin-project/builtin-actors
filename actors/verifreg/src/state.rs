@@ -10,6 +10,7 @@ use fvm_shared::address::Address;
 use fvm_shared::HAMT_BIT_WIDTH;
 use fvm_shared::sector::SectorID;
 use fvm_shared::clock::{ChainEpoch};
+use fvm_shared::piece::PaddedPieceSize;
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct State {
@@ -36,7 +37,7 @@ impl State {
             verified_clients: empty_map,
             remove_data_cap_proposal_ids: empty_map,
             allocations: empty_mapmap,
-            next_allocation_id: 0,
+            next_allocation_id: 1,
             claims: empty_mapmap,
         })
     }
@@ -46,7 +47,7 @@ pub struct Claim {
     pub provider: Address,
     pub client: Address,
     pub data: Cid,
-    pub size: u64,
+    pub size: PaddedPieceSize,
     // The min period which the provider must commit to storing data
     pub term_min: ChainEpoch,
     // The max period for which provider can earn QA-power for the data
@@ -60,7 +61,7 @@ pub struct Allocation {
     pub client: Address,
     pub provider: Address,
     pub data: Cid,
-    pub size: u64,
+    pub size: PaddedPieceSize,
     pub term_min: ChainEpoch,
     pub term_max: ChainEpoch,
     pub expiration: ChainEpoch,

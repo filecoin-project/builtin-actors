@@ -14,11 +14,10 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 use fil_actors_runtime::runtime::builtins::Type;
-use std::collections::{BTreeMap};
 use log::info;
 
 
@@ -738,24 +737,17 @@ impl Actor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
+        let provider = rt.message().caller();
         if params.sectors.len() == 0 {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"))
         }
-        let provider = params.sectors[0].provider;
         let mut client_burns = DataCap::zero();
         let mut ret_gen = BatchReturnGen::new();
         rt.transaction(|st: &mut State, rt| {
             let mut claims = MapMap::from_root(rt.store(), &st.claims, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims table")?;
             let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
             for claim_alloc in params.sectors {
-                if claim_alloc.provider != provider {
-                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
-                    info!(
-                        "bad claim provider {} does not match others in batch {}", claim_alloc.provider, provider,
-                    );
-                    continue;
-                }
-
+ 
                 let maybe_alloc = allocs.get::<Address, AllocationID>(claim_alloc.client, claim_alloc.allocation_id)
                 .context_code(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -773,7 +765,7 @@ impl Actor {
                     Some(a) => a,
                 };
    
-                if !can_claim_alloc(&claim_alloc, &alloc, rt.curr_epoch()) {
+                if !can_claim_alloc(&claim_alloc, provider, &alloc, rt.curr_epoch()) {
                     ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
                     info!(
                         "invalid sector {:?} for allocation {}", claim_alloc.sector_id, claim_alloc.allocation_id,
@@ -805,7 +797,7 @@ impl Actor {
                 allocs.remove::<Address, AllocationID>(claim_alloc.client, claim_alloc.allocation_id)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, format!("failed to remove allocation {}", claim_alloc.allocation_id))?;
 
-                client_burns += claim_alloc.piece_size;
+                client_burns += claim_alloc.piece_size.0;
                 ret_gen.add_success();
             }
             st.allocations = allocs.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;  
@@ -925,10 +917,10 @@ where
     )
 }
 
-fn can_claim_alloc(claim_alloc: &SectorAllocationClaim, alloc: &Allocation, curr_epoch: ChainEpoch) -> bool {
+fn can_claim_alloc(claim_alloc: &SectorAllocationClaim, provider: Address, alloc: &Allocation, curr_epoch: ChainEpoch) -> bool {
     let sector_lifetime = claim_alloc.sector_expiry - curr_epoch;
 
-    claim_alloc.provider == alloc.provider
+    provider == alloc.provider
     && claim_alloc.client == alloc.client 
     && claim_alloc.piece_cid == alloc.data
     && claim_alloc.piece_size == alloc.size 

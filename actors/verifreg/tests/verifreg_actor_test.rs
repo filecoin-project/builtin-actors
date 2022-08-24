@@ -10,6 +10,7 @@ lazy_static! {
     static ref CLIENT2: Address = Address::new_id(302);
     static ref CLIENT3: Address = Address::new_id(303);
     static ref CLIENT4: Address = Address::new_id(304);
+    static ref PROVIDER: Address = Address::new_id(305);
 }
 
 mod util {
@@ -424,6 +425,63 @@ mod clients {
     }
 }
 
+mod claims {
+    use crate::*;
+    use harness::*;
+    use util::*;
+    use fil_actors_runtime::test_utils::make_piece_cid;
+    use fil_actor_verifreg::{Actor as VerifregActor, Method, Allocation, AllocationID, SectorAllocationClaim};
+    use fvm_shared::piece::PaddedPieceSize;
+    use fvm_shared::sector::SectorID;
+    use fvm_shared::clock::ChainEpoch;
+    use fvm_shared::error::ExitCode;
+
+
+    fn make_alloc(expected_id: AllocationID, provider: Address) -> Allocation {
+        Allocation{
+            client: *CLIENT,
+            provider,
+            data: make_piece_cid(format!("{}", expected_id).as_bytes()),
+            size: PaddedPieceSize(128),
+            term_min: 1000,
+            term_max: 2000,
+            expiration: 100,
+        }
+    }
+
+    fn make_claim(id: AllocationID, alloc: Allocation, sector_id: SectorID, sector_expiry: ChainEpoch) -> SectorAllocationClaim {
+        SectorAllocationClaim { client: alloc.client, allocation_id: id, piece_cid: alloc.data, piece_size: alloc.size, sector_id, sector_expiry }
+    }
+
+    fn sector_id(provider: Address, number: u64) -> SectorID {
+        SectorID {
+            miner: provider.id().unwrap(),
+            number,
+        }
+    }
+
+    #[test]
+    fn claim_allocs() {
+        let (h, mut rt) = new_harness(); 
+        let provider = *PROVIDER;
+        
+        let alloc1  = make_alloc(1, provider);
+        let alloc2 = make_alloc(2, provider);
+        let alloc3 = make_alloc(3, provider);
+
+        h.create_alloc(&mut rt, alloc1.clone()).unwrap();
+        h.create_alloc(&mut rt, alloc2.clone()).unwrap();
+        h.create_alloc(&mut rt, alloc3.clone()).unwrap();
+
+        let ret = h.claim_allocations(&mut rt, provider, vec![
+            make_claim(1, alloc1, sector_id(provider, 1000), 1500),
+            make_claim(2, alloc2, sector_id(provider,1000), 1500),
+            make_claim(3, alloc3, sector_id(provider, 1000), 1500)
+        ]).unwrap();
+        assert_eq!(ret.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK])
+    }
+}
+
 mod datacap {
     use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::Address;
@@ -433,6 +491,8 @@ mod datacap {
     use fil_actor_verifreg::{Actor as VerifregActor, Method, RestoreBytesParams, UseBytesParams};
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
+    use fvm_shared::piece::PaddedPieceSize;
+
 
     use crate::*;
     use harness::*;

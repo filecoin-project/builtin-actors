@@ -13,6 +13,23 @@ pub struct BatchReturn {
     pub fail_codes: Vec<FailCode>,
 }
 
+impl BatchReturn {
+    pub fn codes(&self) -> Vec<ExitCode> {
+        let mut ret = Vec::new();
+
+        for fail in &self.fail_codes {
+            for _ in ret.len()..fail.idx {
+                ret.push(ExitCode::OK)
+            }
+            ret.push(fail.code)
+        }
+        for _ in ret.len()..self.batch_size {
+            ret.push(ExitCode::OK)
+        };
+        ret
+    }
+}
+
 pub struct BatchReturnGen {
     idx: usize,
     fail_codes: Vec<FailCode>,

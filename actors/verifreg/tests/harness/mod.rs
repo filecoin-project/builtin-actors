@@ -6,15 +6,17 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
+use fil_actor_verifreg::{SectorAllocationClaim, ClaimAllocationParams, Allocation};
+use fvm_shared::error::ExitCode;
 
 use fil_actor_verifreg::{
     Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, DataCap, Method,
-    RestoreBytesParams, State, UseBytesParams,
+    RestoreBytesParams, State, UseBytesParams, ClaimAllocationReturn, AllocationID
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, MapMap, ActorContext, AsActorError,
 };
 
 lazy_static! {
@@ -212,6 +214,38 @@ impl Harness {
     pub fn check_state(&self, rt: &MockRuntime) {
         let (_, acc) = check_state_invariants(&rt.get_state(), rt.store());
         acc.assert_empty();
+    }
+
+    // TODO this should be implemented through a call to verifreg but for now it modifies state directly
+    pub fn create_alloc(
+        &self,
+        rt: &mut MockRuntime,
+        alloc: Allocation
+    ) -> Result<(), ActorError> {
+        let st :State = rt.get_state();
+        let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
+        assert!(allocs.put::<Address, AllocationID>(alloc.provider, st.next_allocation_id, alloc).context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
+        Ok(())
+    }
+
+    pub fn claim_allocations(
+        &self,
+        rt: &mut MockRuntime,
+        provider: Address,
+        claim_allocs: Vec<SectorAllocationClaim>,
+    ) -> Result<ClaimAllocationReturn, ActorError> {
+        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
+
+        let params = ClaimAllocationParams{
+            sectors: claim_allocs,
+        };
+        let ret = rt.call::<VerifregActor>(
+            Method::ClaimAllocations as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
+        )?.deserialize()?;
+        rt.verify();
+        Ok(ret)
     }
 }
 
