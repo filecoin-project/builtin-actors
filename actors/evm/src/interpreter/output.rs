@@ -43,10 +43,6 @@ pub enum StatusCode {
     #[strum(serialize = "revert")]
     Revert,
 
-    /// The execution has run out of gas.
-    #[strum(serialize = "out of gas")]
-    OutOfGas,
-
     /// The designated INVALID instruction has been hit during execution.
     ///
     /// [EIP-141](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-141.md)
