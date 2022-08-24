@@ -1,6 +1,6 @@
 use {
-    crate::interpreter::output::StatusCode, crate::interpreter::stack::Stack,
-    crate::interpreter::uints::*, crate::interpreter::ExecutionState, crate::interpreter::U256,
+    crate::interpreter::stack::Stack,
+    crate::interpreter::uints::*, crate::interpreter::U256,
 };
 
 #[inline]
@@ -138,9 +138,9 @@ pub fn signextend(stack: &mut Stack) {
 }
 
 #[inline]
-pub fn exp(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let mut base = state.stack.pop();
-    let mut power = state.stack.pop();
+pub fn exp(stack: &mut Stack) {
+    let mut base = stack.pop();
+    let mut power = stack.pop();
 
     let mut v = U256::from(1);
 
@@ -152,7 +152,5 @@ pub fn exp(state: &mut ExecutionState) -> Result<(), StatusCode> {
         base = base.overflowing_mul(base).0;
     }
 
-    state.stack.push(v);
-
-    Ok(())
+    stack.push(v);
 }
