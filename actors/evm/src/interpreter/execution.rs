@@ -37,6 +37,62 @@ impl ExecutionState {
     }
 }
 
+struct Machine<'r, BS: Blockstore, RT: Runtime<BS>> {
+    system: &'r System<'r, BS, RT>,
+    runtime: &'r mut ExecutionState,
+    bytecode: &'r Bytecode<'r>,
+    pc: usize,
+    reverted: bool,
+}
+
+enum ControlFlow {
+    Advance,
+    Continue,
+    Break,
+}
+
+type Instruction<M> = fn(&mut M) -> Result<ControlFlow, StatusCode>;
+
+impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
+    fn new(system: &'r System<'r, BS, RT>,
+           runtime: &'r mut ExecutionState,
+           bytecode: &'r Bytecode,
+    ) -> Self {
+        Machine {
+            system: system,
+            runtime: runtime,
+            bytecode: bytecode,
+            pc: 0,
+            reverted: false,
+        }
+    }
+
+    fn step(&mut self) -> Result<ControlFlow, StatusCode> {
+        let op = OpCode::try_from(self.bytecode[self.pc])?;
+        Machine::<'r, BS, RT>::dispatch(op)(self)
+    }
+
+    const fn jmptable() -> [Instruction<Machine<'r, BS, RT>>; 256] {
+        let mut table: [Instruction<Machine::<'r, BS, RT>>; 256] = [Machine::<'r, BS, RT>::ins_undefined; 256];
+        table[OpCode::STOP as usize] = Machine::<'r, BS, RT>::ins_stop;
+        table
+    }
+
+    const JMPTABLE: [Instruction<Machine<'r, BS, RT>>; 256] = Machine::<'r, BS, RT>::jmptable();
+
+    const fn dispatch(op: OpCode) -> Instruction<Machine<'r, BS, RT>> {
+        Self::JMPTABLE[op as usize]
+    }
+
+    fn ins_undefined(&mut self) -> Result<ControlFlow, StatusCode> {
+        todo!();
+    }
+
+    fn ins_stop(&mut self) -> Result<ControlFlow, StatusCode> {
+        todo!();
+    }
+}
+
 pub fn execute<'r, BS: Blockstore, RT: Runtime<BS>>(
     bytecode: &Bytecode,
     runtime: &mut ExecutionState,
