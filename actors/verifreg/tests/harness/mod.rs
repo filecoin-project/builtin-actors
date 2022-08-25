@@ -16,7 +16,7 @@ use fil_actor_verifreg::{
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, MapMap, BatchReturn, AsActorError,
+    SYSTEM_ACTOR_ADDR, MapMap, AsActorError,
 };
 
 lazy_static! {
@@ -223,7 +223,6 @@ impl Harness {
         alloc: Allocation
     ) -> Result<(), ActorError> {
         let mut st :State = rt.get_state();
-        let client = alloc.client.clone();
         let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
         assert!(allocs.put::<Address, AllocationID>(alloc.client.clone(), st.next_allocation_id, alloc).context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
         st.next_allocation_id += 1;

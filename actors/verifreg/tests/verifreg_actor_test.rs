@@ -428,15 +428,14 @@ mod clients {
 mod claims {
     use crate::*;
     use harness::*;
-    use util::*;
     use fil_actors_runtime::test_utils::make_piece_cid;
     use fil_actors_runtime::{MapMap};
     use fil_actors_runtime::runtime::Runtime;
-    use fil_actor_verifreg::{Actor as VerifregActor, Method, State, Allocation, Claim, AllocationID, SectorAllocationClaim};
+    use fil_actor_verifreg::{State, Allocation, Claim, AllocationID, SectorAllocationClaim};
     use fvm_shared::piece::PaddedPieceSize;
     use fvm_shared::sector::SectorID;
     use fvm_shared::clock::ChainEpoch;
-    use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
+    use fvm_shared::{HAMT_BIT_WIDTH};
     use fvm_shared::error::ExitCode;
 
 

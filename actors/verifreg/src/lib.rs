@@ -746,7 +746,6 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let mut claims = MapMap::from_root(rt.store(), &st.claims, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims table")?;
             let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
-            println!("[ACTOR ]allocs root {}", st.allocations);
 
             for claim_alloc in params.sectors {
  

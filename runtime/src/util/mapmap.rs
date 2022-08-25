@@ -4,7 +4,7 @@ use fvm_ipld_hamt::{Error, BytesKey};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::BTreeMap;
-
+use std::collections::btree_map::Entry::{Occupied, Vacant};
 use crate::{make_empty_map, make_map_with_root_and_bitwidth, Keyer, Map};
 
 // MapMap stores multiple values per key in a Hamt of Hamts
@@ -61,9 +61,14 @@ where
             }
         };
         let raw_k = k.key().0;
-        Ok(self.cache.entry(raw_k).or_insert(in_map_thunk()?))
+        match self.cache.entry(raw_k) {
+            Occupied(entry) => Ok(entry.into_mut()),
+            Vacant(entry) => Ok(entry.insert(in_map_thunk()?)),
+        }
     }
 
+    // memreplace -- lets you swap two values without triggering borrow checker
+    // cloning something somewhere, doing this insert on some cloned version of the cache
     pub fn get<K1, K2>(& mut self, outside_k: K1, inside_k: K2) -> Result<Option<V>, Error> 
     where
         K1: Keyer+ std::fmt::Debug,
