@@ -24,15 +24,15 @@ pub use self::randomness::DomainSeparationTag;
 use crate::runtime::builtins::Type;
 use crate::ActorError;
 
+mod actor_code;
+pub mod builtins;
+pub mod policy;
+mod randomness;
+
 #[cfg(feature = "fil-actor")]
 mod actor_blockstore;
 #[cfg(feature = "fil-actor")]
-pub mod builtins;
 pub mod fvm;
-pub mod policy;
-
-mod actor_code;
-mod randomness;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
