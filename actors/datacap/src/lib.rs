@@ -1,7 +1,12 @@
 use std::marker::PhantomData;
 
 use fil_fungible_token::runtime::messaging::{Messaging, MessagingError};
-use fil_fungible_token::token::{Token, TOKEN_PRECISION};
+use fil_fungible_token::token::types::{
+    BurnFromParams, BurnFromReturn, BurnParams, BurnReturn, DecreaseAllowanceParams,
+    GetAllowanceParams, IncreaseAllowanceParams, RevokeAllowanceParams, TransferFromParams,
+    TransferFromReturn, TransferParams, TransferReturn,
+};
+use fil_fungible_token::token::{Token, TokenError, TOKEN_PRECISION};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -28,10 +33,6 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 mod state;
 pub mod testing;
 mod types;
-
-/// TODO:
-/// - Map all token library errors to an exit code other than ExitCode::USR_UNSPECIFIED
-///   (probably via a mapping implemented in the token library)
 
 pub const DATACAP_GRANULARITY: u64 = TOKEN_PRECISION as u64;
 
@@ -80,20 +81,20 @@ impl Actor {
         Ok(())
     }
 
-    pub fn name<BS, RT>(_: &RT, _: ()) -> Result<&'static str, ActorError>
+    pub fn name<BS, RT>(_: &RT, _: ()) -> Result<String, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        Ok("DataCap")
+        Ok("DataCap".to_string())
     }
 
-    pub fn symbol<BS, RT>(_: &RT, _: ()) -> Result<&'static str, ActorError>
+    pub fn symbol<BS, RT>(_: &RT, _: ()) -> Result<String, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        Ok("DCAP")
+        Ok("DCAP".to_string())
     }
 
     pub fn total_supply<BS, RT>(rt: &mut RT, _: ()) -> Result<TokenAmount, ActorError>
@@ -103,9 +104,8 @@ impl Actor {
     {
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
-            Ok(token.total_supply())
-        })
+        let token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+        Ok(token.total_supply())
     }
 
     pub fn balance_of<BS, RT>(rt: &mut RT, address: Address) -> Result<TokenAmount, ActorError>
@@ -116,14 +116,13 @@ impl Actor {
         // NOTE: mutability and method caller here are awkward for a read-only call
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
-            token.balance_of(&address).exit_code(ExitCode::USR_UNSPECIFIED)
-        })
+        let token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+        token.balance_of(&address).to_actor()
     }
 
     pub fn allowance<BS, RT>(
         rt: &mut RT,
-        params: AllowanceParams,
+        params: GetAllowanceParams,
     ) -> Result<TokenAmount, ActorError>
     where
         BS: Blockstore,
@@ -131,41 +130,53 @@ impl Actor {
     {
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
-            token.allowance(&params.owner, &params.operator).exit_code(ExitCode::USR_UNSPECIFIED)
-        })
+        let token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+        token.allowance(&params.owner, &params.operator).to_actor()
     }
 
     /// Mints new data cap tokens for an address (a verified client).
     /// Only the registry can call this method.
     /// This method is not part of the fungible token standard.
+    // TODO: return the new balance when the token library does
     pub fn mint<BS, RT>(rt: &mut RT, params: MintParams) -> Result<(), ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.transaction(|st: &mut State, rt| {
-            // Only the registry can mint datacap tokens.
-            rt.validate_immediate_caller_is(std::iter::once(&st.registry))?;
-            let operator = st.registry;
+        let hook_params = rt
+            .transaction(|st: &mut State, rt| {
+                // Only the registry can mint datacap tokens.
+                rt.validate_immediate_caller_is(std::iter::once(&st.registry))?;
+                let operator = st.registry;
 
-            let msg = Messenger { rt, dummy: Default::default() };
-            Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
+                let msg = Messenger { rt, dummy: Default::default() };
+                let mut token =
+                    Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
                 // Mint tokens "from" the operator to the beneficiary.
                 token
-                    .mint(&operator, &params.to, &params.amount, &RawBytes::default())
-                    .exit_code(ExitCode::USR_UNSPECIFIED)
+                    .mint(
+                        &operator,
+                        &params.to,
+                        &params.amount,
+                        RawBytes::default(),
+                        RawBytes::default(),
+                    )
+                    .to_actor()
             })
-        })
-        .context("state transaction failed")?;
-        Ok(())
+            .context("state transaction failed")?;
+
+        // This state load is unused, necessary to work around awkward API to call receiver hooks.
+        let mut st: State = rt.state()?;
+        let msg = Messenger { rt, dummy: Default::default() };
+        let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+        token.call_receiver_hook(&params.to, hook_params).to_actor()
     }
 
     /// Destroys data cap tokens for an address (a verified client).
     /// Only the registry can call this method.
     /// This method is not part of the fungible token standard, and is named distinctly from
     /// "burn" to reflect that distinction.
-    pub fn destroy<BS, RT>(rt: &mut RT, params: DestroyParams) -> Result<TokenAmount, ActorError>
+    pub fn destroy<BS, RT>(rt: &mut RT, params: DestroyParams) -> Result<BurnReturn, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -173,16 +184,12 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             // Only the registry can destroy datacap tokens on behalf of a holder.
             rt.validate_immediate_caller_is(std::iter::once(&st.registry))?;
-            let operator = &params.owner;
 
             let msg = Messenger { rt, dummy: Default::default() };
-            Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
-                // Burn tokens as if the holder had invoked burn() themselves.
-                // The registry doesn't need an allowance.
-                token
-                    .burn(operator, &params.owner, &params.amount)
-                    .exit_code(ExitCode::USR_UNSPECIFIED)
-            })
+            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+            // Burn tokens as if the holder had invoked burn() themselves.
+            // The registry doesn't need an allowance.
+            token.burn(&params.owner, &params.amount).to_actor()
         })
         .context("state transaction failed")
     }
@@ -190,7 +197,10 @@ impl Actor {
     /// Transfers data cap tokens to an address.
     /// Data cap tokens are not generally transferable.
     /// Succeeds if the to address is the registry, otherwise always fails.
-    pub fn transfer<BS, RT>(rt: &mut RT, params: TransferParams) -> Result<(), ActorError>
+    pub fn transfer<BS, RT>(
+        rt: &mut RT,
+        params: TransferParams,
+    ) -> Result<TransferReturn, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -203,27 +213,43 @@ impl Actor {
             .resolve_address(&params.to)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be ID address")?;
 
-        rt.transaction(|st: &mut State, rt| {
-            let allowed = *to == st.registry;
-            if !allowed {
-                return Err(actor_error!(forbidden, "transfer not allowed"));
-            }
+        let (hook_params, result) = rt
+            .transaction(|st: &mut State, rt| {
+                let allowed = *to == st.registry;
+                if !allowed {
+                    return Err(actor_error!(forbidden, "transfer not allowed"));
+                }
 
-            let msg = Messenger { rt, dummy: Default::default() };
-            Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
+                let msg = Messenger { rt, dummy: Default::default() };
+                let mut token =
+                    Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
                 token
-                    .transfer(operator, from, to, &params.amount, &params.data)
-                    .exit_code(ExitCode::USR_UNSPECIFIED)
+                    .transfer(
+                        from,
+                        to,
+                        &params.amount,
+                        params.operator_data.clone(),
+                        RawBytes::default(),
+                    )
+                    .to_actor()
             })
-        })
-        .context("state transaction failed")?;
-        Ok(())
+            .context("state transaction failed")?;
+
+        // This state load is unused, necessary to work around awkward API to call receiver hooks.
+        let mut st: State = rt.state()?;
+        let msg = Messenger { rt, dummy: Default::default() };
+        let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+        token.call_receiver_hook(&params.to, hook_params).to_actor()?;
+        Ok(result)
     }
 
     /// Transfers data cap tokens between addresses.
     /// Data cap tokens are not generally transferable between addresses.
     /// Succeeds if the to address is the registry, otherwise always fails.
-    pub fn transfer_from<BS, RT>(rt: &mut RT, params: TransferFromParams) -> Result<(), ActorError>
+    pub fn transfer_from<BS, RT>(
+        rt: &mut RT,
+        params: TransferFromParams,
+    ) -> Result<TransferFromReturn, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -236,27 +262,41 @@ impl Actor {
             .resolve_address(&params.to)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be an ID address")?;
 
-        rt.transaction(|st: &mut State, rt| {
-            let allowed = to == st.registry;
-            if !allowed {
-                return Err(actor_error!(forbidden, "transfer not allowed"));
-            }
+        let (hook_params, result) = rt
+            .transaction(|st: &mut State, rt| {
+                let allowed = to == st.registry;
+                if !allowed {
+                    return Err(actor_error!(forbidden, "transfer not allowed"));
+                }
 
-            let msg = Messenger { rt, dummy: Default::default() };
-            Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
+                let msg = Messenger { rt, dummy: Default::default() };
+                let mut token =
+                    Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
                 token
-                    .transfer(&operator, &from, &to, &params.amount, &params.data)
-                    .exit_code(ExitCode::USR_UNSPECIFIED)
+                    .transfer_from(
+                        &operator,
+                        &from,
+                        &to,
+                        &params.amount,
+                        params.operator_data.clone(),
+                        RawBytes::default(),
+                    )
+                    .to_actor()
             })
-        })
-        .context("state transaction failed")?;
-        Ok(())
+            .context("state transaction failed")?;
+
+        // This state load is unused, necessary to work around awkward API to call receiver hooks.
+        let mut st: State = rt.state()?;
+        let msg = Messenger { rt, dummy: Default::default() };
+        let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+        token.call_receiver_hook(&params.to, hook_params).to_actor()?;
+        Ok(result)
     }
 
     pub fn increase_allowance<BS, RT>(
         rt: &mut RT,
         params: IncreaseAllowanceParams,
-    ) -> Result<(), ActorError>
+    ) -> Result<TokenAmount, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -267,20 +307,16 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let msg = Messenger { rt, dummy: Default::default() };
-            Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
-                token
-                    .increase_allowance(&owner, &operator, &params.amount)
-                    .exit_code(ExitCode::USR_UNSPECIFIED)
-            })
+            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+            token.increase_allowance(&owner, &operator, &params.increase).to_actor()
         })
-        .context("state transaction failed")?;
-        Ok(())
+        .context("state transaction failed")
     }
 
     pub fn decrease_allowance<BS, RT>(
         rt: &mut RT,
         params: DecreaseAllowanceParams,
-    ) -> Result<(), ActorError>
+    ) -> Result<TokenAmount, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -291,14 +327,10 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let msg = Messenger { rt, dummy: Default::default() };
-            Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
-                token
-                    .decrease_allowance(owner, operator, &params.amount)
-                    .exit_code(ExitCode::USR_UNSPECIFIED)
-            })
+            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+            token.decrease_allowance(owner, operator, &params.decrease).to_actor()
         })
-        .context("state transaction failed")?;
-        Ok(())
+        .context("state transaction failed")
     }
 
     pub fn revoke_allowance<BS, RT>(
@@ -315,15 +347,13 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let msg = Messenger { rt, dummy: Default::default() };
-            Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
-                token.revoke_allowance(owner, operator).exit_code(ExitCode::USR_UNSPECIFIED)
-            })
+            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+            token.revoke_allowance(owner, operator).to_actor()
         })
-        .context("state transaction failed")?;
-        Ok(())
+        .context("state transaction failed")
     }
 
-    pub fn burn<BS, RT>(rt: &mut RT, params: BurnParams) -> Result<(), ActorError>
+    pub fn burn<BS, RT>(rt: &mut RT, params: BurnParams) -> Result<BurnReturn, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -333,41 +363,32 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let msg = Messenger { rt, dummy: Default::default() };
-            Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
-                token.burn(owner, owner, &params.amount).exit_code(ExitCode::USR_UNSPECIFIED)
-            })
+            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+            token.burn(owner, &params.amount).to_actor()
         })
-        .context("state transaction failed")?;
-        Ok(())
+        .context("state transaction failed")
     }
 
-    pub fn burn_from<BS, RT>(rt: &mut RT, params: BurnFromParams) -> Result<(), ActorError>
+    pub fn burn_from<BS, RT>(
+        rt: &mut RT,
+        params: BurnFromParams,
+    ) -> Result<BurnFromReturn, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_accept_any()?;
         let operator = &rt.message().caller();
-        let owner = &params.from;
+        let owner = &params.owner;
 
         rt.transaction(|st: &mut State, rt| {
             let msg = Messenger { rt, dummy: Default::default() };
-            Token::with(msg.rt.store(), &msg, &mut st.token, DATACAP_GRANULARITY, |token| {
-                token.burn(operator, owner, &params.amount).exit_code(ExitCode::USR_UNSPECIFIED)
-            })
+            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+            token.burn_from(operator, owner, &params.amount).to_actor()
         })
-        .context("state transaction failed")?;
-        Ok(())
+        .context("state transaction failed")
     }
 }
-
-// fn msg<BS, RT>(rt: &mut RT) -> Messenger<BS, RT>
-// where
-//     BS: Blockstore,
-//     RT: Runtime<BS>,
-// {
-//     Messenger { rt, dummy: Default::default() }
-// }
 
 /// Implementation of the token library's messenger trait in terms of the built-in actors'
 /// runtime library.
@@ -435,6 +456,19 @@ where
             return Err(MessagingError::Syscall(fake_syscall_error_number));
         }
         self.resolve_id(address)
+    }
+}
+
+trait AsActorResult<T> {
+    fn to_actor(self) -> Result<T, ActorError>;
+}
+
+impl<T> AsActorResult<T> for Result<T, TokenError> {
+    fn to_actor(self) -> Result<T, ActorError> {
+        self.map_err(|e| {
+            let msg = e.to_string();
+            ActorError::unchecked(ExitCode::from(e), msg)
+        })
     }
 }
 

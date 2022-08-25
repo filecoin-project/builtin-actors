@@ -17,7 +17,7 @@ crate-type = ["cdylib", "lib"]
 fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../../runtime", features = ["fil-actor"] }
 
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-fil_fungible_token = { git = "https://github.com/helix-onchain/filecoin", rev = "b5c55eadf13946155d06d76a3409fc800b9a6e64" }
+fil_fungible_token = { git = "https://github.com/helix-onchain/filecoin", rev = "0bffadc1897746cdae8e76f148fbbe3fe57f09f3" }
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.2"
 fvm_ipld_hamt = "0.5.1"
