@@ -431,7 +431,7 @@ mod claims {
     use fil_actors_runtime::test_utils::make_piece_cid;
     use fil_actors_runtime::{MapMap};
     use fil_actors_runtime::runtime::Runtime;
-    use fil_actor_verifreg::{State, Allocation, Claim, AllocationID, SectorAllocationClaim};
+    use fil_actor_verifreg::{State, Allocation, Claim, ClaimID, AllocationID, SectorAllocationClaim};
     use fvm_shared::piece::PaddedPieceSize;
     use fvm_shared::sector::SectorID;
     use fvm_shared::clock::ChainEpoch;
@@ -485,14 +485,14 @@ mod claims {
 
          // check that state is as expected
          let st: State = rt.get_state();
-         let mut allocs = MapMap::<_, Allocation>::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
+         let mut allocs : MapMap<'_, _, Allocation, Address, AllocationID>  = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
          // allocs deleted
          assert!(allocs.get(*CLIENT, 1).unwrap().is_none());
          assert!(allocs.get(*CLIENT, 2).unwrap().is_none());
          assert!(allocs.get(*CLIENT, 3).unwrap().is_none());
 
         // claims inserted
-        let mut claims = MapMap::<_, Claim>::from_root(rt.store(), &st.claims, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
+        let mut claims: MapMap<'_, _, Claim, Address, ClaimID> = MapMap::from_root(rt.store(), &st.claims, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
         assert_eq!(claims.get(provider, 1).unwrap().unwrap().client, *CLIENT);
         assert_eq!(claims.get(provider, 2).unwrap().unwrap().client, *CLIENT);
         assert_eq!(claims.get(provider, 3).unwrap().unwrap().client, *CLIENT);

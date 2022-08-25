@@ -696,11 +696,11 @@ impl Actor {
     {
         // since the alloc is expired this should be safe to publically cleanup
         rt.validate_immediate_caller_accept_any()?;
-        let mut ret_gen = BatchReturnGen::new();
+        let mut ret_gen = BatchReturnGen::new(params.allocation_ids.len());
         rt.transaction(|st: &mut State, rt| {
-            let mut allocs = MapMap::<BS, Allocation>::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations talbe")?;
+            let mut allocs = st.load_allocs(rt.store())?;
             for alloc_id in params.allocation_ids {
-                let maybe_alloc = allocs.get::<Address, AllocationID>(params.client, alloc_id)
+                let maybe_alloc = allocs.get(params.client, alloc_id)
                 .context_code(ExitCode::USR_ILLEGAL_STATE,
                     "HAMT lookup failure getting allocation"
                 )?;
@@ -708,7 +708,7 @@ impl Actor {
                     None => {
                         ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
                         info!(
-                            "claim references allocation id {} that does not belong to provider", alloc_id,
+                            "claim references allocation id {} that does not belong to client {}", alloc_id, params.client,
                         );
                         continue;
                     }
@@ -719,8 +719,9 @@ impl Actor {
                     info!("cannot revoke allocation {} that has not expired", alloc_id);
                     continue
                 }
-                allocs.remove::<Address, AllocationID>(params.client, alloc_id)
+                allocs.remove(params.client, alloc_id)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, format!("failed to remove allocation {}", alloc_id))?;
+                ret_gen.add_success();
             } 
             st.allocations = allocs.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;  
             Ok(())
@@ -742,24 +743,24 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"))
         }
         let mut client_burns = DataCap::zero();
-        let mut ret_gen = BatchReturnGen::new();
+        let mut ret_gen = BatchReturnGen::new(params.sectors.len());
         rt.transaction(|st: &mut State, rt| {
-            let mut claims = MapMap::from_root(rt.store(), &st.claims, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims table")?;
-            let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
+            let mut claims = st.load_claims(rt.store())?;
+            let mut allocs = st.load_allocs(rt.store())?;
 
             for claim_alloc in params.sectors {
  
-                let maybe_alloc = allocs.get::<Address, AllocationID>(claim_alloc.client, claim_alloc.allocation_id)
+                let maybe_alloc = allocs.get(claim_alloc.client, claim_alloc.allocation_id)
                 .context_code(
                     ExitCode::USR_ILLEGAL_STATE,
                     "HAMT lookup failure getting allocation"
                 )?;
 
-                let alloc = match maybe_alloc {
+                let alloc: &Allocation = match maybe_alloc {
                     None => {
                         ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
                         info!(
-                            "claim references allocation id {} that does not belong to provider", claim_alloc.allocation_id,
+                            "no allocation {} for client {}", claim_alloc.allocation_id, claim_alloc.client,
                         );
                         continue;
                     }
@@ -785,7 +786,7 @@ impl Actor {
                     sector: claim_alloc.sector_id,
                 };
 
-                let inserted = claims.put::<Address, ClaimID>(provider, claim_alloc.allocation_id, new_claim)
+                let inserted = claims.put_if_absent(provider, claim_alloc.allocation_id, new_claim)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, format!("failed to write claim {}", claim_alloc.allocation_id))?;
                 if !inserted {
                     ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE); // should be unreachable since claim and alloc can't exist at once
@@ -795,7 +796,7 @@ impl Actor {
                     continue;
                 }
                 
-                allocs.remove::<Address, AllocationID>(claim_alloc.client, claim_alloc.allocation_id)
+                allocs.remove(claim_alloc.client, claim_alloc.allocation_id)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, format!("failed to remove allocation {}", claim_alloc.allocation_id))?;
 
                 client_burns += claim_alloc.piece_size.0;
@@ -824,7 +825,7 @@ impl Actor {
     {
         // TODO add this logic after #514 and burn helper
         _ = rt;
-        Ok(ExtendClaimTermsReturn{fail_codes: Vec::new(), batch_size: params.claims.len()})
+        Ok(ExtendClaimTermsReturn{fail_codes: Vec::new(), success_count: 0})
     }
 }
 
