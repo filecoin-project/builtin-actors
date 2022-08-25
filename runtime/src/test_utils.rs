@@ -111,6 +111,7 @@ pub struct MockRuntime {
     pub caller: Address,
     pub caller_type: Cid,
     pub value_received: TokenAmount,
+    #[allow(clippy::type_complexity)]
     pub hash_func: Box<dyn Fn(&[u8]) -> [u8; 32]>,
     pub network_version: NetworkVersion,
 
@@ -1224,7 +1225,7 @@ pub fn blake2b_256(data: &[u8]) -> [u8; 32] {
 }
 
 // multihash library doesn't support poseidon hashing, so we fake it
-#[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Multihash)]
 #[mh(alloc_size = 64)]
 enum MhCode {
     #[mh(code = 0xb401, hasher = multihash::Sha2_256)]

@@ -51,7 +51,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 
 /// Value type of the top level of the state tree.
 /// Represents the on-chain state of a single actor.
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
 pub struct Actor {
     /// CID representing the code associated with the actor
     pub code: Cid,
