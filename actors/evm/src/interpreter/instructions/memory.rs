@@ -73,7 +73,7 @@ pub fn mload(state: &mut ExecutionState) -> Result<(), StatusCode> {
 
     let region =
         get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
-            .map_err(|_| StatusCode::OutOfGas)?;
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
     let value =
         U256::from_big_endian(&state.memory[region.offset..region.offset + region.size.get()]);
 
@@ -89,7 +89,7 @@ pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
 
     let region =
         get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
-            .map_err(|_| StatusCode::OutOfGas)?;
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     let mut bytes = [0u8; WORD_SIZE];
     value.to_big_endian(&mut bytes);
@@ -104,7 +104,7 @@ pub fn mstore8(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let value = state.stack.pop();
 
     let region = get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(1).unwrap())
-        .map_err(|_| StatusCode::OutOfGas)?;
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     let value = (value.low_u32() & 0xff) as u8;
 

@@ -10,7 +10,7 @@ pub fn ret(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let size = *state.stack.get(1);
 
     if let Some(region) = super::memory::get_memory_region(&mut state.memory, offset, size)
-        .map_err(|_| StatusCode::OutOfGas)?
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?
     {
         state.output_data =
             state.memory[region.offset..region.offset + region.size.get()].to_vec().into();
@@ -30,8 +30,8 @@ pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let input_index = state.stack.pop();
     let size = state.stack.pop();
 
-    let region =
-        get_memory_region(&mut state.memory, mem_index, size).map_err(|_| StatusCode::OutOfGas)?;
+    let region = get_memory_region(&mut state.memory, mem_index, size)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     if input_index > U256::from(state.return_data.len()) {
         return Err(StatusCode::InvalidMemoryAccess);
