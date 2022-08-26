@@ -1,18 +1,18 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use crate::{AllocationID, ClaimID};
 use cid::Cid;
-use fil_actors_runtime::{make_empty_map, MapMap, AsActorError, ActorError};
+use fil_actors_runtime::{make_empty_map, ActorError, AsActorError, MapMap};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
-use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::SectorID;
-use fvm_shared::clock::{ChainEpoch};
 use fvm_shared::piece::PaddedPieceSize;
-use crate::{AllocationID, ClaimID};
+use fvm_shared::sector::SectorID;
+use fvm_shared::HAMT_BIT_WIDTH;
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct State {
@@ -31,7 +31,10 @@ impl State {
             .flush()
             .map_err(|e| anyhow::anyhow!("Failed to create empty map: {}", e))?;
 
-        let empty_mapmap = MapMap::<_, (), Address, AllocationID>::new(store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).flush().map_err(|e| anyhow::anyhow!("Failed to create empty multi map: {}", e))?;
+        let empty_mapmap =
+            MapMap::<_, (), Address, AllocationID>::new(store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH)
+                .flush()
+                .map_err(|e| anyhow::anyhow!("Failed to create empty multi map: {}", e))?;
 
         Ok(State {
             root_key,
@@ -43,12 +46,30 @@ impl State {
             claims: empty_mapmap,
         })
     }
-    pub fn load_allocs<'a, BS: Blockstore>(&self, store: &'a BS)  -> Result<MapMap::<'a, BS, Allocation, Address, AllocationID>, ActorError> {
-        MapMap::<BS, Allocation, Address, AllocationID>::from_root(store, &self.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")
+    pub fn load_allocs<'a, BS: Blockstore>(
+        &self,
+        store: &'a BS,
+    ) -> Result<MapMap<'a, BS, Allocation, Address, AllocationID>, ActorError> {
+        MapMap::<BS, Allocation, Address, AllocationID>::from_root(
+            store,
+            &self.allocations,
+            HAMT_BIT_WIDTH,
+            HAMT_BIT_WIDTH,
+        )
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")
     }
 
-    pub fn load_claims<'a, BS: Blockstore>(&self, store: &'a BS)  -> Result<MapMap::<'a, BS, Claim, Address, ClaimID>, ActorError> {
-        MapMap::<BS, Claim, Address, ClaimID>::from_root(store, &self.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims table")
+    pub fn load_claims<'a, BS: Blockstore>(
+        &self,
+        store: &'a BS,
+    ) -> Result<MapMap<'a, BS, Claim, Address, ClaimID>, ActorError> {
+        MapMap::<BS, Claim, Address, ClaimID>::from_root(
+            store,
+            &self.allocations,
+            HAMT_BIT_WIDTH,
+            HAMT_BIT_WIDTH,
+        )
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims table")
     }
 }
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq)]
@@ -62,7 +83,7 @@ pub struct Claim {
     // The max period for which provider can earn QA-power for the data
     pub term_max: ChainEpoch,
     pub term_start: ChainEpoch,
-    pub sector: SectorID, 
+    pub sector: SectorID,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
@@ -77,4 +98,3 @@ pub struct Allocation {
 }
 
 impl Cbor for State {}
-

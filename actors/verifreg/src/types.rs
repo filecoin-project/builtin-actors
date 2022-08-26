@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
+use fil_actors_runtime::BatchReturn;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorID;
 use fvm_shared::sector::StoragePower;
 use serde::{Deserialize, Serialize};
-use fvm_shared::sector::SectorID;
-use fvm_shared::clock::{ChainEpoch};
-use fil_actors_runtime::{BatchReturn};
-use fvm_shared::piece::PaddedPieceSize;
 
 pub type AllocationID = u64;
 pub type ClaimID = u64;
@@ -119,7 +119,7 @@ pub struct SectorAllocationClaim {
     pub piece_cid: Cid,
     pub piece_size: PaddedPieceSize,
     pub sector_id: SectorID,
-    pub sector_expiry: ChainEpoch,    
+    pub sector_expiry: ChainEpoch,
 }
 
 impl From<&SectorAllocationClaim> for DataCap {
@@ -147,4 +147,4 @@ pub struct ExtendClaimTermsParams {
     pub claims: Vec<ClaimTerm>,
 }
 
-pub type  ExtendClaimTermsReturn = BatchReturn;
+pub type ExtendClaimTermsReturn = BatchReturn;

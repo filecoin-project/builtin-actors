@@ -1,20 +1,18 @@
+use crate::{make_empty_map, make_map_with_root_and_bitwidth, Keyer, Map};
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_hamt::{Error, BytesKey};
+use fvm_ipld_hamt::{BytesKey, Error};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::collections::BTreeMap;
-use std::collections::btree_map::Entry::{Occupied, Vacant};
-use crate::{make_empty_map, make_map_with_root_and_bitwidth, Keyer, Map};
 use serde::__private::PhantomData;
-
+use std::collections::btree_map::Entry::{Occupied, Vacant};
+use std::collections::BTreeMap;
 
 // MapMap stores multiple values per key in a Hamt of Hamts
 // Every element stored has a primary and secondary key
-pub struct MapMap<'a, BS, V, K1, K2> 
-{
+pub struct MapMap<'a, BS, V, K1, K2> {
     outer: Map<'a, BS, Cid>,
-    inner_bitwidth: u32, 
+    inner_bitwidth: u32,
     // cache all inner maps loaded since last load/flush
     // get/put/remove operations load the inner map into the cache first and modify in memory
     // flush writes all inner maps in the cache to the outer map before flushing the outer map
@@ -25,20 +23,25 @@ impl<'a, BS, V, K1, K2> MapMap<'a, BS, V, K1, K2>
 where
     BS: Blockstore,
     V: Serialize + DeserializeOwned + Clone + std::cmp::PartialEq,
-    K1: Keyer+ std::fmt::Debug + std::fmt::Display,
-    K2:  Keyer+ std::fmt::Debug + std::fmt::Display,
+    K1: Keyer + std::fmt::Debug + std::fmt::Display,
+    K2: Keyer + std::fmt::Debug + std::fmt::Display,
 {
     pub fn new(bs: &'a BS, outer_bitwidth: u32, inner_bitwidth: u32) -> Self {
         MapMap {
             outer: make_empty_map(bs, outer_bitwidth),
             inner_bitwidth,
             cache: BTreeMap::<Vec<u8>, Map<BS, V>>::new(),
-            key_types: PhantomData, 
+            key_types: PhantomData,
         }
     }
 
-    pub fn from_root(bs: &'a BS, cid: &Cid, outer_bitwidth: u32, inner_bitwidth:u32 ) -> Result<Self, Error> {
-        Ok(MapMap{
+    pub fn from_root(
+        bs: &'a BS,
+        cid: &Cid,
+        outer_bitwidth: u32,
+        inner_bitwidth: u32,
+    ) -> Result<Self, Error> {
+        Ok(MapMap {
             outer: make_map_with_root_and_bitwidth(cid, bs, outer_bitwidth)?,
             inner_bitwidth,
             cache: BTreeMap::<Vec<u8>, Map<BS, V>>::new(),
@@ -47,7 +50,7 @@ where
     }
 
     pub fn flush(&mut self) -> Result<Cid, Error> {
-        for (k,in_map) in self.cache.iter_mut() {
+        for (k, in_map) in self.cache.iter_mut() {
             if in_map.is_empty() {
                 self.outer.delete(&BytesKey(k.to_vec()))?;
             } else {
@@ -58,11 +61,15 @@ where
         self.outer.flush()
     }
 
-    fn load_inner_map(& mut self, k: K1)  -> Result<& mut Map<'a, BS, V>, Error> {
+    fn load_inner_map(&mut self, k: K1) -> Result<&mut Map<'a, BS, V>, Error> {
         let in_map_thunk = || -> Result<Map<BS, V>, Error> {
             // lazy to avoid ipld operations in case of cache hit
             match self.outer.get(&k.key())? {
-                Some(root) => Ok(make_map_with_root_and_bitwidth::<BS, V>(root, *self.outer.store(), self.inner_bitwidth)?),
+                Some(root) => Ok(make_map_with_root_and_bitwidth::<BS, V>(
+                    root,
+                    *self.outer.store(),
+                    self.inner_bitwidth,
+                )?),
                 None => Ok(make_empty_map(*self.outer.store(), self.inner_bitwidth)),
             }
         };
@@ -75,18 +82,18 @@ where
 
     // memreplace -- lets you swap two values without triggering borrow checker
     // cloning something somewhere, doing this insert on some cloned version of the cache
-    pub fn get(& mut self, outside_k: K1, inside_k: K2) -> Result<Option<&V>, Error> {
+    pub fn get(&mut self, outside_k: K1, inside_k: K2) -> Result<Option<&V>, Error> {
         let in_map = self.load_inner_map(outside_k)?;
         in_map.get(&inside_k.key())
     }
 
-    // Puts a key value pair in the MapMap if it is not already set.  Returns true 
-    // if key is newly set, false if it was already set. 
+    // Puts a key value pair in the MapMap if it is not already set.  Returns true
+    // if key is newly set, false if it was already set.
     pub fn put_if_absent(&mut self, outside_k: K1, inside_k: K2, value: V) -> Result<bool, Error> {
         let in_map = self.load_inner_map(outside_k)?;
 
         if in_map.contains_key::<BytesKey>(&inside_k.key())? {
-            return Ok(false)
+            return Ok(false);
         }
         in_map.set(inside_k.key(), value)?;
         // defer flushing cached inner map until flush call
@@ -97,9 +104,8 @@ where
     /// was previously set.
     pub fn remove(&mut self, outside_k: K1, inside_k: K2) -> Result<Option<V>, Error> {
         let in_map = self.load_inner_map(outside_k)?;
-        in_map.delete(&inside_k.key()).map(
-            |o: Option<(BytesKey, V)>| -> Option<V> {
-                o.map(|p: (BytesKey, V)| -> V {p.1}
-            )})
+        in_map
+            .delete(&inside_k.key())
+            .map(|o: Option<(BytesKey, V)>| -> Option<V> { o.map(|p: (BytesKey, V)| -> V { p.1 }) })
     }
 }

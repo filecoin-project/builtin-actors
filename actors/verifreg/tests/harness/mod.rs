@@ -1,22 +1,22 @@
 use fil_actor_verifreg::testing::check_state_invariants;
+use fil_actor_verifreg::{Allocation, ClaimAllocationParams, SectorAllocationClaim};
 use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
+use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
-use fil_actor_verifreg::{SectorAllocationClaim, ClaimAllocationParams, Allocation};
-use fvm_shared::error::ExitCode;
 
 use fil_actor_verifreg::{
-    Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, DataCap, Method,
-    RestoreBytesParams, State, UseBytesParams, ClaimAllocationReturn
+    Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, ClaimAllocationReturn,
+    DataCap, Method, RestoreBytesParams, State, UseBytesParams,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, MapMap, AsActorError,
+    make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError, Map, MapMap,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 
 lazy_static! {
@@ -217,19 +217,18 @@ impl Harness {
     }
 
     // TODO this should be implemented through a call to verifreg but for now it modifies state directly
-    pub fn create_alloc(
-        &self,
-        rt: &mut MockRuntime,
-        alloc: Allocation
-    ) -> Result<(), ActorError> {
-        let mut st :State = rt.get_state();
-        let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
-        assert!(allocs.put_if_absent(alloc.client, st.next_allocation_id, alloc).context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
+    pub fn create_alloc(&self, rt: &mut MockRuntime, alloc: Allocation) -> Result<(), ActorError> {
+        let mut st: State = rt.get_state();
+        let mut allocs =
+            MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
+        assert!(allocs
+            .put_if_absent(alloc.client, st.next_allocation_id, alloc)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
         st.next_allocation_id += 1;
         st.allocations = allocs.flush().expect("failed flushing allocation table");
         rt.replace_state(&st);
 
-       
         Ok(())
     }
 
@@ -242,14 +241,15 @@ impl Harness {
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
 
-        let params = ClaimAllocationParams{
-            sectors: claim_allocs,
-        };
-     
-        let ret = rt.call::<VerifregActor>(
-            Method::ClaimAllocations as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
-        )?.deserialize().expect("failed to deserialize claim allocations return");
+        let params = ClaimAllocationParams { sectors: claim_allocs };
+
+        let ret = rt
+            .call::<VerifregActor>(
+                Method::ClaimAllocations as MethodNum,
+                &RawBytes::serialize(params).unwrap(),
+            )?
+            .deserialize()
+            .expect("failed to deserialize claim allocations return");
         rt.verify();
         Ok(ret)
     }

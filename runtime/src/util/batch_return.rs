@@ -1,6 +1,6 @@
-use fvm_shared::error::ExitCode;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
+use fvm_shared::error::ExitCode;
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct FailCode {
@@ -27,13 +27,12 @@ impl BatchReturn {
         let batch_size = self.success_count + self.fail_codes.len();
         for _ in ret.len()..batch_size {
             ret.push(ExitCode::OK)
-        };
+        }
         ret
     }
 }
 
 impl Cbor for BatchReturn {}
-
 
 pub struct BatchReturnGen {
     success_count: usize,
@@ -49,18 +48,15 @@ impl BatchReturnGen {
     }
 
     pub fn add_success(&mut self) {
-        self.success_count+=1;
+        self.success_count += 1;
     }
 
     pub fn add_fail(&mut self, code: ExitCode) {
-        self.fail_codes.push(FailCode{idx: self.success_count + self.fail_codes.len(), code});
+        self.fail_codes.push(FailCode { idx: self.success_count + self.fail_codes.len(), code });
     }
 
     pub fn gen(&self) -> BatchReturn {
         assert_eq!(self.expect_count, self.success_count + self.fail_codes.len(), "programmer error, mismatched batch size {} and processed coutn {} batch return must include success/fail for all inputs", self.expect_count, self.success_count + self.fail_codes.len());
-        BatchReturn {
-            success_count: self.success_count,
-            fail_codes: self.fail_codes.clone(),
-        }
+        BatchReturn { success_count: self.success_count, fail_codes: self.fail_codes.clone() }
     }
 }
