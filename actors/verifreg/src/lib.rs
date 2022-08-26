@@ -82,7 +82,7 @@ impl Actor {
         let verifier = resolve_to_actor_id(rt, &params.address).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
+                format!("failed to resolve addr {} to ID", params.address),
             )
         })?;
 
@@ -148,7 +148,7 @@ impl Actor {
         let verifier = resolve_to_actor_id(rt, &verifier_addr).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", verifier_addr),
+                format!("failed to resolve addr {} to ID", verifier_addr),
             )
         })?;
 
@@ -207,7 +207,7 @@ impl Actor {
         let client = resolve_to_actor_id(rt, &params.address).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
+                format!("failed to resolve addr {} to ID", params.address),
             )
         })?;
 
@@ -330,7 +330,7 @@ impl Actor {
         let client = resolve_to_actor_id(rt, &params.address).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
+                format!("failed to resolve addr {} to ID", params.address),
             )
         })?;
 
@@ -440,7 +440,7 @@ impl Actor {
         let client = resolve_to_actor_id(rt, &params.address).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
+                format!("failed to resolve addr {} to ID", params.address),
             )
         })?;
 
@@ -524,7 +524,7 @@ impl Actor {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 format!(
-                    "failed to resolve client addr {} to ID addr",
+                    "failed to resolve client addr {} to ID",
                     params.verified_client_to_remove
                 ),
             )
@@ -537,7 +537,7 @@ impl Actor {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_ARGUMENT,
                     format!(
-                        "failed to resolve verifier addr {} to ID addr",
+                        "failed to resolve verifier addr {} to ID",
                         params.verifier_request_1.verifier
                     ),
                 )
@@ -550,7 +550,7 @@ impl Actor {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_ARGUMENT,
                     format!(
-                        "failed to resolve verifier addr {} to ID addr",
+                        "failed to resolve verifier addr {} to ID",
                         params.verifier_request_2.verifier
                     ),
                 )

@@ -76,7 +76,7 @@ impl Actor {
         let resolved = resolve_to_actor_id(rt, raw).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", raw),
+                format!("failed to resolve address {} to ID", raw),
             )
         })?;
 

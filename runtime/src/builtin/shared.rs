@@ -39,7 +39,7 @@ where
     }
 
     Err(anyhow::anyhow!(
-        "failed to resolve address {} to ID address even after sending zero balance",
+        "failed to resolve address {} to ID even after sending zero balance",
         address,
     ))
 }

@@ -76,7 +76,7 @@ impl Actor {
             let resolved = resolve_to_actor_id(rt, signer).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to resolve addr {} to ID addr", signer),
+                    format!("failed to resolve addr {} to ID", signer),
                 )
             })?;
             if !dedup_signers.insert(resolved) {
@@ -302,7 +302,7 @@ impl Actor {
         let resolved_new_signer = resolve_to_actor_id(rt, &params.signer).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.signer),
+                format!("failed to resolve address {} to ID", params.signer),
             )
         })?;
 
@@ -339,7 +339,7 @@ impl Actor {
         let resolved_old_signer = resolve_to_actor_id(rt, &params.signer).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.signer),
+                format!("failed to resolve address {} to ID", params.signer),
             )
         })?;
 
@@ -399,13 +399,13 @@ impl Actor {
         let from_resolved = resolve_to_actor_id(rt, &params.from).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.from),
+                format!("failed to resolve address {} to ID", params.from),
             )
         })?;
         let to_resolved = resolve_to_actor_id(rt, &params.to).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.to),
+                format!("failed to resolve address {} to ID", params.to),
             )
         })?;
 
