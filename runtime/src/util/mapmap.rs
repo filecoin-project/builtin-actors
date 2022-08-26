@@ -61,36 +61,51 @@ where
         self.outer.flush()
     }
 
-    fn load_inner_map(&mut self, k: K1) -> Result<&mut Map<'a, BS, V>, Error> {
-        let in_map_thunk = || -> Result<Map<BS, V>, Error> {
+    // load inner map while memoizing
+    // 1. ensure inner map is loaded into cache
+    // 2. return (inner map is empty, inner map)
+    fn load_inner_map(&mut self, k: K1) -> Result<(bool, &mut Map<'a, BS, V>), Error> {
+        let in_map_thunk = || -> Result<(bool, Map<BS, V>), Error> {
             // lazy to avoid ipld operations in case of cache hit
             match self.outer.get(&k.key())? {
-                Some(root) => Ok(make_map_with_root_and_bitwidth::<BS, V>(
-                    root,
-                    *self.outer.store(),
-                    self.inner_bitwidth,
-                )?),
-                None => Ok(make_empty_map(*self.outer.store(), self.inner_bitwidth)),
+                // flush semantics guarantee all written inner maps are non empty
+                Some(root) => Ok((
+                    false,
+                    make_map_with_root_and_bitwidth::<BS, V>(
+                        root,
+                        *self.outer.store(),
+                        self.inner_bitwidth,
+                    )?,
+                )),
+                None => Ok((true, make_empty_map(*self.outer.store(), self.inner_bitwidth))),
             }
         };
         let raw_k = k.key().0;
         match self.cache.entry(raw_k) {
-            Occupied(entry) => Ok(entry.into_mut()),
-            Vacant(entry) => Ok(entry.insert(in_map_thunk()?)),
+            Occupied(entry) => {
+                let in_map = entry.into_mut();
+                // cached map could be empty
+                Ok((in_map.is_empty(), in_map))
+            }
+            Vacant(entry) => {
+                let (empty, in_map) = in_map_thunk()?;
+                Ok((empty, entry.insert(in_map)))
+            }
         }
     }
 
-    // memreplace -- lets you swap two values without triggering borrow checker
-    // cloning something somewhere, doing this insert on some cloned version of the cache
     pub fn get(&mut self, outside_k: K1, inside_k: K2) -> Result<Option<&V>, Error> {
-        let in_map = self.load_inner_map(outside_k)?;
+        let (is_empty, in_map) = self.load_inner_map(outside_k)?;
+        if is_empty {
+            return Ok(None);
+        }
         in_map.get(&inside_k.key())
     }
 
     // Puts a key value pair in the MapMap if it is not already set.  Returns true
     // if key is newly set, false if it was already set.
     pub fn put_if_absent(&mut self, outside_k: K1, inside_k: K2, value: V) -> Result<bool, Error> {
-        let in_map = self.load_inner_map(outside_k)?;
+        let in_map = self.load_inner_map(outside_k)?.1;
 
         if in_map.contains_key::<BytesKey>(&inside_k.key())? {
             return Ok(false);
@@ -103,7 +118,10 @@ where
     /// Removes a key from the MapMap, returning the value at the key if the key
     /// was previously set.
     pub fn remove(&mut self, outside_k: K1, inside_k: K2) -> Result<Option<V>, Error> {
-        let in_map = self.load_inner_map(outside_k)?;
+        let (is_empty, in_map) = self.load_inner_map(outside_k)?;
+        if is_empty {
+            return Ok(None);
+        }
         in_map
             .delete(&inside_k.key())
             .map(|o: Option<(BytesKey, V)>| -> Option<V> { o.map(|p: (BytesKey, V)| -> V { p.1 }) })

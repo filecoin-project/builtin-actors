@@ -45,9 +45,8 @@ pub enum Method {
     UseBytes = 5,     // Deprecated
     RestoreBytes = 6, // Deprecated
     RemoveVerifiedClientDataCap = 7,
-    RevokeExpiredAllocations = 8,
+    RemoveExpiredAllocations = 8,
     ClaimAllocations = 9,
-    ExtendClaimTerms = 10,
 }
 
 pub struct Actor;
@@ -685,10 +684,12 @@ impl Actor {
         })
     }
 
-    pub fn revoke_expired_allocations<BS, RT>(
+    // An allocation may be removed after its expiration epoch has passed (by anyone).
+    // When removed, the DataCap tokens are transferred back to the client.
+    pub fn remove_expired_allocations<BS, RT>(
         rt: &mut RT,
-        params: RevokeExpiredAllocationsParams,
-    ) -> Result<RevokeExpiredAllocationsReturn, ActorError>
+        params: RemoveExpiredAllocationsParams,
+    ) -> Result<RemoveExpiredAllocationsReturn, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -734,6 +735,9 @@ impl Actor {
         Ok(ret_gen.gen())
     }
 
+    // Called by storage provider actor to claim allocations for data provably committed to storage.
+    // For each allocation claim, the registry checks that the provided piece CID
+    // and size match that of the allocation.
     pub fn claim_allocation<BS, RT>(
         rt: &mut RT,
         params: ClaimAllocationParams,
@@ -830,20 +834,6 @@ impl Actor {
         //burn(st.token, client, dc_burn)
         _ = client_burns;
         Ok(ret_gen.gen())
-    }
-
-    pub fn extend_claim_terms<BS, RT>(
-        rt: &mut RT,
-        params: ExtendClaimTermsParams,
-    ) -> Result<ExtendClaimTermsReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
-        // TODO add this logic after #514 and burn helper
-        _ = rt;
-        _ = params;
-        Ok(ExtendClaimTermsReturn { fail_codes: Vec::new(), success_count: 0 })
     }
 }
 
@@ -994,17 +984,13 @@ impl ActorCode for Actor {
                     Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::RevokeExpiredAllocations) => {
-                let res = Self::revoke_expired_allocations(rt, cbor::deserialize_params(params)?)?;
+            Some(Method::RemoveExpiredAllocations) => {
+                let res = Self::remove_expired_allocations(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ClaimAllocations) => {
                 let res = Self::claim_allocation(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::ExtendClaimTerms) => {
-                Self::extend_claim_terms(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default()) // xxx return value
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }

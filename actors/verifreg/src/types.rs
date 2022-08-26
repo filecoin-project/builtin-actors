@@ -105,12 +105,12 @@ impl AddrPairKey {
 }
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
-pub struct RevokeExpiredAllocationsParams {
+pub struct RemoveExpiredAllocationsParams {
     pub client: Address,
     pub allocation_ids: Vec<AllocationID>,
 }
 
-pub type RevokeExpiredAllocationsReturn = BatchReturn;
+pub type RemoveExpiredAllocationsReturn = BatchReturn;
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorAllocationClaim {

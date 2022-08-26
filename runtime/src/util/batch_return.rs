@@ -2,7 +2,7 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::error::ExitCode;
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
 pub struct FailCode {
     pub idx: usize,
     pub code: ExitCode,
@@ -10,7 +10,9 @@ pub struct FailCode {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct BatchReturn {
+    // Total successes in batch
     pub success_count: usize,
+    // Failure code and index for each failure in batch
     pub fail_codes: Vec<FailCode>,
 }
 
