@@ -531,14 +531,12 @@ where
         addr: Address,
         amount_to_lock: &TokenAmount,
     ) -> anyhow::Result<bool> {
-        let prev_locked =
-            self.locked_table.as_ref().unwrap().get(&addr).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
-            })?;
-        let escrow_balance =
-            self.escrow_table.as_ref().unwrap().get(&addr).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")
-            })?;
+        let prev_locked = self.locked_table.as_ref().unwrap().get(&addr).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
+        })?;
+        let escrow_balance = self.escrow_table.as_ref().unwrap().get(&addr).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")
+        })?;
         Ok((prev_locked + amount_to_lock) <= escrow_balance)
     }
 

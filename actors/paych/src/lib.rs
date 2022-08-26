@@ -3,7 +3,9 @@
 
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, resolve_to_actor_id, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{
+    actor_error, cbor, resolve_to_actor_id, ActorDowncast, ActorError, Array,
+};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;

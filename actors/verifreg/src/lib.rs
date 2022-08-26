@@ -523,10 +523,7 @@ impl Actor {
         let client = resolve_to_actor_id(rt, &params.verified_client_to_remove).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                format!(
-                    "failed to resolve client addr {} to ID",
-                    params.verified_client_to_remove
-                ),
+                format!("failed to resolve client addr {} to ID", params.verified_client_to_remove),
             )
         })?;
 
