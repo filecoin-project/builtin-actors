@@ -224,7 +224,7 @@ impl Harness {
     ) -> Result<(), ActorError> {
         let mut st :State = rt.get_state();
         let mut allocs = MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
-        assert!(allocs.put_if_absent(alloc.client.clone(), st.next_allocation_id, alloc).context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
+        assert!(allocs.put_if_absent(alloc.client, st.next_allocation_id, alloc).context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
         st.next_allocation_id += 1;
         st.allocations = allocs.flush().expect("failed flushing allocation table");
         rt.replace_state(&st);

@@ -4,7 +4,7 @@
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_id_addr, ActorDowncast,
-    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, ActorContext, MapMap, AsActorError,
+    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, ActorContext, AsActorError,
     BatchReturnGen,
 };
 use fvm_ipld_blockstore::Blockstore;
@@ -739,7 +739,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let provider = rt.message().caller();
-        if params.sectors.len() == 0 {
+        if params.sectors.is_empty() {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"))
         }
         let mut client_burns = DataCap::zero();
@@ -767,7 +767,7 @@ impl Actor {
                     Some(a) => a,
                 };
    
-                if !can_claim_alloc(&claim_alloc, provider, &alloc, rt.curr_epoch()) {
+                if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
                     ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
                     info!(
                         "invalid sector {:?} for allocation {}", claim_alloc.sector_id, claim_alloc.allocation_id,
@@ -825,6 +825,7 @@ impl Actor {
     {
         // TODO add this logic after #514 and burn helper
         _ = rt;
+        _ = params;
         Ok(ExtendClaimTermsReturn{fail_codes: Vec::new(), success_count: 0})
     }
 }

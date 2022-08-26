@@ -12,7 +12,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorID;
 use fvm_shared::clock::{ChainEpoch};
 use fvm_shared::piece::PaddedPieceSize;
-use crate::{AllocationID, ClaimID, DataCap};
+use crate::{AllocationID, ClaimID};
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct State {
@@ -65,7 +65,7 @@ pub struct Claim {
     pub sector: SectorID, 
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
 pub struct Allocation {
     pub client: Address,
     pub provider: Address,
