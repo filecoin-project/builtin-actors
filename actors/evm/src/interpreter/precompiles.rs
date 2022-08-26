@@ -12,12 +12,8 @@ use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
 
-/// since we are working with identity addresses, it is expected that precompile addresses are filled with 0xFF instead, with the last value being the precompile num
 pub fn is_precompile(addr: &H160) -> bool {
-    let mut mask = [0u8; 20];
-    mask[0] = 0xFF;
-    let addr = addr.bitand(&H160::from_slice(&mask));
-    !addr.is_zero() && addr <= MAX_PRECOMPILE
+    !addr.is_zero() && addr <= &MAX_PRECOMPILE
 }
 
 #[derive(Debug)]
