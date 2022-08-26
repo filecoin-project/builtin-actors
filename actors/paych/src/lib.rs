@@ -3,7 +3,7 @@
 
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, resolve_to_id_addr, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{actor_error, cbor, resolve_to_actor_id, ActorDowncast, ActorError, Array};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -73,7 +73,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let resolved = resolve_to_id_addr(rt, raw).map_err(|e| {
+        let resolved = resolve_to_actor_id(rt, raw).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to resolve address {}", raw),
@@ -140,17 +140,17 @@ impl Actor {
         })?;
 
         let pch_addr = rt.message().receiver();
-        let svpch_id_addr = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {
+        let svpch_id = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {
             actor_error!(
                 illegal_argument,
                 "voucher payment channel address {} does not resolve to an ID address",
                 sv.channel_addr
             )
         })?;
-        if pch_addr.id().unwrap() != svpch_id_addr {
+        if pch_addr != Address::new_id(svpch_id) {
             return Err(actor_error!(illegal_argument;
                     "voucher payment channel address {} does not match receiver {}",
-                    svpch_id_addr, pch_addr));
+                    svpch_id, pch_addr));
         }
 
         if rt.curr_epoch() < sv.time_lock_min {

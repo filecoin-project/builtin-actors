@@ -53,14 +53,14 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 
 fn request_miner_control_addrs<BS, RT>(
     rt: &mut RT,
-    miner_addr: ActorID,
+    miner_id: ActorID,
 ) -> Result<(Address, Address, Vec<Address>), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     let ret = rt.send(
-        Address::new_id(miner_addr),
+        Address::new_id(miner_id),
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
         TokenAmount::zero(),
@@ -229,13 +229,13 @@ impl Actor {
 
         // All deals should have the same provider so get worker once
         let provider_raw = params.deals[0].proposal.provider;
-        let provider = rt.resolve_address(&provider_raw).ok_or_else(|| {
+        let provider_id = rt.resolve_address(&provider_raw).ok_or_else(|| {
             actor_error!(not_found, "failed to resolve provider address {}", provider_raw)
         })?;
 
         let code_id = rt
-            .get_actor_code_cid(&provider)
-            .ok_or_else(|| actor_error!(not_found, "no code ID for address {}", provider))?;
+            .get_actor_code_cid(&provider_id)
+            .ok_or_else(|| actor_error!(not_found, "no code ID for address {}", provider_id))?;
 
         if rt.resolve_builtin_actor_type(&code_id) != Some(Type::Miner) {
             return Err(actor_error!(
@@ -244,7 +244,7 @@ impl Actor {
             ));
         }
 
-        let (_, worker, controllers) = request_miner_control_addrs(rt, provider)?;
+        let (_, worker, controllers) = request_miner_control_addrs(rt, provider_id)?;
         let caller = rt.message().caller();
         let mut caller_ok = caller == worker;
         for controller in controllers.iter() {
@@ -258,7 +258,7 @@ impl Actor {
                 forbidden,
                 "caller {} is not worker or control address of provider {}",
                 caller,
-                provider
+                provider_id
             ));
         }
 
@@ -290,7 +290,7 @@ impl Actor {
                 continue;
             }
 
-            if deal.proposal.provider != Address::new_id(provider)
+            if deal.proposal.provider != Address::new_id(provider_id)
                 && deal.proposal.provider != provider_raw
             {
                 info!(
@@ -316,7 +316,7 @@ impl Actor {
             client_lockup += deal.proposal.client_balance_requirement();
 
             let client_balance_ok =
-                msm.balance_covered(client_id, &client_lockup).map_err(|e| {
+                msm.balance_covered(deal.proposal.client, &client_lockup).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check client balance coverage",
@@ -331,7 +331,7 @@ impl Actor {
             let mut provider_lockup = total_provider_lockup.clone();
             provider_lockup += &deal.proposal.provider_collateral;
             let provider_balance_ok =
-                msm.balance_covered(provider, &provider_lockup).map_err(|e| {
+                msm.balance_covered(provider_raw, &provider_lockup).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check provider balance coverage",
@@ -347,7 +347,7 @@ impl Actor {
             // Normalise provider and client addresses in the proposal stored on chain.
             // Must happen after signature verification and before taking cid.
 
-            deal.proposal.provider = Address::new_id(provider);
+            deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
             let pcid = deal.proposal.cid().map_err(
                 |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),

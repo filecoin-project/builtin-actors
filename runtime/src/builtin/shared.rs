@@ -17,25 +17,25 @@ pub const HAMT_BIT_WIDTH: u32 = 5;
 /// user-programmable actors.
 pub const CALLER_TYPES_SIGNABLE: &[Type] = &[Type::Account, Type::Multisig];
 
-/// ResolveToIDAddr resolves the given address to it's ID address form.
-/// If an ID address for the given address dosen't exist yet, it tries to create one by sending
+/// ResolveToActorID resolves the given address to it's actor ID.
+/// If an actor ID for the given address dosen't exist yet, it tries to create one by sending
 /// a zero balance to the given address.
-pub fn resolve_to_id_addr<BS, RT>(rt: &mut RT, address: &Address) -> anyhow::Result<ActorID>
+pub fn resolve_to_actor_id<BS, RT>(rt: &mut RT, address: &Address) -> anyhow::Result<ActorID>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     // if we are able to resolve it to an ID address, return the resolved address
-    if let Some(addr) = rt.resolve_address(address) {
-        return Ok(addr);
+    if let Some(id) = rt.resolve_address(address) {
+        return Ok(id);
     }
 
     // send 0 balance to the account so an ID address for it is created and then try to resolve
     rt.send(*address, METHOD_SEND, Default::default(), Default::default())
         .map_err(|e| e.wrap(&format!("failed to send zero balance to address {}", address)))?;
 
-    if let Some(addr) = rt.resolve_address(address) {
-        return Ok(addr);
+    if let Some(id) = rt.resolve_address(address) {
+        return Ok(id);
     }
 
     Err(anyhow::anyhow!(

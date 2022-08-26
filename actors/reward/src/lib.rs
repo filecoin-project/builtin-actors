@@ -114,7 +114,7 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "invalid win count {}", params.win_count));
         }
 
-        let miner_addr = rt
+        let miner_id = rt
             .resolve_address(&params.miner)
             .ok_or_else(|| actor_error!(not_found, "failed to resolve given owner address"))?;
 
@@ -159,7 +159,7 @@ impl Actor {
         // if this fails, we can assume the miner is responsible and avoid failing here.
         let reward_params = ext::miner::ApplyRewardParams { reward: total_reward.clone(), penalty };
         let res = rt.send(
-            Address::new_id(miner_addr),
+            Address::new_id(miner_id),
             ext::miner::APPLY_REWARDS_METHOD,
             RawBytes::serialize(&reward_params)?,
             total_reward.clone(),

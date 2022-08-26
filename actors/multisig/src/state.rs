@@ -10,7 +10,6 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::ActorID;
 use indexmap::IndexMap;
 use num_traits::Zero;
 
@@ -36,8 +35,8 @@ pub struct State {
 
 impl State {
     /// Checks if `address` is in the list of signers
-    pub fn is_signer(&self, id: &ActorID) -> bool {
-        self.signers.contains(&Address::new_id(*id))
+    pub fn is_signer(&self, address: &Address) -> bool {
+        self.signers.contains(address)
     }
 
     /// Set locked amount in multisig state.

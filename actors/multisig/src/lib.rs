@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorDowncast,
+    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id, ActorDowncast,
     ActorError, Map, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
@@ -73,7 +73,7 @@ impl Actor {
         let mut resolved_signers = Vec::with_capacity(params.signers.len());
         let mut dedup_signers = BTreeSet::new();
         for signer in &params.signers {
-            let resolved = resolve_to_id_addr(rt, signer).map_err(|e| {
+            let resolved = resolve_to_actor_id(rt, signer).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to resolve addr {} to ID addr", signer),
@@ -146,7 +146,7 @@ impl Actor {
         }
 
         let (txn_id, txn) = rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&proposer.id().unwrap()) {
+            if !st.is_signer(&proposer) {
                 return Err(actor_error!(forbidden, "{} is not a signer", proposer));
             }
 
@@ -201,7 +201,7 @@ impl Actor {
 
         let id = params.id;
         let (st, txn) = rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&approver.id().unwrap()) {
+            if !st.is_signer(&approver) {
                 return Err(actor_error!(forbidden; "{} is not a signer", approver));
             }
 
@@ -240,7 +240,7 @@ impl Actor {
         let caller_addr: Address = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&caller_addr.id().unwrap()) {
+            if !st.is_signer(&caller_addr) {
                 return Err(actor_error!(forbidden; "{} is not a signer", caller_addr));
             }
 
@@ -299,7 +299,7 @@ impl Actor {
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let resolved_new_signer = resolve_to_id_addr(rt, &params.signer).map_err(|e| {
+        let resolved_new_signer = resolve_to_actor_id(rt, &params.signer).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to resolve address {}", params.signer),
@@ -314,7 +314,7 @@ impl Actor {
                     SIGNERS_MAX
                 ));
             }
-            if st.is_signer(&resolved_new_signer) {
+            if st.is_signer(&Address::new_id(resolved_new_signer)) {
                 return Err(actor_error!(forbidden, "{} is already a signer", resolved_new_signer));
             }
 
@@ -336,7 +336,7 @@ impl Actor {
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let resolved_old_signer = resolve_to_id_addr(rt, &params.signer).map_err(|e| {
+        let resolved_old_signer = resolve_to_actor_id(rt, &params.signer).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to resolve address {}", params.signer),
@@ -344,7 +344,7 @@ impl Actor {
         })?;
 
         rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&resolved_old_signer) {
+            if !st.is_signer(&Address::new_id(resolved_old_signer)) {
                 return Err(actor_error!(forbidden, "{} is not a signer", resolved_old_signer));
             }
 
@@ -396,13 +396,13 @@ impl Actor {
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let from_resolved = resolve_to_id_addr(rt, &params.from).map_err(|e| {
+        let from_resolved = resolve_to_actor_id(rt, &params.from).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to resolve address {}", params.from),
             )
         })?;
-        let to_resolved = resolve_to_id_addr(rt, &params.to).map_err(|e| {
+        let to_resolved = resolve_to_actor_id(rt, &params.to).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
                 format!("failed to resolve address {}", params.to),
@@ -410,11 +410,11 @@ impl Actor {
         })?;
 
         rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&from_resolved) {
+            if !st.is_signer(&Address::new_id(from_resolved)) {
                 return Err(actor_error!(forbidden; "{} is not a signer", from_resolved));
             }
 
-            if st.is_signer(&to_resolved) {
+            if st.is_signer(&Address::new_id(to_resolved)) {
                 return Err(actor_error!(illegal_argument; "{} is already a signer", to_resolved));
             }
 

@@ -25,7 +25,7 @@ pub struct CreateActorArgs {
 /// Holds the response of a call to runtime.ResolveAddress
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ResolveAddressResponse {
-    pub address: ActorID,
+    pub id: ActorID,
     pub success: bool,
 }
 #[derive(Serialize_tuple, Deserialize_tuple)]

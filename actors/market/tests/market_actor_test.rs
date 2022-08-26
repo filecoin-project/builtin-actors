@@ -734,7 +734,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     deal.verified_deal = true;
 
     // add funds for cient using it's BLS address -> will be resolved and persisted
-    add_participant_funds(&mut rt, client_resolved, deal.client_balance_requirement());
+    add_participant_funds(&mut rt, client_bls, deal.client_balance_requirement());
     assert_eq!(
         deal.client_balance_requirement(),
         get_escrow_balance(&rt, &client_resolved).unwrap()
