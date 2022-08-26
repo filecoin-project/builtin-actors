@@ -783,7 +783,7 @@ impl Actor {
                     term_min: alloc.term_min,
                     term_max: alloc.term_max,
                     term_start: rt.curr_epoch(),
-                    sector: claim_alloc.sector_id,
+                    sector: claim_alloc.sector_id.clone(),
                 };
 
                 let inserted = claims.put_if_absent(provider, claim_alloc.allocation_id, new_claim)
@@ -799,7 +799,7 @@ impl Actor {
                 allocs.remove(claim_alloc.client, claim_alloc.allocation_id)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, format!("failed to remove allocation {}", claim_alloc.allocation_id))?;
 
-                client_burns += claim_alloc.piece_size.0;
+                client_burns += DataCap::from(&claim_alloc);
                 ret_gen.add_success();
             }
             st.allocations = allocs.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;  

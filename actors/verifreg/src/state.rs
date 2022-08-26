@@ -12,7 +12,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorID;
 use fvm_shared::clock::{ChainEpoch};
 use fvm_shared::piece::PaddedPieceSize;
-use crate::{AllocationID, ClaimID};
+use crate::{AllocationID, ClaimID, DataCap};
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct State {
@@ -77,3 +77,4 @@ pub struct Allocation {
 }
 
 impl Cbor for State {}
+

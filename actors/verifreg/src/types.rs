@@ -122,6 +122,12 @@ pub struct SectorAllocationClaim {
     pub sector_expiry: ChainEpoch,    
 }
 
+impl From<&SectorAllocationClaim> for DataCap {
+    fn from(c: &SectorAllocationClaim) -> Self {
+        DataCap::from(c.piece_size.0)
+    }
+}
+
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationParams {
     pub sectors: Vec<SectorAllocationClaim>,
