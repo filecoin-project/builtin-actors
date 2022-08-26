@@ -148,7 +148,7 @@ fn deal_get_payment_remaining(
 
 impl Cbor for State {}
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(super) enum Permission {
     Invalid,
     ReadOnly,

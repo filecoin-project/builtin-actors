@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use cid::multihash::{Code, MultihashGeneric};
 use cid::Cid;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -595,9 +596,7 @@ impl Actor {
                     })?
                     .ok_or_else(|| actor_error!(not_found, "no such deal_id: {}", deal_id))?;
 
-                let propc = proposal
-                    .cid()
-                    .map_err(|e| ActorError::from(e).wrap("failed to calculate proposal Cid"))?;
+                let propc = cid(rt, proposal)?;
 
                 let has =
                     msm.pending_deals.as_ref().unwrap().has(&propc.to_bytes()).map_err(|e| {
@@ -822,10 +821,7 @@ impl Actor {
                         })?
                         .clone();
 
-                    let dcid = deal.cid().map_err(|e| {
-                        ActorError::from(e)
-                            .wrap(format!("failed to calculate cid for proposal {}", deal_id))
-                    })?;
+                    let dcid = cid(rt, &deal)?;
 
                     let state = msm
                         .deal_states
@@ -1292,6 +1288,21 @@ where
     )?;
 
     Ok(())
+}
+
+pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
+
+fn cid<BS, RT>(rt: &RT, proposal: &DealProposal) -> Result<Cid, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    const DIGEST_SIZE: u32 = 32;
+    let data = &proposal.marshal_cbor()?;
+    let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
+        .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
+    debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
+    Ok(Cid::new_v1(DAG_CBOR, hash))
 }
 
 /// Resolves a provider or client address to the canonical form against which a balance should be held, and

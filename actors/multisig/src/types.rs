@@ -37,7 +37,7 @@ impl Display for TxnID {
 }
 
 /// Transaction type used in multisig actor
-#[derive(Clone, PartialEq, Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct Transaction {
     pub to: Address,
     #[serde(with = "bigint_ser")]
@@ -103,7 +103,7 @@ impl Cbor for ProposeParams {}
 impl Cbor for ProposeReturn {}
 
 /// Parameters for approve and cancel multisig functions.
-#[derive(Clone, PartialEq, Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct TxnIDParams {
     pub id: TxnID,
     /// Optional hash of proposal to ensure an operation can only apply to a

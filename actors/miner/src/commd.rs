@@ -6,7 +6,7 @@ use multihash::Multihash;
 use serde::{Deserialize, Serialize};
 
 /// CompactCommD represents a Cid with compact representation of context dependant zero value
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
 #[serde(transparent)]
 pub struct CompactCommD(pub Option<Cid>);
 
