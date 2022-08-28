@@ -104,7 +104,7 @@ impl Actor {
     {
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+        let token = as_token(&mut st, &msg);
         Ok(token.total_supply())
     }
 
@@ -116,8 +116,8 @@ impl Actor {
         // NOTE: mutability and method caller here are awkward for a read-only call
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
-        token.balance_of(&address).to_actor()
+        let token = as_token(&mut st, &msg);
+        token.balance_of(&address).actor_result()
     }
 
     pub fn allowance<BS, RT>(
@@ -130,8 +130,8 @@ impl Actor {
     {
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
-        token.allowance(&params.owner, &params.operator).to_actor()
+        let token = as_token(&mut st, &msg);
+        token.allowance(&params.owner, &params.operator).actor_result()
     }
 
     /// Mints new data cap tokens for an address (a verified client).
@@ -150,8 +150,7 @@ impl Actor {
                 let operator = st.registry;
 
                 let msg = Messenger { rt, dummy: Default::default() };
-                let mut token =
-                    Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+                let mut token = as_token(st, &msg);
                 // Mint tokens "from" the operator to the beneficiary.
                 token
                     .mint(
@@ -161,15 +160,15 @@ impl Actor {
                         RawBytes::default(),
                         RawBytes::default(),
                     )
-                    .to_actor()
+                    .actor_result()
             })
             .context("state transaction failed")?;
 
         // This state load is unused, necessary to work around awkward API to call receiver hooks.
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
-        token.call_receiver_hook(&params.to, hook_params).to_actor()
+        let mut token = as_token(&mut st, &msg);
+        token.call_receiver_hook(&params.to, hook_params).actor_result()
     }
 
     /// Destroys data cap tokens for an address (a verified client).
@@ -186,10 +185,10 @@ impl Actor {
             rt.validate_immediate_caller_is(std::iter::once(&st.registry))?;
 
             let msg = Messenger { rt, dummy: Default::default() };
-            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+            let mut token = as_token(st, &msg);
             // Burn tokens as if the holder had invoked burn() themselves.
             // The registry doesn't need an allowance.
-            token.burn(&params.owner, &params.amount).to_actor()
+            token.burn(&params.owner, &params.amount).actor_result()
         })
         .context("state transaction failed")
     }
@@ -221,8 +220,7 @@ impl Actor {
                 }
 
                 let msg = Messenger { rt, dummy: Default::default() };
-                let mut token =
-                    Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+                let mut token = as_token(st, &msg);
                 token
                     .transfer(
                         from,
@@ -231,15 +229,15 @@ impl Actor {
                         params.operator_data.clone(),
                         RawBytes::default(),
                     )
-                    .to_actor()
+                    .actor_result()
             })
             .context("state transaction failed")?;
 
         // This state load is unused, necessary to work around awkward API to call receiver hooks.
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
-        token.call_receiver_hook(&params.to, hook_params).to_actor()?;
+        let mut token = as_token(&mut st, &msg);
+        token.call_receiver_hook(&params.to, hook_params).actor_result()?;
         Ok(result)
     }
 
@@ -270,8 +268,7 @@ impl Actor {
                 }
 
                 let msg = Messenger { rt, dummy: Default::default() };
-                let mut token =
-                    Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
+                let mut token = as_token(st, &msg);
                 token
                     .transfer_from(
                         &operator,
@@ -281,15 +278,15 @@ impl Actor {
                         params.operator_data.clone(),
                         RawBytes::default(),
                     )
-                    .to_actor()
+                    .actor_result()
             })
             .context("state transaction failed")?;
 
         // This state load is unused, necessary to work around awkward API to call receiver hooks.
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
-        token.call_receiver_hook(&params.to, hook_params).to_actor()?;
+        let mut token = as_token(&mut st, &msg);
+        token.call_receiver_hook(&params.to, hook_params).actor_result()?;
         Ok(result)
     }
 
@@ -307,8 +304,8 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let msg = Messenger { rt, dummy: Default::default() };
-            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
-            token.increase_allowance(&owner, &operator, &params.increase).to_actor()
+            let mut token = as_token(st, &msg);
+            token.increase_allowance(&owner, &operator, &params.increase).actor_result()
         })
         .context("state transaction failed")
     }
@@ -327,8 +324,8 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let msg = Messenger { rt, dummy: Default::default() };
-            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
-            token.decrease_allowance(owner, operator, &params.decrease).to_actor()
+            let mut token = as_token(st, &msg);
+            token.decrease_allowance(owner, operator, &params.decrease).actor_result()
         })
         .context("state transaction failed")
     }
@@ -347,8 +344,8 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let msg = Messenger { rt, dummy: Default::default() };
-            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
-            token.revoke_allowance(owner, operator).to_actor()
+            let mut token = as_token(st, &msg);
+            token.revoke_allowance(owner, operator).actor_result()
         })
         .context("state transaction failed")
     }
@@ -363,8 +360,8 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let msg = Messenger { rt, dummy: Default::default() };
-            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
-            token.burn(owner, &params.amount).to_actor()
+            let mut token = as_token(st, &msg);
+            token.burn(owner, &params.amount).actor_result()
         })
         .context("state transaction failed")
     }
@@ -383,8 +380,8 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let msg = Messenger { rt, dummy: Default::default() };
-            let mut token = Token::wrap(msg.rt.store(), &msg, DATACAP_GRANULARITY, &mut st.token);
-            token.burn_from(operator, owner, &params.amount).to_actor()
+            let mut token = as_token(st, &msg);
+            token.burn_from(operator, owner, &params.amount).actor_result()
         })
         .context("state transaction failed")
     }
@@ -459,12 +456,24 @@ where
     }
 }
 
+// Returns a token instance wrapping the token state.
+fn as_token<'st, BS, RT>(
+    st: &'st mut State,
+    msg: &'st Messenger<'st, BS, RT>,
+) -> Token<'st, &'st BS, &'st Messenger<'st, BS, RT>>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    Token::wrap(msg.rt.store(), msg, DATACAP_GRANULARITY, &mut st.token)
+}
+
 trait AsActorResult<T> {
-    fn to_actor(self) -> Result<T, ActorError>;
+    fn actor_result(self) -> Result<T, ActorError>;
 }
 
 impl<T> AsActorResult<T> for Result<T, TokenError> {
-    fn to_actor(self) -> Result<T, ActorError> {
+    fn actor_result(self) -> Result<T, ActorError> {
         self.map_err(|e| {
             let msg = e.to_string();
             ActorError::unchecked(ExitCode::from(e), msg)
