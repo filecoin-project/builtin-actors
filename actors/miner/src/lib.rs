@@ -4869,6 +4869,42 @@ fn balance_invariants_broken(e: Error) -> ActorError {
 }
 
 #[allow(dead_code)]
+fn extend_proof_validity<BS, RT>(
+    rt: &RT,
+    _: &ValidatedExpirationExtension,
+    sector: &SectorOnChainInfo,
+) -> Result<SectorOnChainInfo, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    if !can_extend_seal_proof_type(sector.seal_proof) {
+        return Err(actor_error!(
+            forbidden,
+            "cannot extend expiration for sector {} with unsupported \
+                                    seal type {:?}",
+            sector.sector_number,
+            sector.seal_proof
+        ));
+    }
+    let policy = rt.policy();
+    let new_expiration =
+        sector.proof_expiration + (policy.max_proof_validity - policy.proof_refresh_window);
+    if new_expiration > rt.curr_epoch() + policy.max_proof_validity {
+        return Err(actor_error!(
+            forbidden,
+            "cannot extend sector's ({}) proof validity beyond {} epochs in the future (would be {})",
+            sector.sector_number,
+            policy.max_proof_validity,
+            new_expiration
+        ));
+    }
+
+    let mut new_sector = sector.clone();
+    new_sector.proof_expiration = new_expiration;
+    Ok(new_sector)
+}
+
 fn extend_commitment<BS, RT>(
     rt: &RT,
     decl: &ValidatedExpirationExtension,
@@ -4950,7 +4986,6 @@ fn validate_extension_declaration(
         ));
     }
 
-    // TODO may not be needed anymore
     // limit the number of sectors declared at once
     // https://github.com/filecoin-project/specs-actors/issues/416
     let mut sector_count: u64 = 0;
@@ -5022,6 +5057,7 @@ fn group_extensions_by_deadline<'a>(
         let decls = &mut decls_by_deadline[decl.deadline as usize];
         decls.push(decl);
     }
+
     (0u64..)
         .zip(decls_by_deadline.into_iter()) // enumerate uses usize not u64
         .filter(|(_, ddl)| !ddl.is_empty())
@@ -5042,8 +5078,6 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    // Group declarations by deadline, and remember iteration order.
-
     let policy = rt.policy();
     let extensions = validate_extension_declaration(extensions, policy)?;
 
