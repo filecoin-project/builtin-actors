@@ -830,9 +830,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             Vec::<SectorExpirationSet>::with_capacity(declared_expirations.len());
 
         for sector in sectors {
-            let q_expiration = self
-                .quant
-                .quantize_up(std::cmp::min(sector.commitment_expiration, sector.proof_expiration));
+            let q_expiration = self.quant.quantize_up(sector.expires_at());
             declared_expirations.insert(q_expiration, true);
             all_remaining.insert(sector.sector_number);
             sectors_by_number.insert(sector.sector_number, sector);
@@ -935,8 +933,7 @@ fn group_new_sectors_by_declared_expiration<'a>(
     let mut sectors_by_expiration = BTreeMap::<ChainEpoch, Vec<&SectorOnChainInfo>>::new();
 
     for sector in sectors {
-        let q_expiration =
-            quant.quantize_up(std::cmp::min(sector.commitment_expiration, sector.proof_expiration));
+        let q_expiration = quant.quantize_up(sector.expires_at());
         sectors_by_expiration.entry(q_expiration).or_default().push(sector);
     }
 
@@ -952,10 +949,10 @@ fn group_new_sectors_by_declared_expiration<'a>(
             for sector in epoch_sectors {
                 total_power += &power_for_sector(sector_size, sector);
                 total_pledge += &sector.initial_pledge;
-                if sector.commitment_expiration <= sector.proof_expiration {
-                    sectors_on_time.push(sector.sector_number)
+                if sector.expires_early() {
+                    sectors_early.push(sector.sector_number);
                 } else {
-                    sectors_early.push(sector.sector_number)
+                    sectors_on_time.push(sector.sector_number);
                 }
             }
 

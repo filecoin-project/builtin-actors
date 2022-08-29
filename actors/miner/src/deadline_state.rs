@@ -428,9 +428,8 @@ impl Deadline {
             partitions.set(partition_idx, partition)?;
 
             // Record deadline -> partition mapping so we can later update the deadlines.
-            partition_deadline_updates.extend(partition_new_sectors.iter().map(|s| {
-                (std::cmp::min(s.commitment_expiration, s.proof_expiration), partition_idx)
-            }))
+            partition_deadline_updates
+                .extend(partition_new_sectors.iter().map(|s| (s.expires_at(), partition_idx)))
         }
 
         // Save partitions back.
