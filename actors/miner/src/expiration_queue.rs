@@ -565,6 +565,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         // queue is quantized, we should be able to stop traversing the queue
         // after 14 entries.
         self.iter_while_mut(|_epoch, expiration_set| {
+            //TODO
             let on_time_sector_nums: BTreeSet<SectorNumber> = expiration_set
                 .on_time_sectors
                 .bounded_iter(ENTRY_SECTORS_MAX)
@@ -666,7 +667,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut expiration_set = self.may_get(epoch)?;
 
         expiration_set
-            .add(on_time_sectors, faulty_sectors, early_sectors, pledge, active_power, faulty_power)
+            .add(on_time_sectors, early_sectors, faulty_sectors, pledge, active_power, faulty_power)
             .map_err(|e| anyhow!("failed to add expiration values for epoch {}: {}", epoch, e))?;
 
         self.must_update(epoch, expiration_set)?;

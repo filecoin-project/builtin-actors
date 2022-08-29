@@ -20,12 +20,12 @@ const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
 
 fn sectors() -> Vec<SectorOnChainInfo> {
     vec![
-        test_sector(2, 1, 50, 60, 1000),
-        test_sector(3, 2, 51, 61, 1001),
-        test_sector(7, 3, 52, 62, 1002),
-        test_sector(8, 4, 53, 63, 1003),
-        test_sector(11, 5, 54, 64, 1004),
-        test_sector(13, 6, 55, 65, 1005),
+        test_sector_no_proof_exp(2, 1, 50, 60, 1000),
+        test_sector_no_proof_exp(3, 2, 51, 61, 1001),
+        test_sector_no_proof_exp(7, 3, 52, 62, 1002),
+        test_sector_no_proof_exp(8, 4, 53, 63, 1003),
+        test_sector_no_proof_exp(11, 5, 54, 64, 1004),
+        test_sector_no_proof_exp(13, 6, 55, 65, 1005),
     ]
 }
 
@@ -469,9 +469,9 @@ mod miner_actor_test_partitions {
 
         // replace 1 and add 2 new sectors
         let new_sectors = vec![
-            test_sector(10, 2, 150, 260, 3000),
-            test_sector(10, 7, 151, 261, 3001),
-            test_sector(18, 8, 152, 262, 3002),
+            test_sector_no_proof_exp(10, 2, 150, 260, 3000),
+            test_sector_no_proof_exp(10, 7, 151, 261, 3001),
+            test_sector_no_proof_exp(18, 8, 152, 262, 3002),
         ];
         let new_sector_power = power_for_sectors(SECTOR_SIZE, &new_sectors);
         let new_sector_pledge = TokenAmount::from_atto(3000u64 + 3001 + 3002);
@@ -530,7 +530,7 @@ mod miner_actor_test_partitions {
         let old_sectors = sectors()[1..4].to_vec();
 
         // replace sector 2
-        let new_sectors = vec![test_sector(10, 2, 150, 260, 3000)];
+        let new_sectors = vec![test_sector_no_proof_exp(10, 2, 150, 260, 3000)];
 
         let res = partition.replace_sectors(
             &rt.store,
@@ -554,7 +554,7 @@ mod miner_actor_test_partitions {
         let old_sectors = sectors()[1..4].to_vec();
 
         // replace sector 2
-        let new_sectors = vec![test_sector(10, 2, 150, 260, 3000)];
+        let new_sectors = vec![test_sector_no_proof_exp(10, 2, 150, 260, 3000)];
 
         let res = partition.replace_sectors(
             &rt.store,
@@ -574,7 +574,7 @@ mod miner_actor_test_partitions {
     fn terminate_sectors() {
         let (rt, mut partition) = setup_partition();
 
-        let unproven_sector = vec![test_sector(13, 7, 55, 65, 1006)];
+        let unproven_sector = vec![test_sector_no_proof_exp(13, 7, 55, 65, 1006)];
         let mut all_sectors = sectors();
         all_sectors.extend(unproven_sector.clone());
         let sector_arr = sectors_arr(&rt.store, all_sectors);
@@ -842,7 +842,7 @@ mod miner_actor_test_partitions {
     fn records_missing_post() {
         let (rt, mut partition) = setup_partition();
 
-        let unproven_sector = vec![test_sector(13, 7, 55, 65, 1006)];
+        let unproven_sector = vec![test_sector_no_proof_exp(13, 7, 55, 65, 1006)];
         let mut all_sectors = sectors();
         all_sectors.extend_from_slice(&unproven_sector);
         let sector_arr = sectors_arr(&rt.store, sectors());
@@ -977,7 +977,7 @@ mod miner_actor_test_partitions {
         for (i, info) in many_sectors.iter_mut().enumerate() {
             let id = (i as u64 + 1) << 50;
             ids[i as usize] = id;
-            *info = test_sector(i as i64 + 1, id, 50, 60, 1000);
+            *info = test_sector_no_proof_exp(i as i64 + 1, id, 50, 60, 1000);
         }
         let sector_numbers = bitfield_from_slice(&ids);
 
