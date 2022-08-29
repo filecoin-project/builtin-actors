@@ -11,6 +11,7 @@ use cid::Cid;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
+use fvm_shared::address::Payload;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
@@ -765,17 +766,26 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         self.balance.borrow().clone()
     }
 
-    fn resolve_address(&self, address: &Address) -> Option<Address> {
+    fn resolve_address(&self, address: &Address) -> Option<ActorID> {
         self.require_in_call();
-        if address.protocol() == Protocol::ID {
-            return Some(*address);
+        if let &Payload::ID(id) = address.payload() {
+            return Some(id);
         }
-        self.id_addresses.get(address).cloned()
+
+        match self.get_id_address(address) {
+            None => None,
+            Some(addr) => {
+                if let &Payload::ID(id) = addr.payload() {
+                    return Some(id);
+                }
+                None
+            }
+        }
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         self.require_in_call();
-        self.actor_code_cids.get(addr).cloned()
+        self.actor_code_cids.get(&Address::new_id(*id)).cloned()
     }
 
     fn get_randomness_from_tickets(
