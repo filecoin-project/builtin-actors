@@ -37,6 +37,7 @@ fn successful_change() {
 
     let info = h.get_info(&rt);
     assert_eq!(NEW_ADDRESS, info.owner);
+    assert_eq!(NEW_ADDRESS, info.beneficiary);
     assert!(info.pending_owner_address.is_none());
 
     h.check_state(&rt);

@@ -12,19 +12,20 @@ use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
-    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, Actor,
-    ApplyRewardParams, BitFieldQueue, ChangeMultiaddrsParams, ChangePeerIDParams,
-    ChangeWorkerAddressParams, CheckSectorProvenParams, CompactPartitionsParams,
-    CompactSectorNumbersParams, ConfirmSectorProofsParams, CronEventPayload, Deadline,
-    DeadlineInfo, Deadlines, DeclareFaultsParams, DeclareFaultsRecoveredParams,
-    DeferredCronEventParams, DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet,
-    ExtendSectorExpirationParams, FaultDeclaration, GetControlAddressesReturn, Method,
-    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PoStPartition, PowerPair,
-    PreCommitSectorBatchParams, PreCommitSectorParams, ProveCommitSectorParams,
-    RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
-    VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
-    CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
+    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, ActiveBeneficiary,
+    Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue, ChangeBeneficiaryParams,
+    ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams,
+    CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
+    CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
+    DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
+    ExpirationQueue, ExpirationSet, ExtendSectorExpirationParams, FaultDeclaration,
+    GetBeneficiaryReturn, GetControlAddressesReturn, Method,
+    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
+    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
+    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
+    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
+    TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
+    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -103,6 +104,7 @@ pub struct ActorHarness {
     pub owner: Address,
     pub worker: Address,
     pub worker_key: Address,
+    pub beneficiary: Address,
 
     pub control_addrs: Vec<Address>,
 
@@ -141,6 +143,7 @@ impl ActorHarness {
             worker_key,
             control_addrs,
 
+            beneficiary: owner,
             seal_proof_type: proof_type,
             window_post_proof_type: proof_type.registered_window_post_proof().unwrap(),
             sector_size: proof_type.sector_size().unwrap(),
@@ -1936,21 +1939,26 @@ impl ActorHarness {
     pub fn withdraw_funds(
         &self,
         rt: &mut MockRuntime,
+        from_address: Address,
         amount_requested: &TokenAmount,
         expected_withdrawn: &TokenAmount,
         expected_debt_repaid: &TokenAmount,
     ) -> Result<(), ActorError> {
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
-        rt.expect_validate_caller_addr(vec![self.owner]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from_address);
+        rt.expect_validate_caller_addr(vec![self.owner, self.beneficiary]);
 
-        rt.expect_send(
-            self.owner,
-            METHOD_SEND,
-            RawBytes::default(),
-            expected_withdrawn.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        if expected_withdrawn.is_positive() {
+            //no send when real withdraw amount is zero
+            rt.expect_send(
+                self.beneficiary,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_withdrawn.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
         if expected_debt_repaid.is_positive() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
@@ -2049,6 +2057,74 @@ impl ActorHarness {
         rt.verify();
 
         Ok(())
+    }
+
+    pub fn propose_approve_initial_beneficiary(
+        &mut self,
+        rt: &mut MockRuntime,
+        beneficiary_id_addr: Address,
+        beneficiary_term: BeneficiaryTerm,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+
+        let param = ChangeBeneficiaryParams {
+            new_beneficiary: beneficiary_id_addr,
+            new_quota: beneficiary_term.quota,
+            new_expiration: beneficiary_term.expiration,
+        };
+        let raw_bytes = &RawBytes::serialize(param).unwrap();
+        rt.call::<Actor>(Method::ChangeBeneficiary as u64, raw_bytes)?;
+        rt.verify();
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, beneficiary_id_addr);
+        rt.call::<Actor>(Method::ChangeBeneficiary as u64, raw_bytes)?;
+        rt.verify();
+
+        self.beneficiary = beneficiary_id_addr;
+        Ok(())
+    }
+
+    pub fn change_beneficiary(
+        &mut self,
+        rt: &mut MockRuntime,
+        expect_caller: Address,
+        beneficiary_change: &BeneficiaryChange,
+        expect_beneficiary_addr: Option<Address>,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_address_actor_type(
+            beneficiary_change.beneficiary_addr.clone(),
+            *ACCOUNT_ACTOR_CODE_ID,
+        );
+        let caller_id = rt.get_id_address(&expect_caller).unwrap();
+        let param = ChangeBeneficiaryParams {
+            new_beneficiary: beneficiary_change.beneficiary_addr,
+            new_quota: beneficiary_change.quota.clone(),
+            new_expiration: beneficiary_change.expiration,
+        };
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller_id);
+        let ret = rt.call::<Actor>(
+            Method::ChangeBeneficiary as u64,
+            &RawBytes::serialize(param).unwrap(),
+        )?;
+        rt.verify();
+
+        if let Some(beneficiary) = expect_beneficiary_addr {
+            let beneficiary_return = self.get_beneficiary(rt)?;
+            assert_eq!(beneficiary, beneficiary_return.active.beneficiary);
+            self.beneficiary = beneficiary.clone();
+        }
+
+        Ok(ret)
+    }
+
+    pub fn get_beneficiary(
+        &mut self,
+        rt: &mut MockRuntime,
+    ) -> Result<GetBeneficiaryReturn, ActorError> {
+        rt.expect_validate_caller_any();
+        let ret = rt.call::<Actor>(Method::GetBeneficiary as u64, &RawBytes::default())?;
+        rt.verify();
+        Ok(ret.deserialize::<GetBeneficiaryReturn>().unwrap())
     }
 
     pub fn extend_sectors(
@@ -2271,6 +2347,38 @@ pub struct PoStDisputeResult {
     pub expected_pledge_delta: Option<TokenAmount>,
     pub expected_penalty: Option<TokenAmount>,
     pub expected_reward: Option<TokenAmount>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BeneficiaryChange {
+    pub beneficiary_addr: Address,
+    pub quota: TokenAmount,
+    pub expiration: ChainEpoch,
+}
+
+impl BeneficiaryChange {
+    #[allow(dead_code)]
+    pub fn new(beneficiary_addr: Address, quota: TokenAmount, expiration: ChainEpoch) -> Self {
+        BeneficiaryChange { beneficiary_addr, quota, expiration }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_pending(pending_beneficiary: &PendingBeneficiaryChange) -> Self {
+        BeneficiaryChange {
+            beneficiary_addr: pending_beneficiary.new_beneficiary,
+            quota: pending_beneficiary.new_quota.clone(),
+            expiration: pending_beneficiary.new_expiration,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_active(info: &ActiveBeneficiary) -> Self {
+        BeneficiaryChange {
+            beneficiary_addr: info.beneficiary,
+            quota: info.term.quota.clone(),
+            expiration: info.term.expiration,
+        }
+    }
 }
 
 #[allow(dead_code)]
