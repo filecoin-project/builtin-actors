@@ -526,7 +526,7 @@ impl MessageInfo for InvocationCtx<'_, '_> {
         self.msg.from
     }
     fn origin(&self) -> Address {
-        self.resolve_address(&self.top.originator_stable_addr).unwrap()
+        Address::new_id(self.resolve_address(&self.top.originator_stable_addr).unwrap())
     }
     fn receiver(&self) -> Address {
         self.to()
@@ -792,7 +792,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
 
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
@@ -804,7 +804,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
             ));
         }
 
-        let new_actor_msg = InternalMessage { from: self.to(), to, value, method, params };
+        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
         let mut new_ctx = InvocationCtx {
             v: self.v,
             top: self.top.clone(),

@@ -176,7 +176,7 @@ impl Actor {
         }
 
         if let Some(extra) = &sv.extra {
-            rt.send(extra.actor, extra.method, extra.data.clone(), TokenAmount::from(0u8))
+            rt.send(&extra.actor, extra.method, extra.data.clone(), TokenAmount::from(0u8))
                 .map_err(|e| e.wrap("spend voucher verification failed"))?;
         }
 
@@ -313,7 +313,7 @@ impl Actor {
         }
 
         // send ToSend to `to`
-        rt.send(st.to, METHOD_SEND, RawBytes::default(), st.to_send)
+        rt.send(&st.to, METHOD_SEND, RawBytes::default(), st.to_send)
             .map_err(|e| e.wrap("Failed to send funds to `to` address"))?;
 
         // the remaining balance will be returned to "From" upon deletion.

@@ -118,7 +118,7 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// invoking the target actor/method.
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,

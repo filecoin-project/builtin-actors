@@ -984,7 +984,7 @@ impl Actor {
             }
 
             let res = rt.send(
-                *STORAGE_MARKET_ACTOR_ADDR,
+                &STORAGE_MARKET_ACTOR_ADDR,
                 ext::market::ACTIVATE_DEALS_METHOD,
                 RawBytes::serialize(ext::market::ActivateDealsParams {
                     deal_ids: update.deals.clone(),
@@ -1505,7 +1505,8 @@ impl Actor {
 
         request_update_power(rt, power_delta)?;
         if !to_reward.is_zero() {
-            if let Err(e) = rt.send(reporter, METHOD_SEND, RawBytes::default(), to_reward.clone()) {
+            if let Err(e) = rt.send(&reporter, METHOD_SEND, RawBytes::default(), to_reward.clone())
+            {
                 error!("failed to send reward: {}", e);
                 to_burn += to_reward;
             }
@@ -1863,7 +1864,7 @@ impl Actor {
         )?;
 
         rt.send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
             RawBytes::serialize(&svi)?,
             BigInt::zero(),
@@ -3056,7 +3057,7 @@ impl Actor {
             Ok((burn_amount, reward_amount))
         })?;
 
-        if let Err(e) = rt.send(reporter, METHOD_SEND, RawBytes::default(), reward_amount) {
+        if let Err(e) = rt.send(&reporter, METHOD_SEND, RawBytes::default(), reward_amount) {
             error!("failed to send reward: {}", e);
         }
 
@@ -3144,7 +3145,7 @@ impl Actor {
         }
 
         if amount_withdrawn.is_positive() {
-            rt.send(info.owner, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
+            rt.send(&info.owner, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
         }
 
         burn_funds(rt, fee_to_burn)?;
@@ -3574,7 +3575,7 @@ where
     let ser_params =
         serialize(&ext::power::EnrollCronEventParams { event_epoch, payload }, "cron params")?;
     rt.send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
         ext::power::ENROLL_CRON_EVENT_METHOD,
         ser_params,
         TokenAmount::zero(),
@@ -3595,7 +3596,7 @@ where
     let delta_clone = delta.clone();
 
     rt.send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
         ext::power::UPDATE_CLAIMED_POWER_METHOD,
         RawBytes::serialize(ext::power::UpdateClaimedPowerParams {
             raw_byte_delta: delta.raw,
@@ -3621,7 +3622,7 @@ where
 
     for chunk in deal_ids.chunks(MAX_LENGTH) {
         rt.send(
-            *STORAGE_MARKET_ACTOR_ADDR,
+            &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
             RawBytes::serialize(ext::market::OnMinerSectorsTerminateParamsRef {
                 epoch,
@@ -3811,7 +3812,7 @@ where
         return Ok(empty_result);
     }
     let serialized = rt.send(
-        *STORAGE_MARKET_ACTOR_ADDR,
+        &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
         RawBytes::serialize(ext::market::VerifyDealsForActivationParamsRef { sectors })?,
         TokenAmount::zero(),
@@ -3831,7 +3832,7 @@ where
 {
     let ret = rt
         .send(
-            *REWARD_ACTOR_ADDR,
+            &REWARD_ACTOR_ADDR,
             ext::reward::THIS_EPOCH_REWARD_METHOD,
             Default::default(),
             TokenAmount::zero(),
@@ -3852,7 +3853,7 @@ where
 {
     let ret = rt
         .send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::CURRENT_TOTAL_POWER_METHOD,
             Default::default(),
             TokenAmount::zero(),
@@ -3918,7 +3919,7 @@ where
 
     if raw.protocol() != Protocol::BLS {
         let ret = rt.send(
-            Address::new_id(resolved),
+            &Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
             RawBytes::default(),
             TokenAmount::zero(),
@@ -3943,7 +3944,7 @@ where
 {
     log::debug!("storage provder {} burning {}", rt.message().receiver(), amount);
     if amount.is_positive() {
-        rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount)?;
+        rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount)?;
     }
     Ok(())
 }
@@ -3955,7 +3956,7 @@ where
 {
     if !pledge_delta.is_zero() {
         rt.send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
             RawBytes::serialize(BigIntSer(pledge_delta))?,
             TokenAmount::zero(),
@@ -4245,7 +4246,7 @@ where
         if !pre_commit.info.deal_ids.is_empty() {
             // Check (and activate) storage deals associated to sector. Abort if checks failed.
             let res = rt.send(
-                *STORAGE_MARKET_ACTOR_ADDR,
+                &STORAGE_MARKET_ACTOR_ADDR,
                 ext::market::ACTIVATE_DEALS_METHOD,
                 RawBytes::serialize(ext::market::ActivateDealsParams {
                     deal_ids: pre_commit.info.deal_ids.clone(),
