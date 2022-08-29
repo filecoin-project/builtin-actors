@@ -23,7 +23,6 @@ use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
-use itertools::Itertools;
 use log::{error, info, warn};
 use multihash::Code::Blake2b256;
 use num_derive::FromPrimitive;
@@ -4872,7 +4871,7 @@ fn balance_invariants_broken(e: Error) -> ActorError {
 #[allow(dead_code)]
 fn extend_commitment<BS, RT>(
     rt: &RT,
-    decl: &ExpirationExtension,
+    decl: &ValidatedExpirationExtension,
     sector: &SectorOnChainInfo,
 ) -> Result<SectorOnChainInfo, ActorError>
 where
@@ -5011,10 +5010,10 @@ fn validate_extension_declaration(
 }
 
 /// Groups expiration extensions by deadlines, the result is a vector containing `(deadline_index, Vec<extensions>)` tuple.
-fn group_extensions_by_deadline(
-    extensions: &[ValidatedExpirationExtension],
+fn group_extensions_by_deadline<'a>(
+    extensions: &'a [ValidatedExpirationExtension],
     policy: &Policy,
-) -> Vec<(u64, Vec<&ValidatedExpirationExtension>)> {
+) -> Vec<(u64, Vec<&'a ValidatedExpirationExtension>)> {
     let mut decls_by_deadline: Vec<_> =
         iter::repeat_with(Vec::new).take(policy.wpost_period_deadlines as usize).collect();
 
@@ -5023,23 +5022,25 @@ fn group_extensions_by_deadline(
         let decls = &mut decls_by_deadline[decl.deadline as usize];
         decls.push(decl);
     }
-    decls_by_deadline.into_iter().enumerate().filter(|(_, ddl)| !ddl.is_empty()).collect()
+    (0u64..)
+        .zip(decls_by_deadline.into_iter()) // enumerate uses usize not u64
+        .filter(|(_, ddl)| !ddl.is_empty())
+        .collect()
 }
 
 #[allow(dead_code)]
-fn extend_sector_inner<BS, RT, F>(
+fn extend_sector_inner<BS, RT>(
     rt: &mut RT,
     extensions: &[ExpirationExtension],
-    mut process: F,
-) -> Result<(), ActorError>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-    F: FnMut(
+    mut process: impl FnMut(
         &RT,
         &ValidatedExpirationExtension,
         &SectorOnChainInfo,
     ) -> Result<SectorOnChainInfo, ActorError>,
+) -> Result<(), ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
 {
     // Group declarations by deadline, and remember iteration order.
 
