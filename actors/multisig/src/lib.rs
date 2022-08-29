@@ -6,9 +6,8 @@ use std::collections::BTreeSet;
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorDowncast,
-    ActorError, Map, CALLER_TYPES_SIGNABLE, FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM,
-    INIT_ACTOR_ADDR,
+    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id, ActorDowncast,
+    ActorError, Map, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -75,18 +74,18 @@ impl Actor {
         let mut resolved_signers = Vec::with_capacity(params.signers.len());
         let mut dedup_signers = BTreeSet::new();
         for signer in &params.signers {
-            let resolved = resolve_to_id_addr(rt, signer).map_err(|e| {
+            let resolved = resolve_to_actor_id(rt, signer).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to resolve addr {} to ID addr", signer),
+                    format!("failed to resolve addr {} to ID", signer),
                 )
             })?;
-            if !dedup_signers.insert(resolved.id().expect("address should be resolved")) {
+            if !dedup_signers.insert(resolved) {
                 return Err(
                     actor_error!(illegal_argument; "duplicate signer not allowed: {}", signer),
                 );
             }
-            resolved_signers.push(resolved);
+            resolved_signers.push(Address::new_id(resolved));
         }
 
         if params.num_approvals_threshold > params.signers.len() as u64 {
@@ -301,10 +300,10 @@ impl Actor {
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let resolved_new_signer = resolve_to_id_addr(rt, &params.signer).map_err(|e| {
+        let resolved_new_signer = resolve_to_actor_id(rt, &params.signer).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.signer),
+                format!("failed to resolve address {} to ID", params.signer),
             )
         })?;
 
@@ -316,12 +315,12 @@ impl Actor {
                     SIGNERS_MAX
                 ));
             }
-            if st.is_signer(&resolved_new_signer) {
+            if st.is_signer(&Address::new_id(resolved_new_signer)) {
                 return Err(actor_error!(forbidden, "{} is already a signer", resolved_new_signer));
             }
 
             // Add signer and increase threshold if set
-            st.signers.push(resolved_new_signer);
+            st.signers.push(Address::new_id(resolved_new_signer));
             if params.increase {
                 st.num_approvals_threshold += 1;
             }
@@ -338,15 +337,15 @@ impl Actor {
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let resolved_old_signer = resolve_to_id_addr(rt, &params.signer).map_err(|e| {
+        let resolved_old_signer = resolve_to_actor_id(rt, &params.signer).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.signer),
+                format!("failed to resolve address {} to ID", params.signer),
             )
         })?;
 
         rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&resolved_old_signer) {
+            if !st.is_signer(&Address::new_id(resolved_old_signer)) {
                 return Err(actor_error!(forbidden, "{} is not a signer", resolved_old_signer));
             }
 
@@ -376,13 +375,13 @@ impl Actor {
             }
 
             // Remove approvals from removed signer
-            st.purge_approvals(rt.store(), &resolved_old_signer).map_err(|e| {
+            st.purge_approvals(rt.store(), &Address::new_id(resolved_old_signer)).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to purge approvals of removed signer",
                 )
             })?;
-            st.signers.retain(|s| s != &resolved_old_signer);
+            st.signers.retain(|s| s != &Address::new_id(resolved_old_signer));
 
             Ok(())
         })?;
@@ -398,35 +397,35 @@ impl Actor {
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let from_resolved = resolve_to_id_addr(rt, &params.from).map_err(|e| {
+        let from_resolved = resolve_to_actor_id(rt, &params.from).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.from),
+                format!("failed to resolve address {} to ID", params.from),
             )
         })?;
-        let to_resolved = resolve_to_id_addr(rt, &params.to).map_err(|e| {
+        let to_resolved = resolve_to_actor_id(rt, &params.to).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", params.to),
+                format!("failed to resolve address {} to ID", params.to),
             )
         })?;
 
         rt.transaction(|st: &mut State, rt| {
-            if !st.is_signer(&from_resolved) {
+            if !st.is_signer(&Address::new_id(from_resolved)) {
                 return Err(actor_error!(forbidden; "{} is not a signer", from_resolved));
             }
 
-            if st.is_signer(&to_resolved) {
+            if st.is_signer(&Address::new_id(to_resolved)) {
                 return Err(actor_error!(illegal_argument; "{} is already a signer", to_resolved));
             }
 
             // Remove signer from state (retain preserves order of elements)
-            st.signers.retain(|s| s != &from_resolved);
+            st.signers.retain(|s| s != &Address::new_id(from_resolved));
 
             // Add new signer
-            st.signers.push(to_resolved);
+            st.signers.push(Address::new_id(to_resolved));
 
-            st.purge_approvals(rt.store(), &from_resolved).map_err(|e| {
+            st.purge_approvals(rt.store(), &Address::new_id(from_resolved)).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to purge approvals of removed signer",

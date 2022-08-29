@@ -1,7 +1,11 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fil_actors_runtime::{
+    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
+    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
@@ -71,8 +75,9 @@ impl Actor {
             .resolve_address(&root_key)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "root should be an ID address")?;
 
-        let st = State::new(rt.store(), id_addr, *DATACAP_TOKEN_ACTOR_ADDR)
-            .context("failed to create verifreg state")?;
+        let st = State::new(rt.store(), Address::new_id(id_addr)).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create verifreg state")
+        })?;
 
         rt.create(&st)?;
         Ok(())
@@ -92,10 +97,14 @@ impl Actor {
             ));
         }
 
-        let verifier = resolve_to_id_addr(rt, &params.address).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", params.address),
-        )?;
+        let verifier = resolve_to_actor_id(rt, &params.address).map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                format!("failed to resolve addr {} to ID", params.address),
+            )
+        })?;
+
+        let verifier = Address::new_id(verifier);
 
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
@@ -127,10 +136,14 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let verifier = resolve_to_id_addr(rt, &verifier_addr).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", verifier_addr),
-        )?;
+        let verifier = resolve_to_actor_id(rt, &verifier_addr).map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                format!("failed to resolve addr {} to ID", verifier_addr),
+            )
+        })?;
+
+        let verifier = Address::new_id(verifier);
 
         let state: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&state.root_key))?;
@@ -160,10 +173,14 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_id_addr(rt, &params.address).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", params.address),
-        )?;
+        let client = resolve_to_actor_id(rt, &params.address).map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                format!("failed to resolve addr {} to ID", params.address),
+            )
+        })?;
+
+        let client = Address::new_id(client);
 
         let st: State = rt.state()?;
         if client == st.root_key {
@@ -220,10 +237,14 @@ impl Actor {
     {
         rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
 
-        let client = resolve_to_id_addr(rt, &params.address).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", params.address),
-        )?;
+        let client = resolve_to_actor_id(rt, &params.address).map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                format!("failed to resolve addr {} to ID", params.address),
+            )
+        })?;
+
+        let client = Address::new_id(client);
 
         if params.deal_size < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
@@ -268,10 +289,14 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_id_addr(rt, &params.address).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", params.address),
-        )?;
+        let client = resolve_to_actor_id(rt, &params.address).map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                format!("failed to resolve addr {} to ID", params.address),
+            )
+        })?;
+
+        let client = Address::new_id(client);
 
         let st: State = rt.state()?;
         // Disallow root as a client.
@@ -303,29 +328,40 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let client = resolve_to_id_addr(rt, &params.verified_client_to_remove).context_code(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            format!(
-                "failed to resolve client addr {} to ID addr",
-                params.verified_client_to_remove
-            ),
-        )?;
+        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove).map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                format!("failed to resolve client addr {} to ID", params.verified_client_to_remove),
+            )
+        })?;
 
-        let verifier_1 = resolve_to_id_addr(rt, &params.verifier_request_1.verifier).context_code(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            format!(
-                "failed to resolve verifier addr {} to ID addr",
-                params.verifier_request_1.verifier
-            ),
-        )?;
+        let client = Address::new_id(client);
 
-        let verifier_2 = resolve_to_id_addr(rt, &params.verifier_request_2.verifier).context_code(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            format!(
-                "failed to resolve verifier addr {} to ID addr",
-                params.verifier_request_2.verifier
-            ),
-        )?;
+        let verifier_1 =
+            resolve_to_actor_id(rt, &params.verifier_request_1.verifier).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
+                    format!(
+                        "failed to resolve verifier addr {} to ID",
+                        params.verifier_request_1.verifier
+                    ),
+                )
+            })?;
+
+        let verifier_1 = Address::new_id(verifier_1);
+
+        let verifier_2 =
+            resolve_to_actor_id(rt, &params.verifier_request_2.verifier).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
+                    format!(
+                        "failed to resolve verifier addr {} to ID",
+                        params.verifier_request_2.verifier
+                    ),
+                )
+            })?;
+
+        let verifier_2 = Address::new_id(verifier_2);
 
         if verifier_1 == verifier_2 {
             return Err(actor_error!(
