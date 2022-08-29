@@ -206,8 +206,8 @@ impl Default for Policy {
             worker_key_change_delay: policy_constants::WORKER_KEY_CHANGE_DELAY,
             min_sector_commitment: policy_constants::MIN_SECTOR_COMMITMENT,
             max_sector_commitment_extension: policy_constants::MAX_SECTOR_COMMITMENT_EXTENSION,
-            max_proof_validity: 1,
-            proof_refresh_window: 1,
+            max_proof_validity: policy_constants::MAX_PROOF_VALIDITY,
+            proof_refresh_window: policy_constants::PROOF_REFRESH_WINDOW,
             deal_limit_denominator: policy_constants::DEAL_LIMIT_DENOMINATOR,
             consensus_fault_ineligibility_duration:
                 policy_constants::CONSENSUS_FAULT_INELIGIBILITY_DURATION,
