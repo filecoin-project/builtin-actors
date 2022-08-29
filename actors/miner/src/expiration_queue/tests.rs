@@ -10,7 +10,7 @@ use fvm_shared::sector::StoragePower;
 fn test_expirations() {
     let quant = QuantSpec { unit: 10, offset: 3 };
     let sectors = [
-        test_sector(7,  100, 1, 0, 0, 0),
+        test_sector(7, 100, 1, 0, 0, 0),
         test_sector(8, 100, 2, 0, 0, 0),
         test_sector(14, 100, 3, 0, 0, 0),
         test_sector(13, 100, 4, 0, 0, 0),
