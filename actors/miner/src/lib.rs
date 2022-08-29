@@ -5103,7 +5103,7 @@ fn group_extensions_by_deadline(
     policy: &Policy,
 ) -> Vec<(u64, Vec<&ValidatedExpirationExtension>)> {
     let mut decls_by_deadline: Vec<_> =
-        iter::repeat_with(Vec::new).take(rt.policy().wpost_period_deadlines as usize).collect();
+        iter::repeat_with(Vec::new).take(policy.wpost_period_deadlines as usize).collect();
 
     for decl in extensions {
         // the deadline indices are already checked.
