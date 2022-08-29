@@ -822,7 +822,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
             );
             partition_count += 1;
 
-            let acc = acc.with_prefix(format!("partition {index}"));
+            let acc = acc.with_prefix(format!("partition {index}: "));
             let summary = PartitionStateSummary::check_partition_state_invariants(
                 partition,
                 store,
@@ -876,7 +876,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     match deadline.partitions_snapshot_amt(store) {
         Ok(partition_snapshot) => {
             let ret = partition_snapshot.for_each(|i, partition| {
-                let acc = acc.with_prefix(format!("partition snapshot {i}"));
+                let acc = acc.with_prefix(format!("partition snapshot {i}: "));
                 acc.require(
                     partition.recovering_power.is_zero(),
                     "snapshot partition has recovering power",
