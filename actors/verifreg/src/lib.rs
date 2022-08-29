@@ -3,7 +3,7 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_id_addr, ActorDowncast,
+    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
     ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
@@ -23,6 +23,7 @@ pub use self::types::*;
 fil_actors_runtime::wasm_trampoline!(Actor);
 
 mod state;
+pub mod testing;
 mod types;
 
 // * Updated to specs-actors commit: 845089a6d2580e46055c24415a6c32ee688e5186 (v3.0.0)
@@ -41,6 +42,7 @@ pub enum Method {
 }
 
 pub struct Actor;
+
 impl Actor {
     /// Constructor for Registry Actor
     pub fn constructor<BS, RT>(rt: &mut RT, root_key: Address) -> Result<(), ActorError>
@@ -55,7 +57,7 @@ impl Actor {
             .resolve_address(&root_key)
             .ok_or_else(|| actor_error!(illegal_argument, "root should be an ID address"))?;
 
-        let st = State::new(rt.store(), id_addr).map_err(|e| {
+        let st = State::new(rt.store(), Address::new_id(id_addr)).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create verifreg state")
         })?;
 
@@ -77,12 +79,14 @@ impl Actor {
             ));
         }
 
-        let verifier = resolve_to_id_addr(rt, &params.address).map_err(|e| {
+        let verifier = resolve_to_actor_id(rt, &params.address).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
+                format!("failed to resolve addr {} to ID", params.address),
             )
         })?;
+
+        let verifier = Address::new_id(verifier);
 
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
@@ -141,12 +145,14 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let verifier = resolve_to_id_addr(rt, &verifier_addr).map_err(|e| {
+        let verifier = resolve_to_actor_id(rt, &verifier_addr).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", verifier_addr),
+                format!("failed to resolve addr {} to ID", verifier_addr),
             )
         })?;
+
+        let verifier = Address::new_id(verifier);
 
         let state: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&state.root_key))?;
@@ -198,12 +204,14 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_id_addr(rt, &params.address).map_err(|e| {
+        let client = resolve_to_actor_id(rt, &params.address).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
+                format!("failed to resolve addr {} to ID", params.address),
             )
         })?;
+
+        let client = Address::new_id(client);
 
         let st: State = rt.state()?;
         if client == st.root_key {
@@ -319,12 +327,14 @@ impl Actor {
     {
         rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
 
-        let client = resolve_to_id_addr(rt, &params.address).map_err(|e| {
+        let client = resolve_to_actor_id(rt, &params.address).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
+                format!("failed to resolve addr {} to ID", params.address),
             )
         })?;
+
+        let client = Address::new_id(client);
 
         if params.deal_size < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
@@ -427,12 +437,14 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_id_addr(rt, &params.address).map_err(|e| {
+        let client = resolve_to_actor_id(rt, &params.address).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID addr", params.address),
+                format!("failed to resolve addr {} to ID", params.address),
             )
         })?;
+
+        let client = Address::new_id(client);
 
         let st: State = rt.state()?;
         if client == st.root_key {
@@ -508,37 +520,40 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let client = resolve_to_id_addr(rt, &params.verified_client_to_remove).map_err(|e| {
+        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                format!(
-                    "failed to resolve client addr {} to ID addr",
-                    params.verified_client_to_remove
-                ),
+                format!("failed to resolve client addr {} to ID", params.verified_client_to_remove),
             )
         })?;
 
+        let client = Address::new_id(client);
+
         let verifier_1 =
-            resolve_to_id_addr(rt, &params.verifier_request_1.verifier).map_err(|e| {
+            resolve_to_actor_id(rt, &params.verifier_request_1.verifier).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_ARGUMENT,
                     format!(
-                        "failed to resolve verifier addr {} to ID addr",
+                        "failed to resolve verifier addr {} to ID",
                         params.verifier_request_1.verifier
                     ),
                 )
             })?;
 
+        let verifier_1 = Address::new_id(verifier_1);
+
         let verifier_2 =
-            resolve_to_id_addr(rt, &params.verifier_request_2.verifier).map_err(|e| {
+            resolve_to_actor_id(rt, &params.verifier_request_2.verifier).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_ARGUMENT,
                     format!(
-                        "failed to resolve verifier addr {} to ID addr",
+                        "failed to resolve verifier addr {} to ID",
                         params.verifier_request_2.verifier
                     ),
                 )
             })?;
+
+        let verifier_2 = Address::new_id(verifier_2);
 
         if verifier_1 == verifier_2 {
             return Err(actor_error!(
@@ -562,7 +577,16 @@ impl Actor {
             })?;
 
             // check that `client` is currently a verified client
-            if !is_verifier(rt, st, client)? {
+            let is_verified_client = verified_clients
+                .get(&client.to_bytes())
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to load verified clients",
+                    )
+                })?
+                .is_some();
+            if !is_verified_client {
                 return Err(actor_error!(not_found, "{} is not a verified client", client));
             }
 
@@ -578,12 +602,12 @@ impl Actor {
                 .cloned()
                 .unwrap_or_default();
 
-            // check that `verifier_1` is currently a verified client
+            // check that `verifier_1` is currently a verifier
             if !is_verifier(rt, st, verifier_1)? {
                 return Err(actor_error!(not_found, "{} is not a verified client", verifier_1));
             }
 
-            // check that `verifier_2` is currently a verified client
+            // check that `verifier_2` is currently a verifier
             if !is_verifier(rt, st, verifier_2)? {
                 return Err(actor_error!(not_found, "{} is not a verified client", verifier_2));
             }
@@ -671,17 +695,15 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    let verified_clients = make_map_with_root_and_bitwidth::<_, BigIntDe>(
-        &st.verified_clients,
+    let verifiers = make_map_with_root_and_bitwidth::<_, BigIntDe>(
+        &st.verifiers,
         rt.store(),
         HAMT_BIT_WIDTH,
     )
-    .map_err(|e| {
-        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load verified clients")
-    })?;
+    .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load verifiers"))?;
 
     // check that the `address` is currently a verified client
-    let found = verified_clients
+    let found = verifiers
         .contains_key(&address.to_bytes())
         .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier"))?;
 
@@ -708,14 +730,14 @@ where
         )
     })?;
 
-    let curr_id = if let Some(RemoveDataCapProposalID(id)) = maybe_id {
-        RemoveDataCapProposalID(*id)
+    let curr_id = if let Some(RemoveDataCapProposalID { id }) = maybe_id {
+        RemoveDataCapProposalID { id: *id }
     } else {
-        RemoveDataCapProposalID(0)
+        RemoveDataCapProposalID { id: 0 }
     };
 
-    let next_id = RemoveDataCapProposalID(curr_id.0 + 1);
-    proposal_ids.set(BytesKey::from(key.to_bytes()), next_id.clone()).map_err(|e| {
+    let next_id = RemoveDataCapProposalID { id: curr_id.id + 1 };
+    proposal_ids.set(BytesKey::from(key.to_bytes()), next_id).map_err(|e| {
         actor_error!(
             illegal_state,
             "failed to update proposal id for verifier {} and client {}: {}",
@@ -725,7 +747,7 @@ where
         )
     })?;
 
-    Ok(next_id)
+    Ok(curr_id)
 }
 
 fn remove_data_cap_request_is_valid<BS, RT>(
@@ -750,8 +772,10 @@ where
                 serialization; "failed to marshal remove datacap request: {}", e)
     })?;
 
+    let payload = [SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP, b.bytes()].concat();
+
     // verify signature of proposal
-    rt.verify_signature(&request.signature, &request.verifier, &b).map_err(
+    rt.verify_signature(&request.signature, &request.verifier, &payload).map_err(
         |e| actor_error!(illegal_argument; "invalid signature for datacap removal request: {}", e),
     )
 }
@@ -792,8 +816,9 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::RemoveVerifiedClientDataCap) => {
-                Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let res =
+                    Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }

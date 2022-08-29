@@ -1,4 +1,6 @@
 use fil_actor_bundler::Bundler;
+use fil_actors_runtime::runtime::builtins::Type;
+use num_traits::cast::FromPrimitive;
 use std::error::Error;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -16,11 +18,11 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("init", "init"),
     ("cron", "cron"),
     ("account", "account"),
-    ("multisig", "multisig"),
     ("power", "storagepower"),
     ("miner", "storageminer"),
     ("market", "storagemarket"),
     ("paych", "paymentchannel"),
+    ("multisig", "multisig"),
     ("reward", "reward"),
     ("verifreg", "verifiedregistry"),
 ];
@@ -151,9 +153,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     j1.join().unwrap();
     j2.join().unwrap();
 
+    let result = child.wait().expect("failed to wait for build to finish");
+    if !result.success() {
+        return Err("actor build failed".into());
+    }
+
     let dst = Path::new(&out_dir).join("bundle.car");
     let mut bundler = Bundler::new(&dst);
-    for (pkg, id) in ACTORS {
+    for (&(pkg, name), id) in ACTORS.iter().zip(1u32..) {
+        assert_eq!(
+            name,
+            Type::from_u32(id).expect("type not defined").name(),
+            "actor types don't match actors included in the bundle"
+        );
         let bytecode_path = Path::new(&out_dir)
             .join("wasm32-unknown-unknown/wasm")
             .join(format!("fil_actor_{}.wasm", pkg));
@@ -162,10 +174,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         // content-addressed CIDs.
         let forced_cid = None;
 
-        let cid = bundler.add_from_file(id, forced_cid, &bytecode_path).unwrap_or_else(|err| {
-            panic!("failed to add file {:?} to bundle for actor {}: {}", bytecode_path, id, err)
-        });
-        println!("cargo:warning=added actor {} to bundle with CID {}", id, cid);
+        let cid = bundler
+            .add_from_file(id, name.to_owned(), forced_cid, &bytecode_path)
+            .unwrap_or_else(|err| {
+                panic!("failed to add file {:?} to bundle for actor {}: {}", bytecode_path, id, err)
+            });
+        println!("cargo:warning=added {} ({}) to bundle with CID {}", name, id, cid);
     }
     bundler.finish().expect("failed to finish bundle");
 

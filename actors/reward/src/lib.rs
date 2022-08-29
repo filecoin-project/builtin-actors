@@ -8,6 +8,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{Integer, Sign};
 use fvm_shared::econ::TokenAmount;
@@ -27,6 +28,7 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub(crate) mod expneg;
 mod logic;
 mod state;
+pub mod testing;
 mod types;
 
 // only exported for tests
@@ -35,7 +37,7 @@ pub mod ext;
 
 // * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)
 
-/// PenaltyMultiplier is the factor miner penaltys are scaled up by
+/// PenaltyMultiplier is the factor miner penalties are scaled up by
 pub const PENALTY_MULTIPLIER: u64 = 3;
 
 /// Reward actor methods available
@@ -112,7 +114,7 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "invalid win count {}", params.win_count));
         }
 
-        let miner_addr = rt
+        let miner_id = rt
             .resolve_address(&params.miner)
             .ok_or_else(|| actor_error!(not_found, "failed to resolve given owner address"))?;
 
@@ -157,7 +159,7 @@ impl Actor {
         // if this fails, we can assume the miner is responsible and avoid failing here.
         let reward_params = ext::miner::ApplyRewardParams { reward: total_reward.clone(), penalty };
         let res = rt.send(
-            miner_addr,
+            Address::new_id(miner_id),
             ext::miner::APPLY_REWARDS_METHOD,
             RawBytes::serialize(&reward_params)?,
             total_reward.clone(),

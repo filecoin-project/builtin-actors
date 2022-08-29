@@ -1,8 +1,10 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::fmt::Display;
+
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, RawBytes};
+use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
@@ -18,7 +20,7 @@ use serde::{Deserialize, Serialize};
 pub const SIGNERS_MAX: usize = 256;
 
 /// Transaction ID type
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Hash, Eq, PartialEq, PartialOrd)]
 #[serde(transparent)]
 pub struct TxnID(pub i64);
 
@@ -28,8 +30,14 @@ impl TxnID {
     }
 }
 
+impl Display for TxnID {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Transaction type used in multisig actor
-#[derive(Clone, PartialEq, Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct Transaction {
     pub to: Address,
     #[serde(with = "bigint_ser")]
@@ -91,8 +99,11 @@ pub struct ProposeReturn {
     pub ret: RawBytes,
 }
 
+impl Cbor for ProposeParams {}
+impl Cbor for ProposeReturn {}
+
 /// Parameters for approve and cancel multisig functions.
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct TxnIDParams {
     pub id: TxnID,
     /// Optional hash of proposal to ensure an operation can only apply to a
@@ -114,6 +125,9 @@ pub struct ApproveReturn {
     pub ret: RawBytes,
 }
 
+impl Cbor for TxnIDParams {}
+impl Cbor for ApproveReturn {}
+
 /// Add signer params.
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct AddSignerParams {
@@ -128,12 +142,16 @@ pub struct RemoveSignerParams {
     pub decrease: bool,
 }
 
+impl Cbor for RemoveSignerParams {}
+
 /// Swap signer multisig method params
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct SwapSignerParams {
     pub from: Address,
     pub to: Address,
 }
+
+impl Cbor for SwapSignerParams {}
 
 /// Propose method call parameters
 #[derive(Serialize_tuple, Deserialize_tuple)]

@@ -6,14 +6,14 @@ use std::convert::TryInto;
 
 use anyhow::anyhow;
 use ext::init;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Multimap,
-    CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
 use fvm_shared::econ::TokenAmount;
@@ -36,13 +36,16 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub mod ext;
 mod policy;
 mod state;
+pub mod testing;
 mod types;
 
 // * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)
 
 /// GasOnSubmitVerifySeal is amount of gas charged for SubmitPoRepForBulkVerify
 /// This number is empirically determined
-const GAS_ON_SUBMIT_VERIFY_SEAL: i64 = 34721049;
+pub mod detail {
+    pub const GAS_ON_SUBMIT_VERIFY_SEAL: i64 = 34721049;
+}
 
 /// Storage power actor methods available
 #[derive(FromPrimitive)]
@@ -102,7 +105,6 @@ impl Actor {
         })?;
 
         let miner_actor_code_cid = rt.get_code_cid_for_type(Type::Miner);
-
         let ext::init::ExecReturn { id_address, robust_address } = rt
             .send(
                 *INIT_ACTOR_ADDR,
@@ -364,7 +366,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush proofs batch map")
             })?;
 
-            rt.charge_gas("OnSubmitVerifySeal", GAS_ON_SUBMIT_VERIFY_SEAL);
+            rt.charge_gas("OnSubmitVerifySeal", detail::GAS_ON_SUBMIT_VERIFY_SEAL);
             st.proof_validation_batch = Some(mmrc);
             Ok(())
         })?;

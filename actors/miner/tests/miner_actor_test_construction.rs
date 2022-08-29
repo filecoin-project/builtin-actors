@@ -33,7 +33,7 @@ fn prepare_env() -> TestEnv {
         receiver: Address::new_id(1000),
         owner: Address::new_id(100),
         worker: Address::new_id(101),
-        worker_key: util::new_bls_addr(0),
+        worker_key: new_bls_addr(0),
         control_addrs: vec![Address::new_id(999), Address::new_id(998)],
         peer_id: vec![1, 2, 3],
         multiaddrs: vec![BytesDe(vec![1, 2, 3])],
@@ -121,16 +121,16 @@ fn simple_construction() {
 
     assert!(state.early_terminations.is_empty());
 
-    util::check_state_invariants(&env.rt);
+    util::check_state_invariants_from_mock_runtime(&env.rt);
 }
 
 #[test]
 fn control_addresses_are_resolved_during_construction() {
     let mut env = prepare_env();
 
-    let control1 = util::new_bls_addr(1);
+    let control1 = new_bls_addr(1);
     let control1id = Address::new_id(555);
-    let control2 = util::new_bls_addr(2);
+    let control2 = new_bls_addr(2);
     let control2id = Address::new_id(655);
 
     env.control_addrs = vec![control1, control2];

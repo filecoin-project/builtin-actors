@@ -4,7 +4,7 @@
 use std::cmp;
 use std::ops::Neg;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
@@ -27,6 +27,7 @@ use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECT
 use fvm_shared::HAMT_BIT_WIDTH;
 use num_traits::{Signed, Zero};
 
+use super::beneficiary::*;
 use super::deadlines::new_deadline_info;
 use super::policy::*;
 use super::types::*;
@@ -112,7 +113,7 @@ pub struct State {
     pub deadline_cron_active: bool,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum CollisionPolicy {
     AllowCollisions,
     DenyCollisions,
@@ -360,7 +361,10 @@ impl State {
         )?;
 
         for &sector_num in sector_nums {
-            precommitted.delete(&u64_key(sector_num))?;
+            let prev_entry = precommitted.delete(&u64_key(sector_num))?;
+            if prev_entry.is_none() {
+                return Err(format!("sector {} doesn't exist", sector_num).into());
+            }
         }
 
         self.pre_committed_sectors = precommitted.flush()?;
@@ -409,10 +413,16 @@ impl State {
         let mut sectors = Sectors::load(store, &self.sectors)?;
 
         for sector_num in sector_nos.iter() {
-            sectors
+            let deleted_sector = sectors
                 .amt
                 .delete(sector_num)
                 .map_err(|e| e.downcast_wrap("could not delete sector number"))?;
+            if deleted_sector.is_none() {
+                return Err(AmtError::Dynamic(Error::msg(format!(
+                    "sector {} doesn't exist, failed to delete",
+                    sector_num
+                ))));
+            }
         }
 
         self.sectors = sectors.amt.flush()?;
@@ -865,7 +875,6 @@ impl State {
         let fee_debt = self.fee_debt.clone();
         let from_vesting = self.unlock_unvested_funds(store, current_epoch, &fee_debt)?;
 
-        // * It may be possible the go implementation catches a potential panic here
         if from_vesting > self.fee_debt {
             return Err(anyhow!("should never unlock more than the debt we need to repay"));
         }
@@ -1246,6 +1255,17 @@ pub struct MinerInfo {
     /// A proposed new owner account for this miner.
     /// Must be confirmed by a message from the pending address itself.
     pub pending_owner_address: Option<Address>,
+
+    /// Account for receive miner benefits, withdraw on miner must send to this address,
+    /// set owner address by default when create miner
+    pub beneficiary: Address,
+
+    /// beneficiary's total quota, how much quota has been withdraw,
+    /// and when this beneficiary expired
+    pub beneficiary_term: BeneficiaryTerm,
+
+    /// A proposal new beneficiary message for this miner
+    pub pending_beneficiary_term: Option<PendingBeneficiaryChange>,
 }
 
 impl MinerInfo {
@@ -1270,6 +1290,9 @@ impl MinerInfo {
             worker,
             control_addresses,
             pending_worker_key: None,
+            beneficiary: owner,
+            beneficiary_term: BeneficiaryTerm::default(),
+            pending_beneficiary_term: None,
             peer_id,
             multi_address,
             window_post_proof_type,

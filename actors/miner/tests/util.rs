@@ -1,66 +1,102 @@
+#![allow(clippy::all)]
+
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivateDealsParams, ComputeDataCommitmentParams, ComputeDataCommitmentReturn,
-    Method as MarketMethod, SectorDataSpec, SectorDeals, SectorWeights,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    ActivateDealsParams, ActivateDealsResult, DealWeights, Method as MarketMethod,
+    OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifyDealsForActivationParams,
+    VerifyDealsForActivationReturn,
 };
+use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
+use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
 use fil_actor_miner::{
-    initial_pledge_for_power, new_deadline_info_from_offset_and_epoch, qa_power_for_weight, Actor,
-    ChangeMultiaddrsParams, ChangePeerIDParams, ConfirmSectorProofsParams, CronEventPayload,
-    Deadline, DeadlineInfo, Deadlines, DeferredCronEventParams, DisputeWindowedPoStParams,
-    GetControlAddressesReturn, Method, MinerConstructorParams as ConstructorParams, Partition,
-    PoStPartition, PowerPair, PreCommitSectorParams, ProveCommitSectorParams, SectorOnChainInfo,
-    SectorPreCommitOnChainInfo, State, SubmitWindowedPoStParams, VestingFunds, WindowedPoSt,
-    CRON_EVENT_PROVING_DEADLINE,
+    aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
+    initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
+    new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
+    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, ActiveBeneficiary,
+    Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue, ChangeBeneficiaryParams,
+    ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams,
+    CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
+    CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
+    DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
+    ExpirationQueue, ExpirationSet, ExtendSectorExpirationParams, FaultDeclaration,
+    GetBeneficiaryReturn, GetControlAddressesReturn, Method,
+    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
+    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
+    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
+    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
+    TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
+    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
 };
+use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    ActorError, Array, DealWeight, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
+use fvm_ipld_amt::Amt;
+use fvm_shared::bigint::Zero;
 
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_bitfield::iter::Ranges;
+use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
-use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
+use fvm_ipld_encoding::{BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::ChainEpoch;
+use fvm_shared::clock::QuantSpec;
+use fvm_shared::clock::{ChainEpoch, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
-use fvm_shared::crypto::randomness::DomainSeparationTag;
+use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
-    PoStProof, RegisteredPoStProof, RegisteredSealProof, SealVerifyInfo, SectorID, SectorInfo,
-    SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
+    AggregateSealVerifyInfo, PoStProof, RegisteredPoStProof, RegisteredSealProof, SealVerifyInfo,
+    SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::METHOD_SEND;
+use fvm_shared::{HAMT_BIT_WIDTH, METHOD_SEND};
 
 use cid::Cid;
+use itertools::Itertools;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
+use num_traits::sign::Signed;
 
-use rand::prelude::*;
-
-use std::collections::HashMap;
+use fil_actor_miner::testing::{
+    check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
+};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::convert::TryInto;
+use std::ops::Neg;
 
 const RECEIVER_ID: u64 = 1000;
 
-pub fn new_bls_addr(s: u8) -> Address {
-    let seed = [s; 32];
-    let mut rng: StdRng = SeedableRng::from_seed(seed);
-    let mut key = [0u8; 48];
-    rng.fill_bytes(&mut key);
-    Address::new_bls(&key).unwrap()
+pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
+
+// A reward amount for use in tests where the vesting amount wants to be large enough to cover penalties.
+#[allow(dead_code)]
+pub const BIG_REWARDS: u128 = 10u128.pow(24);
+
+// an expriration ~10 days greater than effective min expiration taking into account 30 days max between pre and prove commit
+#[allow(dead_code)]
+pub const DEFAULT_SECTOR_EXPIRATION: u64 = 220;
+
+#[allow(dead_code)]
+pub fn setup() -> (ActorHarness, MockRuntime) {
+    let mut rt = MockRuntime::default();
+    let h = ActorHarness::new(0);
+
+    h.construct_and_verify(&mut rt);
+    (h, rt)
 }
 
 pub struct ActorHarness {
@@ -68,6 +104,7 @@ pub struct ActorHarness {
     pub owner: Address,
     pub worker: Address,
     pub worker_key: Address,
+    pub beneficiary: Address,
 
     pub control_addrs: Vec<Address>,
 
@@ -97,7 +134,7 @@ impl ActorHarness {
         let receiver = Address::new_id(RECEIVER_ID);
         let rwd = TokenAmount::from(10_000_000_000_000_000_000i128);
         let pwr = StoragePower::from(1i128 << 50);
-        let proof_type = RegisteredSealProof::StackedDRG32GiBV1;
+        let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1;
 
         ActorHarness {
             receiver,
@@ -106,6 +143,7 @@ impl ActorHarness {
             worker_key,
             control_addrs,
 
+            beneficiary: owner,
             seal_proof_type: proof_type,
             window_post_proof_type: proof_type.registered_window_post_proof().unwrap(),
             sector_size: proof_type.sector_size().unwrap(),
@@ -126,6 +164,10 @@ impl ActorHarness {
 
     pub fn get_state(&self, rt: &MockRuntime) -> State {
         rt.get_state::<State>()
+    }
+
+    pub fn check_state(&self, rt: &MockRuntime) {
+        check_state_invariants_from_mock_runtime(rt);
     }
 
     pub fn new_runtime(&self) -> MockRuntime {
@@ -175,7 +217,7 @@ impl ActorHarness {
             self.worker,
             AccountMethod::PubkeyAddress as u64,
             RawBytes::default(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::serialize(self.worker_key).unwrap(),
             ExitCode::OK,
         );
@@ -267,7 +309,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         num_sectors: usize,
         lifetime_periods: u64,
-        deal_ids: Vec<DealID>, // TODO: this should be Vec<Vec<DealID>>
+        deal_ids: Vec<Vec<DealID>>,
         first: bool,
     ) -> Vec<SectorOnChainInfo> {
         let precommit_epoch = rt.epoch;
@@ -278,18 +320,21 @@ impl ActorHarness {
         let mut precommits = Vec::with_capacity(num_sectors);
         for i in 0..num_sectors {
             let sector_no = self.next_sector_no;
-            let mut sector_deal_ids = vec![];
-            if !deal_ids.is_empty() {
-                sector_deal_ids.push(deal_ids[i]);
-            }
+            let sector_deal_ids =
+                deal_ids.get(i).and_then(|ids| Some(ids.clone())).unwrap_or_default();
+            let has_deals = !sector_deal_ids.is_empty();
             let params = self.make_pre_commit_params(
                 sector_no,
                 precommit_epoch - 1,
                 expiration,
                 sector_deal_ids,
             );
-            let precommit =
-                self.pre_commit_sector(rt, params, PreCommitConfig::empty(), first && i == 0);
+            let pcc = if !has_deals {
+                PreCommitConfig::new(None)
+            } else {
+                PreCommitConfig::new(Some(make_piece_cid("1".as_bytes())))
+            };
+            let precommit = self.pre_commit_sector_and_get(rt, params, pcc, first && i == 0);
             precommits.push(precommit);
             self.next_sector_no += 1;
         }
@@ -301,16 +346,76 @@ impl ActorHarness {
 
         let mut info = Vec::with_capacity(num_sectors);
         for pc in precommits {
-            let sector = self.prove_commit_sector_and_confirm(
-                rt,
-                &pc,
-                self.make_prove_commit_params(pc.info.sector_number),
-                ProveCommitConfig::empty(),
-            );
+            let sector = self
+                .prove_commit_sector_and_confirm(
+                    rt,
+                    &pc,
+                    self.make_prove_commit_params(pc.info.sector_number),
+                    ProveCommitConfig::empty(),
+                )
+                .unwrap();
             info.push(sector);
         }
         rt.reset();
         info
+    }
+
+    pub fn commit_and_prove_sector(
+        &self,
+        rt: &mut MockRuntime,
+        sector_no: SectorNumber,
+        lifetime_periods: i64,
+        deal_ids: Vec<DealID>,
+    ) -> SectorOnChainInfo {
+        let precommit_epoch = rt.epoch;
+        let deadline = self.deadline(rt);
+        let expiration = deadline.period_end() + lifetime_periods * rt.policy.wpost_proving_period;
+
+        // Precommit
+        let pre_commit_params =
+            self.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, deal_ids);
+        let precommit = self.pre_commit_sector_and_get(
+            rt,
+            pre_commit_params.clone(),
+            PreCommitConfig::default(),
+            true,
+        );
+
+        self.advance_to_epoch_with_cron(
+            rt,
+            precommit_epoch + rt.policy.pre_commit_challenge_delay + 1,
+        );
+
+        let sector_info = self
+            .prove_commit_sector_and_confirm(
+                rt,
+                &precommit,
+                self.make_prove_commit_params(pre_commit_params.sector_number),
+                ProveCommitConfig::empty(),
+            )
+            .unwrap();
+        rt.reset();
+        sector_info
+    }
+
+    pub fn compact_sector_numbers_raw(
+        &self,
+        rt: &mut MockRuntime,
+        addr: Address,
+        bf: BitField,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let params =
+            CompactSectorNumbersParams { mask_sector_numbers: UnvalidatedBitField::Validated(bf) };
+
+        rt.call::<Actor>(Method::CompactSectorNumbers as u64, &RawBytes::serialize(params).unwrap())
+    }
+
+    pub fn compact_sector_numbers(&self, rt: &mut MockRuntime, addr: Address, bf: BitField) {
+        self.compact_sector_numbers_raw(rt, addr, bf).unwrap();
+        rt.verify();
     }
 
     pub fn get_deadline_info(&self, rt: &MockRuntime) -> DeadlineInfo {
@@ -318,7 +423,7 @@ impl ActorHarness {
         state.recorded_deadline_info(&rt.policy, rt.epoch)
     }
 
-    fn make_pre_commit_params(
+    pub fn make_pre_commit_params(
         &self,
         sector_no: u64,
         challenge: ChainEpoch,
@@ -340,17 +445,121 @@ impl ActorHarness {
         }
     }
 
-    fn make_prove_commit_params(&self, sector_no: u64) -> ProveCommitSectorParams {
+    pub fn make_prove_commit_params(&self, sector_no: u64) -> ProveCommitSectorParams {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192] }
     }
 
-    fn pre_commit_sector(
+    pub fn pre_commit_sector_batch(
+        &self,
+        rt: &mut MockRuntime,
+        params: PreCommitSectorBatchParams,
+        conf: &PreCommitBatchConfig,
+        base_fee: TokenAmount,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        self.expect_query_network_info(rt);
+        let mut sector_deals = Vec::new();
+        let mut sector_deal_data = Vec::new();
+        let mut any_deals = false;
+        for (i, sector) in params.sectors.iter().enumerate() {
+            sector_deals.push(SectorDeals {
+                sector_type: sector.seal_proof,
+                sector_expiry: sector.expiration,
+                deal_ids: sector.deal_ids.clone(),
+            });
+
+            if conf.sector_deal_data.len() > i {
+                sector_deal_data.push(conf.sector_deal_data[i].clone());
+            } else {
+                sector_deal_data.push(SectorDealData { commd: None });
+            }
+
+            // Sanity check on expectations
+            let sector_has_deals = !sector.deal_ids.is_empty();
+            assert_eq!(
+                sector_has_deals,
+                conf.sector_deal_data.get(i).and_then(|dd| { dd.commd }).is_some(),
+                "sector deals inconsistent with result from verification"
+            );
+            any_deals |= sector_has_deals;
+        }
+        if any_deals {
+            let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
+            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
+            rt.expect_send(
+                *STORAGE_MARKET_ACTOR_ADDR,
+                MarketMethod::VerifyDealsForActivation as u64,
+                RawBytes::serialize(vdparams).unwrap(),
+                TokenAmount::from(0u8),
+                RawBytes::serialize(vdreturn).unwrap(),
+                ExitCode::OK,
+            );
+        }
+
+        let state = self.get_state(rt);
+        // burn networkFee
+        if state.fee_debt > TokenAmount::from(0u8) || params.sectors.len() > 1 {
+            let expected_network_fee =
+                aggregate_pre_commit_network_fee(params.sectors.len() as i64, &base_fee);
+            let expected_burn = expected_network_fee + state.fee_debt;
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_burn,
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        if conf.first_for_miner {
+            let dlinfo = new_deadline_info_from_offset_and_epoch(
+                &rt.policy,
+                state.proving_period_start,
+                rt.epoch,
+            );
+            let cron_params = make_deadline_cron_event_params(dlinfo.last());
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                PowerMethod::EnrollCronEvent as u64,
+                RawBytes::serialize(cron_params).unwrap(),
+                TokenAmount::from(0u8),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let result = rt.call::<Actor>(
+            Method::PreCommitSectorBatch as u64,
+            &RawBytes::serialize(params.clone()).unwrap(),
+        );
+        result
+    }
+
+    pub fn pre_commit_sector_batch_and_get(
+        &self,
+        rt: &mut MockRuntime,
+        params: PreCommitSectorBatchParams,
+        conf: &PreCommitBatchConfig,
+        base_fee: TokenAmount,
+    ) -> Vec<SectorPreCommitOnChainInfo> {
+        let result = self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee).unwrap();
+
+        expect_empty(result);
+        rt.verify();
+
+        params.sectors.iter().map(|sector| self.get_precommit(rt, sector.sector_number)).collect()
+    }
+
+    pub fn pre_commit_sector(
         &self,
         rt: &mut MockRuntime,
         params: PreCommitSectorParams,
         conf: PreCommitConfig,
         first: bool,
-    ) -> SectorPreCommitOnChainInfo {
+    ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
         self.expect_query_network_info(rt);
@@ -358,23 +567,18 @@ impl ActorHarness {
         if !params.deal_ids.is_empty() {
             let vdparams = VerifyDealsForActivationParams {
                 sectors: vec![SectorDeals {
+                    sector_type: params.seal_proof,
                     sector_expiry: params.expiration,
                     deal_ids: params.deal_ids.clone(),
                 }],
             };
-            let vdreturn = VerifyDealsForActivationReturn {
-                sectors: vec![SectorWeights {
-                    deal_space: conf.deal_space.unwrap() as u64,
-                    deal_weight: conf.deal_weight,
-                    verified_deal_weight: conf.verified_deal_weight,
-                }],
-            };
+            let vdreturn = VerifyDealsForActivationReturn { sectors: vec![conf.0] };
 
             rt.expect_send(
                 *STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
                 RawBytes::serialize(vdparams).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::serialize(vdreturn).unwrap(),
                 ExitCode::OK,
             );
@@ -382,7 +586,7 @@ impl ActorHarness {
         // in the original test the else branch does some redundant checks which we can omit.
 
         let state = self.get_state(rt);
-        if state.fee_debt > TokenAmount::from(0) {
+        if state.fee_debt > TokenAmount::from(0u8) {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -404,25 +608,40 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 RawBytes::serialize(cron_params).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::default(),
                 ExitCode::OK,
             );
         }
 
-        let result = rt
-            .call::<Actor>(
-                Method::PreCommitSector as u64,
-                &RawBytes::serialize(params.clone()).unwrap(),
-            )
-            .unwrap();
-        expect_empty(result);
+        let result = rt.call::<Actor>(
+            Method::PreCommitSector as u64,
+            &RawBytes::serialize(params.clone()).unwrap(),
+        );
+        result
+    }
+
+    pub fn pre_commit_sector_and_get(
+        &self,
+        rt: &mut MockRuntime,
+        params: PreCommitSectorParams,
+        conf: PreCommitConfig,
+        first: bool,
+    ) -> SectorPreCommitOnChainInfo {
+        let result = self.pre_commit_sector(rt, params.clone(), conf, first);
+
+        expect_empty(result.unwrap());
         rt.verify();
 
         self.get_precommit(rt, params.sector_number)
     }
 
-    fn get_precommit(
+    pub fn has_precommit(&self, rt: &MockRuntime, sector_number: SectorNumber) -> bool {
+        let state = self.get_state(rt);
+        state.get_precommitted_sector(&rt.store, sector_number).unwrap().is_some()
+    }
+
+    pub fn get_precommit(
         &self,
         rt: &mut MockRuntime,
         sector_number: SectorNumber,
@@ -446,7 +665,7 @@ impl ActorHarness {
             *REWARD_ACTOR_ADDR,
             RewardMethod::ThisEpochReward as u64,
             RawBytes::default(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::serialize(current_reward).unwrap(),
             ExitCode::OK,
         );
@@ -454,51 +673,37 @@ impl ActorHarness {
             *STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::CurrentTotalPower as u64,
             RawBytes::default(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::serialize(current_power).unwrap(),
             ExitCode::OK,
         );
     }
 
-    fn prove_commit_sector_and_confirm(
+    pub fn prove_commit_sector_and_confirm(
         &self,
         rt: &mut MockRuntime,
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
         cfg: ProveCommitConfig,
-    ) -> SectorOnChainInfo {
+    ) -> Result<SectorOnChainInfo, ActorError> {
         let sector_number = params.sector_number;
-        self.prove_commit_sector(rt, pc, params);
-        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()]);
+        self.prove_commit_sector(rt, pc, params)?;
+        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()])?;
 
-        self.get_sector(rt, sector_number)
+        Ok(self.get_sector(rt, sector_number))
     }
 
-    fn prove_commit_sector(
+    pub fn prove_commit_sector(
         &self,
         rt: &mut MockRuntime,
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
-    ) {
-        let commd = make_piece_cid(b"commd");
+    ) -> Result<(), ActorError> {
         let seal_rand = Randomness(vec![1, 2, 3, 4]);
         let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
         let interactive_epoch = pc.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
 
         // Prepare for and receive call to ProveCommitSector
-        let input =
-            SectorDataSpec { deal_ids: pc.info.deal_ids.clone(), sector_type: pc.info.seal_proof };
-        let cdc_params = ComputeDataCommitmentParams { inputs: vec![input] };
-        let cdc_ret = ComputeDataCommitmentReturn { commds: vec![commd] };
-        rt.expect_send(
-            *STORAGE_MARKET_ACTOR_ADDR,
-            MarketMethod::ComputeDataCommitment as u64,
-            RawBytes::serialize(cdc_params).unwrap(),
-            TokenAmount::from(0),
-            RawBytes::serialize(cdc_ret).unwrap(),
-            ExitCode::OK,
-        );
-
         let entropy = RawBytes::serialize(self.receiver).unwrap();
         rt.expect_get_randomness_from_tickets(
             DomainSeparationTag::SealRandomness,
@@ -522,30 +727,115 @@ impl ActorHarness {
             deal_ids: pc.info.deal_ids.clone(),
             randomness: seal_rand,
             interactive_randomness: seal_int_rand,
-            unsealed_cid: commd,
+            unsealed_cid: pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap(),
         };
         rt.expect_send(
             *STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::SubmitPoRepForBulkVerify as u64,
             RawBytes::serialize(seal).unwrap(),
-            TokenAmount::from(0),
+            TokenAmount::from(0u8),
             RawBytes::default(),
             ExitCode::OK,
         );
         rt.expect_validate_caller_any();
-        let result = rt
-            .call::<Actor>(Method::ProveCommitSector as u64, &RawBytes::serialize(params).unwrap())
-            .unwrap();
+        let result = rt.call::<Actor>(
+            Method::ProveCommitSector as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
         expect_empty(result);
         rt.verify();
+        Ok(())
     }
 
-    fn confirm_sector_proofs_valid(
+    pub fn prove_commit_aggregate_sector(
+        &self,
+        rt: &mut MockRuntime,
+        config: ProveCommitConfig,
+        precommits: Vec<SectorPreCommitOnChainInfo>,
+        params: ProveCommitAggregateParams,
+        base_fee: BigInt,
+    ) -> Result<(), ActorError> {
+        let comm_ds: Vec<_> = precommits
+            .iter()
+            .map(|pc| pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap())
+            .collect();
+
+        self.expect_query_network_info(rt);
+
+        // expect randomness queries for provided precommits
+        let mut seal_rands = Vec::new();
+        let mut seal_int_rands = Vec::new();
+
+        for precommit in precommits.iter() {
+            let seal_rand = Randomness(vec![1, 2, 3, 4]);
+            seal_rands.push(seal_rand.clone());
+            let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
+            seal_int_rands.push(seal_int_rand.clone());
+            let interactive_epoch =
+                precommit.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
+
+            let receiver = rt.receiver;
+            let buf = receiver.marshal_cbor()?;
+            rt.expect_get_randomness_from_tickets(
+                DomainSeparationTag::SealRandomness,
+                precommit.info.seal_rand_epoch,
+                buf.clone(),
+                seal_rand,
+            );
+            rt.expect_get_randomness_from_beacon(
+                DomainSeparationTag::InteractiveSealChallengeSeed,
+                interactive_epoch,
+                buf,
+                seal_int_rand,
+            );
+        }
+
+        // verify syscall
+        let mut svis = Vec::new();
+        for (i, precommit) in precommits.iter().enumerate() {
+            svis.push(AggregateSealVerifyInfo {
+                sector_number: precommit.info.sector_number,
+                randomness: seal_rands.get(i).cloned().unwrap(),
+                interactive_randomness: seal_int_rands.get(i).cloned().unwrap(),
+                sealed_cid: precommit.info.sealed_cid,
+                unsealed_cid: comm_ds[i],
+            })
+        }
+        rt.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone(), Ok(()));
+
+        // confirm sector proofs valid
+        self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
+
+        // burn network fee
+        let expected_fee = aggregate_prove_commit_network_fee(precommits.len() as i64, &base_fee);
+        assert!(expected_fee > BigInt::zero());
+        rt.expect_send(
+            *BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            RawBytes::default(),
+            expected_fee,
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        let addrs = self.caller_addrs().clone();
+        rt.expect_validate_caller_addr(addrs);
+        rt.call::<Actor>(
+            MinerMethod::ProveCommitAggregate as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        rt.verify();
+
+        Ok(())
+    }
+
+    pub fn confirm_sector_proofs_valid(
         &self,
         rt: &mut MockRuntime,
         cfg: ProveCommitConfig,
         pcs: Vec<SectorPreCommitOnChainInfo>,
-    ) {
+    ) -> Result<(), ActorError> {
         self.confirm_sector_proofs_valid_internal(rt, cfg, &pcs);
 
         let mut all_sector_numbers = Vec::new();
@@ -565,9 +855,9 @@ impl ActorHarness {
         rt.call::<Actor>(
             Method::ConfirmSectorProofsValid as u64,
             &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
+        )?;
         rt.verify();
+        Ok(())
     }
 
     fn confirm_sector_proofs_valid_internal(
@@ -594,12 +884,20 @@ impl ActorHarness {
                     }
                 }
 
+                let ret = ActivateDealsResult {
+                    weights: cfg
+                        .deal_weights
+                        .get(&pc.info.sector_number)
+                        .cloned()
+                        .unwrap_or_default(),
+                };
+
                 rt.expect_send(
                     *STORAGE_MARKET_ACTOR_ADDR,
                     MarketMethod::ActivateDeals as u64,
                     RawBytes::serialize(params).unwrap(),
-                    TokenAmount::from(0),
-                    RawBytes::default(),
+                    TokenAmount::from(0u8),
+                    RawBytes::serialize(ret).unwrap(),
                     exit,
                 );
             } else {
@@ -608,19 +906,21 @@ impl ActorHarness {
         }
 
         if !valid_pcs.is_empty() {
-            let mut expected_pledge = TokenAmount::from(0);
+            let mut expected_pledge = TokenAmount::from(0u8);
             let mut expected_qa_power = BigInt::from(0);
             let mut expected_raw_power = BigInt::from(0);
 
             for pc in valid_pcs {
-                let pc_on_chain = self.get_precommit(rt, pc.info.sector_number);
+                let weights =
+                    cfg.deal_weights.get(&pc.info.sector_number).cloned().unwrap_or_default();
+
                 let duration = pc.info.expiration - rt.epoch;
                 if duration >= rt.policy.min_sector_expiration {
                     let qa_power_delta = qa_power_for_weight(
                         self.sector_size,
                         duration,
-                        &pc_on_chain.deal_weight,
-                        &pc_on_chain.verified_deal_weight,
+                        &weights.deal_weight,
+                        &weights.verified_deal_weight,
                     );
                     expected_qa_power += &qa_power_delta;
                     expected_raw_power += self.sector_size as u64;
@@ -632,27 +932,16 @@ impl ActorHarness {
                         &rt.total_fil_circ_supply(),
                     );
 
-                    if pc_on_chain.info.replace_capacity {
-                        let replaced = self.get_sector(rt, pc_on_chain.info.replace_sector_number);
-                        // Note: following snap deals, this behavior is *strictly* deprecated;
-                        // if we get here, fail the test -- as opposed to the obsolete original
-                        // test logic that would go like this:
-                        // if replaced.initial_pledge > pledge {
-                        //     pledge = replaced.initial_pledge;
-                        // }
-                        assert!(replaced.initial_pledge <= pledge);
-                    }
-
                     expected_pledge += pledge;
                 }
             }
 
-            if expected_pledge != TokenAmount::from(0) {
+            if expected_pledge != TokenAmount::from(0u8) {
                 rt.expect_send(
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
                     RawBytes::serialize(BigIntSer(&expected_pledge)).unwrap(),
-                    TokenAmount::from(0),
+                    TokenAmount::from(0u8),
                     RawBytes::default(),
                     ExitCode::OK,
                 );
@@ -660,12 +949,12 @@ impl ActorHarness {
         }
     }
 
-    fn get_sector(&self, rt: &MockRuntime, sector_number: SectorNumber) -> SectorOnChainInfo {
+    pub fn get_sector(&self, rt: &MockRuntime, sector_number: SectorNumber) -> SectorOnChainInfo {
         let state = self.get_state(rt);
         state.get_sector(&rt.store, sector_number).unwrap().unwrap()
     }
 
-    fn advance_to_epoch_with_cron(&self, rt: &mut MockRuntime, epoch: ChainEpoch) {
+    pub fn advance_to_epoch_with_cron(&self, rt: &mut MockRuntime, epoch: ChainEpoch) {
         let mut deadline = self.get_deadline_info(rt);
         while deadline.last() < epoch {
             self.advance_deadline(rt, CronConfig::empty());
@@ -682,7 +971,7 @@ impl ActorHarness {
         dlinfo
     }
 
-    fn deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
+    pub fn deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
         let state = self.get_state(rt);
         state.recorded_deadline_info(&rt.policy, rt.epoch)
     }
@@ -706,7 +995,7 @@ impl ActorHarness {
         state.deadline_info(&rt.policy, rt.epoch)
     }
 
-    fn on_deadline_cron(&self, rt: &mut MockRuntime, cfg: CronConfig) {
+    pub fn on_deadline_cron(&self, rt: &mut MockRuntime, cfg: CronConfig) {
         let state = self.get_state(rt);
         rt.expect_validate_caller_addr(vec![*STORAGE_POWER_ACTOR_ADDR]);
 
@@ -724,20 +1013,20 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdateClaimedPower as u64,
                 RawBytes::serialize(params).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::default(),
                 ExitCode::OK,
             );
         }
 
-        let mut penalty_total = TokenAmount::from(0);
-        let mut pledge_delta = TokenAmount::from(0);
+        let mut penalty_total = TokenAmount::from(0u8);
+        let mut pledge_delta = TokenAmount::from(0u8);
 
         penalty_total += cfg.continued_faults_penalty.clone();
         penalty_total += cfg.repaid_fee_debt.clone();
         penalty_total += cfg.expired_precommit_penalty.clone();
 
-        if penalty_total != TokenAmount::from(0) {
+        if penalty_total != TokenAmount::from(0u8) {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -761,12 +1050,12 @@ impl ActorHarness {
         pledge_delta += cfg.expired_sectors_pledge_delta;
         pledge_delta -= immediately_vesting_funds(rt, &state);
 
-        if pledge_delta != TokenAmount::from(0) {
+        if pledge_delta != TokenAmount::from(0u8) {
             rt.expect_send(
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdatePledgeTotal as u64,
                 RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -779,7 +1068,7 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 RawBytes::serialize(params).unwrap(),
-                TokenAmount::from(0),
+                TokenAmount::from(0u8),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -887,20 +1176,21 @@ impl ActorHarness {
             }
         }
 
-        if cfg.expected_power_delta.is_some() {
-            let power_delta = cfg.expected_power_delta.unwrap();
-            let claim = UpdateClaimedPowerParams {
-                raw_byte_delta: power_delta.raw,
-                quality_adjusted_delta: power_delta.qa,
-            };
-            rt.expect_send(
-                *STORAGE_POWER_ACTOR_ADDR,
-                PowerMethod::UpdateClaimedPower as u64,
-                RawBytes::serialize(claim).unwrap(),
-                TokenAmount::from(0),
-                RawBytes::default(),
-                ExitCode::OK,
-            );
+        if let Some(power_delta) = cfg.expected_power_delta {
+            if !power_delta.is_zero() {
+                let claim = UpdateClaimedPowerParams {
+                    raw_byte_delta: power_delta.raw,
+                    quality_adjusted_delta: power_delta.qa,
+                };
+                rt.expect_send(
+                    *STORAGE_POWER_ACTOR_ADDR,
+                    PowerMethod::UpdateClaimedPower as u64,
+                    RawBytes::serialize(claim).unwrap(),
+                    TokenAmount::from(0u8),
+                    RawBytes::default(),
+                    ExitCode::OK,
+                );
+            }
         }
 
         rt.call::<Actor>(Method::SubmitWindowedPoSt as u64, &RawBytes::serialize(params).unwrap())
@@ -1004,7 +1294,7 @@ impl ActorHarness {
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdateClaimedPower as u64,
                     RawBytes::serialize(claim).unwrap(),
-                    TokenAmount::from(0),
+                    TokenAmount::from(0u8),
                     RawBytes::default(),
                     ExitCode::OK,
                 );
@@ -1040,7 +1330,7 @@ impl ActorHarness {
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
                     RawBytes::serialize(BigIntSer(&expected_pledge_delta)).unwrap(),
-                    TokenAmount::from(0),
+                    TokenAmount::from(0u8),
                     RawBytes::default(),
                     ExitCode::OK,
                 );
@@ -1090,6 +1380,847 @@ impl ActorHarness {
         caller_addrs.push(self.owner);
         caller_addrs
     }
+
+    pub fn apply_rewards(&self, rt: &mut MockRuntime, amt: TokenAmount, penalty: TokenAmount) {
+        // This harness function does not handle the state where apply rewards is
+        // on a miner with existing fee debt.  This state is not protocol reachable
+        // because currently fee debt prevents election participation.
+        //
+        // We further assume the miner can pay the penalty.  If the miner
+        // goes into debt we can't rely on the harness call
+        // TODO unify those cases
+        let (lock_amt, _) = locked_reward_from_reward(amt.clone());
+        let pledge_delta = lock_amt - &penalty;
+
+        rt.set_caller(*REWARD_ACTOR_CODE_ID, *REWARD_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![*REWARD_ACTOR_ADDR]);
+        // expect pledge update
+        rt.expect_send(
+            *STORAGE_POWER_ACTOR_ADDR,
+            PowerMethod::UpdatePledgeTotal as u64,
+            RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
+            TokenAmount::from(0u8),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        if penalty > TokenAmount::from(0u8) {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                penalty.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let params = ApplyRewardParams { reward: amt, penalty: penalty };
+        rt.call::<Actor>(Method::ApplyRewards as u64, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+    }
+
+    pub fn get_locked_funds(&self, rt: &MockRuntime) -> TokenAmount {
+        let state = self.get_state(rt);
+        state.locked_funds
+    }
+
+    pub fn advance_and_submit_posts(&self, rt: &mut MockRuntime, sectors: &[SectorOnChainInfo]) {
+        // Advance between 0 and 48 deadlines submitting window posts where necessary to keep
+        // sectors proven.  If sectors is empty this is a noop. If sectors is a singleton this
+        // will advance to that sector's proving deadline running deadline crons up to and
+        // including this deadline. If sectors includes a sector assigned to the furthest
+        // away deadline this will process a whole proving period.
+        let state = self.get_state(rt);
+
+        // this has to go into the loop or else go deal with the borrow checker (hint: you lose)
+        //let sector_arr = Sectors::load(&rt.store, &state.sectors).unwrap();
+        let mut deadlines: BTreeMap<u64, Vec<SectorOnChainInfo>> = BTreeMap::new();
+        for sector in sectors {
+            let (dlidx, _) =
+                state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+            match deadlines.get_mut(&dlidx) {
+                Some(dl_sectors) => {
+                    dl_sectors.push(sector.clone());
+                }
+                None => {
+                    deadlines.insert(dlidx, vec![sector.clone()]);
+                }
+            }
+        }
+
+        let mut dlinfo = self.current_deadline(rt);
+        while deadlines.len() > 0 {
+            match deadlines.get(&dlinfo.index) {
+                None => {}
+                Some(dl_sectors) => {
+                    let mut sector_nos = BitField::new();
+                    for sector in dl_sectors {
+                        sector_nos.set(sector.sector_number);
+                    }
+
+                    let dl_arr = state.load_deadlines(&rt.store).unwrap();
+                    let dl = dl_arr.load_deadline(&rt.policy, &rt.store, dlinfo.index).unwrap();
+                    let parts = Array::<Partition, _>::load(&dl.partitions, &rt.store).unwrap();
+
+                    let mut partitions: Vec<PoStPartition> = Vec::new();
+                    let mut power_delta = PowerPair::zero();
+                    parts
+                        .for_each(|part_idx, part| {
+                            let sector_arr = Sectors::load(&rt.store, &state.sectors).unwrap();
+                            let live = part.live_sectors();
+                            let to_prove = &live & &sector_nos;
+                            if to_prove.is_empty() {
+                                return Ok(());
+                            }
+
+                            let mut to_skip = &live - &to_prove;
+                            let not_recovering = &part.faults - &part.recoveries;
+
+                            // Don't double-count skips.
+                            to_skip -= &not_recovering;
+
+                            let skipped_proven = &to_skip - &part.unproven;
+                            let mut skipped_proven_sector_infos = Vec::new();
+                            sector_arr
+                                .amt
+                                .for_each(|i, sector| {
+                                    if skipped_proven.get(i) {
+                                        skipped_proven_sector_infos.push(sector.clone());
+                                    }
+                                    Ok(())
+                                })
+                                .unwrap();
+                            let new_faulty_power =
+                                self.power_pair_for_sectors(&skipped_proven_sector_infos);
+
+                            let new_proven = &part.unproven - &to_skip;
+                            let mut new_proven_infos = Vec::new();
+                            sector_arr
+                                .amt
+                                .for_each(|i, sector| {
+                                    if new_proven.get(i) {
+                                        new_proven_infos.push(sector.clone());
+                                    }
+                                    Ok(())
+                                })
+                                .unwrap();
+                            let new_proven_power = self.power_pair_for_sectors(&new_proven_infos);
+
+                            power_delta -= &new_faulty_power;
+                            power_delta += &new_proven_power;
+
+                            partitions.push(PoStPartition {
+                                index: part_idx,
+                                skipped: UnvalidatedBitField::Validated(to_skip),
+                            });
+
+                            Ok(())
+                        })
+                        .unwrap();
+
+                    self.submit_window_post(
+                        rt,
+                        &dlinfo,
+                        partitions,
+                        dl_sectors.clone(),
+                        PoStConfig::with_expected_power_delta(&power_delta),
+                    );
+                    deadlines.remove(&dlinfo.index);
+                }
+            }
+
+            self.advance_deadline(rt, CronConfig::empty());
+            dlinfo = self.current_deadline(rt);
+        }
+    }
+
+    pub fn declare_faults(
+        &self,
+        rt: &mut MockRuntime,
+        fault_sector_infos: &[SectorOnChainInfo],
+    ) -> PowerPair {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let ss = fault_sector_infos[0].seal_proof.sector_size().unwrap();
+        let expected_delta = power_for_sectors(ss, fault_sector_infos);
+        let expected_raw_delta = -expected_delta.raw;
+        let expected_qa_delta = -expected_delta.qa;
+
+        // expect power update
+        let claim = UpdateClaimedPowerParams {
+            raw_byte_delta: expected_raw_delta.clone(),
+            quality_adjusted_delta: expected_qa_delta.clone(),
+        };
+        rt.expect_send(
+            *STORAGE_POWER_ACTOR_ADDR,
+            PowerMethod::UpdateClaimedPower as u64,
+            RawBytes::serialize(claim).unwrap(),
+            TokenAmount::from(0u8),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // Calculate params from faulted sector infos
+        let state = self.get_state(rt);
+        let params = make_fault_params_from_faulting_sectors(&rt, &state, fault_sector_infos);
+        rt.call::<Actor>(Method::DeclareFaults as u64, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+
+        PowerPair { raw: expected_raw_delta, qa: expected_qa_delta }
+    }
+
+    pub fn declare_recoveries(
+        &self,
+        rt: &mut MockRuntime,
+        dlidx: u64,
+        pidx: u64,
+        recovery_sectors: BitField,
+        expected_debt_repaid: TokenAmount,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        if expected_debt_repaid > TokenAmount::from(0u8) {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_debt_repaid,
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        // Calculate params from faulted sector infos
+        let recovery = RecoveryDeclaration {
+            deadline: dlidx,
+            partition: pidx,
+            sectors: UnvalidatedBitField::Validated(recovery_sectors),
+        };
+        let params = DeclareFaultsRecoveredParams { recoveries: vec![recovery] };
+        let ret = rt.call::<Actor>(
+            Method::DeclareFaultsRecovered as u64,
+            &RawBytes::serialize(params).unwrap(),
+        );
+        if ret.is_ok() {
+            rt.verify();
+        } else {
+            rt.reset();
+        }
+        ret
+    }
+
+    pub fn continued_fault_penalty(&self, sectors: &[SectorOnChainInfo]) -> TokenAmount {
+        let pwr = power_for_sectors(self.sector_size, sectors);
+        pledge_penalty_for_continued_fault(
+            &self.epoch_reward_smooth,
+            &self.epoch_qa_power_smooth,
+            &pwr.qa,
+        )
+    }
+
+    pub fn collect_precommit_expirations(
+        &self,
+        rt: &MockRuntime,
+        st: &State,
+    ) -> HashMap<ChainEpoch, Vec<u64>> {
+        let quant = st.quant_spec_every_deadline(&rt.policy);
+        let queue = BitFieldQueue::new(&rt.store, &st.pre_committed_sectors_cleanup, quant)
+            .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))
+            .unwrap();
+        let mut expirations: HashMap<ChainEpoch, Vec<u64>> = HashMap::new();
+        queue
+            .amt
+            .for_each(|epoch, bf| {
+                let expanded: Vec<u64> =
+                    bf.bounded_iter(rt.policy.addressed_sectors_max).unwrap().collect();
+                expirations.insert(epoch.try_into().unwrap(), expanded);
+                Ok(())
+            })
+            .unwrap();
+        expirations
+    }
+
+    pub fn find_sector(&self, rt: &MockRuntime, sno: SectorNumber) -> (Deadline, Partition) {
+        let state = self.get_state(rt);
+        let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sno).unwrap();
+        self.get_deadline_and_partition(rt, dlidx, pidx)
+    }
+
+    pub fn current_deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
+        let state = self.get_state(rt);
+        state.deadline_info(&rt.policy, rt.epoch)
+    }
+
+    fn power_pair_for_sectors(&self, sectors: &[SectorOnChainInfo]) -> PowerPair {
+        power_for_sectors(self.sector_size, sectors)
+    }
+
+    pub fn get_deadline_and_partition(
+        &self,
+        rt: &MockRuntime,
+        dlidx: u64,
+        pidx: u64,
+    ) -> (Deadline, Partition) {
+        let deadline = self.get_deadline(&rt, dlidx);
+        let partition = self.get_partition(&rt, &deadline, pidx);
+        (deadline, partition)
+    }
+
+    fn get_partition(&self, rt: &MockRuntime, deadline: &Deadline, pidx: u64) -> Partition {
+        deadline.load_partition(&rt.store, pidx).unwrap()
+    }
+
+    pub fn report_consensus_fault(
+        &self,
+        rt: &mut MockRuntime,
+        from: Address,
+        fault: Option<ConsensusFault>,
+    ) -> Result<(), ActorError> {
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from);
+        let params =
+            ReportConsensusFaultParams { header1: vec![], header2: vec![], header_extra: vec![] };
+
+        rt.expect_verify_consensus_fault(
+            params.header1.clone(),
+            params.header2.clone(),
+            params.header_extra.clone(),
+            fault,
+            ExitCode::OK,
+        );
+
+        let current_reward = ThisEpochRewardReturn {
+            this_epoch_baseline_power: self.baseline_power.clone(),
+            this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
+        };
+        rt.expect_send(
+            *REWARD_ACTOR_ADDR,
+            RewardMethod::ThisEpochReward as u64,
+            RawBytes::default(),
+            TokenAmount::from(0u8),
+            RawBytes::serialize(current_reward).unwrap(),
+            ExitCode::OK,
+        );
+        let this_epoch_reward = self.epoch_reward_smooth.estimate();
+        let penalty_total = consensus_fault_penalty(this_epoch_reward.clone());
+        let reward_total = reward_for_consensus_slash_report(&this_epoch_reward);
+        rt.expect_send(
+            from,
+            METHOD_SEND,
+            RawBytes::default(),
+            reward_total.clone(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // pay fault fee
+        let to_burn = &penalty_total - &reward_total;
+        rt.expect_send(
+            *BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            RawBytes::default(),
+            to_burn,
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        let result = rt.call::<Actor>(
+            Method::ReportConsensusFault as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        expect_empty(result);
+        rt.verify();
+        Ok(())
+    }
+
+    pub fn collect_deadline_expirations(
+        &self,
+        rt: &MockRuntime,
+        deadline: &Deadline,
+    ) -> HashMap<ChainEpoch, Vec<u64>> {
+        let queue =
+            BitFieldQueue::new(&rt.store, &deadline.expirations_epochs, NO_QUANTIZATION).unwrap();
+        let mut expirations = HashMap::new();
+        queue
+            .amt
+            .for_each(|epoch, bitfield| {
+                let expanded = bitfield.bounded_iter(rt.policy.addressed_sectors_max).unwrap();
+                expirations.insert(epoch as ChainEpoch, expanded.collect::<Vec<u64>>());
+                Ok(())
+            })
+            .unwrap();
+        expirations
+    }
+
+    pub fn collect_partition_expirations(
+        &self,
+        rt: &MockRuntime,
+        partition: &Partition,
+    ) -> HashMap<ChainEpoch, ExpirationSet> {
+        let queue = ExpirationQueue::new(&rt.store, &partition.expirations_epochs, NO_QUANTIZATION)
+            .unwrap();
+        let mut expirations = HashMap::new();
+        queue
+            .amt
+            .for_each(|epoch, set| {
+                expirations.insert(epoch as ChainEpoch, set.clone());
+                Ok(())
+            })
+            .unwrap();
+        expirations
+    }
+
+    pub fn terminate_sectors(
+        &self,
+        rt: &mut MockRuntime,
+        sectors: &BitField,
+        expected_fee: TokenAmount,
+    ) -> (PowerPair, TokenAmount) {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let mut deal_ids: Vec<DealID> = Vec::new();
+        let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
+
+        for sector in sectors.iter() {
+            let sector = self.get_sector(rt, sector);
+            deal_ids.extend(sector.deal_ids.iter());
+            sector_infos.push(sector);
+        }
+
+        self.expect_query_network_info(rt);
+
+        let mut pledge_delta = BigInt::zero();
+        if expected_fee.is_positive() {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_fee.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+            pledge_delta = expected_fee.neg();
+        }
+
+        // notify change to initial pledge
+        for sector_info in &sector_infos {
+            pledge_delta -= sector_info.initial_pledge.to_owned();
+        }
+
+        if !pledge_delta.is_zero() {
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_PLEDGE_TOTAL_METHOD,
+                RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
+                BigInt::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        if !deal_ids.is_empty() {
+            let max_length = 8192;
+            let size = deal_ids.len().min(max_length);
+            let params = OnMinerSectorsTerminateParams {
+                epoch: rt.epoch,
+                deal_ids: deal_ids[0..size].to_owned(),
+            };
+            rt.expect_send(
+                *STORAGE_MARKET_ACTOR_ADDR,
+                ON_MINER_SECTORS_TERMINATE_METHOD,
+                RawBytes::serialize(params).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let sector_power = power_for_sectors(self.sector_size, &sector_infos);
+        let params = UpdateClaimedPowerParams {
+            raw_byte_delta: -sector_power.raw.clone(),
+            quality_adjusted_delta: -sector_power.qa.clone(),
+        };
+        rt.expect_send(
+            *STORAGE_POWER_ACTOR_ADDR,
+            UPDATE_CLAIMED_POWER_METHOD,
+            RawBytes::serialize(params).unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // create declarations
+        let state: State = rt.get_state();
+        let deadlines = state.load_deadlines(rt.store()).unwrap();
+
+        let mut terminations: Vec<TerminationDeclaration> = Vec::new();
+
+        let policy = Policy::default();
+        for sector in sectors.iter() {
+            let (deadline, partition) = deadlines.find_sector(&policy, rt.store(), sector).unwrap();
+            terminations.push(TerminationDeclaration {
+                sectors: make_bitfield(&[sector]),
+                deadline,
+                partition,
+            });
+        }
+
+        let params = TerminateSectorsParams { terminations };
+
+        rt.call::<Actor>(Method::TerminateSectors as u64, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+
+        (-sector_power, pledge_delta)
+    }
+
+    pub fn change_peer_id(&self, rt: &mut MockRuntime, new_id: Vec<u8>) {
+        let params = ChangePeerIDParams { new_id: new_id.to_owned() };
+
+        rt.expect_validate_caller_addr(self.caller_addrs());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        rt.call::<Actor>(Method::ChangePeerID as u64, &RawBytes::serialize(params).unwrap())
+            .unwrap();
+        rt.verify();
+
+        let state: State = rt.get_state();
+        let info = state.get_info(rt.store()).unwrap();
+
+        assert_eq!(new_id, info.peer_id);
+    }
+
+    pub fn repay_debts(
+        &self,
+        rt: &mut MockRuntime,
+        value: &TokenAmount,
+        expected_repaid_from_vest: &TokenAmount,
+        expected_repaid_from_balance: &TokenAmount,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        rt.add_balance(value.clone());
+        rt.set_received(value.clone());
+        if expected_repaid_from_vest > &TokenAmount::zero() {
+            let pledge_delta = expected_repaid_from_vest.neg();
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                PowerMethod::UpdatePledgeTotal as u64,
+                RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let total_repaid = expected_repaid_from_vest + expected_repaid_from_balance;
+        if total_repaid > TokenAmount::zero() {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                total_repaid.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+        let result = rt.call::<Actor>(Method::RepayDebt as u64, &RawBytes::default())?;
+        expect_empty(result);
+        Ok(())
+    }
+
+    pub fn withdraw_funds(
+        &self,
+        rt: &mut MockRuntime,
+        from_address: Address,
+        amount_requested: &TokenAmount,
+        expected_withdrawn: &TokenAmount,
+        expected_debt_repaid: &TokenAmount,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from_address);
+        rt.expect_validate_caller_addr(vec![self.owner, self.beneficiary]);
+
+        if expected_withdrawn.is_positive() {
+            //no send when real withdraw amount is zero
+            rt.expect_send(
+                self.beneficiary,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_withdrawn.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        if expected_debt_repaid.is_positive() {
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_debt_repaid.clone(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+        let ret = rt
+            .call::<Actor>(
+                Method::WithdrawBalance as u64,
+                &RawBytes::serialize(WithdrawBalanceParams {
+                    amount_requested: amount_requested.clone(),
+                })
+                .unwrap(),
+            )?
+            .deserialize::<WithdrawBalanceReturn>()
+            .unwrap();
+        let withdrawn = ret.amount_withdrawn;
+        rt.verify();
+
+        assert_eq!(
+            expected_withdrawn, &withdrawn,
+            "return value indicates {} withdrawn but expected {}",
+            withdrawn, expected_withdrawn
+        );
+
+        Ok(())
+    }
+
+    pub fn check_sector_proven(
+        &self,
+        rt: &mut MockRuntime,
+        sector_number: SectorNumber,
+    ) -> Result<(), ActorError> {
+        let params = CheckSectorProvenParams { sector_number };
+        rt.expect_validate_caller_any();
+        rt.call::<Actor>(Method::CheckSectorProven as u64, &RawBytes::serialize(params).unwrap())?;
+        rt.verify();
+        Ok(())
+    }
+
+    pub fn change_worker_address(
+        &self,
+        rt: &mut MockRuntime,
+        new_worker: Address,
+        new_control_addresses: Vec<Address>,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_address_actor_type(new_worker.clone(), *ACCOUNT_ACTOR_CODE_ID);
+
+        let params = ChangeWorkerAddressParams {
+            new_worker: new_worker.clone(),
+            new_control_addresses: new_control_addresses.clone(),
+        };
+        rt.expect_send(
+            new_worker,
+            AccountMethod::PubkeyAddress as u64,
+            RawBytes::default(),
+            TokenAmount::zero(),
+            RawBytes::serialize(self.worker_key).unwrap(),
+            ExitCode::OK,
+        );
+
+        rt.expect_validate_caller_addr(vec![self.owner]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+        let ret = rt.call::<Actor>(
+            Method::ChangeWorkerAddress as u64,
+            &RawBytes::serialize(params).unwrap(),
+        );
+
+        if ret.is_err() {
+            rt.reset();
+            return ret;
+        }
+
+        rt.verify();
+
+        let state: State = rt.get_state();
+        let info = state.get_info(rt.store()).unwrap();
+
+        let control_addresses = new_control_addresses
+            .iter()
+            .map(|address| rt.get_id_address(&address).unwrap())
+            .collect_vec();
+        assert_eq!(control_addresses, info.control_addresses);
+
+        ret
+    }
+
+    pub fn confirm_update_worker_key(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
+        rt.expect_validate_caller_addr(vec![self.owner]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+        rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, &RawBytes::default())?;
+        rt.verify();
+
+        Ok(())
+    }
+
+    pub fn propose_approve_initial_beneficiary(
+        &mut self,
+        rt: &mut MockRuntime,
+        beneficiary_id_addr: Address,
+        beneficiary_term: BeneficiaryTerm,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+
+        let param = ChangeBeneficiaryParams {
+            new_beneficiary: beneficiary_id_addr,
+            new_quota: beneficiary_term.quota,
+            new_expiration: beneficiary_term.expiration,
+        };
+        let raw_bytes = &RawBytes::serialize(param).unwrap();
+        rt.call::<Actor>(Method::ChangeBeneficiary as u64, raw_bytes)?;
+        rt.verify();
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, beneficiary_id_addr);
+        rt.call::<Actor>(Method::ChangeBeneficiary as u64, raw_bytes)?;
+        rt.verify();
+
+        self.beneficiary = beneficiary_id_addr;
+        Ok(())
+    }
+
+    pub fn change_beneficiary(
+        &mut self,
+        rt: &mut MockRuntime,
+        expect_caller: Address,
+        beneficiary_change: &BeneficiaryChange,
+        expect_beneficiary_addr: Option<Address>,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_address_actor_type(
+            beneficiary_change.beneficiary_addr.clone(),
+            *ACCOUNT_ACTOR_CODE_ID,
+        );
+        let caller_id = rt.get_id_address(&expect_caller).unwrap();
+        let param = ChangeBeneficiaryParams {
+            new_beneficiary: beneficiary_change.beneficiary_addr,
+            new_quota: beneficiary_change.quota.clone(),
+            new_expiration: beneficiary_change.expiration,
+        };
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller_id);
+        let ret = rt.call::<Actor>(
+            Method::ChangeBeneficiary as u64,
+            &RawBytes::serialize(param).unwrap(),
+        )?;
+        rt.verify();
+
+        if let Some(beneficiary) = expect_beneficiary_addr {
+            let beneficiary_return = self.get_beneficiary(rt)?;
+            assert_eq!(beneficiary, beneficiary_return.active.beneficiary);
+            self.beneficiary = beneficiary.clone();
+        }
+
+        Ok(ret)
+    }
+
+    pub fn get_beneficiary(
+        &mut self,
+        rt: &mut MockRuntime,
+    ) -> Result<GetBeneficiaryReturn, ActorError> {
+        rt.expect_validate_caller_any();
+        let ret = rt.call::<Actor>(Method::GetBeneficiary as u64, &RawBytes::default())?;
+        rt.verify();
+        Ok(ret.deserialize::<GetBeneficiaryReturn>().unwrap())
+    }
+
+    pub fn extend_sectors(
+        &self,
+        rt: &mut MockRuntime,
+        mut params: ExtendSectorExpirationParams,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let mut qa_delta = BigInt::zero();
+        for extension in params.extensions.iter_mut() {
+            for sector_nr in extension.sectors.validate().unwrap().iter() {
+                let sector = self.get_sector(&rt, sector_nr);
+                let mut new_sector = sector.clone();
+                new_sector.expiration = extension.new_expiration;
+                qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
+                    - qa_power_for_sector(self.sector_size, &sector);
+            }
+        }
+
+        if !qa_delta.is_zero() {
+            let params = UpdateClaimedPowerParams {
+                raw_byte_delta: BigInt::zero(),
+                quality_adjusted_delta: qa_delta,
+            };
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_CLAIMED_POWER_METHOD,
+                RawBytes::serialize(params).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let ret = rt.call::<Actor>(
+            Method::ExtendSectorExpiration as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+
+        rt.verify();
+        Ok(ret)
+    }
+
+    pub fn compact_partitions(
+        &self,
+        rt: &mut MockRuntime,
+        deadline: u64,
+        partition: BitField,
+    ) -> Result<(), ActorError> {
+        let params = CompactPartitionsParams {
+            deadline,
+            partitions: UnvalidatedBitField::Validated(partition),
+        };
+
+        rt.expect_validate_caller_addr(self.caller_addrs());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        rt.call::<Actor>(Method::CompactPartitions as u64, &RawBytes::serialize(params).unwrap())?;
+        rt.verify();
+        Ok(())
+    }
+
+    pub fn get_info(&self, rt: &MockRuntime) -> MinerInfo {
+        let state: State = rt.get_state();
+        state.get_info(rt.store()).unwrap()
+    }
+
+    pub fn change_owner_address(
+        &self,
+        rt: &mut MockRuntime,
+        new_address: Address,
+    ) -> Result<RawBytes, ActorError> {
+        let expected = if rt.caller == self.owner {
+            self.owner
+        } else {
+            if let Some(pending_owner) = self.get_info(rt).pending_owner_address {
+                pending_owner
+            } else {
+                self.owner
+            }
+        };
+        rt.expect_validate_caller_addr(vec![expected]);
+        let ret = rt.call::<Actor>(
+            Method::ChangeOwnerAddress as u64,
+            &RawBytes::serialize(new_address).unwrap(),
+        );
+
+        if ret.is_ok() {
+            rt.verify();
+        } else {
+            rt.reset();
+        }
+        ret
+    }
 }
 
 #[allow(dead_code)]
@@ -1122,44 +2253,58 @@ impl PoStConfig {
     }
 }
 
-pub struct PreCommitConfig {
-    deal_weight: DealWeight,
-    verified_deal_weight: DealWeight,
-    deal_space: Option<SectorSize>,
-}
+#[derive(Default)]
+pub struct PreCommitConfig(pub SectorDealData);
 
 #[allow(dead_code)]
 impl PreCommitConfig {
     pub fn empty() -> PreCommitConfig {
-        PreCommitConfig {
-            deal_weight: DealWeight::from(0),
-            verified_deal_weight: DealWeight::from(0),
-            deal_space: None,
-        }
+        Self::new(None)
+    }
+
+    pub fn new(commd: Option<Cid>) -> PreCommitConfig {
+        PreCommitConfig { 0: SectorDealData { commd } }
+    }
+
+    pub fn default() -> PreCommitConfig {
+        Self::empty()
     }
 }
 
+#[derive(Default, Clone)]
 pub struct ProveCommitConfig {
-    verify_deals_exit: HashMap<SectorNumber, ExitCode>,
+    pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
+    pub deal_weights: HashMap<SectorNumber, DealWeights>,
 }
 
 #[allow(dead_code)]
 impl ProveCommitConfig {
     pub fn empty() -> ProveCommitConfig {
-        ProveCommitConfig { verify_deals_exit: HashMap::new() }
+        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_weights: HashMap::new() }
     }
 }
 
+#[derive(Default)]
+pub struct PreCommitBatchConfig {
+    pub sector_deal_data: Vec<SectorDealData>,
+    pub first_for_miner: bool,
+}
+
+#[derive(Default)]
 pub struct CronConfig {
-    no_enrollment: bool, // true if expect not to continue enrollment false otherwise
-    expected_enrollment: ChainEpoch,
-    detected_faults_power_delta: Option<PowerPair>,
-    expired_sectors_power_delta: Option<PowerPair>,
-    expired_sectors_pledge_delta: TokenAmount,
-    continued_faults_penalty: TokenAmount, // Expected amount burnt to pay continued fault penalties.
-    expired_precommit_penalty: TokenAmount, // Expected amount burnt to pay for expired precommits
-    repaid_fee_debt: TokenAmount,          // Expected amount burnt to repay fee debt.
-    penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds.
+    pub no_enrollment: bool,
+    // true if expect not to continue enrollment false otherwise
+    pub expected_enrollment: ChainEpoch,
+    pub detected_faults_power_delta: Option<PowerPair>,
+    pub expired_sectors_power_delta: Option<PowerPair>,
+    pub expired_sectors_pledge_delta: TokenAmount,
+    pub continued_faults_penalty: TokenAmount,
+    // Expected amount burnt to pay continued fault penalties.
+    pub expired_precommit_penalty: TokenAmount,
+    // Expected amount burnt to pay for expired precommits
+    pub repaid_fee_debt: TokenAmount,
+    // Expected amount burnt to repay fee debt.
+    pub penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds.
 }
 
 #[allow(dead_code)]
@@ -1170,12 +2315,28 @@ impl CronConfig {
             expected_enrollment: 0,
             detected_faults_power_delta: None,
             expired_sectors_power_delta: None,
-            expired_sectors_pledge_delta: TokenAmount::from(0),
-            continued_faults_penalty: TokenAmount::from(0),
-            expired_precommit_penalty: TokenAmount::from(0),
-            repaid_fee_debt: TokenAmount::from(0),
-            penalty_from_unlocked: TokenAmount::from(0),
+            expired_sectors_pledge_delta: TokenAmount::from(0u8),
+            continued_faults_penalty: TokenAmount::from(0u8),
+            expired_precommit_penalty: TokenAmount::from(0u8),
+            repaid_fee_debt: TokenAmount::from(0u8),
+            penalty_from_unlocked: TokenAmount::from(0u8),
         }
+    }
+
+    pub fn with_continued_faults_penalty(fault_fee: TokenAmount) -> CronConfig {
+        let mut cfg = CronConfig::empty();
+        cfg.continued_faults_penalty = fault_fee;
+        cfg
+    }
+
+    pub fn with_detected_faults_power_delta_and_continued_faults_penalty(
+        pwr_delta: &PowerPair,
+        fault_fee: TokenAmount,
+    ) -> CronConfig {
+        let mut cfg = CronConfig::empty();
+        cfg.detected_faults_power_delta = Some(pwr_delta.clone());
+        cfg.continued_faults_penalty = fault_fee;
+        cfg
     }
 }
 
@@ -1186,6 +2347,38 @@ pub struct PoStDisputeResult {
     pub expected_pledge_delta: Option<TokenAmount>,
     pub expected_penalty: Option<TokenAmount>,
     pub expected_reward: Option<TokenAmount>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BeneficiaryChange {
+    pub beneficiary_addr: Address,
+    pub quota: TokenAmount,
+    pub expiration: ChainEpoch,
+}
+
+impl BeneficiaryChange {
+    #[allow(dead_code)]
+    pub fn new(beneficiary_addr: Address, quota: TokenAmount, expiration: ChainEpoch) -> Self {
+        BeneficiaryChange { beneficiary_addr, quota, expiration }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_pending(pending_beneficiary: &PendingBeneficiaryChange) -> Self {
+        BeneficiaryChange {
+            beneficiary_addr: pending_beneficiary.new_beneficiary,
+            quota: pending_beneficiary.new_quota.clone(),
+            expiration: pending_beneficiary.new_expiration,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_active(info: &ActiveBeneficiary) -> Self {
+        BeneficiaryChange {
+            beneficiary_addr: info.beneficiary,
+            quota: info.term.quota.clone(),
+            expiration: info.term.expiration,
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -1207,10 +2400,19 @@ pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
     UnvalidatedBitField::Validated(BitField::try_from_bits(bits.iter().copied()).unwrap())
 }
 
-fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
+#[allow(dead_code)]
+pub fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
     match ubf {
         UnvalidatedBitField::Validated(bf) => bf.clone(),
         UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes).unwrap(),
+    }
+}
+
+#[allow(dead_code)]
+pub fn make_prove_commit_aggregate(sector_nos: &BitField) -> ProveCommitAggregateParams {
+    ProveCommitAggregateParams {
+        sector_numbers: UnvalidatedBitField::Validated(sector_nos.clone()),
+        aggregate_proof: vec![0; 1024],
     }
 }
 
@@ -1226,7 +2428,7 @@ enum MhCode {
 
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
-    let mut sum = TokenAmount::from(0);
+    let mut sum = TokenAmount::from(0u8);
     for vf in vesting.funds {
         if vf.epoch < rt.epoch {
             sum += vf.amount;
@@ -1270,6 +2472,42 @@ fn make_deferred_cron_event_params(
     }
 }
 
+fn make_fault_params_from_faulting_sectors(
+    rt: &MockRuntime,
+    state: &State,
+    fault_sector_infos: &[SectorOnChainInfo],
+) -> DeclareFaultsParams {
+    let mut declaration_map: BTreeMap<(u64, u64), FaultDeclaration> = BTreeMap::new();
+    for sector in fault_sector_infos {
+        let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+        match declaration_map.get_mut(&(dlidx, pidx)) {
+            Some(declaration) => {
+                declaration.sectors.validate_mut().unwrap().set(sector.sector_number);
+            }
+            None => {
+                let mut bf = BitField::new();
+                bf.set(sector.sector_number);
+
+                let declaration = FaultDeclaration {
+                    deadline: dlidx,
+                    partition: pidx,
+                    sectors: UnvalidatedBitField::Validated(bf),
+                };
+
+                declaration_map.insert((dlidx, pidx), declaration);
+            }
+        }
+    }
+
+    // I want to just write:
+    // let declarations = declaration_map.values().collect();
+    // but the compiler doesn't let me; so I do it by hand like a savange
+    let keys: Vec<(u64, u64)> = declaration_map.keys().cloned().collect();
+    let declarations = keys.iter().map(|k| declaration_map.remove(k).unwrap()).collect();
+
+    DeclareFaultsParams { faults: declarations }
+}
+
 #[allow(dead_code)]
 pub fn amt_to_vec<T>(rt: &MockRuntime, c: &Cid) -> Vec<T>
 where
@@ -1300,7 +2538,7 @@ fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
     let hash = move |_: &[u8]| -> [u8; 32] {
         let mut result = [0u8; 32];
         for (i, item) in result.iter_mut().enumerate().take(8) {
-            *item = ((offset >> (7 - i)) & 0xff) as u8;
+            *item = ((offset >> (8 * (7 - i))) & 0xff) as u8;
         }
         result
     };
@@ -1308,6 +2546,369 @@ fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
 }
 
 #[allow(dead_code)]
-pub fn check_state_invariants(_rt: &MockRuntime) {
-    // TODO check state invariants
+pub fn test_sector(
+    expiration: ChainEpoch,
+    sector_number: SectorNumber,
+    deal_weight: u64,
+    verified_deal_weight: u64,
+    pledge: u64,
+) -> SectorOnChainInfo {
+    SectorOnChainInfo {
+        expiration,
+        sector_number,
+        deal_weight: DealWeight::from(deal_weight),
+        verified_deal_weight: DealWeight::from(verified_deal_weight),
+        initial_pledge: TokenAmount::from(pledge),
+        sealed_cid: make_sealed_cid(format!("commR-{sector_number}").as_bytes()),
+        ..Default::default()
+    }
+}
+
+#[allow(dead_code)]
+pub fn sectors_arr_mbs(
+    store: &'_ MemoryBlockstore,
+    sectors_info: Vec<SectorOnChainInfo>,
+) -> Sectors<'_, MemoryBlockstore> {
+    let empty_array =
+        Amt::<(), _>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH).flush().unwrap();
+    let mut sectors = Sectors::load(store, &empty_array).unwrap();
+    sectors.store(sectors_info).unwrap();
+    sectors
+}
+
+#[allow(dead_code)]
+pub fn sectors_arr<'a, BS: Blockstore>(
+    store: &'a BS,
+    sectors_info: Vec<SectorOnChainInfo>,
+) -> Sectors<'a, BS> {
+    let empty_array =
+        Amt::<SectorOnChainInfo, _>::new_with_bit_width(&store, HAMT_BIT_WIDTH).flush().unwrap();
+    let mut sectors = Sectors::load(store, &empty_array).unwrap();
+    sectors.store(sectors_info).unwrap();
+    sectors
+}
+
+pub fn sectors_as_map(sectors: &[SectorOnChainInfo]) -> SectorsMap {
+    sectors.iter().map(|sector| (sector.sector_number, sector.to_owned())).collect()
+}
+
+// Helper type for validating deadline state.
+//
+// All methods take the state by value so one can (and should) construct a
+// sane base-state.
+
+pub struct ExpectedDeadlineState {
+    pub quant: QuantSpec,
+    #[allow(dead_code)]
+    pub sector_size: SectorSize,
+    #[allow(dead_code)]
+    pub partition_size: u64,
+    #[allow(dead_code)]
+    pub sectors: Vec<SectorOnChainInfo>,
+    pub faults: BitField,
+    pub recovering: BitField,
+    pub terminations: BitField,
+    pub unproven: BitField,
+    pub posts: BitField,
+    pub partition_sectors: Vec<BitField>,
+}
+
+impl Default for ExpectedDeadlineState {
+    fn default() -> Self {
+        Self {
+            quant: QuantSpec { offset: 0, unit: 0 },
+            sector_size: SectorSize::_32GiB,
+            partition_size: 0,
+            sectors: vec![],
+            faults: BitField::default(),
+            recovering: BitField::default(),
+            terminations: BitField::default(),
+            unproven: BitField::default(),
+            posts: BitField::default(),
+            partition_sectors: vec![],
+        }
+    }
+}
+
+impl ExpectedDeadlineState {
+    #[allow(dead_code)]
+    pub fn with_quant_spec(mut self, quant: QuantSpec) -> Self {
+        self.quant = quant;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_faults(mut self, faults: &[u64]) -> Self {
+        self.faults = bitfield_from_slice(faults);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_recovering(mut self, recovering: &[u64]) -> Self {
+        self.recovering = bitfield_from_slice(recovering);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_terminations(mut self, terminations: &[u64]) -> Self {
+        self.terminations = bitfield_from_slice(terminations);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_unproven(mut self, unproven: &[u64]) -> Self {
+        self.unproven = bitfield_from_slice(unproven);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_posts(mut self, posts: &[u64]) -> Self {
+        self.posts = bitfield_from_slice(posts);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_partitions(mut self, partitions: Vec<BitField>) -> Self {
+        self.partition_sectors = partitions;
+        self
+    }
+
+    /// Assert that the deadline's state matches the expected state.
+    #[allow(dead_code)]
+    pub fn assert<BS: Blockstore>(
+        self,
+        store: &BS,
+        sectors: &[SectorOnChainInfo],
+        deadline: &Deadline,
+    ) -> Self {
+        let summary = self.check_deadline_invariants(store, sectors, deadline);
+
+        assert_eq!(self.faults, summary.faulty_sectors);
+        assert_eq!(self.recovering, summary.recovering_sectors);
+        assert_eq!(self.terminations, summary.terminated_sectors);
+        assert_eq!(self.unproven, summary.unproven_sectors);
+        assert_eq!(self.posts, deadline.partitions_posted);
+
+        let partitions = deadline.partitions_amt(store).unwrap();
+        assert_eq!(
+            self.partition_sectors.len() as u64,
+            partitions.count(),
+            "unexpected number of partitions"
+        );
+
+        for (i, partition_sectors) in self.partition_sectors.iter().enumerate() {
+            let partitions = partitions.get(i as u64).unwrap().unwrap();
+            assert_eq!(partition_sectors, &partitions.sectors);
+        }
+
+        self
+    }
+
+    // check the deadline's invariants, returning all contained sectors, faults,
+    // recoveries, terminations, and partition/sector assignments.
+    pub fn check_deadline_invariants<BS: Blockstore>(
+        &self,
+        store: &BS,
+        sectors: &[SectorOnChainInfo],
+        deadline: &Deadline,
+    ) -> DeadlineStateSummary {
+        let acc = MessageAccumulator::default();
+        let summary = check_deadline_state_invariants(
+            deadline,
+            store,
+            self.quant,
+            self.sector_size,
+            &sectors_as_map(sectors),
+            &acc,
+        );
+
+        assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
+
+        summary
+    }
+}
+
+/// Create a bitfield with count bits set, starting at "start".
+#[allow(dead_code)]
+pub fn seq(start: u64, count: u64) -> BitField {
+    let ranges = Ranges::new([start..(start + count)]);
+    BitField::from_ranges(ranges)
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Default)]
+pub struct CronControl {
+    pub pre_commit_num: u64,
+}
+
+#[allow(dead_code)]
+impl CronControl {
+    pub fn require_cron_inactive(&self, h: &ActorHarness, rt: &MockRuntime) {
+        let st = h.get_state(&rt);
+        assert!(!st.deadline_cron_active); // No cron running now
+        assert!(!st.continue_deadline_cron()); // No reason to cron now, state inactive
+    }
+
+    pub fn require_cron_active(&self, h: &ActorHarness, rt: &MockRuntime) {
+        let st = h.get_state(rt);
+        assert!(st.deadline_cron_active);
+        assert!(st.continue_deadline_cron());
+    }
+
+    // Start cron by precommitting at preCommitEpoch, return clean up epoch.
+    // Verifies that cron is not started, precommit is run and cron is enrolled.
+    // Returns epoch at which precommit is scheduled for clean up and removed from state by cron.
+    pub fn pre_commit_to_start_cron(
+        &mut self,
+        h: &ActorHarness,
+        rt: &mut MockRuntime,
+        pre_commit_epoch: ChainEpoch,
+    ) -> ChainEpoch {
+        rt.set_epoch(pre_commit_epoch);
+        let st = h.get_state(rt);
+        self.require_cron_inactive(h, rt);
+
+        let dlinfo = new_deadline_info_from_offset_and_epoch(
+            &rt.policy,
+            st.proving_period_start,
+            pre_commit_epoch,
+        ); // actor.deadline might be out of date
+        let sector_no = self.pre_commit_num;
+        self.pre_commit_num += 1;
+        let expiration =
+            dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION as i64 * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
+        let precommit_params =
+            h.make_pre_commit_params(sector_no, pre_commit_epoch - 1, expiration, vec![]);
+        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::default(), true).unwrap();
+
+        // PCD != 0 so cron must be active
+        self.require_cron_active(h, rt);
+
+        let clean_up_epoch = pre_commit_epoch
+            + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
+            + rt.policy.expired_pre_commit_clean_up_delay;
+        clean_up_epoch
+    }
+
+    // Stop cron by advancing to the preCommit clean up epoch.
+    // Assumes no proved sectors, no vesting funds.
+    // Verifies cron runs until clean up, PCD burnt and cron discontinued during last deadline
+    // Return open of first deadline after expiration.
+    fn expire_pre_commit_stop_cron(
+        &self,
+        h: &ActorHarness,
+        rt: &mut MockRuntime,
+        start_epoch: ChainEpoch,
+        clean_up_epoch: ChainEpoch,
+    ) -> ChainEpoch {
+        self.require_cron_active(h, rt);
+        let st = h.get_state(rt);
+
+        let mut dlinfo = new_deadline_info_from_offset_and_epoch(
+            &rt.policy,
+            st.proving_period_start,
+            start_epoch,
+        ); // actor.deadline might be out of date
+        while dlinfo.open <= clean_up_epoch {
+            // PCDs are quantized to be burnt on the *next* new deadline after the one they are cleaned up in
+            // asserts cron is rescheduled
+            dlinfo = h.advance_deadline(rt, CronConfig::empty());
+        }
+        // We expect PCD burnt and cron not rescheduled here.
+        rt.set_epoch(dlinfo.last());
+        h.on_deadline_cron(
+            rt,
+            CronConfig {
+                no_enrollment: true,
+                expired_precommit_penalty: st.pre_commit_deposits,
+                ..CronConfig::empty()
+            },
+        );
+        rt.set_epoch(dlinfo.next_open());
+
+        self.require_cron_inactive(h, rt);
+        rt.epoch
+    }
+
+    pub fn pre_commit_start_cron_expire_stop_cron(
+        &mut self,
+        h: &ActorHarness,
+        rt: &mut MockRuntime,
+        start_epoch: ChainEpoch,
+    ) -> ChainEpoch {
+        let clean_up_epoch = self.pre_commit_to_start_cron(h, rt, start_epoch);
+        self.expire_pre_commit_stop_cron(h, rt, start_epoch, clean_up_epoch)
+    }
+}
+
+#[allow(dead_code)]
+pub fn bitfield_from_slice(sector_numbers: &[u64]) -> BitField {
+    BitField::try_from_bits(sector_numbers.iter().copied()).unwrap()
+}
+
+#[derive(Default, Clone)]
+pub struct BitFieldQueueExpectation {
+    pub expected: BTreeMap<ChainEpoch, Vec<u64>>,
+}
+
+impl BitFieldQueueExpectation {
+    #[allow(dead_code)]
+    pub fn add(&self, epoch: ChainEpoch, values: &[u64]) -> Self {
+        let mut expected = self.expected.clone();
+        let _ = expected.insert(epoch, values.to_vec());
+        Self { expected }
+    }
+
+    #[allow(dead_code)]
+    pub fn equals<BS: Blockstore>(&self, queue: &BitFieldQueue<BS>) {
+        // ensure cached changes are ready to be iterated
+
+        let length = queue.amt.count();
+        assert_eq!(self.expected.len(), length as usize);
+
+        queue
+            .amt
+            .for_each(|epoch, bf| {
+                let values = self
+                    .expected
+                    .get(&(epoch as i64))
+                    .unwrap_or_else(|| panic!("expected entry at epoch {}", epoch));
+
+                assert_bitfield_equals(bf, values);
+                Ok(())
+            })
+            .unwrap();
+    }
+}
+
+#[allow(dead_code)]
+pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<SectorOnChainInfo> {
+    let mut to_include: BTreeSet<_> = field.iter().collect();
+    let included =
+        sectors.iter().filter(|sector| to_include.remove(&sector.sector_number)).cloned().collect();
+
+    assert!(to_include.is_empty(), "failed to find {} expected sectors", to_include.len());
+
+    included
+}
+
+#[allow(dead_code)]
+pub fn require_no_expiration_groups_before(
+    epoch: ChainEpoch,
+    queue: &mut ExpirationQueue<'_, MemoryBlockstore>,
+) {
+    queue.amt.flush().unwrap();
+
+    let set = queue.pop_until(epoch - 1).unwrap();
+    assert!(set.is_empty());
+}
+
+pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {
+    let (_, acc) = check_state_invariants(
+        rt.policy(),
+        &rt.get_state::<State>(),
+        rt.store(),
+        &rt.get_balance(),
+    );
+    assert!(acc.is_empty(), "{}", acc.messages().join("\n"));
 }

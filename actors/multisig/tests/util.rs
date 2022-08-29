@@ -1,15 +1,17 @@
 use fil_actor_multisig::{
     compute_proposal_hash, Actor, AddSignerParams, ApproveReturn, ConstructorParams, Method,
-    ProposeParams, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID, TxnIDParams,
+    ProposeParams, ProposeReturn, RemoveSignerParams, State, SwapSignerParams, Transaction, TxnID,
+    TxnIDParams,
 };
 use fil_actor_multisig::{ChangeNumApprovalsThresholdParams, LockBalanceParams};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
-use fil_actors_runtime::{make_map_with_root, parse_uint_key, ActorError};
+use fil_actors_runtime::{make_map_with_root, ActorError};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use integer_encoding::VarInt;
 
 use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
@@ -94,12 +96,8 @@ impl ActorHarness {
         method: MethodNum,
         params: RawBytes,
     ) -> [u8; 32] {
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
-        let propose_params =
-            ProposeParams { to, value: value.clone(), method, params: params.clone() };
-        rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap())
-            .unwrap();
-        rt.verify();
+        let ret = self.propose(rt, to, value.clone(), method, params.clone());
+        ret.unwrap().deserialize::<ProposeReturn>().unwrap();
         // compute proposal hash
         let txn = Transaction { to, value, method, params, approved: vec![rt.caller] };
         compute_proposal_hash(&txn, rt).unwrap()
@@ -117,6 +115,22 @@ impl ActorHarness {
         let approve_ret = ret.deserialize::<ApproveReturn>().unwrap();
         assert_eq!(ExitCode::OK, approve_ret.code);
         approve_ret.ret
+    }
+
+    pub fn propose(
+        &self,
+        rt: &mut MockRuntime,
+        to: Address,
+        value: TokenAmount,
+        method: MethodNum,
+        params: RawBytes,
+    ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        let propose_params = ProposeParams { to, value, method, params };
+        let ret =
+            rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap());
+        rt.verify();
+        ret
     }
 
     pub fn approve(
@@ -191,7 +205,8 @@ impl ActorHarness {
         let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &rt.store).unwrap();
         let mut actual_txns = Vec::new();
         ptx.for_each(|k, txn: &Transaction| {
-            actual_txns.push((TxnID(parse_uint_key(k)? as i64), txn.clone()));
+            let id = i64::decode_var(k).unwrap().0;
+            actual_txns.push((TxnID(id), txn.clone()));
             Ok(())
         })
         .unwrap();

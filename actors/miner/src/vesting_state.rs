@@ -13,7 +13,7 @@ use num_traits::Zero;
 use super::VestSpec;
 
 // Represents miner funds that will vest at the given epoch.
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct VestingFund {
     pub epoch: ChainEpoch,
     #[serde(with = "bigint_ser")]

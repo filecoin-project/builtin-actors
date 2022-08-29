@@ -1,11 +1,13 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, resolve_to_id_addr, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{
+    actor_error, cbor, resolve_to_actor_id, ActorDowncast, ActorError, Array,
+};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Sign};
 use fvm_shared::econ::TokenAmount;
@@ -21,6 +23,7 @@ pub use self::types::*;
 fil_actors_runtime::wasm_trampoline!(Actor);
 
 mod state;
+pub mod testing;
 mod types;
 
 // * Updated to specs-actors commit: f47f461b0588e9f0c20c999f6f129c85d669a7aa (v3.0.2)
@@ -72,10 +75,10 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let resolved = resolve_to_id_addr(rt, raw).map_err(|e| {
+        let resolved = resolve_to_actor_id(rt, raw).map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", raw),
+                format!("failed to resolve address {} to ID", raw),
             )
         })?;
 
@@ -84,7 +87,6 @@ impl Actor {
             .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", resolved))?;
 
         let typ = rt.resolve_builtin_actor_type(&code_cid);
-
         if typ != Some(Type::Account) {
             Err(actor_error!(
                 forbidden,
@@ -94,7 +96,7 @@ impl Actor {
                 typ
             ))
         } else {
-            Ok(resolved)
+            Ok(Address::new_id(resolved))
         }
     }
 
@@ -140,17 +142,17 @@ impl Actor {
         })?;
 
         let pch_addr = rt.message().receiver();
-        let svpch_id_addr = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {
+        let svpch_id = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {
             actor_error!(
                 illegal_argument,
                 "voucher payment channel address {} does not resolve to an ID address",
                 sv.channel_addr
             )
         })?;
-        if pch_addr != svpch_id_addr {
+        if pch_addr != Address::new_id(svpch_id) {
             return Err(actor_error!(illegal_argument;
                     "voucher payment channel address {} does not match receiver {}",
-                    svpch_id_addr, pch_addr));
+                    svpch_id, pch_addr));
         }
 
         if rt.curr_epoch() < sv.time_lock_min {
@@ -174,13 +176,8 @@ impl Actor {
         }
 
         if let Some(extra) = &sv.extra {
-            rt.send(
-                extra.actor,
-                extra.method,
-                RawBytes::serialize(&extra.data)?,
-                TokenAmount::from(0u8),
-            )
-            .map_err(|e| e.wrap("spend voucher verification failed"))?;
+            rt.send(extra.actor, extra.method, extra.data.clone(), TokenAmount::from(0u8))
+                .map_err(|e| e.wrap("spend voucher verification failed"))?;
         }
 
         rt.transaction(|st: &mut State, rt| {

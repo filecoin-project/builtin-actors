@@ -1,16 +1,13 @@
 use fil_actor_account::State as AccountState;
-use fil_actors_runtime::FIRST_NON_SINGLETON_ADDR;
-use fil_actors_runtime::{
-    test_utils::{make_builtin, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID},
-    INIT_ACTOR_ADDR,
-};
+use fil_actors_runtime::test_utils::{make_builtin, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
-use test_vm::{actor, VM};
+use test_vm::util::pk_addrs_from;
+use test_vm::{actor, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 #[test]
 fn state_control() {
@@ -35,6 +32,10 @@ fn state_control() {
     // a2 is gone
     assert_eq!(None, v.get_actor(addr2));
     assert_eq!(v.get_actor(addr1).unwrap(), a1);
+
+    let invariants_check = v.check_state_invariants();
+    assert!(invariants_check.is_err());
+    assert!(invariants_check.unwrap_err().to_string().contains("AccountState is empty"));
 }
 
 fn assert_account_actor(
@@ -60,21 +61,21 @@ fn test_sent() {
     // send to uninitialized account actor
     let addr1 = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     v.apply_message(
-        *INIT_ACTOR_ADDR,
+        TEST_FAUCET_ADDR,
         addr1,
         TokenAmount::from(42u8),
         METHOD_SEND,
         RawBytes::default(),
     )
     .unwrap();
-    let expect_id_addr1 = Address::new_id(FIRST_NON_SINGLETON_ADDR);
+    let expect_id_addr1 = Address::new_id(FIRST_TEST_USER_ADDR);
     assert_account_actor(0, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
 
     // send from this account actor to another uninit account actor
     let addr2 = Address::new_bls(&[2; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     v.apply_message(addr1, addr2, TokenAmount::from(41u8), METHOD_SEND, RawBytes::default())
         .unwrap();
-    let expect_id_addr2 = Address::new_id(FIRST_NON_SINGLETON_ADDR + 1);
+    let expect_id_addr2 = Address::new_id(FIRST_TEST_USER_ADDR + 1);
     assert_account_actor(0, TokenAmount::from(41u8), addr2, &v, expect_id_addr2);
 
     // send between two initialized account actors
@@ -100,7 +101,7 @@ fn test_sent() {
     let mres = v
         .apply_message(
             addr1,
-            Address::new_id(99),
+            Address::new_id(88),
             TokenAmount::from(1u8),
             METHOD_SEND,
             RawBytes::default(),
@@ -109,4 +110,14 @@ fn test_sent() {
     assert_eq!(ExitCode::SYS_INVALID_RECEIVER, mres.code);
     assert_account_actor(3, TokenAmount::from(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::from(0u8), addr2, &v, expect_id_addr2);
+    v.assert_state_invariants();
+}
+
+#[test]
+fn test_pk_gen() {
+    let addrs = pk_addrs_from(5, 2);
+    let second_addr_seeded_five = addrs[1];
+    let addrs = pk_addrs_from(6, 1);
+    let first_addr_seeded_six = addrs[0];
+    assert_ne!(second_addr_seeded_five, first_addr_seeded_six);
 }

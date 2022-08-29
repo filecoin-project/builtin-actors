@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::sector::StoragePower;
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifierParams {
@@ -15,14 +15,17 @@ pub struct VerifierParams {
     pub allowance: DataCap,
 }
 
+impl Cbor for VerifierParams {}
+
 pub type AddVerifierParams = VerifierParams;
+
 pub type AddVerifierClientParams = VerifierParams;
 
 /// DataCap is an integer number of bytes.
 /// We can introduce policy changes and replace this in the future.
 pub type DataCap = StoragePower;
 
-#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct BytesParams {
     /// Address of verified client.
     pub address: Address,
@@ -33,6 +36,10 @@ pub struct BytesParams {
 
 pub type UseBytesParams = BytesParams;
 pub type RestoreBytesParams = BytesParams;
+
+pub const SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP: &[u8] = b"fil_removedatacap:";
+
+impl Cbor for RemoveDataCapParams {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveDataCapParams {
@@ -49,6 +56,8 @@ pub struct RemoveDataCapRequest {
     pub signature: Signature,
 }
 
+impl Cbor for RemoveDataCapReturn {}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveDataCapReturn {
     pub verified_client: Address,
@@ -56,9 +65,10 @@ pub struct RemoveDataCapReturn {
     pub data_cap_removed: DataCap,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
-#[serde(transparent)]
-pub struct RemoveDataCapProposalID(pub u64);
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveDataCapProposalID {
+    pub id: u64,
+}
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveDataCapProposal {

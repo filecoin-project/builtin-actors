@@ -15,7 +15,7 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{bigint_ser, BigInt};
+use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -30,9 +30,9 @@ use super::{CONSENSUS_MINER_MIN_MINERS, CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT
 
 lazy_static! {
     /// genesis power in bytes = 750,000 GiB
-    static ref INITIAL_QA_POWER_ESTIMATE_POSITION: BigInt = BigInt::from(750_000) * (1 << 30);
+    pub static ref INITIAL_QA_POWER_ESTIMATE_POSITION: StoragePower = StoragePower::from(750_000) * (1 << 30);
     /// max chain throughput in bytes per epoch = 120 ProveCommits / epoch = 3,840 GiB
-    static ref INITIAL_QA_POWER_ESTIMATE_VELOCITY: BigInt = BigInt::from(3_840) * (1 << 30);
+    pub static ref INITIAL_QA_POWER_ESTIMATE_VELOCITY: StoragePower = StoragePower::from(3_840) * (1 << 30);
 }
 
 /// Storage power actor state
@@ -88,10 +88,10 @@ impl State {
         Ok(State {
             cron_event_queue: empty_mmap,
             claims: empty_map,
-            this_epoch_qa_power_smoothed: FilterEstimate {
-                position: INITIAL_QA_POWER_ESTIMATE_POSITION.clone(),
-                velocity: INITIAL_QA_POWER_ESTIMATE_VELOCITY.clone(),
-            },
+            this_epoch_qa_power_smoothed: FilterEstimate::new(
+                INITIAL_QA_POWER_ESTIMATE_POSITION.clone(),
+                INITIAL_QA_POWER_ESTIMATE_VELOCITY.clone(),
+            ),
             ..Default::default()
         })
     }
@@ -378,14 +378,14 @@ pub fn set_claim<BS: Blockstore>(
     Ok(())
 }
 
-pub(super) fn epoch_key(e: ChainEpoch) -> BytesKey {
+pub fn epoch_key(e: ChainEpoch) -> BytesKey {
     let bz = e.encode_var_vec();
     bz.into()
 }
 
 impl Cbor for State {}
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple, Clone, PartialEq)]
+#[derive(Debug, Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq)]
 pub struct Claim {
     /// Miner's proof type used to determine minimum miner size
     pub window_post_proof_type: RegisteredPoStProof,

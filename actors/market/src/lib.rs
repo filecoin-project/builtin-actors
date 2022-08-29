@@ -1,12 +1,13 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use cid::multihash::{Code, MultihashGeneric};
+use cid::Cid;
 use std::collections::{BTreeMap, BTreeSet};
 
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, RawBytes};
-use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
@@ -15,17 +16,19 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::StoragePower;
+use fvm_shared::sector::{RegisteredSealProof, SectorSize, StoragePower};
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
 use fil_actors_runtime::cbor::serialize_vec;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE,
+    CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 use crate::ext::verifreg::UseBytesParams;
@@ -35,11 +38,14 @@ use self::policy::*;
 pub use self::state::*;
 pub use self::types::*;
 
-pub mod balance_table; // export for testing
-mod deal;
+// exports for testing
+pub mod balance_table;
 #[doc(hidden)]
-pub mod ext; // export for testing
-pub mod policy; // export for testing
+pub mod ext;
+pub mod policy;
+pub mod testing;
+
+mod deal;
 mod state;
 mod types;
 
@@ -48,14 +54,14 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 
 fn request_miner_control_addrs<BS, RT>(
     rt: &mut RT,
-    miner_addr: Address,
+    miner_id: ActorID,
 ) -> Result<(Address, Address, Vec<Address>), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     let ret = rt.send(
-        miner_addr,
+        Address::new_id(miner_id),
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
         TokenAmount::zero(),
@@ -84,6 +90,7 @@ pub enum Method {
 
 /// Market Actor
 pub struct Actor;
+
 impl Actor {
     pub fn constructor<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
     where
@@ -223,13 +230,13 @@ impl Actor {
 
         // All deals should have the same provider so get worker once
         let provider_raw = params.deals[0].proposal.provider;
-        let provider = rt.resolve_address(&provider_raw).ok_or_else(|| {
+        let provider_id = rt.resolve_address(&provider_raw).ok_or_else(|| {
             actor_error!(not_found, "failed to resolve provider address {}", provider_raw)
         })?;
 
         let code_id = rt
-            .get_actor_code_cid(&provider)
-            .ok_or_else(|| actor_error!(illegal_argument, "no code ID for address {}", provider))?;
+            .get_actor_code_cid(&provider_id)
+            .ok_or_else(|| actor_error!(not_found, "no code ID for address {}", provider_id))?;
 
         if rt.resolve_builtin_actor_type(&code_id) != Some(Type::Miner) {
             return Err(actor_error!(
@@ -238,7 +245,7 @@ impl Actor {
             ));
         }
 
-        let (_, worker, controllers) = request_miner_control_addrs(rt, provider)?;
+        let (_, worker, controllers) = request_miner_control_addrs(rt, provider_id)?;
         let caller = rt.message().caller();
         let mut caller_ok = caller == worker;
         for controller in controllers.iter() {
@@ -252,7 +259,7 @@ impl Actor {
                 forbidden,
                 "caller {} is not worker or control address of provider {}",
                 caller,
-                provider
+                provider_id
             ));
         }
 
@@ -284,14 +291,16 @@ impl Actor {
                 continue;
             }
 
-            if deal.proposal.provider != provider && deal.proposal.provider != provider_raw {
+            if deal.proposal.provider != Address::new_id(provider_id)
+                && deal.proposal.provider != provider_raw
+            {
                 info!(
                     "invalid deal {}: cannot publish deals from multiple providers in one batch",
                     di
                 );
                 continue;
             }
-            let client = match rt.resolve_address(&deal.proposal.client) {
+            let client_id = match rt.resolve_address(&deal.proposal.client) {
                 Some(client) => client,
                 _ => {
                     info!(
@@ -303,24 +312,28 @@ impl Actor {
             };
 
             // drop deals with insufficient lock up to cover costs
-            let client_id = client.id().expect("resolved address should be an ID address");
-            let lockup = total_client_lockup.entry(client_id).or_default();
-            *lockup += deal.proposal.client_balance_requirement();
+            let mut client_lockup =
+                total_client_lockup.get(&client_id).cloned().unwrap_or_default();
+            client_lockup += deal.proposal.client_balance_requirement();
 
-            let client_balance_ok = msm.balance_covered(client, lockup).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to check client balance coverage",
-                )
-            })?;
+            let client_balance_ok =
+                msm.balance_covered(Address::new_id(client_id), &client_lockup).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to check client balance coverage",
+                    )
+                })?;
 
             if !client_balance_ok {
                 info!("invalid deal: {}: insufficient client funds to cover proposal cost", di);
                 continue;
             }
-            total_provider_lockup += &deal.proposal.provider_collateral;
-            let provider_balance_ok =
-                msm.balance_covered(provider, &total_provider_lockup).map_err(|e| {
+
+            let mut provider_lockup = total_provider_lockup.clone();
+            provider_lockup += &deal.proposal.provider_collateral;
+            let provider_balance_ok = msm
+                .balance_covered(Address::new_id(provider_id), &provider_lockup)
+                .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check provider balance coverage",
@@ -336,8 +349,8 @@ impl Actor {
             // Normalise provider and client addresses in the proposal stored on chain.
             // Must happen after signature verification and before taking cid.
 
-            deal.proposal.provider = provider;
-            deal.proposal.client = client;
+            deal.proposal.provider = Address::new_id(provider_id);
+            deal.proposal.client = Address::new_id(client_id);
             let pcid = deal.proposal.cid().map_err(
                 |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
             )?;
@@ -364,7 +377,7 @@ impl Actor {
                     *VERIFIED_REGISTRY_ACTOR_ADDR,
                     crate::ext::verifreg::USE_BYTES_METHOD as u64,
                     RawBytes::serialize(UseBytesParams {
-                        address: client,
+                        address: Address::new_id(client_id),
                         deal_size: BigInt::from(deal.proposal.piece_size.0),
                     })?,
                     TokenAmount::zero(),
@@ -374,6 +387,8 @@ impl Actor {
                 }
             }
 
+            total_provider_lockup = provider_lockup;
+            total_client_lockup.insert(client_id, client_lockup);
             proposal_cid_lookup.insert(pcid);
             valid_proposal_cids.push(pcid);
             valid_deals.push(deal);
@@ -454,9 +469,7 @@ impl Actor {
     }
 
     /// Verify that a given set of storage deals is valid for a sector currently being PreCommitted
-    /// and return DealWeight of the set of storage deals given.
-    /// The weight is defined as the sum, over all deals in the set, of the product of deal size
-    /// and duration.
+    /// and return UnsealedCID for the set of deals.
     fn verify_deals_for_activation<BS, RT>(
         rt: &mut RT,
         params: VerifyDealsForActivationParams,
@@ -474,14 +487,19 @@ impl Actor {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
         })?;
 
-        let mut weights = Vec::with_capacity(params.sectors.len());
+        let mut sectors_data = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
-            let (deal_weight, verified_deal_weight, deal_space) = validate_and_compute_deal_weight(
+            let sector_size = sector
+                .sector_type
+                .sector_size()
+                .map_err(|e| actor_error!(illegal_argument, "sector size unknown: {}", e))?;
+            validate_and_compute_deal_weight(
                 &proposals,
                 &sector.deal_ids,
                 &miner_addr,
                 sector.sector_expiry,
                 curr_epoch,
+                Some(sector_size),
             )
             .map_err(|e| {
                 e.downcast_default(
@@ -489,15 +507,25 @@ impl Actor {
                     "failed to validate deal proposals for activation",
                 )
             })?;
-            weights.push(SectorWeights { deal_space, deal_weight, verified_deal_weight });
+
+            let commd = if sector.deal_ids.is_empty() {
+                None
+            } else {
+                Some(compute_data_commitment(rt, &proposals, sector.sector_type, &sector.deal_ids)?)
+            };
+
+            sectors_data.push(SectorDealData { commd });
         }
 
-        Ok(VerifyDealsForActivationReturn { sectors: weights })
+        Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
     }
-
-    /// Verify that a given set of storage deals is valid for a sector currently being ProveCommitted,
-    /// update the market's internal state accordingly.
-    fn activate_deals<BS, RT>(rt: &mut RT, params: ActivateDealsParams) -> Result<(), ActorError>
+    /// Activate a set of deals, returning the combined deal weights.
+    /// The weight is defined as the sum, over all deals in the set, of the product of deal size
+    /// and duration.
+    fn activate_deals<BS, RT>(
+        rt: &mut RT,
+        params: ActivateDealsParams,
+    ) -> Result<ActivateDealsResult, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -506,23 +534,30 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        // Update deal states
-        rt.transaction(|st: &mut State, rt| {
-            validate_deals_for_activation(
-                st,
-                rt.store(),
+        let deal_weights = {
+            let st: State = rt.state()?;
+            let proposals = DealArray::load(&st.proposals, rt.store()).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
+            })?;
+
+            validate_and_compute_deal_weight(
+                &proposals,
                 &params.deal_ids,
                 &miner_addr,
                 params.sector_expiry,
                 curr_epoch,
+                None,
             )
             .map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to validate deal proposals for activation",
                 )
-            })?;
+            })?
+        };
 
+        // Update deal states
+        rt.transaction(|st: &mut State, rt| {
             let mut msm = st.mutator(rt.store());
             msm.with_deal_states(Permission::Write)
                 .with_pending_proposals(Permission::ReadOnly)
@@ -562,9 +597,7 @@ impl Actor {
                     })?
                     .ok_or_else(|| actor_error!(not_found, "no such deal_id: {}", deal_id))?;
 
-                let propc = proposal
-                    .cid()
-                    .map_err(|e| ActorError::from(e).wrap("failed to calculate proposal Cid"))?;
+                let propc = cid(rt, proposal)?;
 
                 let has =
                     msm.pending_deals.as_ref().unwrap().has(&propc.to_bytes()).map_err(|e| {
@@ -604,10 +637,11 @@ impl Actor {
             msm.commit_state().map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush state")
             })?;
+
             Ok(())
         })?;
 
-        Ok(())
+        Ok(ActivateDealsResult { weights: deal_weights })
     }
 
     /// Terminate a set of deals in response to their containing sector being terminated.
@@ -716,29 +750,12 @@ impl Actor {
         })?;
         let mut commds = Vec::with_capacity(params.inputs.len());
         for comm_input in params.inputs.iter() {
-            let mut pieces: Vec<PieceInfo> = Vec::with_capacity(comm_input.deal_ids.len());
-            for deal_id in &comm_input.deal_ids {
-                let deal = proposals
-                    .get(*deal_id)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to get deal_id ({})", deal_id),
-                        )
-                    })?
-                    .ok_or_else(|| {
-                        actor_error!(not_found, "proposal doesn't exist ({})", deal_id)
-                    })?;
-                pieces.push(PieceInfo { cid: deal.piece_cid, size: deal.piece_size });
-            }
-            let commd =
-                rt.compute_unsealed_sector_cid(comm_input.sector_type, &pieces).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_ARGUMENT,
-                        "failed to compute unsealed sector CID",
-                    )
-                })?;
-            commds.push(commd);
+            commds.push(compute_data_commitment(
+                rt,
+                &proposals,
+                comm_input.sector_type,
+                &comm_input.deal_ids,
+            )?);
         }
 
         Ok(ComputeDataCommitmentReturn { commds })
@@ -805,10 +822,7 @@ impl Actor {
                         })?
                         .clone();
 
-                    let dcid = deal.cid().map_err(|e| {
-                        ActorError::from(e)
-                            .wrap(format!("failed to calculate cid for proposal {}", deal_id))
-                    })?;
+                    let dcid = cid(rt, &deal)?;
 
                     let state = msm
                         .deal_states
@@ -1042,22 +1056,32 @@ impl Actor {
     }
 }
 
-/// Validates a collection of deal dealProposals for activation, and returns their combined weight,
-/// split into regular deal weight and verified deal weight.
-pub fn validate_deals_for_activation<BS>(
-    st: &State,
-    store: &BS,
+fn compute_data_commitment<BS, RT>(
+    rt: &RT,
+    proposals: &DealArray<BS>,
+    sector_type: RegisteredSealProof,
     deal_ids: &[DealID],
-    miner_addr: &Address,
-    sector_expiry: ChainEpoch,
-    curr_epoch: ChainEpoch,
-) -> anyhow::Result<(BigInt, BigInt, u64)>
+) -> Result<Cid, ActorError>
 where
     BS: Blockstore,
+    RT: Runtime<BS>,
 {
-    let proposals = DealArray::load(&st.proposals, store)?;
-
-    validate_and_compute_deal_weight(&proposals, deal_ids, miner_addr, sector_expiry, curr_epoch)
+    let mut pieces = Vec::with_capacity(deal_ids.len());
+    for deal_id in deal_ids {
+        let deal = proposals
+            .get(*deal_id)
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to get deal_id ({})", deal_id),
+                )
+            })?
+            .ok_or_else(|| actor_error!(not_found, "proposal doesn't exist ({})", deal_id))?;
+        pieces.push(PieceInfo { cid: deal.piece_cid, size: deal.piece_size });
+    }
+    rt.compute_unsealed_sector_cid(sector_type, &pieces).map_err(|e| {
+        e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to compute unsealed sector CID")
+    })
 }
 
 pub fn validate_and_compute_deal_weight<BS>(
@@ -1066,12 +1090,13 @@ pub fn validate_and_compute_deal_weight<BS>(
     miner_addr: &Address,
     sector_expiry: ChainEpoch,
     sector_activation: ChainEpoch,
-) -> anyhow::Result<(BigInt, BigInt, u64)>
+    sector_size: Option<SectorSize>,
+) -> anyhow::Result<DealWeights>
 where
     BS: Blockstore,
 {
     let mut seen_deal_ids = BTreeSet::new();
-    let mut total_deal_space = 0;
+    let mut total_deal_size = 0;
     let mut total_deal_space_time = BigInt::zero();
     let mut total_verified_space_time = BigInt::zero();
     for deal_id in deal_ids {
@@ -1090,16 +1115,31 @@ where
         validate_deal_can_activate(proposal, miner_addr, sector_expiry, sector_activation)
             .map_err(|e| e.wrap(&format!("cannot activate deal {}", deal_id)))?;
 
-        total_deal_space += proposal.piece_size.0;
-        let deal_space_time = deal_weight(proposal);
+        total_deal_size += proposal.piece_size.0;
+        let deal_space_time = detail::deal_weight(proposal);
         if proposal.verified_deal {
             total_verified_space_time += deal_space_time;
         } else {
             total_deal_space_time += deal_space_time;
         }
     }
+    if let Some(sector_size) = sector_size {
+        if total_deal_size > sector_size as u64 {
+            return Err(actor_error!(
+                illegal_argument,
+                "deals too large to fit in sector {} > {}",
+                total_deal_size,
+                sector_size
+            )
+            .into());
+        }
+    }
 
-    Ok((total_deal_space_time, total_verified_space_time, total_deal_space))
+    Ok(DealWeights {
+        deal_space: total_deal_size,
+        deal_weight: total_deal_space_time,
+        verified_deal_weight: total_verified_space_time,
+    })
 }
 
 pub fn gen_rand_next_epoch(
@@ -1116,6 +1156,7 @@ pub fn gen_rand_next_epoch(
     let next_day = q.quantize_up(start_epoch);
     next_day + offset
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 // Checks
 ////////////////////////////////////////////////////////////////////////////////
@@ -1169,11 +1210,11 @@ where
 
     let proposal = &deal.proposal;
 
-    if proposal.label.len() > DEAL_MAX_LABEL_SIZE {
+    if proposal.label.len() > detail::DEAL_MAX_LABEL_SIZE {
         return Err(actor_error!(
             illegal_argument,
             "deal label can be at most {} bytes, is {}",
-            DEAL_MAX_LABEL_SIZE,
+            detail::DEAL_MAX_LABEL_SIZE,
             proposal.label.len()
         ));
     }
@@ -1250,6 +1291,21 @@ where
     Ok(())
 }
 
+pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
+
+fn cid<BS, RT>(rt: &RT, proposal: &DealProposal) -> Result<Cid, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    const DIGEST_SIZE: u32 = 32;
+    let data = &proposal.marshal_cbor()?;
+    let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
+        .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
+    debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
+    Ok(Cid::new_v1(DAG_CBOR, hash))
+}
+
 /// Resolves a provider or client address to the canonical form against which a balance should be held, and
 /// the designated recipient address of withdrawals (which is the same, for simple account parties).
 fn escrow_address<BS, RT>(
@@ -1269,13 +1325,15 @@ where
         .get_actor_code_cid(&nominal)
         .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", nominal))?;
 
+    let nominal_addr = Address::new_id(nominal);
+
     if rt.resolve_builtin_actor_type(&code_id) == Some(Type::Miner) {
         // Storage miner actor entry; implied funds recipient is the associated owner address.
         let (owner_addr, worker_addr, _) = request_miner_control_addrs(rt, nominal)?;
-        return Ok((nominal, owner_addr, vec![owner_addr, worker_addr]));
+        return Ok((nominal_addr, owner_addr, vec![owner_addr, worker_addr]));
     }
 
-    Ok((nominal, nominal, vec![nominal]))
+    Ok((nominal_addr, nominal_addr, vec![nominal_addr]))
 }
 
 /// Requests the current epoch target block reward from the reward actor.
@@ -1345,8 +1403,8 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ActivateDeals) => {
-                Self::activate_deals(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let res = Self::activate_deals(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
             }
             Some(Method::OnMinerSectorsTerminate) => {
                 Self::on_miner_sectors_terminate(rt, cbor::deserialize_params(params)?)?;

@@ -1,11 +1,8 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - 'master'
-      - 'release/**'
-      - 'experimental/**'
+  release:
+    types: [published]
 
 env:
   RUSTFLAGS: -Dwarnings
@@ -25,19 +22,18 @@ jobs:
       uses: actions/checkout@v2
     - name: Install Rust toolchain
       uses: ./.github/actions/rust-cargo-run
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
         command: version
     - name: Writing bundle
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
-        cargo run -- -o output/builtin-actors.car
+        cargo run --locked -- -o output/builtin-actors.car
     - name: Publishing release and uploading bundle to GitHub
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_SHA: ${{ github.sha }}
+        GITHUB_REF: ${{ github.ref }}
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
         ./scripts/publish-release.sh

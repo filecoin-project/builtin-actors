@@ -5,6 +5,7 @@ use cid::Cid;
 use fil_actors_runtime::{Array, DealWeight};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -24,6 +25,8 @@ pub struct WithdrawBalanceParams {
     pub amount: TokenAmount,
 }
 
+impl Cbor for WithdrawBalanceParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct WithdrawBalanceReturn {
@@ -38,6 +41,7 @@ pub struct OnMinerSectorsTerminateParams {
 }
 
 #[derive(Serialize_tuple)]
+
 pub struct OnMinerSectorsTerminateParamsRef<'a> {
     pub epoch: ChainEpoch,
     pub deal_ids: &'a [DealID],
@@ -48,7 +52,9 @@ pub struct PublishStorageDealsParams {
     pub deals: Vec<ClientDealProposal>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+impl Cbor for PublishStorageDealsParams {}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug)]
 pub struct PublishStorageDealsReturn {
     pub ids: Vec<DealID>,
     pub valid_deals: BitField,
@@ -64,6 +70,7 @@ pub struct VerifyDealsForActivationParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct SectorDeals {
+    pub sector_type: RegisteredSealProof,
     pub sector_expiry: ChainEpoch,
     pub deal_ids: Vec<DealID>,
 }
@@ -75,22 +82,33 @@ pub struct VerifyDealsForActivationParamsRef<'a> {
 
 #[derive(Serialize_tuple, Deserialize_tuple, Default)]
 pub struct VerifyDealsForActivationReturn {
-    pub sectors: Vec<SectorWeights>,
+    pub sectors: Vec<SectorDealData>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Default)]
-pub struct SectorWeights {
-    pub deal_space: u64,
-    #[serde(with = "bigint_ser")]
-    pub deal_weight: DealWeight,
-    #[serde(with = "bigint_ser")]
-    pub verified_deal_weight: DealWeight,
+#[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
+pub struct SectorDealData {
+    /// Option::None signifies commitment to empty sector, meaning no deals.
+    pub commd: Option<Cid>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ActivateDealsParams {
     pub deal_ids: Vec<DealID>,
     pub sector_expiry: ChainEpoch,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ActivateDealsResult {
+    pub weights: DealWeights,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Default)]
+pub struct DealWeights {
+    pub deal_space: u64,
+    #[serde(with = "bigint_ser")]
+    pub deal_weight: DealWeight,
+    #[serde(with = "bigint_ser")]
+    pub verified_deal_weight: DealWeight,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

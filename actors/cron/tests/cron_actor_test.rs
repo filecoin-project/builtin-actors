@@ -1,12 +1,18 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actor_cron::testing::check_state_invariants;
 use fil_actor_cron::{Actor as CronActor, ConstructorParams, Entry, State};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
+
+fn check_state(rt: &MockRuntime) {
+    let (_, acc) = check_state_invariants(&rt.get_state());
+    acc.assert_empty();
+}
 
 fn construct_runtime() -> MockRuntime {
     MockRuntime {
@@ -24,6 +30,7 @@ fn construct_with_empty_entries() {
     let state: State = rt.get_state();
 
     assert_eq!(state.entries, vec![]);
+    check_state(&rt);
 }
 
 #[test]
@@ -42,6 +49,7 @@ fn construct_with_entries() {
     let state: State = rt.get_state();
 
     assert_eq!(state.entries, params.entries);
+    check_state(&rt);
 }
 
 #[test]
@@ -115,4 +123,5 @@ fn epoch_tick_and_verify(rt: &mut MockRuntime) {
     let ret = rt.call::<CronActor>(2, &RawBytes::default()).unwrap();
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
+    check_state(rt);
 }
