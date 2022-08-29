@@ -23,7 +23,7 @@ pub enum StorageStatus {
     Deleted,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Call<'a> {
     Call(&'a Message),
     Create(&'a Message),

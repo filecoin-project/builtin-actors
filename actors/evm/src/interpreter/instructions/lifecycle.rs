@@ -1,5 +1,5 @@
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
 };

@@ -2,7 +2,7 @@ use fvm_shared::error::ExitCode;
 use thiserror::Error;
 
 /// The error type returned by actor method calls.
-#[derive(Error, Debug, Clone, PartialEq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[error("ActorError(exit_code: {exit_code:?}, msg: {msg})")]
 pub struct ActorError {
     /// The exit code for this invocation.

@@ -677,7 +677,7 @@ fn rescheduling_all_expirations_as_faults_leaves_the_queue_empty_if_it_was_empty
 
     // all sectors already expire before epoch 15, nothing should change.
     let length = queue.amt.count();
-    let _ = queue.reschedule_all_as_faults(15).unwrap();
+    queue.reschedule_all_as_faults(15).unwrap();
     assert_eq!(queue.amt.count(), length);
 }
 
