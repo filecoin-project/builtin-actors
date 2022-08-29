@@ -5035,42 +5035,47 @@ fn validate_extension_declaration(
     // https://github.com/filecoin-project/specs-actors/issues/416
     let mut sector_count: u64 = 0;
 
-    let vec_validated = extensions.iter().map(|decl| {
-        if decl.deadline >= policy.wpost_period_deadlines {
-            return Err(actor_error!(
-                illegal_argument,
-                "deadline {} not in range 0..{}",
-                decl.deadline,
-                policy.wpost_period_deadlines
-            ));
-        }
-
-        let sectors = match &decl.sectors {
-            UnvalidatedBitField::Validated(bf) => Ok(bf.clone()),
-            UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes)
-        }.map_err(|e| actor_error!(
-            illegal_argument,
-            "failed to validate sectors for deadline {}, partition {}: {}",
-            decl.deadline,
-            decl.partition,
-            e
-        ))?;
-
-        match sector_count.checked_add(sectors.len()) {
-            Some(sum) => sector_count = sum,
-            None => {
-                return Err(actor_error!(illegal_argument, "sector bitfield integer overflow"));
+    let vec_validated = extensions
+        .iter()
+        .map(|decl| {
+            if decl.deadline >= policy.wpost_period_deadlines {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "deadline {} not in range 0..{}",
+                    decl.deadline,
+                    policy.wpost_period_deadlines
+                ));
             }
-        }
 
-        Ok(ValidatedExpirationExtension {
-            deadline: decl.deadline,
-            partition: decl.partition,
-            sectors,
-            new_expiration: decl.new_expiration,
+            let sectors = match &decl.sectors {
+                UnvalidatedBitField::Validated(bf) => Ok(bf.clone()),
+                UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes),
+            }
+            .map_err(|e| {
+                actor_error!(
+                    illegal_argument,
+                    "failed to validate sectors for deadline {}, partition {}: {}",
+                    decl.deadline,
+                    decl.partition,
+                    e
+                )
+            })?;
+
+            match sector_count.checked_add(sectors.len()) {
+                Some(sum) => sector_count = sum,
+                None => {
+                    return Err(actor_error!(illegal_argument, "sector bitfield integer overflow"));
+                }
+            }
+
+            Ok(ValidatedExpirationExtension {
+                deadline: decl.deadline,
+                partition: decl.partition,
+                sectors,
+                new_expiration: decl.new_expiration,
+            })
         })
-    }).collect::<Result<_,_>>()?;
-
+        .collect::<Result<_, _>>()?;
 
     if sector_count > policy.addressed_sectors_max {
         return Err(actor_error!(
@@ -5082,6 +5087,22 @@ fn validate_extension_declaration(
     }
 
     Ok(vec_validated)
+}
+
+/// Groups expiration extensions by deadlines, the result is a vector containing `(deadline_index, Vec<extensions>)` tuple.
+fn group_extensions_by_deadline(
+    extensions: &[ValidatedExpirationExtension],
+    policy: &Policy,
+) -> Vec<(u64, Vec<&ValidatedExpirationExtension>)> {
+    let mut decls_by_deadline: Vec<_> =
+        iter::repeat_with(Vec::new).take(rt.policy().wpost_period_deadlines as usize).collect();
+
+    for decl in extensions {
+        // the deadline indices are already checked.
+        let decls = &mut decls_by_deadline[decl.deadline as usize];
+        decls.push(decl);
+    }
+    decls_by_deadline.into_iter().enumerate().filter(|(_, ddl)| !ddl.is_empty()).collect()
 }
 
 #[allow(dead_code)]
@@ -5101,20 +5122,10 @@ where
 {
     // Group declarations by deadline, and remember iteration order.
 
-    let extensions = validate_extension_declaration(extensions, rt.policy())?;
+    let policy = rt.policy();
+    let extensions = validate_extension_declaration(extensions, policy)?;
 
-    let mut decls_by_deadline: Vec<_> =
-        iter::repeat_with(Vec::new).take(rt.policy().wpost_period_deadlines as usize).collect();
-    let mut deadlines_to_load = Vec::<u64>::new();
-
-    for decl in extensions {
-        // the deadline indices are already checked.
-        let decls = &mut decls_by_deadline[decl.deadline as usize];
-        if decls.is_empty() {
-            deadlines_to_load.push(decl.deadline);
-        }
-        decls.push(decl);
-    }
+    let deadlines_with_decls = group_extensions_by_deadline(&extensions, policy);
 
     let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
         let info = get_miner_info(rt.store(), state)?;
@@ -5136,7 +5147,7 @@ where
 
         let policy = rt.policy();
 
-        for deadline_idx in deadlines_to_load {
+        for (deadline_idx, decls) in deadlines_with_decls {
             let mut deadline =
                 deadlines.load_deadline(policy, store, deadline_idx).map_err(|e| {
                     e.downcast_default(
@@ -5158,7 +5169,7 @@ where
             let mut partitions_by_new_epoch = BTreeMap::<ChainEpoch, Vec<u64>>::new();
             let mut epochs_to_reschedule = Vec::<ChainEpoch>::new();
 
-            for decl in &mut decls_by_deadline[deadline_idx as usize] {
+            for decl in decls {
                 let key = PartitionKey { deadline: deadline_idx, partition: decl.partition };
 
                 let mut partition = partitions
