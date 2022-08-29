@@ -561,7 +561,7 @@ where
         st.check_available(rt.current_balance(), &txn.value, rt.curr_epoch())
             .map_err(|e| actor_error!(insufficient_funds, "insufficient funds unlocked: {}", e))?;
 
-        match rt.send(txn.to, txn.method, txn.params.clone(), txn.value.clone()) {
+        match rt.send(&txn.to, txn.method, txn.params.clone(), txn.value.clone()) {
             Ok(ser) => {
                 out = ser;
             }

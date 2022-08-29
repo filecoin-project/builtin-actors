@@ -57,7 +57,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_accept_any()?;
 
-        let result = rt.send(arg.to, arg.method, arg.params, arg.value);
+        let result = rt.send(&arg.to, arg.method, arg.params, arg.value);
         if let Err(e) = result {
             Ok(SendReturn { return_value: RawBytes::default(), code: e.exit_code() })
         } else {
