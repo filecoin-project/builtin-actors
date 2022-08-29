@@ -114,10 +114,3 @@ pub fn mstore8(state: &mut ExecutionState) -> Result<(), StatusCode> {
 pub fn msize(state: &mut ExecutionState) {
     state.stack.push(u64::try_from(state.memory.len()).unwrap().into());
 }
-
-pub fn extcodecopy<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    todo!();
-}
