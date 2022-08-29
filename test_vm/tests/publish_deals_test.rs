@@ -481,6 +481,50 @@ fn psd_all_deals_are_bad() {
 }
 
 #[test]
+fn psd_bad_sig() {
+    let store = MemoryBlockstore::new();
+    let (v, a, deal_start) = setup(&store);
+    let (storage_price_per_epoch, provider_collateral, client_collateral) = token_defaults();
+
+    let deal_label = "deal0".to_string();
+    let proposal = DealProposal {
+        piece_cid: make_piece_cid(deal_label.as_bytes()),
+        piece_size: PaddedPieceSize(1 << 30),
+        verified_deal: false,
+        client: a.client1,
+        provider: a.maddr,
+        label: Label::String(deal_label),
+        start_epoch: deal_start,
+        end_epoch: deal_start + DEAL_LIFETIME,
+        storage_price_per_epoch,
+        provider_collateral,
+        client_collateral,
+    };
+
+    let publish_params = PublishStorageDealsParams {
+        deals: vec![ClientDealProposal {
+            proposal: proposal,
+            client_signature: Signature {
+                sig_type: SignatureType::BLS,
+                bytes: "very_invalid_sig".as_bytes().to_vec(),
+            },
+        }],
+    };
+    let ret = v
+        .apply_message(
+            a.worker,
+            *STORAGE_MARKET_ACTOR_ADDR,
+            TokenAmount::zero(),
+            MarketMethod::PublishStorageDeals as u64,
+            publish_params,
+        )
+        .unwrap();
+    assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
+
+    v.assert_state_invariants();
+}
+
+#[test]
 fn psd_all_deals_are_good() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
@@ -631,7 +675,10 @@ impl<'bs> DealBatcher<'bs> {
             .iter_mut()
             .map(|deal| ClientDealProposal {
                 proposal: deal.clone(),
-                client_signature: Signature { sig_type: SignatureType::BLS, bytes: vec![] },
+                client_signature: Signature {
+                    sig_type: SignatureType::BLS,
+                    bytes: serialize(deal, "serializing deal proposal").unwrap().to_vec(),
+                },
             })
             .collect();
         let publish_params = PublishStorageDealsParams { deals: params_deals };

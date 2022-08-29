@@ -5,6 +5,7 @@ use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 use std::{cell::RefCell, collections::HashMap};
 
+use fil_actor_market::ext::account::AuthenticateMessageParams;
 use fil_actor_market::{
     balance_table::BalanceTable, ext, ext::miner::GetControlAddressesReturnParams,
     gen_rand_next_epoch, testing::check_state_invariants, ActivateDealsParams, ActivateDealsResult,
@@ -106,6 +107,7 @@ pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) 
         check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
     acc.assert_expected(expected_patterns);
 }
+
 pub fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
     assert_eq!(
@@ -437,7 +439,7 @@ pub fn publish_deals(
 ) -> Vec<DealID> {
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-    let return_value = ext::miner::GetControlAddressesReturnParams {
+    let return_value = GetControlAddressesReturnParams {
         owner: addrs.owner,
         worker: addrs.worker,
         control_addresses: addrs.control.clone(),
@@ -463,13 +465,21 @@ pub fn publish_deals(
             ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() };
         params.deals.push(client_proposal);
 
-        // expect a call to verify the above signature
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig,
-            signer: deal.client,
-            plaintext: buf.to_vec(),
-            result: Ok(()),
-        });
+        // expect an invocation of authenticate_message to verify the above signature
+        let param = RawBytes::serialize(AuthenticateMessageParams {
+            signature: "does not matter".as_bytes().to_vec(),
+            message: buf.to_vec(),
+        })
+        .unwrap();
+        rt.expect_send(
+            deal.client,
+            ext::account::AUTHENTICATE_MESSAGE_METHOD as u64,
+            param,
+            TokenAmount::from(0u8),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
         if deal.verified_deal {
             let param = RawBytes::serialize(UseBytesParams {
                 address: deal.client,

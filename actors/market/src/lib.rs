@@ -1282,12 +1282,20 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
+    let signature_bytes = proposal.client_signature.bytes.clone();
     // Generate unsigned bytes
-    let sv_bz = serialize_vec(&proposal.proposal, "deal proposal")?;
-    rt.verify_signature(&proposal.client_signature, &proposal.proposal.client, &sv_bz).map_err(
-        |e| e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "signature proposal invalid"),
-    )?;
+    let proposal_bytes = serialize_vec(&proposal.proposal, "deal proposal")?;
 
+    rt.send(
+        proposal.proposal.client,
+        ext::account::AUTHENTICATE_MESSAGE_METHOD,
+        RawBytes::serialize(ext::account::AuthenticateMessageParams {
+            signature: signature_bytes,
+            message: proposal_bytes,
+        })?,
+        TokenAmount::zero(),
+    )
+    .map_err(|e| e.wrap("proposal authentication failed"))?;
     Ok(())
 }
 

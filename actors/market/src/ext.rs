@@ -1,3 +1,4 @@
+use fvm_ipld_encoding::serde_bytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
@@ -5,6 +6,20 @@ use fvm_shared::econ::TokenAmount;
 
 use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::FilterEstimate;
+
+pub mod account {
+    use super::*;
+
+    pub const AUTHENTICATE_MESSAGE_METHOD: u64 = 3;
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    pub struct AuthenticateMessageParams {
+        #[serde(with = "serde_bytes")]
+        pub signature: Vec<u8>,
+        #[serde(with = "serde_bytes")]
+        pub message: Vec<u8>,
+    }
+}
 
 pub mod miner {
     use super::*;
@@ -25,6 +40,7 @@ pub mod verifreg {
     // based on fil_actor_verifreg
     pub const USE_BYTES_METHOD: u64 = 5;
     pub const RESTORE_BYTES_METHOD: u64 = 6;
+
     pub type UseBytesParams = BytesParams;
     pub type RestoreBytesParams = BytesParams;
 
@@ -44,6 +60,7 @@ pub mod reward {
 
 pub mod power {
     use super::*;
+
     pub const CURRENT_TOTAL_POWER_METHOD: u64 = 9;
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
