@@ -32,6 +32,7 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
+use fvm_shared::address::Payload;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
 use fvm_shared::clock::ChainEpoch;
@@ -763,12 +764,17 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         self.v.get_actor(self.to()).unwrap().balance
     }
 
-    fn resolve_address(&self, addr: &Address) -> Option<Address> {
-        self.v.normalize_address(addr)
+    fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
+        if let Some(normalize_addr) = self.v.normalize_address(addr) {
+            if let &Payload::ID(id) = normalize_addr.payload() {
+                return Some(id);
+            }
+        }
+        None
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
-        let maybe_act = self.v.get_actor(*addr);
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
+        let maybe_act = self.v.get_actor(Address::new_id(*id));
         match maybe_act {
             None => None,
             Some(act) => Some(act.code),
@@ -1010,13 +1016,13 @@ impl RuntimePolicy for InvocationCtx<'_, '_> {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MessageResult {
     pub code: ExitCode,
     pub ret: RawBytes,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
 pub struct Actor {
     pub code: Cid,
     pub head: Cid,
