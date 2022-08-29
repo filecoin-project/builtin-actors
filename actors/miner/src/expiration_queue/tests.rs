@@ -10,10 +10,10 @@ use fvm_shared::sector::StoragePower;
 fn test_expirations() {
     let quant = QuantSpec { unit: 10, offset: 3 };
     let sectors = [
-        test_sector(7, 1, 0, 0, 0),
-        test_sector(8, 2, 0, 0, 0),
-        test_sector(14, 3, 0, 0, 0),
-        test_sector(13, 4, 0, 0, 0),
+        test_sector(7,  100, 1, 0, 0, 0),
+        test_sector(8, 100, 2, 0, 0, 0),
+        test_sector(14, 100, 3, 0, 0, 0),
+        test_sector(13, 100, 4, 0, 0, 0),
     ];
     let result = group_new_sectors_by_declared_expiration(SectorSize::_2KiB, &sectors, quant);
     let expected = [
@@ -58,14 +58,16 @@ fn assert_sector_set(expected: &SectorEpochSet, actual: &SectorEpochSet) {
 }
 
 fn test_sector(
-    expiration: ChainEpoch,
+    commitment_expiration: ChainEpoch,
+    proof_expiration: ChainEpoch,
     sector_number: SectorNumber,
     deal_weight: u64,
     verified_deal_weight: u64,
     initial_pledge: u64,
 ) -> SectorOnChainInfo {
     SectorOnChainInfo {
-        commitment_expiration: expiration,
+        commitment_expiration,
+        proof_expiration,
         sector_number,
         deal_weight: DealWeight::from(deal_weight),
         verified_deal_weight: DealWeight::from(verified_deal_weight),
