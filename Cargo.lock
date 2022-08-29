@@ -1170,9 +1170,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_car"
-version = "0.5.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0af5e410b349533e8b1a2b46a7ca3d66cd68c53a477e2cf3d005845c1a346428"
+checksum = "ade8c2f76a9e014f2fdaeb693a0884f49eca5ee663958e1c8c1db8d23290817c"
 dependencies = [
  "cid",
  "futures",
