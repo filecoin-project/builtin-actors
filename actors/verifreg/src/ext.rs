@@ -41,4 +41,11 @@ pub mod datacap {
         #[serde(with = "bigint_ser")]
         pub amount: BigInt,
     }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct BurnReturn {
+        /// New balance in the account after the successful burn
+        #[serde(with = "bigint_ser")]
+        pub balance: BigInt,
+    }
 }

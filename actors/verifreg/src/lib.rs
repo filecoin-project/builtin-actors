@@ -24,7 +24,7 @@ use fil_actors_runtime::{
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 
-use crate::ext::datacap::{DestroyParams, MintParams, TOKEN_PRECISION};
+use crate::ext::datacap::{BurnReturn, DestroyParams, MintParams, TOKEN_PRECISION};
 
 pub use self::state::Allocation;
 pub use self::state::Claim;
@@ -35,9 +35,9 @@ pub use self::types::*;
 fil_actors_runtime::wasm_trampoline!(Actor);
 
 pub mod ext;
-mod state;
+pub mod state;
 pub mod testing;
-mod types;
+pub mod types;
 
 /// Account actor methods available
 #[derive(FromPrimitive)]
@@ -617,7 +617,7 @@ where
 {
     let token_amt = datacap_to_tokens(amount);
     let params = DestroyParams { owner: *owner, amount: token_amt };
-    let BigIntDe(ret) = rt
+    let ret: BurnReturn = rt
         .send(
             *token,
             ext::datacap::Method::Destroy as u64,
@@ -626,7 +626,7 @@ where
         )
         .context(format!("failed to send destroy {:?} to {}", params, token))?
         .deserialize()?;
-    Ok(tokens_to_datacap(&ret))
+    Ok(tokens_to_datacap(&ret.balance))
 }
 
 fn datacap_to_tokens(amount: &DataCap) -> TokenAmount {
