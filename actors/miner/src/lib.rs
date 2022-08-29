@@ -4955,6 +4955,7 @@ fn balance_invariants_broken(e: Error) -> ActorError {
         format!("balance invariants broken: {}", e),
     )
 }
+
 #[allow(dead_code)]
 fn extend_commitment<BS, RT>(
     rt: &RT,
@@ -5016,39 +5017,33 @@ where
     Ok(sector)
 }
 
-#[allow(dead_code)]
-fn extend_sector_inner<BS, RT, F>(
-    rt: &mut RT,
-    extensions: &mut Vec<ExpirationExtension>,
-    mut process: F,
-) -> Result<(), ActorError>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-    F: FnMut(
-        &RT,
-        &ExpirationExtension,
-        &SectorOnChainInfo,
-    ) -> Result<SectorOnChainInfo, ActorError>,
-{
-    {
-        let policy = rt.policy();
-        if extensions.len() as u64 > policy.declarations_max {
-            return Err(actor_error!(
-                illegal_argument,
-                "too many declarations {}, max {}",
-                extensions.len(),
-                policy.declarations_max
-            ));
-        }
+pub struct ValidatedExpirationExtension {
+    pub deadline: u64,
+    pub partition: u64,
+    pub sectors: BitField,
+    pub new_expiration: ChainEpoch,
+}
+
+/// Also validates the bitfields and saves them as validated
+fn validate_extension_declaration(
+    extensions: &[ExpirationExtension],
+    policy: &Policy,
+) -> Result<Vec<ValidatedExpirationExtension>, ActorError> {
+    if extensions.len() as u64 > policy.declarations_max {
+        return Err(actor_error!(
+            illegal_argument,
+            "too many declarations {}, max {}",
+            extensions.len(),
+            policy.declarations_max
+        ));
     }
 
+    // TODO may not be needed anymore
     // limit the number of sectors declared at once
     // https://github.com/filecoin-project/specs-actors/issues/416
     let mut sector_count: u64 = 0;
 
-    for decl in extensions.iter_mut() {
-        let policy = rt.policy();
+    let vec_validated = extensions.iter().map(|decl| {
         if decl.deadline >= policy.wpost_period_deadlines {
             return Err(actor_error!(
                 illegal_argument,
@@ -5058,18 +5053,16 @@ where
             ));
         }
 
-        let sectors = match decl.sectors.validate() {
-            Ok(sectors) => sectors,
-            Err(e) => {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "failed to validate sectors for deadline {}, partition {}: {}",
-                    decl.deadline,
-                    decl.partition,
-                    e
-                ));
-            }
-        };
+        let sectors = match &decl.sectors {
+            UnvalidatedBitField::Validated(bf) => Ok(bf.clone()),
+            UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes)
+        }.map_err(|e| actor_error!(
+            illegal_argument,
+            "failed to validate sectors for deadline {}, partition {}: {}",
+            decl.deadline,
+            decl.partition,
+            e
+        ))?;
 
         match sector_count.checked_add(sectors.len()) {
             Some(sum) => sector_count = sum,
@@ -5077,22 +5070,47 @@ where
                 return Err(actor_error!(illegal_argument, "sector bitfield integer overflow"));
             }
         }
+
+        Ok(ValidatedExpirationExtension {
+            deadline: decl.deadline,
+            partition: decl.partition,
+            sectors,
+            new_expiration: decl.new_expiration,
+        })
+    }).collect::<Result<_,_>>()?;
+
+
+    if sector_count > policy.addressed_sectors_max {
+        return Err(actor_error!(
+            illegal_argument,
+            "too many sectors for declaration {}, max {}",
+            sector_count,
+            policy.addressed_sectors_max
+        ));
     }
 
-    {
-        let policy = rt.policy();
-        if sector_count > policy.addressed_sectors_max {
-            return Err(actor_error!(
-                illegal_argument,
-                "too many sectors for declaration {}, max {}",
-                sector_count,
-                policy.addressed_sectors_max
-            ));
-        }
-    }
+    Ok(vec_validated)
+}
 
+#[allow(dead_code)]
+fn extend_sector_inner<BS, RT, F>(
+    rt: &mut RT,
+    extensions: &[ExpirationExtension],
+    mut process: F,
+) -> Result<(), ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+    F: FnMut(
+        &RT,
+        &ValidatedExpirationExtension,
+        &SectorOnChainInfo,
+    ) -> Result<SectorOnChainInfo, ActorError>,
+{
     // Group declarations by deadline, and remember iteration order.
-    //
+
+    let extensions = validate_extension_declaration(extensions, rt.policy())?;
+
     let mut decls_by_deadline: Vec<_> =
         iter::repeat_with(Vec::new).take(rt.policy().wpost_period_deadlines as usize).collect();
     let mut deadlines_to_load = Vec::<u64>::new();
@@ -5149,13 +5167,6 @@ where
             let mut epochs_to_reschedule = Vec::<ChainEpoch>::new();
 
             for decl in &mut decls_by_deadline[deadline_idx as usize] {
-                let decl_sectors = match &decl.sectors {
-                    UnvalidatedBitField::Validated(x) => Ok(x),
-                    UnvalidatedBitField::Unvalidated(_) => Err(actor_error!(
-                        assertion_failed,
-                        "bitfield should have been pre-validated"
-                    )),
-                }?;
                 let key = PartitionKey { deadline: deadline_idx, partition: decl.partition };
 
                 let mut partition = partitions
@@ -5170,7 +5181,7 @@ where
                     .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
                 let old_sectors = sectors
-                    .load_sector(decl_sectors)
+                    .load_sector(&decl.sectors)
                     .map_err(|e| e.wrap("failed to load sectors"))?;
 
                 let new_sectors: Vec<SectorOnChainInfo> = old_sectors
