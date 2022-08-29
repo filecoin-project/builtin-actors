@@ -88,8 +88,7 @@ pub fn difficulty<'r, BS: Blockstore, RT: Runtime<BS>>(
 pub fn gas_limit<'r, BS: Blockstore, RT: Runtime<BS>>(
     _state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    todo!()
+) {
 }
 
 #[inline]
@@ -102,8 +101,8 @@ pub fn chain_id<'r, BS: Blockstore, RT: Runtime<BS>>(
 
 #[inline]
 pub fn base_fee<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    todo!()
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
+) {
+    state.stack.push(U256::from(platform.rt.base_fee()))
 }
