@@ -749,7 +749,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         RawBytes::default(),
         rt.call::<MarketActor>(
             Method::AddBalance as u64,
-            &RawBytes::serialize(provider_resolved).unwrap(),
+            &RawBytes::serialize(provider_bls).unwrap(),
         )
         .unwrap()
     );
