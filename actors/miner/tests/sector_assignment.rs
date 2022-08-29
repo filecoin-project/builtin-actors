@@ -30,6 +30,7 @@ fn new_sector_on_chain_info(
         sealed_cid,
         activation,
         commitment_expiration: 1,
+        proof_expiration: 100, // TODO
         deal_weight: weight.clone(),
         verified_deal_weight: weight,
         ..SectorOnChainInfo::default()
