@@ -249,12 +249,12 @@ fn set_is_empty_when_all_sectors_removed() {
 
 fn sectors() -> [SectorOnChainInfo; 6] {
     [
-        test_sector(2, 1, 50, 60, 1000),
-        test_sector(3, 2, 51, 61, 1001),
-        test_sector(7, 3, 52, 62, 1002),
-        test_sector(8, 4, 53, 63, 1003),
-        test_sector(11, 5, 54, 64, 1004),
-        test_sector(13, 6, 55, 65, 1005),
+        test_sector(2, 100, 1, 50, 60, 1000),
+        test_sector(3, 100, 2, 51, 61, 1001),
+        test_sector(7, 100, 3, 52, 62, 1002),
+        test_sector(8, 100, 4, 53, 63, 1003),
+        test_sector(11, 100, 5, 54, 64, 1004),
+        test_sector(13, 100, 6, 55, 65, 1005),
     ]
 }
 
@@ -425,11 +425,26 @@ fn reschedules_all_sectors_as_faults() {
 
     let _ = queue.amt.flush().unwrap();
 
+    queue
+        .amt
+        .for_each(|c, v| {
+            println!("{}: {:?}", c, v);
+            Ok(())
+        })
+        .unwrap();
+
     // Fault all sectors
     // This converts the first 2 sets to faults and adds the 3rd set as early sectors to the second set
     queue.reschedule_all_as_faults(6).unwrap();
 
     let _ = queue.amt.flush().unwrap();
+    queue
+        .amt
+        .for_each(|c, v| {
+            println!("{}: {:?}", c, v);
+            Ok(())
+        })
+        .unwrap();
 
     // expect first set to contain first two sectors but with all power moved to faulty power
     require_no_expiration_groups_before(5, &mut queue);
@@ -702,14 +717,16 @@ fn rescheduling_no_sectors_as_recovered_leaves_the_queue_empty() {
 }
 
 fn test_sector(
-    expiration: ChainEpoch,
+    commitment_expiration: ChainEpoch,
+    proof_expiration: ChainEpoch,
     sector_number: SectorNumber,
     weight: u64,
     vweight: u64,
     pledge: u64,
 ) -> SectorOnChainInfo {
     SectorOnChainInfo {
-        commitment_expiration: expiration,
+        commitment_expiration,
+        proof_expiration,
         sector_number,
         deal_weight: DealWeight::from(weight),
         verified_deal_weight: DealWeight::from(vweight),
