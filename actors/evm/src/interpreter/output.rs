@@ -1,3 +1,4 @@
+use fil_actors_runtime::ActorError;
 use {
     bytes::Bytes,
     fvm_ipld_encoding::Cbor,
@@ -105,6 +106,15 @@ pub enum StatusCode {
     /// EVM implementation generic internal error.
     #[strum(serialize = "internal error")]
     InternalError(String),
+}
+
+// Map ActorError to a generic internal error status code.
+//
+// TODO need to figure out error handling.
+impl From<ActorError> for StatusCode {
+    fn from(ae: ActorError) -> Self {
+        Self::InternalError(String::from(ae.msg()))
+    }
 }
 
 impl Cbor for StatusCode {}
