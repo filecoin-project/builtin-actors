@@ -112,7 +112,7 @@ fn remove_datacap_simple_successful_path() {
     let mut verifier1_proposal = RemoveDataCapProposal {
         verified_client: verified_client_id_addr,
         data_cap_amount: allowance_to_remove.clone(),
-        removal_proposal_id: RemoveDataCapProposalID(0),
+        removal_proposal_id: RemoveDataCapProposalID { id: 0 },
     };
 
     let mut verifier1_proposal_ser = to_vec(&verifier1_proposal).unwrap();
@@ -122,7 +122,7 @@ fn remove_datacap_simple_successful_path() {
     let mut verifier2_proposal = RemoveDataCapProposal {
         verified_client: verified_client_id_addr,
         data_cap_amount: allowance_to_remove.clone(),
-        removal_proposal_id: RemoveDataCapProposalID(0),
+        removal_proposal_id: RemoveDataCapProposalID { id: 0 },
     };
 
     let mut verifier2_proposal_ser = to_vec(&verifier2_proposal).unwrap();
@@ -174,14 +174,14 @@ fn remove_datacap_simple_successful_path() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(1u64, verifier1_proposal_id.0);
+    assert_eq!(1u64, verifier1_proposal_id.id);
 
     let verifier2_proposal_id: &RemoveDataCapProposalID = proposal_ids
         .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr).to_bytes())
         .unwrap()
         .unwrap();
 
-    assert_eq!(1u64, verifier2_proposal_id.0);
+    assert_eq!(1u64, verifier2_proposal_id.id);
 
     // remove the second half of the client's allowance, this causes the client to be deleted
 
@@ -250,14 +250,14 @@ fn remove_datacap_simple_successful_path() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(2u64, verifier1_proposal_id.0);
+    assert_eq!(2u64, verifier1_proposal_id.id);
 
     let verifier2_proposal_id: &RemoveDataCapProposalID = proposal_ids
         .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr).to_bytes())
         .unwrap()
         .unwrap();
 
-    assert_eq!(2u64, verifier2_proposal_id.0);
+    assert_eq!(2u64, verifier2_proposal_id.id);
     v.assert_state_invariants();
 }
 
