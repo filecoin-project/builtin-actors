@@ -352,8 +352,8 @@ impl<'bs> VM<'bs> {
             actors.set(addr.to_bytes().into(), act.clone()).unwrap();
         }
 
-        // roll "back" to latest head, flushing cache
-        self.rollback(actors.flush().unwrap());
+        self.state_root.replace(actors.flush().unwrap());
+        self.actors_dirty.replace(false);
         *self.state_root.borrow()
     }
 
