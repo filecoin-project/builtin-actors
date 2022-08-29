@@ -3891,7 +3891,7 @@ where
         ));
     }
 
-    Ok(resolved)
+    Ok(Address::new_id(resolved))
 }
 
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
@@ -3918,7 +3918,7 @@ where
 
     if raw.protocol() != Protocol::BLS {
         let ret = rt.send(
-            resolved,
+            Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
             RawBytes::default(),
             TokenAmount::zero(),
@@ -3933,7 +3933,7 @@ where
             ));
         }
     }
-    Ok(resolved)
+    Ok(Address::new_id(resolved))
 }
 
 fn burn_funds<BS, RT>(rt: &mut RT, amount: TokenAmount) -> Result<(), ActorError>

@@ -144,7 +144,8 @@ where
         self.assert_not_validated()?;
         let caller_cid = {
             let caller_addr = self.message().caller();
-            self.get_actor_code_cid(&caller_addr).expect("failed to lookup caller code")
+            self.get_actor_code_cid(&caller_addr.id().unwrap())
+                .expect("failed to lookup caller code")
         };
 
         match self.resolve_builtin_actor_type(&caller_cid) {
@@ -161,12 +162,12 @@ where
         fvm::sself::current_balance()
     }
 
-    fn resolve_address(&self, address: &Address) -> Option<Address> {
-        fvm::actor::resolve_address(address).map(Address::new_id)
+    fn resolve_address(&self, address: &Address) -> Option<ActorID> {
+        fvm::actor::resolve_address(address)
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
-        fvm::actor::get_actor_code_cid(addr)
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
+        fvm::actor::get_actor_code_cid(&Address::new_id(*id))
     }
 
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
