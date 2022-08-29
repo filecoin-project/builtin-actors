@@ -800,7 +800,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
 
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
@@ -812,7 +812,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
             ));
         }
 
-        let new_actor_msg = InternalMessage { from: self.to(), to, value, method, params };
+        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
         let mut new_ctx = InvocationCtx {
             v: self.v,
             top: self.top.clone(),
