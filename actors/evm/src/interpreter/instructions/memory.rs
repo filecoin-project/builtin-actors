@@ -2,7 +2,6 @@
 
 use {
     crate::interpreter::{ExecutionState, StatusCode, U256},
-    fil_actors_runtime::runtime::Runtime,
     std::num::NonZeroUsize,
 };
 

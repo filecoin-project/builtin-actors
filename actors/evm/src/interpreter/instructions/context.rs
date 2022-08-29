@@ -9,7 +9,7 @@ pub fn blockhash<'r, BS: Blockstore, RT: Runtime<BS>>(
     _state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    todo!()
+    todo!("requires the client passing down the inclusion tipset hash")
 }
 
 #[inline]
@@ -46,10 +46,10 @@ pub fn origin<'r, BS: Blockstore, RT: Runtime<BS>>(
 
 #[inline]
 pub fn coinbase<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
+    state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    todo!()
+) {
+    state.stack.push(U256::zero())
 }
 
 #[inline]
@@ -57,7 +57,7 @@ pub fn gas_price<'r, BS: Blockstore, RT: Runtime<BS>>(
     _state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    todo!()
+    todo!("should return priority fee (needs syscall) + basefee")
 }
 
 #[inline]
@@ -65,23 +65,23 @@ pub fn timestamp<'r, BS: Blockstore, RT: Runtime<BS>>(
     _state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    todo!()
+    todo!("should return the timestamp from the block header (requires syscall and FFI change)")
 }
 
 #[inline]
 pub fn block_number<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    todo!()
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
+) {
+    state.stack.push(U256::from(platform.rt.curr_epoch()))
 }
 
 #[inline]
 pub fn difficulty<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
+    state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    todo!()
+) {
+    state.stack.push(U256::zero())
 }
 
 #[inline]
@@ -89,7 +89,7 @@ pub fn gas_limit<'r, BS: Blockstore, RT: Runtime<BS>>(
     _state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    todo!()
+    todo!("requires a syscall")
 }
 
 #[inline]
@@ -97,7 +97,7 @@ pub fn chain_id<'r, BS: Blockstore, RT: Runtime<BS>>(
     _state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    todo!()
+    todo!("requires chain ID registration and configuration in the client")
 }
 
 #[inline]

@@ -348,7 +348,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         COINBASE(m) {
-            context::coinbase(m.runtime, m.system)?;
+            context::coinbase(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
@@ -358,12 +358,12 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         NUMBER(m) {
-            context::block_number(m.runtime, m.system)?;
+            context::block_number(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
         DIFFICULTY(m) {
-            context::difficulty(m.runtime, m.system)?;
+            context::difficulty(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 

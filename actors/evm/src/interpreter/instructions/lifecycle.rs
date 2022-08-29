@@ -32,4 +32,5 @@ pub fn selfdestruct<'r, BS: Blockstore, RT: Runtime<BS>>(
     // }
     //
     // Ok(())
+    todo!()
 }
