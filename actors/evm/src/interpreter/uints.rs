@@ -4,7 +4,7 @@
 #![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern)]
 
 use {
-    fixed_hash::construct_fixed_hash,
+    fixed_hash::{construct_fixed_hash, impl_fixed_hash_conversions},
     fvm_shared::econ::TokenAmount,
     impl_serde::{impl_fixed_hash_serde, impl_uint_serde},
     std::cmp::Ordering,
@@ -16,6 +16,7 @@ construct_uint! { pub struct U512(8); } // used for addmod and mulmod opcodes
 
 construct_fixed_hash! { pub struct H160(20); } // ethereum address
 construct_fixed_hash! { pub struct H256(32); } // Keccak256
+impl_fixed_hash_conversions!(H256, H160);
 
 impl From<&TokenAmount> for U256 {
     fn from(amount: &TokenAmount) -> U256 {
