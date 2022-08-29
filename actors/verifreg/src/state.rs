@@ -71,7 +71,6 @@ impl State {
         let mut verifiers =
             make_map_with_root_and_bitwidth::<_, BigIntDe>(&self.verifiers, store, HAMT_BIT_WIDTH)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load verifiers")?;
-        // .context("failed to load verifiers")?;
         verifiers
             .set(verifier.to_bytes().into(), BigIntDe(cap.clone()))
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set verifier")?;

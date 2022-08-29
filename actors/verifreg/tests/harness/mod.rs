@@ -203,7 +203,8 @@ impl Harness {
             ext::datacap::Method::Destroy as MethodNum,
             RawBytes::serialize(&destroy_params).unwrap(),
             TokenAmount::zero(),
-            serialize(&BigIntSer(&(remaining * TOKEN_PRECISION)), "").unwrap(),
+            serialize(&ext::datacap::BurnReturn { balance: remaining * TOKEN_PRECISION }, "")
+                .unwrap(),
             result,
         );
 
@@ -218,7 +219,7 @@ impl Harness {
                 ext::datacap::Method::Destroy as MethodNum,
                 RawBytes::serialize(&destroy_params).unwrap(),
                 TokenAmount::zero(),
-                serialize(&BigIntSer(&TokenAmount::zero()), "").unwrap(),
+                serialize(&ext::datacap::BurnReturn { balance: TokenAmount::zero() }, "").unwrap(),
                 result,
             );
         }

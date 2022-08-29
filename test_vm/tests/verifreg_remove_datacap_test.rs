@@ -284,7 +284,7 @@ fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
                 params: Some(
                     serialize(
                         &DestroyParams {
-                            owner: params.verified_client_to_remove.clone(),
+                            owner: params.verified_client_to_remove,
                             amount: &params.data_cap_amount_to_remove * TOKEN_PRECISION,
                         },
                         "destroy params",

@@ -334,10 +334,8 @@ impl Actor {
         }
 
         // Validate and then remove the proposal.
-        let mut token: Address = Address::new_id(0);
-        rt.transaction(|st: &mut State, rt| {
+        let token = rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
-            token = st.token;
 
             if !is_verifier(rt, st, verifier_1)? {
                 return Err(actor_error!(not_found, "{} is not a verifier", verifier_1));
@@ -381,7 +379,7 @@ impl Actor {
             st.remove_data_cap_proposal_ids = proposal_ids
                 .flush()
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush proposal ids")?;
-            Ok(())
+            Ok(st.token)
         })?;
 
         // Burn the client's data cap tokens.

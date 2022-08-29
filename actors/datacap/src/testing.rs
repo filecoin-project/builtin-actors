@@ -15,8 +15,8 @@ pub fn check_state_invariants<BS: Blockstore>(
     let acc = MessageAccumulator::default();
     acc.require(state.registry.protocol() == Protocol::ID, "registry must be ID address");
     let r = state.token.check_invariants(store);
-    if r.is_err() {
-        acc.add(r.unwrap_err().to_string());
+    if let Err(e) = r {
+        acc.add(e.to_string());
     }
 
     (StateSummary {}, acc)
