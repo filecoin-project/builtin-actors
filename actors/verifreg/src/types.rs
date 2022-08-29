@@ -7,7 +7,6 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::sector::StoragePower;
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifierParams {
@@ -66,9 +65,10 @@ pub struct RemoveDataCapReturn {
     pub data_cap_removed: DataCap,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
-#[serde(transparent)]
-pub struct RemoveDataCapProposalID(pub u64);
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveDataCapProposalID {
+    pub id: u64,
+}
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveDataCapProposal {

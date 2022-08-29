@@ -730,13 +730,13 @@ where
         )
     })?;
 
-    let curr_id = if let Some(RemoveDataCapProposalID(id)) = maybe_id {
-        RemoveDataCapProposalID(*id)
+    let curr_id = if let Some(RemoveDataCapProposalID { id }) = maybe_id {
+        RemoveDataCapProposalID { id: *id }
     } else {
-        RemoveDataCapProposalID(0)
+        RemoveDataCapProposalID { id: 0 }
     };
 
-    let next_id = RemoveDataCapProposalID(curr_id.0 + 1);
+    let next_id = RemoveDataCapProposalID { id: curr_id.id + 1 };
     proposal_ids.set(BytesKey::from(key.to_bytes()), next_id).map_err(|e| {
         actor_error!(
             illegal_state,
