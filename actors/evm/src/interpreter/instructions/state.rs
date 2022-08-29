@@ -1,3 +1,4 @@
+use crate::U256;
 use {
     crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
@@ -9,13 +10,13 @@ pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
     _state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    todo!()
+    todo!("requires syscall")
 }
 
 #[inline]
 pub fn selfbalance<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    todo!()
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
+) {
+    state.stack.push(U256::from(&platform.rt.current_balance()))
 }

@@ -378,7 +378,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         SELFBALANCE(m) {
-            state::selfbalance(m.runtime, m.system)?;
+            state::selfbalance(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
