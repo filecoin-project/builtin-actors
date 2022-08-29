@@ -2919,15 +2919,16 @@ fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(SupportedHashes, &[u8]) -> ([u
 }
 
 #[allow(dead_code)]
-pub fn test_sector(
-    expiration: ChainEpoch,
+pub fn test_sector_no_proof_exp(
+    commitment_expiration: ChainEpoch,
     sector_number: SectorNumber,
     deal_weight: u64,
     verified_deal_weight: u64,
     pledge: u64,
 ) -> SectorOnChainInfo {
     SectorOnChainInfo {
-        commitment_expiration: expiration,
+        commitment_expiration,
+        proof_expiration: commitment_expiration + 1000,
         sector_number,
         deal_weight: DealWeight::from(deal_weight),
         verified_deal_weight: DealWeight::from(verified_deal_weight),
