@@ -19,4 +19,24 @@ pub enum Type {
     Multisig = 9,
     Reward = 10,
     VerifiedRegistry = 11,
+    EVM = 12,
+}
+
+impl Type {
+    pub fn name(&self) -> &'static str {
+        match *self {
+            Type::System => "system",
+            Type::Init => "init",
+            Type::Cron => "cron",
+            Type::Account => "account",
+            Type::Power => "storagepower",
+            Type::Miner => "storageminer",
+            Type::Market => "storagemarket",
+            Type::PaymentChannel => "paymentchannel",
+            Type::Multisig => "multisig",
+            Type::Reward => "reward",
+            Type::VerifiedRegistry => "verifiedregistry",
+            Type::EVM => "evm",
+        }
+    }
 }

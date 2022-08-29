@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_blockstore::Blockstore;
@@ -192,7 +191,7 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    use fvm_shared::actor::builtin::Type;
+    use fil_actors_runtime::runtime::builtins::Type;
 
     rt.resolve_builtin_actor_type(exec)
         .map(|typ| match typ {
