@@ -401,8 +401,7 @@ impl Partition {
 
     /// Replaces a number of "old" sectors with new ones.
     /// The old sectors must not be faulty or terminated.
-    /// If the same sector is both removed and added, this permits rescheduling *with a change in power*,
-    /// unlike RescheduleExpirations.
+    /// If the same sector is both removed and added, this permits rescheduling *with a change in power*.
     /// Returns the delta to power and pledge requirement.
     pub fn replace_sectors<BS: Blockstore>(
         &mut self,
