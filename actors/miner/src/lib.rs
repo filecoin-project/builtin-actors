@@ -3339,9 +3339,14 @@ impl Actor {
         RT: Runtime<BS>,
     {
         let caller = rt.message().caller();
-        let new_beneficiary = rt.resolve_address(&params.new_beneficiary).ok_or_else(|| {
-            actor_error!(illegal_argument, "unable to resolve address: {}", params.new_beneficiary)
-        })?;
+        let new_beneficiary =
+            Address::new_id(rt.resolve_address(&params.new_beneficiary).ok_or_else(|| {
+                actor_error!(
+                    illegal_argument,
+                    "unable to resolve address: {}",
+                    params.new_beneficiary
+                )
+            })?);
 
         rt.transaction(|state: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), state)?;
