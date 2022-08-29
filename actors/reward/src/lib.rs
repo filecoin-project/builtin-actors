@@ -159,7 +159,7 @@ impl Actor {
         // if this fails, we can assume the miner is responsible and avoid failing here.
         let reward_params = ext::miner::ApplyRewardParams { reward: total_reward.clone(), penalty };
         let res = rt.send(
-            Address::new_id(miner_id),
+            &Address::new_id(miner_id),
             ext::miner::APPLY_REWARDS_METHOD,
             RawBytes::serialize(&reward_params)?,
             total_reward.clone(),
@@ -171,7 +171,7 @@ impl Actor {
                 e.exit_code()
             );
             let res =
-                rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), total_reward);
+                rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), total_reward);
             if let Err(e) = res {
                 error!(
                     "failed to send unsent reward to the burnt funds actor, code: {:?}",

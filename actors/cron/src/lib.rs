@@ -65,7 +65,7 @@ impl Actor {
         for entry in st.entries {
             // Intentionally ignore any error when calling cron methods
             let res = rt.send(
-                entry.receiver,
+                &entry.receiver,
                 entry.method_num,
                 RawBytes::default(),
                 TokenAmount::from(0u8),
