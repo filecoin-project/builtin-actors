@@ -331,8 +331,9 @@ impl Actor {
 
             let mut provider_lockup = total_provider_lockup.clone();
             provider_lockup += &deal.proposal.provider_collateral;
-            let provider_balance_ok =
-                msm.balance_covered(Address::new_id(provider_id), &provider_lockup).map_err(|e| {
+            let provider_balance_ok = msm
+                .balance_covered(Address::new_id(provider_id), &provider_lockup)
+                .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check provider balance coverage",
