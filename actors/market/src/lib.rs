@@ -317,7 +317,7 @@ impl Actor {
             client_lockup += deal.proposal.client_balance_requirement();
 
             let client_balance_ok =
-                msm.balance_covered(deal.proposal.client, &client_lockup).map_err(|e| {
+                msm.balance_covered(Address::new_id(client_id), &client_lockup).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check client balance coverage",
@@ -332,7 +332,7 @@ impl Actor {
             let mut provider_lockup = total_provider_lockup.clone();
             provider_lockup += &deal.proposal.provider_collateral;
             let provider_balance_ok =
-                msm.balance_covered(provider_raw, &provider_lockup).map_err(|e| {
+                msm.balance_covered(Address::new_id(provider_id), &provider_lockup).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check provider balance coverage",
