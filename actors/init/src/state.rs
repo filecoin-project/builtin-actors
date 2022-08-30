@@ -1,15 +1,16 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
+    actor_error, make_empty_map, make_map_with_root_and_bitwidth, AsActorError,
+    FIRST_NON_SINGLETON_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::{Address, Protocol};
+use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 
 /// State is reponsible for creating
@@ -24,7 +25,7 @@ impl State {
     pub fn new<BS: Blockstore>(store: &BS, network_name: String) -> anyhow::Result<Self> {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
-            .map_err(|e| anyhow!("failed to create empty map: {}", e))?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty map")?;
         Ok(Self { address_map: empty_map, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
     }
 
