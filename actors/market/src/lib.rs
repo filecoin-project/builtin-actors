@@ -1287,7 +1287,7 @@ where
     let proposal_bytes = serialize_vec(&proposal.proposal, "deal proposal")?;
 
     rt.send(
-        proposal.proposal.client,
+        &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
         RawBytes::serialize(ext::account::AuthenticateMessageParams {
             signature: signature_bytes,

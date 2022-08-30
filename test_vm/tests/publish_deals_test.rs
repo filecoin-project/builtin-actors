@@ -4,12 +4,21 @@ use fil_actor_market::{
 };
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 
+use fil_actor_account::types::AuthenticateMessageParams;
+use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::max_prove_commit_duration;
+use fil_actor_miner::Method as MinerMethod;
+use fil_actor_power::Method as PowerMethod;
+use fil_actor_reward::Method as RewardMethod;
+
 use fil_actor_verifreg::{AddVerifierClientParams, Method as VerifregMethod};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{test_utils::*, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+use fil_actors_runtime::{
+    test_utils::*, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
+};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -21,7 +30,7 @@ use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use test_vm::util::{
     add_verifier, apply_ok, bf_all, create_accounts, create_accounts_seeded, create_miner,
 };
-use test_vm::VM;
+use test_vm::{ExpectInvocation, VM};
 
 struct Addrs {
     worker: Address,
@@ -501,15 +510,17 @@ fn psd_bad_sig() {
         client_collateral,
     };
 
+    let invalid_sig_bytes = "very_invalid_sig".as_bytes().to_vec();
     let publish_params = PublishStorageDealsParams {
         deals: vec![ClientDealProposal {
-            proposal: proposal,
+            proposal: proposal.clone(),
             client_signature: Signature {
                 sig_type: SignatureType::BLS,
-                bytes: "very_invalid_sig".as_bytes().to_vec(),
+                bytes: invalid_sig_bytes.clone(),
             },
         }],
     };
+
     let ret = v
         .apply_message(
             a.worker,
@@ -520,6 +531,41 @@ fn psd_bad_sig() {
         )
         .unwrap();
     assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
+    let auth_params = AuthenticateMessageParams {
+        signature: invalid_sig_bytes,
+        message: serialize(&proposal, "deal proposal").unwrap().to_vec(),
+    };
+    let auth_params_ser = serialize(&auth_params, "auth params").unwrap();
+
+    ExpectInvocation {
+        to: *STORAGE_MARKET_ACTOR_ADDR,
+        method: MarketMethod::PublishStorageDeals as u64,
+        subinvocs: Some(vec![
+            ExpectInvocation {
+                to: a.maddr,
+                method: MinerMethod::ControlAddresses as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: *REWARD_ACTOR_ADDR,
+                method: RewardMethod::ThisEpochReward as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: *STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::CurrentTotalPower as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: a.client1,
+                method: AccountMethod::AuthenticateMessage as u64,
+                params: Some(auth_params_ser),
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 
     v.assert_state_invariants();
 }

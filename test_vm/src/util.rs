@@ -1,4 +1,5 @@
 use crate::*;
+use fil_actor_account::Method as AccountMethod;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
@@ -615,6 +616,11 @@ pub fn publish_deal(
         ExpectInvocation {
             to: *STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::CurrentTotalPower as u64,
+            ..Default::default()
+        },
+        ExpectInvocation {
+            to: deal_client,
+            method: AccountMethod::AuthenticateMessage as u64,
             ..Default::default()
         },
     ];

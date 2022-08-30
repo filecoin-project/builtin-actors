@@ -16,9 +16,11 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::METHOD_SEND;
 
+use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use num_traits::Zero;
 
 mod harness;
+
 use harness::*;
 
 const START_EPOCH: ChainEpoch = 50;
@@ -79,20 +81,29 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         END_EPOCH,
     );
     let buf = RawBytes::serialize(deal_proposal2.clone()).expect("failed to marshal deal proposal");
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let sig = Signature::new_bls(buf.to_vec());
     let client_deal_proposal =
-        ClientDealProposal { proposal: deal_proposal2.clone(), client_signature: sig.clone() };
+        ClientDealProposal { proposal: deal_proposal2.clone(), client_signature: sig };
     let params = PublishStorageDealsParams { deals: vec![client_deal_proposal] };
     rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: deal_proposal2.client,
-        plaintext: buf.to_vec(),
-        result: Ok(()),
-    });
+    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf.to_vec(),
+        message: buf.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal_proposal2.client,
+        AUTHENTICATE_MESSAGE_METHOD,
+        auth_param,
+        TokenAmount::from(0u8),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
