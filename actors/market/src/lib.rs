@@ -43,6 +43,8 @@ pub mod balance_table;
 #[doc(hidden)]
 pub mod ext;
 pub mod policy;
+
+#[cfg(not(feature = "fil-actor"))]
 pub mod testing;
 
 mod deal;

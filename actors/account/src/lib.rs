@@ -16,6 +16,8 @@ use fil_actors_runtime::{actor_error, ActorError};
 pub use self::state::State;
 
 mod state;
+
+#[cfg(not(feature = "fil-actor"))]
 pub mod testing;
 
 #[cfg(feature = "fil-actor")]

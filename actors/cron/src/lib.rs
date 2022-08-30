@@ -15,6 +15,8 @@ use num_traits::FromPrimitive;
 pub use self::state::{Entry, State};
 
 mod state;
+
+#[cfg(not(feature = "fil-actor"))]
 pub mod testing;
 
 #[cfg(feature = "fil-actor")]

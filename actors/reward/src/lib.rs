@@ -25,10 +25,12 @@ pub use self::types::*;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+#[cfg(not(feature = "fil-actor"))]
+pub mod testing;
+
 pub(crate) mod expneg;
 mod logic;
 mod state;
-pub mod testing;
 mod types;
 
 // only exported for tests

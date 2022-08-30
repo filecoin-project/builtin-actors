@@ -79,9 +79,11 @@ mod sector_map;
 mod sectors;
 mod state;
 mod termination;
-pub mod testing;
 mod types;
 mod vesting_state;
+
+#[cfg(not(feature = "fil-actor"))]
+pub mod testing;
 
 // The first 1000 actor-specific codes are left open for user error, i.e. things that might
 // actually happen without programming error in the actor code.

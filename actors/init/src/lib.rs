@@ -17,8 +17,10 @@ pub use self::state::State;
 pub use self::types::*;
 
 mod state;
-pub mod testing;
 mod types;
+
+#[cfg(not(feature = "fil-actor"))]
+pub mod testing;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);

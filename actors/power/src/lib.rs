@@ -32,11 +32,13 @@ pub use self::types::*;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+#[cfg(not(feature = "fil-actor"))]
+pub mod testing;
+
 #[doc(hidden)]
 pub mod ext;
 mod policy;
 mod state;
-pub mod testing;
 mod types;
 
 // * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)
