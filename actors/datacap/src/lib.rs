@@ -505,8 +505,8 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::Destroy) => {
-                Self::destroy(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let ret = Self::destroy(rt, cbor::deserialize_params(params)?)?;
+                serialize(&ret, "destroy result")
             }
             Some(Method::Name) => {
                 let ret = Self::name(rt, cbor::deserialize_params(params)?)?;
@@ -525,32 +525,32 @@ impl ActorCode for Actor {
                 serialize(&BigIntSer(&ret), "balance_of result")
             }
             Some(Method::Transfer) => {
-                Self::transfer(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let ret = Self::transfer(rt, cbor::deserialize_params(params)?)?;
+                serialize(&ret, "transfer result")
             }
             Some(Method::TransferFrom) => {
-                Self::transfer_from(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let ret = Self::transfer_from(rt, cbor::deserialize_params(params)?)?;
+                serialize(&ret, "transfer_from result")
             }
             Some(Method::IncreaseAllowance) => {
-                Self::increase_allowance(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let ret = Self::increase_allowance(rt, cbor::deserialize_params(params)?)?;
+                serialize(&BigIntSer(&ret), "increase_allowance result")
             }
             Some(Method::DecreaseAllowance) => {
-                Self::decrease_allowance(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let ret = Self::decrease_allowance(rt, cbor::deserialize_params(params)?)?;
+                serialize(&BigIntSer(&ret), "decrease_allowance result")
             }
             Some(Method::RevokeAllowance) => {
                 Self::revoke_allowance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::Burn) => {
-                Self::burn(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let ret = Self::burn(rt, cbor::deserialize_params(params)?)?;
+                serialize(&ret, "burn result")
             }
             Some(Method::BurnFrom) => {
-                Self::burn_from(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let ret = Self::burn_from(rt, cbor::deserialize_params(params)?)?;
+                serialize(&ret, "burn_from result")
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }

@@ -4,6 +4,7 @@ use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
+use fil_actor_datacap::{Actor as DataCapActor, State as DataCapState};
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
 use fil_actor_miner::{Actor as MinerActor, State as MinerState};
@@ -20,12 +21,12 @@ use fil_actors_runtime::runtime::{
     Verifier,
 };
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
@@ -230,10 +231,20 @@ impl<'bs> VM<'bs> {
         let root_msig_addr = msig_ctor_ret.id_address;
         assert_eq!(TEST_VERIFREG_ROOT_ADDR, root_msig_addr);
         // verifreg
-        let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
+        let verifreg_head = v.put_store(
+            &VerifRegState::new(&v.store, root_msig_addr, *DATACAP_TOKEN_ACTOR_ADDR).unwrap(),
+        );
         v.set_actor(
             *VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero()),
+        );
+
+        // datacap
+        let datacap_head =
+            v.put_store(&DataCapState::new(&v.store, *VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
+        v.set_actor(
+            *DATACAP_TOKEN_ACTOR_ADDR,
+            actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero()),
         );
 
         // burnt funds
@@ -596,8 +607,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
     fn gather_trace(&mut self, invoke_result: Result<RawBytes, ActorError>) -> InvocationTrace {
         let (ret, code) = match invoke_result {
-            Ok(rb) => (Some(rb), None),
-            Err(ae) => (None, Some(ae.exit_code())),
+            Ok(rb) => (Some(rb), ExitCode::OK),
+            Err(ae) => (None, ae.exit_code()),
         };
         let mut msg = self.msg.clone();
         msg.to = match self.resolve_target(&self.msg.to) {
@@ -659,6 +670,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Power => PowerActor::invoke_method(self, self.msg.method, &params),
             Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
             Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
+            // Type::EVM => panic!("no EVM"),
+            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, &params),
         };
         if res.is_err() {
             self.v.rollback(prior_root)
@@ -1032,7 +1045,7 @@ pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
 #[derive(Clone)]
 pub struct InvocationTrace {
     pub msg: InternalMessage,
-    pub code: Option<ExitCode>,
+    pub code: ExitCode,
     pub ret: Option<RawBytes>,
     pub subinvocations: Vec<InvocationTrace>,
 }
@@ -1056,48 +1069,37 @@ impl ExpectInvocation {
         let id = format!("[{}:{}]", invoc.msg.to, invoc.msg.method);
         self.quick_match(invoc, String::new());
         if let Some(c) = self.code {
-            assert_ne!(
-                None,
-                invoc.code,
-                "{} unexpected code: expected:{}was:{}",
-                id,
-                c,
-                ExitCode::OK
-            );
             assert_eq!(
-                c,
-                invoc.code.unwrap(),
-                "{} unexpected code expected:{}was:{}",
-                id,
-                c,
-                invoc.code.unwrap()
+                c, invoc.code,
+                "{} unexpected code expected: {}, was: {}",
+                id, c, invoc.code
             );
         }
         if let Some(f) = self.from {
             assert_eq!(
                 f, invoc.msg.from,
-                "{} unexpected from addr: expected:{}was:{} ",
+                "{} unexpected from addr: expected: {}, was: {} ",
                 id, f, invoc.msg.from
             );
         }
         if let Some(v) = &self.value {
             assert_eq!(
                 v, &invoc.msg.value,
-                "{} unexpected value: expected:{}was:{} ",
+                "{} unexpected value: expected: {}, was: {} ",
                 id, v, invoc.msg.value
             );
         }
         if let Some(p) = &self.params {
             assert_eq!(
                 p, &invoc.msg.params,
-                "{} unexpected params: expected:{:x?}was:{:x?}",
+                "{} unexpected params: expected: {:x?}, was: {:x?}",
                 id, p, invoc.msg.params
             );
         }
         if let Some(r) = &self.ret {
-            assert_ne!(None, invoc.ret, "{} unexpected ret: expected:{:x?}was:None", id, r);
+            assert_ne!(None, invoc.ret, "{} unexpected ret: expected: {:x?}, was: None", id, r);
             let ret = &invoc.ret.clone().unwrap();
-            assert_eq!(r, ret, "{} unexpected ret: expected:{:x?}was:{:x?}", id, r, ret);
+            assert_eq!(r, ret, "{} unexpected ret: expected: {:x?}, was: {:x?}", id, r, ret);
         }
         if let Some(expect_subinvocs) = &self.subinvocs {
             let subinvocs = &invoc.subinvocations;
@@ -1138,12 +1140,12 @@ impl ExpectInvocation {
         let id = format!("[{}:{}]", invoc.msg.to, invoc.msg.method);
         assert_eq!(
             self.to, invoc.msg.to,
-            "{} unexpected to addr: expected:{} was:{} \n{}",
+            "{} unexpected to addr: expected: {}, was: {} \n{}",
             id, self.to, invoc.msg.to, extra_msg
         );
         assert_eq!(
             self.method, invoc.msg.method,
-            "{} unexpected method: expected:{}was:{} \n{}",
+            "{} unexpected method: expected: {}, was: {} \n{}",
             id, self.method, invoc.msg.from, extra_msg
         );
     }
