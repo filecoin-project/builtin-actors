@@ -34,7 +34,7 @@ pub const PRECOMPILES: [PrecompileFn; 9] = [
     modexp,     // modexp 0x05
     ec_add,     // ecAdd 0x06
     ec_mul,     // ecMul 0x07
-    ecpairing,  // ecPairing 0x08
+    ec_pairing, // ecPairing 0x08
     blake2f,    // blake2f 0x09
 ];
 
@@ -173,7 +173,7 @@ fn ec_mul(input: &[u8]) -> PrecompileResult {
     Ok(output)
 }
 
-fn ecpairing(input: &[u8]) -> PrecompileResult {
+fn ec_pairing(input: &[u8]) -> PrecompileResult {
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
         let x1 = read_u256(input, 0)?;
         let y1 = read_u256(input, 32)?;
@@ -243,14 +243,18 @@ fn blake2f(input: &[u8]) -> PrecompileResult {
 
     let mut rounds = [0u8; 4];
 
+    // 4 bytes
     let mut start = 0;
     rounds.copy_from_slice(&input[..4]);
     start += 4;
 
+    // 64 bytes
     let h = &input[start..start + 64];
     start += 64;
+    // 128 bytes
     let m = &input[start..start + 128];
     start += 128;
+    // 16 bytes
     let t = &input[start..start + 16];
     start += 16;
     let f = input[start] != 0;
@@ -275,4 +279,349 @@ fn blake2f(input: &[u8]) -> PrecompileResult {
     hasher.blake2_f(rounds, h, m, t, f);
     let output = hasher.output().to_vec();
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes_literal::bytes;
+    use hex_literal::hex;
+    
+    // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
+    mod bn {
+        use crate::interpreter::{
+            precompiles::{ec_add, ec_mul, ec_pairing, PrecompileError},
+            StatusCode,
+        };
+
+        #[test]
+        fn bn128_add() {
+            let input = hex::decode(
+                "\
+                 18b18acfb4c2c30276db5411368e7185b311dd124691610c5d3b74034e093dc9\
+                 063c909c4720840cb5134cb9f59fa749755796819658d32efc0d288198f37266\
+                 07c2b7f58a84bd6145f00c9c2bc0bb1a187f20ff2c92963a88019e7c6a014eed\
+                 06614e20c147e940f2d70da3f74c9a17df361706a4485c742bd6788478fa17d7",
+            )
+            .unwrap();
+            let expected = hex::decode(
+                "\
+                2243525c5efd4b9c3d3c45ac0ca3fe4dd85e830a4ce6b65fa1eeaee202839703\
+                301d1d33be6da8e509df21cc35964723180eed7532537db9ae5e7d48f195c915",
+            )
+            .unwrap();
+            let res = ec_add(&input).unwrap();
+            assert_eq!(res, expected);
+            // zero sum test
+            let input = hex::decode(
+                "\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap();
+            let expected = hex::decode(
+                "\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap();
+            let res = ec_add(&input).unwrap();
+            assert_eq!(res, expected);
+            // out of gas test
+            let input = hex::decode(
+                "\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap();
+            let res = ec_add(&input);
+            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            // no input test
+            let input = [0u8; 0];
+            let expected = hex::decode(
+                "\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap();
+            let res = ec_add(&input).unwrap();
+            assert_eq!(res, expected);
+            // point not on curve fail
+            let input = hex::decode(
+                "\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111",
+            )
+            .unwrap();
+            let res = ec_add(&input).unwrap();
+            assert!(matches!(res, Err(PrecompileError::EcErr)));
+        }
+
+        #[test]
+        fn bn128_mul() {
+            let input = hex::decode(
+                "\
+                2bd3e6d0f3b142924f5ca7b49ce5b9d54c4703d7ae5648e61d02268b1a0a9fb7\
+                21611ce0a6af85915e2f1d70300909ce2e49dfad4a4619c8390cae66cefdb204\
+                00000000000000000000000000000000000000000000000011138ce750fa15c2",
+            )
+            .unwrap();
+            let expected = hex::decode(
+                "\
+                070a8d6a982153cae4be29d434e8faef8a47b274a053f5a4ee2a6c9c13c31e5c\
+                031b8ce914eba3a9ffb989f9cdd5b0f01943074bf4f0f315690ec3cec6981afc",
+            )
+            .unwrap();
+            let res = ec_mul(&input).unwrap();
+
+            assert_eq!(res, expected);
+            // out of gas test
+            let input = hex::decode(
+                "\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0200000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap();
+            let res = ec_mul(&input);
+            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            // zero multiplication test
+            let input = hex::decode(
+                "\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0200000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap();
+            let expected = hex::decode(
+                "\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap();
+            let res = ec_mul(&input).unwrap();
+            assert_eq!(res, expected);
+            // no input test
+            let input = [0u8; 0];
+            let expected = hex::decode(
+                "\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap();
+            let res = ec_mul(&input).unwrap();
+            assert_eq!(res, expected);
+            // point not on curve fail
+            let input = hex::decode(
+                "\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                0f00000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap();
+            let res = ec_mul(&input);
+            assert!(matches!(res, Err(PrecompileError::EcErr)));
+        }
+        
+        #[test]
+        fn bn128_pair() {
+            let input = hex::decode(
+                "\
+                1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
+                3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
+                209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
+                04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
+                2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
+                120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550\
+                111e129f1cf1097710d41c4ac70fcdfa5ba2023c6ff1cbeac322de49d1b6df7c\
+                2032c61a830e3c17286de9462bf242fca2883585b93870a73853face6a6bf411\
+                198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2\
+                1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed\
+                090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b\
+                12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
+            )
+            .unwrap();
+            let expected =
+                hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                    .unwrap();
+            let res =
+                Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false).unwrap().output;
+            assert_eq!(res, expected);
+            // out of gas test
+            let input = hex::decode(
+                "\
+                1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
+                3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
+                209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
+                04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
+                2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
+                120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550\
+                111e129f1cf1097710d41c4ac70fcdfa5ba2023c6ff1cbeac322de49d1b6df7c\
+                2032c61a830e3c17286de9462bf242fca2883585b93870a73853face6a6bf411\
+                198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2\
+                1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed\
+                090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b\
+                12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
+            )
+            .unwrap();
+            let res = Bn128Pair::<Byzantium>::run(&input, 259_999, &new_context(), false);
+            assert!(matches!(res, Err(Return::OutOfGas)));
+            // no input test
+            let input = [0u8; 0];
+            let expected =
+                hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                    .unwrap();
+            let res =
+                Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false).unwrap().output;
+            assert_eq!(res, expected);
+            // point not on curve fail
+            let input = hex::decode(
+                "\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111",
+            )
+            .unwrap();
+            let res = Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false);
+            assert!(matches!(res, Err(Return::Other(Cow::Borrowed("ERR_BN128_INVALID_A")))));
+            // invalid input length
+            let input = hex::decode(
+                "\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                111111111111111111111111111111\
+            ",
+            )
+            .unwrap();
+            let res = Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false);
+            assert!(matches!(res, Err(Return::Other(Cow::Borrowed("ERR_BN128_INVALID_LEN",)))));
+        }
+    }
+
+    // https://eips.ethereum.org/EIPS/eip-152#test-cases
+    #[test]
+    fn blake2() {
+        use super::blake2f;
+
+        // // helper to turn EIP test cases into something readable
+        // fn test_case_formatter(mut remaining: impl ToString) {
+        //     let mut rounds = remaining.to_string();
+        //     let mut h = rounds.split_off(2*4);
+        //     let mut m = h.split_off(2*64);
+        //     let mut t_0 = m.split_off(2*128);
+        //     let mut t_1 = t_0.split_off(2*8);
+        //     let mut f = t_1.split_off(2*8);
+
+        //     println!("
+        //         \"{rounds}\"
+        //         \"{h}\"
+        //         \"{m}\"
+        //         \"{t_0}\"
+        //         \"{t_1}\"
+        //         \"{f}\"
+        //     ")
+        // }
+
+        // invalid input len
+        assert_eq!(blake2f(&[]), Err(StatusCode::IncorrectInputSize));
+
+        // too small
+        let input = &hex!(
+            "00000c"
+            "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
+            "6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            "0300000000000000"
+            "0000000000000000"
+            "02"
+        );
+        assert_eq!(blake2f(input), Err(StatusCode::IncorrectInputSize));
+
+        // too large
+        let input = &hex!(
+            "000000000c"
+            "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
+            "6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            "0300000000000000"
+            "0000000000000000"
+            "02"
+        );
+        assert_eq!(blake2f(input), Err(StatusCode::IncorrectInputSize));
+
+        // final block indicator invalid
+        let input = &hex!(
+            "0000000c"
+            "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
+            "6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            "0300000000000000"
+            "0000000000000000"
+            "02"
+        );
+        assert_eq!(blake2f(input), Err(StatusCode::IncorrectInputSize));
+
+        // outputs
+
+        let expected = &hex!("08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b");
+        let input = &hex!(
+            "00000000"
+            "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
+            "6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            "0300000000000000"
+            "0000000000000000"
+            "01"
+        );
+        assert_eq!(blake2f(input), Ok(expected.to_vec()));
+
+        let expected = &hex!("ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923");
+        let input = &hex!(
+            "00000000"
+            "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
+            "6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            "0300000000000000"
+            "0000000000000000"
+            "01"
+        );
+        assert_eq!(blake2f(input), Ok(expected.to_vec()));
+
+        let expected = &hex!("75ab69d3190a562c51aef8d88f1c2775876944407270c42c9844252c26d2875298743e7f6d5ea2f2d3e8d226039cd31b4e426ac4f2d3d666a610c2116fde4735");
+        let input = &hex!(
+            "0000000c"
+            "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
+            "6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            "0300000000000000"
+            "0000000000000000"
+            "00"
+        );
+        assert_eq!(blake2f(input), Ok(expected.to_vec()));
+
+        let expected = &hex!("b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421");
+        let input = &hex!(
+            "00000001"
+            "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
+            "6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            "0300000000000000"
+            "0000000000000000"
+            "01"
+        );
+        assert_eq!(blake2f(input), Ok(expected.to_vec()));
+
+        let expected = &hex!("fc59093aafa9ab43daae0e914c57635c5402d8e3d2130eb9b3cc181de7f0ecf9b22bf99a7815ce16419e200e01846e6b5df8cc7703041bbceb571de6631d2615");
+        let input = &hex!(
+            "ffffffff"
+            "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
+            "6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            "0300000000000000"
+            "0000000000000000"
+            "01"
+        );
+        assert_eq!(blake2f(input), Ok(expected.to_vec()));
+    }
 }
