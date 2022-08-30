@@ -22,8 +22,6 @@ mod types;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
-// * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)
-
 /// Init actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -193,7 +191,7 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    use fvm_shared::actor::builtin::Type;
+    use fil_actors_runtime::runtime::builtins::Type;
 
     rt.resolve_builtin_actor_type(exec)
         .map(|typ| match typ {

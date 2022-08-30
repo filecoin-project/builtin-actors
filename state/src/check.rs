@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use anyhow::bail;
+use bimap::BiBTreeMap;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
 use fil_actor_cron::State as CronState;
@@ -25,8 +26,6 @@ use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::from_slice;
 use fvm_ipld_encoding::CborStore;
-use fvm_shared::actor::builtin::Manifest;
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::address::Protocol;
 use fvm_shared::bigint::BigInt;
@@ -48,6 +47,7 @@ use fil_actor_paych::testing as paych;
 use fil_actor_power::testing as power;
 use fil_actor_reward::testing as reward;
 use fil_actor_verifreg::testing as verifreg;
+use fil_actors_runtime::runtime::builtins::Type;
 
 /// Value type of the top level of the state tree.
 /// Represents the on-chain state of a single actor.
@@ -103,8 +103,12 @@ macro_rules! get_state {
     };
 }
 
+// Note: BiBTreeMap is an overly constrained type for what we are doing here, but chosen
+// to match the Manifest implementation in the FVM.
+// It could be replaced with a custom mapping trait (while Rust doesn't support
+// abstract collection traits).
 pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
-    manifest: &Manifest,
+    manifest: &BiBTreeMap<Cid, Type>,
     policy: &Policy,
     tree: Tree<'a, BS>,
     expected_balance_total: &TokenAmount,
