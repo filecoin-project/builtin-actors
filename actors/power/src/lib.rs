@@ -107,7 +107,7 @@ impl Actor {
         let miner_actor_code_cid = rt.get_code_cid_for_type(Type::Miner);
         let ext::init::ExecReturn { id_address, robust_address } = rt
             .send(
-                *INIT_ACTOR_ADDR,
+                &INIT_ACTOR_ADDR,
                 ext::init::EXEC_METHOD,
                 RawBytes::serialize(init::ExecParams {
                     code_cid: miner_actor_code_cid,
@@ -253,7 +253,7 @@ impl Actor {
 
         let rewret: ThisEpochRewardReturn = rt
             .send(
-                *REWARD_ACTOR_ADDR,
+                &REWARD_ACTOR_ADDR,
                 ext::reward::Method::ThisEpochReward as MethodNum,
                 RawBytes::default(),
                 TokenAmount::zero(),
@@ -279,7 +279,7 @@ impl Actor {
 
         // Update network KPA in reward actor
         rt.send(
-            *REWARD_ACTOR_ADDR,
+            &REWARD_ACTOR_ADDR,
             ext::reward::UPDATE_NETWORK_KPI,
             this_epoch_raw_byte_power?,
             TokenAmount::from(0_u32),
@@ -513,7 +513,7 @@ impl Actor {
                 continue;
             }
             if let Err(e) = rt.send(
-                m,
+                &m,
                 ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD,
                 RawBytes::serialize(&ext::miner::ConfirmSectorProofsParams {
                     sectors: successful,
@@ -608,7 +608,7 @@ impl Actor {
                 quality_adj_power_smoothed: st.this_epoch_qa_power_smoothed.clone(),
             })?;
             let res = rt.send(
-                event.miner_addr,
+                &event.miner_addr,
                 ext::miner::ON_DEFERRED_CRON_EVENT_METHOD,
                 params,
                 Default::default(),

@@ -890,7 +890,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
@@ -912,7 +912,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
 
         assert!(
-            expected_msg.to == to
+            expected_msg.to == *to
                 && expected_msg.method == method
                 && expected_msg.params == params
                 && expected_msg.value == value,

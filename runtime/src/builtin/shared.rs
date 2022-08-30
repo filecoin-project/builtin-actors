@@ -31,7 +31,7 @@ where
     }
 
     // send 0 balance to the account so an ID address for it is created and then try to resolve
-    rt.send(*address, METHOD_SEND, Default::default(), Default::default())
+    rt.send(address, METHOD_SEND, Default::default(), Default::default())
         .map_err(|e| e.wrap(&format!("failed to send zero balance to address {}", address)))?;
 
     if let Some(id) = rt.resolve_address(address) {

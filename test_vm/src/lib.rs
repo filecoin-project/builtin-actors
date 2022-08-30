@@ -328,7 +328,11 @@ impl<'bs> VM<'bs> {
             self.store,
         )
         .unwrap();
-        actors.get(&addr.to_bytes()).unwrap().cloned()
+        let actor = actors.get(&addr.to_bytes()).unwrap().cloned();
+        actor.iter().for_each(|a| {
+            self.actors_cache.borrow_mut().insert(addr, a.clone());
+        });
+        actor
     }
 
     // blindly overwrite the actor at this address whether it previously existed or not
@@ -348,8 +352,8 @@ impl<'bs> VM<'bs> {
             actors.set(addr.to_bytes().into(), act.clone()).unwrap();
         }
 
-        // roll "back" to latest head, flushing cache
-        self.rollback(actors.flush().unwrap());
+        self.state_root.replace(actors.flush().unwrap());
+        self.actors_dirty.replace(false);
         *self.state_root.borrow()
     }
 
@@ -783,7 +787,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
 
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
@@ -795,7 +799,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
             ));
         }
 
-        let new_actor_msg = InternalMessage { from: self.to(), to, value, method, params };
+        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
         let mut new_ctx = InvocationCtx {
             v: self.v,
             top: self.top.clone(),

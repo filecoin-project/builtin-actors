@@ -61,7 +61,7 @@ where
     RT: Runtime<BS>,
 {
     let ret = rt.send(
-        Address::new_id(miner_id),
+        &Address::new_id(miner_id),
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
         TokenAmount::zero(),
@@ -207,7 +207,7 @@ impl Actor {
             Ok(ex)
         })?;
 
-        rt.send(recipient, METHOD_SEND, RawBytes::default(), amount_extracted.clone())?;
+        rt.send(&recipient, METHOD_SEND, RawBytes::default(), amount_extracted.clone())?;
 
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_extracted })
     }
@@ -374,7 +374,7 @@ impl Actor {
             // drop deals with a DealSize that cannot be fully covered by VerifiedClient's available DataCap
             if deal.proposal.verified_deal {
                 if let Err(e) = rt.send(
-                    *VERIFIED_REGISTRY_ACTOR_ADDR,
+                    &VERIFIED_REGISTRY_ACTOR_ADDR,
                     crate::ext::verifreg::USE_BYTES_METHOD as u64,
                     RawBytes::serialize(UseBytesParams {
                         address: Address::new_id(client_id),
@@ -1028,7 +1028,7 @@ impl Actor {
 
         for d in timed_out_verified_deals {
             let res = rt.send(
-                *VERIFIED_REGISTRY_ACTOR_ADDR,
+                &VERIFIED_REGISTRY_ACTOR_ADDR,
                 ext::verifreg::RESTORE_BYTES_METHOD,
                 RawBytes::serialize(ext::verifreg::RestoreBytesParams {
                     address: d.client,
@@ -1050,7 +1050,7 @@ impl Actor {
         }
 
         if !amount_slashed.is_zero() {
-            rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount_slashed)?;
+            rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount_slashed)?;
         }
         Ok(())
     }
@@ -1343,7 +1343,7 @@ where
     RT: Runtime<BS>,
 {
     let rwret = rt.send(
-        *REWARD_ACTOR_ADDR,
+        &REWARD_ACTOR_ADDR,
         ext::reward::THIS_EPOCH_REWARD_METHOD,
         RawBytes::default(),
         0.into(),
@@ -1362,7 +1362,7 @@ where
     RT: Runtime<BS>,
 {
     let rwret = rt.send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
         ext::power::CURRENT_TOTAL_POWER_METHOD,
         RawBytes::default(),
         0.into(),
