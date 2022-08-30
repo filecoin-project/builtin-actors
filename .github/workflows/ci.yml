@@ -59,3 +59,63 @@ jobs:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
         cargo run --locked -- -o output/builtin-actors.car
+  coverage:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CARGO_INCREMENTAL: 0
+      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v2
+    - name: Install Rust toolchain
+      uses: ./.github/actions/rust-cargo-run
+      with:
+        command: version
+        components: llvm-tools-preview
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Put LLVM tools into the PATH
+      run: echo "${HOME}/.rustup/toolchains/$(cat rust-toolchain)-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin" >> $GITHUB_PATH
+    - name: Install demangler
+      run: cargo install rustfilt
+    - name: Create coverage report
+      env:
+        # Incremental build is not supported when profiling.
+        CARGO_INCREMENTAL: 0
+        # Make sure that each run of an executable creates a new profile file,
+        # with the default name they would override each other.
+        LLVM_PROFILE_FILE: "%m.profraw"
+        # -Cinstrument-coverage: enable llvm coverage instrumentation
+        # -Ccodegen-units=1: building in parallel is not supported when profiling
+        # -Copt-level=0: disable optimizations for more accurate coverage
+        # -Coverflow-checks=off: checking for overflow is not needed for coverage reporting
+        # -Cinline-threshold=0: do not inline
+        # For code coverage the `-Clink-dead-code` flag should be set, as dead
+        # code should be considered as not covered code. Though this would make
+        # the build fail, hence it is not set.
+        RUSTFLAGS: -Cinstrument-coverage -Ccodegen-units=1 -Copt-level=0 -Coverflow-checks=off -Cinline-threshold=0
+      run: cargo test --workspace --exclude fil_builtin_actors_bundle
+    - name: Merge profiling data
+      # Do *not* use sparse output. It leads to more lines that are not taken
+      # into account at all
+      run: llvm-profdata merge --output=default.profdata $(find . -name '*.profraw')
+    - name: Create HTML coverage report
+      # The compiled files contain the coverage information. From running the
+      # tests we don't know what those files are called, hence use all files
+      # from the `./target/debug/deps` directory which don't have an extension.
+      run: |
+        OBJECT_OPTIONS=($(find ./target/debug/deps/* -name '*' -not -name '*\.*' -printf ' --object %p'))
+        # Create HTML report of this project, we don't care about coverage of
+        # dependencies
+        llvm-cov show --Xdemangler=rustfilt --show-expansions --show-line-counts-or-regions --ignore-filename-regex=".cargo|.rustup|/rustc|./tests/" --format=html --output-dir=./llvm-show --instr-profile=default.profdata ${OBJECT_OPTIONS[@]}
+        # Create file to be uploaded to codecov
+        llvm-cov export --ignore-filename-regex=".cargo|.rustup|/rustc|./tests" --format=lcov --instr-profile=default.profdata ${OBJECT_OPTIONS[@]} > lcov.info
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-coverage-report
+        path: llvm-show/*
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@81cd2dc8148241f03f5839d295e000b8f761e378 # v3.1.0
+      with:
+        files: lcov.info
