@@ -11,9 +11,7 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{
-    actor_error, ActorContext, ActorDowncast, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
-};
+use fil_actors_runtime::{actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR};
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
