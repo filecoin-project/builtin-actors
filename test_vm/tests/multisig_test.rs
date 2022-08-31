@@ -31,7 +31,7 @@ fn test_proposal_hash() {
     let msig_addr = create_msig(&v, addrs, 2);
 
     // fund msig and propose send funds to system actor
-    let fil_delta = TokenAmount::from_atto(3 * 1_000_000_000_u64); // 3 nFIL
+    let fil_delta = TokenAmount::from_nano(3);
     let propose_send_sys_params = ProposeParams {
         to: *SYSTEM_ACTOR_ADDR,
         value: fil_delta.clone(),
