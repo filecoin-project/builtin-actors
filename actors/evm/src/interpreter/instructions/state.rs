@@ -18,5 +18,7 @@ pub fn selfbalance<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
 ) {
+    // Returns native FIL balance of the receiver. Value precision is identical to Ethereum, so
+    // no conversion needed (atto, 1e18).
     state.stack.push(U256::from(&platform.rt.current_balance()))
 }
