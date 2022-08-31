@@ -33,6 +33,7 @@ use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use std::ops::Add;
 
+use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use num_traits::FromPrimitive;
 
 mod harness;
@@ -732,7 +733,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     let mut deal = generate_deal_proposal(client_bls, provider_bls, start_epoch, end_epoch);
     deal.verified_deal = true;
 
-    // add funds for cient using it's BLS address -> will be resolved and persisted
+    // add funds for client using its BLS address -> will be resolved and persisted
     add_participant_funds(&mut rt, client_bls, deal.client_balance_requirement());
     assert_eq!(
         deal.client_balance_requirement(),
@@ -767,19 +768,27 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     //  create a client proposal with a valid signature
     let mut params = PublishStorageDealsParams { deals: vec![] };
     let buf = RawBytes::serialize(&deal).expect("failed to marshal deal proposal");
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
-    let client_proposal =
-        ClientDealProposal { client_signature: sig.clone(), proposal: deal.clone() };
+    let sig = Signature::new_bls(buf.to_vec());
+    let client_proposal = ClientDealProposal { client_signature: sig, proposal: deal.clone() };
     params.deals.push(client_proposal);
     // expect a call to verify the above signature
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: deal.client,
-        plaintext: buf.to_vec(),
-        result: Ok(()),
-    });
 
-    // request is sent to the VerigReg actor using the resolved address
+    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf.to_vec(),
+        message: buf.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal.client,
+        AUTHENTICATE_MESSAGE_METHOD,
+        auth_param,
+        TokenAmount::from(0u8),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
+    // request is sent to the VerifReg actor using the resolved address
     let param = RawBytes::serialize(UseBytesParams {
         address: client_resolved,
         deal_size: BigInt::from(deal.piece_size.0),
@@ -1272,20 +1281,30 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
         end_epoch,
     );
     let buf = RawBytes::serialize(d2.clone()).expect("failed to marshal deal proposal");
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let sig = Signature::new_bls(buf.to_vec());
     let params = PublishStorageDealsParams {
-        deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig.clone() }],
+        deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig }],
     };
     rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: d2.client,
-        plaintext: buf.to_vec(),
-        result: Ok(()),
-    });
+
+    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf.to_vec(),
+        message: buf.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        d2.client,
+        AUTHENTICATE_MESSAGE_METHOD,
+        auth_param,
+        TokenAmount::from(0u8),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
@@ -1657,29 +1676,46 @@ fn insufficient_client_balance_in_a_batch() {
     let buf1 = RawBytes::serialize(&deal1).expect("failed to marshal deal proposal");
     let buf2 = RawBytes::serialize(&deal2).expect("failed to marshal deal proposal");
 
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let sig1 = Signature::new_bls(buf1.to_vec());
+    let sig2 = Signature::new_bls(buf2.to_vec());
     let params = PublishStorageDealsParams {
         deals: vec![
-            ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() },
-            ClientDealProposal { proposal: deal2.clone(), client_signature: sig.clone() },
+            ClientDealProposal { proposal: deal1.clone(), client_signature: sig1 },
+            ClientDealProposal { proposal: deal2.clone(), client_signature: sig2 },
         ],
     };
 
     rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig: sig.clone(),
-        signer: deal1.client,
-        plaintext: buf1.to_vec(),
-        result: Ok(()),
-    });
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: deal2.client,
-        plaintext: buf2.to_vec(),
-        result: Ok(()),
-    });
+
+    let authenticate_param1 = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf1.to_vec(),
+        message: buf1.to_vec(),
+    })
+    .unwrap();
+    let authenticate_param2 = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf2.to_vec(),
+        message: buf2.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal1.client,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        authenticate_param1,
+        TokenAmount::from(0u8),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    rt.expect_send(
+        deal2.client,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        authenticate_param2,
+        TokenAmount::from(0u8),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
@@ -1756,29 +1792,47 @@ fn insufficient_provider_balance_in_a_batch() {
     let buf1 = RawBytes::serialize(&deal1).expect("failed to marshal deal proposal");
     let buf2 = RawBytes::serialize(&deal2).expect("failed to marshal deal proposal");
 
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let sig1 = Signature::new_bls(buf1.to_vec());
+    let sig2 = Signature::new_bls(buf2.to_vec());
+
     let params = PublishStorageDealsParams {
         deals: vec![
-            ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() },
-            ClientDealProposal { proposal: deal2.clone(), client_signature: sig.clone() },
+            ClientDealProposal { proposal: deal1.clone(), client_signature: sig1 },
+            ClientDealProposal { proposal: deal2.clone(), client_signature: sig2 },
         ],
     };
 
     rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig: sig.clone(),
-        signer: deal1.client,
-        plaintext: buf1.to_vec(),
-        result: Ok(()),
-    });
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: deal2.client,
-        plaintext: buf2.to_vec(),
-        result: Ok(()),
-    });
+
+    let authenticate_param1 = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf1.to_vec(),
+        message: buf1.to_vec(),
+    })
+    .unwrap();
+    let authenticate_param2 = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf2.to_vec(),
+        message: buf2.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal1.client,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        authenticate_param1,
+        TokenAmount::from(0u8),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    rt.expect_send(
+        deal2.client,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        authenticate_param2,
+        TokenAmount::from(0u8),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
