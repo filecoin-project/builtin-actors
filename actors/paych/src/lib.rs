@@ -1,11 +1,11 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, cbor, resolve_to_id_addr, ActorDowncast, ActorError, Array};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Sign};
 use fvm_shared::econ::TokenAmount;
@@ -85,7 +85,6 @@ impl Actor {
             .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", resolved))?;
 
         let typ = rt.resolve_builtin_actor_type(&code_cid);
-
         if typ != Some(Type::Account) {
             Err(actor_error!(
                 forbidden,

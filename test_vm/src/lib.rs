@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use bimap::BiBTreeMap;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
@@ -14,6 +15,7 @@ use fil_actor_reward::{Actor as RewardActor, State as RewardState};
 use fil_actor_system::{Actor as SystemActor, State as SystemState};
 use fil_actor_verifreg::{Actor as VerifregActor, State as VerifRegState};
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier,
@@ -31,8 +33,6 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
-use fvm_shared::actor::builtin::Manifest;
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
 use fvm_shared::clock::ChainEpoch;
@@ -448,7 +448,7 @@ impl<'bs> VM<'bs> {
         )
         .unwrap();
 
-        let mut manifest = Manifest::new();
+        let mut manifest = BiBTreeMap::new();
         actors
             .for_each(|_, actor| {
                 manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());

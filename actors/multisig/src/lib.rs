@@ -7,11 +7,10 @@ use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_id_addr, ActorDowncast,
-    ActorError, Map, INIT_ACTOR_ADDR,
+    ActorError, Map, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::actor::builtin::CALLER_TYPES_SIGNABLE;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Sign;
 use fvm_shared::econ::TokenAmount;
