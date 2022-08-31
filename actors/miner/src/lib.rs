@@ -3500,14 +3500,13 @@ impl Actor {
         Ok(())
     }
 
-
     fn refresh_proof_expiration<BS, RT>(
         rt: &mut RT,
         params: ExtendSectorExpirationParams,
     ) -> Result<(), ActorError>
-        where
-            BS: Blockstore,
-            RT: Runtime<BS>,
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
     {
         extend_sector_inner(rt, &params.extensions, extend_proof_validity)
     }
@@ -5045,8 +5044,7 @@ where
     let new_proof_expiration =
         sector.proof_expiration + (policy.max_proof_validity - policy.proof_refresh_window);
     if new_proof_expiration > rt.curr_epoch() + policy.max_proof_validity {
-        return Ok(sector)
-
+        return Ok(sector);
     }
     sector.proof_expiration = new_proof_expiration;
     Ok(sector)
