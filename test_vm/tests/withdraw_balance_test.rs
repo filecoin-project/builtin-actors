@@ -158,7 +158,7 @@ fn withdraw_balance_fail() {
     //confirm beneficiary
     change_beneficiary(&v, beneficiary, miner_id, &beneficiary_change_proposal);
 
-    let withdraw_amount = TokenAmount::from(100);
+    let withdraw_amount = TokenAmount::from(50);
     //message from must be beneficiary or owner
     apply_code(
         &v,
@@ -170,7 +170,7 @@ fn withdraw_balance_fail() {
         ExitCode::USR_FORBIDDEN,
     );
     let withdraw_balance_params_se = serialize(
-        &WithdrawBalanceParams { amount_requested: withdraw_amount },
+        &WithdrawBalanceParams { amount_requested: withdraw_amount.clone() },
         "withdraw  balance params",
     )
     .unwrap();
@@ -178,7 +178,22 @@ fn withdraw_balance_fail() {
     ExpectInvocation {
         to: miner_id,
         method: MinerMethod::WithdrawBalance as u64,
+        params: Some(withdraw_balance_params_se.clone()),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+
+    withdraw_balance(&v, beneficiary, miner_id, withdraw_amount.clone());
+    ExpectInvocation {
+        to: miner_id,
+        method: MinerMethod::WithdrawBalance as u64,
         params: Some(withdraw_balance_params_se),
+        subinvocs: Some(vec![ExpectInvocation {
+            to: beneficiary,
+            method: METHOD_SEND as u64,
+            value: Some(withdraw_amount),
+            ..Default::default()
+        }]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

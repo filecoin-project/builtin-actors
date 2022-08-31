@@ -609,6 +609,17 @@ pub fn get_beneficiary(v: &VM, from: Address, m_addr: Address) -> GetBeneficiary
     .unwrap()
 }
 
+pub fn change_owner_address(v: &VM, from: Address, m_addr: Address, new_miner_addr: Address) {
+    apply_ok(
+        v,
+        from,
+        m_addr,
+        TokenAmount::zero(),
+        MinerMethod::ChangeOwnerAddress as u64,
+        new_miner_addr,
+    );
+}
+
 pub fn withdraw_balance(
     v: &VM,
     from: Address,
