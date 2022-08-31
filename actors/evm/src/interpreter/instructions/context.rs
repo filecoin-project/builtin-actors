@@ -1,3 +1,4 @@
+use crate::interpreter::address::Address;
 use {
     crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::Runtime,
@@ -17,7 +18,26 @@ pub fn caller<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
 ) {
-    state.stack.push(U256::from(platform.rt.message().caller().id().unwrap()))
+    let id = platform.rt.message().caller().id().unwrap();
+    state.stack.push(Address::from_id(id).as_evm_word())
+}
+
+#[inline]
+pub fn address<'r, BS: Blockstore, RT: Runtime<BS>>(
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
+) {
+    let id = platform.rt.message().receiver().id().unwrap();
+    state.stack.push(Address::from_id(id).as_evm_word())
+}
+
+#[inline]
+pub fn origin<'r, BS: Blockstore, RT: Runtime<BS>>(
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
+) {
+    let id = platform.rt.message().origin().id().unwrap();
+    state.stack.push(Address::from_id(id).as_evm_word())
 }
 
 #[inline]
@@ -29,26 +49,11 @@ pub fn call_value<'r, BS: Blockstore, RT: Runtime<BS>>(
 }
 
 #[inline]
-pub fn address<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
-) {
-    state.stack.push(U256::from(platform.rt.message().receiver().id().unwrap()))
-}
-
-#[inline]
-pub fn origin<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
-) {
-    state.stack.push(U256::from(platform.rt.message().origin().id().unwrap()))
-}
-
-#[inline]
 pub fn coinbase<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     _platform: &'r System<'r, BS, RT>,
 ) {
+    // TODO do we want to return the zero ID address, or just a plain 0?
     state.stack.push(U256::zero())
 }
 

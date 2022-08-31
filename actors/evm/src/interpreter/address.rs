@@ -2,8 +2,10 @@ use crate::interpreter::{H160, H256};
 use crate::U256;
 use fvm_shared::address::Address as FilecoinAddress;
 
-/// A Filecoin ad   dress as represented in the FEVM runtime.
-/// This type is a little bit silly now, but it will eventually handle f4 address detection.
+/// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
+///
+/// TODO this type will eventually handle f4 address detection.
+#[derive(PartialEq, Debug, Clone)]
 pub struct Address(H160);
 
 impl From<U256> for Address {
@@ -13,7 +15,22 @@ impl From<U256> for Address {
 }
 
 impl Address {
-    /// Expect an ID address and return it if that's the case.
+    /// Expect a Filecoin address type containing an ID address, and return an address in EVM-form.
+    pub fn from_id_address(addr: &FilecoinAddress) -> Option<Address> {
+        addr.id().ok().map(Address::from_id)
+    }
+
+    /// Returns an EVM-form ID address from actor ID.
+    pub fn from_id(id: u64) -> Address {
+        let mut bytes = [0u8; 20];
+        bytes[0] = 0xff;
+        bytes[12..].copy_from_slice(&id.to_be_bytes());
+        Address(bytes.try_into().unwrap())
+    }
+
+    /// Interpret the hash as an ID address in EVM-form, and return a Filecoin ID address if that's
+    /// the case.
+    ///
     /// An ID address starts with 0xff (msb), and contains the u64 in the last 8 bytes.
     /// We assert that everything in between are 0x00, otherwise we've gotten an illegal address.
     ///
@@ -27,6 +44,11 @@ impl Address {
             return None;
         }
         Some(FilecoinAddress::new_id(u64::from_be_bytes(val[12..].try_into().unwrap())))
+    }
+
+    /// Returns this Address as an EVM word.
+    pub fn as_evm_word(&self) -> U256 {
+        U256::from(&self.0[..])
     }
 }
 
@@ -46,11 +68,17 @@ mod tests {
         $(
             #[test]
             fn $name() {
-                let bytes = $input.concat();
+                let evm_bytes = $input.concat();
+                let evm_addr = Address::from(U256::from(evm_bytes.as_slice()));
                 assert_eq!(
-                    Address::from(U256::from(bytes.as_slice())).as_id_address(),
+                    evm_addr.as_id_address(),
                     $expectation
-                )
+                );
+
+                // test inverse conversion, if a valid ID address was supplied
+                if let Some(fil_addr) = $expectation {
+                    assert_eq!(Address::from_id_address(&fil_addr), Some(evm_addr));
+                }
             }
         )*
         };
@@ -63,6 +91,13 @@ mod tests {
             GOOD_ADDRESS_PADDING,
             vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01].as_slice() // ID address (u64 big endian) (8 bytes)
         ] => Some(FilecoinAddress::new_id(1)),
+
+        good_address_2: [
+            TYPE_PADDING,
+            ID_ADDRESS_MARKER,
+            GOOD_ADDRESS_PADDING,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff].as_slice() // ID address (u64 big endian) (8 bytes)
+        ] => Some(FilecoinAddress::new_id(u16::MAX as u64)),
 
         bad_marker: [
             TYPE_PADDING,
