@@ -208,6 +208,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         for group in group_new_sectors_by_declared_expiration(sector_size, sectors, self.quant) {
             let on_time_sectors = BitField::try_from_bits(group.on_time_sectors)?;
             let early_sectors = BitField::try_from_bits(group.early_sectors)?;
+            println!("{}: {:?} {:?}", group.epoch, on_time_sectors, early_sectors);
 
             self.add(
                 group.epoch,
@@ -295,7 +296,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                         .sector_epoch_set
                         .on_time_sectors
                         .iter()
-                        .chain(group.sector_epoch_set.on_time_sectors.iter())
+                        .chain(group.sector_epoch_set.early_sectors.iter())
                         .copied(),
                 )?;
                 group.expiration_set.on_time_sectors -= &sectors_bitfield;
@@ -402,7 +403,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     /// Returns the newly-recovered power. Fails if any sectors are not found in the queue.
     pub fn reschedule_recovered(
         &mut self,
-        sectors: Vec<SectorOnChainInfo>,
+        sectors: &[SectorOnChainInfo],
         sector_size: SectorSize,
     ) -> anyhow::Result<PowerPair> {
         let mut remaining: BTreeMap<SectorNumber, &SectorOnChainInfo> =
@@ -573,6 +574,13 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 .map(|i| i as SectorNumber)
                 .collect();
 
+            let early_sectors_nums: BTreeSet<SectorNumber> = expiration_set
+                .early_sectors
+                .bounded_iter(ENTRY_SECTORS_MAX)
+                .context("too many on-time sectors to expand")?
+                .map(|i| i as SectorNumber)
+                .collect();
+
             let faulty_sector_nums: BTreeSet<SectorNumber> = expiration_set
                 .faulty_sectors
                 .bounded_iter(ENTRY_SECTORS_MAX)
@@ -593,6 +601,10 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                     removed.on_time_sectors.set(sector_number);
                     expiration_set.on_time_pledge -= &sector.initial_pledge;
                     removed.on_time_pledge += &sector.initial_pledge;
+                } else if early_sectors_nums.contains(&sector_number) {
+                    found = true;
+                    expiration_set.early_sectors.unset(sector_number);
+                    removed.early_sectors.set(sector_number);
                 } else if faulty_sector_nums.contains(&sector_number) {
                     found = true;
                     expiration_set.faulty_sectors.unset(sector_number);
@@ -948,10 +960,10 @@ fn group_new_sectors_by_declared_expiration<'a>(
 
             for sector in epoch_sectors {
                 total_power += &power_for_sector(sector_size, sector);
-                total_pledge += &sector.initial_pledge;
                 if sector.expires_early() {
                     sectors_early.push(sector.sector_number);
                 } else {
+                    total_pledge += &sector.initial_pledge;
                     sectors_on_time.push(sector.sector_number);
                 }
             }
@@ -995,7 +1007,6 @@ fn group_expiration_set(
             let sector = sectors.get(&u).expect("index should exist in sector set");
             early_sectors.push(u);
             total_power += &power_for_sector(sector_size, sector);
-            total_pledge += &sector.initial_pledge;
         }
     }
 
