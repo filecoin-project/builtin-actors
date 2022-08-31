@@ -531,11 +531,6 @@ fn psd_bad_sig() {
         )
         .unwrap();
     assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
-    let auth_params = AuthenticateMessageParams {
-        signature: invalid_sig_bytes,
-        message: serialize(&proposal, "deal proposal").unwrap().to_vec(),
-    };
-    let auth_params_ser = serialize(&auth_params, "auth params").unwrap();
 
     ExpectInvocation {
         to: *STORAGE_MARKET_ACTOR_ADDR,
@@ -559,7 +554,17 @@ fn psd_bad_sig() {
             ExpectInvocation {
                 to: a.client1,
                 method: AccountMethod::AuthenticateMessage as u64,
-                params: Some(auth_params_ser),
+                params: Some(
+                    serialize(
+                        &AuthenticateMessageParams {
+                            signature: invalid_sig_bytes,
+                            message: serialize(&proposal, "deal proposal").unwrap().to_vec(),
+                        },
+                        "auth params",
+                    )
+                    .unwrap(),
+                ),
+                code: Some(ExitCode::USR_ILLEGAL_ARGUMENT),
                 ..Default::default()
             },
         ]),
