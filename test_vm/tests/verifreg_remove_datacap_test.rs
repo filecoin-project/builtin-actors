@@ -22,7 +22,7 @@ use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
 fn remove_datacap_simple_successful_path() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 4, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let (verifier1, verifier2, verified_client) = (addrs[0], addrs[1], addrs[2]);
 
     let verifier1_id_addr = v.normalize_address(&verifier1).unwrap();

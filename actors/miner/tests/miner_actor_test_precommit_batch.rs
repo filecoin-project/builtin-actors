@@ -12,7 +12,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
 
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 
 use std::collections::HashMap;
 
@@ -24,7 +24,6 @@ use util::*;
 const DEFAULT_SECTOR_EXPIRATION: i64 = 220;
 
 // A balance for use in tests where the miner's low balance is not interesting.
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 
 #[derive(Default, Clone)]
 struct DealSpec {
@@ -63,7 +62,7 @@ fn assert_simple_batch(
         sector_weights: vec![SectorWeights::default(); batch_size],
         first_for_miner: true,
     };
-    let mut deposits = vec![BigInt::default(); batch_size];
+    let mut deposits = vec![TokenAmount::zero(); batch_size];
 
     for i in 0..batch_size {
         let mut deals = DealSpec::default();
@@ -98,8 +97,8 @@ fn assert_simple_batch(
         );
     }
     let net_fee = aggregate_pre_commit_network_fee(batch_size as i64, &base_fee);
-    let total_deposit: BigInt = deposits.iter().sum();
-    let total_balance = net_fee + total_deposit.clone();
+    let total_deposit: TokenAmount = deposits.iter().sum();
+    let total_balance = net_fee + &total_deposit;
     rt.set_balance(total_balance + balance_surplus);
 
     if exit_code != ExitCode::OK {
@@ -110,7 +109,7 @@ fn assert_simple_batch(
                 &mut rt,
                 PreCommitSectorBatchParams { sectors },
                 &conf,
-                base_fee,
+                &base_fee,
             ),
         );
         rt.reset();
@@ -126,7 +125,7 @@ fn assert_simple_batch(
         &mut rt,
         PreCommitSectorBatchParams { sectors: sectors.clone() },
         &conf,
-        base_fee,
+        &base_fee,
     );
 
     // Check precommits
@@ -239,7 +238,7 @@ mod miner_actor_precommit_batch {
     fn insufficient_balance() {
         assert_simple_batch(
             10,
-            TokenAmount::from(-1),
+            TokenAmount::from_atto(-1),
             TokenAmount::zero(),
             &[],
             ExitCode::USR_INSUFFICIENT_FUNDS,
@@ -257,7 +256,7 @@ mod miner_actor_precommit_batch {
 
         let h = ActorHarness::new(period_offset);
         let mut rt = h.new_runtime();
-        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
@@ -280,7 +279,7 @@ mod miner_actor_precommit_batch {
                 &mut rt,
                 PreCommitSectorBatchParams { sectors },
                 &PreCommitBatchConfig { sector_weights: vec![], first_for_miner: true },
-                BigInt::zero(),
+                &TokenAmount::zero(),
             ),
         );
         rt.reset();
@@ -292,7 +291,7 @@ mod miner_actor_precommit_batch {
 
         let h = ActorHarness::new(period_offset);
         let mut rt = h.new_runtime();
-        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
@@ -315,7 +314,7 @@ mod miner_actor_precommit_batch {
                 &mut rt,
                 PreCommitSectorBatchParams { sectors },
                 &PreCommitBatchConfig { sector_weights: vec![], first_for_miner: true },
-                BigInt::zero(),
+                &TokenAmount::zero(),
             ),
         );
         rt.reset();

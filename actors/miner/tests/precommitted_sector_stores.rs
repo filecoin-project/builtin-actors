@@ -15,16 +15,20 @@ use state_harness::*;
 fn put_get_and_delete() {
     let mut h = StateHarness::new(0);
 
-    let pc1 = new_pre_commit_on_chain(1, make_sealed_cid("1".as_bytes()), TokenAmount::from(1), 1);
+    let pc1 =
+        new_pre_commit_on_chain(1, make_sealed_cid("1".as_bytes()), TokenAmount::from_atto(1), 1);
     h.put_precommitted_sectors(vec![pc1.clone()]).unwrap();
     assert_eq!(pc1, h.get_precommit(1));
 
-    let pc2 = new_pre_commit_on_chain(2, make_sealed_cid("2".as_bytes()), TokenAmount::from(1), 1);
+    let pc2 =
+        new_pre_commit_on_chain(2, make_sealed_cid("2".as_bytes()), TokenAmount::from_atto(1), 1);
     h.put_precommitted_sectors(vec![pc2.clone()]).unwrap();
     assert_eq!(pc2, h.get_precommit(2));
 
-    let pc3 = new_pre_commit_on_chain(3, make_sealed_cid("2".as_bytes()), TokenAmount::from(1), 1);
-    let pc4 = new_pre_commit_on_chain(4, make_sealed_cid("2".as_bytes()), TokenAmount::from(1), 1);
+    let pc3 =
+        new_pre_commit_on_chain(3, make_sealed_cid("2".as_bytes()), TokenAmount::from_atto(1), 1);
+    let pc4 =
+        new_pre_commit_on_chain(4, make_sealed_cid("2".as_bytes()), TokenAmount::from_atto(1), 1);
     h.put_precommitted_sectors(vec![pc3.clone(), pc4.clone()]).unwrap();
     assert_eq!(pc3, h.get_precommit(3));
     assert_eq!(pc4, h.get_precommit(4));
@@ -50,14 +54,16 @@ fn has_nonexistent_value_returns_false() {
 fn duplicate_put_rejected() {
     let mut h = StateHarness::new(0);
 
-    let pc1 = new_pre_commit_on_chain(1, make_sealed_cid("1".as_bytes()), TokenAmount::from(1), 1);
+    let pc1 =
+        new_pre_commit_on_chain(1, make_sealed_cid("1".as_bytes()), TokenAmount::from_atto(1), 1);
 
     // In sequence
     assert!(h.put_precommitted_sectors(vec![pc1.clone()]).is_ok());
     assert!(h.put_precommitted_sectors(vec![pc1]).is_err());
 
     // In batch
-    let pc2 = new_pre_commit_on_chain(2, make_sealed_cid("2".as_bytes()), TokenAmount::from(1), 1);
+    let pc2 =
+        new_pre_commit_on_chain(2, make_sealed_cid("2".as_bytes()), TokenAmount::from_atto(1), 1);
     assert!(h.put_precommitted_sectors(vec![pc2.clone(), pc2]).is_err());
 }
 

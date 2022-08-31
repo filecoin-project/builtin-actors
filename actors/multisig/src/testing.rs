@@ -5,7 +5,6 @@ use fil_actors_runtime::{Map, MessageAccumulator};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::address::Address;
 use integer_encoding::VarInt;
-use num_traits::Zero;
 
 use crate::{State, Transaction, TxnID, SIGNERS_MAX};
 

@@ -35,22 +35,22 @@ struct Addrs {
 const DEAL_LIFETIME: ChainEpoch = 181 * EPOCHS_IN_DAY;
 
 fn token_defaults() -> (TokenAmount, TokenAmount, TokenAmount) {
-    let price_per_epoch = TokenAmount::from(1 << 20);
-    let provider_collateral = TokenAmount::from(2e18 as u128);
-    let client_collateral = TokenAmount::from(1e18 as u128);
+    let price_per_epoch = TokenAmount::from_atto(1 << 20);
+    let provider_collateral = TokenAmount::from_whole(2);
+    let client_collateral = TokenAmount::from_whole(1);
     (price_per_epoch, provider_collateral, client_collateral)
 }
 
 // create miner and client and add collateral
 fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 7, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 7, TokenAmount::from_whole(10_000));
     let (worker, client1, client2, not_miner, cheap_client, verifier, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3], addrs[4], addrs[5], addrs[6]);
     let owner = worker;
 
     // setup provider
-    let miner_balance = TokenAmount::from(100e18 as i128);
+    let miner_balance = TokenAmount::from_whole(100);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let maddr = create_miner(
@@ -77,7 +77,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         add_client_params,
     );
 
-    let client_collateral = TokenAmount::from(100e18 as i128);
+    let client_collateral = TokenAmount::from_whole(100);
     apply_ok(
         &v,
         client1,
@@ -103,7 +103,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         verified_client,
     );
 
-    let miner_collateral = TokenAmount::from(100e18 as i128);
+    let miner_collateral = TokenAmount::from_whole(100);
     apply_ok(
         &v,
         worker,
@@ -255,13 +255,13 @@ fn psd_not_enough_provider_lockup_for_batch() {
     let (mut v, a, deal_start) = setup(&store);
 
     // note different seed, different address
-    let cheap_worker = create_accounts_seeded(&v, 1, TokenAmount::from(10_000e18 as u128), 444)[0];
+    let cheap_worker = create_accounts_seeded(&v, 1, TokenAmount::from_whole(10_000), 444)[0];
     let cheap_maddr = create_miner(
         &mut v,
         cheap_worker,
         cheap_worker,
         fvm_shared::sector::RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        TokenAmount::from(100e18 as u128),
+        TokenAmount::from_whole(100),
     )
     .0;
     // add one deal of collateral to provider's market account

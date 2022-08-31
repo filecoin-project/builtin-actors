@@ -52,7 +52,6 @@ pub mod power {
         pub raw_byte_power: StoragePower,
         #[serde(with = "bigint_ser")]
         pub quality_adj_power: StoragePower,
-        #[serde(with = "bigint_ser")]
         pub pledge_collateral: TokenAmount,
         pub quality_adj_power_smoothed: FilterEstimate,
     }

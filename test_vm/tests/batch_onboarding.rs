@@ -12,7 +12,6 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
-use num_traits::Signed;
 use test_vm::util::{
     advance_to_proving_deadline, apply_ok, create_accounts, create_miner,
     invariant_failure_patterns, precommit_sectors, prove_commit_sectors, submit_windowed_post,
@@ -49,7 +48,7 @@ impl Onboarding {
 fn batch_onboarding() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, _) = create_miner(
@@ -57,7 +56,7 @@ fn batch_onboarding() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
     let mut v = v.with_epoch(200);
 

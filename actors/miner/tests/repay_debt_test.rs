@@ -8,8 +8,8 @@ use num_traits::Zero;
 fn repay_debt_in_priority_order() {
     let mut h = StateHarness::new(0);
 
-    let current_balance = TokenAmount::from(300u16);
-    let fee = TokenAmount::from(1000);
+    let current_balance = TokenAmount::from_atto(300u16);
+    let fee = TokenAmount::from_atto(1000);
 
     h.st.apply_penalty(&fee).unwrap();
     assert_eq!(h.st.fee_debt, fee);
@@ -23,7 +23,7 @@ fn repay_debt_in_priority_order() {
     assert_eq!(expected_debt, h.st.fee_debt);
 
     let current_balance = TokenAmount::zero();
-    let fee = TokenAmount::from(2050);
+    let fee = TokenAmount::from_atto(2050);
     h.st.apply_penalty(&fee).unwrap();
 
     h.st.repay_partial_debt_in_priority_order(&h.store, 33, &current_balance).unwrap();

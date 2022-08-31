@@ -19,14 +19,12 @@ use crate::util::*;
 const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
 const PERIOD_OFFSET: ChainEpoch = 100;
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
-const BIG_REWARDS: u128 = 1_000 * 1e18 as u128;
 
 #[test]
 fn cron_on_inactive_state() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let st = h.get_state(&rt);
@@ -45,7 +43,7 @@ fn cron_on_inactive_state() {
 fn sector_expires() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let sectors =
@@ -92,7 +90,7 @@ fn sector_expires() {
 fn sector_expires_and_repays_fee_debt() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let sectors =
@@ -122,7 +120,7 @@ fn sector_expires_and_repays_fee_debt() {
 
     // introduce lots of fee debt
     let mut st = h.get_state(&rt);
-    let fee_debt = TokenAmount::from(400) * TokenAmount::from(1e18 as u64);
+    let fee_debt = TokenAmount::from_whole(400);
     st.fee_debt = fee_debt;
     rt.replace_state(&st);
     // Miner balance = IP, debt repayment covered by unlocked funds
@@ -149,7 +147,7 @@ fn sector_expires_and_repays_fee_debt() {
 fn detects_and_penalizes_faults() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let active_sectors =
@@ -166,7 +164,7 @@ fn detects_and_penalizes_faults() {
     let all_sectors = [active_sectors.clone(), unproven_sectors].concat();
 
     // add lots of funds so penalties come from vesting funds
-    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::zero());
+    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     let st = h.get_state(&rt);
     let (dl_idx, p_idx) =
@@ -239,11 +237,11 @@ fn detects_and_penalizes_faults() {
 fn test_cron_run_trigger_faults() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     // add lots of funds so we can pay penalties without going into debt
-    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::zero());
+    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     // create enough sectors that one will be in a different partition
     let all_sectors =

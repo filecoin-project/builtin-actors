@@ -23,7 +23,6 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
 use fvm_shared::METHOD_SEND;
-use num_traits::sign::Signed;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, apply_code, apply_ok,
     create_accounts, create_miner, invariant_failure_patterns, precommit_sectors,
@@ -47,7 +46,7 @@ struct MinerInfo {
 
 fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -55,7 +54,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
     let mut v = v.with_epoch(200);
 
@@ -319,7 +318,7 @@ fn overdue_precommit() {
     let store = MemoryBlockstore::new();
     let policy = &Policy::default();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let id_addr = create_miner(
@@ -327,7 +326,7 @@ fn overdue_precommit() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     )
     .0;
     let mut v = v.with_epoch(200);
@@ -433,7 +432,7 @@ fn overdue_precommit() {
 fn aggregate_bad_sector_number() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -441,7 +440,7 @@ fn aggregate_bad_sector_number() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
     let mut v = v.with_epoch(200);
     let policy = &Policy::default();
@@ -514,7 +513,7 @@ fn aggregate_size_limits() {
     let oversized_batch = 820;
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -522,7 +521,7 @@ fn aggregate_size_limits() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(100_000),
     );
     let mut v = v.with_epoch(200);
     let policy = &Policy::default();
@@ -647,7 +646,7 @@ fn aggregate_size_limits() {
 fn aggregate_bad_sender() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 2, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 2, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -655,7 +654,7 @@ fn aggregate_bad_sender() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
     let mut v = v.with_epoch(200);
     let policy = &Policy::default();
@@ -723,7 +722,7 @@ fn aggregate_bad_sender() {
 fn aggregate_one_precommit_expires() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -731,7 +730,7 @@ fn aggregate_one_precommit_expires() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
     let mut v = v.with_epoch(200);
     let policy = &Policy::default();

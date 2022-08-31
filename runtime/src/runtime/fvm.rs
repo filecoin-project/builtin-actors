@@ -171,12 +171,11 @@ where
     }
 
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
-        fvm::actor::get_builtin_actor_type(code_id).and_then(|t| Type::from_i32(t as i32))
+        fvm::actor::get_builtin_actor_type(code_id).and_then(Type::from_i32)
     }
 
     fn get_code_cid_for_type(&self, typ: Type) -> Cid {
-        let t = fvm_shared::actor::builtin::Type::from_i32(typ as i32).unwrap();
-        fvm::actor::get_code_cid_for_type(t)
+        fvm::actor::get_code_cid_for_type(typ as i32)
     }
 
     fn get_randomness_from_tickets(
@@ -195,7 +194,9 @@ where
         //
         // Since that behaviour changes, we may as well abort with a more appropriate exit code
         // explicitly.
-        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy)
+            .map(|v|Randomness(v.into()))
+            .map_err(|e| {
             if self.network_version() < NetworkVersion::V16 {
                 ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
                     "failed to get chain randomness".into())
@@ -217,7 +218,9 @@ where
         entropy: &[u8],
     ) -> Result<Randomness, ActorError> {
         // See note on exit codes in get_randomness_from_tickets.
-        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy)
+            .map(|v|Randomness(v.into()))
+            .map_err(|e| {
             if self.network_version() < NetworkVersion::V16 {
                 ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
                     "failed to get chain randomness".into())

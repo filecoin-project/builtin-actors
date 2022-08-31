@@ -35,7 +35,7 @@ fn deal_is_slashed() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 15,
-            payment: TokenAmount::from(50), // (15 - 10) * 10 as deal storage fee is 10 per epoch
+            payment: TokenAmount::from_atto(50), // (15 - 10) * 10 as deal storage fee is 10 per epoch
         },
         Case {
             name: "deal is slashed at the startepoch and then the first crontick happens",
@@ -43,7 +43,7 @@ fn deal_is_slashed() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 10,
-            payment: TokenAmount::from(0), // (10 - 10) * 10
+            payment: TokenAmount::zero(), // (10 - 10) * 10
         },
         Case {
             name: "deal is slashed before the startepoch and then the first crontick happens",
@@ -51,7 +51,7 @@ fn deal_is_slashed() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 6,
-            payment: TokenAmount::from(0), // (10 - 10) * 10
+            payment: TokenAmount::zero(), // (10 - 10) * 10
         },
         Case {
             name: "deal is terminated at the activation epoch and then the first crontick happens",
@@ -59,7 +59,7 @@ fn deal_is_slashed() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 5,
-            payment: TokenAmount::from(0), // (10 - 10) * 10
+            payment: TokenAmount::zero(), // (10 - 10) * 10
         },
         Case {
             name: "deal is slashed just BEFORE the end epoch",
@@ -67,7 +67,7 @@ fn deal_is_slashed() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 19,
-            payment: TokenAmount::from(90), // (19 - 10) * 10
+            payment: TokenAmount::from_atto(90), // (19 - 10) * 10
         },
     ];
     for tc in cases {
