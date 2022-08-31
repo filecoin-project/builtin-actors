@@ -93,7 +93,7 @@ fn adds_sectors_and_power_to_non_empty_set() {
     assert_eq!(set.on_time_sectors, mk_bitfield([5, 6, 7, 8, 9, 11]));
     assert_eq!(set.early_sectors, mk_bitfield([101, 102, 103, 104]));
     assert_eq!(set.faulty_sectors, mk_bitfield([1, 2, 3, 4]));
-    assert_eq!(set.on_time_pledge, TokenAmount::from(1300));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1300));
     let active = power_pair(1, 15);
     assert_eq!(set.active_power, active);
     let faulty = power_pair(1, 13);
@@ -329,7 +329,7 @@ fn added_sectors_can_be_popped_off_queue() {
         power_for_sectors(SECTOR_SIZE, &[sectors()[3].clone(), sectors()[6].clone()]);
     let faulty_power = PowerPair::zero();
 
-    assert_eq!(set.on_time_pledge, TokenAmount::from(1003));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1003));
     assert_eq!(set.active_power, active_power);
     assert_eq!(set.faulty_power, faulty_power);
 
@@ -481,7 +481,7 @@ fn reschedules_sectors_as_faults() {
     assert!(set.faulty_sectors.is_empty());
 
     // Pledge from sector moved from this set is dropped
-    assert_eq!(set.on_time_pledge, TokenAmount::from(0));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(0));
 
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[7..8]));
     assert_eq!(set.faulty_power, PowerPair::zero());
@@ -764,7 +764,7 @@ fn removes_sectors() {
 
     assert_eq!(set.on_time_sectors, mk_bitfield([2]));
     assert!(set.faulty_sectors.is_empty());
-    assert_eq!(removed.early_sectors, mk_bitfield([7]));
+    assert_eq!(set.early_sectors, mk_bitfield([]));
     assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1001));
     assert_eq!(set.active_power, PowerPair::zero());
     assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[1..2]));
@@ -774,7 +774,7 @@ fn removes_sectors() {
     let set = queue.pop_until(9).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([3]));
-    assert_eq!(removed.early_sectors, mk_bitfield([7]));
+    assert_eq!(set.early_sectors, mk_bitfield([]));
     assert!(set.faulty_sectors.is_empty());
     assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1002));
     assert_eq!(set.active_power, PowerPair::zero());
