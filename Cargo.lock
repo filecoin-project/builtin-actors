@@ -561,6 +561,7 @@ dependencies = [
 name = "fil_actor_account"
 version = "9.0.0-alpha.1"
 dependencies = [
+ "anyhow",
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",

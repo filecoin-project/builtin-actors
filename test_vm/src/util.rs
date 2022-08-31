@@ -1,4 +1,5 @@
 use crate::*;
+use fil_actor_account::Method as AccountMethod;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
 use fil_actor_market::{
@@ -624,6 +625,11 @@ pub fn publish_deal(
             method: PowerMethod::CurrentTotalPower as u64,
             ..Default::default()
         },
+        ExpectInvocation {
+            to: deal_client,
+            method: AccountMethod::AuthenticateMessage as u64,
+            ..Default::default()
+        },
     ];
     if verified_deal {
         expect_publish_invocs.push(ExpectInvocation {
@@ -657,5 +663,31 @@ pub mod invariant_failure_patterns {
     lazy_static! {
         pub static ref REWARD_STATE_EPOCH_MISMATCH: Regex =
             Regex::new("^reward state epoch \\d+ does not match prior_epoch\\+1 \\d+$").unwrap();
+    }
+}
+
+pub fn generate_deal_proposal(
+    client: Address,
+    provider: Address,
+    client_collateral: TokenAmount,
+    provider_collateral: TokenAmount,
+    start_epoch: ChainEpoch,
+    end_epoch: ChainEpoch,
+) -> DealProposal {
+    let piece_cid = make_piece_cid("1".as_bytes());
+    let piece_size = PaddedPieceSize(2048u64);
+    let storage_per_epoch = BigInt::from(10u8);
+    DealProposal {
+        piece_cid,
+        piece_size,
+        verified_deal: false,
+        client,
+        provider,
+        label: Label::String("label".to_string()),
+        start_epoch,
+        end_epoch,
+        storage_price_per_epoch: storage_per_epoch,
+        provider_collateral,
+        client_collateral,
     }
 }
