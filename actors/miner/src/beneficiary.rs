@@ -1,7 +1,7 @@
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
+
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
@@ -10,10 +10,8 @@ use std::ops::Sub;
 #[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct BeneficiaryTerm {
     /// The total amount the current beneficiary can withdraw. Monotonic, but reset when beneficiary changes.
-    #[serde(with = "bigint_ser")]
     pub quota: TokenAmount,
     /// The amount of quota the current beneficiary has already withdrawn
-    #[serde(with = "bigint_ser")]
     pub used_quota: TokenAmount,
     /// The epoch at which the beneficiary's rights expire and revert to the owner
     pub expiration: ChainEpoch,
@@ -54,7 +52,6 @@ impl BeneficiaryTerm {
 #[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct PendingBeneficiaryChange {
     pub new_beneficiary: Address,
-    #[serde(with = "bigint_ser")]
     pub new_quota: TokenAmount,
     pub new_expiration: ChainEpoch,
     pub approved_by_beneficiary: bool,

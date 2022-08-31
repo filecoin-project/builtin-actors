@@ -13,27 +13,27 @@ fn unlock_unvested_funds_leaving_bucket_with_non_zero_tokens() {
     let vspec = VestSpec { initial_delay: 0, vest_period: 5, step_duration: 1, quantization: 1 };
 
     let vest_start = 100;
-    let vest_sum = TokenAmount::from(100);
+    let vest_sum = TokenAmount::from_atto(100);
 
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
 
-    let amount_unlocked = h.unlock_unvested_funds(vest_start, &TokenAmount::from(39)).unwrap();
-    assert_eq!(TokenAmount::from(39), amount_unlocked);
+    let amount_unlocked = h.unlock_unvested_funds(vest_start, &TokenAmount::from_atto(39)).unwrap();
+    assert_eq!(TokenAmount::from_atto(39), amount_unlocked);
 
     // no vested funds available to unlock until strictly after first vesting epoch
-    assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start).unwrap());
-    assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start + 1).unwrap());
+    assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start).unwrap());
+    assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start + 1).unwrap());
 
     // expected to be zero due to unlocking of UNvested funds
-    assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start + 2).unwrap());
+    assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start + 2).unwrap());
     // expected to be partially unlocked already du to unlocking of UNvested funds
-    assert_eq!(TokenAmount::from(1), h.unlock_vested_funds(vest_start + 3).unwrap());
+    assert_eq!(TokenAmount::from_atto(1), h.unlock_vested_funds(vest_start + 3).unwrap());
 
-    assert_eq!(TokenAmount::from(20), h.unlock_vested_funds(vest_start + 4).unwrap());
-    assert_eq!(TokenAmount::from(20), h.unlock_vested_funds(vest_start + 5).unwrap());
-    assert_eq!(TokenAmount::from(20), h.unlock_vested_funds(vest_start + 6).unwrap());
+    assert_eq!(TokenAmount::from_atto(20), h.unlock_vested_funds(vest_start + 4).unwrap());
+    assert_eq!(TokenAmount::from_atto(20), h.unlock_vested_funds(vest_start + 5).unwrap());
+    assert_eq!(TokenAmount::from_atto(20), h.unlock_vested_funds(vest_start + 6).unwrap());
 
-    assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start + 7).unwrap());
+    assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start + 7).unwrap());
 
     assert!(h.st.locked_funds.is_zero());
     assert!(h.vesting_funds_store_empty())
@@ -45,25 +45,25 @@ fn unlock_unvested_funds_leaving_bucket_with_zero_tokens() {
     let vspec = VestSpec { initial_delay: 0, vest_period: 5, step_duration: 1, quantization: 1 };
 
     let vest_start = 100;
-    let vest_sum = TokenAmount::from(100);
+    let vest_sum = TokenAmount::from_atto(100);
 
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
 
-    let amount_unlocked = h.unlock_unvested_funds(vest_start, &TokenAmount::from(40)).unwrap();
-    assert_eq!(TokenAmount::from(40), amount_unlocked);
+    let amount_unlocked = h.unlock_unvested_funds(vest_start, &TokenAmount::from_atto(40)).unwrap();
+    assert_eq!(TokenAmount::from_atto(40), amount_unlocked);
 
-    assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start).unwrap());
-    assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start + 1).unwrap());
+    assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start).unwrap());
+    assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start + 1).unwrap());
 
     // expected to be zero due to unlocking of UNvested funds
-    assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start + 2).unwrap());
-    assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start + 3).unwrap());
+    assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start + 2).unwrap());
+    assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start + 3).unwrap());
 
-    assert_eq!(TokenAmount::from(20), h.unlock_vested_funds(vest_start + 4).unwrap());
-    assert_eq!(TokenAmount::from(20), h.unlock_vested_funds(vest_start + 5).unwrap());
-    assert_eq!(TokenAmount::from(20), h.unlock_vested_funds(vest_start + 6).unwrap());
+    assert_eq!(TokenAmount::from_atto(20), h.unlock_vested_funds(vest_start + 4).unwrap());
+    assert_eq!(TokenAmount::from_atto(20), h.unlock_vested_funds(vest_start + 5).unwrap());
+    assert_eq!(TokenAmount::from_atto(20), h.unlock_vested_funds(vest_start + 6).unwrap());
 
-    assert_eq!(TokenAmount::from(0), h.unlock_vested_funds(vest_start + 7).unwrap());
+    assert_eq!(TokenAmount::zero(), h.unlock_vested_funds(vest_start + 7).unwrap());
 
     assert!(h.st.locked_funds.is_zero());
     assert!(h.vesting_funds_store_empty())
@@ -75,7 +75,7 @@ fn unlock_all_unvested_funds() {
     let vspec = VestSpec { initial_delay: 0, vest_period: 5, step_duration: 1, quantization: 1 };
 
     let vest_start = 10;
-    let vest_sum = TokenAmount::from(100);
+    let vest_sum = TokenAmount::from_atto(100);
 
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
     let unvested_funds = h.unlock_unvested_funds(vest_start, &vest_sum).unwrap();
@@ -91,9 +91,9 @@ fn unlock_unvested_funds_value_greater_than_locked_funds() {
     let vspec = VestSpec { initial_delay: 0, vest_period: 5, step_duration: 1, quantization: 1 };
 
     let vest_start = 10;
-    let vest_sum = TokenAmount::from(100);
+    let vest_sum = TokenAmount::from_atto(100);
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
-    let unvested_funds = h.unlock_unvested_funds(vest_start, &TokenAmount::from(200)).unwrap();
+    let unvested_funds = h.unlock_unvested_funds(vest_start, &TokenAmount::from_atto(200)).unwrap();
     assert_eq!(vest_sum, unvested_funds);
 
     assert!(h.st.locked_funds.is_zero());
@@ -106,14 +106,14 @@ fn unlock_unvested_funds_when_there_are_vested_funds_in_the_table() {
     let vspec = VestSpec { initial_delay: 0, vest_period: 50, step_duration: 1, quantization: 1 };
 
     let vest_start = 10;
-    let vest_sum = TokenAmount::from(100);
+    let vest_sum = TokenAmount::from_atto(100);
 
     // will lock funds from epochs 11 to 60
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
 
     // unlock funds from epochs 30 to 60
     let new_epoch = 30;
-    let target = TokenAmount::from(60);
+    let target = TokenAmount::from_atto(60);
     let remaining = &vest_sum - &target;
     let unvested_funds = h.unlock_unvested_funds(new_epoch, &target).unwrap();
     assert_eq!(target, unvested_funds);

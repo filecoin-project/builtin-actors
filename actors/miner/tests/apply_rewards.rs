@@ -10,7 +10,7 @@ use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::bigint::bigint_ser::BigIntSer;
+
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
@@ -19,23 +19,21 @@ use fvm_shared::METHOD_SEND;
 
 mod util;
 use fil_actor_miner::testing::check_state_invariants;
-use num_traits::Signed;
 use util::*;
 
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 const PERIOD_OFFSET: ChainEpoch = 1808;
 
 #[test]
 fn funds_are_locked() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
-    let rwd = TokenAmount::from(1_000_000);
+    let rwd = TokenAmount::from_atto(1_000_000);
     h.apply_rewards(&mut rt, rwd, TokenAmount::zero());
 
-    let expected = TokenAmount::from(750_000);
+    let expected = TokenAmount::from_atto(750_000);
     assert_eq!(expected, h.get_locked_funds(&rt));
 }
 
@@ -43,7 +41,7 @@ fn funds_are_locked() {
 fn funds_vest() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
     let st = h.get_state(&rt);
 
@@ -54,7 +52,7 @@ fn funds_vest() {
     assert!(st.locked_funds.is_zero());
 
     // Lock some funds with AddLockedFund
-    let amt = TokenAmount::from(600_000);
+    let amt = TokenAmount::from_atto(600_000);
     h.apply_rewards(&mut rt, amt.clone(), TokenAmount::zero());
     let st = h.get_state(&rt);
     let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
@@ -90,11 +88,11 @@ fn funds_vest() {
 fn penalty_is_burnt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
-    let rwd = TokenAmount::from(600_000);
-    let penalty = TokenAmount::from(300_000);
+    let rwd = TokenAmount::from_atto(600_000);
+    let penalty = TokenAmount::from_atto(300_000);
     rt.add_balance(rwd.clone());
     h.apply_rewards(&mut rt, rwd.clone(), penalty.clone());
 
@@ -112,7 +110,7 @@ fn penalty_is_burnt() {
 fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
     let st = h.get_state(&rt);
     assert!(st.fee_debt.is_zero());
@@ -160,7 +158,7 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
 fn rewards_pay_back_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
     let mut st = h.get_state(&rt);
 
@@ -194,8 +192,8 @@ fn rewards_pay_back_fee_debt() {
     rt.expect_send(
         *STORAGE_POWER_ACTOR_ADDR,
         PowerMethod::UpdatePledgeTotal as u64,
-        RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
-        TokenAmount::from(0u8),
+        RawBytes::serialize(&pledge_delta).unwrap(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );

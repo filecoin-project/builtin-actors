@@ -1,5 +1,4 @@
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::bigint::bigint_ser;
 use fvm_shared::econ::TokenAmount;
 
 pub mod miner {
@@ -9,9 +8,7 @@ pub mod miner {
 
     #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
     pub struct ApplyRewardParams {
-        #[serde(with = "bigint_ser")]
         pub reward: TokenAmount,
-        #[serde(with = "bigint_ser")]
         pub penalty: TokenAmount,
     }
 }

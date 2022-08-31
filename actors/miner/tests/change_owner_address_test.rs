@@ -1,7 +1,7 @@
 use fil_actors_runtime::test_utils::{
     expect_abort, new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
 };
-use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
+use fvm_shared::{address::Address, error::ExitCode};
 
 mod util;
 use util::*;
@@ -10,13 +10,12 @@ const NEW_ADDRESS: Address = Address::new_id(1001);
 const OTHER_ADDRESS: Address = Address::new_id(1002);
 
 fn setup() -> (ActorHarness, MockRuntime) {
-    let big_balance = 20u128.pow(23);
     let period_offset = 100;
 
     let h = ActorHarness::new(period_offset);
     let mut rt = h.new_runtime();
     h.construct_and_verify(&mut rt);
-    rt.balance.replace(TokenAmount::from(big_balance));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     (h, rt)
 }

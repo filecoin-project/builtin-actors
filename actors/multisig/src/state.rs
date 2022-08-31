@@ -7,7 +7,8 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{bigint_ser, Integer};
+use fvm_shared::bigint::BigInt;
+use fvm_shared::bigint::Integer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use indexmap::IndexMap;
@@ -25,7 +26,6 @@ pub struct State {
     pub next_tx_id: TxnID,
 
     // Linear unlock
-    #[serde(with = "bigint_ser")]
     pub initial_balance: TokenAmount,
     pub start_epoch: ChainEpoch,
     pub unlock_duration: ChainEpoch,
@@ -54,7 +54,7 @@ impl State {
     /// Returns amount locked in multisig contract
     pub fn amount_locked(&self, elapsed_epoch: ChainEpoch) -> TokenAmount {
         if elapsed_epoch >= self.unlock_duration {
-            return TokenAmount::from(0);
+            return TokenAmount::zero();
         }
         if elapsed_epoch <= 0 {
             return self.initial_balance.clone();
@@ -64,9 +64,9 @@ impl State {
 
         // locked = ceil(InitialBalance * remainingLockDuration / UnlockDuration)
         let numerator: TokenAmount = &self.initial_balance * remaining_lock_duration;
-        let denominator = TokenAmount::from(self.unlock_duration);
+        let denominator = BigInt::from(self.unlock_duration);
 
-        numerator.div_ceil(&denominator)
+        TokenAmount::from_atto(numerator.atto().div_ceil(&denominator))
     }
 
     /// Iterates all pending transactions and removes an address from each list of approvals,
@@ -111,7 +111,7 @@ impl State {
         amount_to_spend: &TokenAmount,
         curr_epoch: ChainEpoch,
     ) -> anyhow::Result<()> {
-        if amount_to_spend < &0.into() {
+        if amount_to_spend.is_negative() {
             return Err(anyhow!("amount to spend {} less than zero", amount_to_spend));
         }
         if &balance < amount_to_spend {

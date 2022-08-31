@@ -8,7 +8,6 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::math::PRECISION;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::FILECOIN_PRECISION;
 use lazy_static::lazy_static;
 
 use super::expneg::expneg;
@@ -29,9 +28,9 @@ lazy_static! {
     ((BASELINE_INITIAL_VALUE.clone() << (2*PRECISION)) / &*BASELINE_EXPONENT) >> PRECISION;
 
     /// 330M for mainnet
-    pub(super) static ref SIMPLE_TOTAL: BigInt = BigInt::from(330_000_000) * FILECOIN_PRECISION;
+    pub(super) static ref SIMPLE_TOTAL: TokenAmount = TokenAmount::from_whole(330_000_000);
     /// 770M for mainnet
-    pub(super) static ref BASELINE_TOTAL: BigInt = BigInt::from(770_000_000) * FILECOIN_PRECISION;
+    pub(super) static ref BASELINE_TOTAL: TokenAmount = TokenAmount::from_whole(770_000_000);
     /// expLamSubOne = e^lambda - 1
     /// for Q.128: int(expLamSubOne * 2^128)
     static ref EXP_LAM_SUB_ONE: BigInt = BigInt::from(37396273494747879394193016954629u128);
@@ -76,19 +75,19 @@ pub(crate) fn compute_reward(
     epoch: ChainEpoch,
     prev_theta: BigInt,
     curr_theta: BigInt,
-    simple_total: &BigInt,
-    baseline_total: &BigInt,
+    simple_total: &TokenAmount,
+    baseline_total: &TokenAmount,
 ) -> TokenAmount {
-    let mut simple_reward = simple_total * &*EXP_LAM_SUB_ONE;
+    let mut simple_reward = simple_total.atto() * &*EXP_LAM_SUB_ONE;
     let epoch_lam = &*LAMBDA * epoch;
 
     simple_reward *= expneg(&epoch_lam);
     simple_reward >>= PRECISION;
 
-    let baseline_reward = compute_baseline_supply(curr_theta, baseline_total)
-        - compute_baseline_supply(prev_theta, baseline_total);
+    let baseline_reward = compute_baseline_supply(curr_theta, baseline_total.atto())
+        - compute_baseline_supply(prev_theta, baseline_total.atto());
 
-    (simple_reward + baseline_reward) >> PRECISION
+    TokenAmount::from_atto((simple_reward + baseline_reward) >> PRECISION)
 }
 
 /// Computes baseline supply based on theta in Q.128 format.
@@ -194,7 +193,7 @@ mod tests {
 
             let prev_theta_str = &prev_theta.to_string();
             let theta_str = &theta.to_string();
-            let reward_str = &reward.to_string();
+            let reward_str = &reward.atto().to_string();
             b.push_str(prev_theta_str);
             b.push(',');
             b.push_str(theta_str);
@@ -229,7 +228,7 @@ mod tests {
             );
 
             let x_str = &x.to_string();
-            let reward_str = &reward.to_string();
+            let reward_str = &reward.atto().to_string();
             b.push_str(x_str);
             b.push(',');
             b.push_str(reward_str);

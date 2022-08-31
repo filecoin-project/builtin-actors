@@ -14,7 +14,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let h = ActorHarness::new(period_offset);
     let mut rt = h.new_runtime();
     h.construct_and_verify(&mut rt);
-    rt.balance.replace(TokenAmount::from(big_balance));
+    rt.balance.replace(TokenAmount::from_atto(big_balance));
 
     (h, rt)
 }
@@ -24,8 +24,11 @@ fn successfully_change_owner_to_another_address_two_message() {
     let (mut h, mut rt) = setup();
     let first_beneficiary_id = Address::new_id(999);
 
-    let beneficiary_change =
-        BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from(100), ChainEpoch::from(200));
+    let beneficiary_change = BeneficiaryChange::new(
+        first_beneficiary_id,
+        TokenAmount::from_atto(100),
+        ChainEpoch::from(200),
+    );
     // proposal beneficiary change
     h.change_beneficiary(&mut rt, h.owner, &beneficiary_change, None).unwrap();
     // assert change has been made in state
@@ -55,14 +58,17 @@ fn successfully_change_from_not_owner_beneficiary_to_another_address_three_messa
     let first_beneficiary_id = Address::new_id(999);
     let second_beneficiary_id = Address::new_id(1001);
 
-    let first_beneficiary_term =
-        BeneficiaryTerm::new(TokenAmount::from(100), TokenAmount::zero(), ChainEpoch::from(200));
+    let first_beneficiary_term = BeneficiaryTerm::new(
+        TokenAmount::from_atto(100),
+        TokenAmount::zero(),
+        ChainEpoch::from(200),
+    );
     h.propose_approve_initial_beneficiary(&mut rt, first_beneficiary_id, first_beneficiary_term)
         .unwrap();
 
     let second_beneficiary_change = BeneficiaryChange::new(
         second_beneficiary_id,
-        TokenAmount::from(101),
+        TokenAmount::from_atto(101),
         ChainEpoch::from(201),
     );
     h.change_beneficiary(&mut rt, h.owner, &second_beneficiary_change, None).unwrap();
@@ -106,7 +112,7 @@ fn successfully_change_from_not_owner_beneficiary_to_another_address_when_benefi
     let first_beneficiary_id = Address::new_id(999);
     let second_beneficiary_id = Address::new_id(1000);
 
-    let quota = TokenAmount::from(100);
+    let quota = TokenAmount::from_atto(100);
     let expiration = ChainEpoch::from(200);
     h.propose_approve_initial_beneficiary(
         &mut rt,
@@ -116,7 +122,7 @@ fn successfully_change_from_not_owner_beneficiary_to_another_address_when_benefi
     .unwrap();
 
     rt.set_epoch(201);
-    let another_quota = TokenAmount::from(1001);
+    let another_quota = TokenAmount::from_atto(1001);
     let another_expiration = ChainEpoch::from(3);
     let another_beneficiary_change =
         BeneficiaryChange::new(second_beneficiary_id, another_quota, another_expiration);
@@ -146,8 +152,11 @@ fn successfully_owner_immediate_revoking_unapproved_proposal() {
     let (mut h, mut rt) = setup();
     let first_beneficiary_id = Address::new_id(999);
 
-    let beneficiary_change =
-        BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from(100), ChainEpoch::from(200));
+    let beneficiary_change = BeneficiaryChange::new(
+        first_beneficiary_id,
+        TokenAmount::from_atto(100),
+        ChainEpoch::from(200),
+    );
     // proposal beneficiary change
     h.change_beneficiary(&mut rt, h.owner, &beneficiary_change, None).unwrap();
     // assert change has been made in state
@@ -176,7 +185,7 @@ fn successfully_immediately_change_back_to_owner_address_while_used_up_quota() {
     let (mut h, mut rt) = setup();
     let first_beneficiary_id = Address::new_id(999);
 
-    let quota = TokenAmount::from(100);
+    let quota = TokenAmount::from_atto(100);
     let expiration = ChainEpoch::from(200);
     h.propose_approve_initial_beneficiary(
         &mut rt,
@@ -205,7 +214,7 @@ fn successfully_immediately_change_back_to_owner_while_expired() {
     let (mut h, mut rt) = setup();
     let first_beneficiary_id = Address::new_id(999);
 
-    let quota = TokenAmount::from(100);
+    let quota = TokenAmount::from_atto(100);
     let expiration = ChainEpoch::from(200);
     h.propose_approve_initial_beneficiary(
         &mut rt,
@@ -233,16 +242,19 @@ fn successfully_immediately_change_back_to_owner_while_expired() {
 fn successfully_change_quota_and_test_withdraw() {
     let (mut h, mut rt) = setup();
     let first_beneficiary_id = Address::new_id(999);
-    let beneficiary_term =
-        BeneficiaryTerm::new(TokenAmount::from(100), TokenAmount::zero(), ChainEpoch::from(200));
+    let beneficiary_term = BeneficiaryTerm::new(
+        TokenAmount::from_atto(100),
+        TokenAmount::zero(),
+        ChainEpoch::from(200),
+    );
     h.propose_approve_initial_beneficiary(&mut rt, first_beneficiary_id, beneficiary_term.clone())
         .unwrap();
 
-    let withdraw_fund = TokenAmount::from(80);
+    let withdraw_fund = TokenAmount::from_atto(80);
     h.withdraw_funds(&mut rt, h.beneficiary, &withdraw_fund, &withdraw_fund, &TokenAmount::zero())
         .unwrap();
     //decrease quota
-    let decrease_quota = TokenAmount::from(50);
+    let decrease_quota = TokenAmount::from_atto(50);
     let decrease_beneficiary_change =
         BeneficiaryChange::new(first_beneficiary_id, decrease_quota, beneficiary_term.expiration);
     h.change_beneficiary(&mut rt, h.owner, &decrease_beneficiary_change, None).unwrap();
@@ -261,7 +273,7 @@ fn successfully_change_quota_and_test_withdraw() {
     assert_eq!(withdraw_fund, beneficiary_return.active.term.used_quota);
 
     //withdraw 0 zero
-    let withdraw_left = TokenAmount::from(20);
+    let withdraw_left = TokenAmount::from_atto(20);
     h.withdraw_funds(
         &mut rt,
         h.beneficiary,
@@ -271,7 +283,7 @@ fn successfully_change_quota_and_test_withdraw() {
     )
     .unwrap();
 
-    let increase_quota = TokenAmount::from(120);
+    let increase_quota = TokenAmount::from_atto(120);
     let increase_beneficiary_change =
         BeneficiaryChange::new(first_beneficiary_id, increase_quota, beneficiary_term.expiration);
 
@@ -292,7 +304,7 @@ fn successfully_change_quota_and_test_withdraw() {
     assert_eq!(withdraw_fund, beneficiary_return.active.term.used_quota);
 
     //success withdraw 40 atto fil
-    let withdraw_left = TokenAmount::from(40);
+    let withdraw_left = TokenAmount::from_atto(40);
     h.withdraw_funds(&mut rt, h.beneficiary, &withdraw_left, &withdraw_left, &TokenAmount::zero())
         .unwrap();
     h.check_state(&rt);
@@ -305,7 +317,7 @@ fn fails_approval_message_with_invalidate_params() {
 
     // proposal beneficiary
     let beneficiary_change =
-        &BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from(100), 200);
+        &BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from_atto(100), 200);
     h.change_beneficiary(&mut rt, h.owner, beneficiary_change, None).unwrap();
     let beneficiary_return = h.get_beneficiary(&mut rt).unwrap();
     assert_eq!(
@@ -319,7 +331,7 @@ fn fails_approval_message_with_invalidate_params() {
         h.change_beneficiary(
             &mut rt,
             first_beneficiary_id,
-            &BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from(100), 201),
+            &BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from_atto(100), 201),
             None,
         ),
     );
@@ -330,7 +342,7 @@ fn fails_approval_message_with_invalidate_params() {
         h.change_beneficiary(
             &mut rt,
             first_beneficiary_id,
-            &BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from(101), 200),
+            &BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from_atto(101), 200),
             None,
         ),
     );
@@ -342,7 +354,7 @@ fn fails_approval_message_with_invalidate_params() {
         h.change_beneficiary(
             &mut rt,
             first_beneficiary_id,
-            &BeneficiaryChange::new(second_beneficiary_id, TokenAmount::from(100), 200),
+            &BeneficiaryChange::new(second_beneficiary_id, TokenAmount::from_atto(100), 200),
             None,
         ),
     );
@@ -359,7 +371,7 @@ fn fails_proposal_beneficiary_with_invalidate_params() {
         h.change_beneficiary(
             &mut rt,
             first_beneficiary_id,
-            &BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from(100), 200),
+            &BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from_atto(100), 200),
             None,
         ),
     );
@@ -370,7 +382,7 @@ fn fails_proposal_beneficiary_with_invalidate_params() {
         h.change_beneficiary(
             &mut rt,
             h.owner,
-            &BeneficiaryChange::new(first_beneficiary_id, TokenAmount::from(0), 200),
+            &BeneficiaryChange::new(first_beneficiary_id, TokenAmount::zero(), 200),
             None,
         ),
     );
@@ -381,7 +393,7 @@ fn fails_proposal_beneficiary_with_invalidate_params() {
         h.change_beneficiary(
             &mut rt,
             h.owner,
-            &BeneficiaryChange::new(h.owner, TokenAmount::from(20), 0),
+            &BeneficiaryChange::new(h.owner, TokenAmount::from_atto(20), 0),
             None,
         ),
     );
@@ -392,7 +404,7 @@ fn fails_proposal_beneficiary_with_invalidate_params() {
         h.change_beneficiary(
             &mut rt,
             h.owner,
-            &BeneficiaryChange::new(h.owner, TokenAmount::from(0), 1),
+            &BeneficiaryChange::new(h.owner, TokenAmount::zero(), 1),
             None,
         ),
     );
@@ -406,8 +418,11 @@ fn successfully_get_beneficiary() {
     assert_eq!(BeneficiaryTerm::default(), beneficiary_return.active.term);
 
     let first_beneficiary_id = Address::new_id(999);
-    let beneficiary_term =
-        BeneficiaryTerm::new(TokenAmount::from(100), TokenAmount::zero(), ChainEpoch::from(200));
+    let beneficiary_term = BeneficiaryTerm::new(
+        TokenAmount::from_atto(100),
+        TokenAmount::zero(),
+        ChainEpoch::from(200),
+    );
     h.propose_approve_initial_beneficiary(&mut rt, first_beneficiary_id, beneficiary_term).unwrap();
 
     let beneficiary = h.get_beneficiary(&mut rt).unwrap();
@@ -417,7 +432,7 @@ fn successfully_get_beneficiary() {
     assert_eq!(beneficiary.active.term.quota, info.beneficiary_term.quota);
     assert_eq!(beneficiary.active.term.used_quota, info.beneficiary_term.used_quota);
 
-    let withdraw_fund = TokenAmount::from(40);
+    let withdraw_fund = TokenAmount::from_atto(40);
     h.withdraw_funds(&mut rt, h.beneficiary, &withdraw_fund, &withdraw_fund, &TokenAmount::zero())
         .unwrap();
 

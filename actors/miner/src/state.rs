@@ -19,13 +19,13 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, BytesDe, Cbor, CborStore};
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
+
 use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
 use fvm_shared::HAMT_BIT_WIDTH;
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 
 use super::beneficiary::*;
 use super::deadlines::new_deadline_info;
@@ -53,22 +53,18 @@ pub struct State {
     pub info: Cid,
 
     /// Total funds locked as pre_commit_deposit
-    #[serde(with = "bigint_ser")]
     pub pre_commit_deposits: TokenAmount,
 
     /// Total rewards and added funds locked in vesting table
-    #[serde(with = "bigint_ser")]
     pub locked_funds: TokenAmount,
 
     /// VestingFunds (Vesting Funds schedule for the miner).
     pub vesting_funds: Cid,
 
     /// Absolute value of debt this miner owes from unpaid fees.
-    #[serde(with = "bigint_ser")]
     pub fee_debt: TokenAmount,
 
     /// Sum of initial pledge requirements of all active sectors.
-    #[serde(with = "bigint_ser")]
     pub initial_pledge: TokenAmount,
 
     /// Sectors that have been pre-committed but not yet proven.

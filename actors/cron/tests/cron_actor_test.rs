@@ -7,7 +7,9 @@ use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use num_traits::Zero;
 
 fn check_state(rt: &MockRuntime) {
     let (_, acc) = check_state_invariants(&rt.get_state());
@@ -79,7 +81,7 @@ fn epoch_tick_with_entries() {
         entry1.receiver,
         entry1.method_num,
         RawBytes::default(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -87,7 +89,7 @@ fn epoch_tick_with_entries() {
         entry2.receiver,
         entry2.method_num,
         RawBytes::default(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -95,7 +97,7 @@ fn epoch_tick_with_entries() {
         entry3.receiver,
         entry3.method_num,
         RawBytes::default(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -103,7 +105,7 @@ fn epoch_tick_with_entries() {
         entry4.receiver,
         entry4.method_num,
         RawBytes::default(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );

@@ -15,7 +15,7 @@ use test_vm::VM;
 fn account_authenticate_message() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
-    let addr = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128))[0];
+    let addr = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
 
     let proposal =
         generate_deal_proposal(addr, addr, TokenAmount::zero(), TokenAmount::zero(), 0, 0);

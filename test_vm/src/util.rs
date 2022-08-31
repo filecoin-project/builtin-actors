@@ -577,9 +577,9 @@ pub fn publish_deal(
         label,
         start_epoch: deal_start,
         end_epoch: deal_start + deal_lifetime,
-        storage_price_per_epoch: TokenAmount::from((1 << 20) as u64),
-        provider_collateral: TokenAmount::from(2e18 as u64),
-        client_collateral: TokenAmount::from(1e18 as u64),
+        storage_price_per_epoch: TokenAmount::from_atto((1 << 20) as u64),
+        provider_collateral: TokenAmount::from_whole(2),
+        client_collateral: TokenAmount::from_whole(1),
     };
 
     let publish_params = PublishStorageDealsParams {
@@ -669,7 +669,7 @@ pub fn generate_deal_proposal(
 ) -> DealProposal {
     let piece_cid = make_piece_cid("1".as_bytes());
     let piece_size = PaddedPieceSize(2048u64);
-    let storage_per_epoch = BigInt::from(10u8);
+    let storage_price_per_epoch = TokenAmount::from_atto(10u8);
     DealProposal {
         piece_cid,
         piece_size,
@@ -679,7 +679,7 @@ pub fn generate_deal_proposal(
         label: Label::String("label".to_string()),
         start_epoch,
         end_epoch,
-        storage_price_per_epoch: storage_per_epoch,
+        storage_price_per_epoch,
         provider_collateral,
         client_collateral,
     }

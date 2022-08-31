@@ -17,16 +17,16 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::StoragePower;
+
 use fvm_shared::TOTAL_FILECOIN;
 
 use cid::Cid;
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
-use num_traits::FromPrimitive;
 
 mod harness;
 
 use harness::*;
+use num_traits::Zero;
 
 #[test]
 fn deal_end_after_deal_start() {
@@ -57,7 +57,7 @@ fn deal_duration_greater_than_max_deal_duration() {
 #[test]
 fn negative_price_per_epoch() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
-        d.storage_price_per_epoch = TokenAmount::from(-1);
+        d.storage_price_per_epoch = TokenAmount::from_atto(-1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
@@ -65,7 +65,7 @@ fn negative_price_per_epoch() {
 #[test]
 fn price_per_epoch_greater_than_total_filecoin() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
-        d.storage_price_per_epoch = TOTAL_FILECOIN.clone() + 1;
+        d.storage_price_per_epoch = &*TOTAL_FILECOIN + TokenAmount::from_atto(1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
@@ -73,7 +73,7 @@ fn price_per_epoch_greater_than_total_filecoin() {
 #[test]
 fn negative_provider_collateral() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
-        d.provider_collateral = TokenAmount::from(-1);
+        d.provider_collateral = TokenAmount::from_atto(-1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
@@ -81,7 +81,7 @@ fn negative_provider_collateral() {
 #[test]
 fn provider_collateral_greater_than_max_collateral() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
-        d.provider_collateral = TOTAL_FILECOIN.clone() + 1;
+        d.provider_collateral = &*TOTAL_FILECOIN + TokenAmount::from_atto(1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
@@ -89,15 +89,15 @@ fn provider_collateral_greater_than_max_collateral() {
 #[test]
 fn provider_collateral_less_than_bound() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
-        let power = StoragePower::from_i128(1 << 50).unwrap();
+        let circ_supply = TokenAmount::from_atto(1i64 << 50);
         let (provider_min, _) = deal_provider_collateral_bounds(
             &Policy::default(),
             PaddedPieceSize(2048),
             &BigInt::from(0u8),
             &BigInt::from(0u8),
-            &power,
+            &circ_supply,
         );
-        d.provider_collateral = provider_min - 1;
+        d.provider_collateral = provider_min - TokenAmount::from_atto(1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
@@ -105,7 +105,7 @@ fn provider_collateral_less_than_bound() {
 #[test]
 fn negative_client_collateral() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
-        d.client_collateral = TokenAmount::from(-1);
+        d.client_collateral = TokenAmount::from_atto(-1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
@@ -113,7 +113,7 @@ fn negative_client_collateral() {
 #[test]
 fn client_collateral_greater_than_max_collateral() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
-        d.client_collateral = TOTAL_FILECOIN.clone() + 1;
+        d.client_collateral = &*TOTAL_FILECOIN + TokenAmount::from_atto(1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
@@ -121,7 +121,11 @@ fn client_collateral_greater_than_max_collateral() {
 #[test]
 fn client_does_not_have_enough_balance_for_collateral() {
     let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
-        add_participant_funds(rt, CLIENT_ADDR, d.client_balance_requirement() - 1);
+        add_participant_funds(
+            rt,
+            CLIENT_ADDR,
+            d.client_balance_requirement() - TokenAmount::from_atto(1),
+        );
         add_provider_funds(rt, d.provider_collateral.clone(), &MinerAddresses::default());
     };
     assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -131,7 +135,11 @@ fn client_does_not_have_enough_balance_for_collateral() {
 fn provider_does_not_have_enough_balance_for_collateral() {
     let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
         add_participant_funds(rt, CLIENT_ADDR, d.client_balance_requirement());
-        add_provider_funds(rt, d.provider_collateral.clone() - 1, &MinerAddresses::default());
+        add_provider_funds(
+            rt,
+            d.provider_collateral.clone() - TokenAmount::from_atto(1),
+            &MinerAddresses::default(),
+        );
     };
     assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
@@ -210,7 +218,7 @@ fn piece_size_is_not_a_power_of_2() {
 fn fail_when_client_has_some_funds_but_not_enough_for_a_deal() {
     let mut rt = setup();
 
-    let amount = TokenAmount::from(100u8);
+    let amount = TokenAmount::from_atto(100u8);
     add_participant_funds(&mut rt, CLIENT_ADDR, amount.clone());
     let start_epoch = 42;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
@@ -234,7 +242,7 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
 
     let mut rt = setup();
 
-    let amount = TokenAmount::from(1u8);
+    let amount = TokenAmount::from_atto(1u8);
     add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
     let deal1 = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
     assert!(amount < deal1.client_balance_requirement());
@@ -261,7 +269,7 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
         deal1.client,
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
-        TokenAmount::from(0u8),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -325,7 +333,7 @@ fn fail_when_deals_have_different_providers() {
         deal1.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
-        TokenAmount::from(0u8),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -333,7 +341,7 @@ fn fail_when_deals_have_different_providers() {
         deal2.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param2,
-        TokenAmount::from(0u8),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
