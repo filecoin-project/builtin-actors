@@ -1,4 +1,5 @@
 use crate::*;
+use fil_actor_account::Method as AccountMethod;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
@@ -517,7 +518,7 @@ pub fn submit_invalid_post(
         }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-            proof_bytes: TEST_VM_INVALID.as_bytes().to_vec(),
+            proof_bytes: TEST_VM_INVALID_POST.as_bytes().to_vec(),
         }],
         chain_commit_epoch: dline_info.challenge,
         chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
@@ -588,8 +589,11 @@ pub fn publish_deal(
 
     let publish_params = PublishStorageDealsParams {
         deals: vec![ClientDealProposal {
-            proposal: deal,
-            client_signature: Signature { sig_type: SignatureType::BLS, bytes: vec![] },
+            proposal: deal.clone(),
+            client_signature: Signature {
+                sig_type: SignatureType::BLS,
+                bytes: serialize(&deal, "deal proposal").unwrap().to_vec(),
+            },
         }],
     };
     let ret: PublishStorageDealsReturn = apply_ok(
@@ -617,6 +621,11 @@ pub fn publish_deal(
         ExpectInvocation {
             to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::CurrentTotalPower as u64,
+            ..Default::default()
+        },
+        ExpectInvocation {
+            to: deal_client,
+            method: AccountMethod::AuthenticateMessage as u64,
             ..Default::default()
         },
     ];
@@ -652,5 +661,31 @@ pub mod invariant_failure_patterns {
     lazy_static! {
         pub static ref REWARD_STATE_EPOCH_MISMATCH: Regex =
             Regex::new("^reward state epoch \\d+ does not match prior_epoch\\+1 \\d+$").unwrap();
+    }
+}
+
+pub fn generate_deal_proposal(
+    client: Address,
+    provider: Address,
+    client_collateral: TokenAmount,
+    provider_collateral: TokenAmount,
+    start_epoch: ChainEpoch,
+    end_epoch: ChainEpoch,
+) -> DealProposal {
+    let piece_cid = make_piece_cid("1".as_bytes());
+    let piece_size = PaddedPieceSize(2048u64);
+    let storage_per_epoch = TokenAmount::from_whole(10u8);
+    DealProposal {
+        piece_cid,
+        piece_size,
+        verified_deal: false,
+        client,
+        provider,
+        label: Label::String("label".to_string()),
+        start_epoch,
+        end_epoch,
+        storage_price_per_epoch: storage_per_epoch,
+        provider_collateral,
+        client_collateral,
     }
 }
