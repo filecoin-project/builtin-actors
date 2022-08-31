@@ -212,7 +212,7 @@ fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
 
     expect_abort_contains_message(
         ExitCode::USR_INSUFFICIENT_FUNDS,
-        "insufficient funds 0 for pre-commit deposit",
+        "insufficient funds 0.0 for pre-commit deposit",
         res,
     );
 
