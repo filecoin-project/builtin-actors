@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use cid::multihash::{Code, MultihashGeneric};
+use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -20,7 +20,7 @@ use fvm_shared::sector::{RegisteredSealProof, SectorSize, StoragePower};
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::info;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed, Zero};
+use num_traits::{FromPrimitive, Zero};
 
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -114,7 +114,7 @@ impl Actor {
     {
         let msg_value = rt.message().value_received();
 
-        if msg_value <= TokenAmount::from(0) {
+        if msg_value <= TokenAmount::zero() {
             return Err(actor_error!(
                 illegal_argument,
                 "balance to add must be greater than zero was: {}",
@@ -163,7 +163,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        if params.amount < TokenAmount::from(0) {
+        if params.amount < TokenAmount::zero() {
             return Err(actor_error!(illegal_argument, "negative amount: {}", params.amount));
         }
 
@@ -351,7 +351,7 @@ impl Actor {
 
             deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
-            let pcid = deal.proposal.cid().map_err(
+            let pcid = rt_deal_cid(rt, &deal.proposal).map_err(
                 |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
             )?;
 
@@ -597,7 +597,7 @@ impl Actor {
                     })?
                     .ok_or_else(|| actor_error!(not_found, "no such deal_id: {}", deal_id))?;
 
-                let propc = cid(rt, proposal)?;
+                let propc = rt_deal_cid(rt, proposal)?;
 
                 let has =
                     msm.pending_deals.as_ref().unwrap().has(&propc.to_bytes()).map_err(|e| {
@@ -768,7 +768,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_is(std::iter::once(&*CRON_ACTOR_ADDR))?;
 
-        let mut amount_slashed = BigInt::zero();
+        let mut amount_slashed = TokenAmount::zero();
         let curr_epoch = rt.curr_epoch();
         let mut timed_out_verified_deals: Vec<DealProposal> = Vec::new();
 
@@ -822,7 +822,7 @@ impl Actor {
                         })?
                         .clone();
 
-                    let dcid = cid(rt, &deal)?;
+                    let dcid = rt_deal_cid(rt, &deal)?;
 
                     let state = msm
                         .deal_states
@@ -1301,7 +1301,8 @@ where
 
 pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
 
-fn cid<BS, RT>(rt: &RT, proposal: &DealProposal) -> Result<Cid, ActorError>
+/// Compute a deal CID using the runtime.
+pub(crate) fn rt_deal_cid<BS, RT>(rt: &RT, proposal: &DealProposal) -> Result<Cid, ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
@@ -1310,6 +1311,15 @@ where
     let data = &proposal.marshal_cbor()?;
     let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
         .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
+    debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
+    Ok(Cid::new_v1(DAG_CBOR, hash))
+}
+
+/// Compute a deal CID directly.
+pub(crate) fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
+    const DIGEST_SIZE: u32 = 32;
+    let data = &proposal.marshal_cbor()?;
+    let hash = Code::Blake2b256.digest(data);
     debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
     Ok(Cid::new_v1(DAG_CBOR, hash))
 }
@@ -1354,7 +1364,7 @@ where
         &REWARD_ACTOR_ADDR,
         ext::reward::THIS_EPOCH_REWARD_METHOD,
         RawBytes::default(),
-        0.into(),
+        TokenAmount::zero(),
     )?;
     let ret: ThisEpochRewardReturn = rwret.deserialize()?;
     Ok(ret.this_epoch_baseline_power)
@@ -1373,7 +1383,7 @@ where
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::CURRENT_TOTAL_POWER_METHOD,
         RawBytes::default(),
-        0.into(),
+        TokenAmount::zero(),
     )?;
     let ret: ext::power::CurrentTotalPowerReturnParams = rwret.deserialize()?;
     Ok((ret.raw_byte_power, ret.quality_adj_power))

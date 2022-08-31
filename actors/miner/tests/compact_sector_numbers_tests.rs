@@ -1,7 +1,7 @@
 use fil_actors_runtime::test_utils::{expect_abort, MockRuntime};
 use fvm_shared::address::Address;
 use fvm_shared::sector::MAX_SECTOR_NUMBER;
-use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, error::ExitCode};
+use fvm_shared::{clock::ChainEpoch, error::ExitCode};
 
 mod util;
 use util::*;
@@ -9,12 +9,10 @@ use util::*;
 const PERIOD_OFFSET: ChainEpoch = 100;
 
 fn setup() -> (ActorHarness, MockRuntime) {
-    let big_balance = 20u128.pow(23);
-
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
     h.construct_and_verify(&mut rt);
-    rt.balance.replace(TokenAmount::from(big_balance));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     (h, rt)
 }

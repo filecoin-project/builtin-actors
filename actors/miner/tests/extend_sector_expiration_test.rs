@@ -7,9 +7,7 @@ use fil_actors_runtime::{
     test_utils::{expect_abort_contains_message, MockRuntime},
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
-use fvm_shared::{
-    clock::ChainEpoch, econ::TokenAmount, error::ExitCode, sector::RegisteredSealProof,
-};
+use fvm_shared::{clock::ChainEpoch, error::ExitCode, sector::RegisteredSealProof};
 
 mod util;
 use itertools::Itertools;
@@ -19,7 +17,6 @@ use util::*;
 const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
 fn setup() -> (ActorHarness, MockRuntime) {
-    let big_balance = 10u128.pow(24);
     let period_offset = 100;
     let precommit_epoch = 1;
 
@@ -28,7 +25,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
     // if changed to V1P1 the rejects_extension_past_max_for_seal_proof test fails
     h.set_proof_type(RegisteredSealProof::StackedDRG512MiBV1);
     let mut rt = h.new_runtime();
-    rt.balance.replace(TokenAmount::from(big_balance));
+    rt.balance.replace(BIG_BALANCE.clone());
     rt.set_epoch(precommit_epoch);
 
     (h, rt)

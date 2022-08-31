@@ -4,6 +4,7 @@
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::math::{poly_parse, PRECISION};
 use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::{extrapolated_cum_sum_of_ratio as ecsor, *};
@@ -148,7 +149,7 @@ fn flipped_signs() {
 
 #[test]
 fn values_in_range() {
-    let tens_of_fil = BigInt::from(50 * 10_i128.pow(18));
+    let tens_of_fil = TokenAmount::from_whole(50).atto().clone();
     let one_fil_per_sec = BigInt::from(25);
     let four_fil_per_second = BigInt::from(100);
 

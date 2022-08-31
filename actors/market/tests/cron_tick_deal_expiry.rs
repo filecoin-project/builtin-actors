@@ -5,8 +5,6 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fvm_shared::clock::ChainEpoch;
 
-use num_traits::Zero;
-
 mod harness;
 use harness::*;
 
@@ -45,7 +43,7 @@ fn deal_is_correctly_processed_if_first_cron_after_expiry() {
     let (pay, slashed) =
         cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
     let duration = END_EPOCH - START_EPOCH;
-    assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
+    assert_eq!(&deal_proposal.storage_price_per_epoch * duration, pay);
     assert!(slashed.is_zero());
 
     // deal should be deleted as it should have expired

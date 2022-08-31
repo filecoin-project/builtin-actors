@@ -12,13 +12,12 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::HAMT_BIT_WIDTH;
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 
 use super::policy::*;
 use super::types::*;
@@ -58,13 +57,10 @@ pub struct State {
     pub last_cron: ChainEpoch,
 
     /// Total Client Collateral that is locked -> unlocked when deal is terminated
-    #[serde(with = "bigint_ser")]
     pub total_client_locked_collateral: TokenAmount,
     /// Total Provider Collateral that is locked -> unlocked when deal is terminated
-    #[serde(with = "bigint_ser")]
     pub total_provider_locked_collateral: TokenAmount,
     /// Total storage fee that is locked in escrow -> unlocked when payments are made
-    #[serde(with = "bigint_ser")]
     pub total_client_storage_fee: TokenAmount,
 }
 
@@ -398,7 +394,7 @@ where
         let num_epochs_elapsed = payment_end_epoch - payment_start_epoch;
 
         let total_payment = &deal.storage_price_per_epoch * num_epochs_elapsed;
-        if total_payment > 0.into() {
+        if total_payment.is_positive() {
             self.transfer_balance(&deal.client, &deal.provider, &total_payment)?;
         }
 

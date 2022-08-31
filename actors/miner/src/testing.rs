@@ -8,12 +8,11 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Protocol;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize};
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub fn check_state_invariants<BS: Blockstore>(
@@ -229,7 +228,7 @@ fn check_miner_balances<BS: Blockstore>(
     policy: &Policy,
     state: &State,
     store: &BS,
-    balance: &BigInt,
+    balance: &TokenAmount,
     acc: &MessageAccumulator,
 ) {
     acc.require(
@@ -253,10 +252,10 @@ fn check_miner_balances<BS: Blockstore>(
         format!("miner fee debt is less than zero: {}", state.fee_debt),
     );
 
-    acc.require(balance - &state.locked_funds - &state.pre_commit_deposits - &state.initial_pledge >= BigInt::zero(), format!("miner balance {balance} is less than sum of locked funds ({}), precommit deposit ({}) and initial pledge ({})", state.locked_funds, state.pre_commit_deposits, state.initial_pledge));
+    acc.require(!(balance - &state.locked_funds - &state.pre_commit_deposits - &state.initial_pledge).is_negative(), format!("miner balance {balance} is less than sum of locked funds ({}), precommit deposit ({}) and initial pledge ({})", state.locked_funds, state.pre_commit_deposits, state.initial_pledge));
 
     // locked funds must be sum of vesting table and vesting table payments must be quantized
-    let mut vesting_sum = BigInt::zero();
+    let mut vesting_sum = TokenAmount::zero();
     match state.load_vesting_funds(store) {
         Ok(funds) => {
             let quant = state.quant_spec_every_deadline(policy);
@@ -329,7 +328,7 @@ fn check_precommits<BS: Blockstore>(
         }
     };
 
-    let mut precommit_total = BigInt::zero();
+    let mut precommit_total = TokenAmount::zero();
 
     let precommited_sectors =
         Map::<_, SectorPreCommitOnChainInfo>::load(&state.pre_committed_sectors, store);
@@ -609,7 +608,7 @@ impl ExpirationQueueStateSummary {
         let mut expiration_epochs: Vec<ChainEpoch> = Vec::new();
         let mut all_active_power = PowerPair::zero();
         let mut all_faulty_power = PowerPair::zero();
-        let mut all_on_time_pledge = BigInt::zero();
+        let mut all_on_time_pledge = TokenAmount::zero();
 
         let ret = expiration_queue.amt.for_each(|epoch, expiration_set| {
             let epoch = epoch as i64;
@@ -619,7 +618,7 @@ impl ExpirationQueueStateSummary {
 
             expiration_epochs.push(epoch);
 
-            let mut on_time_sectors_pledge = BigInt::zero();
+            let mut on_time_sectors_pledge = TokenAmount::zero();
             for sector_number in expiration_set.on_time_sectors.iter() {
                 // check sectors are present only once
                 if !seen_sectors.insert(sector_number) {

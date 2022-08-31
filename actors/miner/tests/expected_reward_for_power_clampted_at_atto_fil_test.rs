@@ -8,7 +8,7 @@ use fvm_shared::smooth::FilterEstimate;
 
 #[test]
 fn expected_zero_valued_br_clamped_at_1_attofil() {
-    let epoch_target_reward = TokenAmount::from(1u64 << 50);
+    let epoch_target_reward = BigInt::from(1u64 << 50);
     let zero_qa_power = StoragePower::zero();
     let network_qa_power = StoragePower::from(1u64 << 10);
     let power_rate_of_change = StoragePower::from(1 << 10);
@@ -21,12 +21,12 @@ fn expected_zero_valued_br_clamped_at_1_attofil() {
         &zero_qa_power,
         1,
     );
-    assert_eq!(BigInt::from(1), br_clamped);
+    assert_eq!(TokenAmount::from_atto(1), br_clamped);
 }
 
 #[test]
 fn expected_negative_value_br_clamped_at_1_atto_fil() {
-    let epoch_target_reward = TokenAmount::from(1u64 << 50);
+    let epoch_target_reward = BigInt::from(1u64 << 50);
     let qa_sector_power = StoragePower::from(1u64 << 36);
     let network_qa_power = StoragePower::from(1u64 << 10);
     let power_rate_of_change = StoragePower::from(1 << 10).neg();
@@ -39,5 +39,5 @@ fn expected_negative_value_br_clamped_at_1_atto_fil() {
         &qa_sector_power,
         4,
     );
-    assert_eq!(BigInt::from(1), four_br_clamped);
+    assert_eq!(TokenAmount::from_atto(1), four_br_clamped);
 }

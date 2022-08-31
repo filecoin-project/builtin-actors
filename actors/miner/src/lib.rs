@@ -25,7 +25,6 @@ use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
-use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
@@ -46,7 +45,7 @@ use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, info, warn};
 pub use monies::*;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed, Zero};
+use num_traits::{FromPrimitive, Zero};
 pub use partition_state::*;
 pub use policy::*;
 pub use sector_map::*;
@@ -1793,7 +1792,7 @@ impl Actor {
                 sectors.len()
             ));
         }
-        let mut fee_to_burn = TokenAmount::from(0_u32);
+        let mut fee_to_burn = TokenAmount::zero();
         let mut needs_cron = false;
         rt.transaction(|state: &mut State, rt| {
             // Aggregate fee applies only when batching.
@@ -1836,7 +1835,7 @@ impl Actor {
             }
 
             let mut chain_infos = Vec::with_capacity(sectors.len());
-            let mut total_deposit_required = BigInt::zero();
+            let mut total_deposit_required = TokenAmount::zero();
             let mut clean_up_events = Vec::with_capacity(sectors.len());
             let deal_count_max = sector_deals_max(rt.policy(), info.sector_size);
 
@@ -2032,7 +2031,7 @@ impl Actor {
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
             RawBytes::serialize(&svi)?,
-            BigInt::zero(),
+            TokenAmount::zero(),
         )?;
 
         Ok(())
@@ -3171,11 +3170,12 @@ impl Actor {
 
         // The policy amounts we should burn and send to reporter
         // These may differ from actual funds send when miner goes into fee debt
-        let this_epoch_reward = reward_stats.this_epoch_reward_smoothed.estimate();
+        let this_epoch_reward =
+            TokenAmount::from_atto(reward_stats.this_epoch_reward_smoothed.estimate());
         let fault_penalty = consensus_fault_penalty(this_epoch_reward.clone());
         let slasher_reward = reward_for_consensus_slash_report(&this_epoch_reward);
 
-        let mut pledge_delta = TokenAmount::from(0);
+        let mut pledge_delta = TokenAmount::zero();
 
         let (burn_amount, reward_amount) = rt.transaction(|st: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), st)?;
@@ -4258,7 +4258,7 @@ where
     Ok(())
 }
 
-fn notify_pledge_changed<BS, RT>(rt: &mut RT, pledge_delta: &BigInt) -> Result<(), ActorError>
+fn notify_pledge_changed<BS, RT>(rt: &mut RT, pledge_delta: &TokenAmount) -> Result<(), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
@@ -4267,7 +4267,7 @@ where
         rt.send(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
-            RawBytes::serialize(BigIntSer(pledge_delta))?,
+            RawBytes::serialize(pledge_delta)?,
             TokenAmount::zero(),
         )?;
     }

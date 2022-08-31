@@ -4,18 +4,18 @@ use fil_actors_runtime::test_utils::expect_abort_contains_message;
 use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
+
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+
 use num_traits::Zero;
 
 mod util;
 use crate::util::*;
 
 const PERIOD_OFFSET: ChainEpoch = 100;
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 
 #[test]
 fn recovery_happy_path() {
@@ -38,7 +38,7 @@ fn recovery_happy_path() {
         dl_idx,
         p_idx,
         BitField::try_from_bits([one_sector[0].sector_number]).unwrap(),
-        BigInt::zero(),
+        TokenAmount::zero(),
     )
     .unwrap();
 
@@ -79,7 +79,7 @@ fn recovery_must_pay_back_fee_debt() {
     h.advance_deadline(
         &mut rt,
         CronConfig {
-            continued_faults_penalty: BigInt::zero(), // fee is instead added to debt
+            continued_faults_penalty: TokenAmount::zero(), // fee is instead added to debt
             ..Default::default()
         },
     );
@@ -96,7 +96,7 @@ fn recovery_must_pay_back_fee_debt() {
             dl_idx,
             p_idx,
             BitField::try_from_bits([one_sector[0].sector_number]).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
         ),
     );
 
@@ -116,7 +116,7 @@ fn recovery_must_pay_back_fee_debt() {
     let p = dl.load_partition(&rt.store, p_idx).unwrap();
     assert_eq!(p.faults, p.recoveries);
     st = h.get_state(&rt);
-    assert_eq!(BigInt::zero(), st.fee_debt);
+    assert!(st.fee_debt.is_zero());
     h.check_state(&rt);
 }
 
@@ -156,7 +156,7 @@ fn recovery_fails_during_active_consensus_fault() {
             dl_idx,
             p_idx,
             BitField::try_from_bits([one_sector[0].sector_number]).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
         ),
     );
     h.check_state(&rt);
@@ -166,7 +166,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
     h.construct_and_verify(&mut rt);
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
 
     (h, rt)
 }

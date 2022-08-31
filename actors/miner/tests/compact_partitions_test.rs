@@ -11,18 +11,16 @@ use fvm_ipld_bitfield::BitField;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, error::ExitCode, sector::SectorNumber};
 
 mod util;
-use fvm_shared::bigint::{BigInt, Zero};
+use fvm_shared::bigint::Zero;
 use itertools::Itertools;
 use util::*;
 const PERIOD_OFFSET: ChainEpoch = 100;
 
 fn setup() -> (ActorHarness, MockRuntime) {
-    let big_balance = 20u128.pow(23);
-
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
     h.construct_and_verify(&mut rt);
-    rt.balance.replace(TokenAmount::from(big_balance));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     (h, rt)
 }
@@ -71,7 +69,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
 
     // terminate sector 1
     rt.set_epoch(rt.epoch + 100);
-    h.apply_rewards(&mut rt, BIG_REWARDS.into(), BigInt::zero());
+    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     let terminated_sector = &sectors_info[0];
     let sector_size = terminated_sector.seal_proof.sector_size().unwrap();
@@ -96,7 +94,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
         &h.epoch_qa_power_smooth,
         &sector_power,
         &h.epoch_reward_smooth,
-        &BigInt::zero(),
+        &TokenAmount::zero(),
         0,
     );
 
