@@ -36,8 +36,6 @@ impl Address {
     ///
     /// 0    1-11       12
     /// 0xff \[0x00...] [id address...]
-    ///
-    /// TODO worth replacing the Option with a Result, once we figure out error handling in this actor.
     pub fn as_id_address(&self) -> Option<FilecoinAddress> {
         let val = &self.0 .0;
         if (val[0] != 0xff) || !val[1..12].iter().all(|&byte| byte == 0) {
