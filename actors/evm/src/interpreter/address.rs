@@ -5,7 +5,7 @@ use fvm_shared::address::Address as FilecoinAddress;
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 ///
 /// TODO this type will eventually handle f4 address detection.
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Address(H160);
 
 impl From<U256> for Address {
