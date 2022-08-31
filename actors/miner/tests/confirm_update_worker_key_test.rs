@@ -3,7 +3,7 @@ use fil_actors_runtime::{
     runtime::{Runtime, RuntimePolicy},
     test_utils::MockRuntime,
 };
-use fvm_shared::{address::Address, econ::TokenAmount};
+use fvm_shared::address::Address;
 
 mod util;
 use util::*;
@@ -11,14 +11,13 @@ use util::*;
 const NEW_WORKER: Address = Address::new_id(999);
 
 fn setup() -> (ActorHarness, MockRuntime) {
-    let big_balance = 20u128.pow(23);
     let period_offset = 100;
     let current_epoch = 5;
 
     let h = ActorHarness::new(period_offset);
     let mut rt = h.new_runtime();
     h.construct_and_verify(&mut rt);
-    rt.balance.replace(TokenAmount::from(big_balance));
+    rt.balance.replace(BIG_BALANCE.clone());
     rt.set_epoch(current_epoch);
 
     (h, rt)

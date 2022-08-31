@@ -15,7 +15,7 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
+use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::reward::ThisEpochRewardReturn;
@@ -23,7 +23,7 @@ use fvm_shared::sector::SealVerifyInfo;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use log::{debug, error};
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed, Zero};
+use num_traits::{FromPrimitive, Zero};
 
 pub use self::policy::*;
 pub use self::state::*;
@@ -282,7 +282,7 @@ impl Actor {
             &REWARD_ACTOR_ADDR,
             ext::reward::UPDATE_NETWORK_KPI,
             this_epoch_raw_byte_power?,
-            TokenAmount::from(0_u32),
+            TokenAmount::zero(),
         )
         .map_err(|e| e.wrap("failed to update network KPI with reward actor"))?;
 
@@ -686,7 +686,7 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::UpdatePledgeTotal) => {
-                let BigIntDe(param) = cbor::deserialize_params(params)?;
+                let param: TokenAmount = cbor::deserialize_params(params)?;
                 Self::update_pledge_total(rt, param)?;
                 Ok(RawBytes::default())
             }

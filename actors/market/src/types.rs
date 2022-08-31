@@ -21,7 +21,6 @@ pub const STATES_AMT_BITWIDTH: u32 = 6;
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct WithdrawBalanceParams {
     pub provider_or_client: Address,
-    #[serde(with = "bigint_ser")]
     pub amount: TokenAmount,
 }
 
@@ -30,7 +29,6 @@ impl Cbor for WithdrawBalanceParams {}
 #[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct WithdrawBalanceReturn {
-    #[serde(with = "bigint_ser")]
     pub amount_withdrawn: TokenAmount,
 }
 

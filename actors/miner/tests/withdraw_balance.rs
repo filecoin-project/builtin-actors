@@ -5,27 +5,24 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use std::ops::Deref;
 
 mod util;
 use util::*;
 
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
-const ONE_PERCENT_BALANCE: u128 = BIG_BALANCE / 100;
 const PERIOD_OFFSET: ChainEpoch = 100;
 
 #[test]
 fn happy_path_withdraws_funds() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     h.withdraw_funds(
         &mut rt,
         h.owner,
-        &TokenAmount::from(ONE_PERCENT_BALANCE),
-        &TokenAmount::from(ONE_PERCENT_BALANCE),
+        &ONE_PERCENT_BALANCE,
+        &ONE_PERCENT_BALANCE,
         &TokenAmount::zero(),
     )
     .unwrap();
@@ -36,11 +33,11 @@ fn happy_path_withdraws_funds() {
 fn fails_if_miner_cant_repay_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let mut st = h.get_state(&rt);
-    st.fee_debt = rt.balance.borrow().deref() + TokenAmount::from(1e18 as u64);
+    st.fee_debt = &*rt.balance.borrow() + TokenAmount::from_whole(1);
     rt.replace_state(&st);
     expect_abort_contains_message(
         ExitCode::USR_INSUFFICIENT_FUNDS,
@@ -48,8 +45,8 @@ fn fails_if_miner_cant_repay_fee_debt() {
         h.withdraw_funds(
             &mut rt,
             h.owner,
-            &TokenAmount::from(ONE_PERCENT_BALANCE),
-            &TokenAmount::from(ONE_PERCENT_BALANCE),
+            &*ONE_PERCENT_BALANCE,
+            &*ONE_PERCENT_BALANCE,
             &TokenAmount::zero(),
         ),
     );
@@ -60,11 +57,11 @@ fn fails_if_miner_cant_repay_fee_debt() {
 fn withdraw_only_what_we_can_after_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let mut st = h.get_state(&rt);
-    let fee_debt = TokenAmount::from(BIG_BALANCE - ONE_PERCENT_BALANCE);
+    let fee_debt = &*BIG_BALANCE - &*ONE_PERCENT_BALANCE;
     st.fee_debt = fee_debt.clone();
     rt.replace_state(&st);
 
@@ -78,18 +75,18 @@ fn withdraw_only_what_we_can_after_fee_debt() {
 fn successfully_withdraw() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
-    let one = TokenAmount::from(1);
+    let one = TokenAmount::from_atto(1);
     h.withdraw_funds(&mut rt, h.owner, &one, &one, &TokenAmount::zero()).unwrap();
 
     let first_beneficiary_id = Address::new_id(999);
-    let quota = TokenAmount::from(ONE_PERCENT_BALANCE);
+    let quota = &*ONE_PERCENT_BALANCE;
     h.propose_approve_initial_beneficiary(
         &mut rt,
         first_beneficiary_id,
-        BeneficiaryTerm::new(quota, TokenAmount::zero(), PERIOD_OFFSET + 100),
+        BeneficiaryTerm::new(quota.clone(), TokenAmount::zero(), PERIOD_OFFSET + 100),
     )
     .unwrap();
     h.withdraw_funds(&mut rt, h.owner, &one, &one, &TokenAmount::zero()).unwrap();
@@ -101,14 +98,14 @@ fn successfully_withdraw() {
 fn successfully_withdraw_allow_zero() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let first_beneficiary_id = Address::new_id(999);
     h.propose_approve_initial_beneficiary(
         &mut rt,
         first_beneficiary_id,
-        BeneficiaryTerm::new(TokenAmount::from(1), TokenAmount::zero(), PERIOD_OFFSET + 100),
+        BeneficiaryTerm::new(TokenAmount::from_atto(1), TokenAmount::zero(), PERIOD_OFFSET + 100),
     )
     .unwrap();
     h.withdraw_funds(
@@ -126,11 +123,11 @@ fn successfully_withdraw_allow_zero() {
 fn successfully_withdraw_limited_to_quota() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let first_beneficiary_id = Address::new_id(999);
-    let quota = TokenAmount::from(ONE_PERCENT_BALANCE);
+    let quota = &*ONE_PERCENT_BALANCE;
     h.propose_approve_initial_beneficiary(
         &mut rt,
         first_beneficiary_id,
@@ -138,8 +135,8 @@ fn successfully_withdraw_limited_to_quota() {
     )
     .unwrap();
 
-    let withdraw_amount = TokenAmount::from(ONE_PERCENT_BALANCE * 2);
-    h.withdraw_funds(&mut rt, h.beneficiary, &withdraw_amount, &quota, &TokenAmount::zero())
+    let withdraw_amount = &*ONE_PERCENT_BALANCE * 2;
+    h.withdraw_funds(&mut rt, h.beneficiary, &withdraw_amount, quota, &TokenAmount::zero())
         .unwrap();
     h.check_state(&rt);
 }
@@ -148,11 +145,11 @@ fn successfully_withdraw_limited_to_quota() {
 fn allow_withdraw_but_no_send_when_beneficiary_not_efficient() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let first_beneficiary_id = Address::new_id(999);
-    let quota = TokenAmount::from(ONE_PERCENT_BALANCE);
+    let quota = &*ONE_PERCENT_BALANCE;
     h.propose_approve_initial_beneficiary(
         &mut rt,
         first_beneficiary_id,
@@ -162,7 +159,7 @@ fn allow_withdraw_but_no_send_when_beneficiary_not_efficient() {
     let info = h.get_info(&rt);
     assert_eq!(PERIOD_OFFSET - 10, info.beneficiary_term.expiration);
     rt.set_epoch(100);
-    h.withdraw_funds(&mut rt, h.beneficiary, &quota, &TokenAmount::zero(), &TokenAmount::zero())
+    h.withdraw_funds(&mut rt, h.beneficiary, quota, &TokenAmount::zero(), &TokenAmount::zero())
         .unwrap();
     h.check_state(&rt);
 }
@@ -171,13 +168,13 @@ fn allow_withdraw_but_no_send_when_beneficiary_not_efficient() {
 fn fail_withdraw_from_non_beneficiary() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let first_beneficiary_id = Address::new_id(999);
     let another_actor = Address::new_id(1000);
-    let quota = TokenAmount::from(ONE_PERCENT_BALANCE);
-    let one = TokenAmount::from(1);
+    let quota = &*ONE_PERCENT_BALANCE;
+    let one = TokenAmount::from_atto(1);
 
     expect_abort(
         ExitCode::USR_FORBIDDEN,
@@ -193,7 +190,7 @@ fn fail_withdraw_from_non_beneficiary() {
     h.propose_approve_initial_beneficiary(
         &mut rt,
         first_beneficiary_id,
-        BeneficiaryTerm::new(quota, TokenAmount::zero(), PERIOD_OFFSET - 10),
+        BeneficiaryTerm::new(quota.clone(), TokenAmount::zero(), PERIOD_OFFSET - 10),
     )
     .unwrap();
 

@@ -9,16 +9,17 @@ use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, parse_uint_key, MessageAccumulator, SetMultimap,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::{
     address::{Address, Protocol},
     clock::{ChainEpoch, EPOCH_UNDEFINED},
     deal::DealID,
     econ::TokenAmount,
 };
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 
-use crate::{balance_table::BalanceTable, DealArray, DealMetaArray, State, PROPOSALS_AMT_BITWIDTH};
+use crate::{
+    balance_table::BalanceTable, deal_cid, DealArray, DealMetaArray, State, PROPOSALS_AMT_BITWIDTH,
+};
 
 pub struct DealSummary {
     pub provider: Address,
@@ -90,7 +91,7 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
     match DealArray::load(&state.proposals, store) {
         Ok(proposals) => {
             let ret = proposals.for_each(|deal_id, proposal| {
-                let proposal_cid = proposal.cid()?;
+                let proposal_cid = deal_cid(proposal)?;
 
                 if proposal.start_epoch >= current_epoch {
                     expected_deal_ops.insert(deal_id);
@@ -212,7 +213,6 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
         (Ok(escrow_table), Ok(lock_table)) => {
             let mut locked_total = TokenAmount::zero();
             let ret = lock_table.0.for_each(|key, locked_amount| {
-                let locked_amount = &locked_amount.0;
                 let address = Address::from_bytes(key)?;
 
                 locked_total += locked_amount;

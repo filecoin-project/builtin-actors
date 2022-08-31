@@ -12,12 +12,12 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::Sign;
+
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed};
+use num_traits::{FromPrimitive, Zero};
 
 pub use self::state::*;
 pub use self::types::*;
@@ -111,7 +111,7 @@ impl Actor {
             signers: resolved_signers,
             num_approvals_threshold: params.num_approvals_threshold,
             pending_txs: empty_root,
-            initial_balance: TokenAmount::from(0),
+            initial_balance: TokenAmount::zero(),
             next_tx_id: Default::default(),
             start_epoch: Default::default(),
             unlock_duration: Default::default(),
@@ -138,7 +138,7 @@ impl Actor {
         rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
         let proposer: Address = rt.message().caller();
 
-        if params.value.sign() == Sign::Minus {
+        if params.value.is_negative() {
             return Err(actor_error!(
                 illegal_argument,
                 "proposed value must be non-negative, was {}",

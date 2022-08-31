@@ -5,8 +5,9 @@ use cid::Cid;
 use fil_actor_miner::{power_for_sectors, Deadline, PoStPartition, PowerPair, SectorOnChainInfo};
 use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid};
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
+
 use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::sector::SectorNumber;
 
@@ -20,7 +21,7 @@ use state_harness::*;
 fn new_sector_on_chain_info(
     sector_number: SectorNumber,
     sealed_cid: Cid,
-    weight: TokenAmount,
+    weight: BigInt,
     activation: ChainEpoch,
 ) -> SectorOnChainInfo {
     SectorOnChainInfo {
@@ -36,6 +37,7 @@ fn new_sector_on_chain_info(
 }
 
 mod sector_assignment {
+
     use super::*;
 
     #[test]
@@ -53,7 +55,7 @@ mod sector_assignment {
                 new_sector_on_chain_info(
                     i as SectorNumber,
                     make_sealed_cid("{i}".as_bytes()),
-                    TokenAmount::from(1u8),
+                    BigInt::from(1u8),
                     0,
                 )
             })

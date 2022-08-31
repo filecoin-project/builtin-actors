@@ -99,7 +99,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         deal_proposal2.client,
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
-        TokenAmount::from(0u8),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );

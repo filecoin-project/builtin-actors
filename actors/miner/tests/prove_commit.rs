@@ -25,14 +25,13 @@ const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
 const VERIFIED_DEAL_WEIGHT_MULTIPLIER: u64 = 100;
 const QUALITY_BASE_MULTIPLIER: u64 = 10;
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 const PERIOD_OFFSET: ChainEpoch = 100;
 
 #[test]
 fn prove_single_sector() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     let precommit_epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(precommit_epoch);
@@ -75,7 +74,7 @@ fn prove_single_sector() {
 
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
-    rt.balance.replace(TokenAmount::from(1000u64) * 1e18 as u64);
+    rt.balance.replace(TokenAmount::from_whole(1000));
     let pcc = ProveCommitConfig {
         deal_weights: HashMap::from([(sector_no, deal_weight.clone())]),
         ..Default::default()
@@ -166,7 +165,7 @@ fn prove_single_sector() {
 fn prove_sectors_from_batch_pre_commit() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     let precommit_epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(precommit_epoch);
@@ -208,7 +207,7 @@ fn prove_sectors_from_batch_pre_commit() {
         &mut rt,
         PreCommitSectorBatchParams { sectors },
         &conf,
-        TokenAmount::zero(),
+        &TokenAmount::zero(),
     );
 
     rt.set_epoch(prove_commit_epoch);
@@ -326,7 +325,7 @@ fn prove_sectors_from_batch_pre_commit() {
 fn invalid_proof_rejected() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     let precommit_epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(precommit_epoch);
@@ -404,7 +403,7 @@ fn invalid_proof_rejected() {
     );
     rt.reset();
 
-    rt.balance.replace(TokenAmount::from(1_000) * 1e18 as u64);
+    rt.balance.replace(TokenAmount::from_whole(1_000));
 
     let prove_commit = h.make_prove_commit_params(sector_no);
     h.prove_commit_sector_and_confirm(
@@ -443,14 +442,14 @@ fn invalid_proof_rejected() {
 fn prove_commit_aborts_if_pledge_requirement_not_met() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
     // Set the circulating supply high and expected reward low in order to coerce
     // pledge requirements (BR + share of money supply, but capped at 1FIL)
     // to exceed pre-commit deposit (BR only).
-    rt.set_circulating_supply(TokenAmount::from(100_000_000) * 1e18 as u64);
+    rt.set_circulating_supply(TokenAmount::from_whole(100_000_000));
     h.epoch_reward_smooth = FilterEstimate::new(BigInt::from(1e15 as u64), BigInt::zero());
 
     // prove one sector to establish collateral and locked funds
@@ -503,7 +502,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
 fn drop_invalid_prove_commit_while_processing_valid_one() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -544,7 +543,7 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
 fn prove_commit_just_after_period_start_permits_post() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     // Epoch PERIOD_OFFSET+1 should be at the beginning of the miner's proving period so there will be time to commit
     // and PoSt a sector.
@@ -565,7 +564,7 @@ fn prove_commit_just_after_period_start_permits_post() {
 fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     let precommit_epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(precommit_epoch);
@@ -610,7 +609,7 @@ fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
 fn verify_proof_does_not_vest_funds() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     let precommit_epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(precommit_epoch);
@@ -634,14 +633,14 @@ fn verify_proof_does_not_vest_funds() {
         .add_locked_funds(
             &rt.store,
             rt.epoch,
-            &TokenAmount::from(1000),
+            &TokenAmount::from_atto(1000),
             &VestSpec { initial_delay: 0, vest_period: 1, step_duration: 1, quantization: 1 },
         )
         .unwrap();
     rt.replace_state(&st);
 
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
-    rt.balance.replace(TokenAmount::from(1000) * 1e18 as u64);
+    rt.balance.replace(TokenAmount::from_whole(1000));
 
     let mut prove_commit = h.make_prove_commit_params(sector_no);
     prove_commit.proof.resize(192, 0);

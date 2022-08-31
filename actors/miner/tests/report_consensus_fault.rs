@@ -4,20 +4,19 @@ use fil_actors_runtime::test_utils::{expect_abort, expect_abort_contains_message
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
-use fvm_shared::econ::TokenAmount;
+
 use fvm_shared::error::ExitCode;
 
 mod util;
 
 use util::*;
 
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 const PERIOD_OFFSET: ChainEpoch = 100;
 
 fn setup() -> (ActorHarness, MockRuntime) {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
     (h, rt)
 }
