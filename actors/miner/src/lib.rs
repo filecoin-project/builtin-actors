@@ -4965,10 +4965,11 @@ where
     let policy = rt.policy();
     let new_proof_expiration =
         sector.proof_expiration + (policy.max_proof_validity - policy.proof_refresh_window);
-    if !(new_proof_expiration > rt.curr_epoch() + policy.max_proof_validity) {
-        sector.proof_expiration = new_proof_expiration;
-    }
+    if new_proof_expiration > rt.curr_epoch() + policy.max_proof_validity {
+        return Ok(sector)
 
+    }
+    sector.proof_expiration = new_proof_expiration;
     Ok(sector)
 }
 
