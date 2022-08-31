@@ -286,7 +286,7 @@ impl Partition {
 
         // Reschedule recovered
         let power = queue
-            .reschedule_recovered(recovered_sectors, sector_size)
+            .reschedule_recovered(&recovered_sectors, sector_size)
             .map_err(|e| e.downcast_wrap("failed to reschedule faults in partition queue"))?;
 
         // Save expiration queue
@@ -581,7 +581,8 @@ impl Partition {
         self.faulty_power -= &popped.faulty_power;
 
         // Record the epoch of any sectors expiring early, for termination fee calculation later.
-        self.record_early_termination(store, until, &popped.faulty_sectors)
+        let expired_early = &popped.faulty_sectors | &popped.early_sectors;
+        self.record_early_termination(store, until, &expired_early)
             .map_err(|e| e.downcast_wrap("failed to record early terminations"))?;
 
         // check invariants
