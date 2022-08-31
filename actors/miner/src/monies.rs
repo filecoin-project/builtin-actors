@@ -45,7 +45,7 @@ lazy_static! {
     /// The target is 1 FIL (10**18 attoFIL) per 32GiB.
     /// This does not divide evenly, so the result is fractionally smaller.
     static ref INITIAL_PLEDGE_MAX_PER_BYTE: TokenAmount =
-        TokenAmount::from_whole(1).div_floor(32 << 30);
+        TokenAmount::from_whole(1).div_floor(32i64 << 30);
 
     /// Base reward for successfully disputing a window posts proofs.
     pub static ref BASE_REWARD_FOR_DISPUTED_WINDOW_POST: TokenAmount = TokenAmount::from_whole(4);
