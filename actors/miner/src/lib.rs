@@ -3500,19 +3500,17 @@ impl Actor {
         Ok(())
     }
 
-    /*
+
     fn refresh_proof_expiration<BS, RT>(
         rt: &mut RT,
-        mut params: ExtendSectorExpirationParams,
+        params: ExtendSectorExpirationParams,
     ) -> Result<(), ActorError>
         where
             BS: Blockstore,
             RT: Runtime<BS>,
     {
-
-
-        Ok(())
-    }*/
+        extend_sector_inner(rt, &params.extensions, extend_proof_validity)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -4948,7 +4946,6 @@ fn balance_invariants_broken(e: Error) -> ActorError {
     )
 }
 
-#[allow(dead_code)]
 fn extend_proof_validity<BS, RT>(
     rt: &RT,
     _: &ValidatedExpirationExtension,
@@ -5041,6 +5038,15 @@ where
 
     sector.deal_weight = new_deal_weight;
     sector.verified_deal_weight = new_verified_deal_weight;
+
+    // try also extending proof validity, duplicate code with extend_proof_validity I haven't
+    // found a nice way to dedupe
+    let policy = rt.policy();
+    let new_proof_expiration =
+        sector.proof_expiration + (policy.max_proof_validity - policy.proof_refresh_window);
+    if !(new_proof_expiration > rt.curr_epoch() + policy.max_proof_validity) {
+        sector.proof_expiration = new_proof_expiration;
+    }
 
     Ok(sector)
 }
