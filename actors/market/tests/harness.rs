@@ -389,7 +389,7 @@ pub fn cron_tick_and_assert_balances(
         payment_start = s.last_updated_epoch;
     }
     let duration = payment_end - payment_start;
-    let payment = d.storage_price_per_epoch * duration;
+    let payment = duration * d.storage_price_per_epoch;
 
     // expected updated amounts
     let updated_client_escrow = c_escrow - &payment;
