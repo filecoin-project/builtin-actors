@@ -13,7 +13,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use indexmap::IndexMap;
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 
 use super::types::Transaction;
 use super::TxnID;
