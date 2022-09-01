@@ -556,7 +556,7 @@ impl Partition {
         })?;
         self.expirations_epochs = expirations.amt.flush()?;
 
-        let expired_sectors = &popped.on_time_sectors | &popped.faulty_sectors;
+        let expired_sectors = popped.all();
 
         // There shouldn't be any recovering sectors or power if this is invoked at deadline end.
         // Either the partition was PoSted and the recovering became recovered, or the partition was not PoSted
