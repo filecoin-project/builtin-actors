@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actors_runtime::actor_error;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError,
     FIRST_NON_SINGLETON_ADDR,
@@ -72,37 +71,45 @@ impl State {
         store: &BS,
         addr: &Address,
         f4addr: &Address,
-    ) -> anyhow::Result<ActorID>
+    ) -> Result<ActorID, ActorError>
     where
         BS: Blockstore,
     {
-        let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)?;
+        let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load address map")?;
 
         // Assign a new ID address, or use the one currently mapped to the f4 address. We don't
         // bother checking if the target actor is an embryo here, the FVM will check that when we go to create the actor.
         let f4addr_key = f4addr.to_bytes().into();
-        let id: u64 = match map.get(&f4addr_key)? {
+        let id: u64 = match map
+            .get(&f4addr_key)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lookup f4 address in map")?
+        {
             Some(id) => *id,
             None => {
                 let id = self.next_id;
                 self.next_id += 1;
-                map.set(f4addr_key, id)?;
+                map.set(f4addr_key, id)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set f4 address in map")?;
                 id
             }
         };
 
         // Then go ahead and assign the f2 address.
-        let is_new = map.set_if_absent(addr.to_bytes().into(), id)?;
+        let is_new = map
+            .set_if_absent(addr.to_bytes().into(), id)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set map key")?;
         if !is_new {
             // this is impossible today as the robust address is a hash of unique inputs
             // but in close future predictable address generation will make this possible
-            return Err(anyhow!(actor_error!(
+            return Err(actor_error!(
                 forbidden,
                 "robust address {} is already allocated in the address map",
                 addr
-            )));
+            ));
         }
-        self.address_map = map.flush()?;
+        self.address_map =
+            map.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store address map")?;
 
         Ok(id)
     }
@@ -141,8 +148,11 @@ impl State {
         &self,
         store: &BS,
         cid: &Cid,
-    ) -> anyhow::Result<bool> {
-        let installed: Vec<Cid> = match store.get_cbor(&self.installed_actors)? {
+    ) -> Result<bool, ActorError> {
+        let installed: Vec<Cid> = match store
+            .get_cbor(&self.installed_actors)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load installed actor list")?
+        {
             Some(v) => v,
             None => Vec::new(),
         };
@@ -155,13 +165,18 @@ impl State {
         &mut self,
         store: &BS,
         cid: Cid,
-    ) -> anyhow::Result<()> {
-        let mut installed: Vec<Cid> = match store.get_cbor(&self.installed_actors)? {
+    ) -> Result<(), ActorError> {
+        let mut installed: Vec<Cid> = match store
+            .get_cbor(&self.installed_actors)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load installed actor list")?
+        {
             Some(v) => v,
             None => Vec::new(),
         };
         installed.push(cid);
-        self.installed_actors = store.put_cbor(&installed, Code::Blake2b256)?;
+        self.installed_actors = store
+            .put_cbor(&installed, Code::Blake2b256)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to save installed actor list")?;
         Ok(())
     }
 }
