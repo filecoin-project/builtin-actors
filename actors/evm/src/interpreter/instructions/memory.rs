@@ -1,9 +1,7 @@
 #!allow[clippy::result-unit-err]
 
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System, U256},
-    fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
+    crate::interpreter::{ExecutionState, StatusCode, U256},
     std::num::NonZeroUsize,
 };
 
@@ -113,11 +111,4 @@ pub fn mstore8(state: &mut ExecutionState) -> Result<(), StatusCode> {
 #[inline]
 pub fn msize(state: &mut ExecutionState) {
     state.stack.push(u64::try_from(state.memory.len()).unwrap().into());
-}
-
-pub fn extcodecopy<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    todo!();
 }
