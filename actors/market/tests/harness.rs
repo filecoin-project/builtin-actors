@@ -3,6 +3,7 @@
 use cid::Cid;
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
+use std::rc::Rc;
 use std::{cell::RefCell, collections::HashMap};
 
 use fil_actor_market::{
@@ -658,7 +659,7 @@ pub fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposa
     let mh_code = Code::Blake2b256;
     let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&p).unwrap()));
     // Check that the deal_id is not in st.pending_proposals.
-    let pending_deals: Hamt<&fvm_ipld_blockstore::MemoryBlockstore, DealProposal> =
+    let pending_deals: Hamt<&Rc<fvm_ipld_blockstore::MemoryBlockstore>, DealProposal> =
         fil_actors_runtime::make_map_with_root_and_bitwidth(
             &st.pending_proposals,
             &rt.store,

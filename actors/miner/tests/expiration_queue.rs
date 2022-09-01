@@ -14,6 +14,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize, StoragePower};
 use std::convert::TryInto;
 use std::iter::FromIterator;
+use std::rc::Rc;
 
 mod util;
 use util::*;
@@ -712,13 +713,13 @@ fn test_sector(
 fn empty_expiration_queue_with_quantizing(
     rt: &MockRuntime,
     quant: QuantSpec,
-) -> ExpirationQueue<MemoryBlockstore> {
+) -> ExpirationQueue<Rc<MemoryBlockstore>> {
     let empty_array =
-        Amt::<(), _>::new_with_bit_width(&rt.store, TEST_AMT_BITWIDTH).flush().unwrap();
+        Amt::<(), _>::new_with_bit_width(&rt.store.clone(), TEST_AMT_BITWIDTH).flush().unwrap();
 
     ExpirationQueue::new(&rt.store, &empty_array, quant).unwrap()
 }
 
-fn empty_expiration_queue(rt: &MockRuntime) -> ExpirationQueue<MemoryBlockstore> {
+fn empty_expiration_queue(rt: &MockRuntime) -> ExpirationQueue<Rc<MemoryBlockstore>> {
     empty_expiration_queue_with_quantizing(rt, NO_QUANTIZATION)
 }

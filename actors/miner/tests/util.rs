@@ -2851,7 +2851,7 @@ pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<Se
 #[allow(dead_code)]
 pub fn require_no_expiration_groups_before(
     epoch: ChainEpoch,
-    queue: &mut ExpirationQueue<'_, MemoryBlockstore>,
+    queue: &mut ExpirationQueue<'_, impl Blockstore>,
 ) {
     queue.amt.flush().unwrap();
 
