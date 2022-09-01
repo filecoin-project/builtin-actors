@@ -155,7 +155,7 @@ mod verifiers {
             ExitCode::OK,
         );
         expect_abort(
-            ExitCode::USR_ILLEGAL_STATE,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_verifier(&mut rt, &verifier_key_address, &allowance),
         );
         h.check_state(&rt);
@@ -332,8 +332,8 @@ mod clients {
         );
 
         expect_abort(
-            ExitCode::USR_ILLEGAL_STATE,
-            h.add_client(&mut rt, &VERIFIER, &client, &allowance_client),
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            h.add_client(&mut rt, &VERIFIER, &client, &allowance_client, &allowance_client),
         );
         h.check_state(&rt);
     }

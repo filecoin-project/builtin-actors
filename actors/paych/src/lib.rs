@@ -75,12 +75,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let resolved = resolve_to_actor_id(rt, raw).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {} to ID", raw),
-            )
-        })?;
+        let resolved = resolve_to_actor_id(rt, raw)?;
 
         let code_cid = rt
             .get_actor_code_cid(&resolved)

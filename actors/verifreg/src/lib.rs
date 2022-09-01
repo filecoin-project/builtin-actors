@@ -98,12 +98,7 @@ impl Actor {
             ));
         }
 
-        let verifier = resolve_to_actor_id(rt, &params.address).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID", params.address),
-            )
-        })?;
+        let verifier = resolve_to_actor_id(rt, &params.address)?;
 
         let verifier = Address::new_id(verifier);
 
@@ -137,13 +132,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let verifier = resolve_to_actor_id(rt, &verifier_addr).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID", verifier_addr),
-            )
-        })?;
-
+        let verifier = resolve_to_actor_id(rt, &verifier_addr)?;
         let verifier = Address::new_id(verifier);
 
         let state: State = rt.state()?;
@@ -174,13 +163,7 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_actor_id(rt, &params.address).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve addr {} to ID", params.address),
-            )
-        })?;
-
+        let client = resolve_to_actor_id(rt, &params.address)?;
         let client = Address::new_id(client);
 
         let st: State = rt.state()?;
@@ -194,8 +177,101 @@ impl Actor {
             .get_verifier_cap(rt.store(), &verifier)?
             .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
 
-        // Disallow existing verifiers as clients.
-        if st.get_verifier_cap(rt.store(), &client)?.is_some() {
+            // Validate caller is one of the verifiers.
+            let verifier = rt.message().caller();
+            let BigIntDe(verifier_cap) = verifiers
+                .get(&verifier.to_bytes())
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to get Verifier {}", verifier),
+                    )
+                })?
+                .ok_or_else(|| actor_error!(not_found, format!("no such Verifier {}", verifier)))?;
+
+            // Validate client to be added isn't a verifier
+            let found = verifiers.contains_key(&client.to_bytes()).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier")
+            })?;
+            if found {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "verifier {} cannot be added as a verified client",
+                    client
+                ));
+            }
+
+            // Compute new verifier cap and update.
+            if verifier_cap < &params.allowance {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "Add more DataCap {} for VerifiedClient than allocated {}",
+                    params.allowance,
+                    verifier_cap
+                ));
+            }
+            let new_verifier_cap = verifier_cap - &params.allowance;
+
+            verifiers.set(verifier.to_bytes().into(), BigIntDe(new_verifier_cap)).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("Failed to update new verifier cap for {}", verifier),
+                )
+            })?;
+
+            let client_cap = verified_clients.get(&client.to_bytes()).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("Failed to get verified client {}", client),
+                )
+            })?;
+            // if verified client exists, add allowance to existing cap
+            // otherwise, create new client with allownace
+            let client_cap = if let Some(BigIntDe(client_cap)) = client_cap {
+                client_cap + params.allowance
+            } else {
+                params.allowance
+            };
+
+            verified_clients.set(client.to_bytes().into(), BigIntDe(client_cap.clone())).map_err(
+                |e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!(
+                            "Failed to add verified client {} with cap {}",
+                            client, client_cap,
+                        ),
+                    )
+                },
+            )?;
+
+            st.verifiers = verifiers.flush().map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verifiers")
+            })?;
+            st.verified_clients = verified_clients.flush().map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verified clients")
+            })?;
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// Called by StorageMarketActor during PublishStorageDeals.
+    /// Do not allow partially verified deals (DealSize must be greater than equal to allowed cap).
+    /// Delete VerifiedClient if remaining DataCap is smaller than minimum VerifiedDealSize.
+    pub fn use_bytes<BS, RT>(rt: &mut RT, params: UseBytesParams) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
+
+        let client = resolve_to_actor_id(rt, &params.address)?;
+        let client = Address::new_id(client);
+
+        if params.deal_size < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
                 illegal_argument,
                 "verifier {} cannot be added as a verified client",
@@ -213,8 +289,14 @@ impl Actor {
             ));
         }
 
-        // Reduce verifier's cap.
-        let new_verifier_cap = verifier_cap - &params.allowance;
+        let client = resolve_to_actor_id(rt, &params.address)?;
+        let client = Address::new_id(client);
+
+        let st: State = rt.state()?;
+        if client == st.root_key {
+            return Err(actor_error!(illegal_argument, "Cannot restore allowance for Rootkey"));
+        }
+
         rt.transaction(|st: &mut State, rt| {
             st.put_verifier(rt.store(), &verifier, &new_verifier_cap)
                 .context("failed to update verifier allowance")
@@ -238,39 +320,13 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                format!("failed to resolve client addr {} to ID", params.verified_client_to_remove),
-            )
-        })?;
-
+        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove)?;
         let client = Address::new_id(client);
 
-        let verifier_1 =
-            resolve_to_actor_id(rt, &params.verifier_request_1.verifier).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_ARGUMENT,
-                    format!(
-                        "failed to resolve verifier addr {} to ID",
-                        params.verifier_request_1.verifier
-                    ),
-                )
-            })?;
-
+        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier)?;
         let verifier_1 = Address::new_id(verifier_1);
 
-        let verifier_2 =
-            resolve_to_actor_id(rt, &params.verifier_request_2.verifier).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_ARGUMENT,
-                    format!(
-                        "failed to resolve verifier addr {} to ID",
-                        params.verifier_request_2.verifier
-                    ),
-                )
-            })?;
-
+        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier)?;
         let verifier_2 = Address::new_id(verifier_2);
 
         if verifier_1 == verifier_2 {
