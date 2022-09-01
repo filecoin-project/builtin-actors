@@ -1,3 +1,4 @@
+pub mod address;
 pub mod bytecode;
 pub mod execution;
 pub mod instructions;

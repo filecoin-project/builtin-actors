@@ -57,6 +57,7 @@ fn basic_contract_construction_and_invocation() {
     solidity_params.append(&mut hex::decode("f8b2cb4f").unwrap()); // function selector
                                                                    // caller id address in U256 form
     let mut arg0 = vec![0u8; 32];
+    arg0[12] = 0xff; // it's an ID address, so we enable the flag
     arg0[31] = 100; // the owner address
     solidity_params.append(&mut arg0);
 
