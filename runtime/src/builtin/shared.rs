@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use anyhow::Ok;
+use crate::{actor_error, ActorContext, ActorError};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::address::Address;
 use fvm_shared::ActorID;
@@ -20,7 +20,7 @@ pub const CALLER_TYPES_SIGNABLE: &[Type] = &[Type::Account, Type::Multisig];
 /// ResolveToActorID resolves the given address to it's actor ID.
 /// If an actor ID for the given address dosen't exist yet, it tries to create one by sending
 /// a zero balance to the given address.
-pub fn resolve_to_actor_id<BS, RT>(rt: &mut RT, address: &Address) -> anyhow::Result<ActorID>
+pub fn resolve_to_actor_id<BS, RT>(rt: &mut RT, address: &Address) -> Result<ActorID, ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
@@ -32,14 +32,11 @@ where
 
     // send 0 balance to the account so an ID address for it is created and then try to resolve
     rt.send(address, METHOD_SEND, Default::default(), Default::default())
-        .map_err(|e| e.wrap(&format!("failed to send zero balance to address {}", address)))?;
+        .with_context(|| format!("failed to send zero balance to address {}", address))?;
 
     if let Some(id) = rt.resolve_address(address) {
         return Ok(id);
     }
 
-    Err(anyhow::anyhow!(
-        "failed to resolve address {} to ID even after sending zero balance",
-        address,
-    ))
+    Err(actor_error!(illegal_argument, "failed to resolve or initialize address {}", address))
 }
