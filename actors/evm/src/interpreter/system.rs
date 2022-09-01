@@ -41,6 +41,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
     }
 
     /// Reborrow the system with a shorter lifetime.
+    #[allow(clippy::needless_lifetimes)]
     pub fn reborrow<'a>(&'a mut self) -> System<'a, BS, RT> {
         System { rt: &mut *self.rt, state: &mut *self.state }
     }
