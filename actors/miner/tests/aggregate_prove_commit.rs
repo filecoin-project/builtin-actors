@@ -163,6 +163,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     let p_queue = actor.collect_partition_expirations(&rt, &partition);
     let entry = p_queue.get(&quantized_expiration).cloned().unwrap();
     assert_eq!(entry.on_time_sectors, sector_nos_bf);
+    assert!(entry.early_sectors.is_empty());
     assert!(entry.faulty_sectors.is_empty());
     assert_eq!(ten_sectors_initial_pledge, entry.on_time_pledge);
     assert_eq!(ten_sectors_power, entry.active_power);

@@ -5,12 +5,13 @@ use super::beneficiary::*;
 use crate::commd::CompactCommD;
 use cid::Cid;
 use fil_actors_runtime::{network, DealWeight};
-use fvm_ipld_bitfield::BitField;
+use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fil_actors_runtime::DealWeight;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, BytesDe};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::randomness::Randomness;
@@ -368,29 +369,6 @@ impl SectorOnChainInfo {
 
     pub fn expires_at(&self) -> ChainEpoch {
         min(self.proof_expiration, self.commitment_expiration)
-    }
-
-    pub fn possible_proof_expirations(&self, now: ChainEpoch) -> Vec<ChainEpoch> {
-        let delta_e = network::EPOCHS_IN_YEAR; // TODO correct value
-        if now - self.activation < network::EPOCHS_IN_YEAR / 2 {
-            return vec![min(
-                self.commitment_expiration,
-                self.activation + network::EPOCHS_IN_YEAR + network::EPOCHS_IN_YEAR / 2,
-            )];
-        }
-
-        let quant =
-            QuantSpec { unit: delta_e, offset: self.activation + network::EPOCHS_IN_YEAR / 2 };
-        let e1 = quant.quantize_up(now);
-        let e2 = e1 + delta_e;
-
-        if self.commitment_expiration < e1 {
-            vec![self.commitment_expiration]
-        } else if self.commitment_expiration < e2 {
-            vec![e1, self.commitment_expiration]
-        } else {
-            vec![e1, e2]
-        }
     }
 }
 

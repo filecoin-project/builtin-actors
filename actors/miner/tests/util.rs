@@ -46,8 +46,9 @@ use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimeP
 use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR,
+    CALLER_TYPES_SIGNABLE, EPOCHS_IN_YEAR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
@@ -2932,7 +2933,7 @@ pub fn test_sector_no_proof_exp(
 ) -> SectorOnChainInfo {
     SectorOnChainInfo {
         commitment_expiration,
-        proof_expiration: commitment_expiration + 1000,
+        proof_expiration: commitment_expiration + EPOCHS_IN_YEAR,
         sector_number,
         deal_weight: DealWeight::from(deal_weight),
         verified_deal_weight: DealWeight::from(verified_deal_weight),

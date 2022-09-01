@@ -35,6 +35,8 @@ const ENTRY_SECTORS_MAX: u64 = 10_000;
 pub struct ExpirationSet {
     /// Sectors expiring "on time" at the end of their committed life
     pub on_time_sectors: BitField,
+    /// Sectors expiring "early", due to proof expiration, difference from on_time_sectors is that
+    /// the pledge for them is not counted in the ExpirationSet as it is manually assessed during expiration.
     pub early_sectors: BitField,
     /// Sectors expiring "early" due to being faulty for too long
     pub faulty_sectors: BitField,
@@ -150,6 +152,10 @@ impl ExpirationSet {
         self.on_time_sectors.len() + self.early_sectors.len() + self.faulty_sectors.len()
     }
 
+    pub fn all(&self) -> BitField {
+        BitField::union([&self.on_time_sectors, &self.early_sectors, &self.faulty_sectors])
+    }
+
     /// validates a set of assertions that must hold for expiration sets
     pub fn validate_state(&self) -> anyhow::Result<()> {
         if self.on_time_pledge.is_negative() {
@@ -193,7 +199,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         Ok(Self { amt: Array::load(root, store)?, quant })
     }
 
-    /// Adds a collection of sectors to their on-time target expiration entries (quantized).
+    /// Adds a collection of sectors to their target expiration entries (quantized).
     /// The sectors are assumed to be active (non-faulty).
     /// Returns the sector numbers, power, and pledge added.
     pub fn add_active_sectors<'a>(
@@ -208,7 +214,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         for group in group_new_sectors_by_declared_expiration(sector_size, sectors, self.quant) {
             let on_time_sectors = BitField::try_from_bits(group.on_time_sectors)?;
             let early_sectors = BitField::try_from_bits(group.early_sectors)?;
-            println!("{}: {:?} {:?}", group.epoch, on_time_sectors, early_sectors);
 
             self.add(
                 group.epoch,
@@ -316,7 +321,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         }
 
         if !sectors_total.is_empty() {
-            // Add sectors to new expiration as early-terminating and faulty.
+            // Add sectors to new expiration as faulty.
             let faulty_sectors = BitField::try_from_bits(sectors_total)?;
             self.add(
                 new_expiration,
@@ -566,7 +571,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         // queue is quantized, we should be able to stop traversing the queue
         // after 14 entries.
         self.iter_while_mut(|_epoch, expiration_set| {
-            //TODO
             let on_time_sector_nums: BTreeSet<SectorNumber> = expiration_set
                 .on_time_sectors
                 .bounded_iter(ENTRY_SECTORS_MAX)
@@ -924,6 +928,8 @@ impl SectorExpirationSet {
     }
 }
 
+/// Included on_time_sectors which pledge is counted and
+/// early_sectors for which pledge is not included.
 #[derive(Clone)]
 struct SectorEpochSet {
     epoch: ChainEpoch,

@@ -372,11 +372,14 @@ pub mod policy_constants {
     pub const MAX_SECTOR_COMMITMENT_EXTENSION: i64 = 540 * EPOCHS_IN_DAY;
 
     /// Maximum number of epochs the proof can be valid since activation or latest refresh
-    pub const MAX_PROOF_VALIDITY: i64 = (EPOCHS_IN_YEAR * 3) / 2;
+    /// Slightly larger than existing (v16) MAX_SECTOR_COMMITMENT_EXTENSION.
+    pub const MAX_PROOF_VALIDITY: i64 = 545 * EPOCHS_IN_DAY;
 
     /// A number of epochs before proof expiration during which the proof can be extended
-    pub const PROOF_REFRESH_WINDOW: i64 =
-        MAX_PROOF_VALIDITY - (5*EPOCHS_IN_YEAR /* sector max life */ - MAX_PROOF_VALIDITY) / 3;
+    /// Derived as:
+    ///     MAX_PROOF_VALIDITY - (MAX_SECTOR_LIFE - MAX_PROOF_VALIDITY) / 3
+    /// for 3 refreshes during max life of a sector
+    pub const PROOF_REFRESH_WINDOW: i64 = 117 * EPOCHS_IN_DAY; // ~ 4mo
 
     /// Ratio of sector size to maximum deals per sector.
     /// The maximum number of deals is the sector size divided by this number (2^27)
