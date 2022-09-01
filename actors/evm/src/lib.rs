@@ -55,10 +55,10 @@ impl EvmContractActor {
         }
 
         // create an empty storage HAMT to pass it down for execution.
-        let hamt = Hamt::<_, U256, U256>::new(rt.store().clone());
+        let mut hamt = Hamt::<_, U256, U256>::new(rt.store().clone());
 
         // create an instance of the platform abstraction layer -- note: do we even need this?
-        let mut system = System::new(rt, hamt).map_err(|e| {
+        let mut system = System::new(rt, &mut hamt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
@@ -70,7 +70,7 @@ impl EvmContractActor {
             .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
 
         // invoke the contract constructor
-        let exec_status = execute(&bytecode, &mut exec_state, &mut system)
+        let exec_status = execute(&bytecode, &mut exec_state, &mut system.reborrow())
             .map_err(|e| ActorError::unspecified(format!("EVM execution error: {e:?}")))?;
 
         if !exec_status.reverted
@@ -127,13 +127,13 @@ impl EvmContractActor {
             let blockstore = rt.store().clone();
 
             // load the storage HAMT
-            let hamt = Hamt::load(&state.contract_state, blockstore).map_err(|e| {
+            let mut hamt = Hamt::load(&state.contract_state, blockstore).map_err(|e| {
                 ActorError::illegal_state(format!(
                     "failed to load storage HAMT on invoke: {e:?}, e"
                 ))
             })?;
 
-            let mut system = System::new(rt, hamt).map_err(|e| {
+            let mut system = System::new(rt, &mut hamt).map_err(|e| {
                 ActorError::unspecified(format!(
                     "failed to create execution abstraction layer: {e:?}"
                 ))
@@ -141,7 +141,7 @@ impl EvmContractActor {
 
             let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
 
-            let exec_status = execute(&bytecode, &mut exec_state, &mut system)
+            let exec_status = execute(&bytecode, &mut exec_state, &mut system.reborrow())
                 .map_err(|e| ActorError::unspecified(format!("EVM execution error: {e:?}")))?;
 
             // XXX is this correct handling of reverts? or should we fail execution?
