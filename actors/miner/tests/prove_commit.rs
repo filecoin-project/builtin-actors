@@ -421,7 +421,7 @@ fn invalid_proof_rejected() {
     //require.NoError(t, err)
     //assert.Equal(t, []uint64{uint64(sectorNo)}, newSectors)
     // Verify pledge lock-up
-    assert!(st.initial_pledge > TokenAmount::zero());
+    assert!(st.initial_pledge.is_positive());
     rt.reset();
 
     // Duplicate proof (sector no-longer pre-committed)

@@ -503,7 +503,7 @@ impl ActorHarness {
 
         let state = self.get_state(rt);
         // burn networkFee
-        if state.fee_debt > TokenAmount::zero() || params.sectors.len() > 1 {
+        if state.fee_debt.is_positive() || params.sectors.len() > 1 {
             let expected_network_fee =
                 aggregate_pre_commit_network_fee(params.sectors.len() as i64, base_fee);
             let expected_burn = expected_network_fee + state.fee_debt;
@@ -589,7 +589,7 @@ impl ActorHarness {
         // in the original test the else branch does some redundant checks which we can omit.
 
         let state = self.get_state(rt);
-        if state.fee_debt > TokenAmount::zero() {
+        if state.fee_debt.is_positive() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -939,7 +939,7 @@ impl ActorHarness {
                 }
             }
 
-            if expected_pledge != TokenAmount::zero() {
+            if !expected_pledge.is_zero() {
                 rt.expect_send(
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
@@ -1029,7 +1029,7 @@ impl ActorHarness {
         penalty_total += cfg.repaid_fee_debt.clone();
         penalty_total += cfg.expired_precommit_penalty.clone();
 
-        if penalty_total != TokenAmount::zero() {
+        if !penalty_total.is_zero() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -1053,7 +1053,7 @@ impl ActorHarness {
         pledge_delta += cfg.expired_sectors_pledge_delta;
         pledge_delta -= immediately_vesting_funds(rt, &state);
 
-        if pledge_delta != TokenAmount::zero() {
+        if !pledge_delta.is_zero() {
             rt.expect_send(
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdatePledgeTotal as u64,
@@ -1407,7 +1407,7 @@ impl ActorHarness {
             ExitCode::OK,
         );
 
-        if penalty > TokenAmount::zero() {
+        if penalty.is_positive() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -1587,7 +1587,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        if expected_debt_repaid > TokenAmount::zero() {
+        if expected_debt_repaid.is_positive() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -1924,7 +1924,7 @@ impl ActorHarness {
         }
 
         let total_repaid = expected_repaid_from_vest + expected_repaid_from_balance;
-        if total_repaid > TokenAmount::zero() {
+        if total_repaid.is_positive() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
