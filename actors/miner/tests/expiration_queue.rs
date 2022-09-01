@@ -293,7 +293,7 @@ fn added_sectors_can_be_popped_off_queue() {
     let (sec_nums, power, pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
     assert_eq!(sec_nums, mk_bitfield([1, 2, 3, 4, 5, 6, 7, 8]));
     assert_eq!(power, power_for_sectors(SECTOR_SIZE, &sectors()));
-    assert_eq!(pledge, TokenAmount::from_atto(6015));
+    assert_eq!(pledge, sectors().iter().map(|s| &s.initial_pledge).sum());
 
     // default test quantizing of 1 means every sector is in its own expriation set
     assert_eq!(sectors().len(), queue.amt.count() as usize);
@@ -358,7 +358,7 @@ fn quantizes_added_sectors_by_expiration() {
     let (sec_nums, power, pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
     assert_eq!(sec_nums, mk_bitfield([1, 2, 3, 4, 5, 6, 7, 8]));
     assert_eq!(power, power_for_sectors(SECTOR_SIZE, &sectors()));
-    assert_eq!(pledge, TokenAmount::from_atto(6015));
+    assert_eq!(pledge, sectors().iter().map(|s| &s.initial_pledge).sum());
 
     // quantizing spec means sectors should be grouped into 4 sets expiring at 3, 8, 13 and 18
     assert_eq!(queue.amt.count(), 4);
