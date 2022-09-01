@@ -38,7 +38,7 @@ impl ExecutionState {
 }
 
 struct Machine<'r, BS: Blockstore, RT: Runtime<BS>> {
-    system: &'r System<'r, BS, RT>,
+    system: &'r mut System<'r, BS, RT>,
     runtime: &'r mut ExecutionState,
     bytecode: &'r Bytecode<'r>,
     pc: usize,
@@ -90,7 +90,7 @@ macro_rules! def_ins {
 
 impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
     pub fn new(
-        system: &'r System<'r, BS, RT>,
+        system: &'r mut System<'r, BS, RT>,
         runtime: &'r mut ExecutionState,
         bytecode: &'r Bytecode,
     ) -> Self {
@@ -853,7 +853,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
 pub fn execute<'r, BS: Blockstore, RT: Runtime<BS>>(
     bytecode: &'r Bytecode,
     runtime: &'r mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
+    system: &'r mut System<'r, BS, RT>,
 ) -> Result<Output, StatusCode> {
     let mut m = Machine::new(system, runtime, bytecode);
     m.execute()?;

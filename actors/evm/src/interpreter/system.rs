@@ -32,13 +32,13 @@ pub enum Call<'a> {
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
 pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
-    pub rt: &'r RT,
-    state: RefCell<Hamt<&'r BS, U256, U256>>,
+    pub rt: &'r mut RT,
+    state: RefCell<Hamt<BS, U256, U256>>,
 }
 
 impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
-    pub fn new(rt: &'r RT, state_cid: Cid) -> anyhow::Result<Self> {
-        Ok(Self { rt, state: RefCell::new(Hamt::load(&state_cid, rt.store())?) })
+    pub fn new(rt: &'r mut RT, hamt: Hamt<BS, U256, U256>) -> anyhow::Result<Self> {
+        Ok(Self { rt, state: RefCell::new(hamt) })
     }
 
     pub fn flush_state(&self) -> Result<Cid, ActorError> {
