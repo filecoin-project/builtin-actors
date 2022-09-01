@@ -641,7 +641,7 @@ impl ExpirationQueueStateSummary {
                     let target = quant.quantize_up(sector.commitment_expiration);
                     acc.require(epoch == target, format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
                     on_time_sectors_pledge += sector.initial_pledge.clone();
-                    acc.require(sector.expires_early(), format!("sector {sector_number} which expires early in on_time queue"))
+                    acc.require(!sector.expires_early(), format!("sector {sector_number} which expires early in on_time queue"))
                 } else {
                     acc.add(format!("on time expiration sector {sector_number} isn't live"));
                 }
@@ -657,7 +657,7 @@ impl ExpirationQueueStateSummary {
                 if let Some(sector) = live_sectors.get(&sector_number) {
                     let target = quant.quantize_up(sector.proof_expiration);
                     acc.require(epoch == target, format!("invalid early expiration {epoch} for sector {sector_number}, expected  {target}"));
-                    acc.require(!sector.expires_early(), format!("sector {sector_number} which expires on time in early queue"))
+                    acc.require(sector.expires_early(), format!("sector {sector_number} which expires on time in early queue"))
                 } else {
                     acc.add(format!("early expiration sector {sector_number} isn't live"));
                 }
