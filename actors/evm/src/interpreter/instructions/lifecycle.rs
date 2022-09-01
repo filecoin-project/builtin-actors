@@ -19,18 +19,7 @@ pub fn selfdestruct<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     system: &'r mut System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    // Commented due to horrible borrow checker issues that stem from owning a HAMT during
-    // the entire execution inside the System. The HAMT needs to be flushed and dropped when
-    // create_actor, delete_actor, and send are called. All other methods taking a &mut self
-    // on the Runtime should not require &mut.
-
     let beneficiary_addr = Address::from(state.stack.pop());
-
-    if let Some(id_addr) = beneficiary_addr.as_id_address() {
-        system.rt.delete_actor(&id_addr)?;
-    } else {
-        todo!("no support for non-ID addresses yet")
-    }
-
-    Ok(())
+    let id_addr = beneficiary_addr.as_id_address().expect("no support for non-ID addresses yet");
+    Ok(system.rt.delete_actor(&id_addr)?)
 }
