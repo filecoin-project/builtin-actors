@@ -43,9 +43,11 @@ fn test_expirations() {
 
 #[test]
 fn test_expirations_empty() {
-    let sectors = Vec::new();
-    let result =
-        group_new_sectors_by_declared_expiration(SectorSize::_2KiB, sectors, NO_QUANTIZATION);
+    let result = group_new_sectors_by_declared_expiration(
+        SectorSize::_2KiB,
+        &[SectorOnChainInfo::default(); 0],
+        NO_QUANTIZATION,
+    );
     assert!(result.is_empty());
 }
 

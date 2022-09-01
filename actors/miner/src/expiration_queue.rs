@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 
@@ -202,13 +203,12 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     /// Adds a collection of sectors to their target expiration entries (quantized).
     /// The sectors are assumed to be active (non-faulty).
     /// Returns the sector numbers, power, and pledge added.
-    pub fn add_active_sectors<'a>(
+    pub fn add_active_sectors(
         &mut self,
-        sectors: impl IntoIterator<Item = &'a SectorOnChainInfo>,
+        sectors: &[impl Borrow<SectorOnChainInfo>],
         sector_size: SectorSize,
     ) -> anyhow::Result<(BitField, PowerPair, TokenAmount)> {
         let mut total_power = PowerPair::zero();
-        let mut total_pledge = TokenAmount::zero();
         let mut total_sectors = Vec::<BitField>::new();
 
         for group in group_new_sectors_by_declared_expiration(sector_size, sectors, self.quant) {
@@ -229,10 +229,10 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             total_sectors.push(on_time_sectors);
             total_sectors.push(early_sectors);
             total_power += &group.power;
-            total_pledge += &group.pledge;
         }
 
         let sector_numbers = BitField::union(total_sectors.iter());
+        let total_pledge = sectors.iter().map(|s| &s.borrow().initial_pledge).sum();
         Ok((sector_numbers, total_power, total_pledge))
     }
 
@@ -477,7 +477,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         }
 
         // Re-schedule the removed sectors to their target expiration.
-        self.add_active_sectors(sectors_rescheduled, sector_size)?;
+        self.add_active_sectors(&sectors_rescheduled, sector_size)?;
 
         Ok(recovered_power)
     }
@@ -732,7 +732,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     ) -> anyhow::Result<(BitField, PowerPair, TokenAmount)> {
         let mut removed_sector_numbers = Vec::<u64>::new();
         let mut removed_power = PowerPair::zero();
-        let mut removed_pledge = TokenAmount::zero();
 
         // Group sectors by their expiration, then remove from existing queue entries according to those groups.
         let groups = self.find_sectors_by_expiration(sector_size, sectors)?;
@@ -756,9 +755,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             removed_sector_numbers.extend(&group.sector_epoch_set.early_sectors);
 
             removed_power += &group.sector_epoch_set.power;
-            removed_pledge += &group.sector_epoch_set.pledge;
         }
 
+        let removed_pledge = sectors.iter().map(|s| &s.initial_pledge).sum();
         Ok((BitField::try_from_bits(removed_sector_numbers)?, removed_power, removed_pledge))
     }
 
@@ -943,14 +942,15 @@ struct SectorEpochSet {
 /// sorted by expiration epoch, quantized.
 ///
 /// Note: While the result is sorted by epoch, the order of per-epoch sectors is maintained.
-fn group_new_sectors_by_declared_expiration<'a>(
+fn group_new_sectors_by_declared_expiration(
     sector_size: SectorSize,
-    sectors: impl IntoIterator<Item = &'a SectorOnChainInfo>,
+    sectors: &[impl Borrow<SectorOnChainInfo>],
     quant: QuantSpec,
 ) -> Vec<SectorEpochSet> {
     let mut sectors_by_expiration = BTreeMap::<ChainEpoch, Vec<&SectorOnChainInfo>>::new();
 
     for sector in sectors {
+        let sector = sector.borrow();
         let q_expiration = quant.quantize_up(sector.expires_at());
         sectors_by_expiration.entry(q_expiration).or_default().push(sector);
     }

@@ -668,7 +668,10 @@ fn replaces_sectors_with_new_sectors() {
     assert_eq!(added, mk_bitfield([3, 5, 8]));
     let added_power = power_for_sectors(SECTOR_SIZE, &to_add);
     assert_eq!(power_delta, &added_power - &power_for_sectors(SECTOR_SIZE, &to_remove));
-    assert_eq!(TokenAmount::from_atto(1002 + 1004 - 1000 - 1001 - 1003), pledge_delta);
+    assert_eq!(
+        TokenAmount::from_atto(1002 + 1004 - 1000 - 1001 - 1003 - 1006 + 1007),
+        pledge_delta
+    );
 
     // first set is gone
     require_no_expiration_groups_before(9, &mut queue);
@@ -790,7 +793,7 @@ fn adding_no_sectors_leaves_the_queue_empty() {
     let rt = h.new_runtime();
 
     let mut queue = empty_expiration_queue_with_quantizing(&rt, QuantSpec { unit: 4, offset: 1 });
-    let _ = queue.add_active_sectors(&[], SECTOR_SIZE).unwrap();
+    let _ = queue.add_active_sectors(&[SectorOnChainInfo::default(); 0], SECTOR_SIZE).unwrap();
 
     assert_eq!(queue.amt.count(), 0);
 }
