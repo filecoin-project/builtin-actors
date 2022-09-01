@@ -5,12 +5,12 @@ use std::iter;
 
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::EAM_ACTOR_ADDR;
-use fil_actors_runtime::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{
+    actor_error, cbor, ActorContext, ActorError, EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -47,10 +47,7 @@ impl Actor {
     {
         let sys_ref: &Address = &SYSTEM_ACTOR_ADDR;
         rt.validate_immediate_caller_is(std::iter::once(sys_ref))?;
-        let state = State::new(rt.store(), params.network_name).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct init actor state")
-        })?;
-
+        let state = State::new(rt.store(), params.network_name)?;
         rt.create(&state)?;
 
         Ok(())
@@ -91,9 +88,8 @@ impl Actor {
         // Allocate an ID for this actor.
         // Store mapping of actor addresses to the actor ID.
         let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
-            s.map_address_to_new_id(rt.store(), &robust_address).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to allocate ID address")
-            })
+            s.map_address_to_new_id(rt.store(), &robust_address)
+                .context("failed to allocate ID address")
         })?;
 
         // Create an empty actor
@@ -106,7 +102,7 @@ impl Actor {
             params.constructor_params,
             rt.message().value_received(),
         )
-        .map_err(|err| err.wrap("constructor failed"))?;
+        .context("constructor failed")?;
 
         Ok(ExecReturn { id_address: Address::new_id(id_address), robust_address })
     }
@@ -143,9 +139,8 @@ impl Actor {
         // Allocate an ID for this actor.
         // Store mapping of actor addresses to the actor ID.
         let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
-            s.map_address_to_f4(rt.store(), &robust_address, &delegated_address).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to allocate ID address")
-            })
+            s.map_address_to_f4(rt.store(), &robust_address, &delegated_address)
+                .context("constructor failed")
         })?;
 
         // Create an empty actor
@@ -170,42 +165,35 @@ impl Actor {
         RT: Runtime<BS>,
     {
         use cid::multihash::Code;
+        use fil_actors_runtime::AsActorError;
         use fvm_ipld_blockstore::Block;
+        use fvm_shared::error::ExitCode;
 
         rt.validate_immediate_caller_accept_any()?;
 
         let (code_cid, installed) = rt.transaction(|st: &mut State, rt| {
             let code = params.code.bytes();
-            let code_cid =
-                rt.store().put(Code::Blake2b256, &Block::new(0x55, code)).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_SERIALIZATION,
-                        "failed to put code into the bockstore",
-                    )
-                })?;
+            let code_cid = rt.store().put(Code::Blake2b256, &Block::new(0x55, code)).context_code(
+                ExitCode::USR_SERIALIZATION,
+                "failed to put code into the bockstore",
+            )?;
 
-            if st.is_installed_actor(rt.store(), &code_cid).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to check state for installed actor",
-                )
-            })? {
+            if st.is_installed_actor(rt.store(), &code_cid).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to check state for installed actor",
+            )? {
                 return Ok((code_cid, false));
             }
 
-            rt.install_actor(&code_cid).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_ARGUMENT,
-                    "failed to check state for installed actor",
-                )
-            })?;
+            rt.install_actor(&code_cid).context_code(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "failed to check state for installed actor",
+            )?;
 
-            st.add_installed_actor(rt.store(), code_cid).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to add installed actor to state",
-                )
-            })?;
+            st.add_installed_actor(rt.store(), code_cid).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to add installed actor to state",
+            )?;
             Ok((code_cid, true))
         })?;
 
