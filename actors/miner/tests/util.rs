@@ -2768,7 +2768,7 @@ pub fn assert_bitfield_equals(bf: &BitField, bits: &[u64]) {
     for bit in bits {
         rbf.set(*bit);
     }
-    assert!(bf == &rbf);
+    assert_eq!(bf, &rbf);
 }
 
 #[allow(dead_code)]
@@ -2934,6 +2934,27 @@ pub fn test_sector_no_proof_exp(
     SectorOnChainInfo {
         commitment_expiration,
         proof_expiration: commitment_expiration + EPOCHS_IN_YEAR,
+        sector_number,
+        deal_weight: DealWeight::from(deal_weight),
+        verified_deal_weight: DealWeight::from(verified_deal_weight),
+        initial_pledge: TokenAmount::from_atto(pledge),
+        sealed_cid: make_sealed_cid(format!("commR-{sector_number}").as_bytes()),
+        ..Default::default()
+    }
+}
+
+#[allow(dead_code)]
+pub fn test_sector(
+    commitment_expiration: ChainEpoch,
+    proof_expiration: ChainEpoch,
+    sector_number: SectorNumber,
+    deal_weight: u64,
+    verified_deal_weight: u64,
+    pledge: u64,
+) -> SectorOnChainInfo {
+    SectorOnChainInfo {
+        commitment_expiration,
+        proof_expiration,
         sector_number,
         deal_weight: DealWeight::from(deal_weight),
         verified_deal_weight: DealWeight::from(verified_deal_weight),
@@ -3279,7 +3300,7 @@ pub fn require_no_expiration_groups_before(
     queue.amt.flush().unwrap();
 
     let set = queue.pop_until(epoch - 1).unwrap();
-    assert!(set.is_empty());
+    assert!(set.is_empty(), "{:?}", set);
 }
 
 pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {
