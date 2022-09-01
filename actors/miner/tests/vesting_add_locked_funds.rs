@@ -11,7 +11,7 @@ fn locked_funds_increases_with_sequential_calls() {
     let vspec = VestSpec { initial_delay: 0, vest_period: 1, step_duration: 1, quantization: 1 };
 
     let vest_start = 10;
-    let vest_sum = TokenAmount::from(100);
+    let vest_sum = TokenAmount::from_atto(100);
 
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
     assert_eq!(vest_sum, h.st.locked_funds);
@@ -26,7 +26,7 @@ fn vests_when_quantize_step_duration_and_vesting_period_are_coprime() {
     let vspec = VestSpec { initial_delay: 0, vest_period: 27, step_duration: 5, quantization: 7 };
 
     let vest_start = 10;
-    let vest_sum = TokenAmount::from(100);
+    let vest_sum = TokenAmount::from_atto(100);
     h.add_locked_funds(vest_start, &vest_sum, &vspec).unwrap();
     assert_eq!(vest_sum, h.st.locked_funds);
 
@@ -35,19 +35,19 @@ fn vests_when_quantize_step_duration_and_vesting_period_are_coprime() {
         let amount_vested = h.unlock_vested_funds(e).unwrap();
         match e {
             22 => {
-                assert_eq!(TokenAmount::from(40), amount_vested);
+                assert_eq!(TokenAmount::from_atto(40), amount_vested);
             }
             29 => {
-                assert_eq!(TokenAmount::from(26), amount_vested);
+                assert_eq!(TokenAmount::from_atto(26), amount_vested);
             }
             36 => {
-                assert_eq!(TokenAmount::from(26), amount_vested);
+                assert_eq!(TokenAmount::from_atto(26), amount_vested);
             }
             43 => {
-                assert_eq!(TokenAmount::from(8), amount_vested);
+                assert_eq!(TokenAmount::from_atto(8), amount_vested);
             }
             _ => {
-                assert_eq!(TokenAmount::from(0), amount_vested);
+                assert_eq!(TokenAmount::zero(), amount_vested);
             }
         }
         total_vested += amount_vested;

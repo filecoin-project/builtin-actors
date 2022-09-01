@@ -83,7 +83,7 @@ pub fn setup() -> MockRuntime {
         caller: *SYSTEM_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         actor_code_cids,
-        balance: RefCell::new(10u64.pow(19).into()),
+        balance: RefCell::new(TokenAmount::from_whole(10)),
         ..Default::default()
     };
 
@@ -137,7 +137,7 @@ pub fn expect_get_control_addresses(
         provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
-        BigInt::zero(),
+        TokenAmount::zero(),
         RawBytes::serialize(result).unwrap(),
         ExitCode::OK,
     )
@@ -353,7 +353,7 @@ pub fn cron_tick_and_assert_balances(
     let c_escrow = get_escrow_balance(rt, &client_addr).unwrap();
     let p_locked = get_locked_balance(rt, provider_addr);
     let p_escrow = get_escrow_balance(rt, &provider_addr).unwrap();
-    let mut amount_slashed = TokenAmount::from(0u8);
+    let mut amount_slashed = TokenAmount::zero();
 
     let s = get_deal_state(rt, deal_id);
     let d = get_deal_proposal(rt, deal_id);
@@ -396,8 +396,8 @@ pub fn cron_tick_and_assert_balances(
     // if the deal has expired or been slashed, locked amount will be zero for provider and client.
     let is_deal_expired = payment_end == d.end_epoch;
     if is_deal_expired || s.slash_epoch != EPOCH_UNDEFINED {
-        updated_client_locked = TokenAmount::from(0u8);
-        updated_provider_locked = TokenAmount::from(0u8);
+        updated_client_locked = TokenAmount::zero();
+        updated_provider_locked = TokenAmount::zero();
     }
 
     cron_tick(rt);
@@ -445,7 +445,7 @@ pub fn publish_deals(
         addrs.provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
-        TokenAmount::from(0u8),
+        TokenAmount::zero(),
         RawBytes::serialize(return_value).unwrap(),
         ExitCode::OK,
     );
@@ -480,7 +480,7 @@ pub fn publish_deals(
                 *VERIFIED_REGISTRY_ACTOR_ADDR,
                 ext::verifreg::USE_BYTES_METHOD as u64,
                 param,
-                TokenAmount::from(0u8),
+                TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -577,15 +577,15 @@ pub fn cron_tick_raw(rt: &mut MockRuntime) -> Result<RawBytes, ActorError> {
 pub fn expect_query_network_info(rt: &mut MockRuntime) {
     //networkQAPower
     //networkBaselinePower
-    let reward = TokenAmount::from(10u8) * TokenAmount::from(10_i128.pow(18));
+    let reward = TokenAmount::from_whole(10);
     let power = StoragePower::from_i128(1 << 50).unwrap();
-    let epoch_reward_smooth = FilterEstimate::new(reward.clone(), BigInt::from(0u8));
+    let epoch_reward_smooth = FilterEstimate::new(reward.atto().clone(), BigInt::from(0u8));
 
     let current_power = CurrentTotalPowerReturn {
         raw_byte_power: StoragePower::default(),
         quality_adj_power: power.clone(),
         pledge_collateral: TokenAmount::default(),
-        quality_adj_power_smoothed: FilterEstimate::new(reward, TokenAmount::default()),
+        quality_adj_power_smoothed: FilterEstimate::new(reward.atto().clone(), BigInt::zero()),
     };
     let current_reward = ThisEpochRewardReturn {
         this_epoch_baseline_power: power,
@@ -784,9 +784,9 @@ pub fn generate_and_publish_deal_for_piece(
     piece_size: PaddedPieceSize,
 ) -> DealID {
     // generate deal
-    let storage_per_epoch = BigInt::from(10u8);
-    let client_collateral = TokenAmount::from(10u8);
-    let provider_collateral = TokenAmount::from(10u8);
+    let storage_price_per_epoch = TokenAmount::from_atto(10u8);
+    let client_collateral = TokenAmount::from_atto(10u8);
+    let provider_collateral = TokenAmount::from_atto(10u8);
 
     let deal = DealProposal {
         piece_cid,
@@ -797,7 +797,7 @@ pub fn generate_and_publish_deal_for_piece(
         label: Label::String("label".to_string()),
         start_epoch,
         end_epoch,
-        storage_price_per_epoch: storage_per_epoch,
+        storage_price_per_epoch,
         provider_collateral,
         client_collateral,
     };
@@ -829,8 +829,8 @@ pub fn generate_deal_with_collateral_and_add_funds(
     rt: &mut MockRuntime,
     client: Address,
     addrs: &MinerAddresses,
-    provider_collateral: BigInt,
-    client_collateral: BigInt,
+    provider_collateral: TokenAmount,
+    client_collateral: TokenAmount,
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
 ) -> DealProposal {
@@ -857,7 +857,7 @@ fn generate_deal_proposal_with_collateral(
 ) -> DealProposal {
     let piece_cid = make_piece_cid("1".as_bytes());
     let piece_size = PaddedPieceSize(2048u64);
-    let storage_per_epoch = BigInt::from(10u8);
+    let storage_price_per_epoch = TokenAmount::from_atto(10u8);
     DealProposal {
         piece_cid,
         piece_size,
@@ -867,7 +867,7 @@ fn generate_deal_proposal_with_collateral(
         label: Label::String("label".to_string()),
         start_epoch,
         end_epoch,
-        storage_price_per_epoch: storage_per_epoch,
+        storage_price_per_epoch,
         provider_collateral,
         client_collateral,
     }
@@ -879,8 +879,8 @@ pub fn generate_deal_proposal(
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
 ) -> DealProposal {
-    let client_collateral = TokenAmount::from(10u8);
-    let provider_collateral = TokenAmount::from(10u8);
+    let client_collateral = TokenAmount::from_atto(10u8);
+    let provider_collateral = TokenAmount::from_atto(10u8);
     generate_deal_proposal_with_collateral(
         client,
         provider,

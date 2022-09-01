@@ -62,9 +62,10 @@ impl Actor {
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
 
-        let caller_code = rt.get_actor_code_cid(&rt.message().caller()).ok_or_else(|| {
-            actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
-        })?;
+        let caller_code =
+            rt.get_actor_code_cid(&rt.message().caller().id().unwrap()).ok_or_else(|| {
+                actor_error!(illegal_state, "no code for caller as {}", rt.message().caller())
+            })?;
 
         log::trace!("caller code CID: {:?}", &caller_code);
 
@@ -96,7 +97,7 @@ impl Actor {
 
         // Invoke constructor
         rt.send(
-            Address::new_id(id_address),
+            &Address::new_id(id_address),
             METHOD_CONSTRUCTOR,
             params.constructor_params,
             rt.message().value_received(),

@@ -1,5 +1,4 @@
 use fil_actor_miner::VestSpec;
-use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 
@@ -150,18 +149,18 @@ fn test_vesting() {
 
         let vest_start = tc.period_start + vest_start_delay;
 
-        h.st.add_locked_funds(&h.store, vest_start, &TokenAmount::from(vest_sum), &tc.vspec)
+        h.st.add_locked_funds(&h.store, vest_start, &TokenAmount::from_atto(vest_sum), &tc.vspec)
             .unwrap();
-        assert_eq!(TokenAmount::from(vest_sum), h.st.locked_funds);
+        assert_eq!(TokenAmount::from_atto(vest_sum), h.st.locked_funds);
 
         let mut total_vested = 0;
         for (e, &v) in tc.vepocs.iter().enumerate() {
             assert_eq!(
-                TokenAmount::from(v),
+                TokenAmount::from_atto(v),
                 h.st.unlock_vested_funds(&h.store, vest_start + e as ChainEpoch).unwrap()
             );
             total_vested += v;
-            assert_eq!(TokenAmount::from(vest_sum - total_vested), h.st.locked_funds);
+            assert_eq!(TokenAmount::from_atto(vest_sum - total_vested), h.st.locked_funds);
         }
 
         assert_eq!(vest_sum, total_vested);

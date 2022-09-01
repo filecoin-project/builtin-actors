@@ -19,7 +19,7 @@ construct_fixed_hash! { pub struct H256(32); } // Keccak256
 
 impl From<&TokenAmount> for U256 {
     fn from(amount: &TokenAmount) -> U256 {
-        let (_, bytes) = amount.to_bytes_be();
+        let (_, bytes) = amount.atto().to_bytes_be();
         U256::from(bytes.as_slice())
     }
 }

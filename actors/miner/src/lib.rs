@@ -25,7 +25,6 @@ use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
-use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
@@ -44,7 +43,7 @@ use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, info, warn};
 pub use monies::*;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed, Zero};
+use num_traits::{FromPrimitive, Zero};
 pub use partition_state::*;
 pub use policy::*;
 pub use sector_map::*;
@@ -984,7 +983,7 @@ impl Actor {
             }
 
             let res = rt.send(
-                *STORAGE_MARKET_ACTOR_ADDR,
+                &STORAGE_MARKET_ACTOR_ADDR,
                 ext::market::ACTIVATE_DEALS_METHOD,
                 RawBytes::serialize(ext::market::ActivateDealsParams {
                     deal_ids: update.deals.clone(),
@@ -1505,7 +1504,8 @@ impl Actor {
 
         request_update_power(rt, power_delta)?;
         if !to_reward.is_zero() {
-            if let Err(e) = rt.send(reporter, METHOD_SEND, RawBytes::default(), to_reward.clone()) {
+            if let Err(e) = rt.send(&reporter, METHOD_SEND, RawBytes::default(), to_reward.clone())
+            {
                 error!("failed to send reward: {}", e);
                 to_burn += to_reward;
             }
@@ -1645,7 +1645,7 @@ impl Actor {
                 params.sectors.len()
             ));
         }
-        let mut fee_to_burn = TokenAmount::from(0_u32);
+        let mut fee_to_burn = TokenAmount::zero();
         let mut needs_cron = false;
         rt.transaction(|state: &mut State, rt| {
             // Aggregate fee applies only when batching.
@@ -1688,7 +1688,7 @@ impl Actor {
             }
 
             let mut chain_infos = Vec::with_capacity(params.sectors.len());
-            let mut total_deposit_required = BigInt::zero();
+            let mut total_deposit_required = TokenAmount::zero();
             let mut clean_up_events = Vec::with_capacity(params.sectors.len());
             let deal_count_max = sector_deals_max(rt.policy(), info.sector_size);
 
@@ -1863,10 +1863,10 @@ impl Actor {
         )?;
 
         rt.send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
             RawBytes::serialize(&svi)?,
-            BigInt::zero(),
+            TokenAmount::zero(),
         )?;
 
         Ok(())
@@ -3005,11 +3005,12 @@ impl Actor {
 
         // The policy amounts we should burn and send to reporter
         // These may differ from actual funds send when miner goes into fee debt
-        let this_epoch_reward = reward_stats.this_epoch_reward_smoothed.estimate();
+        let this_epoch_reward =
+            TokenAmount::from_atto(reward_stats.this_epoch_reward_smoothed.estimate());
         let fault_penalty = consensus_fault_penalty(this_epoch_reward.clone());
         let slasher_reward = reward_for_consensus_slash_report(&this_epoch_reward);
 
-        let mut pledge_delta = TokenAmount::from(0);
+        let mut pledge_delta = TokenAmount::zero();
 
         let (burn_amount, reward_amount) = rt.transaction(|st: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), st)?;
@@ -3056,7 +3057,7 @@ impl Actor {
             Ok((burn_amount, reward_amount))
         })?;
 
-        if let Err(e) = rt.send(reporter, METHOD_SEND, RawBytes::default(), reward_amount) {
+        if let Err(e) = rt.send(&reporter, METHOD_SEND, RawBytes::default(), reward_amount) {
             error!("failed to send reward: {}", e);
         }
 
@@ -3144,7 +3145,7 @@ impl Actor {
         }
 
         if amount_withdrawn.is_positive() {
-            rt.send(info.owner, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
+            rt.send(&info.owner, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
         }
 
         burn_funds(rt, fee_to_burn)?;
@@ -3574,7 +3575,7 @@ where
     let ser_params =
         serialize(&ext::power::EnrollCronEventParams { event_epoch, payload }, "cron params")?;
     rt.send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
         ext::power::ENROLL_CRON_EVENT_METHOD,
         ser_params,
         TokenAmount::zero(),
@@ -3595,7 +3596,7 @@ where
     let delta_clone = delta.clone();
 
     rt.send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
         ext::power::UPDATE_CLAIMED_POWER_METHOD,
         RawBytes::serialize(ext::power::UpdateClaimedPowerParams {
             raw_byte_delta: delta.raw,
@@ -3621,7 +3622,7 @@ where
 
     for chunk in deal_ids.chunks(MAX_LENGTH) {
         rt.send(
-            *STORAGE_MARKET_ACTOR_ADDR,
+            &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
             RawBytes::serialize(ext::market::OnMinerSectorsTerminateParamsRef {
                 epoch,
@@ -3766,7 +3767,7 @@ where
     }
     let ret: ext::market::ComputeDataCommitmentReturn = rt
         .send(
-            *STORAGE_MARKET_ACTOR_ADDR,
+            &*STORAGE_MARKET_ACTOR_ADDR,
             ext::market::COMPUTE_DATA_COMMITMENT_METHOD,
             RawBytes::serialize(ext::market::ComputeDataCommitmentParamsRef {
                 inputs: data_commitment_inputs,
@@ -3811,7 +3812,7 @@ where
         return Ok(empty_result);
     }
     let serialized = rt.send(
-        *STORAGE_MARKET_ACTOR_ADDR,
+        &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
         RawBytes::serialize(ext::market::VerifyDealsForActivationParamsRef { sectors })?,
         TokenAmount::zero(),
@@ -3831,7 +3832,7 @@ where
 {
     let ret = rt
         .send(
-            *REWARD_ACTOR_ADDR,
+            &REWARD_ACTOR_ADDR,
             ext::reward::THIS_EPOCH_REWARD_METHOD,
             Default::default(),
             TokenAmount::zero(),
@@ -3852,7 +3853,7 @@ where
 {
     let ret = rt
         .send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::CURRENT_TOTAL_POWER_METHOD,
             Default::default(),
             TokenAmount::zero(),
@@ -3891,7 +3892,7 @@ where
         ));
     }
 
-    Ok(resolved)
+    Ok(Address::new_id(resolved))
 }
 
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
@@ -3918,7 +3919,7 @@ where
 
     if raw.protocol() != Protocol::BLS {
         let ret = rt.send(
-            resolved,
+            &Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
             RawBytes::default(),
             TokenAmount::zero(),
@@ -3933,7 +3934,7 @@ where
             ));
         }
     }
-    Ok(resolved)
+    Ok(Address::new_id(resolved))
 }
 
 fn burn_funds<BS, RT>(rt: &mut RT, amount: TokenAmount) -> Result<(), ActorError>
@@ -3943,21 +3944,21 @@ where
 {
     log::debug!("storage provder {} burning {}", rt.message().receiver(), amount);
     if amount.is_positive() {
-        rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount)?;
+        rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount)?;
     }
     Ok(())
 }
 
-fn notify_pledge_changed<BS, RT>(rt: &mut RT, pledge_delta: &BigInt) -> Result<(), ActorError>
+fn notify_pledge_changed<BS, RT>(rt: &mut RT, pledge_delta: &TokenAmount) -> Result<(), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     if !pledge_delta.is_zero() {
         rt.send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
-            RawBytes::serialize(BigIntSer(pledge_delta))?,
+            RawBytes::serialize(pledge_delta)?,
             TokenAmount::zero(),
         )?;
     }
@@ -4245,7 +4246,7 @@ where
         if !pre_commit.info.deal_ids.is_empty() {
             // Check (and activate) storage deals associated to sector. Abort if checks failed.
             let res = rt.send(
-                *STORAGE_MARKET_ACTOR_ADDR,
+                &STORAGE_MARKET_ACTOR_ADDR,
                 ext::market::ACTIVATE_DEALS_METHOD,
                 RawBytes::serialize(ext::market::ActivateDealsParams {
                     deal_ids: pre_commit.info.deal_ids.clone(),

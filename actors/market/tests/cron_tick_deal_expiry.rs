@@ -5,8 +5,6 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fvm_shared::clock::ChainEpoch;
 
-use num_traits::Zero;
-
 mod harness;
 use harness::*;
 

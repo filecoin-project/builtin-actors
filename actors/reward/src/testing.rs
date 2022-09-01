@@ -1,6 +1,5 @@
 use crate::{baseline_power_from_prev, State};
 use fil_actors_runtime::MessageAccumulator;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
 use num_traits::Signed;
 
@@ -14,8 +13,7 @@ pub fn check_state_invariants(
 ) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
 
-    let fil = 10u64.pow(18);
-    let storage_mining_allocation_check = BigInt::from(1_100_000_000) * fil;
+    let storage_mining_allocation_check = TokenAmount::from_whole(1_100_000_000);
 
     // Can't assert equality because anyone can send funds to reward actor (and already have on mainnet)
     acc.require(

@@ -10,7 +10,7 @@ use fvm_shared::econ::TokenAmount;
 
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, Zero};
 
 pub use self::state::{Entry, State};
 
@@ -65,10 +65,10 @@ impl Actor {
         for entry in st.entries {
             // Intentionally ignore any error when calling cron methods
             let res = rt.send(
-                entry.receiver,
+                &entry.receiver,
                 entry.method_num,
                 RawBytes::default(),
-                TokenAmount::from(0u8),
+                TokenAmount::zero(),
             );
             if let Err(e) = res {
                 log::error!(

@@ -13,6 +13,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorSize};
 
 use cid::Cid;
+use num_traits::Zero;
 
 mod util;
 
@@ -72,7 +73,7 @@ fn simple_construction() {
         env.worker,
         AccountMethod::PubkeyAddress as u64,
         RawBytes::default(),
-        TokenAmount::from(0),
+        TokenAmount::zero(),
         RawBytes::serialize(env.worker_key).unwrap(),
         ExitCode::OK,
     );
@@ -96,8 +97,8 @@ fn simple_construction() {
     assert_eq!(SectorSize::_32GiB, info.sector_size);
     assert_eq!(2349, info.window_post_partition_sectors);
 
-    assert_eq!(TokenAmount::from(0), state.pre_commit_deposits);
-    assert_eq!(TokenAmount::from(0), state.locked_funds);
+    assert_eq!(TokenAmount::zero(), state.pre_commit_deposits);
+    assert_eq!(TokenAmount::zero(), state.locked_funds);
     assert_ne!(Cid::default(), state.pre_committed_sectors);
     assert_ne!(Cid::default(), state.sectors);
 
@@ -145,7 +146,7 @@ fn control_addresses_are_resolved_during_construction() {
         env.worker,
         AccountMethod::PubkeyAddress as u64,
         RawBytes::default(),
-        TokenAmount::from(0),
+        TokenAmount::zero(),
         RawBytes::serialize(env.worker_key).unwrap(),
         ExitCode::OK,
     );
@@ -179,7 +180,7 @@ fn fails_if_control_address_is_not_an_account_actor() {
         env.worker,
         AccountMethod::PubkeyAddress as u64,
         RawBytes::default(),
-        TokenAmount::from(0),
+        TokenAmount::zero(),
         RawBytes::serialize(env.worker_key).unwrap(),
         ExitCode::OK,
     );

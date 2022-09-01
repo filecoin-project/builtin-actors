@@ -225,7 +225,6 @@ pub struct ReportConsensusFaultParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct WithdrawBalanceParams {
-    #[serde(with = "bigint_ser")]
     pub amount_requested: TokenAmount,
 }
 
@@ -234,7 +233,6 @@ impl Cbor for WithdrawBalanceParams {}
 #[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct WithdrawBalanceReturn {
-    #[serde(with = "bigint_ser")]
     pub amount_withdrawn: TokenAmount,
 }
 
@@ -277,7 +275,6 @@ pub struct SectorPreCommitInfo {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitOnChainInfo {
     pub info: SectorPreCommitInfo,
-    #[serde(with = "bigint_ser")]
     pub pre_commit_deposit: TokenAmount,
     pub pre_commit_epoch: ChainEpoch,
     /// Integral of active deals over sector lifetime, 0 if CommittedCapacity sector
@@ -308,18 +305,14 @@ pub struct SectorOnChainInfo {
     #[serde(with = "bigint_ser")]
     pub verified_deal_weight: DealWeight,
     /// Pledge collected to commit this sector
-    #[serde(with = "bigint_ser")]
     pub initial_pledge: TokenAmount,
     /// Expected one day projection of reward for sector computed at activation time
-    #[serde(with = "bigint_ser")]
     pub expected_day_reward: TokenAmount,
     /// Expected twenty day projection of reward for sector computed at activation time
-    #[serde(with = "bigint_ser")]
     pub expected_storage_pledge: TokenAmount,
     /// Age of sector this sector replaced or zero
     pub replaced_sector_age: ChainEpoch,
     /// Day reward of sector this sector replace or zero
-    #[serde(with = "bigint_ser")]
     pub replaced_day_reward: TokenAmount,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,
@@ -334,9 +327,7 @@ pub struct Fault {
 // * Added in v2 -- param was previously a big int.
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ApplyRewardParams {
-    #[serde(with = "bigint_ser")]
     pub reward: TokenAmount,
-    #[serde(with = "bigint_ser")]
     pub penalty: TokenAmount,
 }
 

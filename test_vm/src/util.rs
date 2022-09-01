@@ -581,9 +581,9 @@ pub fn publish_deal(
         label,
         start_epoch: deal_start,
         end_epoch: deal_start + deal_lifetime,
-        storage_price_per_epoch: TokenAmount::from((1 << 20) as u64),
-        provider_collateral: TokenAmount::from(2e18 as u64),
-        client_collateral: TokenAmount::from(1e18 as u64),
+        storage_price_per_epoch: TokenAmount::from_atto((1 << 20) as u64),
+        provider_collateral: TokenAmount::from_whole(2),
+        client_collateral: TokenAmount::from_whole(1),
     };
 
     let publish_params = PublishStorageDealsParams {

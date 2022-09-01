@@ -32,7 +32,7 @@ use test_vm::{ExpectInvocation, VM};
 fn extend_sector_with_deals() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let sector_number: SectorNumber = 100;
@@ -46,7 +46,7 @@ fn extend_sector_with_deals() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(1_000e18 as i128),
+        TokenAmount::from_whole(1_000),
     )
     .0;
     let mut v = v.with_epoch(200);
@@ -72,7 +72,7 @@ fn extend_sector_with_deals() {
     );
 
     // add market collateral for clients and miner
-    let mut collateral = TokenAmount::from(3e18 as i128);
+    let mut collateral = TokenAmount::from_whole(3);
     apply_ok(
         &v,
         verified_client,
@@ -81,7 +81,7 @@ fn extend_sector_with_deals() {
         MarketMethod::AddBalance as u64,
         verified_client,
     );
-    collateral = TokenAmount::from(64e18 as i128);
+    collateral = TokenAmount::from_whole(64);
     apply_ok(
         &v,
         worker,

@@ -6,7 +6,7 @@ use fil_actor_miner::{
 };
 use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_bitfield::BitField;
-use fvm_shared::{bigint::BigInt, clock::ChainEpoch, sector::SectorSize};
+use fvm_shared::{bigint::BigInt, clock::ChainEpoch, econ::TokenAmount, sector::SectorSize};
 
 mod util;
 use num_traits::Zero;
@@ -22,8 +22,7 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     let actor = ActorHarness::new(period_offset);
     let mut rt = actor.new_runtime();
-    let balance = BigInt::from(1_000_000u64) * BigInt::from(10u64.pow(18));
-    rt.add_balance(balance);
+    rt.add_balance(BIG_BALANCE.clone());
     let precommit_epoch = period_offset + 1;
     rt.set_epoch(precommit_epoch);
     actor.construct_and_verify(&mut rt);
@@ -57,7 +56,7 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
-    rt.set_balance(BigInt::from(1000u64) * BigInt::from(10u64.pow(18)));
+    rt.set_balance(TokenAmount::from_whole(1000));
 
     actor
         .prove_commit_aggregate_sector(
@@ -65,7 +64,7 @@ fn valid_precommits_then_aggregate_provecommit() {
             ProveCommitConfig::empty(),
             precommits,
             make_prove_commit_aggregate(&sector_nos_bf),
-            BigInt::zero(),
+            &TokenAmount::zero(),
         )
         .unwrap();
 
@@ -77,7 +76,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     }
 
     // expect deposit to have been transferred to initial pledges
-    assert_eq!(BigInt::zero(), st.pre_commit_deposits);
+    assert!(st.pre_commit_deposits.is_zero());
 
     // The sector is exactly full with verified deals, so expect fully verified power.
     let expected_power = BigInt::from(actor.sector_size as i64)

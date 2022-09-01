@@ -47,7 +47,6 @@ use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
 use fvm_ipld_encoding::{BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::QuantSpec;
 use fvm_shared::clock::{ChainEpoch, NO_QUANTIZATION};
@@ -66,9 +65,9 @@ use fvm_shared::{HAMT_BIT_WIDTH, METHOD_SEND};
 
 use cid::Cid;
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
-use num_traits::sign::Signed;
 
 use fil_actor_miner::testing::{
     check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
@@ -81,13 +80,17 @@ const RECEIVER_ID: u64 = 1000;
 
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
 
-// A reward amount for use in tests where the vesting amount wants to be large enough to cover penalties.
-#[allow(dead_code)]
-pub const BIG_REWARDS: u128 = 10u128.pow(24);
-
 // an expriration ~10 days greater than effective min expiration taking into account 30 days max between pre and prove commit
 #[allow(dead_code)]
 pub const DEFAULT_SECTOR_EXPIRATION: u64 = 220;
+
+lazy_static! {
+    pub static ref BIG_BALANCE: TokenAmount = TokenAmount::from_whole(1_000_000);
+    pub static ref ONE_PERCENT_BALANCE: TokenAmount = BIG_BALANCE.div_floor(100);
+
+    // A reward amount for use in tests where the vesting amount wants to be large enough to cover penalties.
+    pub static ref BIG_REWARDS: TokenAmount = TokenAmount::from_whole(1_000);
+}
 
 #[allow(dead_code)]
 pub fn setup() -> (ActorHarness, MockRuntime) {
@@ -130,7 +133,7 @@ impl ActorHarness {
         let control_addrs = vec![Address::new_id(999), Address::new_id(998), Address::new_id(997)];
         let worker_key = new_bls_addr(0);
         let receiver = Address::new_id(RECEIVER_ID);
-        let rwd = TokenAmount::from(10_000_000_000_000_000_000i128);
+        let rwd = TokenAmount::from_whole(10);
         let pwr = StoragePower::from(1i128 << 50);
         let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1;
 
@@ -149,12 +152,12 @@ impl ActorHarness {
             period_offset: proving_period_offset,
             next_sector_no: 0,
 
-            network_pledge: rwd.clone() * TokenAmount::from(1000),
+            network_pledge: rwd.clone() * 1000,
             network_raw_power: pwr.clone(),
             network_qa_power: pwr.clone(),
             baseline_power: pwr.clone(),
 
-            epoch_reward_smooth: FilterEstimate::new(rwd, BigInt::from(0)),
+            epoch_reward_smooth: FilterEstimate::new(rwd.atto().clone(), BigInt::from(0)),
             epoch_qa_power_smooth: FilterEstimate::new(pwr, BigInt::from(0)),
         }
     }
@@ -214,7 +217,7 @@ impl ActorHarness {
             self.worker,
             AccountMethod::PubkeyAddress as u64,
             RawBytes::default(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::serialize(self.worker_key).unwrap(),
             ExitCode::OK,
         );
@@ -450,7 +453,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         params: PreCommitSectorBatchParams,
         conf: &PreCommitBatchConfig,
-        base_fee: TokenAmount,
+        base_fee: &TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
@@ -498,7 +501,7 @@ impl ActorHarness {
                 *STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
                 RawBytes::serialize(vdparams).unwrap(),
-                TokenAmount::from(0u8),
+                TokenAmount::zero(),
                 RawBytes::serialize(vdreturn).unwrap(),
                 ExitCode::OK,
             );
@@ -506,9 +509,9 @@ impl ActorHarness {
 
         let state = self.get_state(rt);
         // burn networkFee
-        if state.fee_debt > TokenAmount::from(0u8) || params.sectors.len() > 1 {
+        if state.fee_debt > TokenAmount::zero() || params.sectors.len() > 1 {
             let expected_network_fee =
-                aggregate_pre_commit_network_fee(params.sectors.len() as i64, &base_fee);
+                aggregate_pre_commit_network_fee(params.sectors.len() as i64, base_fee);
             let expected_burn = expected_network_fee + state.fee_debt;
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
@@ -531,7 +534,7 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 RawBytes::serialize(cron_params).unwrap(),
-                TokenAmount::from(0u8),
+                TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -549,7 +552,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         params: PreCommitSectorBatchParams,
         conf: &PreCommitBatchConfig,
-        base_fee: TokenAmount,
+        base_fee: &TokenAmount,
     ) -> Vec<SectorPreCommitOnChainInfo> {
         let result = self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee).unwrap();
 
@@ -589,7 +592,7 @@ impl ActorHarness {
                 *STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
                 RawBytes::serialize(vdparams).unwrap(),
-                TokenAmount::from(0u8),
+                TokenAmount::zero(),
                 RawBytes::serialize(vdreturn).unwrap(),
                 ExitCode::OK,
             );
@@ -597,7 +600,7 @@ impl ActorHarness {
         // in the original test the else branch does some redundant checks which we can omit.
 
         let state = self.get_state(rt);
-        if state.fee_debt > TokenAmount::from(0u8) {
+        if state.fee_debt > TokenAmount::zero() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -619,7 +622,7 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 RawBytes::serialize(cron_params).unwrap(),
-                TokenAmount::from(0u8),
+                TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -676,7 +679,7 @@ impl ActorHarness {
             *REWARD_ACTOR_ADDR,
             RewardMethod::ThisEpochReward as u64,
             RawBytes::default(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::serialize(current_reward).unwrap(),
             ExitCode::OK,
         );
@@ -684,7 +687,7 @@ impl ActorHarness {
             *STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::CurrentTotalPower as u64,
             RawBytes::default(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::serialize(current_power).unwrap(),
             ExitCode::OK,
         );
@@ -724,7 +727,7 @@ impl ActorHarness {
             *STORAGE_MARKET_ACTOR_ADDR,
             MarketMethod::ComputeDataCommitment as u64,
             RawBytes::serialize(cdc_params).unwrap(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::serialize(cdc_ret).unwrap(),
             ExitCode::OK,
         );
@@ -758,7 +761,7 @@ impl ActorHarness {
             *STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::SubmitPoRepForBulkVerify as u64,
             RawBytes::serialize(seal).unwrap(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -778,7 +781,7 @@ impl ActorHarness {
         config: ProveCommitConfig,
         precommits: Vec<SectorPreCommitOnChainInfo>,
         params: ProveCommitAggregateParams,
-        base_fee: BigInt,
+        base_fee: &TokenAmount,
     ) -> Result<(), ActorError> {
         // recieve call to ComputeDataCommittments
         let mut comm_ds = Vec::new();
@@ -798,7 +801,7 @@ impl ActorHarness {
             *STORAGE_MARKET_ACTOR_ADDR,
             MarketMethod::ComputeDataCommitment as u64,
             RawBytes::serialize(cdc_params)?,
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::serialize(cdc_ret)?,
             ExitCode::OK,
         );
@@ -849,8 +852,8 @@ impl ActorHarness {
         self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
 
         // burn network fee
-        let expected_fee = aggregate_prove_commit_network_fee(precommits.len() as i64, &base_fee);
-        assert!(expected_fee > BigInt::zero());
+        let expected_fee = aggregate_prove_commit_network_fee(precommits.len() as i64, base_fee);
+        assert!(expected_fee.is_positive());
         rt.expect_send(
             *BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
@@ -930,7 +933,7 @@ impl ActorHarness {
                     *STORAGE_MARKET_ACTOR_ADDR,
                     MarketMethod::ActivateDeals as u64,
                     RawBytes::serialize(params).unwrap(),
-                    TokenAmount::from(0u8),
+                    TokenAmount::zero(),
                     RawBytes::default(),
                     exit,
                 );
@@ -940,7 +943,7 @@ impl ActorHarness {
         }
 
         if !valid_pcs.is_empty() {
-            let mut expected_pledge = TokenAmount::from(0u8);
+            let mut expected_pledge = TokenAmount::zero();
             let mut expected_qa_power = BigInt::from(0);
             let mut expected_raw_power = BigInt::from(0);
 
@@ -979,12 +982,12 @@ impl ActorHarness {
                 }
             }
 
-            if expected_pledge != TokenAmount::from(0u8) {
+            if expected_pledge != TokenAmount::zero() {
                 rt.expect_send(
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
-                    RawBytes::serialize(BigIntSer(&expected_pledge)).unwrap(),
-                    TokenAmount::from(0u8),
+                    RawBytes::serialize(&expected_pledge).unwrap(),
+                    TokenAmount::zero(),
                     RawBytes::default(),
                     ExitCode::OK,
                 );
@@ -1056,20 +1059,20 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdateClaimedPower as u64,
                 RawBytes::serialize(params).unwrap(),
-                TokenAmount::from(0u8),
+                TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
             );
         }
 
-        let mut penalty_total = TokenAmount::from(0u8);
-        let mut pledge_delta = TokenAmount::from(0u8);
+        let mut penalty_total = TokenAmount::zero();
+        let mut pledge_delta = TokenAmount::zero();
 
         penalty_total += cfg.continued_faults_penalty.clone();
         penalty_total += cfg.repaid_fee_debt.clone();
         penalty_total += cfg.expired_precommit_penalty.clone();
 
-        if penalty_total != TokenAmount::from(0u8) {
+        if penalty_total != TokenAmount::zero() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -1093,12 +1096,12 @@ impl ActorHarness {
         pledge_delta += cfg.expired_sectors_pledge_delta;
         pledge_delta -= immediately_vesting_funds(rt, &state);
 
-        if pledge_delta != TokenAmount::from(0u8) {
+        if pledge_delta != TokenAmount::zero() {
             rt.expect_send(
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdatePledgeTotal as u64,
-                RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
-                TokenAmount::from(0u8),
+                RawBytes::serialize(&pledge_delta).unwrap(),
+                TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -1111,7 +1114,7 @@ impl ActorHarness {
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 RawBytes::serialize(params).unwrap(),
-                TokenAmount::from(0u8),
+                TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -1229,7 +1232,7 @@ impl ActorHarness {
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdateClaimedPower as u64,
                     RawBytes::serialize(claim).unwrap(),
-                    TokenAmount::from(0u8),
+                    TokenAmount::zero(),
                     RawBytes::default(),
                     ExitCode::OK,
                 );
@@ -1337,7 +1340,7 @@ impl ActorHarness {
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdateClaimedPower as u64,
                     RawBytes::serialize(claim).unwrap(),
-                    TokenAmount::from(0u8),
+                    TokenAmount::zero(),
                     RawBytes::default(),
                     ExitCode::OK,
                 );
@@ -1372,8 +1375,8 @@ impl ActorHarness {
                 rt.expect_send(
                     *STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
-                    RawBytes::serialize(BigIntSer(&expected_pledge_delta)).unwrap(),
-                    TokenAmount::from(0u8),
+                    RawBytes::serialize(&expected_pledge_delta).unwrap(),
+                    TokenAmount::zero(),
                     RawBytes::default(),
                     ExitCode::OK,
                 );
@@ -1441,13 +1444,13 @@ impl ActorHarness {
         rt.expect_send(
             *STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::UpdatePledgeTotal as u64,
-            RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
-            TokenAmount::from(0u8),
+            RawBytes::serialize(&pledge_delta).unwrap(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
 
-        if penalty > TokenAmount::from(0u8) {
+        if penalty > TokenAmount::zero() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -1601,7 +1604,7 @@ impl ActorHarness {
             *STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::UpdateClaimedPower as u64,
             RawBytes::serialize(claim).unwrap(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -1627,7 +1630,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        if expected_debt_repaid > TokenAmount::from(0u8) {
+        if expected_debt_repaid > TokenAmount::zero() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
@@ -1745,11 +1748,11 @@ impl ActorHarness {
             *REWARD_ACTOR_ADDR,
             RewardMethod::ThisEpochReward as u64,
             RawBytes::default(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::serialize(current_reward).unwrap(),
             ExitCode::OK,
         );
-        let this_epoch_reward = self.epoch_reward_smooth.estimate();
+        let this_epoch_reward = TokenAmount::from_atto(self.epoch_reward_smooth.estimate());
         let penalty_total = consensus_fault_penalty(this_epoch_reward.clone());
         let reward_total = reward_for_consensus_slash_report(&this_epoch_reward);
         rt.expect_send(
@@ -1838,7 +1841,7 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
 
-        let mut pledge_delta = BigInt::zero();
+        let mut pledge_delta = TokenAmount::zero();
         if expected_fee.is_positive() {
             rt.expect_send(
                 *BURNT_FUNDS_ACTOR_ADDR,
@@ -1860,8 +1863,8 @@ impl ActorHarness {
             rt.expect_send(
                 *STORAGE_POWER_ACTOR_ADDR,
                 UPDATE_PLEDGE_TOTAL_METHOD,
-                RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
-                BigInt::zero(),
+                RawBytes::serialize(&pledge_delta).unwrap(),
+                TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -1956,7 +1959,7 @@ impl ActorHarness {
             rt.expect_send(
                 *STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdatePledgeTotal as u64,
-                RawBytes::serialize(BigIntSer(&pledge_delta)).unwrap(),
+                RawBytes::serialize(&pledge_delta).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -2300,11 +2303,11 @@ impl CronConfig {
             expected_enrollment: 0,
             detected_faults_power_delta: None,
             expired_sectors_power_delta: None,
-            expired_sectors_pledge_delta: TokenAmount::from(0u8),
-            continued_faults_penalty: TokenAmount::from(0u8),
-            expired_precommit_penalty: TokenAmount::from(0u8),
-            repaid_fee_debt: TokenAmount::from(0u8),
-            penalty_from_unlocked: TokenAmount::from(0u8),
+            expired_sectors_pledge_delta: TokenAmount::zero(),
+            continued_faults_penalty: TokenAmount::zero(),
+            expired_precommit_penalty: TokenAmount::zero(),
+            repaid_fee_debt: TokenAmount::zero(),
+            penalty_from_unlocked: TokenAmount::zero(),
         }
     }
 
@@ -2381,7 +2384,7 @@ enum MhCode {
 
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
-    let mut sum = TokenAmount::from(0u8);
+    let mut sum = TokenAmount::zero();
     for vf in vesting.funds {
         if vf.epoch < rt.epoch {
             sum += vf.amount;
@@ -2511,7 +2514,7 @@ pub fn test_sector(
         sector_number,
         deal_weight: DealWeight::from(deal_weight),
         verified_deal_weight: DealWeight::from(verified_deal_weight),
-        initial_pledge: TokenAmount::from(pledge),
+        initial_pledge: TokenAmount::from_atto(pledge),
         sealed_cid: make_sealed_cid(format!("commR-{sector_number}").as_bytes()),
         ..Default::default()
     }
