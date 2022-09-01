@@ -5001,7 +5001,7 @@ where
     if !can_extend_seal_proof_type(sector.seal_proof) {
         return Err(actor_error!(
             forbidden,
-            "cannot extend expiration for sector {} with unsupported \
+            "cannot extend commitment for sector {} with unsupported \
                                     seal type {:?}",
             sector.sector_number,
             sector.seal_proof
