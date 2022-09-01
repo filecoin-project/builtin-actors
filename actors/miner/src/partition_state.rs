@@ -503,7 +503,7 @@ impl Partition {
             .flush()
             .map_err(|e| e.downcast_wrap("failed to save sector expirations"))?;
 
-        let removed_sectors = &removed.on_time_sectors | &removed.faulty_sectors;
+        let removed_sectors = removed.all();
 
         // Record early termination.
         self.record_early_termination(store, epoch, &removed_sectors)
