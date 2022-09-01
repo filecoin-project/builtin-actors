@@ -680,7 +680,7 @@ pub fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposa
     let pending_deals: Hamt<&fvm_ipld_blockstore::MemoryBlockstore, DealProposal> =
         fil_actors_runtime::make_map_with_root_and_bitwidth(
             &st.pending_proposals,
-            &rt.store,
+            &*rt.store,
             PROPOSALS_AMT_BITWIDTH,
         )
         .unwrap();
