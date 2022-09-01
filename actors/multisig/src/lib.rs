@@ -229,10 +229,9 @@ impl Actor {
 
             let (_, tx) = ptx
                 .delete(&params.id.key())
-                .context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to pop transaction {:?} for cancel", params.id),
-                )?
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to pop transaction {:?} for cancel", params.id)
+                })?
                 .ok_or_else(|| {
                     actor_error!(not_found, "no such transaction {:?} to cancel", params.id)
                 })?;
@@ -242,10 +241,10 @@ impl Actor {
                 return Err(actor_error!(forbidden; "Cannot cancel another signers transaction"));
             }
 
-            let calculated_hash = compute_proposal_hash(&tx, rt).context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to compute proposal hash for (tx: {:?})", params.id),
-            )?;
+            let calculated_hash = compute_proposal_hash(&tx, rt)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to compute proposal hash for (tx: {:?})", params.id)
+                })?;
 
             if !params.proposal_hash.is_empty() && params.proposal_hash != calculated_hash {
                 return Err(actor_error!(illegal_state, "hash does not match proposal params"));
@@ -456,10 +455,10 @@ impl Actor {
             // update approved on the transaction
             txn.approved.push(rt.message().caller());
 
-            ptx.set(tx_id.key(), txn.clone()).context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to put transaction {} for approval", tx_id.0),
-            )?;
+            ptx.set(tx_id.key(), txn.clone())
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to put transaction {} for approval", tx_id.0)
+                })?;
 
             st.pending_txs = ptx.flush().context_code(
                 ExitCode::USR_ILLEGAL_STATE,
