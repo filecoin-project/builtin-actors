@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use fvm_shared::address::Address as FilecoinAddress;
 use {
     super::instructions::*,
     super::opcode::OpCode,
@@ -23,6 +24,8 @@ pub struct ExecutionState {
     pub input_data: Bytes,
     pub return_data: Bytes,
     pub output_data: Bytes,
+    /// Indicates whether the contract called SELFDESTRUCT, providing the beneficiary.
+    pub selfdestroyed: Option<FilecoinAddress>,
 }
 
 impl ExecutionState {
@@ -33,6 +36,7 @@ impl ExecutionState {
             input_data,
             return_data: Default::default(),
             output_data: Bytes::new(),
+            selfdestroyed: None,
         }
     }
 }
@@ -843,7 +847,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
 
         SELFDESTRUCT(m) {
             lifecycle::selfdestruct(m.runtime, m.system)?;
-            Ok(ControlFlow::Continue)
+            Ok(ControlFlow::Exit) // selfdestruct halts the current context
         }
     }
 
@@ -861,5 +865,6 @@ pub fn execute<'r, BS: Blockstore, RT: Runtime<BS>>(
         reverted: m.reverted,
         status_code: StatusCode::Success,
         output_data: m.runtime.output_data.clone(),
+        selfdestroyed: m.runtime.selfdestroyed.clone(),
     })
 }

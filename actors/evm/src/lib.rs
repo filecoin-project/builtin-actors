@@ -1,6 +1,7 @@
 pub mod interpreter;
 mod state;
 
+use fvm_shared::address::Address;
 use {
     crate::interpreter::{execute, Bytecode, ExecutionState, StatusCode, System, U256},
     crate::state::State,
@@ -109,9 +110,11 @@ impl EvmContractActor {
     {
         rt.validate_immediate_caller_accept_any()?;
 
+        let mut selfdestroyed = Option::<Address>::default();
+
         // TODO this is fine in a transaction for now, as we don't have yet cross-contact calls
         //      some refactoring will be needed when we start making cross contract calls.
-        rt.transaction(|state: &mut State, rt| {
+        let output = rt.transaction(|state: &mut State, rt| {
             let bytecode: Vec<u8> =
                 match rt.store().get(&state.bytecode).map_err(|e| {
                     ActorError::unspecified(format!("failed to parse bytecode: {e:?}"))
@@ -144,6 +147,8 @@ impl EvmContractActor {
             let exec_status = execute(&bytecode, &mut exec_state, &mut system.reborrow())
                 .map_err(|e| ActorError::unspecified(format!("EVM execution error: {e:?}")))?;
 
+            selfdestroyed = exec_status.selfdestroyed;
+
             // XXX is this correct handling of reverts? or should we fail execution?
             if exec_status.status_code == StatusCode::Success {
                 let result = RawBytes::from(exec_status.output_data.to_vec());
@@ -159,7 +164,13 @@ impl EvmContractActor {
                     exec_status.status_code
                 )))
             }
-        })
+        })?;
+
+        if let Some(addr) = selfdestroyed {
+            rt.delete_actor(&addr)?
+        }
+
+        Ok(output)
     }
 }
 

@@ -17,9 +17,10 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
 #[inline]
 pub fn selfdestruct<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    system: &'r mut System<'r, BS, RT>,
+    _system: &'r mut System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
     let beneficiary_addr = Address::from(state.stack.pop());
     let id_addr = beneficiary_addr.as_id_address().expect("no support for non-ID addresses yet");
-    Ok(system.rt.delete_actor(&id_addr)?)
+    state.selfdestroyed = Some(id_addr);
+    Ok(())
 }
