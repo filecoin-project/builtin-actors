@@ -7,7 +7,9 @@ use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::signature::{
+    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
@@ -425,6 +427,19 @@ where
     #[cfg(feature = "m2-native")]
     fn install_actor(&self, code_id: &Cid) -> Result<(), Error> {
         fvm::actor::install_actor(code_id).map_err(|_| Error::msg("failed to install actor"))
+    }
+
+    fn hash(&self, hasher: fvm_shared::crypto::hash::SupportedHashes, data: &[u8]) -> Vec<u8> {
+        fvm::crypto::hash(hasher, data)
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
+        fvm::crypto::recover_secp_public_key(hash, signature)
+            .map_err(|e| anyhow!("failed to recover pubkey; exit code: {}", e))
     }
 }
 

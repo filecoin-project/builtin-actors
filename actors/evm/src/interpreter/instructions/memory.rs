@@ -1,6 +1,7 @@
 #!allow[clippy::result-unit-err]
 
 use {
+    crate::interpreter::memory::Memory,
     crate::interpreter::{ExecutionState, StatusCode, U256},
     std::num::NonZeroUsize,
 };
@@ -21,15 +22,15 @@ pub fn num_words(size_in_bytes: usize) -> usize {
 }
 
 #[inline]
-fn grow_memory(state: &mut ExecutionState, new_size: usize) -> Result<(), ()> {
+fn grow_memory(mem: &mut Memory, new_size: usize) -> Result<(), ()> {
     let new_words = num_words(new_size);
-    state.memory.grow((new_words * WORD_SIZE) as usize);
+    mem.grow((new_words * WORD_SIZE) as usize);
     Ok(())
 }
 
 #[inline]
 fn get_memory_region_u64(
-    state: &mut ExecutionState,
+    mem: &mut Memory,
     offset: U256,
     size: NonZeroUsize,
 ) -> Result<MemoryRegion, ()> {
@@ -38,9 +39,9 @@ fn get_memory_region_u64(
     }
 
     let new_size = offset.as_usize() + size.get();
-    let current_size = state.memory.len();
+    let current_size = mem.len();
     if new_size > current_size {
-        grow_memory(state, new_size)?;
+        grow_memory(mem, new_size)?;
     }
 
     Ok(MemoryRegion { offset: offset.as_usize(), size })
@@ -49,7 +50,7 @@ fn get_memory_region_u64(
 #[inline]
 #[allow(clippy::result_unit_err)]
 pub fn get_memory_region(
-    state: &mut ExecutionState,
+    state: &mut Memory,
     offset: U256,
     size: U256,
 ) -> Result<Option<MemoryRegion>, ()> {
@@ -68,8 +69,9 @@ pub fn get_memory_region(
 pub fn mload(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let index = state.stack.pop();
 
-    let region = get_memory_region_u64(state, index, NonZeroUsize::new(WORD_SIZE).unwrap())
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let region =
+        get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
     let value =
         U256::from_big_endian(&state.memory[region.offset..region.offset + region.size.get()]);
 
@@ -83,8 +85,9 @@ pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let index = state.stack.pop();
     let value = state.stack.pop();
 
-    let region = get_memory_region_u64(state, index, NonZeroUsize::new(WORD_SIZE).unwrap())
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let region =
+        get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     let mut bytes = [0u8; WORD_SIZE];
     value.to_big_endian(&mut bytes);
@@ -98,7 +101,7 @@ pub fn mstore8(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let index = state.stack.pop();
     let value = state.stack.pop();
 
-    let region = get_memory_region_u64(state, index, NonZeroUsize::new(1).unwrap())
+    let region = get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(1).unwrap())
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     let value = (value.low_u32() & 0xff) as u8;

@@ -10,7 +10,7 @@ pub fn keccak256(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let index = state.stack.pop();
     let size = state.stack.pop();
 
-    let region = get_memory_region(state, index, size) //
+    let region = get_memory_region(&mut state.memory, index, size) //
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     state.stack.push(U256::from_big_endian(&*Keccak256::digest(if let Some(region) = region {

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use {
-    crate::interpreter::{Message, StatusCode, U256},
+    crate::interpreter::{StatusCode, U256},
     cid::Cid,
     fil_actors_runtime::{runtime::Runtime, ActorError},
     fvm_ipld_blockstore::Blockstore,
@@ -20,12 +20,6 @@ pub enum StorageStatus {
     Added,
     /// A storage item has been deleted: X -> 0.
     Deleted,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Call<'a> {
-    Call(&'a Message),
-    Create(&'a Message),
 }
 
 /// Platform Abstraction Layer

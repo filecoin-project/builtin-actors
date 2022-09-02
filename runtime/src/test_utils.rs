@@ -17,7 +17,10 @@ use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::{
+    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
@@ -40,6 +43,7 @@ use crate::runtime::{
     Verifier,
 };
 use crate::{actor_error, ActorError};
+use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
 lazy_static! {
     pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/system");
@@ -117,7 +121,14 @@ pub struct MockRuntime {
     pub origin: Address,
     pub value_received: TokenAmount,
     #[allow(clippy::type_complexity)]
-    pub hash_func: Box<dyn Fn(&[u8]) -> [u8; 32]>,
+    pub hash_func: Box<dyn Fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)>,
+    #[allow(clippy::type_complexity)]
+    pub recover_pubkey_fn: Box<
+        dyn Fn(
+            &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+            &[u8; SECP_SIG_LEN],
+        ) -> Result<[u8; SECP_PUB_LEN], ()>,
+    >,
     pub network_version: NetworkVersion,
 
     // Actor State
@@ -263,7 +274,8 @@ impl Default for MockRuntime {
             caller_type: Default::default(),
             origin: Address::new_id(0),
             value_received: Default::default(),
-            hash_func: Box::new(blake2b_256),
+            hash_func: Box::new(hash),
+            recover_pubkey_fn: Box::new(recover_secp_public_key),
             network_version: NetworkVersion::V0,
             state: Default::default(),
             balance: Default::default(),
@@ -1069,8 +1081,17 @@ impl Primitives for MockRuntime {
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
-        (*self.hash_func)(data)
+        let (digest, _) = (*self.hash_func)(SupportedHashes::Blake2b256, data);
+        let mut ret = [0u8; 32];
+        ret.copy_from_slice(&digest[..32]);
+        ret
     }
+
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        let (digest, len) = (*self.hash_func)(hasher, data);
+        Vec::from(&digest[..len])
+    }
+
     fn compute_unsealed_sector_cid(
         &self,
         reg: RegisteredSealProof,
@@ -1101,6 +1122,14 @@ impl Primitives for MockRuntime {
     #[cfg(feature = "m2-native")]
     fn install_actor(&self, _code_cid: &Cid) -> anyhow::Result<(), anyhow::Error> {
         Ok(())
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
+        (*self.recover_pubkey_fn)(hash, signature).map_err(|_| anyhow!("failed to recover pubkey."))
     }
 }
 
@@ -1247,6 +1276,30 @@ pub fn blake2b_256(data: &[u8]) -> [u8; 32] {
         .as_bytes()
         .try_into()
         .unwrap()
+}
+
+pub fn hash(hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+    let hasher = Code::try_from(hasher as u64).unwrap();
+    let (_, digest, written) = hasher.digest(data).into_inner();
+    (digest, written as usize)
+}
+
+#[allow(clippy::result_unit_err)]
+pub fn recover_secp_public_key(
+    hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+    signature: &[u8; SECP_SIG_LEN],
+) -> Result<[u8; SECP_PUB_LEN], ()> {
+    // generate types to recover key from
+    let rec_id = RecoveryId::parse(signature[64]).map_err(|_| ())?;
+    let message = Message::parse(hash);
+
+    // Signature value without recovery byte
+    let mut s = [0u8; 64];
+    s.copy_from_slice(signature[..64].as_ref());
+
+    // generate Signature
+    let sig = EcsdaSignature::parse_standard(&s).map_err(|_| ())?;
+    Ok(recover(&message, &sig, &rec_id).map_err(|_| ())?.serialize())
 }
 
 // multihash library doesn't support poseidon hashing, so we fake it

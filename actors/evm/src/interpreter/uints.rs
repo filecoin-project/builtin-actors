@@ -120,7 +120,7 @@ pub fn u128_words_to_u256(high: u128, low: u128) -> U256 {
 }
 
 #[inline]
-fn _u256_to_address(v: U256) -> H160 {
+pub(crate) fn _u256_to_address(v: U256) -> H160 {
     let mut bytes = [0u8; 32];
     v.to_big_endian(&mut bytes);
     H160::from_slice(&bytes)
