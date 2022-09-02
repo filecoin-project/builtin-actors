@@ -46,7 +46,7 @@ fn prepare_env() -> TestEnv {
     env.rt.actor_code_cids.insert(env.worker, *ACCOUNT_ACTOR_CODE_ID);
     env.rt.actor_code_cids.insert(env.control_addrs[0], *ACCOUNT_ACTOR_CODE_ID);
     env.rt.actor_code_cids.insert(env.control_addrs[1], *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.hash_func = Box::new(blake2b_256);
+    env.rt.hash_func = Box::new(hash);
     env.rt.caller = *INIT_ACTOR_ADDR;
     env.rt.caller_type = *INIT_ACTOR_CODE_ID;
     env
