@@ -268,7 +268,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         BALANCE(m) {
-            storage::balance(m.runtime, m.system)?;
+            state::balance(m.runtime, m.system)?;
             Ok(ControlFlow::Continue)
         }
 
@@ -318,12 +318,12 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         EXTCODESIZE(m) {
-            storage::extcodesize(m.runtime, m.system)?;
+            ext::extcodesize(m.runtime, m.system)?;
             Ok(ControlFlow::Continue)
         }
 
         EXTCODECOPY(m) {
-            memory::extcodecopy(m.runtime, m.system)?;
+            ext::extcodecopy(m.runtime, m.system)?;
             Ok(ControlFlow::Continue)
         }
 
@@ -338,7 +338,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         EXTCODEHASH(m) {
-            storage::extcodehash(m.runtime, m.system)?;
+            ext::extcodehash(m.runtime, m.system)?;
             Ok(ControlFlow::Continue)
         }
 
@@ -348,7 +348,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         COINBASE(m) {
-            context::coinbase(m.runtime, m.system)?;
+            context::coinbase(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
@@ -358,12 +358,12 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         NUMBER(m) {
-            context::block_number(m.runtime, m.system)?;
+            context::block_number(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
         DIFFICULTY(m) {
-            context::difficulty(m.runtime, m.system)?;
+            context::difficulty(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
@@ -378,12 +378,12 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         SELFBALANCE(m) {
-            storage::selfbalance(m.runtime, m.system)?;
+            state::selfbalance(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
         BASEFEE(m) {
-            context::base_fee(m.runtime, m.system)?;
+            context::base_fee(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
@@ -797,7 +797,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         CREATE(m) {
-            storage::create(m.runtime, m.system, false)?;
+            lifecycle::create(m.runtime, m.system, false)?;
             Ok(ControlFlow::Continue)
         }
 
@@ -822,7 +822,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         CREATE2(m) {
-            storage::create(m.runtime, m.system, true)?;
+            lifecycle::create(m.runtime, m.system, true)?;
             Ok(ControlFlow::Continue)
         }
 
@@ -842,7 +842,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         SELFDESTRUCT(m) {
-            storage::selfdestruct(m.runtime, m.system)?;
+            lifecycle::selfdestruct(m.runtime, m.system)?;
             Ok(ControlFlow::Continue)
         }
     }
