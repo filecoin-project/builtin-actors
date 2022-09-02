@@ -865,6 +865,6 @@ pub fn execute<'r, BS: Blockstore, RT: Runtime<BS>>(
         reverted: m.reverted,
         status_code: StatusCode::Success,
         output_data: m.runtime.output_data.clone(),
-        selfdestroyed: m.runtime.selfdestroyed.clone(),
+        selfdestroyed: m.runtime.selfdestroyed,
     })
 }
