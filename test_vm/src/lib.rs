@@ -38,7 +38,8 @@ use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::{Signature, SECP_SIG_MESSAGE_HASH_SIZE, SECP_PUB_LEN, SECP_SIG_LEN};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
@@ -50,6 +51,7 @@ use fvm_shared::sector::{
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use multihash::MultihashDigest;
 use regex::Regex;
 use serde::ser;
 use std::cell::{RefCell, RefMut};
@@ -948,16 +950,17 @@ impl Primitives for VM<'_> {
         Ok(make_piece_cid(b"unsealed from itest vm"))
     }
 
-    fn hash(&self, hasher: fvm_shared::crypto::hash::SupportedHashes, data: &[u8]) -> Vec<u8> {
-        todo!()
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        let hasher = Code::try_from(hasher as u64).unwrap(); // supported hashes are all implemented in multihash
+        hasher.digest(data).to_bytes()
     }
 
     fn recover_secp_public_key(
         &self,
-        hash: &[u8; fvm_shared::crypto::signature::SECP_SIG_MESSAGE_HASH_SIZE],
-        signature: &[u8; fvm_shared::crypto::signature::SECP_SIG_LEN],
-    ) -> Result<[u8; fvm_shared::crypto::signature::SECP_PUB_LEN], anyhow::Error> {
-        todo!()
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
+        recover_secp_public_key(hash, signature).map_err(|_| anyhow!("failed to recover pubkey"))
     }
 }
 
@@ -988,16 +991,16 @@ impl Primitives for InvocationCtx<'_, '_> {
         panic!("TODO implement me")
     }
 
-    fn hash(&self, hasher: fvm_shared::crypto::hash::SupportedHashes, data: &[u8]) -> Vec<u8> {
-        todo!()
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        self.v.hash(hasher, data)
     }
 
     fn recover_secp_public_key(
         &self,
-        hash: &[u8; fvm_shared::crypto::signature::SECP_SIG_MESSAGE_HASH_SIZE],
-        signature: &[u8; fvm_shared::crypto::signature::SECP_SIG_LEN],
-    ) -> Result<[u8; fvm_shared::crypto::signature::SECP_PUB_LEN], anyhow::Error> {
-        todo!()
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
+        self.v.recover_secp_public_key(hash, signature)
     }
 }
 

@@ -312,8 +312,6 @@ mod tests {
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
-        use hex_literal::hex;
-
         use super::MockRuntime;
         use crate::interpreter::precompiles::{ec_add, ec_mul, PrecompileError};
 
