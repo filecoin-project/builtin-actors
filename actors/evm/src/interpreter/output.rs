@@ -1,4 +1,5 @@
 use fil_actors_runtime::ActorError;
+use fvm_shared::address::Address as FilecoinAddress;
 use {
     bytes::Bytes,
     fvm_ipld_encoding::Cbor,
@@ -14,8 +15,10 @@ pub struct Output {
     pub status_code: StatusCode,
     /// Output data returned.
     pub output_data: Bytes,
-    // indicates if revert was requested
+    /// Indicates if revert was requested
     pub reverted: bool,
+    /// Indicates whether the contract called SELFDESTRUCT, providing the beneficiary.
+    pub selfdestroyed: Option<FilecoinAddress>,
 }
 
 impl Debug for Output {

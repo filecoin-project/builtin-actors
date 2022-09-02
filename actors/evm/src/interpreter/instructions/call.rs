@@ -113,7 +113,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     _kind: CallKind,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
-    let rt = platform.rt;
+    let rt = &*platform.rt; // as immutable reference
 
     let _gas = stack.pop(); // EVM gas is not used in FVM
     let dst: H160 = crate::interpreter::uints::_u256_to_address(stack.pop());
