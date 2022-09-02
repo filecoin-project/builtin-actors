@@ -422,7 +422,7 @@ where
     }
 
     fn hash(&self, hasher: fvm_shared::crypto::hash::SupportedHashes, data: &[u8]) -> Vec<u8> {
-        fvm::crypto::hash(hasher, data)
+        fvm::crypto::hash_owned(hasher, data)
     }
 
     fn recover_secp_public_key(
