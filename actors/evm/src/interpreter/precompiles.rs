@@ -275,7 +275,7 @@ fn blake2f<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let t = &input[start..start + 16];
     start += 16;
 
-    debug_assert!(start == 212, "expected start to be at the last byte");
+    debug_assert_eq!(start, 212, "expected start to be at the last byte");
     let f = match input[start] {
         0 => Ok(false),
         1 => Ok(true),
