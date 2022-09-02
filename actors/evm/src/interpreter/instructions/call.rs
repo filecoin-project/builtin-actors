@@ -109,10 +109,11 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
 #[inline]
 pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
+    platform: &'r System<'r, BS, RT>,
     _kind: CallKind,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
+    let rt = platform.rt;
 
     let _gas = stack.pop(); // EVM gas is not used in FVM
     let dst: H160 = crate::interpreter::uints::_u256_to_address(stack.pop());
@@ -134,8 +135,8 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
             .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
             .unwrap_or_default();
 
-        let output = if precompiles::is_precompile(&dst) {
-            precompiles::call_precompile(dst, input_data)
+        let output = if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
+            precompiles::Precompiles::call_precompile(rt, dst, input_data)
         } else {
             todo!()
         };

@@ -947,6 +947,18 @@ impl Primitives for VM<'_> {
     ) -> Result<Cid, anyhow::Error> {
         Ok(make_piece_cid(b"unsealed from itest vm"))
     }
+
+    fn hash(&self, hasher: fvm_shared::crypto::hash::SupportedHashes, data: &[u8]) -> Vec<u8> {
+        todo!()
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; fvm_shared::crypto::signature::SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; fvm_shared::crypto::signature::SECP_SIG_LEN],
+    ) -> Result<[u8; fvm_shared::crypto::signature::SECP_PUB_LEN], anyhow::Error> {
+        todo!()
+    }
 }
 
 impl Primitives for InvocationCtx<'_, '_> {
@@ -974,6 +986,18 @@ impl Primitives for InvocationCtx<'_, '_> {
     #[cfg(feature = "m2-native")]
     fn install_actor(&self, _: &Cid) -> Result<(), anyhow::Error> {
         panic!("TODO implement me")
+    }
+
+    fn hash(&self, hasher: fvm_shared::crypto::hash::SupportedHashes, data: &[u8]) -> Vec<u8> {
+        todo!()
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; fvm_shared::crypto::signature::SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; fvm_shared::crypto::signature::SECP_SIG_LEN],
+    ) -> Result<[u8; fvm_shared::crypto::signature::SECP_PUB_LEN], anyhow::Error> {
+        todo!()
     }
 }
 

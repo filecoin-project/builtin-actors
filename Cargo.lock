@@ -447,9 +447,9 @@ dependencies = [
 
 [[package]]
 name = "cs_serde_bytes"
-version = "0.12.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7b5b4802671350eaced846f9fa82233c214b5d358ea85289b81c3aed58a0c6c"
+checksum = "5fc673ddabf48214550526b068dc28065a75f05e21e452880095247c635b1d91"
 dependencies = [
  "serde",
 ]
@@ -669,7 +669,6 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
- "fvm_sdk",
  "fvm_shared",
  "hex",
  "hex-literal",
@@ -1980,9 +1979,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.4.6"
+version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10c98bba371b9b22a71a9414e420f92ddeb2369239af08200816169d5e2dd7aa"
+checksum = "02e2d2db9033d13a1567121ddd7a095ee144db4e1ca1b1bda3419bc0da294ebd"
 dependencies = [
  "libc",
  "winapi",

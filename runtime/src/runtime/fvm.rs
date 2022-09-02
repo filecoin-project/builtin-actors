@@ -426,6 +426,18 @@ where
     fn install_actor(&self, code_id: &Cid) -> Result<(), Error> {
         fvm::actor::install_actor(code_id).map_err(|_| Error::msg("failed to install actor"))
     }
+
+    fn hash(&self, hasher: fvm_shared::crypto::hash::SupportedHashes, data: &[u8]) -> Vec<u8> {
+        fvm::crypto::hash(hasher, data)
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; fvm_shared::crypto::signature::SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; fvm_shared::crypto::signature::SECP_SIG_LEN],
+    ) -> Result<[u8; fvm_shared::crypto::signature::SECP_PUB_LEN], anyhow::Error> {
+        fvm::crypto::recover_secp_public_key(hash, signature).map_err(|e| anyhow!("failed to recover pubkey; exit code: {}", e))
+    }
 }
 
 #[cfg(not(feature = "fake-proofs"))]

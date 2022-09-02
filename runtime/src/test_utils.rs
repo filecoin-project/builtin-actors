@@ -16,6 +16,7 @@ use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -1070,6 +1071,11 @@ impl Primitives for MockRuntime {
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
         (*self.hash_func)(data)
     }
+
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        todo!()
+    }
+    
     fn compute_unsealed_sector_cid(
         &self,
         reg: RegisteredSealProof,
@@ -1100,6 +1106,14 @@ impl Primitives for MockRuntime {
     #[cfg(feature = "m2-native")]
     fn install_actor(&self, _code_cid: &Cid) -> anyhow::Result<(), anyhow::Error> {
         Ok(())
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; fvm_shared::crypto::signature::SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; fvm_shared::crypto::signature::SECP_SIG_LEN],
+    ) -> Result<[u8; fvm_shared::crypto::signature::SECP_PUB_LEN], anyhow::Error> {
+        todo!()
     }
 }
 
