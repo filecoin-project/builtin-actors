@@ -4,6 +4,7 @@
 use core::fmt;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::rc::Rc;
 
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
@@ -122,7 +123,7 @@ pub struct MockRuntime {
 
     // VM Impl
     pub in_call: bool,
-    pub store: MemoryBlockstore,
+    pub store: Rc<MemoryBlockstore>,
     pub in_transaction: bool,
 
     // Expectations
@@ -665,7 +666,7 @@ impl MessageInfo for MockRuntime {
     }
 }
 
-impl Runtime<MemoryBlockstore> for MockRuntime {
+impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
     fn network_version(&self) -> NetworkVersion {
         self.network_version
     }
@@ -884,7 +885,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         ret
     }
 
-    fn store(&self) -> &MemoryBlockstore {
+    fn store(&self) -> &Rc<MemoryBlockstore> {
         &self.store
     }
 
