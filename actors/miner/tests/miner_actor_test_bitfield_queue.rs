@@ -6,7 +6,6 @@ use fvm_ipld_bitfield::MaybeBitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use std::iter::FromIterator;
-use std::rc::Rc;
 
 mod util;
 use util::*;
@@ -227,12 +226,12 @@ fn empty_bitfield_queue_with_quantizing(
     rt: &MockRuntime,
     quant: QuantSpec,
     bitwidth: u32,
-) -> BitFieldQueue<Rc<MemoryBlockstore>> {
+) -> BitFieldQueue<MemoryBlockstore> {
     let cid = Amt::<(), _>::new_with_bit_width(&rt.store, bitwidth).flush().unwrap();
 
-    BitFieldQueue::new(&rt.store, &cid, quant).unwrap()
+    BitFieldQueue::new(&*rt.store, &cid, quant).unwrap()
 }
 
-fn empty_bitfield_queue(rt: &MockRuntime, bitwidth: u32) -> BitFieldQueue<Rc<MemoryBlockstore>> {
+fn empty_bitfield_queue(rt: &MockRuntime, bitwidth: u32) -> BitFieldQueue<MemoryBlockstore> {
     empty_bitfield_queue_with_quantizing(rt, NO_QUANTIZATION, bitwidth)
 }
