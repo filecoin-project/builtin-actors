@@ -716,7 +716,7 @@ fn empty_expiration_queue_with_quantizing(
     let empty_array =
         Amt::<(), _>::new_with_bit_width(&rt.store, TEST_AMT_BITWIDTH).flush().unwrap();
 
-    ExpirationQueue::new(&rt.store, &empty_array, quant).unwrap()
+    ExpirationQueue::new(&*rt.store, &empty_array, quant).unwrap()
 }
 
 fn empty_expiration_queue(rt: &MockRuntime) -> ExpirationQueue<MemoryBlockstore> {

@@ -229,7 +229,7 @@ fn empty_bitfield_queue_with_quantizing(
 ) -> BitFieldQueue<MemoryBlockstore> {
     let cid = Amt::<(), _>::new_with_bit_width(&rt.store, bitwidth).flush().unwrap();
 
-    BitFieldQueue::new(&rt.store, &cid, quant).unwrap()
+    BitFieldQueue::new(&*rt.store, &cid, quant).unwrap()
 }
 
 fn empty_bitfield_queue(rt: &MockRuntime, bitwidth: u32) -> BitFieldQueue<MemoryBlockstore> {

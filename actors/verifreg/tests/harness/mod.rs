@@ -388,139 +388,18 @@ impl Harness {
     }
 }
 
-pub fn make_alloc(data_id: &str, client: ActorID, provider: ActorID, size: u64) -> Allocation {
-    Allocation {
-        client,
-        provider,
-        data: make_piece_cid(data_id.as_bytes()),
-        size: PaddedPieceSize(size),
-        term_min: 1000,
-        term_max: 2000,
-        expiration: 100,
-    }
+fn load_verifiers(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
+    let state: State = rt.get_state();
+    make_map_with_root_and_bitwidth::<_, BigIntDe>(&state.verifiers, &*rt.store, HAMT_BIT_WIDTH)
+        .unwrap()
 }
 
-// Creates an allocation request for fixed data with default terms.
-pub fn make_alloc_req(rt: &MockRuntime, provider: ActorID, size: u64) -> AllocationRequest {
-    AllocationRequest {
-        provider: Address::new_id(provider),
-        data: make_piece_cid("1234".as_bytes()),
-        size: PaddedPieceSize(size),
-        term_min: MINIMUM_VERIFIED_ALLOCATION_TERM,
-        term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM,
-        expiration: rt.epoch + 100,
-    }
-}
-
-pub fn make_extension_req(
-    provider: ActorID,
-    claim: ClaimID,
-    term_max: ChainEpoch,
-) -> ClaimExtensionRequest {
-    ClaimExtensionRequest { provider: Address::new_id(provider), claim, term_max }
-}
-
-// Creates the expected allocation from a request.
-pub fn alloc_from_req(client: ActorID, req: &AllocationRequest) -> Allocation {
-    Allocation {
-        client,
-        provider: req.provider.id().unwrap(),
-        data: req.data,
-        size: req.size,
-        term_min: req.term_min,
-        term_max: req.term_max,
-        expiration: req.expiration,
-    }
-}
-
-pub fn make_claim_req(
-    id: AllocationID,
-    alloc: &Allocation,
-    sector_id: SectorNumber,
-    sector_expiry: ChainEpoch,
-) -> SectorAllocationClaim {
-    SectorAllocationClaim {
-        client: alloc.client,
-        allocation_id: id,
-        data: alloc.data,
-        size: alloc.size,
-        sector: sector_id,
-        sector_expiry,
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn make_claim(
-    data_id: &str,
-    client: ActorID,
-    provider: ActorID,
-    size: u64,
-    term_min: i64,
-    term_max: i64,
-    term_start: i64,
-    sector: u64,
-) -> Claim {
-    Claim {
-        provider,
-        client,
-        data: make_piece_cid(data_id.as_bytes()),
-        size: PaddedPieceSize(size),
-        term_min,
-        term_max,
-        term_start,
-        sector,
-    }
-}
-
-pub fn claim_from_alloc(alloc: &Allocation, term_start: ChainEpoch, sector: SectorNumber) -> Claim {
-    Claim {
-        provider: alloc.provider,
-        client: alloc.client,
-        data: alloc.data,
-        size: alloc.size,
-        term_min: alloc.term_min,
-        term_max: alloc.term_max,
-        term_start,
-        sector,
-    }
-}
-
-pub fn make_receiver_hook_token_payload(
-    client: ActorID,
-    alloc_requests: Vec<AllocationRequest>,
-    extension_requests: Vec<ClaimExtensionRequest>,
-    datacap_received: u64,
-) -> FRC46TokenReceived {
-    // let total_size: u64 = alloc_requests.iter().map(|r| r.size.0).sum();
-    let payload =
-        AllocationRequests { allocations: alloc_requests, extensions: extension_requests };
-    FRC46TokenReceived {
-        from: client,
-        to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-        operator: client,
-        amount: TokenAmount::from_whole(datacap_received as i64),
-        operator_data: serialize(&payload, "operator data").unwrap(),
-        token_data: Default::default(),
-    }
-}
-
-pub fn assert_allocation(
-    rt: &MockRuntime,
-    client: ActorID,
-    id: AllocationID,
-    expected: &Allocation,
-) {
-    let st: State = rt.get_state();
-    let store = &rt.store();
-    let mut allocs = st.load_allocs(store).unwrap();
-
-    assert_eq!(expected, allocs.get(client, id).unwrap().unwrap());
-}
-
-pub fn assert_claim(rt: &MockRuntime, provider: ActorID, id: ClaimID, expected: &Claim) {
-    let st: State = rt.get_state();
-    let store = &rt.store();
-    let mut claims = st.load_claims(store).unwrap();
-
-    assert_eq!(expected, claims.get(provider, id).unwrap().unwrap());
+fn load_clients(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
+    let state: State = rt.get_state();
+    make_map_with_root_and_bitwidth::<_, BigIntDe>(
+        &state.verified_clients,
+        &*rt.store,
+        HAMT_BIT_WIDTH,
+    )
+    .unwrap()
 }
