@@ -1,9 +1,26 @@
 use {
-    super::memory::get_memory_region, crate::interpreter::output::StatusCode,
-    crate::interpreter::stack::Stack, crate::interpreter::CallKind,
-    crate::interpreter::ExecutionState, crate::interpreter::System, crate::interpreter::U256,
-    fil_actors_runtime::runtime::Runtime, fvm_ipld_blockstore::Blockstore,
+    super::memory::get_memory_region,
+    crate::interpreter::instructions::memory::MemoryRegion,
+    crate::interpreter::output::StatusCode,
+    crate::interpreter::precompiles,
+    crate::interpreter::stack::Stack,
+    crate::interpreter::ExecutionState,
+    crate::interpreter::System,
+    crate::interpreter::{H160, U256},
+    fil_actors_runtime::runtime::Runtime,
+    fvm_ipld_blockstore::Blockstore,
 };
+
+/// The kind of call-like instruction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CallKind {
+    Call,
+    DelegateCall,
+    StaticCall,
+    CallCode,
+    Create,
+    Create2 { salt: U256 },
+}
 
 #[inline]
 pub fn calldataload(state: &mut ExecutionState) {
@@ -36,8 +53,8 @@ pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let input_index = state.stack.pop();
     let size = state.stack.pop();
 
-    let region =
-        get_memory_region(state, mem_index, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let region = get_memory_region(&mut state.memory, mem_index, size)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     if let Some(region) = &region {
         let input_len = U256::from(state.input_data.len());
@@ -69,8 +86,8 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
     let input_index = state.stack.pop();
     let size = state.stack.pop();
 
-    let region =
-        get_memory_region(state, mem_index, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let region = get_memory_region(&mut state.memory, mem_index, size)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     if let Some(region) = region {
         let src = core::cmp::min(U256::from(code.len()), input_index).as_usize();
@@ -91,10 +108,51 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
 
 #[inline]
 pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
     _kind: CallKind,
-    _is_static: bool,
 ) -> Result<(), StatusCode> {
+    let ExecutionState { stack, memory, .. } = state;
+    let rt = platform.rt;
+
+    let _gas = stack.pop(); // EVM gas is not used in FVM
+    let dst: H160 = crate::interpreter::uints::_u256_to_address(stack.pop());
+    let input_offset = stack.pop();
+    let input_size = stack.pop();
+    let output_offset = stack.pop();
+    let output_size = stack.pop();
+
+    // XXX do we need this?
+    stack.push(U256::zero()); // Assume failure.
+
+    // TODO Errs
+    let input_region = get_memory_region(memory, input_offset, input_size).unwrap();
+    let output_region = get_memory_region(memory, output_offset, output_size).unwrap();
+
+    let output = {
+        // ref to memory is dropped after calling so we can mutate it on output later
+        let input_data = input_region
+            .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
+            .unwrap_or_default();
+
+        let output = if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
+            precompiles::Precompiles::call_precompile(rt, dst, input_data)
+        } else {
+            todo!()
+        };
+
+        output.unwrap()
+    };
+
+    let output_data = output_region
+        .map(|MemoryRegion { offset, size }| {
+            &mut memory[offset..][..size.get()] // would like to use get for this to err instead of panic
+        })
+        .unwrap_or_default();
+
+    // TODO errs
+    output_data.get_mut(..output.len()).unwrap().copy_from_slice(&output);
+
+    // TODO do things after writing into output
     todo!();
 }
