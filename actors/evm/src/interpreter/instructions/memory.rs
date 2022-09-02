@@ -3,8 +3,6 @@
 use {
     crate::interpreter::memory::Memory,
     crate::interpreter::{ExecutionState, StatusCode, U256},
-    fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
     std::num::NonZeroUsize,
 };
 

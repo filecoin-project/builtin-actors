@@ -39,7 +39,9 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
-use fvm_shared::crypto::signature::{Signature, SECP_SIG_MESSAGE_HASH_SIZE, SECP_PUB_LEN, SECP_SIG_LEN};
+use fvm_shared::crypto::signature::{
+    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;

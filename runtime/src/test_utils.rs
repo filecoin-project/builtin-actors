@@ -17,7 +17,9 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
-use fvm_shared::crypto::signature::{Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE};
+use fvm_shared::crypto::signature::{
+    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
@@ -40,9 +42,7 @@ use crate::runtime::{
     Verifier,
 };
 use crate::{actor_error, ActorError};
-use libsecp256k1::{
-    recover, Message, RecoveryId, Signature as EcsdaSignature,
-};
+use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
 lazy_static! {
     pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/system");
@@ -122,7 +122,12 @@ pub struct MockRuntime {
     #[allow(clippy::type_complexity)]
     pub hash_func: Box<dyn Fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)>,
     #[allow(clippy::type_complexity)]
-    pub recover_pubkey_fn: Box<dyn Fn(&[u8; SECP_SIG_MESSAGE_HASH_SIZE], &[u8; SECP_SIG_LEN]) -> Result<[u8; SECP_PUB_LEN], ()>>,
+    pub recover_pubkey_fn: Box<
+        dyn Fn(
+            &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+            &[u8; SECP_SIG_LEN],
+        ) -> Result<[u8; SECP_PUB_LEN], ()>,
+    >,
     pub network_version: NetworkVersion,
 
     // Actor State
@@ -1085,7 +1090,7 @@ impl Primitives for MockRuntime {
         let (digest, len) = (*self.hash_func)(hasher, data);
         Vec::from(&digest[..len])
     }
-    
+
     fn compute_unsealed_sector_cid(
         &self,
         reg: RegisteredSealProof,
@@ -1278,6 +1283,7 @@ pub fn hash(hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
     (digest, written as usize)
 }
 
+#[allow(clippy::result_unit_err)]
 pub fn recover_secp_public_key(
     hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
     signature: &[u8; SECP_SIG_LEN],
