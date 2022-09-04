@@ -19,7 +19,7 @@ mod util {
     use fil_actors_runtime::test_utils::MockRuntime;
 
     pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
-        rt.policy.minimum_verified_deal_size.clone() + 42
+        rt.policy.minimum_verified_allocation_size.clone() + 42
     }
 
     pub fn client_allowance(rt: &MockRuntime) -> StoragePower {
@@ -108,7 +108,7 @@ mod verifiers {
     #[test]
     fn add_verifier_enforces_min_size() {
         let (h, mut rt) = new_harness();
-        let allowance = rt.policy.minimum_verified_deal_size.clone() - 1;
+        let allowance = rt.policy.minimum_verified_allocation_size.clone() - 1;
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_verifier(&mut rt, &VERIFIER, &allowance),
@@ -306,7 +306,7 @@ mod clients {
         let allowance_verifier = verifier_allowance(&rt);
         h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
 
-        let allowance = rt.policy.minimum_verified_deal_size.clone();
+        let allowance = rt.policy.minimum_verified_allocation_size.clone();
         h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance).unwrap();
         h.check_state(&rt);
     }
@@ -343,7 +343,7 @@ mod clients {
         let allowance_verifier = verifier_allowance(&rt);
         h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
 
-        let allowance = rt.policy.minimum_verified_deal_size.clone() - 1;
+        let allowance = rt.policy.minimum_verified_allocation_size.clone() - 1;
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance),
@@ -422,19 +422,13 @@ mod clients {
 
 mod claims {
     use fvm_shared::error::ExitCode;
-    use fvm_shared::sector::SectorID;
-    use fvm_shared::HAMT_BIT_WIDTH;
 
-    use fil_actor_verifreg::{Allocation, AllocationID, Claim, ClaimID, State};
+    use fil_actor_verifreg::State;
     use fil_actors_runtime::runtime::Runtime;
-    use fil_actors_runtime::{BatchReturnGen, MapMap};
+    use fil_actors_runtime::BatchReturnGen;
     use harness::*;
 
     use crate::*;
-
-    fn sector_id(provider: Address, number: u64) -> SectorID {
-        SectorID { miner: provider.id().unwrap(), number }
-    }
 
     #[test]
     fn expire_allocs() {
@@ -503,9 +497,9 @@ mod claims {
                 &mut rt,
                 provider,
                 vec![
-                    make_claim_req(1, alloc1, sector_id(provider, 1000), 1500),
-                    make_claim_req(2, alloc2, sector_id(provider, 1000), 1500),
-                    make_claim_req(3, alloc3, sector_id(provider, 1000), 1500),
+                    make_claim_req(1, alloc1, 1000, 1500),
+                    make_claim_req(2, alloc2, 1000, 1500),
+                    make_claim_req(3, alloc3, 1000, 1500),
                 ],
                 size * 3,
             )
@@ -515,16 +509,15 @@ mod claims {
 
         // check that state is as expected
         let st: State = rt.get_state();
-        let mut allocs: MapMap<'_, _, Allocation, Address, AllocationID> =
-            MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
+        let store = rt.store();
+        let mut allocs = st.load_allocs(&store).unwrap();
         // allocs deleted
         assert!(allocs.get(*CLIENT, 1).unwrap().is_none());
         assert!(allocs.get(*CLIENT, 2).unwrap().is_none());
         assert!(allocs.get(*CLIENT, 3).unwrap().is_none());
 
         // claims inserted
-        let mut claims: MapMap<'_, _, Claim, Address, ClaimID> =
-            MapMap::from_root(rt.store(), &st.claims, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
+        let mut claims = st.load_claims(&store).unwrap();
         assert_eq!(claims.get(provider, 1).unwrap().unwrap().client, *CLIENT);
         assert_eq!(claims.get(provider, 2).unwrap().unwrap().client, *CLIENT);
         assert_eq!(claims.get(provider, 3).unwrap().unwrap().client, *CLIENT);
@@ -534,100 +527,229 @@ mod claims {
 mod datacap {
     use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::Address;
+    use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
-    use fvm_shared::MethodNum;
-    use num_traits::Zero;
+    use fvm_shared::{ActorID, MethodNum};
 
-    use fil_actor_verifreg::{
-        Actor as VerifregActor, DataCap, Method, RestoreBytesParams, UseBytesParams,
+    use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
+    use fil_actor_verifreg::{Actor as VerifregActor, Method, RestoreBytesParams, State};
+    use fil_actors_runtime::runtime::policy_constants::{
+        MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION, MAXIMUM_VERIFIED_ALLOCATION_TERM,
+        MINIMUM_VERIFIED_ALLOCATION_SIZE, MINIMUM_VERIFIED_ALLOCATION_TERM,
     };
+    use fil_actors_runtime::runtime::Runtime;
     use fil_actors_runtime::test_utils::*;
-    use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
+    use fil_actors_runtime::{
+        DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_POWER_ACTOR_ADDR,
+    };
     use harness::*;
     use util::*;
 
     use crate::*;
 
-    #[test]
-    fn consume_values() {
-        let (h, mut rt) = new_harness();
-        let two = rt.policy.minimum_verified_deal_size.clone() * 2;
-        let one = rt.policy.minimum_verified_deal_size.clone();
-        let nibble = DataCap::from(1);
+    const CLIENT1: ActorID = 101;
+    const CLIENT2: ActorID = 102;
+    const PROVIDER1: ActorID = 301;
+    const PROVIDER2: ActorID = 302;
+    const ALLOC_SIZE: u64 = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
 
-        // Use bytes with 2x deal size remaining.
-        h.use_bytes(&mut rt, &CLIENT, &one, ExitCode::OK, &two).unwrap();
-        // Use bytes with 1x deal size remaining
-        h.use_bytes(&mut rt, &CLIENT, &one, ExitCode::OK, &one).unwrap();
-        // Use bytes with less than minimum remaining (this triggers additional internal calls)
-        h.use_bytes(&mut rt, &CLIENT, &one, ExitCode::OK, &nibble).unwrap();
-        // Use exact remaining cap
-        h.use_bytes(&mut rt, &CLIENT, &one, ExitCode::OK, &DataCap::zero()).unwrap();
+    #[test]
+    fn receive_tokens_make_allocs() {
+        let (h, mut rt) = new_harness();
+        add_miner(&mut rt, PROVIDER1);
+        add_miner(&mut rt, PROVIDER2);
+
+        {
+            let reqs = vec![
+                make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE),
+                make_alloc_req(&rt, PROVIDER2, ALLOC_SIZE * 2),
+            ];
+            let payload = make_token_receiver_hook_params(CLIENT1, reqs.clone());
+            h.receive_tokens(&mut rt, payload).unwrap();
+
+            // Verify allocations in state.
+            let st: State = rt.get_state();
+            let store = &rt.store();
+            let mut allocs = st.load_allocs(store).unwrap();
+
+            let client_addr = Address::new_id(CLIENT1);
+            assert_eq!(
+                &alloc_from_req(&client_addr, &reqs[0]),
+                allocs.get(client_addr, 1).unwrap().unwrap()
+            );
+            assert_eq!(
+                &alloc_from_req(&client_addr, &reqs[1]),
+                allocs.get(client_addr, 2).unwrap().unwrap()
+            );
+            assert_eq!(3, st.next_allocation_id);
+        }
+        {
+            // Make another allocation from a different client
+            let reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
+            let payload = make_token_receiver_hook_params(CLIENT2, reqs.clone());
+            h.receive_tokens(&mut rt, payload).unwrap();
+
+            // Verify allocations in state.
+            let st: State = rt.get_state();
+            let store = &rt.store();
+            let mut allocs = st.load_allocs(store).unwrap();
+            let client_addr = Address::new_id(CLIENT2);
+            assert_eq!(
+                &alloc_from_req(&client_addr, &reqs[0]),
+                allocs.get(client_addr, 3).unwrap().unwrap()
+            );
+            assert_eq!(4, st.next_allocation_id);
+        }
         h.check_state(&rt);
     }
 
     #[test]
-    fn consume_exhausted() {
+    fn receive_requires_datacap_caller() {
         let (h, mut rt) = new_harness();
-        let deal_size = rt.policy.minimum_verified_deal_size.clone();
-        expect_abort(
-            ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.use_bytes(
-                &mut rt,
-                &CLIENT,
-                &deal_size,
-                ExitCode::USR_INSUFFICIENT_FUNDS,
-                &DataCap::zero(),
-            ),
+        add_miner(&mut rt, PROVIDER1);
+
+        let payload = make_token_receiver_hook_params(
+            CLIENT1,
+            vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)],
         );
-        h.check_state(&rt)
-    }
 
-    #[test]
-    fn consume_resolves_client_address() {
-        let (h, mut rt) = new_harness();
-        let allowance = rt.policy.minimum_verified_deal_size.clone();
-
-        let client_pubkey = Address::new_secp256k1(&[3u8; 65]).unwrap();
-        rt.id_addresses.insert(client_pubkey, *CLIENT);
-        h.use_bytes(&mut rt, &client_pubkey, &allowance, ExitCode::OK, &DataCap::zero()).unwrap();
-        h.check_state(&rt)
-    }
-
-    #[test]
-    fn consume_requires_market_actor_caller() {
-        let (h, mut rt) = new_harness();
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
-        let params = UseBytesParams {
-            address: *CLIENT,
-            deal_size: rt.policy.minimum_verified_deal_size.clone(),
-        };
-        expect_abort(
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR); // Wrong caller
+        rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
+        expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
+            "caller address",
             rt.call::<VerifregActor>(
-                Method::UseBytes as MethodNum,
-                &RawBytes::serialize(params).unwrap(),
+                Method::FungibleTokenReceiverHook as MethodNum,
+                &RawBytes::serialize(&payload).unwrap(),
             ),
         );
-        h.check_state(&rt)
+        rt.verify();
+        h.check_state(&rt);
     }
 
     #[test]
-    fn consume_requires_minimum_deal_size() {
+    fn receive_requires_to_self() {
         let (h, mut rt) = new_harness();
-        let deal_size = rt.policy.minimum_verified_deal_size.clone() - 1;
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.use_bytes(&mut rt, &CLIENT, &deal_size, ExitCode::OK, &DataCap::zero()),
+        add_miner(&mut rt, PROVIDER1);
+
+        let mut payload = make_token_receiver_hook_params(
+            CLIENT1,
+            vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)],
         );
-        h.check_state(&rt)
+        // Set invalid receiver hook "to" address (should be the verified registry itself).
+        payload.to = PROVIDER1;
+
+        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "token receiver expected to",
+            rt.call::<VerifregActor>(
+                Method::FungibleTokenReceiverHook as MethodNum,
+                &RawBytes::serialize(&payload).unwrap(),
+            ),
+        );
+        rt.verify();
+        h.check_state(&rt);
+    }
+
+    #[test]
+    fn receive_requires_miner_actor() {
+        let (h, mut rt) = new_harness();
+        rt.set_address_actor_type(Address::new_id(PROVIDER1), *ACCOUNT_ACTOR_CODE_ID);
+
+        let reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
+        let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "allocation provider f0301 must be a miner actor",
+            h.receive_tokens(&mut rt, payload),
+        );
+        h.check_state(&rt);
+    }
+
+    #[test]
+    fn receive_invalid_reqs() {
+        let (h, mut rt) = new_harness();
+        add_miner(&mut rt, PROVIDER1);
+
+        // Alloc too small
+        {
+            let reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE - 1)];
+            let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "allocation size 1048575 below minimum 1048576",
+                h.receive_tokens(&mut rt, payload),
+            );
+        }
+        // Min term too short
+        {
+            let mut reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
+            reqs[0].term_min = MINIMUM_VERIFIED_ALLOCATION_TERM - 1;
+            let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "allocation term min 518399 below limit 518400",
+                h.receive_tokens(&mut rt, payload),
+            );
+        }
+        // Max term too long
+        {
+            let mut reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
+            reqs[0].term_max = MAXIMUM_VERIFIED_ALLOCATION_TERM + 1;
+            let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "allocation term max 5259486 above limit 5259485",
+                h.receive_tokens(&mut rt, payload),
+            );
+        }
+        // Term minimum greater than maximum
+        {
+            let mut reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
+            reqs[0].term_max = 2 * EPOCHS_IN_YEAR;
+            reqs[0].term_min = reqs[0].term_max + 1;
+            let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "allocation term min 2103795 exceeds term max 2103794",
+                h.receive_tokens(&mut rt, payload),
+            );
+        }
+        // Allocation expires too late
+        {
+            let mut reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
+            reqs[0].expiration = rt.epoch + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION + 1;
+            let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "allocation expiration 86401 exceeds maximum 86400",
+                h.receive_tokens(&mut rt, payload),
+            );
+        }
+        // Tokens received doesn't match sum of allocation sizes
+        {
+            let reqs = vec![
+                make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE),
+                make_alloc_req(&rt, PROVIDER2, ALLOC_SIZE),
+            ];
+            let mut payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            payload.amount = TokenAmount::from(ALLOC_SIZE * 2 + 1) * TOKEN_PRECISION;
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "total allocation size 2097152 must match data cap amount received 2097153",
+                h.receive_tokens(&mut rt, payload),
+            );
+        }
+        h.check_state(&rt);
     }
 
     #[test]
     fn restore() {
         let (h, mut rt) = new_harness();
-        let deal_size = &rt.policy.minimum_verified_deal_size.clone();
+        let deal_size = &rt.policy.minimum_verified_allocation_size.clone();
         h.restore_bytes(&mut rt, &CLIENT, deal_size).unwrap();
         h.check_state(&rt);
     }
@@ -639,7 +761,7 @@ mod datacap {
         rt.id_addresses.insert(client_pubkey, *CLIENT);
 
         // Restore to pubkey address.
-        let deal_size = rt.policy.minimum_verified_deal_size.clone();
+        let deal_size = rt.policy.minimum_verified_allocation_size.clone();
         h.restore_bytes(&mut rt, &client_pubkey, &deal_size).unwrap();
         h.check_state(&rt)
     }
@@ -651,7 +773,7 @@ mod datacap {
         rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
         let params = RestoreBytesParams {
             address: *CLIENT,
-            deal_size: rt.policy.minimum_verified_deal_size.clone(),
+            deal_size: rt.policy.minimum_verified_allocation_size.clone(),
         };
         expect_abort(
             ExitCode::USR_FORBIDDEN,
@@ -667,7 +789,7 @@ mod datacap {
     fn restore_requires_minimum_deal_size() {
         let (h, mut rt) = new_harness();
 
-        let deal_size = rt.policy.minimum_verified_deal_size.clone() - 1;
+        let deal_size = rt.policy.minimum_verified_allocation_size.clone() - 1;
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.restore_bytes(&mut rt, &CLIENT, &deal_size));
         h.check_state(&rt)
     }
@@ -675,7 +797,7 @@ mod datacap {
     #[test]
     fn restore_rejects_root() {
         let (h, mut rt) = new_harness();
-        let deal_size = rt.policy.minimum_verified_deal_size.clone();
+        let deal_size = rt.policy.minimum_verified_allocation_size.clone();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.restore_bytes(&mut rt, &ROOT_ADDR, &deal_size),
@@ -688,7 +810,7 @@ mod datacap {
         let (h, mut rt) = new_harness();
         let allowance = verifier_allowance(&rt);
         h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
-        let deal_size = rt.policy.minimum_verified_deal_size.clone();
+        let deal_size = rt.policy.minimum_verified_allocation_size.clone();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.restore_bytes(&mut rt, &VERIFIER, &deal_size),

@@ -1,3 +1,4 @@
+use fil_fungible_token::receiver::types::TokensReceivedParams;
 use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
 use fil_fungible_token::token::TOKEN_PRECISION;
 use fvm_ipld_encoding::RawBytes;
@@ -7,24 +8,27 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::SectorID;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
 use num_traits::{Signed, ToPrimitive, Zero};
 
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
-    AllocationID, ClaimAllocationsParams, ClaimAllocationsReturn, DataCap, Method,
-    RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RestoreBytesParams,
-    SectorAllocationClaim, State, UseBytesParams,
+    AllocationID, AllocationRequest, AllocationRequests, ClaimAllocationsParams,
+    ClaimAllocationsReturn, DataCap, Method, RemoveExpiredAllocationsParams,
+    RemoveExpiredAllocationsReturn, RestoreBytesParams, SectorAllocationClaim, State,
 };
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::policy_constants::{
+    MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_TERM,
+};
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, ActorError, AsActorError, MapMap, DATACAP_TOKEN_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 lazy_static! {
@@ -33,11 +37,16 @@ lazy_static! {
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
-        receiver: *ROOT_ADDR,
+        receiver: *VERIFIED_REGISTRY_ACTOR_ADDR,
         caller: *SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
+}
+
+// Sets the miner code/type for an actor ID
+pub fn add_miner(rt: &mut MockRuntime, id: ActorID) {
+    rt.set_address_actor_type(Address::new_id(id), *MINER_ACTOR_CODE_ID);
 }
 
 pub fn new_harness() -> (Harness, MockRuntime) {
@@ -188,62 +197,6 @@ impl Harness {
         Ok(())
     }
 
-    pub fn use_bytes(
-        &self,
-        rt: &mut MockRuntime,
-        client: &Address,
-        amount: &DataCap,
-        result: ExitCode,    // Mocked exit code from the token destroy
-        remaining: &DataCap, // Mocked remaining balance after token destroy
-    ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR);
-        let client_resolved = rt.get_id_address(client).unwrap_or(*client);
-
-        // Expect tokens to be destroyed.
-        let destroy_params = ext::datacap::DestroyParams {
-            owner: client_resolved,
-            amount: TokenAmount::from_whole(amount.to_i64().unwrap()),
-        };
-        rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::Destroy as MethodNum,
-            RawBytes::serialize(&destroy_params).unwrap(),
-            TokenAmount::zero(),
-            serialize(
-                &BurnReturn { balance: TokenAmount::from_whole(remaining.to_i64().unwrap()) },
-                "",
-            )
-            .unwrap(),
-            result,
-        );
-
-        // Expect second destroy if remaining balance is below minimum.
-        if remaining.is_positive() && remaining < &rt.policy.minimum_verified_deal_size {
-            let destroy_params = ext::datacap::DestroyParams {
-                owner: client_resolved,
-                amount: TokenAmount::from_whole(remaining.to_i64().unwrap()),
-            };
-            rt.expect_send(
-                *DATACAP_TOKEN_ACTOR_ADDR,
-                ext::datacap::Method::Destroy as MethodNum,
-                RawBytes::serialize(&destroy_params).unwrap(),
-                TokenAmount::zero(),
-                serialize(&BurnReturn { balance: TokenAmount::zero() }, "").unwrap(),
-                result,
-            );
-        }
-
-        let params = UseBytesParams { address: *client, deal_size: amount.clone() };
-        let ret = rt.call::<VerifregActor>(
-            Method::UseBytes as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
-        )?;
-        assert_eq!(RawBytes::default(), ret);
-        rt.verify();
-        Ok(())
-    }
-
     pub fn restore_bytes(
         &self,
         rt: &mut MockRuntime,
@@ -370,6 +323,22 @@ impl Harness {
         rt.verify();
         Ok(ret)
     }
+
+    pub fn receive_tokens(
+        &self,
+        rt: &mut MockRuntime,
+        payload: TokensReceivedParams,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
+        let ret = rt.call::<VerifregActor>(
+            Method::FungibleTokenReceiverHook as MethodNum,
+            &RawBytes::serialize(&payload).unwrap(),
+        )?;
+        assert_eq!(RawBytes::default(), ret);
+        rt.verify();
+        Ok(())
+    }
 }
 
 pub fn make_alloc(data_id: &str, client: &Address, provider: &Address, size: u64) -> Allocation {
@@ -384,10 +353,35 @@ pub fn make_alloc(data_id: &str, client: &Address, provider: &Address, size: u64
     }
 }
 
+// Creates an allocation request for fixed data with default terms.
+pub fn make_alloc_req(rt: &MockRuntime, provider: ActorID, size: u64) -> AllocationRequest {
+    AllocationRequest {
+        provider: Address::new_id(provider),
+        data: make_piece_cid("1234".as_bytes()),
+        size: PaddedPieceSize(size),
+        term_min: MINIMUM_VERIFIED_ALLOCATION_TERM,
+        term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM,
+        expiration: rt.epoch + 100,
+    }
+}
+
+// Creates the expected allocation from a request.
+pub fn alloc_from_req(client: &Address, req: &AllocationRequest) -> Allocation {
+    Allocation {
+        client: *client,
+        provider: req.provider,
+        data: req.data,
+        size: req.size,
+        term_min: req.term_min,
+        term_max: req.term_max,
+        expiration: req.expiration,
+    }
+}
+
 pub fn make_claim_req(
     id: AllocationID,
     alloc: Allocation,
-    sector_id: SectorID,
+    sector_id: SectorNumber,
     sector_expiry: ChainEpoch,
 ) -> SectorAllocationClaim {
     SectorAllocationClaim {
@@ -397,5 +391,21 @@ pub fn make_claim_req(
         size: alloc.size,
         sector_id,
         sector_expiry,
+    }
+}
+
+pub fn make_token_receiver_hook_params(
+    client: ActorID,
+    requests: Vec<AllocationRequest>,
+) -> TokensReceivedParams {
+    let total_size: u64 = requests.iter().map(|r| r.size.0).sum();
+    let payload = AllocationRequests { requests };
+    TokensReceivedParams {
+        from: client,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+        operator: client,
+        amount: TokenAmount::from(total_size) * TOKEN_PRECISION,
+        operator_data: serialize(&payload, "operator data").unwrap(),
+        token_data: Default::default(),
     }
 }

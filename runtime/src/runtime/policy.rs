@@ -138,7 +138,14 @@ pub struct Policy {
     // --- verifreg policy
     /// Minimum verified deal size
     #[serde(with = "bigint_ser")]
-    pub minimum_verified_deal_size: StoragePower,
+    pub minimum_verified_allocation_size: StoragePower,
+    /// Minimum term for a verified data allocation (epochs)
+    pub minimum_verified_allocation_term: i64,
+    /// Maximum term for a verified data allocaion (epochs)
+    pub maximum_verified_allocation_term: i64,
+    /// Maximum time a verified allocation can be active without being claimed (epochs).
+    /// Supports recovery of erroneous allocations and prevents indefinite squatting on datacap.
+    pub maximum_verified_allocation_expiration: i64,
 
     //  --- market policy ---
     /// The number of blocks between payouts for deals
@@ -221,10 +228,14 @@ impl Default for Policy {
                 RegisteredSealProof::StackedDRG64GiBV1P1,
             ]),
 
-            minimum_verified_deal_size: StoragePower::from_i32(
-                policy_constants::MINIMUM_VERIFIED_DEAL_SIZE,
+            minimum_verified_allocation_size: StoragePower::from_i32(
+                policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE,
             )
             .unwrap(),
+            minimum_verified_allocation_term: policy_constants::MINIMUM_VERIFIED_ALLOCATION_TERM,
+            maximum_verified_allocation_term: policy_constants::MAXIMUM_VERIFIED_ALLOCATION_TERM,
+            maximum_verified_allocation_expiration:
+                policy_constants::MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 
             deal_updates_interval: policy_constants::DEAL_UPDATES_INTERVAL,
             prov_collateral_percent_supply_num:
@@ -238,9 +249,10 @@ impl Default for Policy {
 }
 
 pub mod policy_constants {
-    use crate::builtin::*;
     use fvm_shared::clock::ChainEpoch;
     use fvm_shared::clock::EPOCH_DURATION_SECONDS;
+
+    use crate::builtin::*;
 
     /// Maximum amount of sectors that can be aggregated.
     pub const MAX_AGGREGATED_SECTORS: u64 = 819;
@@ -363,9 +375,12 @@ pub mod policy_constants {
     pub const CHAIN_FINALITY: ChainEpoch = 900;
 
     #[cfg(not(feature = "small-deals"))]
-    pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 1 << 20;
+    pub const MINIMUM_VERIFIED_ALLOCATION_SIZE: i32 = 1 << 20;
     #[cfg(feature = "small-deals")]
-    pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 256;
+    pub const MINIMUM_VERIFIED_ALLOCATION_SIZE: i32 = 256;
+    pub const MINIMUM_VERIFIED_ALLOCATION_TERM: i64 = 180 * EPOCHS_IN_DAY;
+    pub const MAXIMUM_VERIFIED_ALLOCATION_TERM: i64 = 5 * EPOCHS_IN_YEAR;
+    pub const MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION: i64 = 30 * EPOCHS_IN_DAY;
 
     /// DealUpdatesInterval is the number of blocks between payouts for deals
     pub const DEAL_UPDATES_INTERVAL: i64 = EPOCHS_IN_DAY;

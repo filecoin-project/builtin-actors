@@ -107,12 +107,22 @@ where
     pub fn put_if_absent(&mut self, outside_k: K1, inside_k: K2, value: V) -> Result<bool, Error> {
         let in_map = self.load_inner_map(outside_k)?.1;
 
-        if in_map.contains_key::<BytesKey>(&inside_k.key())? {
-            return Ok(false);
-        }
-        in_map.set(inside_k.key(), value)?;
         // defer flushing cached inner map until flush call
-        Ok(true)
+        in_map.set_if_absent(inside_k.key(), value)
+    }
+
+    // Puts many values in the MapMap under a single outside key.
+    // Overwrites any existing values.
+    pub fn put_many<I>(&mut self, outside_k: K1, values: I) -> Result<(), Error>
+    where
+        I: Iterator<Item = (K2, V)>,
+    {
+        let in_map = self.load_inner_map(outside_k)?.1;
+        for (k, v) in values {
+            in_map.set(k.key(), v)?;
+        }
+        // defer flushing cached inner map until flush call
+        Ok(())
     }
 
     /// Removes a key from the MapMap, returning the value at the key if the key

@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_fungible_token::receiver::types::TokensReceivedParams;
 use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
 use fil_fungible_token::token::TOKEN_PRECISION;
 use fvm_ipld_blockstore::Blockstore;
@@ -12,17 +13,20 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::sector::StoragePower;
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
-    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, resolve_to_id_addr,
+    ActorContext, ActorDowncast, ActorError, AsActorError, BatchReturnGen, Map,
+    DATACAP_TOKEN_ACTOR_ADDR, FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen, DATACAP_TOKEN_ACTOR_ADDR};
 
@@ -54,6 +58,7 @@ pub enum Method {
     RemoveVerifiedClientDataCap = 7,
     RemoveExpiredAllocations = 8,
     ClaimAllocations = 9,
+    FungibleTokenReceiverHook = FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM,
 }
 
 pub struct Actor;
@@ -84,7 +89,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        if params.allowance < rt.policy().minimum_verified_deal_size {
+        if params.allowance < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
                 illegal_argument,
                 "Allowance {} below minimum deal size for add verifier {}",
@@ -156,7 +161,7 @@ impl Actor {
         // The caller will be verified by checking table below
         rt.validate_immediate_caller_accept_any()?;
 
-        if params.allowance < rt.policy().minimum_verified_deal_size {
+        if params.allowance < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
                 illegal_argument,
                 "allowance {} below MinVerifiedDealSize for add verified client {}",
@@ -235,12 +240,12 @@ impl Actor {
 
         let client = Address::new_id(client);
 
-        if params.deal_size < rt.policy().minimum_verified_deal_size {
+        if params.deal_size < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
                 illegal_argument,
                 "use bytes {} is below minimum {}",
                 params.deal_size,
-                rt.policy().minimum_verified_deal_size
+                rt.policy().minimum_verified_allocation_size
             ));
         }
 
@@ -253,7 +258,7 @@ impl Actor {
         ))?;
 
         // Destroy any remaining balance below minimum verified deal size.
-        if remaining.is_positive() && remaining < rt.policy().minimum_verified_deal_size {
+        if remaining.is_positive() && remaining < rt.policy().minimum_verified_allocation_size {
             destroy(rt, &st.token, &client, &remaining).context(format!(
                 "failed to destroy remaining {} from allowance for {}",
                 &remaining, &client
@@ -270,7 +275,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
-        if params.deal_size < rt.policy().minimum_verified_deal_size {
+        if params.deal_size < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
                 illegal_argument,
                 "Below minimum VerifiedDealSize requested in RestoreBytes: {}",
@@ -537,7 +542,7 @@ impl Actor {
                         term_min: alloc.term_min,
                         term_max: alloc.term_max,
                         term_start: rt.curr_epoch(),
-                        sector: claim_alloc.sector_id.clone(),
+                        sector: claim_alloc.sector_id,
                     };
 
                     let inserted = claims
@@ -563,13 +568,8 @@ impl Actor {
                     datacap_claimed += DataCap::from(claim_alloc.size.0);
                     ret_gen.add_success();
                 }
-                st.allocations = allocs.flush().context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to flush allocation table",
-                )?;
-                st.claims = claims
-                    .flush()
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims table")?;
+                st.save_allocs(&mut allocs)?;
+                st.save_claims(&mut claims)?;
                 Ok(st.token)
             })
             .context("state transaction failed")?;
@@ -578,6 +578,57 @@ impl Actor {
         burn(rt, &token, &datacap_claimed)?;
 
         Ok(ret_gen.gen())
+    }
+
+    pub fn fungible_token_receiver_hook<BS, RT>(
+        rt: &mut RT,
+        params: &RawBytes,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        let st: State = rt.state()?;
+        // Accept only the data cap token.
+        rt.validate_immediate_caller_is(&[st.token])?;
+
+        let my_id = rt.message().receiver().id().unwrap();
+        let curr_epoch = rt.curr_epoch();
+
+        // Validate receiver hook payload.
+        let tokens_received = validate_tokens_received(params, my_id)?;
+        let token_datacap = tokens_to_datacap(&tokens_received.amount);
+        let client_address = Address::new_id(tokens_received.from);
+
+        // Extract and validate allocation request from the operator data.
+        let alloc_reqs = validate_alloc_req(
+            &tokens_received.operator_data,
+            rt.policy(),
+            curr_epoch,
+            &token_datacap,
+        )?;
+
+        // Construct new allocation records.
+        let mut new_allocs = Vec::with_capacity(alloc_reqs.requests.len());
+        for req in alloc_reqs.requests {
+            // Require the provider to be a miner actor.
+            // This doesn't matter much, but is more ergonomic to fail rather than lock up datacap.
+            let provider_id = resolve_miner_id(rt, &req.provider)?;
+            new_allocs.push(Allocation {
+                client: client_address,
+                provider: Address::new_id(provider_id),
+                data: req.data,
+                size: req.size,
+                term_min: req.term_min,
+                term_max: req.term_max,
+                expiration: req.expiration,
+            })
+        }
+        // Save allocations
+        rt.transaction(|st: &mut State, rt| {
+            st.insert_allocations(rt.store(), &client_address, new_allocs.into_iter())
+        })?;
+        Ok(())
     }
 }
 
@@ -783,6 +834,133 @@ where
     )
 }
 
+// Deserializes and validates a token receiver hook payload.
+fn validate_tokens_received(
+    raw: &RawBytes,
+    my_id: u64,
+) -> Result<TokensReceivedParams, ActorError> {
+    let payload: TokensReceivedParams = deserialize(raw, "receiver hook payload")?;
+    // Payload to address must match receiving actor.
+    if payload.to != my_id {
+        return Err(actor_error!(
+            illegal_argument,
+            "token receiver expected to {}, was {}",
+            my_id,
+            payload.to
+        ));
+    }
+    Ok(payload)
+}
+
+// Deserializes and validates a serialized allocation.
+fn validate_alloc_req(
+    serialized: &RawBytes,
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
+    datacap_amount: &DataCap,
+) -> Result<AllocationRequests, ActorError> {
+    let reqs: AllocationRequests = deserialize(serialized, "allocation requests")?;
+
+    let mut allocation_total = StoragePower::zero();
+    for req in &reqs.requests {
+        allocation_total += StoragePower::from(req.size.0);
+
+        // Size must be at least the policy minimum.
+        if StoragePower::from(req.size.0) < policy.minimum_verified_allocation_size {
+            return Err(actor_error!(
+                illegal_argument,
+                "allocation size {} below minimum {}",
+                req.size.0,
+                policy.minimum_verified_allocation_size
+            ));
+        }
+
+        // Term must be at least the policy minimum.
+        if req.term_min < policy.minimum_verified_allocation_term {
+            return Err(actor_error!(
+                illegal_argument,
+                "allocation term min {} below limit {}",
+                req.term_min,
+                policy.minimum_verified_allocation_term
+            ));
+        }
+        // Term cannot exceed the policy maximum.
+        if req.term_max > policy.maximum_verified_allocation_term {
+            return Err(actor_error!(
+                illegal_argument,
+                "allocation term max {} above limit {}",
+                req.term_max,
+                policy.maximum_verified_allocation_term
+            ));
+        }
+        // Term range must be non-empty.
+        if req.term_min > req.term_max {
+            return Err(actor_error!(
+                illegal_argument,
+                "allocation term min {} exceeds term max {}",
+                req.term_min,
+                req.term_max
+            ));
+        }
+
+        // Allocation must expire soon enough.
+        let max_expiration = curr_epoch + policy.maximum_verified_allocation_expiration;
+        if req.expiration > max_expiration {
+            return Err(actor_error!(
+                illegal_argument,
+                "allocation expiration {} exceeds maximum {}",
+                req.expiration,
+                max_expiration
+            ));
+        }
+    }
+
+    // Allocation size must match the tokens received exactly (we can't return change).
+    if &allocation_total != datacap_amount {
+        return Err(actor_error!(
+            illegal_argument,
+            "total allocation size {} must match data cap amount received {}",
+            allocation_total,
+            datacap_amount
+        ));
+    }
+
+    Ok(reqs)
+}
+
+// Checks that an address corresponsds to a miner actor.
+fn resolve_miner_id<BS, RT>(rt: &mut RT, addr: &Address) -> Result<ActorID, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    let id = rt
+        .resolve_address(addr)
+        .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+            format!("failed to resolve provider address {}", addr)
+        })?
+        .id()
+        .unwrap();
+    let code_cid =
+        rt.get_actor_code_cid(addr).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+            format!("no code CID for provider {}", addr)
+        })?;
+    let provider_type = rt
+        .resolve_builtin_actor_type(&code_cid)
+        .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+            format!("provider code {} must be built-in miner actor", code_cid)
+        })?;
+    if provider_type != Type::Miner {
+        return Err(actor_error!(
+            illegal_argument,
+            "allocation provider {} must be a miner actor, was {:?}",
+            addr,
+            provider_type
+        ));
+    }
+    Ok(id)
+}
+
 fn can_claim_alloc(
     claim_alloc: &SectorAllocationClaim,
     provider: Address,
@@ -847,6 +1025,10 @@ impl ActorCode for Actor {
             Some(Method::ClaimAllocations) => {
                 let res = Self::claim_allocations(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::FungibleTokenReceiverHook) => {
+                Self::fungible_token_receiver_hook(rt, params)?;
+                Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
