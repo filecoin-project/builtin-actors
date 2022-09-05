@@ -73,4 +73,4 @@ jobs:
     - name: Checking no wasm-bindgen references
       run: |
         sudo apt-get update && sudo apt-get -y install wabt parallel
-        find ./target -name '*.wasm' -print0 | parallel -0 --halt now,fail=1 'wasm2wat --enable-bulk-memory {} | ! grep bindgen'
+        find ./target -name '*.wasm' -print0 | parallel -0 --halt now,fail=1 sh -c 'wasm2wat --enable-bulk-memory {} | grep bindgen; test $? -ne 0'
