@@ -11,7 +11,6 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::randomness::Randomness;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
@@ -192,7 +191,6 @@ where
         // Since that behaviour changes, we may as well abort with a more appropriate exit code
         // explicitly.
         fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy)
-            .map(|v|Randomness(v.into()))
             .map_err(|e| {
             if self.network_version() < NetworkVersion::V16 {
                 ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
@@ -216,7 +214,6 @@ where
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         // See note on exit codes in get_randomness_from_tickets.
         fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy)
-            .map(|v|Randomness(v.into()))
             .map_err(|e| {
             if self.network_version() < NetworkVersion::V16 {
                 ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,

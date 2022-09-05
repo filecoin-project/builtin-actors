@@ -549,7 +549,7 @@ impl Actor {
                 params.chain_commit_epoch,
                 &[],
             )?;
-            if comm_rand != params.chain_commit_rand {
+            if Randomness(comm_rand.into()) != params.chain_commit_rand {
                 return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
             }
 
@@ -799,8 +799,8 @@ impl Actor {
 
             let svi = AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
-                randomness: sv_info_randomness,
-                interactive_randomness: sv_info_interactive_randomness,
+                randomness: Randomness(sv_info_randomness.into()),
+                interactive_randomness: Randomness(sv_info_interactive_randomness.into()),
                 sealed_cid: precommit.info.sealed_cid,
                 unsealed_cid,
             };
@@ -4045,8 +4045,12 @@ where
         .collect();
 
     // get public inputs
-    let pv_info =
-        WindowPoStVerifyInfo { randomness, proofs, challenged_sectors, prover: miner_actor_id };
+    let pv_info = WindowPoStVerifyInfo {
+        randomness: Randomness(randomness.into()),
+        proofs,
+        challenged_sectors,
+        prover: miner_actor_id,
+    };
 
     // verify the post proof
     let result = rt.verify_post(&pv_info);
@@ -4093,9 +4097,9 @@ where
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
         deal_ids: params.deal_ids,
-        interactive_randomness,
+        interactive_randomness: Randomness(interactive_randomness.into()),
         proof: params.proof,
-        randomness,
+        randomness: Randomness(randomness.into()),
         sealed_cid: params.sealed_cid,
         unsealed_cid: commd,
     })

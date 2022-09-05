@@ -528,7 +528,10 @@ impl MessageInfo for InvocationCtx<'_, '_> {
     }
 }
 
-pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
+pub const TEST_VM_RAND_ARRAY: [u8; 32] = [
+    1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32,
+];
 pub const TEST_VM_INVALID_POST: &str = "i_am_invalid_post";
 
 pub struct InvocationCtx<'invocation, 'bs> {
@@ -821,7 +824,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        Ok(TEST_VM_RAND_STRING.as_bytes().to_vec())
+        Ok(TEST_VM_RAND_ARRAY)
     }
 
     fn get_randomness_from_beacon(
@@ -830,7 +833,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        Ok(TEST_VM_RAND_STRING.as_bytes().to_vec())
+        Ok(TEST_VM_RAND_ARRAY)
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
