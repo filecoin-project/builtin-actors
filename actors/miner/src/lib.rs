@@ -3300,6 +3300,12 @@ impl Actor {
                 if info.beneficiary != info.owner {
                     // remaining_quota always zero and positive
                     let remaining_quota = info.beneficiary_term.available(rt.curr_epoch());
+                    if remaining_quota.is_zero() {
+                        return Err(actor_error!(
+                            illegal_state,
+                            "beneficiary expired or quota depleted. change or update beneficiary to withdraw funds"
+                        ));
+                    }
                     amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
                     if amount_withdrawn.is_positive() {
                         info.beneficiary_term.used_quota += amount_withdrawn;
