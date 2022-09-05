@@ -39,4 +39,5 @@ fn test_selfdestruct() {
         &RawBytes::serialize(params).unwrap(),
     )
     .unwrap();
+    rt.verify();
 }
