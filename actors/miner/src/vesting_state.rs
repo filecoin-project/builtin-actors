@@ -4,7 +4,6 @@
 use std::{iter, mem};
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::bigint::{bigint_ser, Integer};
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
 use itertools::{EitherOrBoth, Itertools};
@@ -16,7 +15,6 @@ use super::VestSpec;
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct VestingFund {
     pub epoch: ChainEpoch,
-    #[serde(with = "bigint_ser")]
     pub amount: TokenAmount,
 }
 
@@ -41,7 +39,7 @@ impl VestingFunds {
             .position(|fund| fund.epoch >= current_epoch)
             .unwrap_or(self.funds.len());
 
-        self.funds.drain(..i).map(|fund| fund.amount).sum()
+        self.funds.drain(..i).map(|f| f.amount).sum()
     }
 
     pub fn add_locked_funds(
@@ -53,7 +51,6 @@ impl VestingFunds {
     ) {
         // Quantization is aligned with when regular cron will be invoked, in the last epoch of deadlines.
         let vest_begin = current_epoch + spec.initial_delay; // Nothing unlocks here, this is just the start of the clock.
-        let vest_period = TokenAmount::from(spec.vest_period);
         let mut vested_so_far = TokenAmount::zero();
 
         let mut epoch = vest_begin;
@@ -73,7 +70,7 @@ impl VestingFunds {
             let elapsed = vest_epoch - vest_begin;
             let target_vest = if elapsed < spec.vest_period {
                 // Linear vesting
-                (vesting_sum * elapsed).div_floor(&vest_period)
+                (vesting_sum * elapsed).div_floor(spec.vest_period)
             } else {
                 vesting_sum.clone()
             };
@@ -107,7 +104,7 @@ impl VestingFunds {
         current_epoch: ChainEpoch,
         target: &TokenAmount,
     ) -> TokenAmount {
-        let mut amount_unlocked = TokenAmount::from(0);
+        let mut amount_unlocked = TokenAmount::zero();
         let mut last = None;
         let mut start = 0;
         for (i, vf) in self.funds.iter_mut().enumerate() {

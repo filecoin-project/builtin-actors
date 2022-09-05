@@ -5,6 +5,7 @@ use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 use std::{cell::RefCell, collections::HashMap};
 
+use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::{
     balance_table::BalanceTable, ext, ext::miner::GetControlAddressesReturnParams,
     gen_rand_next_epoch, testing::check_state_invariants, ActivateDealsParams, ActivateDealsResult,
@@ -83,7 +84,7 @@ pub fn setup() -> MockRuntime {
         caller: *SYSTEM_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         actor_code_cids,
-        balance: RefCell::new(10u64.pow(19).into()),
+        balance: RefCell::new(TokenAmount::from_whole(10)),
         ..Default::default()
     };
 
@@ -106,6 +107,7 @@ pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) 
         check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
     acc.assert_expected(expected_patterns);
 }
+
 pub fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
     assert_eq!(
@@ -137,7 +139,7 @@ pub fn expect_get_control_addresses(
         provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
-        BigInt::zero(),
+        TokenAmount::zero(),
         RawBytes::serialize(result).unwrap(),
         ExitCode::OK,
     )
@@ -354,7 +356,7 @@ pub fn cron_tick_and_assert_balances(
     let c_escrow = get_escrow_balance(rt, &client_addr).unwrap();
     let p_locked = get_locked_balance(rt, provider_addr);
     let p_escrow = get_escrow_balance(rt, &provider_addr).unwrap();
-    let mut amount_slashed = TokenAmount::from(0u8);
+    let mut amount_slashed = TokenAmount::zero();
 
     let s = get_deal_state(rt, deal_id);
     let d = get_deal_proposal(rt, deal_id);
@@ -397,8 +399,8 @@ pub fn cron_tick_and_assert_balances(
     // if the deal has expired or been slashed, locked amount will be zero for provider and client.
     let is_deal_expired = payment_end == d.end_epoch;
     if is_deal_expired || s.slash_epoch != EPOCH_UNDEFINED {
-        updated_client_locked = TokenAmount::from(0u8);
-        updated_provider_locked = TokenAmount::from(0u8);
+        updated_client_locked = TokenAmount::zero();
+        updated_provider_locked = TokenAmount::zero();
     }
 
     cron_tick(rt);
@@ -437,7 +439,7 @@ pub fn publish_deals(
 ) -> Vec<DealID> {
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
-    let return_value = ext::miner::GetControlAddressesReturnParams {
+    let return_value = GetControlAddressesReturnParams {
         owner: addrs.owner,
         worker: addrs.worker,
         control_addresses: addrs.control.clone(),
@@ -446,7 +448,7 @@ pub fn publish_deals(
         addrs.provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
-        TokenAmount::from(0u8),
+        TokenAmount::zero(),
         RawBytes::serialize(return_value).unwrap(),
         ExitCode::OK,
     );
@@ -463,13 +465,21 @@ pub fn publish_deals(
             ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() };
         params.deals.push(client_proposal);
 
-        // expect a call to verify the above signature
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig,
-            signer: deal.client,
-            plaintext: buf.to_vec(),
-            result: Ok(()),
-        });
+        // expect an invocation of authenticate_message to verify the above signature
+        let param = RawBytes::serialize(AuthenticateMessageParams {
+            signature: "does not matter".as_bytes().to_vec(),
+            message: buf.to_vec(),
+        })
+        .unwrap();
+        rt.expect_send(
+            deal.client,
+            ext::account::AUTHENTICATE_MESSAGE_METHOD as u64,
+            param,
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
         if deal.verified_deal {
             let param = RawBytes::serialize(UseBytesParams {
                 address: deal.client,
@@ -481,7 +491,7 @@ pub fn publish_deals(
                 *VERIFIED_REGISTRY_ACTOR_ADDR,
                 ext::verifreg::USE_BYTES_METHOD as u64,
                 param,
-                TokenAmount::from(0u8),
+                TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
             );
@@ -527,16 +537,24 @@ pub fn publish_deals_expect_abort(
 
     let deal_serialized =
         RawBytes::serialize(proposal.clone()).expect("Failed to marshal deal proposal");
-    let client_signature =
-        Signature::new_bls(b"Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn".to_vec());
+    let client_signature = Signature::new_bls(deal_serialized.to_vec());
 
     expect_query_network_info(rt);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig: client_signature.clone(),
-        signer: proposal.client,
-        plaintext: deal_serialized.to_vec(),
-        result: Ok(()),
-    });
+    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+        signature: deal_serialized.to_vec(),
+        message: deal_serialized.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        proposal.client,
+        AUTHENTICATE_MESSAGE_METHOD,
+        auth_param,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     let deal_params = PublishStorageDealsParams {
         deals: vec![ClientDealProposal { proposal, client_signature }],
@@ -578,15 +596,15 @@ pub fn cron_tick_raw(rt: &mut MockRuntime) -> Result<RawBytes, ActorError> {
 pub fn expect_query_network_info(rt: &mut MockRuntime) {
     //networkQAPower
     //networkBaselinePower
-    let reward = TokenAmount::from(10u8) * TokenAmount::from(10_i128.pow(18));
+    let reward = TokenAmount::from_whole(10);
     let power = StoragePower::from_i128(1 << 50).unwrap();
-    let epoch_reward_smooth = FilterEstimate::new(reward.clone(), BigInt::from(0u8));
+    let epoch_reward_smooth = FilterEstimate::new(reward.atto().clone(), BigInt::from(0u8));
 
     let current_power = CurrentTotalPowerReturn {
         raw_byte_power: StoragePower::default(),
         quality_adj_power: power.clone(),
         pledge_collateral: TokenAmount::default(),
-        quality_adj_power_smoothed: FilterEstimate::new(reward, TokenAmount::default()),
+        quality_adj_power_smoothed: FilterEstimate::new(reward.atto().clone(), BigInt::zero()),
     };
     let current_reward = ThisEpochRewardReturn {
         this_epoch_baseline_power: power,
@@ -662,19 +680,15 @@ pub fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposa
     let pending_deals: Hamt<&fvm_ipld_blockstore::MemoryBlockstore, DealProposal> =
         fil_actors_runtime::make_map_with_root_and_bitwidth(
             &st.pending_proposals,
-            &rt.store,
+            &*rt.store,
             PROPOSALS_AMT_BITWIDTH,
         )
         .unwrap();
     assert!(!pending_deals.contains_key(&BytesKey(p_cid.to_bytes())).unwrap());
 }
 
-pub fn assert_deal_failure<F>(
-    add_funds: bool,
-    post_setup: F,
-    exit_code: ExitCode,
-    sig_result: Result<(), anyhow::Error>,
-) where
+pub fn assert_deal_failure<F>(add_funds: bool, post_setup: F, exit_code: ExitCode, sig_valid: bool)
+where
     F: FnOnce(&mut MockRuntime, &mut DealProposal),
 {
     let current_epoch = ChainEpoch::from(5);
@@ -702,13 +716,24 @@ pub fn assert_deal_failure<F>(
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
     let buf = RawBytes::serialize(deal_proposal.clone()).expect("failed to marshal deal proposal");
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig: sig.clone(),
-        signer: deal_proposal.client,
-        plaintext: buf.to_vec(),
-        result: sig_result,
-    });
+    let sig = Signature::new_bls(buf.to_vec());
+    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf.to_vec(),
+        message: buf.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal_proposal.client,
+        AUTHENTICATE_MESSAGE_METHOD,
+        auth_param,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        match sig_valid {
+            true => ExitCode::OK,
+            false => ExitCode::USR_ILLEGAL_ARGUMENT,
+        },
+    );
 
     let params: PublishStorageDealsParams = PublishStorageDealsParams {
         deals: vec![ClientDealProposal { proposal: deal_proposal, client_signature: sig }],
@@ -785,9 +810,9 @@ pub fn generate_and_publish_deal_for_piece(
     piece_size: PaddedPieceSize,
 ) -> DealID {
     // generate deal
-    let storage_per_epoch = BigInt::from(10u8);
-    let client_collateral = TokenAmount::from(10u8);
-    let provider_collateral = TokenAmount::from(10u8);
+    let storage_price_per_epoch = TokenAmount::from_atto(10u8);
+    let client_collateral = TokenAmount::from_atto(10u8);
+    let provider_collateral = TokenAmount::from_atto(10u8);
 
     let deal = DealProposal {
         piece_cid,
@@ -798,7 +823,7 @@ pub fn generate_and_publish_deal_for_piece(
         label: Label::String("label".to_string()),
         start_epoch,
         end_epoch,
-        storage_price_per_epoch: storage_per_epoch,
+        storage_price_per_epoch,
         provider_collateral,
         client_collateral,
     };
@@ -830,8 +855,8 @@ pub fn generate_deal_with_collateral_and_add_funds(
     rt: &mut MockRuntime,
     client: Address,
     addrs: &MinerAddresses,
-    provider_collateral: BigInt,
-    client_collateral: BigInt,
+    provider_collateral: TokenAmount,
+    client_collateral: TokenAmount,
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
 ) -> DealProposal {
@@ -858,7 +883,7 @@ fn generate_deal_proposal_with_collateral(
 ) -> DealProposal {
     let piece_cid = make_piece_cid("1".as_bytes());
     let piece_size = PaddedPieceSize(2048u64);
-    let storage_per_epoch = BigInt::from(10u8);
+    let storage_price_per_epoch = TokenAmount::from_atto(10u8);
     DealProposal {
         piece_cid,
         piece_size,
@@ -868,7 +893,7 @@ fn generate_deal_proposal_with_collateral(
         label: Label::String("label".to_string()),
         start_epoch,
         end_epoch,
-        storage_price_per_epoch: storage_per_epoch,
+        storage_price_per_epoch,
         provider_collateral,
         client_collateral,
     }
@@ -880,8 +905,8 @@ pub fn generate_deal_proposal(
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
 ) -> DealProposal {
-    let client_collateral = TokenAmount::from(10u8);
-    let provider_collateral = TokenAmount::from(10u8);
+    let client_collateral = TokenAmount::from_atto(10u8);
+    let provider_collateral = TokenAmount::from_atto(10u8);
     generate_deal_proposal_with_collateral(
         client,
         provider,

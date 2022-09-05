@@ -46,14 +46,12 @@ pub struct State {
     pub total_quality_adj_power: StoragePower,
     #[serde(with = "bigint_ser")]
     pub total_qa_bytes_committed: StoragePower,
-    #[serde(with = "bigint_ser")]
     pub total_pledge_collateral: TokenAmount,
 
     #[serde(with = "bigint_ser")]
     pub this_epoch_raw_byte_power: StoragePower,
     #[serde(with = "bigint_ser")]
     pub this_epoch_quality_adj_power: StoragePower,
-    #[serde(with = "bigint_ser")]
     pub this_epoch_pledge_collateral: TokenAmount,
     pub this_epoch_qa_power_smoothed: FilterEstimate,
 
@@ -385,7 +383,7 @@ pub fn epoch_key(e: ChainEpoch) -> BytesKey {
 
 impl Cbor for State {}
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple, Clone, PartialEq)]
+#[derive(Debug, Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq)]
 pub struct Claim {
     /// Miner's proof type used to determine minimum miner size
     pub window_post_proof_type: RegisteredPoStProof,

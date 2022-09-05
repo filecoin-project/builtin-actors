@@ -11,7 +11,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{econ::TokenAmount, error::ExitCode};
 
 mod util;
-use fvm_shared::bigint::BigInt;
+
 use num_traits::Zero;
 use util::*;
 
@@ -23,7 +23,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let h = ActorHarness::new(period_offset);
     let mut rt = h.new_runtime();
     h.construct_and_verify(&mut rt);
-    rt.balance.replace(TokenAmount::from(big_balance));
+    rt.balance.replace(TokenAmount::from_atto(big_balance));
     rt.set_epoch(precommit_epoch);
 
     (h, rt)
@@ -42,7 +42,7 @@ fn removes_sector_with_correct_accounting() {
 
     // A miner will pay the minimum of termination fee and locked funds. Add some locked funds to ensure
     // correct fee calculation is used.
-    h.apply_rewards(&mut rt, BIG_REWARDS.into(), BigInt::zero());
+    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
     let state: State = rt.get_state();
     let initial_locked_funds = state.locked_funds;
 
@@ -68,7 +68,7 @@ fn removes_sector_with_correct_accounting() {
         &h.epoch_qa_power_smooth,
         &sector_power,
         &h.epoch_reward_smooth,
-        &BigInt::zero(),
+        &TokenAmount::zero(),
         0,
     );
 

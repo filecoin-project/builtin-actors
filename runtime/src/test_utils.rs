@@ -4,6 +4,7 @@
 use core::fmt;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::rc::Rc;
 
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
@@ -11,6 +12,7 @@ use cid::Cid;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
+use fvm_shared::address::Payload;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
@@ -111,6 +113,7 @@ pub struct MockRuntime {
     pub caller: Address,
     pub caller_type: Cid,
     pub value_received: TokenAmount,
+    #[allow(clippy::type_complexity)]
     pub hash_func: Box<dyn Fn(&[u8]) -> [u8; 32]>,
     pub network_version: NetworkVersion,
 
@@ -120,7 +123,7 @@ pub struct MockRuntime {
 
     // VM Impl
     pub in_call: bool,
-    pub store: MemoryBlockstore,
+    pub store: Rc<MemoryBlockstore>,
     pub in_transaction: bool,
 
     // Expectations
@@ -663,7 +666,7 @@ impl MessageInfo for MockRuntime {
     }
 }
 
-impl Runtime<MemoryBlockstore> for MockRuntime {
+impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
     fn network_version(&self) -> NetworkVersion {
         self.network_version
     }
@@ -764,17 +767,26 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         self.balance.borrow().clone()
     }
 
-    fn resolve_address(&self, address: &Address) -> Option<Address> {
+    fn resolve_address(&self, address: &Address) -> Option<ActorID> {
         self.require_in_call();
-        if address.protocol() == Protocol::ID {
-            return Some(*address);
+        if let &Payload::ID(id) = address.payload() {
+            return Some(id);
         }
-        self.id_addresses.get(address).cloned()
+
+        match self.get_id_address(address) {
+            None => None,
+            Some(addr) => {
+                if let &Payload::ID(id) = addr.payload() {
+                    return Some(id);
+                }
+                None
+            }
+        }
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         self.require_in_call();
-        self.actor_code_cids.get(addr).cloned()
+        self.actor_code_cids.get(&Address::new_id(*id)).cloned()
     }
 
     fn get_randomness_from_tickets(
@@ -873,13 +885,13 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         ret
     }
 
-    fn store(&self) -> &MemoryBlockstore {
+    fn store(&self) -> &Rc<MemoryBlockstore> {
         &self.store
     }
 
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
@@ -901,7 +913,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
 
         assert!(
-            expected_msg.to == to
+            expected_msg.to == *to
                 && expected_msg.method == method
                 && expected_msg.params == params
                 && expected_msg.value == value,
@@ -1224,7 +1236,7 @@ pub fn blake2b_256(data: &[u8]) -> [u8; 32] {
 }
 
 // multihash library doesn't support poseidon hashing, so we fake it
-#[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Multihash)]
 #[mh(alloc_size = 64)]
 enum MhCode {
     #[mh(code = 0xb401, hasher = multihash::Sha2_256)]

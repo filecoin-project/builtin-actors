@@ -15,14 +15,12 @@ use fvm_shared::sector::RegisteredSealProof;
 
 mod util;
 
+use num_traits::Zero;
 use util::*;
 
 // an expiration ~10 days greater than effective min expiration taking into account 30 days max
 // between pre and prove commit
 const DEFAULT_SECTOR_EXPIRATION: u64 = 220;
-
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
-const BIG_REWARDS: u128 = 1_000_000_000_000_000_000_000u128;
 
 #[test]
 fn basic_post_and_dispute() {
@@ -34,7 +32,7 @@ fn basic_post_and_dispute() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -106,7 +104,7 @@ fn invalid_submissions() {
     let mut h = ActorHarness::new(period_offset);
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -502,7 +500,7 @@ fn duplicate_proof_rejected() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -584,7 +582,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -689,14 +687,14 @@ fn successful_recoveries_recover_power() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
     let infos = h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let pwr = miner::power_for_sectors(h.sector_size, &infos);
 
-    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
+    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
     let initial_locked = h.get_locked_funds(&rt);
 
     // Submit first PoSt to ensure we are sufficiently early to add a fault
@@ -715,7 +713,7 @@ fn successful_recoveries_recover_power() {
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
-    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8)).unwrap();
+    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
 
     // advance to epoch when submitPoSt is due
     let mut dlinfo = h.deadline(&rt);
@@ -761,13 +759,13 @@ fn skipped_faults_adjust_power() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
     let infos = h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
+    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
@@ -848,13 +846,13 @@ fn skipping_all_sectors_in_a_partition_rejected() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
     let infos = h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
+    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
@@ -883,7 +881,7 @@ fn skipping_all_sectors_in_a_partition_rejected() {
     rt.reset();
 
     // These sectors are detected faulty and pay no penalty this time.
-    h.advance_deadline(&mut rt, CronConfig::with_continued_faults_penalty(TokenAmount::from(0u8)));
+    h.advance_deadline(&mut rt, CronConfig::with_continued_faults_penalty(TokenAmount::zero()));
     h.check_state(&rt);
 }
 
@@ -897,13 +895,13 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
     let infos = h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
+    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     // Submit first PoSt to ensure we are sufficiently early to add a fault
     // advance to next proving period
@@ -922,7 +920,7 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
-    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8)).unwrap();
+    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
 
     // Skip to the due deadline.
     let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
@@ -950,7 +948,7 @@ fn skipping_a_fault_from_the_wrong_partition_is_an_error() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -1002,7 +1000,7 @@ fn cannot_dispute_posts_when_the_challenge_window_is_open() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -1054,7 +1052,7 @@ fn can_dispute_up_till_window_end_but_not_after() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -1116,7 +1114,7 @@ fn cant_dispute_up_with_an_invalid_deadline() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -1143,7 +1141,7 @@ fn can_dispute_test_after_proving_period_changes() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -1229,7 +1227,7 @@ fn bad_post_fails_when_verified() {
 
     let mut rt = h.new_runtime();
     rt.epoch = precommit_epoch;
-    rt.balance.replace(TokenAmount::from(BIG_BALANCE));
+    rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
 
@@ -1237,7 +1235,7 @@ fn bad_post_fails_when_verified() {
     let power_for_sectors =
         &miner::power_for_sectors(h.sector_size, &vec![infos[0].clone(), infos[1].clone()]);
 
-    h.apply_rewards(&mut rt, TokenAmount::from(BIG_REWARDS), TokenAmount::from(0u8));
+    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     let state = h.get_state(&rt);
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
@@ -1265,7 +1263,7 @@ fn bad_post_fails_when_verified() {
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
     bf.set(infos[1].sector_number);
-    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::from(0u8)).unwrap();
+    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
 
     // Now submit a PoSt, but a BAD one
     let dlinfo = h.advance_to_deadline(&mut rt, dlidx);

@@ -57,7 +57,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_accept_any()?;
 
-        let result = rt.send(arg.to, arg.method, arg.params, arg.value);
+        let result = rt.send(&arg.to, arg.method, arg.params, arg.value);
         if let Err(e) = result {
             Ok(SendReturn { return_value: RawBytes::default(), code: e.exit_code() })
         } else {
@@ -137,10 +137,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_accept_any()?;
         let resolved = rt.resolve_address(&args);
-        Ok(ResolveAddressResponse {
-            address: resolved.unwrap_or_else(|| Address::new_id(0)),
-            success: resolved.is_some(),
-        })
+        Ok(ResolveAddressResponse { id: resolved.unwrap_or(0), success: resolved.is_some() })
     }
 
     pub fn delete_actor<BS, RT>(rt: &mut RT, beneficiary: Address) -> Result<(), ActorError>

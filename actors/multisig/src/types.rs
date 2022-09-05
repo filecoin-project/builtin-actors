@@ -7,7 +7,7 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
+
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -37,10 +37,9 @@ impl Display for TxnID {
 }
 
 /// Transaction type used in multisig actor
-#[derive(Clone, PartialEq, Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct Transaction {
     pub to: Address,
-    #[serde(with = "bigint_ser")]
     pub value: TokenAmount,
     pub method: MethodNum,
     pub params: RawBytes,
@@ -58,7 +57,6 @@ pub struct Transaction {
 pub struct ProposalHashData<'a> {
     pub requester: Option<&'a Address>,
     pub to: &'a Address,
-    #[serde(with = "bigint_ser")]
     pub value: &'a TokenAmount,
     pub method: &'a MethodNum,
     pub params: &'a RawBytes,
@@ -78,7 +76,6 @@ pub struct ConstructorParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ProposeParams {
     pub to: Address,
-    #[serde(with = "bigint_ser")]
     pub value: TokenAmount,
     pub method: MethodNum,
     pub params: RawBytes,
@@ -103,7 +100,7 @@ impl Cbor for ProposeParams {}
 impl Cbor for ProposeReturn {}
 
 /// Parameters for approve and cancel multisig functions.
-#[derive(Clone, PartialEq, Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct TxnIDParams {
     pub id: TxnID,
     /// Optional hash of proposal to ensure an operation can only apply to a
@@ -164,6 +161,5 @@ pub struct ChangeNumApprovalsThresholdParams {
 pub struct LockBalanceParams {
     pub start_epoch: ChainEpoch,
     pub unlock_duration: ChainEpoch,
-    #[serde(with = "bigint_ser")]
     pub amount: TokenAmount,
 }

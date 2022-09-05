@@ -1,11 +1,14 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use anyhow::anyhow;
+use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, State};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::crypto::signature::Signature;
 use fvm_shared::error::ExitCode;
 
 fn check_state(rt: &MockRuntime) {
@@ -14,7 +17,7 @@ fn check_state(rt: &MockRuntime) {
     acc.assert_empty();
 }
 
-macro_rules! account_tests {
+macro_rules! account_constructor_tests {
     ($($name:ident: $value:expr,)*) => {
         $(
             #[test]
@@ -56,7 +59,7 @@ macro_rules! account_tests {
     }
 }
 
-account_tests! {
+account_constructor_tests! {
     happy_construct_secp256k1_address: (
         Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap(),
         ExitCode::OK
@@ -73,4 +76,49 @@ account_tests! {
         Address::new_actor(&[1, 2, 3]),
         ExitCode::USR_ILLEGAL_ARGUMENT
     ),
+}
+
+#[test]
+fn authenticate_message() {
+    let mut rt = MockRuntime {
+        receiver: Address::new_id(100),
+        caller: *SYSTEM_ACTOR_ADDR,
+        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        ..Default::default()
+    };
+
+    let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
+    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+
+    rt.call::<AccountActor>(1, &RawBytes::serialize(addr).unwrap()).unwrap();
+
+    let state: State = rt.get_state();
+    assert_eq!(state.address, addr);
+
+    let params =
+        RawBytes::serialize(AuthenticateMessageParams { signature: vec![], message: vec![] })
+            .unwrap();
+
+    rt.expect_validate_caller_any();
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig: Signature::new_secp256k1(vec![]),
+        signer: addr,
+        plaintext: vec![],
+        result: Ok(()),
+    });
+    assert_eq!(RawBytes::default(), rt.call::<AccountActor>(3, &params).unwrap());
+
+    rt.expect_validate_caller_any();
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig: Signature::new_secp256k1(vec![]),
+        signer: addr,
+        plaintext: vec![],
+        result: Err(anyhow!("bad signature")),
+    });
+    assert_eq!(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<AccountActor>(3, &params).unwrap_err().exit_code()
+    );
+
+    rt.verify();
 }

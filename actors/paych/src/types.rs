@@ -5,9 +5,9 @@ use fil_actors_runtime::network::EPOCHS_IN_HOUR;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, to_vec, Error, RawBytes};
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::MethodNum;
 
 use super::Merge;
@@ -30,7 +30,7 @@ pub struct ConstructorParams {
 
 /// A voucher is sent by `from` to `to` off-chain in order to enable
 /// `to` to redeem payments on-chain in the future
-#[derive(Debug, Clone, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct SignedVoucher {
     /// ChannelAddr is the address of the payment channel this signed voucher is valid for
     pub channel_addr: Address,
@@ -49,8 +49,7 @@ pub struct SignedVoucher {
     /// Set by `from` to prevent redemption of stale vouchers on a lane
     pub nonce: u64,
     /// Amount voucher can be redeemed for
-    #[serde(with = "bigint_ser")]
-    pub amount: BigInt,
+    pub amount: TokenAmount,
     /// (optional) Can extend channel min_settle_height if needed
     pub min_settle_height: ChainEpoch,
 
@@ -74,8 +73,7 @@ impl SignedVoucher {
             pub extra: &'a Option<ModVerifyParams>,
             pub lane: u64,
             pub nonce: u64,
-            #[serde(with = "bigint_ser")]
-            pub amount: &'a BigInt,
+            pub amount: &'a TokenAmount,
             pub min_settle_height: ChainEpoch,
             pub merges: &'a [Merge],
             pub signature: (),
@@ -99,7 +97,7 @@ impl SignedVoucher {
 }
 
 /// Modular Verification method
-#[derive(Debug, Clone, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ModVerifyParams {
     pub actor: Address,
     pub method: MethodNum,

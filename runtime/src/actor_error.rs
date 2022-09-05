@@ -1,8 +1,10 @@
+use std::fmt::Display;
+
 use fvm_shared::error::ExitCode;
 use thiserror::Error;
 
 /// The error type returned by actor method calls.
-#[derive(Error, Debug, Clone, PartialEq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[error("ActorError(exit_code: {exit_code:?}, msg: {msg})")]
 pub struct ActorError {
     /// The exit code for this invocation.
@@ -107,4 +109,96 @@ macro_rules! actor_error {
     ( $code:ident, $msg:literal $(, $ex:expr)+ ) => {
         $crate::actor_error!($code; $msg $(, $ex)*)
     };
+}
+
+// Adds context to an actor error's descriptive message.
+pub trait ActorContext<T> {
+    fn context<C>(self, context: C) -> Result<T, ActorError>
+    where
+        C: Display + 'static;
+
+    fn with_context<C, F>(self, f: F) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+        F: FnOnce() -> C;
+}
+
+impl<T> ActorContext<T> for Result<T, ActorError> {
+    fn context<C>(self, context: C) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+    {
+        self.map_err(|mut err| {
+            err.msg = format!("{}: {}", context, err.msg);
+            err
+        })
+    }
+
+    fn with_context<C, F>(self, f: F) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+        F: FnOnce() -> C,
+    {
+        self.map_err(|mut err| {
+            err.msg = format!("{}: {}", f(), err.msg);
+            err
+        })
+    }
+}
+
+// Adapts a target into an actor error.
+pub trait AsActorError<T>: Sized {
+    fn exit_code(self, code: ExitCode) -> Result<T, ActorError>;
+
+    fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
+    where
+        C: Display + 'static;
+
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+        F: FnOnce() -> C;
+}
+
+// Note: E should be std::error::Error, revert to this after anyhow:Error is no longer used.
+impl<T, E: Display> AsActorError<T> for Result<T, E> {
+    fn exit_code(self, code: ExitCode) -> Result<T, ActorError> {
+        self.map_err(|err| ActorError { exit_code: code, msg: err.to_string() })
+    }
+
+    fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+    {
+        self.map_err(|err| ActorError { exit_code: code, msg: format!("{}: {}", context, err) })
+    }
+
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+        F: FnOnce() -> C,
+    {
+        self.map_err(|err| ActorError { exit_code: code, msg: format!("{}: {}", f(), err) })
+    }
+}
+
+impl<T> AsActorError<T> for Option<T> {
+    fn exit_code(self, code: ExitCode) -> Result<T, ActorError> {
+        self.ok_or_else(|| ActorError { exit_code: code, msg: "None".to_string() })
+    }
+
+    fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+    {
+        self.ok_or_else(|| ActorError { exit_code: code, msg: context.to_string() })
+    }
+
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+        F: FnOnce() -> C,
+    {
+        self.ok_or_else(|| ActorError { exit_code: code, msg: f().to_string() })
+    }
 }

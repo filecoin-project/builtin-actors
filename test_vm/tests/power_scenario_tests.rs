@@ -15,7 +15,7 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
+
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
@@ -34,7 +34,7 @@ fn create_miner_test() {
     v.apply_message(
         TEST_FAUCET_ADDR,
         owner,
-        TokenAmount::from(10_000u32),
+        TokenAmount::from_atto(10_000u32),
         METHOD_SEND,
         RawBytes::default(),
     )
@@ -53,7 +53,7 @@ fn create_miner_test() {
         .apply_message(
             owner,
             *STORAGE_POWER_ACTOR_ADDR,
-            TokenAmount::from(1000u32),
+            TokenAmount::from_atto(1000u32),
             PowerMethod::CreateMiner as u64,
             params.clone(),
         )
@@ -105,7 +105,7 @@ fn test_cron_tick() {
     let store = MemoryBlockstore::new();
     let mut vm = VM::new_with_singletons(&store);
 
-    let addrs = create_accounts(&vm, 1, BigInt::from(10_000u64) * BigInt::from(10u64.pow(18)));
+    let addrs = create_accounts(&vm, 1, TokenAmount::from_whole(10_000));
 
     // create a miner
     let (id_addr, robust_addr) = create_miner(
@@ -113,7 +113,7 @@ fn test_cron_tick() {
         addrs[0],
         addrs[0],
         RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // create precommit
@@ -137,7 +137,7 @@ fn test_cron_tick() {
         &vm,
         addrs[0],
         robust_addr,
-        TokenAmount::from(0u32),
+        TokenAmount::zero(),
         MinerMethod::PreCommitSector as u64,
         precommit_params,
     );
@@ -153,7 +153,7 @@ fn test_cron_tick() {
         &v,
         *CRON_ACTOR_ADDR,
         *STORAGE_POWER_ACTOR_ADDR,
-        BigInt::zero(),
+        TokenAmount::zero(),
         PowerMethod::OnEpochTickEnd as u64,
         RawBytes::default(),
     );
@@ -190,7 +190,7 @@ fn test_cron_tick() {
         &v,
         *CRON_ACTOR_ADDR,
         *STORAGE_POWER_ACTOR_ADDR,
-        BigInt::zero(),
+        TokenAmount::zero(),
         PowerMethod::OnEpochTickEnd as u64,
         RawBytes::default(),
     );
@@ -207,7 +207,7 @@ fn test_cron_tick() {
             to: id_addr,
             method: MinerMethod::OnDeferredCronEvent as u64,
             from: Some(*STORAGE_POWER_ACTOR_ADDR),
-            value: Some(BigInt::zero()),
+            value: Some(TokenAmount::zero()),
             ..Default::default()
         },
         // expect call to reward to update kpi

@@ -32,8 +32,9 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
+use fvm_shared::address::Payload;
 use fvm_shared::address::{Address, Protocol};
-use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
+use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::signature::Signature;
@@ -49,7 +50,6 @@ use fvm_shared::sector::{
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
-use num_traits::Signed;
 use regex::Regex;
 use serde::ser;
 use std::cell::{RefCell, RefMut};
@@ -130,12 +130,8 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
-        // funding
-        let fil = TokenAmount::from(1_000_000_000i32)
-            .checked_mul(&TokenAmount::from(1_000_000_000i32))
-            .unwrap();
-        let reward_total = TokenAmount::from(1_100_000_000i32).checked_mul(&fil).unwrap();
-        let faucet_total = TokenAmount::from(1_000_000_000u32).checked_mul(&fil).unwrap();
+        let reward_total = TokenAmount::from_whole(1_100_000_000i64);
+        let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
         let v = VM::new(store).with_total_fil(&reward_total + &faucet_total);
 
@@ -217,7 +213,7 @@ impl<'bs> VM<'bs> {
             .apply_message(
                 *SYSTEM_ACTOR_ADDR,
                 *INIT_ACTOR_ADDR,
-                BigInt::zero(),
+                TokenAmount::zero(),
                 fil_actor_init::Method::Exec as u64,
                 fil_actor_init::ExecParams {
                     code_cid: *MULTISIG_ACTOR_CODE_ID,
@@ -328,7 +324,11 @@ impl<'bs> VM<'bs> {
             self.store,
         )
         .unwrap();
-        actors.get(&addr.to_bytes()).unwrap().cloned()
+        let actor = actors.get(&addr.to_bytes()).unwrap().cloned();
+        actor.iter().for_each(|a| {
+            self.actors_cache.borrow_mut().insert(addr, a.clone());
+        });
+        actor
     }
 
     // blindly overwrite the actor at this address whether it previously existed or not
@@ -348,8 +348,8 @@ impl<'bs> VM<'bs> {
             actors.set(addr.to_bytes().into(), act.clone()).unwrap();
         }
 
-        // roll "back" to latest head, flushing cache
-        self.rollback(actors.flush().unwrap());
+        self.state_root.replace(actors.flush().unwrap());
+        self.actors_dirty.replace(false);
         *self.state_root.borrow()
     }
 
@@ -399,7 +399,7 @@ impl<'bs> VM<'bs> {
             originator_stable_addr: from,
             _originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
-            circ_supply: TokenAmount::from(1e9 as u128 * 1e18 as u128),
+            circ_supply: TokenAmount::from_whole(1_000_000_000),
         };
         let msg = InternalMessage {
             from: from_id,
@@ -481,10 +481,10 @@ impl<'bs> VM<'bs> {
     pub fn get_total_actor_balance(
         &self,
         store: &MemoryBlockstore,
-    ) -> anyhow::Result<BigInt, anyhow::Error> {
+    ) -> anyhow::Result<TokenAmount, anyhow::Error> {
         let state_tree = Tree::load(store, &self.checkpoint())?;
 
-        let mut total = BigInt::zero();
+        let mut total = TokenAmount::zero();
         state_tree.for_each(|_, actor| {
             total += &actor.balance.clone();
             Ok(())
@@ -498,7 +498,7 @@ pub struct TopCtx {
     originator_stable_addr: Address,
     _originator_call_seq: u64,
     new_actor_addr_count: RefCell<u64>,
-    circ_supply: BigInt,
+    circ_supply: TokenAmount,
 }
 
 #[derive(Clone, Debug)]
@@ -618,13 +618,13 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         // Transfer funds
         let mut from_actor = self.v.get_actor(self.msg.from).unwrap();
         if !self.msg.value.is_zero() {
-            if self.msg.value.lt(&BigInt::zero()) {
+            if self.msg.value.is_negative() {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_ASSERTION_FAILED,
                     "attempt to transfer negative value".to_string(),
                 ));
             }
-            if from_actor.balance.lt(&self.msg.value) {
+            if from_actor.balance < self.msg.value {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INSUFFICIENT_FUNDS,
                     "insufficient balance to transfer".to_string(),
@@ -633,7 +633,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         }
 
         // Load, deduct, store from actor before loading to actor to handle self-send case
-        from_actor.balance = from_actor.balance.abs_sub(&self.msg.value);
+        from_actor.balance -= &self.msg.value;
         self.v.set_actor(self.msg.from, from_actor);
 
         let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
@@ -686,7 +686,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "attempt to create new actor at existing address".to_string(),
             ));
         }
-        let a = actor(code_id, self.v.empty_obj_cid, 0, BigInt::zero());
+        let a = actor(code_id, self.v.empty_obj_cid, 0, TokenAmount::zero());
         self.v.set_actor(addr, a);
         Ok(())
     }
@@ -764,12 +764,17 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         self.v.get_actor(self.to()).unwrap().balance
     }
 
-    fn resolve_address(&self, addr: &Address) -> Option<Address> {
-        self.v.normalize_address(addr)
+    fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
+        if let Some(normalize_addr) = self.v.normalize_address(addr) {
+            if let &Payload::ID(id) = normalize_addr.payload() {
+                return Some(id);
+            }
+        }
+        None
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
-        let maybe_act = self.v.get_actor(*addr);
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
+        let maybe_act = self.v.get_actor(Address::new_id(*id));
         match maybe_act {
             None => None,
             Some(act) => Some(act.code),
@@ -778,7 +783,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
 
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
@@ -790,7 +795,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
             ));
         }
 
-        let new_actor_msg = InternalMessage { from: self.to(), to, value, method, params };
+        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
         let mut new_ctx = InvocationCtx {
             v: self.v,
             top: self.top.clone(),
@@ -1011,18 +1016,17 @@ impl RuntimePolicy for InvocationCtx<'_, '_> {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MessageResult {
     pub code: ExitCode,
     pub ret: RawBytes,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
 pub struct Actor {
     pub code: Cid,
     pub head: Cid,
     pub call_seq_num: u64,
-    #[serde(with = "bigint_ser")]
     pub balance: TokenAmount,
 }
 

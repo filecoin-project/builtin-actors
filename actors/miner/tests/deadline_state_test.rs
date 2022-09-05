@@ -546,8 +546,7 @@ fn fails_to_terminate_missing_sector() {
 
     assert!(ret.is_err());
     let err = ret
-        .err()
-        .expect("can only terminate live sectors")
+        .expect_err("can only terminate live sectors")
         .downcast::<ActorError>()
         .expect("Invalid error");
     assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
@@ -569,8 +568,7 @@ fn fails_to_terminate_missing_partition() {
 
     assert!(ret.is_err());
     let err = ret
-        .err()
-        .expect("can only terminate existing partitions")
+        .expect_err("can only terminate existing partitions")
         .downcast::<ActorError>()
         .expect("Invalid error");
     assert_eq!(err.exit_code(), ExitCode::USR_NOT_FOUND);
@@ -592,8 +590,7 @@ fn fails_to_terminate_already_terminated_sector() {
 
     assert!(ret.is_err());
     let err = ret
-        .err()
-        .expect("cannot terminate already terminated sector")
+        .expect_err("cannot terminate already terminated sector")
         .downcast::<ActorError>()
         .expect("Invalid error");
     assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
@@ -658,7 +655,7 @@ fn cannot_pop_expired_sectors_before_proving() {
     // try to pop some expirations
     let ret = deadline.pop_expired_sectors(rt.store(), 9, QUANT_SPEC);
     assert!(ret.is_err());
-    let err = ret.err().expect("cannot pop expired sectors from a partition with unproven sectors");
+    let err = ret.expect_err("cannot pop expired sectors from a partition with unproven sectors");
 
     assert!(err
         .to_string()
@@ -1172,8 +1169,7 @@ fn cannot_declare_faults_in_missing_partitions() {
     );
 
     let err = result
-        .err()
-        .expect("missing partition, should have failed")
+        .expect_err("missing partition, should have failed")
         .downcast::<ActorError>()
         .expect("Invalid error");
     assert_eq!(err.exit_code(), ExitCode::USR_NOT_FOUND);
@@ -1200,8 +1196,7 @@ fn cannot_declare_faults_recovered_in_missing_partitions() {
     );
 
     let err = result
-        .err()
-        .expect("missing partition, should have failed")
+        .expect_err("missing partition, should have failed")
         .downcast::<ActorError>()
         .expect("Invalid error");
     assert_eq!(err.exit_code(), ExitCode::USR_NOT_FOUND);

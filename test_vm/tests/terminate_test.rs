@@ -36,12 +36,12 @@ use test_vm::{ExpectInvocation, VM};
 fn terminate_sectors() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 4, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let (owner, verifier, unverified_client, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3]);
     let worker = owner;
 
-    let miner_balance = TokenAmount::from(1_000e18 as i128);
+    let miner_balance = TokenAmount::from_whole(1_000);
     let sector_number = 100;
     let sealed_cid = make_sealed_cid(b"s100");
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -71,7 +71,7 @@ fn terminate_sectors() {
     );
 
     // add market collateral
-    let collateral = TokenAmount::from(3e18 as u64);
+    let collateral = TokenAmount::from_whole(3);
     apply_ok(
         &v,
         unverified_client,
@@ -89,7 +89,7 @@ fn terminate_sectors() {
         verified_client,
     );
 
-    let miner_collateral = TokenAmount::from(64e18 as u128);
+    let miner_collateral = TokenAmount::from_whole(64);
     apply_ok(
         &v,
         worker,
@@ -324,7 +324,7 @@ fn terminate_sectors() {
     );
     // because of rounding error it's annoying to compute exact withdrawable balance which is 2.9999.. FIL
     // withdrawing 2 FIL proves out that the claim to 1 FIL per deal (2 deals for this client) is removed at termination
-    let withdrawal = TokenAmount::from(2e18 as u64);
+    let withdrawal = TokenAmount::from_whole(2);
     apply_ok(
         &v,
         verified_client,
@@ -359,8 +359,8 @@ fn terminate_sectors() {
     // miner add 64 balance. Each of 3 deals required 2 FIL collateral, so provider collateral should have been
     // slashed by 6 FIL. Miner's remaining market balance should be 64 - 6 + payment, where payment is for storage
     // before the slash and should be << 1 FIL. Actual amount withdrawn should be between 58 and 59 FIL.
-    assert!(TokenAmount::from(58e18 as u128) < value_withdrawn);
-    assert!(TokenAmount::from(59e18 as u128) > value_withdrawn);
+    assert!(TokenAmount::from_whole(58) < value_withdrawn);
+    assert!(TokenAmount::from_whole(59) > value_withdrawn);
 
     v.expect_state_invariants(
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],

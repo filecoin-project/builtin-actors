@@ -20,7 +20,6 @@ use fil_actors_runtime::{
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::crypto::signature::Signature;
@@ -33,7 +32,8 @@ use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use std::ops::Add;
 
-use num_traits::FromPrimitive;
+use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
+use num_traits::{FromPrimitive, Zero};
 
 mod harness;
 
@@ -69,7 +69,7 @@ fn simple_construction() {
     let store = &rt.store;
 
     let empty_balance_table =
-        make_empty_map::<_, BigIntDe>(store, BALANCE_TABLE_BITWIDTH).flush().unwrap();
+        make_empty_map::<_, TokenAmount>(store, BALANCE_TABLE_BITWIDTH).flush().unwrap();
     let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().unwrap();
     let empty_proposals_array =
         Amt::<(), _>::new_with_bit_width(store, PROPOSALS_AMT_BITWIDTH).flush().unwrap();
@@ -192,7 +192,7 @@ fn adds_to_provider_escrow_funds() {
 
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
-            rt.set_value(TokenAmount::from(tc.delta));
+            rt.set_value(TokenAmount::from_atto(tc.delta));
             rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
             expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
@@ -209,7 +209,7 @@ fn adds_to_provider_escrow_funds() {
 
             assert_eq!(
                 get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(),
-                TokenAmount::from(tc.total)
+                TokenAmount::from_atto(tc.total)
             );
             check_state(&rt);
         }
@@ -220,14 +220,16 @@ fn adds_to_provider_escrow_funds() {
 fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient() {
     let mut rt = setup();
 
-    add_participant_funds(&mut rt, CLIENT_ADDR, TokenAmount::from(20u8));
+    add_participant_funds(&mut rt, CLIENT_ADDR, TokenAmount::from_atto(20u8));
 
-    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
+    assert_eq!(TokenAmount::from_atto(20u8), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
 
     rt.expect_validate_caller_addr(vec![CLIENT_ADDR]);
 
-    let params =
-        WithdrawBalanceParams { provider_or_client: CLIENT_ADDR, amount: TokenAmount::from(1u8) };
+    let params = WithdrawBalanceParams {
+        provider_or_client: CLIENT_ADDR,
+        amount: TokenAmount::from_atto(1u8),
+    };
 
     // caller is not the recipient
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
@@ -241,7 +243,7 @@ fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient()
     rt.verify();
 
     // verify there was no withdrawal
-    assert_eq!(TokenAmount::from(20u8), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
+    assert_eq!(TokenAmount::from_atto(20u8), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
 
     check_state(&rt);
 }
@@ -267,8 +269,8 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
     assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
     assert_eq!(deal.client_balance_requirement(), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
 
-    let withdraw_amount = TokenAmount::from(1u8);
-    let withdrawable_amount = TokenAmount::from(0u8);
+    let withdraw_amount = TokenAmount::from_atto(1u8);
+    let withdrawable_amount = TokenAmount::zero();
     // client cannot withdraw any funds since all it's balance is locked
     withdraw_client_balance(
         &mut rt,
@@ -287,8 +289,8 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
     );
 
     // add some more funds to the provider & ensure withdrawal is limited by the locked funds
-    let withdraw_amount = TokenAmount::from(30u8);
-    let withdrawable_amount = TokenAmount::from(25u8);
+    let withdraw_amount = TokenAmount::from_atto(30u8);
+    let withdrawable_amount = TokenAmount::from_atto(25u8);
 
     add_provider_funds(&mut rt, withdrawable_amount.clone(), &MinerAddresses::default());
     withdraw_provider_balance(
@@ -336,8 +338,8 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     assert_eq!(publish_epoch + 1, st.slash_epoch);
 
     // provider cannot withdraw any funds since all it's balance is locked
-    let withdraw_amount = TokenAmount::from(1);
-    let actual_withdrawn = TokenAmount::from(0);
+    let withdraw_amount = TokenAmount::from_atto(1);
+    let actual_withdrawn = TokenAmount::zero();
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount,
@@ -348,9 +350,9 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     );
 
     // add some more funds to the provider & ensure withdrawal is limited by the locked funds
-    add_provider_funds(&mut rt, TokenAmount::from(25), &MinerAddresses::default());
-    let withdraw_amount = TokenAmount::from(30);
-    let actual_withdrawn = TokenAmount::from(25);
+    add_provider_funds(&mut rt, TokenAmount::from_atto(25), &MinerAddresses::default());
+    let withdraw_amount = TokenAmount::from_atto(30);
+    let actual_withdrawn = TokenAmount::from_atto(25);
 
     withdraw_provider_balance(
         &mut rt,
@@ -367,7 +369,7 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
 fn fails_unless_called_by_an_account_actor() {
     let mut rt = setup();
 
-    rt.set_value(TokenAmount::from(10));
+    rt.set_value(TokenAmount::from_atto(10));
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
@@ -402,7 +404,7 @@ fn adds_to_non_provider_funds() {
 
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
-            rt.set_value(TokenAmount::from(tc.delta));
+            rt.set_value(TokenAmount::from_atto(tc.delta));
             rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
 
             assert_eq!(
@@ -416,7 +418,10 @@ fn adds_to_non_provider_funds() {
 
             rt.verify();
 
-            assert_eq!(get_escrow_balance(&rt, caller_addr).unwrap(), TokenAmount::from(tc.total));
+            assert_eq!(
+                get_escrow_balance(&rt, caller_addr).unwrap(),
+                TokenAmount::from_atto(tc.total)
+            );
             check_state(&rt);
         }
     }
@@ -426,13 +431,13 @@ fn adds_to_non_provider_funds() {
 fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
     let mut rt = setup();
 
-    let amount = TokenAmount::from(20);
+    let amount = TokenAmount::from_atto(20);
     add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
 
     assert_eq!(amount, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
 
     // worker calls WithdrawBalance, balance is transferred to owner
-    let withdraw_amount = TokenAmount::from(1);
+    let withdraw_amount = TokenAmount::from_atto(1);
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount.clone(),
@@ -442,7 +447,7 @@ fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
         WORKER_ADDR,
     );
 
-    assert_eq!(TokenAmount::from(19), get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
+    assert_eq!(TokenAmount::from_atto(19), get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
     check_state(&rt);
 }
 
@@ -450,15 +455,15 @@ fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
 fn withdraws_from_non_provider_escrow_funds() {
     let mut rt = setup();
 
-    let amount = TokenAmount::from(20);
+    let amount = TokenAmount::from_atto(20);
     add_participant_funds(&mut rt, CLIENT_ADDR, amount.clone());
 
     assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), amount);
 
-    let withdraw_amount = TokenAmount::from(1);
+    let withdraw_amount = TokenAmount::from_atto(1);
     withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount, CLIENT_ADDR);
 
-    assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::from(19));
+    assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::from_atto(19));
     check_state(&rt);
 }
 
@@ -466,14 +471,14 @@ fn withdraws_from_non_provider_escrow_funds() {
 fn client_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     let mut rt = setup();
 
-    let amount = TokenAmount::from(20);
+    let amount = TokenAmount::from_atto(20);
     add_participant_funds(&mut rt, CLIENT_ADDR, amount.clone());
 
     // withdraw amount greater than escrow balance
-    let withdraw_amount = TokenAmount::from(25);
+    let withdraw_amount = TokenAmount::from_atto(25);
     withdraw_client_balance(&mut rt, withdraw_amount, amount, CLIENT_ADDR);
 
-    assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::from(0));
+    assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::zero());
     check_state(&rt);
 }
 
@@ -481,12 +486,12 @@ fn client_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
 fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     let mut rt = setup();
 
-    let amount = TokenAmount::from(20);
+    let amount = TokenAmount::from_atto(20);
     add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
 
     assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
 
-    let withdraw_amount = TokenAmount::from(25);
+    let withdraw_amount = TokenAmount::from_atto(25);
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount,
@@ -496,7 +501,7 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
         WORKER_ADDR,
     );
 
-    assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), TokenAmount::from(0));
+    assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), TokenAmount::zero());
     check_state(&rt);
 }
 
@@ -505,7 +510,7 @@ fn fail_when_balance_is_zero() {
     let mut rt = setup();
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
-    rt.set_received(BigInt::from(0_i32));
+    rt.set_received(TokenAmount::zero());
 
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -525,7 +530,7 @@ fn fails_with_a_negative_withdraw_amount() {
 
     let params = WithdrawBalanceParams {
         provider_or_client: PROVIDER_ADDR,
-        amount: TokenAmount::from(-1_i32),
+        amount: TokenAmount::from_atto(-1_i32),
     };
 
     expect_abort(
@@ -544,15 +549,17 @@ fn fails_with_a_negative_withdraw_amount() {
 fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker() {
     let mut rt = setup();
 
-    let amount = TokenAmount::from(20u8);
+    let amount = TokenAmount::from_atto(20u8);
     add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
 
     assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
 
     // only signing parties can add balance for client AND provider.
     rt.expect_validate_caller_addr(vec![OWNER_ADDR, WORKER_ADDR]);
-    let params =
-        WithdrawBalanceParams { provider_or_client: PROVIDER_ADDR, amount: TokenAmount::from(1u8) };
+    let params = WithdrawBalanceParams {
+        provider_or_client: PROVIDER_ADDR,
+        amount: TokenAmount::from_atto(1u8),
+    };
 
     // caller is not owner or worker
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(909));
@@ -732,7 +739,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     let mut deal = generate_deal_proposal(client_bls, provider_bls, start_epoch, end_epoch);
     deal.verified_deal = true;
 
-    // add funds for cient using it's BLS address -> will be resolved and persisted
+    // add funds for client using its BLS address -> will be resolved and persisted
     add_participant_funds(&mut rt, client_bls, deal.client_balance_requirement());
     assert_eq!(
         deal.client_balance_requirement(),
@@ -767,19 +774,27 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     //  create a client proposal with a valid signature
     let mut params = PublishStorageDealsParams { deals: vec![] };
     let buf = RawBytes::serialize(&deal).expect("failed to marshal deal proposal");
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
-    let client_proposal =
-        ClientDealProposal { client_signature: sig.clone(), proposal: deal.clone() };
+    let sig = Signature::new_bls(buf.to_vec());
+    let client_proposal = ClientDealProposal { client_signature: sig, proposal: deal.clone() };
     params.deals.push(client_proposal);
     // expect a call to verify the above signature
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: deal.client,
-        plaintext: buf.to_vec(),
-        result: Ok(()),
-    });
 
-    // request is sent to the VerigReg actor using the resolved address
+    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf.to_vec(),
+        message: buf.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal.client,
+        AUTHENTICATE_MESSAGE_METHOD,
+        auth_param,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
+    // request is sent to the VerifReg actor using the resolved address
     let param = RawBytes::serialize(UseBytesParams {
         address: client_resolved,
         deal_size: BigInt::from(deal.piece_size.0),
@@ -790,7 +805,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         *VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::USE_BYTES_METHOD as u64,
         param,
-        TokenAmount::from(0u8),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -859,11 +874,11 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
 
     let mut rt = setup();
 
-    let client_collateral = TokenAmount::from(10u8); // min is zero so this is placeholder
+    let client_collateral = TokenAmount::from_atto(10u8); // min is zero so this is placeholder
 
     // given power and circ supply cancel this should be 1*dealqapower / 100
     let deal_size = PaddedPieceSize(2048u64); // generateDealProposal's deal size
-    let provider_collateral = TokenAmount::from(
+    let provider_collateral = TokenAmount::from_atto(
         (deal_size.0 * (policy.prov_collateral_percent_supply_num as u64))
             / policy.prov_collateral_percent_supply_denom as u64,
     );
@@ -878,7 +893,7 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
         end_epoch,
     );
     let qa_power = StoragePower::from_i128(1 << 50).unwrap();
-    rt.set_circulating_supply(qa_power); // convenient for these two numbers to cancel out
+    rt.set_circulating_supply(TokenAmount::from_atto(qa_power)); // convenient for these two numbers to cancel out
 
     // publish the deal successfully
     rt.set_epoch(publish_epoch);
@@ -1188,8 +1203,8 @@ fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashin
     rt.set_epoch(current);
     let (pay, slashed) =
         cron_tick_and_assert_balances(&mut rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
-    assert_eq!(TokenAmount::from(0u8), pay);
-    assert_eq!(TokenAmount::from(0u8), slashed);
+    assert_eq!(TokenAmount::zero(), pay);
+    assert_eq!(TokenAmount::zero(), slashed);
 
     // deal proposal and state should NOT be deleted
     get_deal_proposal(&mut rt, deal_id);
@@ -1272,20 +1287,30 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
         end_epoch,
     );
     let buf = RawBytes::serialize(d2.clone()).expect("failed to marshal deal proposal");
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let sig = Signature::new_bls(buf.to_vec());
     let params = PublishStorageDealsParams {
-        deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig.clone() }],
+        deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig }],
     };
     rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: d2.client,
-        plaintext: buf.to_vec(),
-        result: Ok(()),
-    });
+
+    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf.to_vec(),
+        message: buf.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        d2.client,
+        AUTHENTICATE_MESSAGE_METHOD,
+        auth_param,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
@@ -1434,9 +1459,9 @@ fn locked_fund_tracking_states() {
     let st: State = rt.get_state();
 
     // assert values are zero
-    assert_eq!(st.total_client_locked_collateral, BigInt::from(0_i32));
-    assert_eq!(st.total_provider_locked_collateral, BigInt::from(0_i32));
-    assert_eq!(st.total_client_storage_fee, BigInt::from(0_i32));
+    assert!(st.total_client_locked_collateral.is_zero());
+    assert!(st.total_provider_locked_collateral.is_zero());
+    assert!(st.total_client_storage_fee.is_zero());
 
     // Publish deal1, deal2, and deal3 with different client and provider
     let deal_id1 = generate_and_publish_deal(&mut rt, c1, &m1, start_epoch, end_epoch);
@@ -1475,7 +1500,7 @@ fn locked_fund_tracking_states() {
     );
     cron_tick(&mut rt);
     let duration = curr - start_epoch;
-    let payment = BigInt::from(2_i32) * &d1.storage_price_per_epoch * duration;
+    let payment: TokenAmount = 2 * &d1.storage_price_per_epoch * duration;
     let mut csf = (csf - payment) - d3.total_storage_fee();
     let mut plc = plc - d3.provider_collateral;
     let mut clc = clc - d3.client_collateral;
@@ -1491,8 +1516,8 @@ fn locked_fund_tracking_states() {
     // one more round of payment for deal1 and deal2
     let curr = curr + 1;
     rt.set_epoch(curr);
-    let duration = BigInt::from(deal_updates_interval);
-    let payment = BigInt::from(2_i32) * d1.storage_price_per_epoch * duration;
+    let duration = deal_updates_interval;
+    let payment = 2 * d1.storage_price_per_epoch * duration;
     csf -= payment;
     cron_tick(&mut rt);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
@@ -1503,9 +1528,9 @@ fn locked_fund_tracking_states() {
 
     // cron tick to slash deal1 and expire deal2
     rt.set_epoch(end_epoch);
-    csf = BigInt::from(0_i32);
-    clc = BigInt::from(0_i32);
-    plc = BigInt::from(0_i32);
+    csf = TokenAmount::zero();
+    clc = TokenAmount::zero();
+    plc = TokenAmount::zero();
     rt.expect_send(
         *BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
@@ -1543,7 +1568,7 @@ fn market_actor_deals() {
     };
 
     // test adding provider funds
-    let funds = TokenAmount::from_u32(20_000_000).unwrap();
+    let funds = TokenAmount::from_atto(20_000_000);
     add_provider_funds(&mut rt, funds.clone(), &MinerAddresses::default());
     assert_eq!(funds, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
 
@@ -1581,7 +1606,7 @@ fn max_deal_label_size() {
     };
 
     // Test adding provider funds from both worker and owner address
-    let funds = TokenAmount::from_u32(20_000_000).unwrap();
+    let funds = TokenAmount::from_atto(20_000_000);
     add_provider_funds(&mut rt, funds.clone(), &MinerAddresses::default());
     assert_eq!(funds, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
 
@@ -1624,7 +1649,7 @@ fn insufficient_client_balance_in_a_batch() {
         ChainEpoch::from(1),
         200 * EPOCHS_IN_DAY,
     );
-    deal1.client_collateral = deal2.clone().client_collateral + 1;
+    deal1.client_collateral = &deal2.client_collateral + TokenAmount::from_atto(1);
 
     // Client gets enough funds for the 2nd deal
     add_participant_funds(&mut rt, CLIENT_ADDR, deal2.client_balance_requirement());
@@ -1657,29 +1682,46 @@ fn insufficient_client_balance_in_a_batch() {
     let buf1 = RawBytes::serialize(&deal1).expect("failed to marshal deal proposal");
     let buf2 = RawBytes::serialize(&deal2).expect("failed to marshal deal proposal");
 
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let sig1 = Signature::new_bls(buf1.to_vec());
+    let sig2 = Signature::new_bls(buf2.to_vec());
     let params = PublishStorageDealsParams {
         deals: vec![
-            ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() },
-            ClientDealProposal { proposal: deal2.clone(), client_signature: sig.clone() },
+            ClientDealProposal { proposal: deal1.clone(), client_signature: sig1 },
+            ClientDealProposal { proposal: deal2.clone(), client_signature: sig2 },
         ],
     };
 
     rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig: sig.clone(),
-        signer: deal1.client,
-        plaintext: buf1.to_vec(),
-        result: Ok(()),
-    });
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: deal2.client,
-        plaintext: buf2.to_vec(),
-        result: Ok(()),
-    });
+
+    let authenticate_param1 = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf1.to_vec(),
+        message: buf1.to_vec(),
+    })
+    .unwrap();
+    let authenticate_param2 = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf2.to_vec(),
+        message: buf2.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal1.client,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        authenticate_param1,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    rt.expect_send(
+        deal2.client,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        authenticate_param2,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
@@ -1718,7 +1760,7 @@ fn insufficient_provider_balance_in_a_batch() {
         ChainEpoch::from(1),
         200 * EPOCHS_IN_DAY,
     );
-    deal1.provider_collateral = deal2.clone().provider_collateral + 1;
+    deal1.provider_collateral = &deal2.provider_collateral + TokenAmount::from_atto(1);
 
     // Client gets enough funds for both deals
     add_participant_funds(
@@ -1756,29 +1798,47 @@ fn insufficient_provider_balance_in_a_batch() {
     let buf1 = RawBytes::serialize(&deal1).expect("failed to marshal deal proposal");
     let buf2 = RawBytes::serialize(&deal2).expect("failed to marshal deal proposal");
 
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let sig1 = Signature::new_bls(buf1.to_vec());
+    let sig2 = Signature::new_bls(buf2.to_vec());
+
     let params = PublishStorageDealsParams {
         deals: vec![
-            ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() },
-            ClientDealProposal { proposal: deal2.clone(), client_signature: sig.clone() },
+            ClientDealProposal { proposal: deal1.clone(), client_signature: sig1 },
+            ClientDealProposal { proposal: deal2.clone(), client_signature: sig2 },
         ],
     };
 
     rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig: sig.clone(),
-        signer: deal1.client,
-        plaintext: buf1.to_vec(),
-        result: Ok(()),
-    });
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: deal2.client,
-        plaintext: buf2.to_vec(),
-        result: Ok(()),
-    });
+
+    let authenticate_param1 = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf1.to_vec(),
+        message: buf1.to_vec(),
+    })
+    .unwrap();
+    let authenticate_param2 = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf2.to_vec(),
+        message: buf2.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal1.client,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        authenticate_param1,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    rt.expect_send(
+        deal2.client,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        authenticate_param2,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 

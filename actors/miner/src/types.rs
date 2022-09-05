@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use super::beneficiary::*;
 use crate::commd::CompactCommD;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
@@ -226,7 +227,6 @@ pub struct ReportConsensusFaultParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct WithdrawBalanceParams {
-    #[serde(with = "bigint_ser")]
     pub amount_requested: TokenAmount,
 }
 
@@ -235,18 +235,17 @@ impl Cbor for WithdrawBalanceParams {}
 #[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct WithdrawBalanceReturn {
-    #[serde(with = "bigint_ser")]
     pub amount_withdrawn: TokenAmount,
 }
 
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct WorkerKeyChange {
     /// Must be an ID address
     pub new_worker: Address,
     pub effective_at: ChainEpoch,
 }
 
-#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct PreCommitSectorParams {
     pub seal_proof: RegisteredSealProof,
     pub sector_number: SectorNumber,
@@ -267,18 +266,18 @@ pub struct PreCommitSectorParams {
 
 impl Cbor for PreCommitSectorParams {}
 
-#[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct PreCommitSectorBatchParams {
     pub sectors: Vec<PreCommitSectorParams>,
 }
-#[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct PreCommitSectorBatchParams2 {
     pub sectors: Vec<SectorPreCommitInfo>,
 }
 
 impl Cbor for PreCommitSectorBatchParams {}
 
-#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitInfo {
     pub seal_proof: RegisteredSealProof,
     pub sector_number: SectorNumber,
@@ -292,16 +291,15 @@ pub struct SectorPreCommitInfo {
 }
 
 /// Information stored on-chain for a pre-committed sector.
-#[derive(Debug, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitOnChainInfo {
     pub info: SectorPreCommitInfo,
-    #[serde(with = "bigint_ser")]
     pub pre_commit_deposit: TokenAmount,
     pub pre_commit_epoch: ChainEpoch,
 }
 
 /// Information stored on-chain for a proven sector.
-#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorOnChainInfo {
     pub sector_number: SectorNumber,
     /// The seal proof type implies the PoSt proofs
@@ -320,24 +318,20 @@ pub struct SectorOnChainInfo {
     #[serde(with = "bigint_ser")]
     pub verified_deal_weight: DealWeight,
     /// Pledge collected to commit this sector
-    #[serde(with = "bigint_ser")]
     pub initial_pledge: TokenAmount,
     /// Expected one day projection of reward for sector computed at activation time
-    #[serde(with = "bigint_ser")]
     pub expected_day_reward: TokenAmount,
     /// Expected twenty day projection of reward for sector computed at activation time
-    #[serde(with = "bigint_ser")]
     pub expected_storage_pledge: TokenAmount,
     /// Age of sector this sector replaced or zero
     pub replaced_sector_age: ChainEpoch,
     /// Day reward of sector this sector replace or zero
-    #[serde(with = "bigint_ser")]
     pub replaced_day_reward: TokenAmount,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct Fault {
     pub miner: Address,
     pub fault: ChainEpoch,
@@ -346,15 +340,13 @@ pub struct Fault {
 // * Added in v2 -- param was previously a big int.
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ApplyRewardParams {
-    #[serde(with = "bigint_ser")]
     pub reward: TokenAmount,
-    #[serde(with = "bigint_ser")]
     pub penalty: TokenAmount,
 }
 
 impl Cbor for DisputeWindowedPoStParams {}
 
-#[derive(Debug, PartialEq, Clone, Copy, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize_tuple, Deserialize_tuple)]
 pub struct DisputeWindowedPoStParams {
     pub deadline: u64,
     pub post_index: u64, // only one is allowed at a time to avoid loading too many sector infos.
@@ -369,7 +361,7 @@ pub struct ProveCommitAggregateParams {
     pub aggregate_proof: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ReplicaUpdate {
     pub sector_number: SectorNumber,
     pub deadline: u64,
@@ -388,7 +380,7 @@ pub struct ProveReplicaUpdatesParams {
 
 impl Cbor for ProveReplicaUpdatesParams {}
 
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ReplicaUpdate2 {
     pub sector_number: SectorNumber,
     pub deadline: u64,
@@ -407,3 +399,28 @@ pub struct ProveReplicaUpdatesParams2 {
 }
 
 impl Cbor for ProveReplicaUpdatesParams2 {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ChangeBeneficiaryParams {
+    pub new_beneficiary: Address,
+    pub new_quota: TokenAmount,
+    pub new_expiration: ChainEpoch,
+}
+
+impl Cbor for ChangeBeneficiaryParams {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ActiveBeneficiary {
+    pub beneficiary: Address,
+    pub term: BeneficiaryTerm,
+}
+
+impl Cbor for ActiveBeneficiary {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct GetBeneficiaryReturn {
+    pub active: ActiveBeneficiary,
+    pub proposed: Option<PendingBeneficiaryChange>,
+}
+
+impl Cbor for GetBeneficiaryReturn {}

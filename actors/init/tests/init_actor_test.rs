@@ -16,6 +16,7 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use num_traits::Zero;
 use serde::Serialize;
 
 fn check_state(rt: &MockRuntime) {
@@ -48,6 +49,63 @@ fn abort_cant_call_exec() {
 }
 
 #[test]
+fn repeated_robust_address() {
+    let mut rt = construct_runtime();
+    construct_and_verify(&mut rt);
+
+    // setup one msig actor
+    let unique_address = Address::new_actor(b"multisig");
+    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
+    {
+        // Actor creating multisig actor
+        let some_acc_actor = Address::new_id(1234);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, some_acc_actor);
+
+        rt.new_actor_addr = Some(unique_address);
+
+        // Next id
+        let expected_id = 100;
+        let expected_id_addr = Address::new_id(expected_id);
+        rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id);
+
+        // Expect a send to the multisig actor constructor
+        rt.expect_send(
+            expected_id_addr,
+            METHOD_CONSTRUCTOR,
+            RawBytes::serialize(&fake_params).unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        // Return should have been successful. Check the returned addresses
+        let exec_ret = exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
+        let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
+        assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
+        assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
+        check_state(&rt);
+    }
+
+    // Simulate repeated robust address, as it could be a case with predictable address generation
+    {
+        rt.new_actor_addr = Some(unique_address);
+
+        rt.expect_validate_caller_any();
+        let exec_params = ExecParams {
+            code_cid: *MULTISIG_ACTOR_CODE_ID,
+            constructor_params: RawBytes::serialize(&fake_params).unwrap(),
+        };
+
+        let ret =
+            rt.call::<InitActor>(Method::Exec as u64, &RawBytes::serialize(&exec_params).unwrap());
+
+        rt.verify();
+        assert!(ret.is_err());
+        assert_eq!(ret.unwrap_err().exit_code(), ExitCode::USR_FORBIDDEN)
+    }
+}
+
+#[test]
 fn create_2_payment_channels() {
     let mut rt = construct_runtime();
     construct_and_verify(&mut rt);
@@ -59,8 +117,8 @@ fn create_2_payment_channels() {
         let pay_channel_string = format!("paych_{}", n);
         let paych = pay_channel_string.as_bytes();
 
-        rt.set_balance(TokenAmount::from(100));
-        rt.value_received = TokenAmount::from(100);
+        rt.set_balance(TokenAmount::from_atto(100));
+        rt.value_received = TokenAmount::from_atto(100);
 
         let unique_address = Address::new_actor(paych);
         rt.new_actor_addr = Some(Address::new_actor(paych));
@@ -72,7 +130,7 @@ fn create_2_payment_channels() {
         let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
         // expect anne creating a payment channel to trigger a send to the payment channels constructor
-        let balance = TokenAmount::from(100u8);
+        let balance = TokenAmount::from_atto(100u8);
 
         rt.expect_send(
             expected_id_addr,
@@ -120,7 +178,7 @@ fn create_storage_miner() {
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         RawBytes::serialize(&fake_params).unwrap(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -171,7 +229,7 @@ fn create_multisig_actor() {
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         RawBytes::serialize(&fake_params).unwrap(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -206,7 +264,7 @@ fn sending_constructor_failure() {
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         RawBytes::serialize(&fake_params).unwrap(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::USR_ILLEGAL_STATE,
     );
