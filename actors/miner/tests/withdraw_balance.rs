@@ -160,7 +160,7 @@ fn allow_withdraw_but_no_send_when_beneficiary_not_efficient() {
     assert_eq!(PERIOD_OFFSET - 10, info.beneficiary_term.expiration);
     rt.set_epoch(100);
     h.withdraw_funds(&mut rt, h.beneficiary, quota, &TokenAmount::zero(), &TokenAmount::zero())
-        .unwrap();
+        .expect_err("expected error, but call succeeded");
     h.check_state(&rt);
 }
 

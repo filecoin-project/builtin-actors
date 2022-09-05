@@ -281,7 +281,7 @@ fn successfully_change_quota_and_test_withdraw() {
         &TokenAmount::zero(),
         &TokenAmount::zero(),
     )
-    .unwrap();
+    .expect_err("expected error, but call succeeded");
 
     let increase_quota = TokenAmount::from_atto(120);
     let increase_beneficiary_change =
