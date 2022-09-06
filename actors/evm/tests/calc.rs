@@ -6,7 +6,7 @@ use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 
 #[allow(dead_code)]
-pub fn magic_calc_contract() -> Result<Vec<u8>, etk_asm::ingest::Error> {
+pub fn magic_calc_contract() -> Vec<u8> {
     let init = r#"
 push1 0x42  # magic value
 push1 0x00  # key of magic value
@@ -87,12 +87,12 @@ return
 
 "#;
 
-    asm::new_contract(&"magic-calc", &init, &body)
+    asm::new_contract(&"magic-calc", &init, &body).unwrap()
 }
 
 #[test]
 fn test_magic_calc() {
-    let contract = magic_calc_contract().unwrap();
+    let contract = magic_calc_contract();
 
     let mut rt = MockRuntime::default();
 
