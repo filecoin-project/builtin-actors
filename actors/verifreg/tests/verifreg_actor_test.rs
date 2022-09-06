@@ -440,9 +440,9 @@ mod claims {
     fn expire_allocs() {
         let (h, mut rt) = new_harness();
 
-        let mut alloc1 = make_alloc(1, &CLIENT, &PROVIDER, 128);
+        let mut alloc1 = make_alloc("1", &CLIENT, &PROVIDER, 128);
         alloc1.expiration = 100;
-        let mut alloc2 = make_alloc(2, &CLIENT, &PROVIDER, 256);
+        let mut alloc2 = make_alloc("2", &CLIENT, &PROVIDER, 256);
         alloc2.expiration = 200;
 
         h.create_alloc(&mut rt, &alloc1).unwrap();
@@ -461,7 +461,8 @@ mod claims {
 
         // Remove the first alloc, which expired.
         rt.set_epoch(100);
-        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], 128).unwrap();
+        let ret =
+            h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], alloc1.size.0).unwrap();
         assert_eq!(
             BatchReturnGen::new(2).add_success().add_fail(ExitCode::USR_FORBIDDEN).gen(),
             ret
@@ -469,7 +470,8 @@ mod claims {
 
         // Remove the second alloc (the first is no longer found).
         rt.set_epoch(200);
-        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], 256).unwrap();
+        let ret =
+            h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], alloc2.size.0).unwrap();
         assert_eq!(
             BatchReturnGen::new(2).add_fail(ExitCode::USR_NOT_FOUND).add_success().gen(),
             ret
@@ -477,7 +479,8 @@ mod claims {
 
         // Reset state and show we can remove two at once.
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], 384).unwrap();
+        let total_size = alloc1.size.0 + alloc2.size.0;
+        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], total_size).unwrap();
         assert_eq!(BatchReturnGen::new(2).add_success().add_success().gen(), ret);
     }
 
@@ -486,9 +489,10 @@ mod claims {
         let (h, mut rt) = new_harness();
         let provider = *PROVIDER;
 
-        let alloc1 = make_alloc(1, &CLIENT, &provider, 128);
-        let alloc2 = make_alloc(2, &CLIENT, &provider, 128);
-        let alloc3 = make_alloc(3, &CLIENT, &provider, 128);
+        let size = 128;
+        let alloc1 = make_alloc("1", &CLIENT, &provider, size);
+        let alloc2 = make_alloc("2", &CLIENT, &provider, size);
+        let alloc3 = make_alloc("3", &CLIENT, &provider, size);
 
         h.create_alloc(&mut rt, &alloc1).unwrap();
         h.create_alloc(&mut rt, &alloc2).unwrap();
@@ -503,6 +507,7 @@ mod claims {
                     make_claim_req(2, alloc2, sector_id(provider, 1000), 1500),
                     make_claim_req(3, alloc3, sector_id(provider, 1000), 1500),
                 ],
+                size * 3,
             )
             .unwrap();
 

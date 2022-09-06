@@ -1,4 +1,4 @@
-use fil_fungible_token::token::types::{BurnReturn, TransferParams};
+use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
@@ -15,7 +15,7 @@ use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
-    AllocationID, ClaimAllocationParams, ClaimAllocationReturn, DataCap, Method,
+    AllocationID, ClaimAllocationsParams, ClaimAllocationsReturn, DataCap, Method,
     RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RestoreBytesParams,
     SectorAllocationClaim, State, UseBytesParams,
 };
@@ -296,12 +296,24 @@ impl Harness {
         rt: &mut MockRuntime,
         provider: Address,
         claim_allocs: Vec<SectorAllocationClaim>,
-    ) -> Result<ClaimAllocationReturn, ActorError> {
+        datacap_burnt: u64,
+    ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
 
-        let params = ClaimAllocationParams { sectors: claim_allocs };
+        rt.expect_send(
+            *DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::Method::Burn as MethodNum,
+            RawBytes::serialize(&BurnParams {
+                amount: TokenAmount::from(datacap_burnt) * TOKEN_PRECISION,
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
+            ExitCode::OK,
+        );
 
+        let params = ClaimAllocationsParams { sectors: claim_allocs };
         let ret = rt
             .call::<VerifregActor>(
                 Method::ClaimAllocations as MethodNum,
@@ -350,16 +362,11 @@ impl Harness {
     }
 }
 
-pub fn make_alloc(
-    data_id: AllocationID,
-    client: &Address,
-    provider: &Address,
-    size: u64,
-) -> Allocation {
+pub fn make_alloc(data_id: &str, client: &Address, provider: &Address, size: u64) -> Allocation {
     Allocation {
         client: *client,
         provider: *provider,
-        data: make_piece_cid(format!("{}", data_id).as_bytes()),
+        data: make_piece_cid(data_id.as_bytes()),
         size: PaddedPieceSize(size),
         term_min: 1000,
         term_max: 2000,
@@ -376,8 +383,8 @@ pub fn make_claim_req(
     SectorAllocationClaim {
         client: alloc.client,
         allocation_id: id,
-        piece_cid: alloc.data,
-        piece_size: alloc.size,
+        data: alloc.data,
+        size: alloc.size,
         sector_id,
         sector_expiry,
     }
