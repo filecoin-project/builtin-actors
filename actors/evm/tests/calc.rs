@@ -87,7 +87,7 @@ return
 
 "#;
 
-    asm::new_contract(&"magic-calc", &init, &body).unwrap()
+    asm::new_contract("magic-calc", init, body).unwrap()
 }
 
 #[test]
