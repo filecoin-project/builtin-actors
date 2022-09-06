@@ -3302,8 +3302,11 @@ impl Actor {
                     let remaining_quota = info.beneficiary_term.available(rt.curr_epoch());
                     if remaining_quota.is_zero() {
                         return Err(actor_error!(
-                            illegal_state,
-                            "beneficiary expired or quota depleted. change or update beneficiary to withdraw funds"
+                            forbidden,
+                            "beneficiary expiration of epoch {} passed or quota of {} depleted with {} used",
+                            info.beneficiary_term.expiration,
+                            info.beneficiary_term.quota,
+                            info.beneficiary_term.used_quota
                         ));
                     }
                     amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
