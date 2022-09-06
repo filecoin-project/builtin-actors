@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_fungible_token::token::types::{BurnReturn, TransferParams};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
@@ -24,7 +25,7 @@ use fil_actors_runtime::{
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 
-use crate::ext::datacap::{BurnReturn, DestroyParams, MintParams, TOKEN_PRECISION};
+use crate::ext::datacap::{DestroyParams, MintParams, TOKEN_PRECISION};
 
 pub use self::state::Allocation;
 pub use self::state::Claim;
@@ -406,42 +407,54 @@ impl Actor {
     {
         // since the alloc is expired this should be safe to publically cleanup
         rt.validate_immediate_caller_accept_any()?;
+        let client = params.client;
         let mut ret_gen = BatchReturnGen::new(params.allocation_ids.len());
-        rt.transaction(|st: &mut State, rt| {
-            let mut allocs = st.load_allocs(rt.store())?;
-            for alloc_id in params.allocation_ids {
-                let maybe_alloc = allocs.get(params.client, alloc_id).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "HAMT lookup failure getting allocation",
-                )?;
-                let alloc = match maybe_alloc {
-                    None => {
-                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
-                        info!(
+        let mut recovered_datacap = DataCap::zero();
+        let token_addr = rt
+            .transaction(|st: &mut State, rt| {
+                let mut allocs = st.load_allocs(rt.store())?;
+                for alloc_id in params.allocation_ids {
+                    let maybe_alloc = allocs.get(client, alloc_id).context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "HAMT lookup failure getting allocation",
+                    )?;
+                    let alloc = match maybe_alloc {
+                        None => {
+                            ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                            info!(
                             "claim references allocation id {} that does not belong to client {}",
-                            alloc_id, params.client,
+                            alloc_id, client,
                         );
+                            continue;
+                        }
+                        Some(a) => a,
+                    };
+                    if alloc.expiration > rt.curr_epoch() {
+                        ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                        info!("cannot revoke allocation {} that has not expired", alloc_id);
                         continue;
                     }
-                    Some(a) => a,
-                };
-                if alloc.expiration > rt.curr_epoch() {
-                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
-                    info!("cannot revoke allocation {} that has not expired", alloc_id);
-                    continue;
+                    recovered_datacap += alloc.size.0;
+
+                    allocs.remove(client, alloc_id).context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to remove allocation {}", alloc_id),
+                    )?;
+                    ret_gen.add_success();
                 }
-                allocs.remove(params.client, alloc_id).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to remove allocation {}", alloc_id),
-                )?;
-                ret_gen.add_success();
-            }
-            st.allocations = allocs
-                .flush()
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;
-            Ok(())
-        })
-        .context("state transaction failed")?;
+                st.save_allocs(&mut allocs)?;
+                Ok(st.token)
+            })
+            .context("state transaction failed")?;
+
+        // Transfer the recovered datacap back to the client.
+        transfer(rt, &token_addr, &client, &recovered_datacap).with_context(|| {
+            format!(
+                "failed to transfer recovered datacap {} back to client {}",
+                &recovered_datacap, &client
+            )
+        })?;
+
         Ok(ret_gen.gen())
     }
 
@@ -625,6 +638,29 @@ where
         .context(format!("failed to send destroy {:?} to {}", params, token))?
         .deserialize()?;
     Ok(tokens_to_datacap(&ret.balance))
+}
+
+// Invokes transfer on a data cap token actor for whole units of data cap.
+fn transfer<BS, RT>(
+    rt: &mut RT,
+    token: &Address,
+    to: &Address,
+    amount: &DataCap,
+) -> Result<(), ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    let token_amt = datacap_to_tokens(amount);
+    let params = TransferParams { to: *to, amount: token_amt, operator_data: Default::default() };
+    rt.send(
+        *token,
+        ext::datacap::Method::Transfer as u64,
+        serialize(&params, "transfer params")?,
+        TokenAmount::zero(),
+    )
+    .context(format!("failed to send transfer {:?} to {}", params, token))?;
+    Ok(())
 }
 
 fn datacap_to_tokens(amount: &DataCap) -> TokenAmount {

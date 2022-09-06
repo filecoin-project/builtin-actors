@@ -14,7 +14,8 @@ use fvm_shared::sector::SectorID;
 use fvm_shared::HAMT_BIT_WIDTH;
 
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError, MapMap,
+    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError, Map,
+    MapMap,
 };
 
 use crate::DataCap;
@@ -114,6 +115,14 @@ impl State {
         Ok(allowance.map(|a| a.0.clone() as DataCap)) // TODO: can I avoid the clone?
     }
 
+    pub fn load_verifiers<'a, BS: Blockstore>(
+        &self,
+        store: &'a BS,
+    ) -> Result<Map<'a, BS, BigIntDe>, ActorError> {
+        make_map_with_root_and_bitwidth::<_, BigIntDe>(&self.verifiers, store, HAMT_BIT_WIDTH)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load verifiers")
+    }
+
     pub fn load_allocs<'a, BS: Blockstore>(
         &self,
         store: &'a BS,
@@ -125,6 +134,16 @@ impl State {
             HAMT_BIT_WIDTH,
         )
         .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")
+    }
+
+    pub fn save_allocs<'a, BS: Blockstore>(
+        &mut self,
+        allocs: &mut MapMap<'a, BS, Allocation, Address, AllocationID>,
+    ) -> Result<(), ActorError> {
+        self.allocations = allocs
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;
+        Ok(())
     }
 
     pub fn load_claims<'a, BS: Blockstore>(

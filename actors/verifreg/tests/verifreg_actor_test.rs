@@ -14,8 +14,9 @@ lazy_static! {
 }
 
 mod util {
-    use fil_actors_runtime::test_utils::MockRuntime;
     use fvm_shared::sector::StoragePower;
+
+    use fil_actors_runtime::test_utils::MockRuntime;
 
     pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
         rt.policy.minimum_verified_deal_size.clone() + 42
@@ -35,9 +36,9 @@ mod construction {
     use fil_actor_verifreg::{Actor as VerifregActor, Method};
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
+    use harness::*;
 
     use crate::*;
-    use harness::*;
 
     #[test]
     fn construct_with_root_id() {
@@ -82,10 +83,10 @@ mod verifiers {
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
-
-    use crate::*;
     use harness::*;
     use util::*;
+
+    use crate::*;
 
     #[test]
     fn add_verifier_requires_root_caller() {
@@ -237,10 +238,10 @@ mod clients {
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierClientParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
-
-    use crate::*;
     use harness::*;
     use util::*;
+
+    use crate::*;
 
     #[test]
     fn many_verifiers_and_clients() {
@@ -420,50 +421,64 @@ mod clients {
 }
 
 mod claims {
-    use crate::*;
-    use fil_actor_verifreg::{
-        Allocation, AllocationID, Claim, ClaimID, SectorAllocationClaim, State,
-    };
-    use fil_actors_runtime::runtime::Runtime;
-    use fil_actors_runtime::test_utils::make_piece_cid;
-    use fil_actors_runtime::MapMap;
-    use fvm_shared::clock::ChainEpoch;
     use fvm_shared::error::ExitCode;
-    use fvm_shared::piece::PaddedPieceSize;
     use fvm_shared::sector::SectorID;
     use fvm_shared::HAMT_BIT_WIDTH;
+
+    use fil_actor_verifreg::{Allocation, AllocationID, Claim, ClaimID, State};
+    use fil_actors_runtime::runtime::Runtime;
+    use fil_actors_runtime::{BatchReturnGen, MapMap};
     use harness::*;
 
-    fn make_alloc(expected_id: AllocationID, provider: Address) -> Allocation {
-        Allocation {
-            client: *CLIENT,
-            provider,
-            data: make_piece_cid(format!("{}", expected_id).as_bytes()),
-            size: PaddedPieceSize(128),
-            term_min: 1000,
-            term_max: 2000,
-            expiration: 100,
-        }
-    }
-
-    fn make_claim(
-        id: AllocationID,
-        alloc: Allocation,
-        sector_id: SectorID,
-        sector_expiry: ChainEpoch,
-    ) -> SectorAllocationClaim {
-        SectorAllocationClaim {
-            client: alloc.client,
-            allocation_id: id,
-            piece_cid: alloc.data,
-            piece_size: alloc.size,
-            sector_id,
-            sector_expiry,
-        }
-    }
+    use crate::*;
 
     fn sector_id(provider: Address, number: u64) -> SectorID {
         SectorID { miner: provider.id().unwrap(), number }
+    }
+
+    #[test]
+    fn expire_allocs() {
+        let (h, mut rt) = new_harness();
+
+        let mut alloc1 = make_alloc(1, &CLIENT, &PROVIDER, 128);
+        alloc1.expiration = 100;
+        let mut alloc2 = make_alloc(2, &CLIENT, &PROVIDER, 256);
+        alloc2.expiration = 200;
+
+        h.create_alloc(&mut rt, &alloc1).unwrap();
+        h.create_alloc(&mut rt, &alloc2).unwrap();
+        let state_with_allocs: State = rt.get_state();
+
+        // Can't remove allocations that aren't expired
+        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], 0).unwrap();
+        assert_eq!(
+            BatchReturnGen::new(2)
+                .add_fail(ExitCode::USR_FORBIDDEN)
+                .add_fail(ExitCode::USR_FORBIDDEN)
+                .gen(),
+            ret
+        );
+
+        // Remove the first alloc, which expired.
+        rt.set_epoch(100);
+        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], 128).unwrap();
+        assert_eq!(
+            BatchReturnGen::new(2).add_success().add_fail(ExitCode::USR_FORBIDDEN).gen(),
+            ret
+        );
+
+        // Remove the second alloc (the first is no longer found).
+        rt.set_epoch(200);
+        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], 256).unwrap();
+        assert_eq!(
+            BatchReturnGen::new(2).add_fail(ExitCode::USR_NOT_FOUND).add_success().gen(),
+            ret
+        );
+
+        // Reset state and show we can remove two at once.
+        rt.replace_state(&state_with_allocs);
+        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], 384).unwrap();
+        assert_eq!(BatchReturnGen::new(2).add_success().add_success().gen(), ret);
     }
 
     #[test]
@@ -471,22 +486,22 @@ mod claims {
         let (h, mut rt) = new_harness();
         let provider = *PROVIDER;
 
-        let alloc1 = make_alloc(1, provider);
-        let alloc2 = make_alloc(2, provider);
-        let alloc3 = make_alloc(3, provider);
+        let alloc1 = make_alloc(1, &CLIENT, &provider, 128);
+        let alloc2 = make_alloc(2, &CLIENT, &provider, 128);
+        let alloc3 = make_alloc(3, &CLIENT, &provider, 128);
 
-        h.create_alloc(&mut rt, alloc1.clone()).unwrap();
-        h.create_alloc(&mut rt, alloc2.clone()).unwrap();
-        h.create_alloc(&mut rt, alloc3.clone()).unwrap();
+        h.create_alloc(&mut rt, &alloc1).unwrap();
+        h.create_alloc(&mut rt, &alloc2).unwrap();
+        h.create_alloc(&mut rt, &alloc3).unwrap();
 
         let ret = h
             .claim_allocations(
                 &mut rt,
                 provider,
                 vec![
-                    make_claim(1, alloc1, sector_id(provider, 1000), 1500),
-                    make_claim(2, alloc2, sector_id(provider, 1000), 1500),
-                    make_claim(3, alloc3, sector_id(provider, 1000), 1500),
+                    make_claim_req(1, alloc1, sector_id(provider, 1000), 1500),
+                    make_claim_req(2, alloc2, sector_id(provider, 1000), 1500),
+                    make_claim_req(3, alloc3, sector_id(provider, 1000), 1500),
                 ],
             )
             .unwrap();
@@ -523,10 +538,10 @@ mod datacap {
     };
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
-
-    use crate::*;
     use harness::*;
     use util::*;
+
+    use crate::*;
 
     #[test]
     fn consume_values() {
