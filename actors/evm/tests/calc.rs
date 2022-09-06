@@ -1,12 +1,12 @@
 mod asm;
 
-use fil_actor_evm as evm;
 use evm::interpreter::U256;
+use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 
 #[allow(dead_code)]
-pub fn magic_calc_contract() -> Result<Vec<u8>, etk_asm::ingest::Error>{
+pub fn magic_calc_contract() -> Result<Vec<u8>, etk_asm::ingest::Error> {
     let init = r#"
 push1 0x42  # magic value
 push1 0x00  # key of magic value
@@ -87,11 +87,7 @@ return
 
 "#;
 
-    asm::new_contract(
-        &"magic-calc",
-        &init,
-        &body,
-    )
+    asm::new_contract(&"magic-calc", &init, &body)
 }
 
 #[test]
@@ -103,10 +99,8 @@ fn test_magic_calc() {
     // invoke constructor
     rt.expect_validate_caller_any();
 
-    let params = evm::ConstructorParams {
-        bytecode: contract.into(),
-        input_data: RawBytes::default(),
-    };
+    let params =
+        evm::ConstructorParams { bytecode: contract.into(), input_data: RawBytes::default() };
 
     let result = rt
         .call::<evm::EvmContractActor>(

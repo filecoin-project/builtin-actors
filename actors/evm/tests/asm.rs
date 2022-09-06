@@ -1,6 +1,6 @@
 use etk_asm::ingest::Ingest;
-use fil_actor_evm as evm;
 use evm::interpreter::opcode::OpCode::*;
+use fil_actor_evm as evm;
 
 #[allow(dead_code)]
 pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_asm::ingest::Error> {
