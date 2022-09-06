@@ -45,6 +45,7 @@ near-blake2 = { version = "0.9.1", git = "https://github.com/filecoin-project/ne
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 libsecp256k1 = { version = "0.7.0", features = ["static-context"], default-features = false }
 hex-literal = "0.3.4"
+etk-asm = "^0.2.1"
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]
