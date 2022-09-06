@@ -3,6 +3,11 @@ use evm::interpreter::opcode::OpCode::*;
 use fil_actor_evm as evm;
 
 #[allow(dead_code)]
+/// Creates a new EVM contract constructon bytecode (initcode), suitable for initializing the EVM actor.
+/// Arguments:
+/// - name is the name of the contract, for debug purposes.
+/// - init is the initializer code, which will run first at contract construction.
+/// - body is the actual contract code.
 pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_asm::ingest::Error> {
     // the contract code
     let mut body_code = Vec::new();
