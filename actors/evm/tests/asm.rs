@@ -7,11 +7,11 @@ pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_a
     // the contract code
     let mut body_code = Vec::new();
     let mut ingest_body = Ingest::new(&mut body_code);
-    ingest_body.ingest(name, &body)?;
+    ingest_body.ingest(name, body)?;
     // the initialization code
     let mut init_code = Vec::new();
     let mut ingest_init = Ingest::new(&mut init_code);
-    ingest_init.ingest(name, &init)?;
+    ingest_init.ingest(name, init)?;
     // synthesize contract constructor
     let body_code_len = body_code.len();
     let body_code_offset = init_code.len()
