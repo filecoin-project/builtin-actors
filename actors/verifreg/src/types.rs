@@ -116,24 +116,18 @@ pub type RemoveExpiredAllocationsReturn = BatchReturn;
 pub struct SectorAllocationClaim {
     pub client: Address,
     pub allocation_id: AllocationID,
-    pub piece_cid: Cid,
-    pub piece_size: PaddedPieceSize,
+    pub data: Cid,
+    pub size: PaddedPieceSize,
     pub sector_id: SectorID,
     pub sector_expiry: ChainEpoch,
 }
 
-impl From<&SectorAllocationClaim> for DataCap {
-    fn from(c: &SectorAllocationClaim) -> Self {
-        DataCap::from(c.piece_size.0)
-    }
-}
-
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
-pub struct ClaimAllocationParams {
+pub struct ClaimAllocationsParams {
     pub sectors: Vec<SectorAllocationClaim>,
 }
 
-pub type ClaimAllocationReturn = BatchReturn;
+pub type ClaimAllocationsReturn = BatchReturn;
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimTerm {

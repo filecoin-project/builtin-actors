@@ -24,7 +24,7 @@ pub mod datacap {
         // IncreaseAllowance = 16,
         // DecreaseAllowance = 17,
         // RevokeAllowance = 18,
-        // Burn = 19,
+        Burn = 19,
         // BurnFrom = 20,
     }
 

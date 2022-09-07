@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_fungible_token::token::types::{BurnReturn, TransferParams};
+use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
@@ -461,10 +461,10 @@ impl Actor {
     // Called by storage provider actor to claim allocations for data provably committed to storage.
     // For each allocation claim, the registry checks that the provided piece CID
     // and size match that of the allocation.
-    pub fn claim_allocation<BS, RT>(
+    pub fn claim_allocations<BS, RT>(
         rt: &mut RT,
-        params: ClaimAllocationParams,
-    ) -> Result<ClaimAllocationReturn, ActorError>
+        params: ClaimAllocationsParams,
+    ) -> Result<ClaimAllocationsReturn, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -474,88 +474,89 @@ impl Actor {
         if params.sectors.is_empty() {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"));
         }
-        let mut client_burns = DataCap::zero();
+        let mut datacap_claimed = DataCap::zero();
         let mut ret_gen = BatchReturnGen::new(params.sectors.len());
-        rt.transaction(|st: &mut State, rt| {
-            let mut claims = st.load_claims(rt.store())?;
-            let mut allocs = st.load_allocs(rt.store())?;
+        let token = rt
+            .transaction(|st: &mut State, rt| {
+                let mut claims = st.load_claims(rt.store())?;
+                let mut allocs = st.load_allocs(rt.store())?;
 
-            for claim_alloc in params.sectors {
-                let maybe_alloc =
-                    allocs.get(claim_alloc.client, claim_alloc.allocation_id).context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "HAMT lookup failure getting allocation",
-                    )?;
+                for claim_alloc in params.sectors {
+                    let maybe_alloc =
+                        allocs.get(claim_alloc.client, claim_alloc.allocation_id).context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            "HAMT lookup failure getting allocation",
+                        )?;
 
-                let alloc: &Allocation = match maybe_alloc {
-                    None => {
-                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                    let alloc: &Allocation = match maybe_alloc {
+                        None => {
+                            ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                            info!(
+                                "no allocation {} for client {}",
+                                claim_alloc.allocation_id, claim_alloc.client,
+                            );
+                            continue;
+                        }
+                        Some(a) => a,
+                    };
+
+                    if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
+                        ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
                         info!(
-                            "no allocation {} for client {}",
-                            claim_alloc.allocation_id, claim_alloc.client,
+                            "invalid sector {:?} for allocation {}",
+                            claim_alloc.sector_id, claim_alloc.allocation_id,
                         );
                         continue;
                     }
-                    Some(a) => a,
-                };
 
-                if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
-                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
-                    info!(
-                        "invalid sector {:?} for allocation {}",
-                        claim_alloc.sector_id, claim_alloc.allocation_id,
-                    );
-                    continue;
-                }
+                    let new_claim = Claim {
+                        provider,
+                        client: alloc.client,
+                        data: alloc.data,
+                        size: alloc.size,
+                        term_min: alloc.term_min,
+                        term_max: alloc.term_max,
+                        term_start: rt.curr_epoch(),
+                        sector: claim_alloc.sector_id.clone(),
+                    };
 
-                let new_claim = Claim {
-                    provider,
-                    client: alloc.client,
-                    data: alloc.data,
-                    size: alloc.size,
-                    term_min: alloc.term_min,
-                    term_max: alloc.term_max,
-                    term_start: rt.curr_epoch(),
-                    sector: claim_alloc.sector_id.clone(),
-                };
+                    let inserted = claims
+                        .put_if_absent(provider, claim_alloc.allocation_id, new_claim)
+                        .context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            format!("failed to write claim {}", claim_alloc.allocation_id),
+                        )?;
+                    if !inserted {
+                        ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE); // should be unreachable since claim and alloc can't exist at once
+                        info!(
+                            "claim for allocation {} could not be inserted as it already exists",
+                            claim_alloc.allocation_id,
+                        );
+                        continue;
+                    }
 
-                let inserted = claims
-                    .put_if_absent(provider, claim_alloc.allocation_id, new_claim)
-                    .context_code(
+                    allocs.remove(claim_alloc.client, claim_alloc.allocation_id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to write claim {}", claim_alloc.allocation_id),
+                        format!("failed to remove allocation {}", claim_alloc.allocation_id),
                     )?;
-                if !inserted {
-                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE); // should be unreachable since claim and alloc can't exist at once
-                    info!(
-                        "claim for allocation {} could not be inserted as it already exists",
-                        claim_alloc.allocation_id,
-                    );
-                    continue;
+
+                    datacap_claimed += DataCap::from(claim_alloc.size.0);
+                    ret_gen.add_success();
                 }
-
-                allocs.remove(claim_alloc.client, claim_alloc.allocation_id).context_code(
+                st.allocations = allocs.flush().context_code(
                     ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to remove allocation {}", claim_alloc.allocation_id),
+                    "failed to flush allocation table",
                 )?;
+                st.claims = claims
+                    .flush()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims table")?;
+                Ok(st.token)
+            })
+            .context("state transaction failed")?;
 
-                client_burns += DataCap::from(&claim_alloc);
-                ret_gen.add_success();
-            }
-            st.allocations = allocs
-                .flush()
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;
-            st.claims = claims
-                .flush()
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims table")?;
-            Ok(())
-        })
-        .context("state transaction failed")?;
-        let st: State = rt.state()?;
-        _ = st;
-        // TODO uncomment when datacap token integration lands in #514 and burn helper is implemented
-        //burn(st.token, client, dc_burn)
-        _ = client_burns;
+        // Burn the datacap tokens from verified registry's own balance.
+        burn(rt, &token, &datacap_claimed)?;
+
         Ok(ret_gen.gen())
     }
 }
@@ -613,6 +614,26 @@ where
     )
     .context(format!("failed to send mint {:?} to {}", params, token))?;
     Ok(())
+}
+
+// Invokes Burn on a data cap token actor for whole units of data cap.
+fn burn<BS, RT>(rt: &mut RT, token: &Address, amount: &DataCap) -> Result<DataCap, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    let token_amt = datacap_to_tokens(amount);
+    let params = BurnParams { amount: token_amt };
+    let ret: BurnReturn = rt
+        .send(
+            *token,
+            ext::datacap::Method::Burn as u64,
+            serialize(&params, "burn params")?,
+            TokenAmount::zero(),
+        )
+        .context(format!("failed to send burn {:?} to {}", params, token))?
+        .deserialize()?;
+    Ok(tokens_to_datacap(&ret.balance))
 }
 
 // Invokes Destroy on a data cap token actor for whole units of data cap.
@@ -751,8 +772,8 @@ fn can_claim_alloc(
 
     provider == alloc.provider
         && claim_alloc.client == alloc.client
-        && claim_alloc.piece_cid == alloc.data
-        && claim_alloc.piece_size == alloc.size
+        && claim_alloc.data == alloc.data
+        && claim_alloc.size == alloc.size
         && curr_epoch < alloc.expiration
         && sector_lifetime >= alloc.term_min
         && sector_lifetime <= alloc.term_max
@@ -803,7 +824,7 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ClaimAllocations) => {
-                let res = Self::claim_allocation(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::claim_allocations(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
