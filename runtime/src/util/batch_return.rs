@@ -8,7 +8,7 @@ pub struct FailCode {
     pub code: ExitCode,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
 pub struct BatchReturn {
     // Total successes in batch
     pub success_count: usize,
@@ -49,12 +49,14 @@ impl BatchReturnGen {
         BatchReturnGen { success_count: 0, fail_codes: Vec::new(), expect_count }
     }
 
-    pub fn add_success(&mut self) {
+    pub fn add_success(&mut self) -> &mut Self {
         self.success_count += 1;
+        self
     }
 
-    pub fn add_fail(&mut self, code: ExitCode) {
+    pub fn add_fail(&mut self, code: ExitCode) -> &mut Self {
         self.fail_codes.push(FailCode { idx: self.success_count + self.fail_codes.len(), code });
+        self
     }
 
     pub fn gen(&self) -> BatchReturn {

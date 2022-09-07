@@ -1,9 +1,12 @@
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_fungible_token::token::types::{BurnReturn, TransferParams};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorID;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
 use num_traits::{Signed, Zero};
@@ -12,15 +15,16 @@ use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
-    ClaimAllocationParams, ClaimAllocationReturn, DataCap, Method, RestoreBytesParams,
+    AllocationID, ClaimAllocationParams, ClaimAllocationReturn, DataCap, Method,
+    RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RestoreBytesParams,
     SectorAllocationClaim, State, UseBytesParams,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError, Map, MapMap,
-    DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    make_empty_map, ActorError, AsActorError, MapMap, DATACAP_TOKEN_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 
 lazy_static! {
@@ -136,14 +140,14 @@ impl Harness {
     }
 
     pub fn get_verifier_allowance(&self, rt: &MockRuntime, verifier: &Address) -> DataCap {
-        let verifiers = load_verifiers(rt);
+        let verifiers = rt.get_state::<State>().load_verifiers(&rt.store).unwrap();
         let BigIntDe(allowance) = verifiers.get(&verifier.to_bytes()).unwrap().unwrap();
         allowance.clone()
     }
 
     pub fn assert_verifier_removed(&self, rt: &MockRuntime, verifier: &Address) {
         let verifier_id_addr = rt.get_id_address(verifier).unwrap();
-        let verifiers = load_verifiers(rt);
+        let verifiers = rt.get_state::<State>().load_verifiers(&rt.store).unwrap();
         assert!(!verifiers.contains_key(&verifier_id_addr.to_bytes()).unwrap())
     }
 
@@ -203,8 +207,7 @@ impl Harness {
             ext::datacap::Method::Destroy as MethodNum,
             RawBytes::serialize(&destroy_params).unwrap(),
             TokenAmount::zero(),
-            serialize(&ext::datacap::BurnReturn { balance: remaining * TOKEN_PRECISION }, "")
-                .unwrap(),
+            serialize(&BurnReturn { balance: remaining * TOKEN_PRECISION }, "").unwrap(),
             result,
         );
 
@@ -219,7 +222,7 @@ impl Harness {
                 ext::datacap::Method::Destroy as MethodNum,
                 RawBytes::serialize(&destroy_params).unwrap(),
                 TokenAmount::zero(),
-                serialize(&ext::datacap::BurnReturn { balance: TokenAmount::zero() }, "").unwrap(),
+                serialize(&BurnReturn { balance: TokenAmount::zero() }, "").unwrap(),
                 result,
             );
         }
@@ -272,13 +275,13 @@ impl Harness {
     }
 
     // TODO this should be implemented through a call to verifreg but for now it modifies state directly
-    pub fn create_alloc(&self, rt: &mut MockRuntime, alloc: Allocation) -> Result<(), ActorError> {
+    pub fn create_alloc(&self, rt: &mut MockRuntime, alloc: &Allocation) -> Result<(), ActorError> {
         let mut st: State = rt.get_state();
         let mut allocs =
             MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
         assert!(allocs
-            .put_if_absent(alloc.client, st.next_allocation_id, alloc)
+            .put_if_absent(alloc.client, st.next_allocation_id, alloc.clone())
             .context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
         st.next_allocation_id += 1;
         st.allocations = allocs.flush().expect("failed flushing allocation table");
@@ -287,6 +290,7 @@ impl Harness {
         Ok(())
     }
 
+    // Invokes the ClaimAllocations actor method
     pub fn claim_allocations(
         &self,
         rt: &mut MockRuntime,
@@ -308,10 +312,73 @@ impl Harness {
         rt.verify();
         Ok(ret)
     }
+
+    // Invokes the RemoveExpiredAllocations actor method.
+    pub fn remove_expired_allocations(
+        &self,
+        rt: &mut MockRuntime,
+        client: &Address,
+        allocation_ids: Vec<AllocationID>,
+        expected_datacap: u64,
+    ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
+        rt.expect_validate_caller_any();
+
+        rt.expect_send(
+            *DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::Method::Transfer as MethodNum,
+            RawBytes::serialize(&TransferParams {
+                to: *client,
+                amount: TokenAmount::from(expected_datacap) * TOKEN_PRECISION,
+                operator_data: RawBytes::default(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        let params = RemoveExpiredAllocationsParams { client: *client, allocation_ids };
+        let ret = rt
+            .call::<VerifregActor>(
+                Method::RemoveExpiredAllocations as MethodNum,
+                &RawBytes::serialize(params).unwrap(),
+            )?
+            .deserialize()
+            .expect("failed to deserialize remove expired allocations return");
+        rt.verify();
+        Ok(ret)
+    }
 }
 
-fn load_verifiers(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
-    let state: State = rt.get_state();
-    make_map_with_root_and_bitwidth::<_, BigIntDe>(&state.verifiers, &rt.store, HAMT_BIT_WIDTH)
-        .unwrap()
+pub fn make_alloc(
+    data_id: AllocationID,
+    client: &Address,
+    provider: &Address,
+    size: u64,
+) -> Allocation {
+    Allocation {
+        client: *client,
+        provider: *provider,
+        data: make_piece_cid(format!("{}", data_id).as_bytes()),
+        size: PaddedPieceSize(size),
+        term_min: 1000,
+        term_max: 2000,
+        expiration: 100,
+    }
+}
+
+pub fn make_claim_req(
+    id: AllocationID,
+    alloc: Allocation,
+    sector_id: SectorID,
+    sector_expiry: ChainEpoch,
+) -> SectorAllocationClaim {
+    SectorAllocationClaim {
+        client: alloc.client,
+        allocation_id: id,
+        piece_cid: alloc.data,
+        piece_size: alloc.size,
+        sector_id,
+        sector_expiry,
+    }
 }

@@ -19,7 +19,7 @@ pub mod datacap {
         // Symbol = 11,
         // TotalSupply = 12,
         BalanceOf = 13,
-        // Transfer = 14,
+        Transfer = 14,
         // TransferFrom = 15,
         // IncreaseAllowance = 16,
         // DecreaseAllowance = 17,
@@ -40,12 +40,5 @@ pub mod datacap {
         pub owner: Address,
         #[serde(with = "bigint_ser")]
         pub amount: BigInt,
-    }
-
-    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-    pub struct BurnReturn {
-        /// New balance in the account after the successful burn
-        #[serde(with = "bigint_ser")]
-        pub balance: BigInt,
     }
 }
