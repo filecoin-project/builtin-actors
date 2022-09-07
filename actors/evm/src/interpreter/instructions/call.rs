@@ -156,15 +156,15 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
             // conventions.
             let dst_addr = Address::from(dst)
                 .as_id_address()
-                .ok_or(StatusCode::BadAddress("not an actor id address".to_string()))?;
+                .ok_or_else(|| StatusCode::BadAddress("not an actor id address".to_string()))?;
 
             let dst_code_cid = rt
                 .get_actor_code_cid(
-                    &rt.resolve_address(&dst_addr).ok_or(StatusCode::BadAddress(
+                    &rt.resolve_address(&dst_addr).ok_or_else(|| StatusCode::BadAddress(
                         "cannot resolve address".to_string(),
                     ))?,
                 )
-                .ok_or(StatusCode::BadAddress("unknow actor".to_string()))?;
+                .ok_or_else(|| StatusCode::BadAddress("unknow actor".to_string()))?;
             let evm_code_cid = rt.get_code_cid_for_type(ActorType::EVM);
             if dst_code_cid != evm_code_cid {
                 return Err(StatusCode::BadAddress(
@@ -185,7 +185,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
                         })?,
                         TokenAmount::from(&value),
                     );
-                    result.map_err(|e| StatusCode::from(e))?.to_vec()
+                    result.map_err(StatusCode::from)?.to_vec()
                 }
                 CallKind::DelegateCall => {
                     todo!()
