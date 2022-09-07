@@ -115,25 +115,25 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let rt = &*platform.rt; // as immutable reference
 
     let (_gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
-        CallKind::Call | CallKind::CallCode =>
-            (stack.pop(),
-             stack.pop(),
-             stack.pop(),
-             stack.pop(),
-             stack.pop(),
-             stack.pop(),
-             stack.pop(),
-            ),
+        CallKind::Call | CallKind::CallCode => (
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+        ),
 
-        CallKind::DelegateCall | CallKind::StaticCall =>
-            (stack.pop(),
-             stack.pop(),
-             U256::from(0),
-             stack.pop(),
-             stack.pop(),
-             stack.pop(),
-             stack.pop(),
-            ),
+        CallKind::DelegateCall | CallKind::StaticCall => (
+            stack.pop(),
+            stack.pop(),
+            U256::from(0),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+        ),
     };
 
     let input_region = get_memory_region(memory, input_offset, input_size)
