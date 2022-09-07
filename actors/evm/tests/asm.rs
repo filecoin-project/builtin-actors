@@ -2,6 +2,29 @@ use etk_asm::ingest::Ingest;
 use evm::interpreter::opcode::OpCode::*;
 use fil_actor_evm as evm;
 
+const PRELUDE: &str = r#"
+%macro dispatch_begin()
+  push1 0x00
+  calldataload
+  push1 0xe0   # 28 byte shift == 224 bits
+  shr
+%end
+
+%macro dispatch(method, lbl)
+  dup1
+  %push($method)
+  eq
+  %push($lbl)
+  jumpi
+%end
+
+%macro dispatch_end()
+  push1 0x00
+  dup1
+  revert
+%end
+"#;
+
 #[allow(dead_code)]
 /// Creates a new EVM contract constructon bytecode (initcode), suitable for initializing the EVM actor.
 /// Arguments:
@@ -12,7 +35,8 @@ pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_a
     // the contract code
     let mut body_code = Vec::new();
     let mut ingest_body = Ingest::new(&mut body_code);
-    ingest_body.ingest(name, body)?;
+    let body_with_prelude = PRELUDE.to_owned() + body;
+    ingest_body.ingest(name, body_with_prelude.as_str())?;
     // the initialization code
     let mut init_code = Vec::new();
     let mut ingest_init = Ingest::new(&mut init_code);
