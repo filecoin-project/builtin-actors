@@ -110,13 +110,14 @@ impl EvmContractActor {
         rt.validate_immediate_caller_accept_any()?;
 
         let state: State = rt.state()?;
-        let bytecode: Vec<u8> =
-            match rt.store().get(&state.bytecode).map_err(|e| {
-                ActorError::unspecified(format!("failed to load bytecode: {e:?}"))
-            })? {
-                Some(bytes) => bytes,
-                None => return Err(ActorError::unspecified("missing bytecode".to_string())),
-            };
+        let bytecode: Vec<u8> = match rt
+            .store()
+            .get(&state.bytecode)
+            .map_err(|e| ActorError::unspecified(format!("failed to load bytecode: {e:?}")))?
+        {
+            Some(bytes) => bytes,
+            None => return Err(ActorError::unspecified("missing bytecode".to_string())),
+        };
 
         let bytecode = Bytecode::new(&bytecode)
             .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
@@ -126,22 +127,17 @@ impl EvmContractActor {
 
         // load the storage HAMT
         let mut hamt = Hamt::load(&state.contract_state, blockstore).map_err(|e| {
-            ActorError::illegal_state(format!(
-                "failed to load storage HAMT on invoke: {e:?}, e"
-            ))
+            ActorError::illegal_state(format!("failed to load storage HAMT on invoke: {e:?}, e"))
         })?;
 
         let mut system = System::new(rt, &mut hamt).map_err(|e| {
-            ActorError::unspecified(format!(
-                "failed to create execution abstraction layer: {e:?}"
-            ))
+            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
         let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
 
         let exec_status = execute(&bytecode, &mut exec_state, &mut system.reborrow())
             .map_err(|e| ActorError::unspecified(format!("EVM execution error: {e:?}")))?;
-
 
         // TODO this is not the correct handling of reverts -- we need to abort (and return the
         //      output data), so that the entire transaction (including parent/sibling calls)
