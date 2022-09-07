@@ -133,6 +133,7 @@ impl Actor {
     }
 
     /// Mints new data cap tokens for an address (a verified client).
+    /// Simultaneously increases the operator allowance by the same amount for specified addresses.
     /// Only the registry can call this method.
     /// This method is not part of the fungible token standard.
     // TODO: return the new balance when the token library does
@@ -150,7 +151,7 @@ impl Actor {
                 let msg = Messenger { rt, dummy: Default::default() };
                 let mut token = as_token(st, &msg);
                 // Mint tokens "from" the operator to the beneficiary.
-                token
+                let hook_params = token
                     .mint(
                         &operator,
                         &params.to,
@@ -158,7 +159,16 @@ impl Actor {
                         RawBytes::default(),
                         RawBytes::default(),
                     )
-                    .actor_result()
+                    .actor_result();
+
+                // Increase allowance for any specified operators.
+                for delegate in &params.operators {
+                    token
+                        .increase_allowance(&params.to, delegate, &params.amount)
+                        .actor_result()?;
+                }
+
+                hook_params
             })
             .context("state transaction failed")?;
 
