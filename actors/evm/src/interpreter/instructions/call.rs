@@ -6,7 +6,7 @@ use {
     crate::interpreter::stack::Stack,
     crate::interpreter::ExecutionState,
     crate::interpreter::System,
-    crate::interpreter::{H160, U256},
+    crate::interpreter::U256,
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
 };
@@ -22,7 +22,6 @@ pub enum CallKind {
     Create2 { salt: U256 },
 }
 
-#[inline]
 pub fn calldataload(state: &mut ExecutionState) {
     let index = state.stack.pop();
     let input_len = state.input_data.len();
@@ -47,7 +46,6 @@ pub fn calldatasize(state: &mut ExecutionState) {
     state.stack.push(u128::try_from(state.input_data.len()).unwrap().into());
 }
 
-#[inline]
 pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let mem_index = state.stack.pop();
     let input_index = state.stack.pop();
@@ -80,7 +78,6 @@ pub fn codesize(stack: &mut Stack, code: &[u8]) {
     stack.push(U256::from(code.len()))
 }
 
-#[inline]
 pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCode> {
     let mem_index = state.stack.pop();
     let input_index = state.stack.pop();
@@ -106,17 +103,16 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
     Ok(())
 }
 
-#[inline]
 pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
-    _kind: CallKind,
+    kind: CallKind,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
     let rt = &*platform.rt; // as immutable reference
 
     let _gas = stack.pop(); // EVM gas is not used in FVM
-    let dst: H160 = crate::interpreter::uints::_u256_to_address(stack.pop());
+    let dst = stack.pop();
     let input_offset = stack.pop();
     let input_size = stack.pop();
     let output_offset = stack.pop();
@@ -138,7 +134,14 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         let output = if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
             precompiles::Precompiles::call_precompile(rt, dst, input_data)
         } else {
-            todo!()
+            match kind {
+                CallKind::Call => { todo!() },
+                CallKind::DelegateCall => { todo!() }
+                CallKind::StaticCall => { todo!() }
+                CallKind::CallCode => { todo!() },
+                CallKind::Create => { todo!() },
+                CallKind::Create2{salt: _} => { todo!() },
+            }
         };
 
         output.unwrap()

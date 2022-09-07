@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, ops::Mul};
 
-use super::{H160, U256};
+use super::U256;
 use fil_actors_runtime::runtime::{Primitives, Runtime};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{
@@ -42,17 +42,17 @@ pub struct Precompiles<BS, RT>(PhantomData<BS>, PhantomData<RT>);
 
 impl<BS: Blockstore, RT: Runtime<BS>> Precompiles<BS, RT> {
     const PRECOMPILES: [PrecompileFn<RT>; 9] = gen_precompiles();
-    const MAX_PRECOMPILE: H160 = {
-        let mut bytes = [0u8; 20];
-        bytes[0] = Self::PRECOMPILES.len() as u8;
-        H160(bytes)
+    const MAX_PRECOMPILE: U256 = {
+        let mut limbs = [0u64; 4];
+        limbs[0] = Self::PRECOMPILES.len() as u64;
+        U256(limbs)
     };
 
-    pub fn call_precompile(runtime: &RT, precompile_addr: H160, input: &[u8]) -> PrecompileResult {
+    pub fn call_precompile(runtime: &RT, precompile_addr: U256, input: &[u8]) -> PrecompileResult {
         Self::PRECOMPILES[precompile_addr.0[0] as usize - 1](runtime, input)
     }
 
-    pub fn is_precompile(addr: &H160) -> bool {
+    pub fn is_precompile(addr: &U256) -> bool {
         !addr.is_zero() && addr <= &Self::MAX_PRECOMPILE
     }
 }
