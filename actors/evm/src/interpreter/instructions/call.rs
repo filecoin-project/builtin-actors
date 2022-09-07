@@ -160,16 +160,14 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
             let dst_code_cid = rt
                 .get_actor_code_cid(
-                    &rt.resolve_address(&dst_addr).ok_or_else(|| StatusCode::BadAddress(
-                        "cannot resolve address".to_string(),
-                    ))?,
+                    &rt.resolve_address(&dst_addr).ok_or_else(|| {
+                        StatusCode::BadAddress("cannot resolve address".to_string())
+                    })?,
                 )
                 .ok_or_else(|| StatusCode::BadAddress("unknow actor".to_string()))?;
             let evm_code_cid = rt.get_code_cid_for_type(ActorType::EVM);
             if dst_code_cid != evm_code_cid {
-                return Err(StatusCode::BadAddress(
-                    "cannot call non EVM actor".to_string(),
-                ));
+                return Err(StatusCode::BadAddress("cannot call non EVM actor".to_string()));
             }
 
             match kind {
