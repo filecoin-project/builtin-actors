@@ -5,11 +5,11 @@
 
 use {
     fixed_hash::{construct_fixed_hash, impl_fixed_hash_conversions},
+    fvm_shared::bigint::BigInt,
     fvm_shared::econ::TokenAmount,
     impl_serde::{impl_fixed_hash_serde, impl_uint_serde},
     std::cmp::Ordering,
     uint::construct_uint,
-    fvm_shared::bigint::BigInt,
 };
 
 construct_uint! { pub struct U256(4); } // ethereum word size
@@ -25,7 +25,6 @@ impl From<&TokenAmount> for U256 {
         U256::from(bytes.as_slice())
     }
 }
-
 
 impl From<&U256> for TokenAmount {
     fn from(ui: &U256) -> TokenAmount {
