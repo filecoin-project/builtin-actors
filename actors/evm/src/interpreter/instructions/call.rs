@@ -151,30 +151,29 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
             precompiles::Precompiles::call_precompile(rt, dst, input_data)
                 .map_err(|_| StatusCode::PrecompileFailure)?
         } else {
+            // CALL and its brethren can only invoke other EVM contracts; see the (magic)
+            // CALLMETHOD/METHODNUM opcodes for calling fil actors with native call
+            // conventions.
+            let dst_addr = Address::from(dst)
+                .as_id_address()
+                .ok_or(StatusCode::BadAddress("not an actor id address".to_string()))?;
+
+            let dst_code_cid = rt
+                .get_actor_code_cid(
+                    &rt.resolve_address(&dst_addr).ok_or(StatusCode::BadAddress(
+                        "cannot resolve address".to_string(),
+                    ))?,
+                )
+                .ok_or(StatusCode::BadAddress("unknow actor".to_string()))?;
+            let evm_code_cid = rt.get_code_cid_for_type(ActorType::EVM);
+            if dst_code_cid != evm_code_cid {
+                return Err(StatusCode::BadAddress(
+                    "cannot call non EVM actor".to_string(),
+                ));
+            }
+
             match kind {
                 CallKind::Call => {
-                    let dst_addr = Address::from(dst)
-                        .as_id_address()
-                        .ok_or(StatusCode::BadAddress("not an actor id address".to_string()))?;
-
-                    // TODO for now we can only call another EVM actor, which is checked here.
-                    //      this is fine for now, as we don't have any meaningful API for builtin
-                    //      actors to use from EVM contracts, but we'll have to revisit this when
-                    //      such APIs materialize.
-                    let dst_code_cid = rt
-                        .get_actor_code_cid(
-                            &rt.resolve_address(&dst_addr).ok_or(StatusCode::BadAddress(
-                                "cannot resolve address".to_string(),
-                            ))?,
-                        )
-                        .ok_or(StatusCode::BadAddress("unknow actor".to_string()))?;
-                    let evm_code_cid = rt.get_code_cid_for_type(ActorType::EVM);
-                    if dst_code_cid != evm_code_cid {
-                        return Err(StatusCode::BadAddress(
-                            "cannot call non EVM actor".to_string(),
-                        ));
-                    }
-
                     let params = InvokeParams { input_data: RawBytes::from(input_data.to_vec()) };
                     let result = rt.send(
                         &dst_addr,
