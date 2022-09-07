@@ -71,7 +71,10 @@ impl EvmContractActor {
 
         // invoke the contract constructor
         let exec_status = execute(&bytecode, &mut exec_state, &mut system.reborrow())
-            .map_err(|e| ActorError::unspecified(format!("EVM execution error: {e:?}")))?;
+            .map_err(|e| match e {
+                StatusCode::ActorError(e) => e,
+                _ => ActorError::unspecified(format!("EVM execution error: {e:?}"))
+            })?;
 
         if !exec_status.reverted
             && exec_status.status_code == StatusCode::Success
@@ -137,7 +140,10 @@ impl EvmContractActor {
         let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
 
         let exec_status = execute(&bytecode, &mut exec_state, &mut system.reborrow())
-            .map_err(|e| ActorError::unspecified(format!("EVM execution error: {e:?}")))?;
+            .map_err(|e| match e {
+                StatusCode::ActorError(e) => e,
+                _ => ActorError::unspecified(format!("EVM execution error: {e:?}"))
+            })?;
 
         // TODO this is not the correct handling of reverts -- we need to abort (and return the
         //      output data), so that the entire transaction (including parent/sibling calls)
