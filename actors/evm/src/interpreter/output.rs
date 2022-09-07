@@ -1,9 +1,7 @@
-use fil_actors_runtime::ActorError;
+use fil_actors_runtime::ActorError as RTActorError;
 use fvm_shared::address::Address as FilecoinAddress;
 use {
     bytes::Bytes,
-    fvm_ipld_encoding::Cbor,
-    serde::{Deserialize, Serialize},
     std::fmt::Debug,
     strum_macros::Display,
 };
@@ -33,7 +31,7 @@ impl Debug for Output {
 
 /// Message status code.
 #[must_use]
-#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum StatusCode {
     /// Execution finished with success.
     #[strum(serialize = "success")]
@@ -109,15 +107,19 @@ pub enum StatusCode {
     /// EVM implementation generic internal error.
     #[strum(serialize = "internal error")]
     InternalError(String),
+
+    /// Invalid Address
+    #[strum(serialize = "bad address")]
+    BadAddress(String),
+
+    /// Nested Actor invocation Error
+    #[strum(serialize = "runtime actor error")]
+    ActorError(RTActorError)
 }
 
 // Map ActorError to a generic internal error status code.
-//
-// TODO need to figure out error handling.
-impl From<ActorError> for StatusCode {
-    fn from(ae: ActorError) -> Self {
-        Self::InternalError(String::from(ae.msg()))
+impl From<RTActorError> for StatusCode {
+    fn from(ae: RTActorError) -> Self {
+        Self::ActorError(ae)
     }
 }
-
-impl Cbor for StatusCode {}
