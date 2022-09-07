@@ -18,35 +18,11 @@ sstore
 # - 0x00000001 -> ADD arg, magic value
 # - 0x00000002 -> MUL arg, magic value
 
-push1 0x00
-calldataload
-push1 0xe0   # 28 byte shift == 224 bits
-shr
-
-# 0x00 -> jmp get_magic
-dup1
-iszero
-%push(get_magic)
-jumpi
-
-# 0x01 -> jmp add_magic
-dup1
-push1 0x01
-eq
-%push(add_magic)
-jumpi
-
-# 0x02 -> jmp mul_magic
-dup1
-push1 0x02
-eq
-%push(mul_magic)
-jumpi
-
-# unknown method, barf returning nothing
-push1 0x00
-dup1
-revert
+%dispatch_begin()
+%dispatch(0x00, get_magic)
+%dispatch(0x01, add_magic)
+%dispatch(0x02, mul_magic)
+%dispatch_end()
 
 #### method implementation
 get_magic:
