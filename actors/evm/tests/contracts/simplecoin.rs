@@ -11,7 +11,7 @@ fn basic_contract_construction_and_invocation() {
     let contract = Address::new_id(100);
 
     let params = evm::ConstructorParams {
-        bytecode: hex::decode(include_str!("simplecoin.hex")).unwrap().into(),
+        bytecode: hex::decode(include_str!("bin/simplecoin.hex")).unwrap().into(),
         input_data: RawBytes::default(),
     };
 

@@ -1,0 +1,2 @@
+mod selfdestruct;
+mod simplecoin;
