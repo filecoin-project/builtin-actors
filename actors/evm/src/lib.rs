@@ -70,10 +70,10 @@ impl EvmContractActor {
             .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
 
         // invoke the contract constructor
-        let exec_status = execute(&bytecode, &mut exec_state, &mut system.reborrow())
-            .map_err(|e| match e {
+        let exec_status =
+            execute(&bytecode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
                 StatusCode::ActorError(e) => e,
-                _ => ActorError::unspecified(format!("EVM execution error: {e:?}"))
+                _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
             })?;
 
         if !exec_status.reverted
@@ -141,10 +141,10 @@ impl EvmContractActor {
 
         let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
 
-        let exec_status = execute(&bytecode, &mut exec_state, &mut system.reborrow())
-            .map_err(|e| match e {
+        let exec_status =
+            execute(&bytecode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
                 StatusCode::ActorError(e) => e,
-                _ => ActorError::unspecified(format!("EVM execution error: {e:?}"))
+                _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
             })?;
 
         // TODO this is not the correct handling of reverts -- we need to abort (and return the

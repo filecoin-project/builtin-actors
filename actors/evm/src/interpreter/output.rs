@@ -1,10 +1,6 @@
 use fil_actors_runtime::ActorError as RTActorError;
 use fvm_shared::address::Address as FilecoinAddress;
-use {
-    bytes::Bytes,
-    std::fmt::Debug,
-    strum_macros::Display,
-};
+use {bytes::Bytes, std::fmt::Debug, strum_macros::Display};
 
 /// Output of EVM execution.
 #[derive(Clone, PartialEq, Eq)]
@@ -114,7 +110,7 @@ pub enum StatusCode {
 
     /// Nested Actor invocation Error
     #[strum(serialize = "runtime actor error")]
-    ActorError(RTActorError)
+    ActorError(RTActorError),
 }
 
 // Map ActorError to a generic internal error status code.
