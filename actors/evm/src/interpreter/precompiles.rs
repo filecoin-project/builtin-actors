@@ -310,6 +310,18 @@ mod tests {
     use fil_actors_runtime::test_utils::MockRuntime;
     use hex_literal::hex;
 
+    #[test]
+    fn sha256() {
+        use super::sha256 as hash;
+        let input = "foo bar baz boxy".as_bytes();
+
+        let rt = MockRuntime::default();
+
+        let expected = hex!("527c30564edf3cb6da32e55ac39c4e93b9d9dfffde64663638b2a0bc33fa50c4");
+        let res = hash(&rt, input).unwrap();
+        assert_eq!(&res, &expected);
+    }
+
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
         use super::MockRuntime;
