@@ -164,7 +164,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
                         StatusCode::BadAddress("cannot resolve address".to_string())
                     })?,
                 )
-                .ok_or_else(|| StatusCode::BadAddress("unknow actor".to_string()))?;
+                .ok_or_else(|| StatusCode::BadAddress("unknown actor".to_string()))?;
             let evm_code_cid = rt.get_code_cid_for_type(ActorType::EVM);
             if dst_code_cid != evm_code_cid {
                 return Err(StatusCode::BadAddress("cannot call non EVM actor".to_string()));
