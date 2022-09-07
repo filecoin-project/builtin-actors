@@ -3,7 +3,12 @@ use {
     crate::interpreter::output::StatusCode, crate::interpreter::precompiles,
     crate::interpreter::stack::Stack, crate::interpreter::ExecutionState,
     crate::interpreter::System, crate::interpreter::U256, fil_actors_runtime::runtime::Runtime,
+    crate::interpreter::address::Address,
+    crate::RawBytes,
+    fil_actors_runtime::runtime::builtins::Type as ActorType,
+    crate::{InvokeParams, Method},
     fvm_ipld_blockstore::Blockstore,
+    num_traits::Zero,
 };
 
 /// The kind of call-like instruction.
@@ -130,7 +135,27 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         } else {
             match kind {
                 CallKind::Call => {
-                    todo!()
+                    let dst_addr = Address::from(dst).as_id_address()
+                        .ok_or(StatusCode::BadAddress("not an actor id address".to_string()))?;
+
+                    // TODO for now we can only call another EVM actor, which is checked here.
+                    //      this is fine for now, as we don't have any meaningful API for builtin
+                    //      actors to use from EVM contracts, but we'll have to revisit this when
+                    //      such APIs materialize.
+                    let dst_code_cid = rt.get_actor_code_cid(&rt.resolve_address(&dst_addr).ok_or(StatusCode::BadAddress("cannot resolve address".to_string()))?).ok_or(StatusCode::BadAddress("unknow actor".to_string()))?;
+                    let evm_code_cid = rt.get_code_cid_for_type(ActorType::EVM);
+                    if dst_code_cid != evm_code_cid {
+                        return Err(StatusCode::BadAddress("cannot call non EVM actor".to_string()));
+                    }
+
+                    let params = InvokeParams { input_data: RawBytes::from(input_data.to_vec()) };
+                    let result = rt.send(
+                        &dst_addr,
+                        Method::InvokeContract as u64,
+                        RawBytes::serialize(params).map_err(|_| StatusCode::InternalError("failed to marshall invocation data".to_string()))?,
+                        Zero::zero(),
+                    );
+                    result.map_err(|e| StatusCode::from(e))?.to_vec()
                 }
                 CallKind::DelegateCall => {
                     todo!()
