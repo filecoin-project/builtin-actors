@@ -97,6 +97,8 @@ impl EvmContractActor {
             rt.create(&state)?;
 
             Ok(())
+        } else if let StatusCode::ActorError(e) = exec_status.status_code {
+            return Err(e);
         } else {
             Err(ActorError::unspecified("EVM constructor failed".to_string()))
         }
@@ -158,6 +160,8 @@ impl EvmContractActor {
                     Ok(())
                 })?;
             }
+        } else if let StatusCode::ActorError(e) = exec_status.status_code {
+            return Err(e);
         } else {
             return Err(ActorError::unspecified(format!(
                 "EVM contract invocation failed: status: {}",
