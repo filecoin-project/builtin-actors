@@ -27,7 +27,7 @@ pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont lik
 const fn gen_precompiles<RT: Primitives>() -> [PrecompileFn<RT>; 9] {
     [
         ec_recover, // ecrecover 0x01
-        sha256,     // SHA256 (Keccak) 0x02
+        sha256,     // SHA2-256 0x02
         ripemd160,  // ripemd160 0x03
         identity,   // identity 0x04
         modexp,     // modexp 0x05
@@ -92,7 +92,7 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
 }
 
 fn sha256<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    Ok(rt.hash(SupportedHashes::Keccak256, input))
+    Ok(rt.hash(SupportedHashes::Sha2_256, input))
 }
 
 fn ripemd160<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
@@ -317,7 +317,7 @@ mod tests {
 
         let rt = MockRuntime::default();
 
-        let expected = hex!("527c30564edf3cb6da32e55ac39c4e93b9d9dfffde64663638b2a0bc33fa50c4");
+        let expected = hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");
         let res = hash(&rt, input).unwrap();
         assert_eq!(&res, &expected);
     }
