@@ -9,6 +9,7 @@ use {
     impl_serde::{impl_fixed_hash_serde, impl_uint_serde},
     std::cmp::Ordering,
     uint::construct_uint,
+    fvm_shared::bigint::BigInt,
 };
 
 construct_uint! { pub struct U256(4); } // ethereum word size
@@ -22,6 +23,15 @@ impl From<&TokenAmount> for U256 {
     fn from(amount: &TokenAmount) -> U256 {
         let (_, bytes) = amount.atto().to_bytes_be();
         U256::from(bytes.as_slice())
+    }
+}
+
+
+impl From<&U256> for TokenAmount {
+    fn from(ui: &U256) -> TokenAmount {
+        let mut bits = [0u8; 32];
+        ui.to_big_endian(&mut bits);
+        TokenAmount::from_atto(BigInt::from_bytes_be(fvm_shared::bigint::Sign::Plus, &bits))
     }
 }
 

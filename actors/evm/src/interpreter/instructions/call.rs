@@ -13,7 +13,7 @@ use {
     fil_actors_runtime::runtime::builtins::Type as ActorType,
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
-    num_traits::Zero,
+    fvm_shared::econ::TokenAmount,
 };
 
 /// The kind of call-like instruction.
@@ -118,6 +118,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
     let _gas = stack.pop(); // EVM gas is not used in FVM
     let dst = stack.pop();
+    let value = stack.pop();
     let input_offset = stack.pop();
     let input_size = stack.pop();
     let output_offset = stack.pop();
@@ -171,7 +172,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
                                 "failed to marshall invocation data".to_string(),
                             )
                         })?,
-                        Zero::zero(),
+                        TokenAmount::from(&value),
                     );
                     result.map_err(|e| StatusCode::from(e))?.to_vec()
                 }
