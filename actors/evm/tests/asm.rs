@@ -56,7 +56,7 @@ pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_a
         + 1 // 0x00 -- source memory offset
         + 1 // RETURN
         ;
-    let mut constructor_code = Vec::<u8>::from([
+    let mut constructor_code = vec![
         PUSH4 as u8,
         ((body_code_len >> 24) & 0xff) as u8,
         ((body_code_len >> 16) & 0xff) as u8,
@@ -74,7 +74,7 @@ pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_a
         PUSH1 as u8,
         0x00,
         RETURN as u8,
-    ]);
+    ];
     // the actual contract code
     let mut contract_code = Vec::new();
     contract_code.append(&mut init_code);
