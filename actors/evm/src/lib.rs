@@ -115,14 +115,11 @@ impl EvmContractActor {
         rt.validate_immediate_caller_accept_any()?;
 
         let state: State = rt.state()?;
-        let bytecode: Vec<u8> = match rt
+        let bytecode: Vec<u8> = rt
             .store()
             .get(&state.bytecode)
             .map_err(|e| ActorError::unspecified(format!("failed to load bytecode: {e:?}")))?
-        {
-            Some(bytes) => bytes,
-            None => return Err(ActorError::unspecified("missing bytecode".to_string())),
-        };
+            .ok_or_else(|| ActorError::unspecified("missing bytecode".to_string()))?;
 
         let bytecode = Bytecode::new(&bytecode)
             .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
