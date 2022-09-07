@@ -1,13 +1,8 @@
 use {
-    super::memory::get_memory_region,
-    crate::interpreter::instructions::memory::MemoryRegion,
-    crate::interpreter::output::StatusCode,
-    crate::interpreter::precompiles,
-    crate::interpreter::stack::Stack,
-    crate::interpreter::ExecutionState,
-    crate::interpreter::System,
-    crate::interpreter::U256,
-    fil_actors_runtime::runtime::Runtime,
+    super::memory::get_memory_region, crate::interpreter::instructions::memory::MemoryRegion,
+    crate::interpreter::output::StatusCode, crate::interpreter::precompiles,
+    crate::interpreter::stack::Stack, crate::interpreter::ExecutionState,
+    crate::interpreter::System, crate::interpreter::U256, fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
 };
 
@@ -118,44 +113,55 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let output_offset = stack.pop();
     let output_size = stack.pop();
 
-    // XXX do we need this?
-    stack.push(U256::zero()); // Assume failure.
-
-    // TODO Errs
-    let input_region = get_memory_region(memory, input_offset, input_size).unwrap();
-    let output_region = get_memory_region(memory, output_offset, output_size).unwrap();
+    let input_region = get_memory_region(memory, input_offset, input_size)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let output_region = get_memory_region(memory, output_offset, output_size)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     let output = {
         // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = input_region
             .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
-            .unwrap_or_default();
+            .ok_or(StatusCode::InvalidMemoryAccess)?;
 
-        let output = if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
+        if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
             precompiles::Precompiles::call_precompile(rt, dst, input_data)
+                .map_err(|_| StatusCode::PrecompileFailure)?
         } else {
             match kind {
-                CallKind::Call => { todo!() },
-                CallKind::DelegateCall => { todo!() }
-                CallKind::StaticCall => { todo!() }
-                CallKind::CallCode => { todo!() },
-                CallKind::Create => { todo!() },
-                CallKind::Create2{salt: _} => { todo!() },
+                CallKind::Call => {
+                    todo!()
+                }
+                CallKind::DelegateCall => {
+                    todo!()
+                }
+                CallKind::StaticCall => {
+                    todo!()
+                }
+                CallKind::CallCode => {
+                    todo!()
+                }
+                CallKind::Create => {
+                    todo!()
+                }
+                CallKind::Create2 { salt: _ } => {
+                    todo!()
+                }
             }
-        };
-
-        output.unwrap()
+        }
     };
 
     let output_data = output_region
         .map(|MemoryRegion { offset, size }| {
             &mut memory[offset..][..size.get()] // would like to use get for this to err instead of panic
         })
-        .unwrap_or_default();
+        .ok_or(StatusCode::InvalidMemoryAccess)?;
 
-    // TODO errs
-    output_data.get_mut(..output.len()).unwrap().copy_from_slice(&output);
+    output_data
+        .get_mut(..output.len())
+        .ok_or(StatusCode::InvalidMemoryAccess)?
+        .copy_from_slice(&output);
 
-    // TODO do things after writing into output
-    todo!();
+    stack.push(U256::from(1));
+    Ok(())
 }
