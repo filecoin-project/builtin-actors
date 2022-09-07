@@ -1,7 +1,6 @@
 pub mod interpreter;
 mod state;
 
-use fvm_shared::address::Address;
 use {
     crate::interpreter::{execute, Bytecode, ExecutionState, StatusCode, System, U256},
     crate::state::State,
@@ -110,66 +109,65 @@ impl EvmContractActor {
     {
         rt.validate_immediate_caller_accept_any()?;
 
-        let mut selfdestroyed = Option::<Address>::default();
+        let state: State = rt.state()?;
+        let bytecode: Vec<u8> =
+            match rt.store().get(&state.bytecode).map_err(|e| {
+                ActorError::unspecified(format!("failed to load bytecode: {e:?}"))
+            })? {
+                Some(bytes) => bytes,
+                None => return Err(ActorError::unspecified("missing bytecode".to_string())),
+            };
 
-        // TODO this is fine in a transaction for now, as we don't have yet cross-contact calls
-        //      some refactoring will be needed when we start making cross contract calls.
-        let output = rt.transaction(|state: &mut State, rt| {
-            let bytecode: Vec<u8> =
-                match rt.store().get(&state.bytecode).map_err(|e| {
-                    ActorError::unspecified(format!("failed to parse bytecode: {e:?}"))
-                })? {
-                    Some(bytes) => bytes,
-                    None => return Err(ActorError::unspecified("missing bytecode".to_string())),
-                };
+        let bytecode = Bytecode::new(&bytecode)
+            .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
 
-            let bytecode = Bytecode::new(&bytecode)
-                .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
+        // clone the blockstore here to pass to the System, this is bound to the HAMT.
+        let blockstore = rt.store().clone();
 
-            // clone the blockstore here to pass to the System, this is bound to the HAMT.
-            let blockstore = rt.store().clone();
-
-            // load the storage HAMT
-            let mut hamt = Hamt::load(&state.contract_state, blockstore).map_err(|e| {
-                ActorError::illegal_state(format!(
-                    "failed to load storage HAMT on invoke: {e:?}, e"
-                ))
-            })?;
-
-            let mut system = System::new(rt, &mut hamt).map_err(|e| {
-                ActorError::unspecified(format!(
-                    "failed to create execution abstraction layer: {e:?}"
-                ))
-            })?;
-
-            let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
-
-            let exec_status = execute(&bytecode, &mut exec_state, &mut system.reborrow())
-                .map_err(|e| ActorError::unspecified(format!("EVM execution error: {e:?}")))?;
-
-            selfdestroyed = exec_status.selfdestroyed;
-
-            // XXX is this correct handling of reverts? or should we fail execution?
-            if exec_status.status_code == StatusCode::Success {
-                let result = RawBytes::from(exec_status.output_data.to_vec());
-
-                if !exec_status.reverted {
-                    state.contract_state = system.flush_state()?;
-                }
-
-                Ok(result)
-            } else {
-                Err(ActorError::unspecified(format!(
-                    "EVM contract invocation failed: status: {}",
-                    exec_status.status_code
-                )))
-            }
+        // load the storage HAMT
+        let mut hamt = Hamt::load(&state.contract_state, blockstore).map_err(|e| {
+            ActorError::illegal_state(format!(
+                "failed to load storage HAMT on invoke: {e:?}, e"
+            ))
         })?;
 
-        if let Some(addr) = selfdestroyed {
+        let mut system = System::new(rt, &mut hamt).map_err(|e| {
+            ActorError::unspecified(format!(
+                "failed to create execution abstraction layer: {e:?}"
+            ))
+        })?;
+
+        let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
+
+        let exec_status = execute(&bytecode, &mut exec_state, &mut system.reborrow())
+            .map_err(|e| ActorError::unspecified(format!("EVM execution error: {e:?}")))?;
+
+
+        // TODO this is not the correct handling of reverts -- we need to abort (and return the
+        //      output data), so that the entire transaction (including parent/sibling calls)
+        //      can be reverted.
+        if exec_status.status_code == StatusCode::Success {
+            if !exec_status.reverted {
+                // this needs to be outside the transaction or else rustc has a fit about
+                // mutably borrowing the runtime twice.... sigh.
+                let contract_state = system.flush_state()?;
+                rt.transaction(|state: &mut State, _rt| {
+                    state.contract_state = contract_state;
+                    Ok(())
+                })?;
+            }
+        } else {
+            return Err(ActorError::unspecified(format!(
+                "EVM contract invocation failed: status: {}",
+                exec_status.status_code
+            )));
+        }
+
+        if let Some(addr) = exec_status.selfdestroyed {
             rt.delete_actor(&addr)?
         }
 
+        let output = RawBytes::from(exec_status.output_data.to_vec());
         Ok(output)
     }
 }
