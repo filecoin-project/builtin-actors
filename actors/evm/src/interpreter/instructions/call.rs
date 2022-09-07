@@ -23,8 +23,6 @@ pub enum CallKind {
     DelegateCall,
     StaticCall,
     CallCode,
-    Create,
-    Create2 { salt: U256 },
 }
 
 pub fn calldataload(state: &mut ExecutionState) {
@@ -116,13 +114,27 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let ExecutionState { stack, memory, .. } = state;
     let rt = &*platform.rt; // as immutable reference
 
-    let _gas = stack.pop(); // EVM gas is not used in FVM
-    let dst = stack.pop();
-    let value = stack.pop();
-    let input_offset = stack.pop();
-    let input_size = stack.pop();
-    let output_offset = stack.pop();
-    let output_size = stack.pop();
+    let (_gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
+        CallKind::Call | CallKind::CallCode =>
+            (stack.pop(),
+             stack.pop(),
+             stack.pop(),
+             stack.pop(),
+             stack.pop(),
+             stack.pop(),
+             stack.pop(),
+            ),
+
+        CallKind::DelegateCall | CallKind::StaticCall =>
+            (stack.pop(),
+             stack.pop(),
+             U256::from(0),
+             stack.pop(),
+             stack.pop(),
+             stack.pop(),
+             stack.pop(),
+            ),
+    };
 
     let input_region = get_memory_region(memory, input_offset, input_size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
@@ -183,12 +195,6 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
                     todo!()
                 }
                 CallKind::CallCode => {
-                    todo!()
-                }
-                CallKind::Create => {
-                    todo!()
-                }
-                CallKind::Create2 { salt: _ } => {
                     todo!()
                 }
             }
