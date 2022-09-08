@@ -202,6 +202,9 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     state.return_data = result.clone().into();
 
     // copy return data to output region if it is non-zero
+    // TODO this limits addressable output to 2G (31 bits full),
+    //      but it is still probably too much and we should consistently limit further.
+    //      See also https://github.com/filecoin-project/ref-fvm/issues/851
     let output_usize = if output_size.bits() < 32 {
         output_size.as_usize()
     } else {
