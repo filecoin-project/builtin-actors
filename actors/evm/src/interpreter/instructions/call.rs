@@ -139,7 +139,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let input_region = get_memory_region(memory, input_offset, input_size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    let mut output = {
+    let mut result = {
         // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = input_region
             .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
@@ -197,7 +197,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     };
 
     // save return_data
-    state.return_data = output.clone().into();
+    state.return_data = result.clone().into();
 
     // copy return data to output region if it is non-zero
     let output_usize = if output_size.bits() < 32 {
@@ -214,16 +214,16 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
             .ok_or(StatusCode::InvalidMemoryAccess)?;
 
         // truncate if needed
-        let mut result_usize = output.len();
+        let mut result_usize = result.len();
         if result_usize > output_usize {
             result_usize = output_usize;
-            output.truncate(output_usize);
+            result.truncate(output_usize);
         }
 
         output_data
             .get_mut(..result_usize)
             .ok_or(StatusCode::InvalidMemoryAccess)?
-            .copy_from_slice(&output);
+            .copy_from_slice(&result);
     }
 
     stack.push(U256::from(1));
