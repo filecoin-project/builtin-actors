@@ -1,8 +1,10 @@
 use fil_actor_miner::pledge_penalty_for_continued_fault;
 use fil_actor_miner::power_for_sectors;
-use fvm_shared::bigint::BigInt;
+
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+
+use num_traits::Zero;
 
 mod util;
 use crate::util::*;
@@ -12,23 +14,22 @@ use crate::util::*;
 const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 
 const PERIOD_OFFSET: ChainEpoch = 100;
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 
 #[test]
 fn declare_fault_pays_fee_at_window_post() {
-    let big_rewards: BigInt = BigInt::from(1_000_000_000_000_000_000_000_i128);
+    let big_rewards = TokenAmount::from_whole(1000);
 
     // Get sector into proving state
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
     let all_sectors =
         h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
     let pwr = power_for_sectors(h.sector_size, &all_sectors);
 
     // add lots of funds so penalties come from vesting funds
-    h.apply_rewards(&mut rt, big_rewards, BigInt::from(0));
+    h.apply_rewards(&mut rt, big_rewards, TokenAmount::zero());
 
     // find deadline for sector
     let st = h.get_state(&rt);

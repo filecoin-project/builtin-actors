@@ -9,11 +9,11 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::HAMT_BIT_WIDTH;
+use num_traits::ToPrimitive;
 
 use fil_actor_datacap::{
     DestroyParams, Method as DataCapMethod, MintParams, State as DataCapState,
 };
-use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::{
     AddVerifierClientParams, RemoveDataCapParams, RemoveDataCapRequest, RemoveDataCapReturn,
     SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
@@ -31,7 +31,7 @@ use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
 fn remove_datacap_simple_successful_path() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 4, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let (verifier1, verifier2, verified_client) = (addrs[0], addrs[1], addrs[2]);
 
     let verifier1_id_addr = v.normalize_address(&verifier1).unwrap();
@@ -47,8 +47,10 @@ fn remove_datacap_simple_successful_path() {
     // register the verified client
     let add_verified_client_params =
         AddVerifierClientParams { address: verified_client, allowance: verifier_allowance.clone() };
-    let mint_params =
-        MintParams { to: verified_client, amount: &verifier_allowance * TOKEN_PRECISION };
+    let mint_params = MintParams {
+        to: verified_client,
+        amount: TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()),
+    };
     apply_ok(
         &v,
         verifier1,
@@ -89,7 +91,7 @@ fn remove_datacap_simple_successful_path() {
 
     let token_st = v.get_state::<DataCapState>(*DATACAP_TOKEN_ACTOR_ADDR).unwrap();
     let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
-    assert_eq!(balance, &verifier_allowance * TOKEN_PRECISION);
+    assert_eq!(balance, TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()));
 
     let mut proposal_ids = make_map_with_root_and_bitwidth::<_, RemoveDataCapProposalID>(
         &v_st.remove_data_cap_proposal_ids,
@@ -112,7 +114,7 @@ fn remove_datacap_simple_successful_path() {
     let mut verifier1_proposal = RemoveDataCapProposal {
         verified_client: verified_client_id_addr,
         data_cap_amount: allowance_to_remove.clone(),
-        removal_proposal_id: RemoveDataCapProposalID(0),
+        removal_proposal_id: RemoveDataCapProposalID { id: 0 },
     };
 
     let mut verifier1_proposal_ser = to_vec(&verifier1_proposal).unwrap();
@@ -122,7 +124,7 @@ fn remove_datacap_simple_successful_path() {
     let mut verifier2_proposal = RemoveDataCapProposal {
         verified_client: verified_client_id_addr,
         data_cap_amount: allowance_to_remove.clone(),
-        removal_proposal_id: RemoveDataCapProposalID(0),
+        removal_proposal_id: RemoveDataCapProposalID { id: 0 },
     };
 
     let mut verifier2_proposal_ser = to_vec(&verifier2_proposal).unwrap();
@@ -161,7 +163,10 @@ fn remove_datacap_simple_successful_path() {
     // confirm client's allowance has fallen by half
     let token_st = v.get_state::<DataCapState>(*DATACAP_TOKEN_ACTOR_ADDR).unwrap();
     let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
-    assert_eq!(balance, verifier_allowance.sub(&allowance_to_remove) * TOKEN_PRECISION);
+    assert_eq!(
+        balance,
+        TokenAmount::from_whole(verifier_allowance.sub(&allowance_to_remove).to_i64().unwrap())
+    );
 
     v_st = v.get_state::<VerifregState>(*VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     // confirm proposalIds has changed as expected
@@ -174,14 +179,14 @@ fn remove_datacap_simple_successful_path() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(1u64, verifier1_proposal_id.0);
+    assert_eq!(1u64, verifier1_proposal_id.id);
 
     let verifier2_proposal_id: &RemoveDataCapProposalID = proposal_ids
         .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr).to_bytes())
         .unwrap()
         .unwrap();
 
-    assert_eq!(1u64, verifier2_proposal_id.0);
+    assert_eq!(1u64, verifier2_proposal_id.id);
 
     // remove the second half of the client's allowance, this causes the client to be deleted
 
@@ -250,14 +255,14 @@ fn remove_datacap_simple_successful_path() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(2u64, verifier1_proposal_id.0);
+    assert_eq!(2u64, verifier1_proposal_id.id);
 
     let verifier2_proposal_id: &RemoveDataCapProposalID = proposal_ids
         .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr).to_bytes())
         .unwrap()
         .unwrap();
 
-    assert_eq!(2u64, verifier2_proposal_id.0);
+    assert_eq!(2u64, verifier2_proposal_id.id);
     v.assert_state_invariants();
 }
 
@@ -285,7 +290,9 @@ fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
                     serialize(
                         &DestroyParams {
                             owner: params.verified_client_to_remove,
-                            amount: &params.data_cap_amount_to_remove * TOKEN_PRECISION,
+                            amount: TokenAmount::from_whole(
+                                params.data_cap_amount_to_remove.to_i64().unwrap(),
+                            ),
                         },
                         "destroy params",
                     )

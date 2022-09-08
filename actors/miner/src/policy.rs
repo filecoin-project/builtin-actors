@@ -168,13 +168,10 @@ pub const REWARD_VESTING_SPEC: VestSpec = VestSpec {
 
 // Default share of block reward allocated as reward to the consensus fault reporter.
 // Applied as epochReward / (expectedLeadersPerEpoch * consensusFaultReporterDefaultShare)
-pub const CONSENSUS_FAULT_REPORTER_DEFAULT_SHARE: i64 = 4;
+pub const CONSENSUS_FAULT_REPORTER_DEFAULT_SHARE: u64 = 4;
 
 pub fn reward_for_consensus_slash_report(epoch_reward: &TokenAmount) -> TokenAmount {
-    epoch_reward.div_floor(
-        &(BigInt::from(EXPECTED_LEADERS_PER_EPOCH)
-            * BigInt::from(CONSENSUS_FAULT_REPORTER_DEFAULT_SHARE)),
-    )
+    epoch_reward.div_floor(EXPECTED_LEADERS_PER_EPOCH * CONSENSUS_FAULT_REPORTER_DEFAULT_SHARE)
 }
 
 // The reward given for successfully disputing a window post.

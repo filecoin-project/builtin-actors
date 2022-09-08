@@ -479,7 +479,7 @@ mod miner_actor_test_partitions {
         // remove 3 sectors starting with 2
         let old_sectors = sectors()[1..4].to_vec();
         let old_sector_power = power_for_sectors(SECTOR_SIZE, &old_sectors);
-        let old_sector_pledge: u64 = 1001 + 1002 + 1003;
+        let old_sector_pledge = TokenAmount::from_atto(1001 + 1002 + 1003);
 
         // replace 1 and add 2 new sectors
         let new_sectors = vec![
@@ -488,7 +488,7 @@ mod miner_actor_test_partitions {
             test_sector(18, 8, 152, 262, 3002),
         ];
         let new_sector_power = power_for_sectors(SECTOR_SIZE, &new_sectors);
-        let new_sector_pledge = TokenAmount::from(3000u64 + 3001 + 3002);
+        let new_sector_pledge = TokenAmount::from_atto(3000u64 + 3001 + 3002);
 
         let (power_delta, pledge_delta) = partition
             .replace_sectors(&rt.store, &old_sectors, &new_sectors, SECTOR_SIZE, QUANT_SPEC)
@@ -782,7 +782,7 @@ mod miner_actor_test_partitions {
 
         assert_bitfield_equals(&expset.on_time_sectors, &[1, 2]);
         assert_bitfield_equals(&expset.early_sectors, &[4]);
-        assert_eq!(TokenAmount::from(1000u64 + 1001), expset.on_time_pledge);
+        assert_eq!(TokenAmount::from_atto(1000u64 + 1001), expset.on_time_pledge);
 
         // active power only contains power from non-faulty sectors
         assert_eq!(expset.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[..2]));

@@ -107,8 +107,8 @@ fn test_current_proving_period_start() {
 #[test]
 fn br_looks_right_in_plausible_sector_power_network_power_reward_range() {
     // between 10 and 100 FIL is reasonable for near-mid future
-    let tens_of_fil: TokenAmount = TokenAmount::from(10).pow(18) * 50;
-    let reward_estimate = FilterEstimate::new(tens_of_fil.clone(), Zero::zero());
+    let tens_of_fil: TokenAmount = TokenAmount::from_whole(50);
+    let reward_estimate = FilterEstimate::new(tens_of_fil.atto().clone(), Zero::zero());
     let small_power = StoragePower::from(32_u64 << 30); // 32 GiB
     let huge_power = StoragePower::from(1_u64 << 60); // 1 EiB
     let small_power_br_num = &small_power * EPOCHS_IN_DAY * &tens_of_fil;
@@ -131,8 +131,8 @@ fn br_looks_right_in_plausible_sector_power_network_power_reward_range() {
         &huge_power,
         EPOCHS_IN_DAY,
     );
-    assert_eq!(&small_power_br_num / &tens_of_eibs, br_small_low);
-    assert_eq!(&huge_power_br_num / &tens_of_eibs, br_huge_low);
+    assert_eq!(small_power_br_num.div_floor(tens_of_eibs.clone()), br_small_low);
+    assert_eq!(huge_power_br_num.div_floor(tens_of_eibs), br_huge_low);
 
     // 100s of EiBs
     // 1.2e18 * 100 bytes * 5 quality ~ 6e20
@@ -150,8 +150,8 @@ fn br_looks_right_in_plausible_sector_power_network_power_reward_range() {
         &huge_power,
         EPOCHS_IN_DAY,
     );
-    assert_eq!(&small_power_br_num / &hundreds_of_eibs, br_small_mid);
-    assert_eq!(&huge_power_br_num / &hundreds_of_eibs, br_huge_mid);
+    assert_eq!(small_power_br_num.div_floor(hundreds_of_eibs.clone()), br_small_mid);
+    assert_eq!(huge_power_br_num.div_floor(hundreds_of_eibs), br_huge_mid);
 
     // 1000s of EiBs -- upper range
     // 1.2e18 * 1000 bytes * 10 quality = 1.2e22 ~ 2e22
@@ -169,14 +169,14 @@ fn br_looks_right_in_plausible_sector_power_network_power_reward_range() {
         &huge_power,
         EPOCHS_IN_DAY,
     );
-    assert_eq!(&small_power_br_num / &thousands_of_eibs, br_small_upper);
-    assert_eq!(&huge_power_br_num / &thousands_of_eibs, br_huge_upper);
+    assert_eq!(small_power_br_num.div_floor(thousands_of_eibs.clone()), br_small_upper);
+    assert_eq!(huge_power_br_num.div_floor(thousands_of_eibs), br_huge_upper);
 }
 
 #[test]
 fn declared_and_undeclared_fault_penalties_are_linear_over_sector_qa_power_term() {
     // Construct plausible reward and qa power filtered estimates
-    let epoch_reward = TokenAmount::from(100_u64 << 53);
+    let epoch_reward = BigInt::from(100_u64 << 53);
     // not too much growth over ~3000 epoch projection in BR
     let reward_estimate = FilterEstimate::new(epoch_reward, Zero::zero());
 
@@ -213,7 +213,7 @@ fn declared_and_undeclared_fault_penalties_are_linear_over_sector_qa_power_term(
     // we can at best expect n calculations of 1 power to be within n of 1 calculation of n powers.
     let diff = &ff_all - (&ff_c + &ff_a + &ff_b);
     assert!(diff >= Zero::zero());
-    assert!(diff < TokenAmount::from(3));
+    assert!(diff < TokenAmount::from_atto(3));
 
     // Undeclared faults
     let sp_a = pledge_penalty_for_termination_lower_bound(
@@ -242,5 +242,5 @@ fn declared_and_undeclared_fault_penalties_are_linear_over_sector_qa_power_term(
     // we can at best expect n calculations of 1 power to be within n of 1 calculation of n powers.
     let diff = &sp_all - (&sp_c + &sp_a + &sp_b);
     assert!(diff >= Zero::zero());
-    assert!(diff < TokenAmount::from(3));
+    assert!(diff < TokenAmount::from_atto(3));
 }

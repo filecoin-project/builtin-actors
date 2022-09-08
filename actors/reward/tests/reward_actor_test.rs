@@ -24,11 +24,13 @@ use num_traits::FromPrimitive;
 
 lazy_static! {
     static ref EPOCH_ZERO_REWARD: TokenAmount =
-        TokenAmount::from_i128(36_266_264_293_777_134_739).unwrap();
+        TokenAmount::from_atto(36_266_264_293_777_134_739i128);
     static ref WINNER: Address = Address::new_id(1000);
 }
 
 mod construction_tests {
+    use num::Zero;
+
     use super::*;
 
     #[test]
@@ -53,7 +55,7 @@ mod construction_tests {
         let state: State = rt.get_state();
         assert_eq!(ChainEpoch::from(0), state.epoch);
         assert_eq!(start_realized_power, state.cumsum_realized);
-        assert_ne!(TokenAmount::from(0), state.this_epoch_reward);
+        assert_ne!(TokenAmount::zero(), state.this_epoch_reward);
     }
 
     #[test]
@@ -78,6 +80,7 @@ mod test_award_block_reward {
     use fvm_shared::error::ExitCode;
     use fvm_shared::sector::StoragePower;
     use fvm_shared::METHOD_SEND;
+    use num::Zero;
 
     use super::*;
 
@@ -85,17 +88,17 @@ mod test_award_block_reward {
     fn rejects_gas_reward_exceeding_balance() {
         let mut rt = construct_and_verify(&StoragePower::default());
 
-        rt.set_balance(TokenAmount::from(9));
+        rt.set_balance(TokenAmount::from_atto(9));
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
         assert_eq!(
             ExitCode::USR_ILLEGAL_STATE,
             award_block_reward(
                 &mut rt,
                 *WINNER,
-                TokenAmount::from(0),
-                TokenAmount::from(10),
+                TokenAmount::zero(),
+                TokenAmount::from_atto(10),
                 1,
-                TokenAmount::from(0)
+                TokenAmount::zero()
             )
             .unwrap_err()
             .exit_code()
@@ -105,7 +108,7 @@ mod test_award_block_reward {
     #[test]
     fn rejects_negative_penalty_or_reward() {
         let mut rt = construct_and_verify(&StoragePower::default());
-        rt.set_balance(TokenAmount::from(10_i128.pow(18)));
+        rt.set_balance(TokenAmount::from_whole(1));
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
 
         let reward_penalty_pairs = [(-1, 0), (0, -1)];
@@ -116,10 +119,10 @@ mod test_award_block_reward {
                 award_block_reward(
                     &mut rt,
                     *WINNER,
-                    TokenAmount::from(*penalty),
-                    TokenAmount::from(*reward),
+                    TokenAmount::from_atto(*penalty),
+                    TokenAmount::from_atto(*reward),
                     1,
-                    TokenAmount::from(0)
+                    TokenAmount::zero()
                 )
                 .unwrap_err()
                 .exit_code()
@@ -131,16 +134,16 @@ mod test_award_block_reward {
     #[test]
     fn rejects_zero_wincount() {
         let mut rt = construct_and_verify(&StoragePower::default());
-        rt.set_balance(TokenAmount::from(10_i128.pow(18)));
+        rt.set_balance(TokenAmount::from_whole(1));
 
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
         assert!(award_block_reward(
             &mut rt,
             *WINNER,
-            TokenAmount::from(0),
-            TokenAmount::from(0),
+            TokenAmount::zero(),
+            TokenAmount::zero(),
             0,
-            TokenAmount::from(0)
+            TokenAmount::zero()
         )
         .is_err());
         rt.reset();
@@ -149,12 +152,12 @@ mod test_award_block_reward {
     #[test]
     fn pays_reward_and_tracks_penalty() {
         let mut rt = construct_and_verify(&StoragePower::default());
-        rt.set_balance(TokenAmount::from(10_i128.pow(27)));
+        rt.set_balance(TokenAmount::from_whole(1_000_000_000));
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
-        let penalty: TokenAmount = TokenAmount::from(100);
-        let gas_reward: TokenAmount = TokenAmount::from(200);
+        let penalty: TokenAmount = TokenAmount::from_atto(100);
+        let gas_reward: TokenAmount = TokenAmount::from_atto(200);
         let expected_reward: TokenAmount =
-            &*EPOCH_ZERO_REWARD / EXPECTED_LEADERS_PER_EPOCH + &gas_reward;
+            EPOCH_ZERO_REWARD.div_floor(EXPECTED_LEADERS_PER_EPOCH) + &gas_reward;
         let miner_penalty = PENALTY_MULTIPLIER * &penalty;
         let params = RawBytes::serialize(&ext::miner::ApplyRewardParams {
             reward: expected_reward.clone(),
@@ -185,8 +188,8 @@ mod test_award_block_reward {
         let mut rt = construct_and_verify(&StoragePower::from(1));
 
         // Total reward is a huge number, upon writing ~1e18, so 300 should be way less
-        let small_reward = TokenAmount::from(300);
-        let penalty = TokenAmount::from(100);
+        let small_reward = TokenAmount::from_atto(300);
+        let penalty = TokenAmount::from_atto(100);
         rt.set_balance(small_reward.clone());
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
 
@@ -208,7 +211,7 @@ mod test_award_block_reward {
         let params = AwardBlockRewardParams {
             miner: *WINNER,
             penalty,
-            gas_reward: TokenAmount::from(0),
+            gas_reward: TokenAmount::zero(),
             win_count: 1,
         };
         assert!(rt
@@ -225,22 +228,22 @@ mod test_award_block_reward {
         let mut rt = construct_and_verify(&StoragePower::from(1));
         let mut state: State = rt.get_state();
 
-        assert_eq!(TokenAmount::from(0), state.total_storage_power_reward);
-        state.this_epoch_reward = TokenAmount::from(5000);
+        assert_eq!(TokenAmount::zero(), state.total_storage_power_reward);
+        state.this_epoch_reward = TokenAmount::from_atto(5000);
 
         rt.replace_state(&state);
 
-        let total_payout = TokenAmount::from(3500);
+        let total_payout = TokenAmount::from_atto(3500);
         rt.set_balance(total_payout.clone());
 
         for i in &[1000, 1000, 1000, 500] {
             assert!(award_block_reward(
                 &mut rt,
                 *WINNER,
-                TokenAmount::from(0),
-                TokenAmount::from(0),
+                TokenAmount::zero(),
+                TokenAmount::zero(),
                 1,
-                TokenAmount::from(*i)
+                TokenAmount::from_atto(*i)
             )
             .is_ok());
         }
@@ -254,15 +257,15 @@ mod test_award_block_reward {
         let mut rt = construct_and_verify(&StoragePower::from(1));
         let mut state: State = rt.get_state();
 
-        assert_eq!(TokenAmount::from(0), state.total_storage_power_reward);
-        state.this_epoch_reward = TokenAmount::from(5000);
+        assert_eq!(TokenAmount::zero(), state.total_storage_power_reward);
+        state.this_epoch_reward = TokenAmount::from_atto(5000);
         rt.replace_state(&state);
         // enough balance to pay 3 full rewards and one partial
-        rt.set_balance(TokenAmount::from(3500));
+        rt.set_balance(TokenAmount::from_atto(3500));
 
         rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
-        let expected_reward = TokenAmount::from(1000);
-        let miner_penalty = TokenAmount::from(0);
+        let expected_reward = TokenAmount::from_atto(1000);
+        let miner_penalty = TokenAmount::zero();
         let params = RawBytes::serialize(&ext::miner::ApplyRewardParams {
             reward: expected_reward.clone(),
             penalty: miner_penalty,
@@ -287,8 +290,8 @@ mod test_award_block_reward {
 
         let params = AwardBlockRewardParams {
             miner: *WINNER,
-            penalty: TokenAmount::from(0),
-            gas_reward: TokenAmount::from(0),
+            penalty: TokenAmount::zero(),
+            gas_reward: TokenAmount::zero(),
             win_count: 1,
         };
 
@@ -373,7 +376,7 @@ fn award_block_reward(
         ExitCode::OK,
     );
 
-    if penalty > TokenAmount::from(0) {
+    if penalty.is_positive() {
         rt.expect_send(
             *BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,

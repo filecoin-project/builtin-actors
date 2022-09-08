@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use fil_fungible_token::token::TOKEN_PRECISION;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
@@ -20,12 +21,12 @@ use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_id_addr, ActorContext,
-    ActorDowncast, ActorError, AsActorError, BatchReturnGen, Map, DATACAP_TOKEN_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
+    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
+use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen, DATACAP_TOKEN_ACTOR_ADDR};
 
-use crate::ext::datacap::{DestroyParams, MintParams, TOKEN_PRECISION};
+use crate::ext::datacap::{DestroyParams, MintParams};
 
 pub use self::state::Allocation;
 pub use self::state::Claim;
@@ -71,7 +72,7 @@ impl Actor {
             .resolve_address(&root_key)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "root should be an ID address")?;
 
-        let st = State::new(rt.store(), id_addr, *DATACAP_TOKEN_ACTOR_ADDR)
+        let st = State::new(rt.store(), Address::new_id(id_addr), *DATACAP_TOKEN_ACTOR_ADDR)
             .context("failed to create verifreg state")?;
 
         rt.create(&st)?;
@@ -92,10 +93,12 @@ impl Actor {
             ));
         }
 
-        let verifier = resolve_to_id_addr(rt, &params.address).context_code(
+        let verifier = resolve_to_actor_id(rt, &params.address).context_code(
             ExitCode::USR_ILLEGAL_STATE,
             format!("failed to resolve addr {} to ID addr", params.address),
         )?;
+
+        let verifier = Address::new_id(verifier);
 
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
@@ -127,10 +130,12 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let verifier = resolve_to_id_addr(rt, &verifier_addr).context_code(
+        let verifier = resolve_to_actor_id(rt, &verifier_addr).context_code(
             ExitCode::USR_ILLEGAL_STATE,
             format!("failed to resolve addr {} to ID addr", verifier_addr),
         )?;
+
+        let verifier = Address::new_id(verifier);
 
         let state: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&state.root_key))?;
@@ -160,10 +165,12 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_id_addr(rt, &params.address).context_code(
+        let client = resolve_to_actor_id(rt, &params.address).context_code(
             ExitCode::USR_ILLEGAL_STATE,
             format!("failed to resolve addr {} to ID addr", params.address),
         )?;
+
+        let client = Address::new_id(client);
 
         let st: State = rt.state()?;
         if client == st.root_key {
@@ -220,10 +227,12 @@ impl Actor {
     {
         rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
 
-        let client = resolve_to_id_addr(rt, &params.address).context_code(
+        let client = resolve_to_actor_id(rt, &params.address).context_code(
             ExitCode::USR_ILLEGAL_STATE,
             format!("failed to resolve addr {} to ID addr", params.address),
         )?;
+
+        let client = Address::new_id(client);
 
         if params.deal_size < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
@@ -268,10 +277,12 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_id_addr(rt, &params.address).context_code(
+        let client = resolve_to_actor_id(rt, &params.address).context_code(
             ExitCode::USR_ILLEGAL_STATE,
             format!("failed to resolve addr {} to ID addr", params.address),
         )?;
+
+        let client = Address::new_id(client);
 
         let st: State = rt.state()?;
         // Disallow root as a client.
@@ -303,7 +314,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let client = resolve_to_id_addr(rt, &params.verified_client_to_remove).context_code(
+        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove).context_code(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             format!(
                 "failed to resolve client addr {} to ID addr",
@@ -311,21 +322,28 @@ impl Actor {
             ),
         )?;
 
-        let verifier_1 = resolve_to_id_addr(rt, &params.verifier_request_1.verifier).context_code(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            format!(
-                "failed to resolve verifier addr {} to ID addr",
-                params.verifier_request_1.verifier
-            ),
-        )?;
+        let client = Address::new_id(client);
 
-        let verifier_2 = resolve_to_id_addr(rt, &params.verifier_request_2.verifier).context_code(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            format!(
-                "failed to resolve verifier addr {} to ID addr",
-                params.verifier_request_2.verifier
-            ),
-        )?;
+        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier)
+            .context_code(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                format!(
+                    "failed to resolve verifier addr {} to ID addr",
+                    params.verifier_request_1.verifier
+                ),
+            )?;
+        let verifier_1 = Address::new_id(verifier_1);
+
+        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier)
+            .context_code(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                format!(
+                    "failed to resolve verifier addr {} to ID addr",
+                    params.verifier_request_2.verifier
+                ),
+            )?;
+
+        let verifier_2 = Address::new_id(verifier_2);
 
         if verifier_1 == verifier_2 {
             return Err(actor_error!(
@@ -587,10 +605,10 @@ where
 {
     let params = serialize(owner, "owner address")?;
     let ret = rt
-        .send(*token, ext::datacap::Method::BalanceOf as u64, params, TokenAmount::zero())
+        .send(token, ext::datacap::Method::BalanceOf as u64, params, TokenAmount::zero())
         .context(format!("failed to query balance of {} for {}", token, owner))?;
-    let x: BigIntDe = deserialize(&ret, "balance result")?;
-    Ok(tokens_to_datacap(&x.0))
+    let x: TokenAmount = deserialize(&ret, "balance result")?;
+    Ok(tokens_to_datacap(&x))
 }
 
 // Invokes Mint on a data cap token actor for whole units of data cap.
@@ -607,7 +625,7 @@ where
     let token_amt = datacap_to_tokens(amount);
     let params = MintParams { to: *to, amount: token_amt };
     rt.send(
-        *token,
+        token,
         ext::datacap::Method::Mint as u64,
         serialize(&params, "mint params")?,
         TokenAmount::zero(),
@@ -626,7 +644,7 @@ where
     let params = BurnParams { amount: token_amt };
     let ret: BurnReturn = rt
         .send(
-            *token,
+            token,
             ext::datacap::Method::Burn as u64,
             serialize(&params, "burn params")?,
             TokenAmount::zero(),
@@ -651,7 +669,7 @@ where
     let params = DestroyParams { owner: *owner, amount: token_amt };
     let ret: BurnReturn = rt
         .send(
-            *token,
+            token,
             ext::datacap::Method::Destroy as u64,
             serialize(&params, "destroy params")?,
             TokenAmount::zero(),
@@ -675,7 +693,7 @@ where
     let token_amt = datacap_to_tokens(amount);
     let params = TransferParams { to: *to, amount: token_amt, operator_data: Default::default() };
     rt.send(
-        *token,
+        token,
         ext::datacap::Method::Transfer as u64,
         serialize(&params, "transfer params")?,
         TokenAmount::zero(),
@@ -685,11 +703,11 @@ where
 }
 
 fn datacap_to_tokens(amount: &DataCap) -> TokenAmount {
-    amount * TOKEN_PRECISION
+    TokenAmount::from_atto(amount.clone()) * TOKEN_PRECISION
 }
 
-fn tokens_to_datacap(amount: &BigInt) -> BigInt {
-    amount / TOKEN_PRECISION
+fn tokens_to_datacap(amount: &TokenAmount) -> BigInt {
+    amount.atto() / TOKEN_PRECISION
 }
 
 fn use_proposal_id<BS>(
@@ -712,13 +730,13 @@ where
         )
     })?;
 
-    let curr_id = if let Some(RemoveDataCapProposalID(id)) = maybe_id {
-        RemoveDataCapProposalID(*id)
+    let curr_id = if let Some(RemoveDataCapProposalID { id }) = maybe_id {
+        RemoveDataCapProposalID { id: *id }
     } else {
-        RemoveDataCapProposalID(0)
+        RemoveDataCapProposalID { id: 0 }
     };
 
-    let next_id = RemoveDataCapProposalID(curr_id.0 + 1);
+    let next_id = RemoveDataCapProposalID { id: curr_id.id + 1 };
     proposal_ids.set(BytesKey::from(key.to_bytes()), next_id).map_err(|e| {
         actor_error!(
             illegal_state,

@@ -4,19 +4,26 @@
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, Protocol};
+use fvm_shared::crypto::signature::SignatureType::{Secp256k1, BLS};
+use fvm_shared::crypto::signature::{Signature, SignatureType};
+use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fil_actors_runtime::UNIVERSAL_RECEIVER_HOOK_METHOD_NUM;
 use fil_actors_runtime::{actor_error, ActorError};
-use fil_actors_runtime::{cbor, FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM};
+use fil_actors_runtime::{cbor, ActorDowncast};
+
+use crate::types::AuthenticateMessageParams;
 
 pub use self::state::State;
 
 mod state;
 pub mod testing;
+pub mod types;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -27,11 +34,13 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     PubkeyAddress = 2,
-    FungibleTokenReceiverHook = FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM,
+    AuthenticateMessage = 3,
+    UniversalReceiverHook = UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 }
 
 /// Account Actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for Account actor
     pub fn constructor<BS, RT>(rt: &mut RT, address: Address) -> Result<(), ActorError>
@@ -51,7 +60,7 @@ impl Actor {
         Ok(())
     }
 
-    // Fetches the pubkey-type address from this actor.
+    /// Fetches the pubkey-type address from this actor.
     pub fn pubkey_address<BS, RT>(rt: &mut RT) -> Result<Address, ActorError>
     where
         BS: Blockstore,
@@ -62,8 +71,41 @@ impl Actor {
         Ok(st.address)
     }
 
-    // Always succeeds, accepting any token transfers.
-    pub fn fungible_token_receiver_hook<BS, RT>(
+    /// Authenticates whether the provided signature is valid for the provided message.
+    /// Should be called with the raw bytes of a signature, NOT a serialized Signature object that includes a SignatureType.
+    /// Errors with USR_ILLEGAL_ARGUMENT if the authentication is invalid.
+    pub fn authenticate_message<BS, RT>(
+        rt: &mut RT,
+        params: AuthenticateMessageParams,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+        let address = st.address;
+        let sig_type: SignatureType = match address.protocol() {
+            Protocol::Secp256k1 => Secp256k1,
+            Protocol::BLS => BLS,
+            protocol => {
+                return Err(actor_error!(illegal_state;
+                    "account address must use BLS or SECP protocol, got {}", protocol));
+            }
+        };
+        let sig = Signature { sig_type, bytes: params.signature };
+        rt.verify_signature(&sig, &address, &params.message).map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "failed to authenticate message, signature invalid",
+            )
+        })?;
+
+        Ok(())
+    }
+
+    // Always succeeds, accepting any transfers.
+    pub fn universal_receiver_hook<BS, RT>(
         rt: &mut RT,
         _params: &RawBytes,
     ) -> Result<(), ActorError>
@@ -95,8 +137,12 @@ impl ActorCode for Actor {
                 let addr = Self::pubkey_address(rt)?;
                 Ok(RawBytes::serialize(addr)?)
             }
-            Some(Method::FungibleTokenReceiverHook) => {
-                Self::fungible_token_receiver_hook(rt, params)?;
+            Some(Method::AuthenticateMessage) => {
+                Self::authenticate_message(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::UniversalReceiverHook) => {
+                Self::universal_receiver_hook(rt, params)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

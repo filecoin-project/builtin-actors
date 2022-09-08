@@ -25,7 +25,6 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
-use num_traits::sign::Signed;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     apply_code, apply_ok, bf_all, check_sector_active, check_sector_faulty, create_accounts,
@@ -165,7 +164,7 @@ fn prove_replica_update_multi_dline() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(1_000_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(1_000_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, _) = create_miner(
@@ -173,7 +172,7 @@ fn prove_replica_update_multi_dline() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(100_000e18 as i128),
+        TokenAmount::from_whole(100_000),
     );
 
     v = v.with_epoch(1440); // something offset far away from deadline 0 and 1
@@ -304,7 +303,7 @@ fn prove_replica_update_multi_dline() {
 fn immutable_deadline_failure() {
     let store = &MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -312,7 +311,7 @@ fn immutable_deadline_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -355,7 +354,7 @@ fn unhealthy_sector_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -363,7 +362,7 @@ fn unhealthy_sector_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -410,7 +409,7 @@ fn unhealthy_sector_failure() {
 fn terminated_sector_failure() {
     let store = &MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -418,7 +417,7 @@ fn terminated_sector_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -476,7 +475,7 @@ fn bad_batch_size_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -484,7 +483,7 @@ fn bad_batch_size_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -577,7 +576,7 @@ fn bad_post_upgrade_dispute() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -585,7 +584,7 @@ fn bad_post_upgrade_dispute() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -731,7 +730,7 @@ fn wrong_deadline_index_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -739,7 +738,7 @@ fn wrong_deadline_index_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -788,7 +787,7 @@ fn wrong_partition_index_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -796,7 +795,7 @@ fn wrong_partition_index_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -845,7 +844,7 @@ fn deal_included_in_multiple_sectors_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, _) = create_miner(
@@ -853,7 +852,7 @@ fn deal_included_in_multiple_sectors_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     //
@@ -973,7 +972,7 @@ fn create_miner_and_upgrade_sector(
     store: &MemoryBlockstore,
 ) -> (VM, SectorOnChainInfo, Address, Address, u64, u64, SectorSize) {
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -981,7 +980,7 @@ fn create_miner_and_upgrade_sector(
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -1100,7 +1099,7 @@ fn create_sector(
     (v, d_idx, p_idx)
 }
 fn create_deals(
-    num_deals: u128,
+    num_deals: u32,
     v: &VM,
     client: Address,
     worker: Address,
@@ -1110,14 +1109,14 @@ fn create_deals(
 }
 
 fn create_deals_frac(
-    num_deals: u128,
+    num_deals: u32,
     v: &VM,
     client: Address,
     worker: Address,
     maddr: Address,
     size_frac: u8,
 ) -> Vec<DealID> {
-    let collateral = TokenAmount::from(3 * num_deals * 1e18 as u128);
+    let collateral = TokenAmount::from_whole(3 * num_deals as i64);
     apply_ok(
         v,
         client,

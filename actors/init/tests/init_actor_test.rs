@@ -16,6 +16,7 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use num_traits::Zero;
 use serde::Serialize;
 
 fn check_state(rt: &MockRuntime) {
@@ -72,7 +73,7 @@ fn repeated_robust_address() {
             expected_id_addr,
             METHOD_CONSTRUCTOR,
             RawBytes::serialize(&fake_params).unwrap(),
-            0u8.into(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -116,8 +117,8 @@ fn create_2_payment_channels() {
         let pay_channel_string = format!("paych_{}", n);
         let paych = pay_channel_string.as_bytes();
 
-        rt.set_balance(TokenAmount::from(100));
-        rt.value_received = TokenAmount::from(100);
+        rt.set_balance(TokenAmount::from_atto(100));
+        rt.value_received = TokenAmount::from_atto(100);
 
         let unique_address = Address::new_actor(paych);
         rt.new_actor_addr = Some(Address::new_actor(paych));
@@ -129,7 +130,7 @@ fn create_2_payment_channels() {
         let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
         // expect anne creating a payment channel to trigger a send to the payment channels constructor
-        let balance = TokenAmount::from(100u8);
+        let balance = TokenAmount::from_atto(100u8);
 
         rt.expect_send(
             expected_id_addr,
@@ -177,7 +178,7 @@ fn create_storage_miner() {
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         RawBytes::serialize(&fake_params).unwrap(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -228,7 +229,7 @@ fn create_multisig_actor() {
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         RawBytes::serialize(&fake_params).unwrap(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -263,7 +264,7 @@ fn sending_constructor_failure() {
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         RawBytes::serialize(&fake_params).unwrap(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::USR_ILLEGAL_STATE,
     );

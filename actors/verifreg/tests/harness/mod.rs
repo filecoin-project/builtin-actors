@@ -1,4 +1,5 @@
 use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use fil_fungible_token::token::TOKEN_PRECISION;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
@@ -9,9 +10,8 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorID;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
-use num_traits::{Signed, Zero};
+use num_traits::{Signed, ToPrimitive, Zero};
 
-use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
@@ -163,8 +163,10 @@ impl Harness {
         let client_resolved = rt.get_id_address(client).unwrap_or(*client);
 
         // Expect tokens to be minted.
-        let mint_params =
-            ext::datacap::MintParams { to: client_resolved, amount: allowance * TOKEN_PRECISION };
+        let mint_params = ext::datacap::MintParams {
+            to: client_resolved,
+            amount: TokenAmount::from_whole(allowance.to_i64().unwrap()),
+        };
         rt.expect_send(
             *DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
@@ -200,14 +202,18 @@ impl Harness {
         // Expect tokens to be destroyed.
         let destroy_params = ext::datacap::DestroyParams {
             owner: client_resolved,
-            amount: amount * TOKEN_PRECISION,
+            amount: TokenAmount::from_whole(amount.to_i64().unwrap()),
         };
         rt.expect_send(
             *DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Destroy as MethodNum,
             RawBytes::serialize(&destroy_params).unwrap(),
             TokenAmount::zero(),
-            serialize(&BurnReturn { balance: remaining * TOKEN_PRECISION }, "").unwrap(),
+            serialize(
+                &BurnReturn { balance: TokenAmount::from_whole(remaining.to_i64().unwrap()) },
+                "",
+            )
+            .unwrap(),
             result,
         );
 
@@ -215,7 +221,7 @@ impl Harness {
         if remaining.is_positive() && remaining < &rt.policy.minimum_verified_deal_size {
             let destroy_params = ext::datacap::DestroyParams {
                 owner: client_resolved,
-                amount: remaining * TOKEN_PRECISION,
+                amount: TokenAmount::from_whole(remaining.to_i64().unwrap()),
             };
             rt.expect_send(
                 *DATACAP_TOKEN_ACTOR_ADDR,
@@ -248,8 +254,10 @@ impl Harness {
         let client_resolved = rt.get_id_address(client).unwrap_or(*client);
 
         // Expect tokens to be minted.
-        let mint_params =
-            ext::datacap::MintParams { to: client_resolved, amount: amount * TOKEN_PRECISION };
+        let mint_params = ext::datacap::MintParams {
+            to: client_resolved,
+            amount: TokenAmount::from_whole(amount.to_i64().unwrap()),
+        };
         rt.expect_send(
             *DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
@@ -305,7 +313,7 @@ impl Harness {
             *DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Burn as MethodNum,
             RawBytes::serialize(&BurnParams {
-                amount: TokenAmount::from(datacap_burnt) * TOKEN_PRECISION,
+                amount: TokenAmount::from_whole(datacap_burnt.to_i64().unwrap()),
             })
             .unwrap(),
             TokenAmount::zero(),
@@ -340,7 +348,7 @@ impl Harness {
             ext::datacap::Method::Transfer as MethodNum,
             RawBytes::serialize(&TransferParams {
                 to: *client,
-                amount: TokenAmount::from(expected_datacap) * TOKEN_PRECISION,
+                amount: TokenAmount::from_whole(expected_datacap.to_i64().unwrap()),
                 operator_data: RawBytes::default(),
             })
             .unwrap(),

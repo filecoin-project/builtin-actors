@@ -10,8 +10,6 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
-use num_traits::Zero;
-
 mod harness;
 use harness::*;
 

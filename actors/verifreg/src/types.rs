@@ -12,7 +12,6 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorID;
 use fvm_shared::sector::StoragePower;
-use serde::{Deserialize, Serialize};
 
 pub type AllocationID = u64;
 pub type ClaimID = u64;
@@ -74,9 +73,10 @@ pub struct RemoveDataCapReturn {
     pub data_cap_removed: DataCap,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
-#[serde(transparent)]
-pub struct RemoveDataCapProposalID(pub u64);
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveDataCapProposalID {
+    pub id: u64,
+}
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveDataCapProposal {

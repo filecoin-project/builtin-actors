@@ -66,7 +66,7 @@ fn test_sector(
         sector_number,
         deal_weight: DealWeight::from(deal_weight),
         verified_deal_weight: DealWeight::from(verified_deal_weight),
-        initial_pledge: TokenAmount::from(initial_pledge),
+        initial_pledge: TokenAmount::from_atto(initial_pledge),
         ..Default::default()
     }
 }

@@ -18,11 +18,11 @@ fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../../runtime", featur
 
 anyhow = "1.0.56"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-fil_fungible_token = { git = "https://github.com/helix-onchain/filecoin", rev = "0bffadc1897746cdae8e76f148fbbe3fe57f09f3" }
+fil_fungible_token = { git = "https://github.com/helix-onchain/filecoin", rev = "80ff125cac8cf657744140ebf4d10513986e145c" }
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.2"
 fvm_ipld_hamt = "0.5.1"
-fvm_shared = { version = "0.8.0", default-features = false }
+fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
 lazy_static = "1.4.0"
 log = "0.4.14"
 num-derive = "0.3.3"

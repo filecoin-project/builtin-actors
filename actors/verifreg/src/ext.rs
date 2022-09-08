@@ -1,13 +1,10 @@
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{bigint_ser, BigInt};
 
 pub mod datacap {
     use super::*;
-
-    // TODO: This constant should be imported from FVM once available there.
-    pub const TOKEN_PRECISION: u64 = 1_000_000_000_000_000_000;
+    use fvm_shared::econ::TokenAmount;
 
     #[repr(u64)]
     pub enum Method {
@@ -31,14 +28,12 @@ pub mod datacap {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct MintParams {
         pub to: Address,
-        #[serde(with = "bigint_ser")]
-        pub amount: BigInt,
+        pub amount: TokenAmount,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct DestroyParams {
         pub owner: Address,
-        #[serde(with = "bigint_ser")]
-        pub amount: BigInt,
+        pub amount: TokenAmount,
     }
 }

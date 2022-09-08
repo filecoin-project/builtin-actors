@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use super::beneficiary::*;
 use crate::commd::CompactCommD;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
@@ -226,7 +227,6 @@ pub struct ReportConsensusFaultParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct WithdrawBalanceParams {
-    #[serde(with = "bigint_ser")]
     pub amount_requested: TokenAmount,
 }
 
@@ -235,7 +235,6 @@ impl Cbor for WithdrawBalanceParams {}
 #[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct WithdrawBalanceReturn {
-    #[serde(with = "bigint_ser")]
     pub amount_withdrawn: TokenAmount,
 }
 
@@ -295,7 +294,6 @@ pub struct SectorPreCommitInfo {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitOnChainInfo {
     pub info: SectorPreCommitInfo,
-    #[serde(with = "bigint_ser")]
     pub pre_commit_deposit: TokenAmount,
     pub pre_commit_epoch: ChainEpoch,
 }
@@ -320,18 +318,14 @@ pub struct SectorOnChainInfo {
     #[serde(with = "bigint_ser")]
     pub verified_deal_weight: DealWeight,
     /// Pledge collected to commit this sector
-    #[serde(with = "bigint_ser")]
     pub initial_pledge: TokenAmount,
     /// Expected one day projection of reward for sector computed at activation time
-    #[serde(with = "bigint_ser")]
     pub expected_day_reward: TokenAmount,
     /// Expected twenty day projection of reward for sector computed at activation time
-    #[serde(with = "bigint_ser")]
     pub expected_storage_pledge: TokenAmount,
     /// Age of sector this sector replaced or zero
     pub replaced_sector_age: ChainEpoch,
     /// Day reward of sector this sector replace or zero
-    #[serde(with = "bigint_ser")]
     pub replaced_day_reward: TokenAmount,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,
@@ -346,9 +340,7 @@ pub struct Fault {
 // * Added in v2 -- param was previously a big int.
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ApplyRewardParams {
-    #[serde(with = "bigint_ser")]
     pub reward: TokenAmount,
-    #[serde(with = "bigint_ser")]
     pub penalty: TokenAmount,
 }
 
@@ -407,3 +399,28 @@ pub struct ProveReplicaUpdatesParams2 {
 }
 
 impl Cbor for ProveReplicaUpdatesParams2 {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ChangeBeneficiaryParams {
+    pub new_beneficiary: Address,
+    pub new_quota: TokenAmount,
+    pub new_expiration: ChainEpoch,
+}
+
+impl Cbor for ChangeBeneficiaryParams {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ActiveBeneficiary {
+    pub beneficiary: Address,
+    pub term: BeneficiaryTerm,
+}
+
+impl Cbor for ActiveBeneficiary {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct GetBeneficiaryReturn {
+    pub active: ActiveBeneficiary,
+    pub proposed: Option<PendingBeneficiaryChange>,
+}
+
+impl Cbor for GetBeneficiaryReturn {}

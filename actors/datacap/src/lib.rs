@@ -10,7 +10,6 @@ use fil_fungible_token::token::{Token, TokenError, TOKEN_PRECISION};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::receipt::Receipt;
@@ -72,11 +71,10 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
 
         // Confirm the registry address is an ID.
-        let verifreg_id = rt
-            .resolve_address(&verifreg)
+        rt.resolve_address(&verifreg)
             .ok_or_else(|| actor_error!(illegal_argument, "failed to resolve registry address"))?;
 
-        let st = State::new(rt.store(), verifreg_id).context("failed to create verifreg state")?;
+        let st = State::new(rt.store(), verifreg).context("failed to create verifreg state")?;
         rt.create(&st)?;
         Ok(())
     }
@@ -143,7 +141,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let hook_params = rt
+        let (mut hook, _result) = rt
             .transaction(|st: &mut State, rt| {
                 // Only the registry can mint datacap tokens.
                 rt.validate_immediate_caller_is(std::iter::once(&st.registry))?;
@@ -164,11 +162,9 @@ impl Actor {
             })
             .context("state transaction failed")?;
 
-        // This state load is unused, necessary to work around awkward API to call receiver hooks.
-        let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let mut token = as_token(&mut st, &msg);
-        token.call_receiver_hook(&params.to, hook_params).actor_result()
+        hook.call(&&msg).actor_result()?;
+        Ok(())
     }
 
     /// Destroys data cap tokens for an address (a verified client).
@@ -208,13 +204,14 @@ impl Actor {
         let operator = &rt.message().caller();
         let from = operator;
         // Resolve to address for comparison with registry address.
-        let to = &rt
+        let to = rt
             .resolve_address(&params.to)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be ID address")?;
+        let to_address = Address::new_id(to);
 
-        let (hook_params, result) = rt
+        let (mut hook, result) = rt
             .transaction(|st: &mut State, rt| {
-                let allowed = *to == st.registry;
+                let allowed = to_address == st.registry;
                 if !allowed {
                     return Err(actor_error!(forbidden, "transfer not allowed"));
                 }
@@ -224,7 +221,7 @@ impl Actor {
                 token
                     .transfer(
                         from,
-                        to,
+                        &to_address,
                         &params.amount,
                         params.operator_data.clone(),
                         RawBytes::default(),
@@ -233,11 +230,8 @@ impl Actor {
             })
             .context("state transaction failed")?;
 
-        // This state load is unused, necessary to work around awkward API to call receiver hooks.
-        let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let mut token = as_token(&mut st, &msg);
-        token.call_receiver_hook(&params.to, hook_params).actor_result()?;
+        hook.call(&&msg).actor_result()?;
         Ok(result)
     }
 
@@ -259,10 +253,11 @@ impl Actor {
         let to = rt
             .resolve_address(&params.to)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be an ID address")?;
+        let to_address = Address::new_id(to);
 
-        let (hook_params, result) = rt
+        let (mut hook, result) = rt
             .transaction(|st: &mut State, rt| {
-                let allowed = to == st.registry;
+                let allowed = to_address == st.registry;
                 if !allowed {
                     return Err(actor_error!(forbidden, "transfer not allowed"));
                 }
@@ -273,7 +268,7 @@ impl Actor {
                     .transfer_from(
                         &operator,
                         &from,
-                        &to,
+                        &to_address,
                         &params.amount,
                         params.operator_data.clone(),
                         RawBytes::default(),
@@ -282,11 +277,8 @@ impl Actor {
             })
             .context("state transaction failed")?;
 
-        // This state load is unused, necessary to work around awkward API to call receiver hooks.
-        let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let mut token = as_token(&mut st, &msg);
-        token.call_receiver_hook(&params.to, hook_params).actor_result()?;
+        hook.call(&&msg).actor_result()?;
         Ok(result)
     }
 
@@ -425,7 +417,7 @@ where
         let fake_gas_used = 0;
         let fake_syscall_error_number = ErrorNumber::NotFound;
         self.rt
-            .send(*to, method, params.clone(), value.clone())
+            .send(to, method, params.clone(), value.clone())
             .map(|bytes| Receipt {
                 exit_code: ExitCode::OK,
                 return_data: bytes,
@@ -438,10 +430,7 @@ where
         &self,
         address: &Address,
     ) -> fil_fungible_token::runtime::messaging::Result<ActorID> {
-        self.rt
-            .resolve_address(address)
-            .map(|add| add.id().unwrap())
-            .ok_or(MessagingError::AddressNotInitialized(*address))
+        self.rt.resolve_address(address).ok_or(MessagingError::AddressNotInitialized(*address))
     }
 
     fn initialize_account(
@@ -449,7 +438,7 @@ where
         address: &Address,
     ) -> fil_fungible_token::runtime::messaging::Result<ActorID> {
         let fake_syscall_error_number = ErrorNumber::NotFound;
-        if self.rt.send(*address, METHOD_SEND, Default::default(), TokenAmount::zero()).is_err() {
+        if self.rt.send(address, METHOD_SEND, Default::default(), TokenAmount::zero()).is_err() {
             return Err(MessagingError::Syscall(fake_syscall_error_number));
         }
         self.resolve_id(address)
@@ -474,10 +463,7 @@ trait AsActorResult<T> {
 
 impl<T> AsActorResult<T> for Result<T, TokenError> {
     fn actor_result(self) -> Result<T, ActorError> {
-        self.map_err(|e| {
-            let msg = e.to_string();
-            ActorError::unchecked(ExitCode::from(e), msg)
-        })
+        self.map_err(|e| ActorError::unchecked(ExitCode::from(&e), e.to_string()))
     }
 }
 
@@ -518,11 +504,11 @@ impl ActorCode for Actor {
             }
             Some(Method::TotalSupply) => {
                 let ret = Self::total_supply(rt, cbor::deserialize_params(params)?)?;
-                serialize(&BigIntSer(&ret), "total_supply result")
+                serialize(&ret, "total_supply result")
             }
             Some(Method::BalanceOf) => {
                 let ret = Self::balance_of(rt, cbor::deserialize_params(params)?)?;
-                serialize(&BigIntSer(&ret), "balance_of result")
+                serialize(&ret, "balance_of result")
             }
             Some(Method::Transfer) => {
                 let ret = Self::transfer(rt, cbor::deserialize_params(params)?)?;
@@ -534,11 +520,11 @@ impl ActorCode for Actor {
             }
             Some(Method::IncreaseAllowance) => {
                 let ret = Self::increase_allowance(rt, cbor::deserialize_params(params)?)?;
-                serialize(&BigIntSer(&ret), "increase_allowance result")
+                serialize(&ret, "increase_allowance result")
             }
             Some(Method::DecreaseAllowance) => {
                 let ret = Self::decrease_allowance(rt, cbor::deserialize_params(params)?)?;
-                serialize(&BigIntSer(&ret), "decrease_allowance result")
+                serialize(&ret, "decrease_allowance result")
             }
             Some(Method::RevokeAllowance) => {
                 Self::revoke_allowance(rt, cbor::deserialize_params(params)?)?;

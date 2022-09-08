@@ -31,7 +31,7 @@ fn early_sectors() -> BitField {
     mk_bitfield([2, 3])
 }
 fn on_time_pledge() -> TokenAmount {
-    TokenAmount::from(1_000)
+    TokenAmount::from_atto(1_000)
 }
 fn active_power() -> PowerPair {
     PowerPair { raw: StoragePower::from(1 << 13), qa: StoragePower::from(1 << 14) }
@@ -78,7 +78,7 @@ fn adds_sectors_and_power_to_non_empty_set() {
     set.add(
         &mk_bitfield([6, 7, 11]),
         &mk_bitfield([1, 4]),
-        &TokenAmount::from(300),
+        &TokenAmount::from_atto(300),
         &power_pair(3, 13),
         &power_pair(3, 11),
     )
@@ -86,7 +86,7 @@ fn adds_sectors_and_power_to_non_empty_set() {
 
     assert_eq!(set.on_time_sectors, mk_bitfield([5, 6, 7, 8, 9, 11]));
     assert_eq!(set.early_sectors, mk_bitfield([1, 2, 3, 4]));
-    assert_eq!(set.on_time_pledge, TokenAmount::from(1300));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1300));
     let active = power_pair(1, 15);
     assert_eq!(set.active_power, active);
     let faulty = power_pair(1, 13);
@@ -100,7 +100,7 @@ fn removes_sectors_and_power_set() {
     set.remove(
         &mk_bitfield([9]),
         &mk_bitfield([2]),
-        &TokenAmount::from(800),
+        &TokenAmount::from_atto(800),
         &power_pair(3, 11),
         &power_pair(3, 9),
     )
@@ -108,7 +108,7 @@ fn removes_sectors_and_power_set() {
 
     assert_eq!(set.on_time_sectors, mk_bitfield([5, 8]));
     assert_eq!(set.early_sectors, mk_bitfield([3]));
-    assert_eq!(set.on_time_pledge, TokenAmount::from(200));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(200));
     let active = power_pair(1, 11);
     assert_eq!(set.active_power, active);
     let faulty = power_pair(1, 9);
@@ -123,7 +123,7 @@ fn remove_fails_when_pledge_underflows() {
         .remove(
             &mk_bitfield([9]),
             &mk_bitfield([2]),
-            &TokenAmount::from(1200),
+            &TokenAmount::from_atto(1200),
             &power_pair(3, 11),
             &power_pair(3, 9),
         )
@@ -178,7 +178,7 @@ fn remove_fails_when_active_or_fault_qa_power_underflows() {
         .remove(
             &mk_bitfield([9]),
             &mk_bitfield([2]),
-            &TokenAmount::from(200),
+            &TokenAmount::from_atto(200),
             &power_pair(3, 12),
             &power_pair(3, 9),
         )
@@ -195,7 +195,7 @@ fn remove_fails_when_active_or_fault_qa_power_underflows() {
         .remove(
             &mk_bitfield([9]),
             &mk_bitfield([2]),
-            &TokenAmount::from(200),
+            &TokenAmount::from_atto(200),
             &power_pair(3, 11),
             &power_pair(3, 10),
         )
@@ -259,7 +259,7 @@ fn added_sectors_can_be_popped_off_queue() {
     let (sec_nums, power, pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
     assert_eq!(sec_nums, mk_bitfield([1, 2, 3, 4, 5, 6]));
     assert_eq!(power, power_for_sectors(SECTOR_SIZE, &sectors()));
-    assert_eq!(pledge, TokenAmount::from(6015));
+    assert_eq!(pledge, TokenAmount::from_atto(6015));
 
     // default test quantizing of 1 means every sector is in its own expriation set
     assert_eq!(sectors().len(), queue.amt.count() as usize);
@@ -278,7 +278,7 @@ fn added_sectors_can_be_popped_off_queue() {
     let active_power = power_for_sectors(SECTOR_SIZE, &sectors()[0..3]);
     let faulty_power = PowerPair::zero();
 
-    assert_eq!(set.on_time_pledge, TokenAmount::from(3003));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(3003));
     assert_eq!(set.active_power, active_power);
     assert_eq!(set.faulty_power, faulty_power);
 
@@ -288,7 +288,7 @@ fn added_sectors_can_be_popped_off_queue() {
     assert_eq!(set.on_time_sectors, mk_bitfield([4, 5, 6]));
     assert!(set.early_sectors.is_empty());
 
-    assert_eq!(set.on_time_pledge, TokenAmount::from(3012)); // sum of last 3 sector pledges
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(3012)); // sum of last 3 sector pledges
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[0..3]));
     assert_eq!(set.faulty_power, PowerPair::zero());
 
@@ -306,7 +306,7 @@ fn quantizes_added_sectors_by_expiration() {
     let (sec_nums, power, pledge) = queue.add_active_sectors(&sectors(), SECTOR_SIZE).unwrap();
     assert_eq!(sec_nums, mk_bitfield([1, 2, 3, 4, 5, 6]));
     assert_eq!(power, power_for_sectors(SECTOR_SIZE, &sectors()));
-    assert_eq!(pledge, TokenAmount::from(6015));
+    assert_eq!(pledge, TokenAmount::from_atto(6015));
 
     // quantizing spec means sectors should be grouped into 3 sets expiring at 3, 8 and 13
     assert_eq!(queue.amt.count(), 3);
@@ -373,7 +373,7 @@ fn reschedules_sectors_as_faults() {
     assert_eq!(set.on_time_sectors, mk_bitfield([1, 2]));
     assert!(set.early_sectors.is_empty());
 
-    assert_eq!(set.on_time_pledge, TokenAmount::from(2001));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(2001));
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[0..1]));
     assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[1..2]));
 
@@ -385,7 +385,7 @@ fn reschedules_sectors_as_faults() {
     assert_eq!(set.early_sectors, mk_bitfield([5]));
 
     // pledge is kept from original 2 sectors. Pledge from new early sector is NOT added.
-    assert_eq!(set.on_time_pledge, TokenAmount::from(2005));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(2005));
 
     assert_eq!(set.active_power, PowerPair::zero());
     assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[2..5]));
@@ -398,7 +398,7 @@ fn reschedules_sectors_as_faults() {
     assert!(set.early_sectors.is_empty());
 
     // Pledge from sector moved from this set is dropped
-    assert_eq!(set.on_time_pledge, TokenAmount::from(1005));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1005));
 
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[5..]));
     assert_eq!(set.faulty_power, PowerPair::zero());
@@ -428,7 +428,7 @@ fn reschedules_all_sectors_as_faults() {
     assert_eq!(set.on_time_sectors, mk_bitfield([1, 2])); // sectors are unmoved
     assert!(set.early_sectors.is_empty());
 
-    assert_eq!(set.on_time_pledge, TokenAmount::from(2001)); // pledge is same
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(2001)); // pledge is same
 
     // active power is converted to fault power
     assert_eq!(set.active_power, PowerPair::zero());
@@ -442,7 +442,7 @@ fn reschedules_all_sectors_as_faults() {
     assert_eq!(set.early_sectors, mk_bitfield([5, 6]));
 
     // pledge is kept from original 2 sectors. Pledge from new early sectors is NOT added.
-    assert_eq!(set.on_time_pledge, TokenAmount::from(2005));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(2005));
 
     // fault power is all power for sectors previously in the second and third sets
     assert_eq!(set.active_power, PowerPair::zero());
@@ -491,7 +491,7 @@ fn reschedule_recover_restores_all_sector_stats() {
     assert!(set.early_sectors.is_empty());
 
     // pledge from both sectors
-    assert_eq!(set.on_time_pledge, TokenAmount::from(2001));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(2001));
 
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[0..2]));
     assert_eq!(set.faulty_power, PowerPair::zero());
@@ -504,7 +504,7 @@ fn reschedule_recover_restores_all_sector_stats() {
     assert!(set.early_sectors.is_empty());
 
     // pledge is kept from original 2 sectors
-    assert_eq!(set.on_time_pledge, TokenAmount::from(2005));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(2005));
 
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[2..4]));
     assert_eq!(set.faulty_power, PowerPair::zero());
@@ -517,7 +517,7 @@ fn reschedule_recover_restores_all_sector_stats() {
     assert!(set.early_sectors.is_empty());
 
     // Pledge from sector 5 is restored
-    assert_eq!(set.on_time_pledge, TokenAmount::from(2009));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(2009));
 
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[4..]));
     assert_eq!(set.faulty_power, PowerPair::zero());
@@ -551,7 +551,7 @@ fn replaces_sectors_with_new_sectors() {
     assert_eq!(added, mk_bitfield([3, 5]));
     let added_power = power_for_sectors(SECTOR_SIZE, &to_add);
     assert_eq!(power_delta, &added_power - &power_for_sectors(SECTOR_SIZE, &to_remove));
-    assert_eq!(TokenAmount::from(1002 + 1004 - 1000 - 1001 - 1003), pledge_delta);
+    assert_eq!(TokenAmount::from_atto(1002 + 1004 - 1000 - 1001 - 1003), pledge_delta);
 
     // first set is gone
     require_no_expiration_groups_before(9, &mut queue);
@@ -563,7 +563,7 @@ fn replaces_sectors_with_new_sectors() {
     assert!(set.early_sectors.is_empty());
 
     // pledge and power is only from sector 3
-    assert_eq!(set.on_time_pledge, TokenAmount::from(1002));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1002));
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors[2..3]));
     assert_eq!(set.faulty_power, PowerPair::zero());
 
@@ -575,7 +575,7 @@ fn replaces_sectors_with_new_sectors() {
     assert!(set.early_sectors.is_empty());
 
     // pledge and power are the sum of old and new sectors
-    assert_eq!(set.on_time_pledge, TokenAmount::from(2009));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(2009));
     assert_eq!(set.active_power, power_for_sectors(SECTOR_SIZE, &sectors[4..]));
     assert_eq!(set.faulty_power, PowerPair::zero());
 }
@@ -611,7 +611,7 @@ fn removes_sectors() {
     // assert all return values are correct
     assert_eq!(removed.on_time_sectors, mk_bitfield([1, 4]));
     assert_eq!(removed.early_sectors, mk_bitfield([5, 6]));
-    assert_eq!(removed.on_time_pledge, TokenAmount::from(1000 + 1003)); // only on-time sectors
+    assert_eq!(removed.on_time_pledge, TokenAmount::from_atto(1000 + 1003)); // only on-time sectors
     assert_eq!(removed.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[0..1]));
     assert_eq!(removed.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[3..6]));
     assert_eq!(recovering_power, power_for_sectors(SECTOR_SIZE, &sectors()[5..6]));
@@ -624,7 +624,7 @@ fn removes_sectors() {
 
     assert_eq!(set.on_time_sectors, mk_bitfield([2]));
     assert!(set.early_sectors.is_empty());
-    assert_eq!(set.on_time_pledge, TokenAmount::from(1001));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1001));
     assert_eq!(set.active_power, PowerPair::zero());
     assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[1..2]));
 
@@ -634,7 +634,7 @@ fn removes_sectors() {
 
     assert_eq!(set.on_time_sectors, mk_bitfield([3]));
     assert!(set.early_sectors.is_empty());
-    assert_eq!(set.on_time_pledge, TokenAmount::from(1002));
+    assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1002));
     assert_eq!(set.active_power, PowerPair::zero());
     assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[2..3]));
 
@@ -703,7 +703,7 @@ fn test_sector(
         sector_number,
         deal_weight: DealWeight::from(weight),
         verified_deal_weight: DealWeight::from(vweight),
-        initial_pledge: TokenAmount::from(pledge),
+        initial_pledge: TokenAmount::from_atto(pledge),
         sealed_cid: make_sealed_cid(format!("commR-{}", sector_number).as_bytes()),
         ..Default::default()
     }

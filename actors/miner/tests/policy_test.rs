@@ -6,13 +6,12 @@ use fil_actor_miner::{
 use fil_actors_runtime::{EPOCHS_IN_DAY, SECONDS_IN_DAY};
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::SectorSize;
 
 #[test]
 fn quality_is_independent_of_size_and_duration() {
     // Quality of space with no deals. This doesn't depend on either the sector size or duration.
-    let empty_quality = TokenAmount::from(1 << SECTOR_QUALITY_PRECISION);
+    let empty_quality = BigInt::from(1 << SECTOR_QUALITY_PRECISION);
     // Quality space filled with non-verified deals.
     let deal_quality =
         &empty_quality * (DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
@@ -56,7 +55,7 @@ fn quality_is_independent_of_size_and_duration() {
 #[test]
 fn quality_scales_with_verified_weight_proportion() {
     // Quality of space with no deals. This doesn't depend on either the sector size or duration.
-    let empty_quality = TokenAmount::from(1 << SECTOR_QUALITY_PRECISION);
+    let empty_quality = BigInt::from(1 << SECTOR_QUALITY_PRECISION);
     // Quality space filled with verified deals.
     let verified_quality = &empty_quality
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());

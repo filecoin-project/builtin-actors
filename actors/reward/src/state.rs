@@ -4,7 +4,7 @@
 use fvm_ipld_encoding::repr::*;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
-use fvm_shared::bigint::{bigint_ser, Integer};
+use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 
@@ -17,9 +17,9 @@ use super::logic::*;
 
 lazy_static! {
     /// 36.266260308195979333 FIL
-    pub static ref INITIAL_REWARD_POSITION_ESTIMATE: TokenAmount = TokenAmount::from(36266260308195979333u128);
+    pub static ref INITIAL_REWARD_POSITION_ESTIMATE: TokenAmount = TokenAmount::from_atto(36266260308195979333u128);
     /// -1.0982489*10^-7 FIL per epoch.  Change of simple minted tokens between epochs 0 and 1.
-    pub static ref INITIAL_REWARD_VELOCITY_ESTIMATE: TokenAmount = TokenAmount::from(-109897758509i64);
+    pub static ref INITIAL_REWARD_VELOCITY_ESTIMATE: TokenAmount = TokenAmount::from_atto(-109897758509i64);
 }
 
 /// Reward actor state
@@ -48,7 +48,6 @@ pub struct State {
     /// The reward to be paid in per WinCount to block producers.
     /// The actual reward total paid out depends on the number of winners in any round.
     /// This value is recomputed every non-null epoch and used in the next non-null epoch.
-    #[serde(with = "bigint_ser")]
     pub this_epoch_reward: TokenAmount,
     /// Smoothed `this_epoch_reward`.
     pub this_epoch_reward_smoothed: FilterEstimate,
@@ -61,7 +60,6 @@ pub struct State {
     pub epoch: ChainEpoch,
 
     // TotalStoragePowerReward tracks the total FIL awarded to block miners
-    #[serde(with = "bigint_ser")]
     pub total_storage_power_reward: TokenAmount,
 
     // Simple and Baseline totals are constants used for computing rewards.
@@ -69,9 +67,7 @@ pub struct State {
     // in a way that depended on the history leading immediately up to the
     // migration fixing the value.  These values can be moved from state back
     // into a code constant in a subsequent upgrade.
-    #[serde(with = "bigint_ser")]
     pub simple_total: TokenAmount,
-    #[serde(with = "bigint_ser")]
     pub baseline_total: TokenAmount,
 }
 
@@ -82,8 +78,8 @@ impl State {
             this_epoch_baseline_power: INIT_BASELINE_POWER.clone(),
             epoch: EPOCH_UNDEFINED,
             this_epoch_reward_smoothed: FilterEstimate::new(
-                INITIAL_REWARD_POSITION_ESTIMATE.clone(),
-                INITIAL_REWARD_VELOCITY_ESTIMATE.clone(),
+                INITIAL_REWARD_POSITION_ESTIMATE.atto().clone(),
+                INITIAL_REWARD_VELOCITY_ESTIMATE.atto().clone(),
             ),
             simple_total: SIMPLE_TOTAL.clone(),
             baseline_total: BASELINE_TOTAL.clone(),
@@ -141,7 +137,7 @@ impl State {
         let filter_reward =
             AlphaBetaFilter::load(&self.this_epoch_reward_smoothed, &DEFAULT_ALPHA, &DEFAULT_BETA);
         self.this_epoch_reward_smoothed =
-            filter_reward.next_estimate(&self.this_epoch_reward, delta);
+            filter_reward.next_estimate(self.this_epoch_reward.atto(), delta);
     }
 
     pub fn into_total_storage_power_reward(self) -> TokenAmount {
@@ -164,9 +160,7 @@ pub struct Reward {
     pub vesting_function: VestingFunction,
     pub start_epoch: ChainEpoch,
     pub end_epoch: ChainEpoch,
-    #[serde(with = "bigint_ser")]
     pub value: TokenAmount,
-    #[serde(with = "bigint_ser")]
     pub amount_withdrawn: TokenAmount,
 }
 
@@ -180,8 +174,7 @@ impl Reward {
                 if elapsed >= vest_duration {
                     self.value.clone()
                 } else {
-                    (self.value.clone() * elapsed as u64)
-                        .div_floor(&TokenAmount::from(vest_duration))
+                    (self.value.clone() * elapsed as u64).div_floor(vest_duration)
                 }
             }
         }

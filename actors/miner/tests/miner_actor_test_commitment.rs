@@ -24,7 +24,6 @@ use util::*;
 const DEFAULT_SECTOR_EXPIRATION: i64 = 220;
 
 // A balance for use in tests where the miner's low balance is not interesting.
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 
 fn assert_simple_pre_commit(sector_number: SectorNumber, deal_ids: &[DealID]) {
     let period_offset = ChainEpoch::from(100);
@@ -32,7 +31,7 @@ fn assert_simple_pre_commit(sector_number: SectorNumber, deal_ids: &[DealID]) {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     rt.set_received(TokenAmount::zero());
 
     let precommit_epoch = period_offset + 1;
@@ -108,7 +107,7 @@ mod miner_actor_test_commitment {
     #[test]
     fn insufficient_funds_for_pre_commit() {
         let period_offset = ChainEpoch::from(100);
-        let insufficient_balance = TokenAmount::from(10u8); // 10 AttoFIL
+        let insufficient_balance = TokenAmount::from_atto(10u8); // 10 AttoFIL
 
         let mut h = ActorHarness::new(period_offset);
         h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
@@ -140,7 +139,7 @@ mod miner_actor_test_commitment {
         let mut h = ActorHarness::new(period_offset);
         h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
         let mut rt = h.new_runtime();
-        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
@@ -152,7 +151,7 @@ mod miner_actor_test_commitment {
             deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
 
         let mut st: State = rt.get_state();
-        st.fee_debt = TokenAmount::from(9999);
+        st.fee_debt = TokenAmount::from_atto(9999);
         rt.replace_state(&st);
 
         let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
@@ -170,7 +169,7 @@ mod miner_actor_test_commitment {
 
         let mut h = ActorHarness::new(period_offset);
         let mut rt = h.new_runtime();
-        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
@@ -415,8 +414,7 @@ mod miner_actor_test_commitment {
         // Try to precommit while in fee debt with insufficient balance
         {
             let mut st: State = rt.get_state();
-            st.fee_debt =
-                rt.balance.borrow().clone() + TokenAmount::from(10_000_000_000_000_000_000i128);
+            st.fee_debt = &*rt.balance.borrow() + TokenAmount::from_whole(10);
             rt.replace_state(&st);
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
@@ -470,7 +468,7 @@ mod miner_actor_test_commitment {
             let mut h = ActorHarness::new(period_offset);
             h.set_proof_type(proof);
             let mut rt = h.new_runtime();
-            rt.set_balance(TokenAmount::from(BIG_BALANCE));
+            rt.set_balance(BIG_BALANCE.clone());
             rt.set_received(TokenAmount::zero());
 
             rt.set_epoch(period_offset + 1);
@@ -535,7 +533,7 @@ mod miner_actor_test_commitment {
 
         let h = ActorHarness::new(period_offset);
         let mut rt = h.new_runtime();
-        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 
         h.construct_and_verify(&mut rt);
@@ -578,7 +576,7 @@ mod miner_actor_test_commitment {
         let mut h = ActorHarness::new(period_offset);
         h.set_proof_type(RegisteredSealProof::StackedDRG32GiBV1P1);
         let mut rt = h.new_runtime();
-        rt.set_balance(TokenAmount::from(BIG_BALANCE));
+        rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);
@@ -596,7 +594,7 @@ mod miner_actor_test_commitment {
             .add_locked_funds(
                 &rt.store,
                 rt.epoch,
-                &TokenAmount::from(1000u16),
+                &TokenAmount::from_atto(1000u16),
                 &VestSpec { initial_delay: 0, vest_period: 1, step_duration: 1, quantization: 1 },
             )
             .unwrap();
