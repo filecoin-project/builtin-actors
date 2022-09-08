@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, ops::Mul};
 
-use super::{H160, U256};
+use super::U256;
 use fil_actors_runtime::runtime::{Primitives, Runtime};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{
@@ -27,7 +27,7 @@ pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont lik
 const fn gen_precompiles<RT: Primitives>() -> [PrecompileFn<RT>; 9] {
     [
         ec_recover, // ecrecover 0x01
-        sha256,     // SHA256 (Keccak) 0x02
+        sha256,     // SHA2-256 0x02
         ripemd160,  // ripemd160 0x03
         identity,   // identity 0x04
         modexp,     // modexp 0x05
@@ -42,17 +42,17 @@ pub struct Precompiles<BS, RT>(PhantomData<BS>, PhantomData<RT>);
 
 impl<BS: Blockstore, RT: Runtime<BS>> Precompiles<BS, RT> {
     const PRECOMPILES: [PrecompileFn<RT>; 9] = gen_precompiles();
-    const MAX_PRECOMPILE: H160 = {
-        let mut bytes = [0u8; 20];
-        bytes[0] = Self::PRECOMPILES.len() as u8;
-        H160(bytes)
+    const MAX_PRECOMPILE: U256 = {
+        let mut limbs = [0u64; 4];
+        limbs[0] = Self::PRECOMPILES.len() as u64;
+        U256(limbs)
     };
 
-    pub fn call_precompile(runtime: &RT, precompile_addr: H160, input: &[u8]) -> PrecompileResult {
+    pub fn call_precompile(runtime: &RT, precompile_addr: U256, input: &[u8]) -> PrecompileResult {
         Self::PRECOMPILES[precompile_addr.0[0] as usize - 1](runtime, input)
     }
 
-    pub fn is_precompile(addr: &H160) -> bool {
+    pub fn is_precompile(addr: &U256) -> bool {
         !addr.is_zero() && addr <= &Self::MAX_PRECOMPILE
     }
 }
@@ -92,7 +92,7 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
 }
 
 fn sha256<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    Ok(rt.hash(SupportedHashes::Keccak256, input))
+    Ok(rt.hash(SupportedHashes::Sha2_256, input))
 }
 
 fn ripemd160<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
@@ -309,6 +309,18 @@ mod tests {
     use super::*;
     use fil_actors_runtime::test_utils::MockRuntime;
     use hex_literal::hex;
+
+    #[test]
+    fn sha256() {
+        use super::sha256 as hash;
+        let input = "foo bar baz boxy".as_bytes();
+
+        let rt = MockRuntime::default();
+
+        let expected = hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");
+        let res = hash(&rt, input).unwrap();
+        assert_eq!(&res, &expected);
+    }
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
