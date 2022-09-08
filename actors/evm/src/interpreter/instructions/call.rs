@@ -138,10 +138,8 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
     let input_region = get_memory_region(memory, input_offset, input_size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
-    let output_region = get_memory_region(memory, output_offset, output_size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    let output = {
+    let mut output = {
         // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = input_region
             .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
@@ -198,18 +196,35 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         }
     };
 
+    // save return_data
     state.return_data = output.clone().into();
 
-    let output_data = output_region
-        .map(|MemoryRegion { offset, size }| {
-            &mut memory[offset..][..size.get()] // would like to use get for this to err instead of panic
-        })
-        .ok_or(StatusCode::InvalidMemoryAccess)?;
+    // copy return data to output region if it is non-zero
+    let output_usize = if output_size.bits() < 64 {
+        output_size.as_usize()
+    } else {
+        // XXX that's probably a bug, should we barf instead?
+        1 << 63
+    };
+    if output_usize > 0 {
+        let output_region = get_memory_region(memory, output_offset, output_size)
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+        let output_data = output_region
+            .map(|MemoryRegion { offset, size }| &mut memory[offset..][..size.get()])
+            .ok_or(StatusCode::InvalidMemoryAccess)?;
 
-    output_data
-        .get_mut(..output.len())
-        .ok_or(StatusCode::InvalidMemoryAccess)?
-        .copy_from_slice(&output);
+        // truncate if needed
+        let mut result_usize = output.len();
+        if result_usize > output_usize {
+            result_usize = output_usize;
+            output.truncate(output_usize);
+        }
+
+        output_data
+            .get_mut(..result_usize)
+            .ok_or(StatusCode::InvalidMemoryAccess)?
+            .copy_from_slice(&output);
+    }
 
     stack.push(U256::from(1));
     Ok(())
