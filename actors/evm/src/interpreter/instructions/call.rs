@@ -1,14 +1,19 @@
 use {
     super::memory::get_memory_region,
+    crate::interpreter::address::Address,
     crate::interpreter::instructions::memory::MemoryRegion,
     crate::interpreter::output::StatusCode,
     crate::interpreter::precompiles,
     crate::interpreter::stack::Stack,
     crate::interpreter::ExecutionState,
     crate::interpreter::System,
-    crate::interpreter::{H160, U256},
+    crate::interpreter::U256,
+    crate::RawBytes,
+    crate::{InvokeParams, Method},
+    fil_actors_runtime::runtime::builtins::Type as ActorType,
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
+    fvm_shared::econ::TokenAmount,
 };
 
 /// The kind of call-like instruction.
@@ -18,11 +23,8 @@ pub enum CallKind {
     DelegateCall,
     StaticCall,
     CallCode,
-    Create,
-    Create2 { salt: U256 },
 }
 
-#[inline]
 pub fn calldataload(state: &mut ExecutionState) {
     let index = state.stack.pop();
     let input_len = state.input_data.len();
@@ -47,7 +49,6 @@ pub fn calldatasize(state: &mut ExecutionState) {
     state.stack.push(u128::try_from(state.input_data.len()).unwrap().into());
 }
 
-#[inline]
 pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let mem_index = state.stack.pop();
     let input_index = state.stack.pop();
@@ -80,7 +81,6 @@ pub fn codesize(stack: &mut Stack, code: &[u8]) {
     stack.push(U256::from(code.len()))
 }
 
-#[inline]
 pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCode> {
     let mem_index = state.stack.pop();
     let input_index = state.stack.pop();
@@ -106,53 +106,126 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
     Ok(())
 }
 
-#[inline]
 pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
-    _kind: CallKind,
+    kind: CallKind,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
     let rt = &*platform.rt; // as immutable reference
 
-    let _gas = stack.pop(); // EVM gas is not used in FVM
-    let dst: H160 = crate::interpreter::uints::_u256_to_address(stack.pop());
-    let input_offset = stack.pop();
-    let input_size = stack.pop();
-    let output_offset = stack.pop();
-    let output_size = stack.pop();
+    let (_gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
+        CallKind::Call | CallKind::CallCode => (
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+        ),
 
-    // XXX do we need this?
-    stack.push(U256::zero()); // Assume failure.
+        CallKind::DelegateCall | CallKind::StaticCall => (
+            stack.pop(),
+            stack.pop(),
+            U256::from(0),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+            stack.pop(),
+        ),
+    };
 
-    // TODO Errs
-    let input_region = get_memory_region(memory, input_offset, input_size).unwrap();
-    let output_region = get_memory_region(memory, output_offset, output_size).unwrap();
+    let input_region = get_memory_region(memory, input_offset, input_size)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    let output = {
+    let mut result = {
         // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = input_region
             .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
-            .unwrap_or_default();
+            .ok_or(StatusCode::InvalidMemoryAccess)?;
 
-        let output = if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
+        if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
             precompiles::Precompiles::call_precompile(rt, dst, input_data)
+                .map_err(|_| StatusCode::PrecompileFailure)?
         } else {
-            todo!()
-        };
+            // CALL and its brethren can only invoke other EVM contracts; see the (magic)
+            // CALLMETHOD/METHODNUM opcodes for calling fil actors with native call
+            // conventions.
+            let dst_addr = Address::from(dst)
+                .as_id_address()
+                .ok_or_else(|| StatusCode::BadAddress("not an actor id address".to_string()))?;
 
-        output.unwrap()
+            let dst_code_cid = rt
+                .get_actor_code_cid(
+                    &rt.resolve_address(&dst_addr).ok_or_else(|| {
+                        StatusCode::BadAddress("cannot resolve address".to_string())
+                    })?,
+                )
+                .ok_or_else(|| StatusCode::BadAddress("unknown actor".to_string()))?;
+            let evm_code_cid = rt.get_code_cid_for_type(ActorType::EVM);
+            if dst_code_cid != evm_code_cid {
+                return Err(StatusCode::BadAddress("cannot call non EVM actor".to_string()));
+            }
+
+            match kind {
+                CallKind::Call => {
+                    let params = InvokeParams { input_data: RawBytes::from(input_data.to_vec()) };
+                    let result = rt.send(
+                        &dst_addr,
+                        Method::InvokeContract as u64,
+                        RawBytes::serialize(params).map_err(|_| {
+                            StatusCode::InternalError(
+                                "failed to marshall invocation data".to_string(),
+                            )
+                        })?,
+                        TokenAmount::from(&value),
+                    );
+                    result.map_err(StatusCode::from)?.to_vec()
+                }
+                CallKind::DelegateCall => {
+                    todo!()
+                }
+                CallKind::StaticCall => {
+                    todo!()
+                }
+                CallKind::CallCode => {
+                    todo!()
+                }
+            }
+        }
     };
 
-    let output_data = output_region
-        .map(|MemoryRegion { offset, size }| {
-            &mut memory[offset..][..size.get()] // would like to use get for this to err instead of panic
-        })
-        .unwrap_or_default();
+    // save return_data
+    state.return_data = result.clone().into();
 
-    // TODO errs
-    output_data.get_mut(..output.len()).unwrap().copy_from_slice(&output);
+    // copy return data to output region if it is non-zero
+    let output_usize = if output_size.bits() < 32 {
+        output_size.as_usize()
+    } else {
+        // XXX that's probably a bug, should we barf instead?
+        1 << 31
+    };
+    if output_usize > 0 {
+        let output_region = get_memory_region(memory, output_offset, output_size)
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+        let output_data = output_region
+            .map(|MemoryRegion { offset, size }| &mut memory[offset..][..size.get()])
+            .ok_or(StatusCode::InvalidMemoryAccess)?;
 
-    // TODO do things after writing into output
-    todo!();
+        // truncate if needed
+        let mut result_usize = result.len();
+        if result_usize > output_usize {
+            result_usize = output_usize;
+            result.truncate(output_usize);
+        }
+
+        output_data
+            .get_mut(..result_usize)
+            .ok_or(StatusCode::InvalidMemoryAccess)?
+            .copy_from_slice(&result);
+    }
+
+    stack.push(U256::from(1));
+    Ok(())
 }

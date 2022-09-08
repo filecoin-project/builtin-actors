@@ -9,6 +9,7 @@ use {
 /// The size of the EVM 256-bit word in bytes.
 const WORD_SIZE: usize = 32;
 
+#[derive(Debug)]
 pub struct MemoryRegion {
     pub offset: usize,
     pub size: NonZeroUsize,
@@ -50,7 +51,7 @@ fn get_memory_region_u64(
 #[inline]
 #[allow(clippy::result_unit_err)]
 pub fn get_memory_region(
-    state: &mut Memory,
+    mem: &mut Memory,
     offset: U256,
     size: U256,
 ) -> Result<Option<MemoryRegion>, ()> {
@@ -62,7 +63,7 @@ pub fn get_memory_region(
         return Err(());
     }
 
-    get_memory_region_u64(state, offset, NonZeroUsize::new(size.as_usize()).unwrap()).map(Some)
+    get_memory_region_u64(mem, offset, NonZeroUsize::new(size.as_usize()).unwrap()).map(Some)
 }
 
 #[inline]
