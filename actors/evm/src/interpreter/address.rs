@@ -6,7 +6,7 @@ use fvm_shared::address::Address as FilecoinAddress;
 ///
 /// TODO this type will eventually handle f4 address detection.
 #[derive(PartialEq, Eq, Debug, Clone)]
-pub struct Address([u8;20]);
+pub struct Address([u8; 20]);
 
 impl TryFrom<U256> for Address {
     type Error = StatusCode;
