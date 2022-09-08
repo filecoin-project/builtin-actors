@@ -1,4 +1,4 @@
-use super::asm;
+mod asm;
 
 use evm::interpreter::U256;
 use fil_actor_evm as evm;

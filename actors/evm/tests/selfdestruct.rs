@@ -11,7 +11,7 @@ fn test_selfdestruct() {
     let beneficiary = Address::new_id(1001);
 
     let params = evm::ConstructorParams {
-        bytecode: hex::decode(include_str!("bin/selfdestruct.hex")).unwrap().into(),
+        bytecode: hex::decode(include_str!("selfdestruct.hex")).unwrap().into(),
         input_data: RawBytes::default(),
     };
 
