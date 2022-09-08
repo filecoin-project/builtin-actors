@@ -114,6 +114,8 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let ExecutionState { stack, memory, .. } = state;
     let rt = &*platform.rt; // as immutable reference
 
+    // NOTE gas is currently ignored as FVM's send doesn't allow the caller to specify a gas
+    //      limit (external invocation gas limit applies). This may changed in the future.
     let (_gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
         CallKind::Call | CallKind::CallCode => (
             stack.pop(),
