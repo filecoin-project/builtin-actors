@@ -204,7 +204,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         output_size.as_usize()
     } else {
         // XXX that's probably a bug, should we barf instead?
-        1 << 32
+        1 << 31
     };
     if output_usize > 0 {
         let output_region = get_memory_region(memory, output_offset, output_size)
