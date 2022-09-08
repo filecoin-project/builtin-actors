@@ -25,6 +25,7 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("multisig", "multisig"),
     ("reward", "reward"),
     ("verifreg", "verifiedregistry"),
+    ("datacap", "datacap"),
 ];
 
 const WASM_FEATURES: &[&str] = &["+bulk-memory", "+crt-static"];
