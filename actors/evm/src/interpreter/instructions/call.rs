@@ -200,11 +200,11 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     state.return_data = output.clone().into();
 
     // copy return data to output region if it is non-zero
-    let output_usize = if output_size.bits() < 64 {
+    let output_usize = if output_size.bits() < 32 {
         output_size.as_usize()
     } else {
         // XXX that's probably a bug, should we barf instead?
-        1 << 63
+        1 << 32
     };
     if output_usize > 0 {
         let output_region = get_memory_region(memory, output_offset, output_size)
