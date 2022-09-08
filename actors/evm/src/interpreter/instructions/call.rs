@@ -198,6 +198,8 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         }
     };
 
+    state.return_data = output.clone().into();
+
     let output_data = output_region
         .map(|MemoryRegion { offset, size }| {
             &mut memory[offset..][..size.get()] // would like to use get for this to err instead of panic
