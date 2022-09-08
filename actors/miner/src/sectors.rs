@@ -25,13 +25,8 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
 
     pub fn load_sector<'a>(
         &self,
-        sector_numbers: impl fvm_ipld_bitfield::Validate<'a>,
+        sector_numbers: &BitField,
     ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
-        let sector_numbers = match sector_numbers.validate() {
-            Ok(sector_numbers) => sector_numbers,
-            Err(e) => return Err(actor_error!(illegal_argument, "failed to load sectors: {}", e)),
-        };
-
         let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
         for sector_number in sector_numbers.iter() {
             let sector_on_chain = self

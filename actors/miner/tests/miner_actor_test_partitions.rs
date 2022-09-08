@@ -172,7 +172,7 @@ mod miner_actor_test_partitions {
 
         let expected_faulty_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), fault_set.validate_mut().unwrap()),
+            &select_sectors(&sectors(), &fault_set),
         );
         let expected_power_delta =
             if proven { -expected_faulty_power.clone() } else { PowerPair::zero() };
@@ -191,7 +191,7 @@ mod miner_actor_test_partitions {
             &partition,
             &sectors(),
             sector_numbers,
-            fault_set.validate_mut().unwrap().clone(),
+            fault_set,
             BitField::new(),
             BitField::new(),
             unproven_set,
@@ -232,7 +232,7 @@ mod miner_actor_test_partitions {
 
         let expected_faulty_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), fault_set.validate_mut().unwrap()),
+            &select_sectors(&sectors(), &fault_set),
         );
         assert_eq!(expected_faulty_power, new_faulty_power);
         assert_eq!(power_delta, -expected_faulty_power);
@@ -398,7 +398,7 @@ mod miner_actor_test_partitions {
         let mut recover_set = make_bitfield(&[4, 5]);
         let expected_recovery_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), recover_set.validate_mut().unwrap()),
+            &select_sectors(&sectors(), &recover_set),
         );
         partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set).unwrap();
 
@@ -451,7 +451,7 @@ mod miner_actor_test_partitions {
 
         let recovering_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), fault_set.validate_mut().unwrap()),
+            &select_sectors(&sectors(), &fault_set),
         );
         partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut fault_set).unwrap();
         assert_eq!(partition.recovering_power, recovering_power);
@@ -627,12 +627,12 @@ mod miner_actor_test_partitions {
 
         let expected_active_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), make_bitfield(&[1]).validate_mut().unwrap()),
+            &select_sectors(&sectors(), &make_bitfield(&[1])),
         );
         assert_eq!(expected_active_power, removed.active_power);
         let expected_faulty_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), make_bitfield(&[3, 5]).validate_mut().unwrap()),
+            &select_sectors(&sectors(), &make_bitfield(&[3, 5])),
         );
         assert_eq!(expected_faulty_power, removed.faulty_power);
 
@@ -644,7 +644,7 @@ mod miner_actor_test_partitions {
             bitfield_from_slice(&[1, 2, 3, 4, 5, 6, 7]),
             bitfield_from_slice(&[4, 6]),
             bitfield_from_slice(&[4]),
-            terminations.validate_mut().unwrap().clone(),
+            terminations,
             bitfield_from_slice(&[]),
         );
 
@@ -711,7 +711,7 @@ mod miner_actor_test_partitions {
             .unwrap();
         let expected_active_power = power_for_sectors(
             SECTOR_SIZE,
-            &select_sectors(&sectors(), make_bitfield(&[1]).validate_mut().unwrap()),
+            &select_sectors(&sectors(), &make_bitfield(&[1])),
         );
         assert_eq!(expected_active_power, removed.active_power);
         assert_eq!(removed.faulty_power, PowerPair::zero());

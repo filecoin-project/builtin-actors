@@ -7,7 +7,6 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::clock::QuantSpec;
@@ -48,7 +47,7 @@ fn fail_if_all_declared_sectors_are_not_in_the_partition() {
     let (store, mut partition) = setup();
     let sector_arr = sectors_arr_mbs(&store, sectors());
 
-    let mut skipped: UnvalidatedBitField = BitField::try_from_bits(1..100).unwrap().into();
+    let mut skipped = BitField::try_from_bits(1..100).unwrap().into();
 
     let err: ActorError = partition
         .record_skipped_faults(&store, &sector_arr, SECTOR_SIZE, QUANT_SPEC, EXP, &mut skipped)

@@ -10,7 +10,6 @@ use fil_actors_runtime::test_utils::MockRuntime;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::{clock::QuantSpec, error::ExitCode, sector::SectorSize};
@@ -94,15 +93,15 @@ fn add_sectors(
             &mut [
                 PoStPartition {
                     index: 0,
-                    skipped: UnvalidatedBitField::Validated(BitField::default()),
+                    skipped: BitField::default(),
                 },
                 PoStPartition {
                     index: 1,
-                    skipped: UnvalidatedBitField::Validated(BitField::default()),
+                    skipped: BitField::default(),
                 },
                 PoStPartition {
                     index: 2,
-                    skipped: UnvalidatedBitField::Validated(BitField::default()),
+                    skipped: BitField::default(),
                 },
             ],
         )
@@ -242,9 +241,9 @@ fn add_then_mark_faulty(
     let sectors_array = sectors_arr(store, sectors.to_owned());
 
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
+    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
     partition_sector_map
-        .add(1, UnvalidatedBitField::Validated(bitfield_from_slice(&[5, 6])))
+        .add(1, &bitfield_from_slice(&[5, 6]))
         .unwrap();
 
     // mark faulty
@@ -485,7 +484,7 @@ fn terminate_sectors(
 
     let mut partition_sector_map = PartitionSectorMap::default();
     for (partition, sectors) in partition_sectors {
-        partition_sector_map.add(partition, UnvalidatedBitField::Validated(sectors)).unwrap();
+        partition_sector_map.add(partition, &sectors).unwrap();
     }
 
     deadline.terminate_sectors(
@@ -681,8 +680,8 @@ fn post_all_the_things() {
     let mut sectors_array = sectors_arr(rt.store(), all_sectors());
 
     let mut post_partitions = [
-        PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
-        PoStPartition { index: 1, skipped: UnvalidatedBitField::Validated(BitField::default()) },
+        PoStPartition { index: 0, skipped: BitField::default() },
+        PoStPartition { index: 1, skipped: BitField::default() },
     ];
 
     let post_result1 = deadline
@@ -713,7 +712,7 @@ fn post_all_the_things() {
         .assert(rt.store(), &all_sectors(), &deadline);
 
     let mut post_partitions =
-        [PoStPartition { index: 2, skipped: UnvalidatedBitField::Validated(BitField::default()) }];
+        [PoStPartition { index: 2, skipped: BitField::default() }];
     let post_result2 = deadline
         .record_proven_sectors(
             rt.store(),
@@ -782,8 +781,8 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
-    partition_sector_map.add(1, UnvalidatedBitField::Validated(bitfield_from_slice(&[6]))).unwrap();
+    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
+    partition_sector_map.add(1, &bitfield_from_slice(&[6])).unwrap();
     deadline
         .declare_faults_recovered(
             rt.store(),
@@ -809,11 +808,11 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
     let mut post_partitions = [
         PoStPartition {
             index: 0,
-            skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[1])),
+            skipped: bitfield_from_slice(&[1]),
         },
         PoStPartition {
             index: 1,
-            skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[7])),
+            skipped: bitfield_from_slice(&[7]),
         },
     ];
     let post_result = deadline
@@ -898,11 +897,11 @@ fn post_with_skipped_unproven() {
 
     let mut sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
-        PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
-        PoStPartition { index: 1, skipped: UnvalidatedBitField::Validated(BitField::default()) },
+        PoStPartition { index: 0, skipped: BitField::default() },
+        PoStPartition { index: 1, skipped: BitField::default() },
         PoStPartition {
             index: 2,
-            skipped: UnvalidatedBitField::Validated(bitfield_from_slice(&[10])),
+            skipped: bitfield_from_slice(&[10]),
         },
     ];
     let post_result = deadline
@@ -971,8 +970,8 @@ fn post_missing_partition() {
 
     let sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
-        PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
-        PoStPartition { index: 3, skipped: UnvalidatedBitField::Validated(BitField::default()) },
+        PoStPartition { index: 0, skipped: BitField::default() },
+        PoStPartition { index: 3, skipped: BitField::default() },
     ];
     let post_result = deadline.record_proven_sectors(
         rt.store(),
@@ -1008,8 +1007,8 @@ fn post_partition_twice() {
 
     let sectors_array = sectors_arr(rt.store(), all_sectors());
     let mut post_partitions = [
-        PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
-        PoStPartition { index: 0, skipped: UnvalidatedBitField::Validated(BitField::default()) },
+        PoStPartition { index: 0, skipped: BitField::default() },
+        PoStPartition { index: 0, skipped: BitField::default() },
     ];
     let post_result = deadline.record_proven_sectors(
         rt.store(),
@@ -1041,8 +1040,8 @@ fn retract_recoveries() {
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
-    partition_sector_map.add(1, UnvalidatedBitField::Validated(bitfield_from_slice(&[6]))).unwrap();
+    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
+    partition_sector_map.add(1, &bitfield_from_slice(&[6])).unwrap();
     deadline
         .declare_faults_recovered(
             rt.store(),
@@ -1054,7 +1053,7 @@ fn retract_recoveries() {
 
     // retract recovery for sector 1
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
+    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
     let power_delta = deadline
         .record_faults(
             rt.store(),
@@ -1091,15 +1090,15 @@ fn retract_recoveries() {
             &mut [
                 PoStPartition {
                     index: 0,
-                    skipped: UnvalidatedBitField::Validated(BitField::default()),
+                    skipped: BitField::default(),
                 },
                 PoStPartition {
                     index: 1,
-                    skipped: UnvalidatedBitField::Validated(BitField::default()),
+                    skipped: BitField::default(),
                 },
                 PoStPartition {
                     index: 2,
-                    skipped: UnvalidatedBitField::Validated(BitField::default()),
+                    skipped: BitField::default(),
                 },
             ],
         )
@@ -1157,8 +1156,8 @@ fn cannot_declare_faults_in_missing_partitions() {
 
     // declare sectors 1 & 6 faulty
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
-    partition_sector_map.add(4, UnvalidatedBitField::Validated(bitfield_from_slice(&[6]))).unwrap();
+    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
+    partition_sector_map.add(4, &bitfield_from_slice(&[6])).unwrap();
     let result = deadline.record_faults(
         rt.store(),
         &sectors_array,
@@ -1186,8 +1185,8 @@ fn cannot_declare_faults_recovered_in_missing_partitions() {
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, UnvalidatedBitField::Validated(bitfield_from_slice(&[1]))).unwrap();
-    partition_sector_map.add(4, UnvalidatedBitField::Validated(bitfield_from_slice(&[6]))).unwrap();
+    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
+    partition_sector_map.add(4, &bitfield_from_slice(&[6])).unwrap();
     let result = deadline.declare_faults_recovered(
         rt.store(),
         &sectors_array,

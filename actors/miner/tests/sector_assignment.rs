@@ -4,7 +4,7 @@
 use cid::Cid;
 use fil_actor_miner::{power_for_sectors, Deadline, PoStPartition, PowerPair, SectorOnChainInfo};
 use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid};
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 
@@ -104,7 +104,7 @@ mod sector_assignment {
                     partitions.push(part_bf);
                     post_partitions.push(PoStPartition {
                         index: i,
-                        skipped: UnvalidatedBitField::Validated(BitField::new()),
+                        skipped: BitField::new(),
                     });
                 }
                 let all_sector_bf = BitField::union(&partitions);

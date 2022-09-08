@@ -6,7 +6,7 @@ use fil_actors_runtime::{
     runtime::{Runtime, RuntimePolicy},
     test_utils::{expect_abort_contains_message, MockRuntime},
 };
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_bitfield::BitField;
 use fvm_shared::{clock::ChainEpoch, error::ExitCode, sector::RegisteredSealProof};
 
 mod util;
@@ -328,7 +328,7 @@ fn supports_extensions_off_deadline_boundary() {
 
     let partitions = vec![PoStPartition {
         index: partition_index,
-        skipped: UnvalidatedBitField::Validated(BitField::default()),
+        skipped: BitField::default(),
     }];
     h.submit_window_post(
         &mut rt,

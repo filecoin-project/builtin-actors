@@ -5,7 +5,6 @@ use fil_actor_miner::PartitionSectorMap;
 use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_bitfield::UnvalidatedBitField;
 use itertools::Itertools;
 
 mod util;
@@ -24,15 +23,13 @@ fn sector_from_deadline_sector_map(
         .find(|(index, _)| index == &partition_index)
         .unwrap()
         .1
-        .validate_mut()
-        .unwrap()
 }
 
 fn sector_from_partition_sector_map(
     map: &mut PartitionSectorMap,
     partition_index: u64,
 ) -> &mut BitField {
-    map.iter().find(|(index, _)| index == &partition_index).unwrap().1.validate_mut().unwrap()
+    map.iter().find(|(index, _)| index == &partition_index).unwrap().1
 }
 
 fn create_deadline_sector_map(
@@ -48,7 +45,7 @@ fn create_deadline_sector_map(
                     policy,
                     deadline_index,
                     partition_index,
-                    make_bitfield(&[deadline_index * partition_count + partition_index]),
+                    &make_bitfield(&[deadline_index * partition_count + partition_index]),
                 )
                 .unwrap();
         })
@@ -84,7 +81,7 @@ fn deadline_sector_map() {
             .partitions()
             .eq(partitions_map.partitions()));
         for (partition_index, sector) in partitions_map.iter() {
-            let validated = sector.validate_mut().unwrap();
+            let validated = sector;
             assert_eq!(
                 sector_from_deadline_sector_map(&mut map_copy, deadline_index, partition_index),
                 validated
@@ -156,7 +153,7 @@ fn deadline_sector_map_overflow() {
                 &policy,
                 deadline_index,
                 0,
-                UnvalidatedBitField::Validated(create_bitfield_sequence(0, u64::MAX)),
+                &create_bitfield_sequence(0, u64::MAX),
             )
             .unwrap();
     });
@@ -174,7 +171,7 @@ fn partition_sector_map_overflow() {
         partition_sector_map
             .add(
                 partition_index,
-                UnvalidatedBitField::Validated(create_bitfield_sequence(0, u64::MAX)),
+                &create_bitfield_sequence(0, u64::MAX),
             )
             .unwrap();
     });
