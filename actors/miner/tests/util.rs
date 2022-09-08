@@ -63,6 +63,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, PoStProof, RegisteredPoStProof, RegisteredSealProof, SealVerifyInfo,
     SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
@@ -84,6 +85,15 @@ use std::convert::TryInto;
 use std::ops::Neg;
 
 const RECEIVER_ID: u64 = 1000;
+
+pub const TEST_RANDOMNESS_ARRAY_FROM_ONE: [u8; 32] = [
+    1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32,
+];
+pub const TEST_RANDOMNESS_ARRAY_FROM_TWO: [u8; 32] = [
+    2u8, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+    27, 28, 29, 30, 31, 32, 33,
+];
 
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
 
@@ -727,8 +737,8 @@ impl ActorHarness {
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
     ) -> Result<(), ActorError> {
-        let seal_rand = Randomness(vec![1, 2, 3, 4]);
-        let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
+        let seal_rand = TEST_RANDOMNESS_ARRAY_FROM_ONE;
+        let seal_int_rand = TEST_RANDOMNESS_ARRAY_FROM_TWO;
         let interactive_epoch = pc.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
 
         // Prepare for and receive call to ProveCommitSector
@@ -753,8 +763,8 @@ impl ActorHarness {
             registered_proof: pc.info.seal_proof,
             proof: params.proof.clone(),
             deal_ids: pc.info.deal_ids.clone(),
-            randomness: seal_rand,
-            interactive_randomness: seal_int_rand,
+            randomness: Randomness(seal_rand.into()),
+            interactive_randomness: Randomness(seal_int_rand.into()),
             unsealed_cid: pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap(),
         };
         rt.expect_send(
@@ -795,9 +805,9 @@ impl ActorHarness {
         let mut seal_int_rands = Vec::new();
 
         for precommit in precommits.iter() {
-            let seal_rand = Randomness(vec![1, 2, 3, 4]);
+            let seal_rand = TEST_RANDOMNESS_ARRAY_FROM_ONE;
             seal_rands.push(seal_rand.clone());
-            let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
+            let seal_int_rand = TEST_RANDOMNESS_ARRAY_FROM_TWO;
             seal_int_rands.push(seal_int_rand.clone());
             let interactive_epoch =
                 precommit.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
@@ -814,7 +824,7 @@ impl ActorHarness {
                 DomainSeparationTag::InteractiveSealChallengeSeed,
                 interactive_epoch,
                 buf,
-                seal_int_rand,
+                seal_int_rand.clone(),
             );
         }
 
@@ -823,8 +833,8 @@ impl ActorHarness {
         for (i, precommit) in precommits.iter().enumerate() {
             svis.push(AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
-                randomness: seal_rands.get(i).cloned().unwrap(),
-                interactive_randomness: seal_int_rands.get(i).cloned().unwrap(),
+                randomness: Randomness(seal_rands.get(i).cloned().unwrap().into()),
+                interactive_randomness: Randomness(seal_int_rands.get(i).cloned().unwrap().into()),
                 sealed_cid: precommit.info.sealed_cid,
                 unsealed_cid: comm_ds[i],
             })
@@ -1127,7 +1137,7 @@ impl ActorHarness {
             partitions,
             proofs: make_post_proofs(self.window_post_proof_type),
             chain_commit_epoch: deadline.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         self.submit_window_post_raw(rt, deadline, infos, params, cfg).unwrap();
         rt.verify();
@@ -1144,7 +1154,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let chain_commit_rand = match cfg.chain_randomness {
             Some(r) => r,
-            None => params.chain_commit_rand.clone(),
+            None => TEST_RANDOMNESS_ARRAY_FROM_ONE.into(),
         };
         rt.expect_get_randomness_from_tickets(
             DomainSeparationTag::PoStChainCommit,
@@ -1154,7 +1164,7 @@ impl ActorHarness {
         );
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let challenge_rand = Randomness(Vec::from([10, 11, 12, 13]));
+        let challenge_rand = TEST_RANDOMNESS_ARRAY_FROM_TWO;
 
         // only sectors that are not skipped and not existing non-recovered faults will be verified
         let mut all_ignored = BitField::new();
@@ -1195,7 +1205,7 @@ impl ActorHarness {
                     &infos,
                     &all_ignored,
                     good_info,
-                    challenge_rand,
+                    Randomness(challenge_rand.into()),
                     params.proofs.clone(),
                 );
                 let exit_code = match cfg.verification_exit {
@@ -1269,7 +1279,7 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
 
-        let challenge_rand = Randomness(Vec::from([10, 11, 12, 13]));
+        let challenge_rand = TEST_RANDOMNESS_ARRAY_FROM_ONE;
         let mut all_ignored = BitField::new();
         let dln = self.get_deadline(rt, deadline.index);
         let post = self.get_submitted_proof(rt, &dln, proof_index);
@@ -1302,7 +1312,7 @@ impl ActorHarness {
             infos,
             &all_ignored,
             good_info,
-            challenge_rand,
+            Randomness(challenge_rand.into()),
             post.proofs,
         );
         let verify_result = match expect_success {
@@ -2334,7 +2344,7 @@ impl ActorHarness {
 
 #[allow(dead_code)]
 pub struct PoStConfig {
-    pub chain_randomness: Option<Randomness>,
+    pub chain_randomness: Option<[u8; RANDOMNESS_LENGTH]>,
     pub expected_power_delta: Option<PowerPair>,
     pub verification_exit: Option<ExitCode>,
 }
@@ -2349,7 +2359,7 @@ impl PoStConfig {
         }
     }
 
-    pub fn with_randomness(rand: Randomness) -> PoStConfig {
+    pub fn with_randomness(rand: [u8; RANDOMNESS_LENGTH]) -> PoStConfig {
         PoStConfig {
             chain_randomness: Some(rand),
             expected_power_delta: None,

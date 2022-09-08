@@ -474,7 +474,7 @@ pub fn submit_windowed_post(
             proof_bytes: vec![],
         }],
         chain_commit_epoch: dline_info.challenge,
-        chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
+        chain_commit_rand: Randomness(TEST_VM_RAND_ARRAY.into()),
     };
     apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
     let mut subinvocs = None;
@@ -526,7 +526,7 @@ pub fn submit_invalid_post(
             proof_bytes: TEST_VM_INVALID_POST.as_bytes().to_vec(),
         }],
         chain_commit_epoch: dline_info.challenge,
-        chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
+        chain_commit_rand: Randomness(TEST_VM_RAND_ARRAY.into()),
     };
     apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
 }
