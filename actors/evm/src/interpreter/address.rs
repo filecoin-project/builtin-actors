@@ -41,7 +41,7 @@ impl Address {
         let mut bytes = [0u8; 20];
         bytes[0] = 0xff;
         bytes[12..].copy_from_slice(&id.to_be_bytes());
-        Address(bytes.try_into().unwrap())
+        Address(bytes)
     }
 
     /// Interpret the hash as an ID address in EVM-form, and return a Filecoin ID address if that's
