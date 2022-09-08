@@ -4,20 +4,15 @@
 #![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern)]
 
 use {
-    fixed_hash::{construct_fixed_hash, impl_fixed_hash_conversions},
     fvm_shared::bigint::BigInt,
     fvm_shared::econ::TokenAmount,
-    impl_serde::{impl_fixed_hash_serde, impl_uint_serde},
+    impl_serde::impl_uint_serde,
     std::cmp::Ordering,
     uint::construct_uint,
 };
 
 construct_uint! { pub struct U256(4); } // ethereum word size
 construct_uint! { pub struct U512(8); } // used for addmod and mulmod opcodes
-
-construct_fixed_hash! { pub struct H160(20); } // ethereum address
-construct_fixed_hash! { pub struct H256(32); } // Keccak256
-impl_fixed_hash_conversions!(H256, H160);
 
 impl From<&TokenAmount> for U256 {
     fn from(amount: &TokenAmount) -> U256 {
@@ -39,8 +34,6 @@ impl From<&U256> for TokenAmount {
 // IPLD structures seamlessly
 impl_uint_serde!(U256, 4);
 impl_uint_serde!(U512, 8);
-impl_fixed_hash_serde!(H160, 20);
-impl_fixed_hash_serde!(H256, 32);
 
 macro_rules! impl_hamt_hash {
     ($type:ident) => {
@@ -55,22 +48,6 @@ macro_rules! impl_hamt_hash {
 fn zeroless_view(v: &impl AsRef<[u8]>) -> &[u8] {
     let v = v.as_ref();
     &v[v.iter().take_while(|&&b| b == 0).count()..]
-}
-
-macro_rules! impl_rlp_codec_hash {
-    ($type:ident) => {
-        impl rlp::Encodable for $type {
-            fn rlp_append(&self, s: &mut rlp::RlpStream) {
-                let bytes = self.as_fixed_bytes();
-                s.encoder().encode_value(&bytes[..]);
-            }
-        }
-        impl rlp::Decodable for $type {
-            fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-                rlp.decoder().decode_value(|bytes| Ok($type::from_slice(bytes)))
-            }
-        }
-    };
 }
 
 macro_rules! impl_rlp_codec_uint {
@@ -94,15 +71,10 @@ macro_rules! impl_rlp_codec_uint {
 }
 
 // Hamt support
-impl_hamt_hash!(H160);
-impl_hamt_hash!(H256);
-
 impl_hamt_hash!(U256);
 impl_hamt_hash!(U512);
 
 // RLP Support
-impl_rlp_codec_hash!(H160);
-impl_rlp_codec_hash!(H256);
 impl_rlp_codec_uint!(U256, 32);
 impl_rlp_codec_uint!(U512, 64);
 
@@ -126,18 +98,6 @@ pub fn u128_words_to_u256(high: u128, low: u128) -> U256 {
     let low = low.to_be_bytes();
     let bytes = high.into_iter().chain(low.into_iter()).collect::<Vec<_>>();
     U256::from_big_endian(&bytes)
-}
-
-#[inline]
-pub(crate) fn _u256_to_address(v: U256) -> H160 {
-    let mut bytes = [0u8; 32];
-    v.to_big_endian(&mut bytes);
-    H160::from_slice(&bytes)
-}
-
-#[inline]
-pub fn address_to_u256(v: H160) -> U256 {
-    U256::from_big_endian(v.as_bytes())
 }
 
 const SIGN_BITMASK_U128: u128 = 0x8000_0000_0000_0000_0000_0000_0000_0000;

@@ -152,7 +152,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
             // CALL and its brethren can only invoke other EVM contracts; see the (magic)
             // CALLMETHOD/METHODNUM opcodes for calling fil actors with native call
             // conventions.
-            let dst_addr = Address::from(dst)
+            let dst_addr = Address::try_from(dst)?
                 .as_id_address()
                 .ok_or_else(|| StatusCode::BadAddress("not an actor id address".to_string()))?;
 
