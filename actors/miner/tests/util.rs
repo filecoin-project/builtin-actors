@@ -420,8 +420,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let params =
-            CompactSectorNumbersParams { mask_sector_numbers: bf };
+        let params = CompactSectorNumbersParams { mask_sector_numbers: bf };
 
         rt.call::<Actor>(Method::CompactSectorNumbers as u64, &RawBytes::serialize(params).unwrap())
     }
@@ -1523,10 +1522,7 @@ impl ActorHarness {
                             power_delta -= &new_faulty_power;
                             power_delta += &new_proven_power;
 
-                            partitions.push(PoStPartition {
-                                index: part_idx,
-                                skipped: to_skip,
-                            });
+                            partitions.push(PoStPartition { index: part_idx, skipped: to_skip });
 
                             Ok(())
                         })
@@ -1608,11 +1604,8 @@ impl ActorHarness {
         }
 
         // Calculate params from faulted sector infos
-        let recovery = RecoveryDeclaration {
-            deadline: dlidx,
-            partition: pidx,
-            sectors: recovery_sectors,
-        };
+        let recovery =
+            RecoveryDeclaration { deadline: dlidx, partition: pidx, sectors: recovery_sectors };
         let params = DeclareFaultsRecoveredParams { recoveries: vec![recovery] };
         let ret = rt.call::<Actor>(
             Method::DeclareFaultsRecovered as u64,
@@ -2188,10 +2181,7 @@ impl ActorHarness {
         deadline: u64,
         partition: BitField,
     ) -> Result<(), ActorError> {
-        let params = CompactPartitionsParams {
-            deadline,
-            partitions: partition,
-        };
+        let params = CompactPartitionsParams { deadline, partitions: partition };
 
         rt.expect_validate_caller_addr(self.caller_addrs());
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
@@ -2500,11 +2490,8 @@ fn make_fault_params_from_faulting_sectors(
                 let mut bf = BitField::new();
                 bf.set(sector.sector_number);
 
-                let declaration = FaultDeclaration {
-                    deadline: dlidx,
-                    partition: pidx,
-                    sectors: bf,
-                };
+                let declaration =
+                    FaultDeclaration { deadline: dlidx, partition: pidx, sectors: bf };
 
                 declaration_map.insert((dlidx, pidx), declaration);
             }

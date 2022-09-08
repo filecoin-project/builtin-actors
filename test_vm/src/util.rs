@@ -453,10 +453,7 @@ pub fn submit_windowed_post(
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
-        partitions: vec![PoStPartition {
-            index: partition_idx,
-            skipped: BitField::new(),
-        }],
+        partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
             proof_bytes: vec![],
@@ -505,10 +502,7 @@ pub fn submit_invalid_post(
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
-        partitions: vec![PoStPartition {
-            index: partition_idx,
-            skipped: BitField::new(),
-        }],
+        partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
             proof_bytes: TEST_VM_INVALID_POST.as_bytes().to_vec(),

@@ -106,15 +106,12 @@ impl PartitionSectorMap {
         partition_idx: u64,
         sector_numbers: Vec<u64>,
     ) -> anyhow::Result<()> {
-        self.add(partition_idx, &BitField::try_from_bits(sector_numbers).unwrap()) // sector_numbers maybe nil to unwrap
+        self.add(partition_idx, &BitField::try_from_bits(sector_numbers).unwrap())
+        // sector_numbers maybe nil to unwrap
     }
     /// Records the given sector bitfield at the given partition index, merging
     /// it with any existing bitfields if necessary.
-    pub fn add(
-        &mut self,
-        partition_idx: u64,
-        sector_numbers: &BitField,
-    ) -> anyhow::Result<()> {
+    pub fn add(&mut self, partition_idx: u64, sector_numbers: &BitField) -> anyhow::Result<()> {
         match self.0.get_mut(&partition_idx) {
             Some(old_sector_numbers) => {
                 *old_sector_numbers |= &sector_numbers;

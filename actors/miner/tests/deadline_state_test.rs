@@ -91,18 +91,9 @@ fn add_sectors(
             QUANT_SPEC,
             0,
             &mut [
-                PoStPartition {
-                    index: 0,
-                    skipped: BitField::default(),
-                },
-                PoStPartition {
-                    index: 1,
-                    skipped: BitField::default(),
-                },
-                PoStPartition {
-                    index: 2,
-                    skipped: BitField::default(),
-                },
+                PoStPartition { index: 0, skipped: BitField::default() },
+                PoStPartition { index: 1, skipped: BitField::default() },
+                PoStPartition { index: 2, skipped: BitField::default() },
             ],
         )
         .unwrap();
@@ -242,9 +233,7 @@ fn add_then_mark_faulty(
 
     let mut partition_sector_map = PartitionSectorMap::default();
     partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
-    partition_sector_map
-        .add(1, &bitfield_from_slice(&[5, 6]))
-        .unwrap();
+    partition_sector_map.add(1, &bitfield_from_slice(&[5, 6])).unwrap();
 
     // mark faulty
     let power_delta = deadline
@@ -711,8 +700,7 @@ fn post_all_the_things() {
         ])
         .assert(rt.store(), &all_sectors(), &deadline);
 
-    let mut post_partitions =
-        [PoStPartition { index: 2, skipped: BitField::default() }];
+    let mut post_partitions = [PoStPartition { index: 2, skipped: BitField::default() }];
     let post_result2 = deadline
         .record_proven_sectors(
             rt.store(),
@@ -806,14 +794,8 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
 
     // prove partitions 0 & 1, skipping sectors 1 & 7
     let mut post_partitions = [
-        PoStPartition {
-            index: 0,
-            skipped: bitfield_from_slice(&[1]),
-        },
-        PoStPartition {
-            index: 1,
-            skipped: bitfield_from_slice(&[7]),
-        },
+        PoStPartition { index: 0, skipped: bitfield_from_slice(&[1]) },
+        PoStPartition { index: 1, skipped: bitfield_from_slice(&[7]) },
     ];
     let post_result = deadline
         .record_proven_sectors(
@@ -899,10 +881,7 @@ fn post_with_skipped_unproven() {
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: BitField::default() },
         PoStPartition { index: 1, skipped: BitField::default() },
-        PoStPartition {
-            index: 2,
-            skipped: bitfield_from_slice(&[10]),
-        },
+        PoStPartition { index: 2, skipped: bitfield_from_slice(&[10]) },
     ];
     let post_result = deadline
         .record_proven_sectors(
@@ -1088,18 +1067,9 @@ fn retract_recoveries() {
             QUANT_SPEC,
             fault_expiration_epoch,
             &mut [
-                PoStPartition {
-                    index: 0,
-                    skipped: BitField::default(),
-                },
-                PoStPartition {
-                    index: 1,
-                    skipped: BitField::default(),
-                },
-                PoStPartition {
-                    index: 2,
-                    skipped: BitField::default(),
-                },
+                PoStPartition { index: 0, skipped: BitField::default() },
+                PoStPartition { index: 1, skipped: BitField::default() },
+                PoStPartition { index: 2, skipped: BitField::default() },
             ],
         )
         .unwrap();

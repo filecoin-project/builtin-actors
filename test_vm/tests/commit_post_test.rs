@@ -791,10 +791,8 @@ fn aggregate_one_precommit_expires() {
             && agg_setors_count < policy.max_aggregated_sectors
     );
 
-    let prove_params = ProveCommitAggregateParams {
-        sector_numbers: sector_nos_bf,
-        aggregate_proof: vec![],
-    };
+    let prove_params =
+        ProveCommitAggregateParams { sector_numbers: sector_nos_bf, aggregate_proof: vec![] };
     let prove_params_ser = serialize(&prove_params, "commit params").unwrap();
     apply_ok(
         &v,

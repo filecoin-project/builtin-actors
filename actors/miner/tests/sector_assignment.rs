@@ -102,10 +102,7 @@ mod sector_assignment {
                     let start = ((i * open_deadlines) + (dl_idx - 2)) * partition_sectors;
                     let part_bf = seq(start, partition_sectors);
                     partitions.push(part_bf);
-                    post_partitions.push(PoStPartition {
-                        index: i,
-                        skipped: BitField::new(),
-                    });
+                    post_partitions.push(PoStPartition { index: i, skipped: BitField::new() });
                 }
                 let all_sector_bf = BitField::union(&partitions);
                 let all_sector_numbers: Vec<u64> =

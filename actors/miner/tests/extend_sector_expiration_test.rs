@@ -326,10 +326,7 @@ fn supports_extensions_off_deadline_boundary() {
     // advance to deadline and submit one last PoSt
     let deadline_info = h.advance_to_deadline(&mut rt, deadline_index);
 
-    let partitions = vec![PoStPartition {
-        index: partition_index,
-        skipped: BitField::default(),
-    }];
+    let partitions = vec![PoStPartition { index: partition_index, skipped: BitField::default() }];
     h.submit_window_post(
         &mut rt,
         &deadline_info,
