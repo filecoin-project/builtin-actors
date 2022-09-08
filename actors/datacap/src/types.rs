@@ -9,7 +9,7 @@ pub struct MintParams {
     pub to: Address,
     // Amount of tokens to mint.
     pub amount: TokenAmount,
-    // Addresses to be granted operator allowance for the newly minted tokens.
+    // Addresses to be granted effectively-infinite operator allowance for the recipient.
     pub operators: Vec<Address>,
 }
 
