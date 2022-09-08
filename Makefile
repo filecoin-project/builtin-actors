@@ -6,11 +6,15 @@ VERSION ?= $(error VERSION environment variable must be set)
 
 # Run cargo fmt
 rustfmt: deps-build
-	cargo fmt -- --check
+	cargo fmt --all --check
+
+# NOTE: Check all targets, then check the build target specifically. Otherwise, it might build for
+# testing but not otherwise due to feature resolution shenanigans.
 
 # Run cargo check
 check: deps-build
 	cargo clippy --all --all-targets -- -D warnings
+	cargo clippy --all -- -D warnings
 
 # Ensure we have the build dependencies
 deps-build:
