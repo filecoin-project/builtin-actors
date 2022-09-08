@@ -17,7 +17,7 @@ impl TryFrom<U256> for Address {
         let mut bytes = [0u8; 32];
         v.to_big_endian(&mut bytes);
         if !bytes[..12].iter().all(|&byte| byte == 0) {
-            Err(StatusCode::BadAddress(format!("invalid address: {}", v)))
+            Err(StatusCode::BadAddress(format!("invalid address: {}", hex::encode(bytes))))
         } else {
             Ok(Self(bytes[12..].try_into().unwrap()))
         }
