@@ -93,16 +93,7 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
 
     // declare 4 & 5 as faulty
     let fault_set = BitField::try_from_bits([4, 5]).unwrap();
-    partition
-        .record_faults(
-            &store,
-            &sector_arr,
-            &fault_set,
-            7,
-            SECTOR_SIZE,
-            QUANT_SPEC,
-        )
-        .unwrap();
+    partition.record_faults(&store, &sector_arr, &fault_set, 7, SECTOR_SIZE, QUANT_SPEC).unwrap();
     assert_partition_state(
         &store,
         &partition,
@@ -119,14 +110,7 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
     // record skipped faults such that some of them are already faulty/terminated
     let skipped = BitField::try_from_bits([1, 2, 3, 4, 5]).unwrap();
     let (power_delta, new_fault_power, retracted_power, new_faults) = partition
-        .record_skipped_faults(
-            &store,
-            &sector_arr,
-            SECTOR_SIZE,
-            QUANT_SPEC,
-            EXP,
-            &skipped,
-        )
+        .record_skipped_faults(&store, &sector_arr, SECTOR_SIZE, QUANT_SPEC, EXP, &skipped)
         .unwrap();
     assert!(retracted_power.is_zero());
     let expected_faulty_power = power_for_sectors(
@@ -182,14 +166,7 @@ fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
     // record skipped faults such that some of them have been marked as recovered
     let skipped = BitField::try_from_bits([1, 4, 5]).unwrap();
     let (power_delta, new_fault_power, recovery_power, new_faults) = partition
-        .record_skipped_faults(
-            &store,
-            &sector_arr,
-            SECTOR_SIZE,
-            QUANT_SPEC,
-            EXP,
-            &skipped,
-        )
+        .record_skipped_faults(&store, &sector_arr, SECTOR_SIZE, QUANT_SPEC, EXP, &skipped)
         .unwrap();
     assert!(new_faults);
 
@@ -228,14 +205,7 @@ fn successful_when_skipped_fault_set_is_empty() {
     let sector_arr = sectors_arr_mbs(&store, sectors());
 
     let (power_delta, new_fault_power, recovery_power, new_faults) = partition
-        .record_skipped_faults(
-            &store,
-            &sector_arr,
-            SECTOR_SIZE,
-            QUANT_SPEC,
-            EXP,
-            &BitField::new(),
-        )
+        .record_skipped_faults(&store, &sector_arr, SECTOR_SIZE, QUANT_SPEC, EXP, &BitField::new())
         .unwrap();
     assert!(new_fault_power.is_zero());
     assert!(recovery_power.is_zero());

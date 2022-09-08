@@ -273,14 +273,8 @@ mod miner_actor_test_partitions {
         let sector_arr = sectors_arr(&rt.store, sectors());
 
         let fault_set = make_bitfield(&[99]);
-        let res = partition.record_faults(
-            &rt.store,
-            &sector_arr,
-            &fault_set,
-            7,
-            SECTOR_SIZE,
-            QUANT_SPEC,
-        );
+        let res =
+            partition.record_faults(&rt.store, &sector_arr, &fault_set, 7, SECTOR_SIZE, QUANT_SPEC);
 
         let err = res.expect_err("expected error, but call succeeded");
         // XXX: This is not a good way to check for specific errors.
@@ -812,20 +806,11 @@ mod miner_actor_test_partitions {
         let sector_arr = sectors_arr(&rt.store, sectors());
 
         let _ = partition
-            .record_faults(
-                &rt.store,
-                &sector_arr,
-                &make_bitfield(&[5]),
-                2,
-                SECTOR_SIZE,
-                QUANT_SPEC,
-            )
+            .record_faults(&rt.store, &sector_arr, &make_bitfield(&[5]), 2, SECTOR_SIZE, QUANT_SPEC)
             .unwrap();
 
         // add a recovery
-        partition
-            .declare_faults_recovered(&sector_arr, SECTOR_SIZE, &make_bitfield(&[5]))
-            .unwrap();
+        partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &make_bitfield(&[5])).unwrap();
 
         // pop first expiration set
         let expire_epoch = 5;
