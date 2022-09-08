@@ -6,7 +6,7 @@ use fvm_shared::address::Address as FilecoinAddress;
 ///
 /// TODO this type will eventually handle f4 address detection.
 #[derive(PartialEq, Eq, Debug, Clone)]
-pub struct Address(U256);
+pub struct Address([u8;20]);
 
 impl TryFrom<U256> for Address {
     type Error = StatusCode;
@@ -19,7 +19,7 @@ impl TryFrom<U256> for Address {
         if !bytes[..12].iter().all(|&byte| byte == 0) {
             Err(StatusCode::BadAddress(format!("invalid address: {}", v)))
         } else {
-            Ok(Self(v))
+            Ok(Self(bytes[12..].try_into().unwrap()))
         }
     }
 }
@@ -32,9 +32,9 @@ impl Address {
 
     /// Returns an EVM-form ID address from actor ID.
     pub fn from_id(id: u64) -> Address {
-        let mut bytes = [0u8; 32];
-        bytes[12] = 0xff;
-        bytes[24..].copy_from_slice(&id.to_be_bytes());
+        let mut bytes = [0u8; 20];
+        bytes[0] = 0xff;
+        bytes[12..].copy_from_slice(&id.to_be_bytes());
         Address(bytes.try_into().unwrap())
     }
 
@@ -47,17 +47,15 @@ impl Address {
     /// 0    1-11       12
     /// 0xff \[0x00...] [id address...]
     pub fn as_id_address(&self) -> Option<FilecoinAddress> {
-        let mut bytes = [0u8; 32];
-        self.0.to_big_endian(&mut bytes);
-        if (bytes[12] != 0xff) || !bytes[13..24].iter().all(|&byte| byte == 0) {
+        if (self.0[0] != 0xff) || !self.0[1..12].iter().all(|&byte| byte == 0) {
             return None;
         }
-        Some(FilecoinAddress::new_id(u64::from_be_bytes(bytes[24..32].try_into().unwrap())))
+        Some(FilecoinAddress::new_id(u64::from_be_bytes(self.0[12..].try_into().unwrap())))
     }
 
     /// Returns this Address as an EVM word.
     pub fn as_evm_word(&self) -> U256 {
-        self.0.clone()
+        U256::from_big_endian(&self.0)
     }
 }
 
