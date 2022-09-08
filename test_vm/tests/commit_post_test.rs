@@ -28,7 +28,7 @@ use test_vm::util::{
     create_accounts, create_miner, invariant_failure_patterns, precommit_sectors,
     submit_windowed_post,
 };
-use test_vm::{ExpectInvocation, TEST_VM_RAND_STRING, VM};
+use test_vm::{ExpectInvocation, TEST_VM_RAND_ARRAY, VM};
 
 struct SectorInfo {
     number: SectorNumber,
@@ -209,7 +209,7 @@ fn skip_sector() {
             proof_bytes: vec![],
         }],
         chain_commit_epoch: sector_info.deadline_info.challenge,
-        chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
+        chain_commit_rand: Randomness(TEST_VM_RAND_ARRAY.into()),
     };
 
     // PoSt is rejected for skipping all sectors.
