@@ -23,7 +23,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         Ok(Self { amt: Array::load(root, store)? })
     }
 
-    pub fn load_sector<'a>(
+    pub fn load_sector(
         &self,
         sector_numbers: &BitField,
     ) -> Result<Vec<SectorOnChainInfo>, ActorError> {

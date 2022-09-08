@@ -114,7 +114,7 @@ impl PartitionSectorMap {
     pub fn add(&mut self, partition_idx: u64, sector_numbers: &BitField) -> anyhow::Result<()> {
         match self.0.get_mut(&partition_idx) {
             Some(old_sector_numbers) => {
-                *old_sector_numbers |= &sector_numbers;
+                *old_sector_numbers |= sector_numbers;
             }
             None => {
                 let sector_numbers = sector_numbers.clone();

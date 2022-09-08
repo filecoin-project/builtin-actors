@@ -1162,7 +1162,7 @@ impl Deadline {
                         sector_size,
                         quant,
                         fault_expiration,
-                        &mut post.skipped,
+                        &post.skipped,
                     )
                     .map_err(|e| {
                         e.downcast_wrap(format!(
