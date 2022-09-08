@@ -1,5 +1,5 @@
-use crate::U256;
 use crate::StatusCode;
+use crate::U256;
 use fvm_shared::address::Address as FilecoinAddress;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).

@@ -4,11 +4,8 @@
 #![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern)]
 
 use {
-    fvm_shared::bigint::BigInt,
-    fvm_shared::econ::TokenAmount,
-    impl_serde::impl_uint_serde,
-    std::cmp::Ordering,
-    uint::construct_uint,
+    fvm_shared::bigint::BigInt, fvm_shared::econ::TokenAmount, impl_serde::impl_uint_serde,
+    std::cmp::Ordering, uint::construct_uint,
 };
 
 construct_uint! { pub struct U256(4); } // ethereum word size
