@@ -7,6 +7,7 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
+
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::clock::QuantSpec;
@@ -47,10 +48,10 @@ fn fail_if_all_declared_sectors_are_not_in_the_partition() {
     let (store, mut partition) = setup();
     let sector_arr = sectors_arr_mbs(&store, sectors());
 
-    let mut skipped = BitField::try_from_bits(1..100).unwrap().into();
+    let skipped = BitField::try_from_bits(1..100).unwrap();
 
     let err: ActorError = partition
-        .record_skipped_faults(&store, &sector_arr, SECTOR_SIZE, QUANT_SPEC, EXP, &mut skipped)
+        .record_skipped_faults(&store, &sector_arr, SECTOR_SIZE, QUANT_SPEC, EXP, &skipped)
         .unwrap_err()
         .downcast()
         .unwrap();
@@ -72,7 +73,7 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
             &store,
             &sector_arr,
             termination_epoch,
-            &mut (terminations.clone().into()),
+            &terminations,
             SECTOR_SIZE,
             QUANT_SPEC,
         )
@@ -96,7 +97,7 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
         .record_faults(
             &store,
             &sector_arr,
-            &mut fault_set.clone().into(),
+            &fault_set,
             7,
             SECTOR_SIZE,
             QUANT_SPEC,
@@ -124,7 +125,7 @@ fn already_faulty_and_terminated_sectors_are_ignored() {
             SECTOR_SIZE,
             QUANT_SPEC,
             EXP,
-            &mut skipped.into(),
+            &skipped,
         )
         .unwrap();
     assert!(retracted_power.is_zero());
@@ -158,12 +159,12 @@ fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
     // make 4, 5 and 6 faulty
     let fault_set = BitField::try_from_bits([4, 5, 6]).unwrap();
     let _ = partition
-        .record_faults(&store, &sector_arr, &mut fault_set.into(), 7, SECTOR_SIZE, QUANT_SPEC)
+        .record_faults(&store, &sector_arr, &fault_set, 7, SECTOR_SIZE, QUANT_SPEC)
         .unwrap();
 
     // add 4 and 5 as recoveries
     let recover_set = BitField::try_from_bits([4, 5]).unwrap();
-    partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set.into()).unwrap();
+    partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &recover_set).unwrap();
 
     assert_partition_state(
         &store,
@@ -187,7 +188,7 @@ fn recoveries_are_retracted_without_being_marked_as_new_faulty_power() {
             SECTOR_SIZE,
             QUANT_SPEC,
             EXP,
-            &mut skipped.into(),
+            &skipped,
         )
         .unwrap();
     assert!(new_faults);
@@ -233,7 +234,7 @@ fn successful_when_skipped_fault_set_is_empty() {
             SECTOR_SIZE,
             QUANT_SPEC,
             EXP,
-            &mut BitField::new().into(),
+            &BitField::new(),
         )
         .unwrap();
     assert!(new_fault_power.is_zero());
