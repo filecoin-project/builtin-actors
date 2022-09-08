@@ -1,16 +1,32 @@
-use crate::interpreter::{H160, H256};
+use crate::StatusCode;
 use crate::U256;
 use fvm_shared::address::Address as FilecoinAddress;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 ///
 /// TODO this type will eventually handle f4 address detection.
-#[derive(PartialEq, Eq, Debug, Clone)]
-pub struct Address(H160);
+#[derive(PartialEq, Eq, Clone)]
+pub struct Address([u8; 20]);
 
-impl From<U256> for Address {
-    fn from(v: U256) -> Self {
-        Self(H256(v.into()).into())
+impl TryFrom<U256> for Address {
+    type Error = StatusCode;
+
+    fn try_from(v: U256) -> Result<Self, Self::Error> {
+        // top 12 bytes must be 0s;
+        // enforce that constraint so that we validate that the word is a valid address
+        let mut bytes = [0u8; 32];
+        v.to_big_endian(&mut bytes);
+        if !bytes[..12].iter().all(|&byte| byte == 0) {
+            Err(StatusCode::BadAddress(format!("invalid address: {}", hex::encode(bytes))))
+        } else {
+            Ok(Self(bytes[12..].try_into().unwrap()))
+        }
+    }
+}
+
+impl std::fmt::Debug for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&hex::encode(self.0))
     }
 }
 
@@ -25,7 +41,7 @@ impl Address {
         let mut bytes = [0u8; 20];
         bytes[0] = 0xff;
         bytes[12..].copy_from_slice(&id.to_be_bytes());
-        Address(bytes.try_into().unwrap())
+        Address(bytes)
     }
 
     /// Interpret the hash as an ID address in EVM-form, and return a Filecoin ID address if that's
@@ -37,16 +53,15 @@ impl Address {
     /// 0    1-11       12
     /// 0xff \[0x00...] [id address...]
     pub fn as_id_address(&self) -> Option<FilecoinAddress> {
-        let val = &self.0 .0;
-        if (val[0] != 0xff) || !val[1..12].iter().all(|&byte| byte == 0) {
+        if (self.0[0] != 0xff) || !self.0[1..12].iter().all(|&byte| byte == 0) {
             return None;
         }
-        Some(FilecoinAddress::new_id(u64::from_be_bytes(val[12..].try_into().unwrap())))
+        Some(FilecoinAddress::new_id(u64::from_be_bytes(self.0[12..].try_into().unwrap())))
     }
 
     /// Returns this Address as an EVM word.
     pub fn as_evm_word(&self) -> U256 {
-        U256::from(&self.0[..])
+        U256::from_big_endian(&self.0)
     }
 }
 
@@ -56,7 +71,7 @@ mod tests {
     use crate::U256;
     use fvm_shared::address::Address as FilecoinAddress;
 
-    const TYPE_PADDING: &[u8] = &[0; 12]; // padding preceding H160 (12 bytes)
+    const TYPE_PADDING: &[u8] = &[0; 12]; // padding (12 bytes)
     const ID_ADDRESS_MARKER: &[u8] = &[0xff]; // ID address marker (1 byte)
     const GOOD_ADDRESS_PADDING: &[u8] =
         &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // padding for inner u64 (11 bytes)
@@ -67,7 +82,7 @@ mod tests {
             #[test]
             fn $name() {
                 let evm_bytes = $input.concat();
-                let evm_addr = Address::from(U256::from(evm_bytes.as_slice()));
+                let evm_addr = Address::try_from(U256::from(evm_bytes.as_slice())).unwrap();
                 assert_eq!(
                     evm_addr.as_id_address(),
                     $expectation

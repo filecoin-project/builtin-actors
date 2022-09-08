@@ -8,7 +8,6 @@ pub mod output;
 pub mod precompiles;
 pub mod stack;
 pub mod system;
-pub mod transaction;
 pub mod uints;
 
 pub use {
@@ -16,11 +15,7 @@ pub use {
     execution::{execute, ExecutionState},
     output::{Output, StatusCode},
     system::System,
-    transaction::{
-        SignedTransaction, Transaction, TransactionAction, TransactionRecoveryId,
-        TransactionSignature,
-    },
-    uints::{H160, H256, U256, U512},
+    uints::{U256, U512},
 };
 
 #[macro_export]
