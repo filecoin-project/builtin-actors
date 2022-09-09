@@ -27,7 +27,7 @@ pub fn div(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn sdiv(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| uints::i256_div(a, b))
+    stack.apply2(uints::i256_div)
 }
 
 #[inline]
