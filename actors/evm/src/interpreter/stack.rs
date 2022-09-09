@@ -44,7 +44,7 @@ impl Stack {
 
     #[inline]
     pub fn dup(&mut self, i: usize) -> Result<(), StatusCode> {
-        if self.d >= i {
+        if self.d > i-1 {
             if self.d < STACK_SIZE {
                 self.sk[self.d] = self.sk[self.d-i];
                 self.d += 1;
@@ -59,10 +59,12 @@ impl Stack {
 
     #[inline]
     pub fn swap(&mut self, i: usize) -> Result<(), StatusCode> {
-        if self.d > i {
-            let tmp = self.sk[self.d];
-            self.sk[self.d] = self.sk[self.d-i];
-            self.sk[self.d-i] = tmp;
+        if self.d > i+1 {
+            let top = self.d - 1;
+            let bottom = top - i;
+            let tmp = self.sk[top];
+            self.sk[top] = self.sk[bottom];
+            self.sk[bottom] = tmp;
             Ok(())
         } else {
             Err(StatusCode::StackUnderflow)
