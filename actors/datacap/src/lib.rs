@@ -39,8 +39,8 @@ pub const DATACAP_GRANULARITY: u64 = TOKEN_PRECISION as u64;
 
 lazy_static! {
     static ref INFINITE_ALLOWANCE: TokenAmount = TokenAmount::from_atto(
-        BigInt::from(1_000_000_000_000_000_000 as i64)
-            * BigInt::from(1_000_000_000_000_000_000_000 as i128)
+        BigInt::from(1_000_000_000_000_000_000_i64)
+            * BigInt::from(1_000_000_000_000_000_000_000_i128)
     );
 }
 /// Static method numbers for builtin-actor private dispatch.
