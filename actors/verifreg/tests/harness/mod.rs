@@ -1,3 +1,6 @@
+use fil_fungible_token::receiver::types::{
+    FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
+};
 use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -6,25 +9,32 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::SectorID;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
+<<<<<<< HEAD
 use num_traits::{Signed, Zero};
+=======
+use num_traits::{ToPrimitive, Zero};
+>>>>>>> 5f944a61 (Implemented verified registry token receiver hook (#601))
 
 use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
-    AllocationID, ClaimAllocationsParams, ClaimAllocationsReturn, DataCap, Method,
-    RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RestoreBytesParams,
-    SectorAllocationClaim, State, UseBytesParams,
+    AllocationID, AllocationRequest, AllocationRequests, ClaimAllocationsParams,
+    ClaimAllocationsReturn, DataCap, Method, RemoveExpiredAllocationsParams,
+    RemoveExpiredAllocationsReturn, RestoreBytesParams, SectorAllocationClaim, State,
 };
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::policy_constants::{
+    MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_TERM,
+};
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, ActorError, AsActorError, MapMap, DATACAP_TOKEN_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 lazy_static! {
@@ -33,11 +43,16 @@ lazy_static! {
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
-        receiver: *ROOT_ADDR,
+        receiver: *VERIFIED_REGISTRY_ACTOR_ADDR,
         caller: *SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
+}
+
+// Sets the miner code/type for an actor ID
+pub fn add_miner(rt: &mut MockRuntime, id: ActorID) {
+    rt.set_address_actor_type(Address::new_id(id), *MINER_ACTOR_CODE_ID);
 }
 
 pub fn new_harness() -> (Harness, MockRuntime) {
@@ -188,6 +203,7 @@ impl Harness {
         Ok(())
     }
 
+<<<<<<< HEAD
     pub fn use_bytes(
         &self,
         rt: &mut MockRuntime,
@@ -240,6 +256,8 @@ impl Harness {
         Ok(())
     }
 
+=======
+>>>>>>> 5f944a61 (Implemented verified registry token receiver hook (#601))
     pub fn restore_bytes(
         &self,
         rt: &mut MockRuntime,
@@ -366,6 +384,27 @@ impl Harness {
         rt.verify();
         Ok(ret)
     }
+
+    pub fn receive_tokens(
+        &self,
+        rt: &mut MockRuntime,
+        payload: FRC46TokenReceived,
+    ) -> Result<(), ActorError> {
+        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
+        let params = UniversalReceiverParams {
+            type_: FRC46_TOKEN_TYPE,
+            payload: serialize(&payload, "payload").unwrap(),
+        };
+
+        rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
+        let ret = rt.call::<VerifregActor>(
+            Method::UniversalReceiverHook as MethodNum,
+            &serialize(&params, "hook params").unwrap(),
+        )?;
+        assert_eq!(RawBytes::default(), ret);
+        rt.verify();
+        Ok(())
+    }
 }
 
 pub fn make_alloc(data_id: &str, client: &Address, provider: &Address, size: u64) -> Allocation {
@@ -380,10 +419,35 @@ pub fn make_alloc(data_id: &str, client: &Address, provider: &Address, size: u64
     }
 }
 
+// Creates an allocation request for fixed data with default terms.
+pub fn make_alloc_req(rt: &MockRuntime, provider: ActorID, size: u64) -> AllocationRequest {
+    AllocationRequest {
+        provider: Address::new_id(provider),
+        data: make_piece_cid("1234".as_bytes()),
+        size: PaddedPieceSize(size),
+        term_min: MINIMUM_VERIFIED_ALLOCATION_TERM,
+        term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM,
+        expiration: rt.epoch + 100,
+    }
+}
+
+// Creates the expected allocation from a request.
+pub fn alloc_from_req(client: &Address, req: &AllocationRequest) -> Allocation {
+    Allocation {
+        client: *client,
+        provider: req.provider,
+        data: req.data,
+        size: req.size,
+        term_min: req.term_min,
+        term_max: req.term_max,
+        expiration: req.expiration,
+    }
+}
+
 pub fn make_claim_req(
     id: AllocationID,
     alloc: Allocation,
-    sector_id: SectorID,
+    sector_id: SectorNumber,
     sector_expiry: ChainEpoch,
 ) -> SectorAllocationClaim {
     SectorAllocationClaim {
@@ -391,7 +455,23 @@ pub fn make_claim_req(
         allocation_id: id,
         data: alloc.data,
         size: alloc.size,
-        sector_id,
+        sector: sector_id,
         sector_expiry,
+    }
+}
+
+pub fn make_receiver_hook_token_payload(
+    client: ActorID,
+    requests: Vec<AllocationRequest>,
+) -> FRC46TokenReceived {
+    let total_size: u64 = requests.iter().map(|r| r.size.0).sum();
+    let payload = AllocationRequests { requests };
+    FRC46TokenReceived {
+        from: client,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+        operator: client,
+        amount: TokenAmount::from_whole(total_size as i64),
+        operator_data: serialize(&payload, "operator data").unwrap(),
+        token_data: Default::default(),
     }
 }
