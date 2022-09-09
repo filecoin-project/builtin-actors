@@ -232,8 +232,8 @@ fn add_then_mark_faulty(
     let sectors_array = sectors_arr(store, sectors.to_owned());
 
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
-    partition_sector_map.add(1, &bitfield_from_slice(&[5, 6])).unwrap();
+    partition_sector_map.add(0, bitfield_from_slice(&[1])).unwrap();
+    partition_sector_map.add(1, bitfield_from_slice(&[5, 6])).unwrap();
 
     // mark faulty
     let power_delta = deadline
@@ -473,7 +473,7 @@ fn terminate_sectors(
 
     let mut partition_sector_map = PartitionSectorMap::default();
     for (partition, sectors) in partition_sectors {
-        partition_sector_map.add(partition, &sectors).unwrap();
+        partition_sector_map.add(partition, sectors).unwrap();
     }
 
     deadline.terminate_sectors(
@@ -769,8 +769,8 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
-    partition_sector_map.add(1, &bitfield_from_slice(&[6])).unwrap();
+    partition_sector_map.add(0, bitfield_from_slice(&[1])).unwrap();
+    partition_sector_map.add(1, bitfield_from_slice(&[6])).unwrap();
     deadline
         .declare_faults_recovered(
             rt.store(),
@@ -1019,8 +1019,8 @@ fn retract_recoveries() {
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
-    partition_sector_map.add(1, &bitfield_from_slice(&[6])).unwrap();
+    partition_sector_map.add(0, bitfield_from_slice(&[1])).unwrap();
+    partition_sector_map.add(1, bitfield_from_slice(&[6])).unwrap();
     deadline
         .declare_faults_recovered(
             rt.store(),
@@ -1032,7 +1032,7 @@ fn retract_recoveries() {
 
     // retract recovery for sector 1
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
+    partition_sector_map.add(0, bitfield_from_slice(&[1])).unwrap();
     let power_delta = deadline
         .record_faults(
             rt.store(),
@@ -1126,8 +1126,8 @@ fn cannot_declare_faults_in_missing_partitions() {
 
     // declare sectors 1 & 6 faulty
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
-    partition_sector_map.add(4, &bitfield_from_slice(&[6])).unwrap();
+    partition_sector_map.add(0, bitfield_from_slice(&[1])).unwrap();
+    partition_sector_map.add(4, bitfield_from_slice(&[6])).unwrap();
     let result = deadline.record_faults(
         rt.store(),
         &sectors_array,
@@ -1155,8 +1155,8 @@ fn cannot_declare_faults_recovered_in_missing_partitions() {
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
-    partition_sector_map.add(0, &bitfield_from_slice(&[1])).unwrap();
-    partition_sector_map.add(4, &bitfield_from_slice(&[6])).unwrap();
+    partition_sector_map.add(0, bitfield_from_slice(&[1])).unwrap();
+    partition_sector_map.add(4, bitfield_from_slice(&[6])).unwrap();
     let result = deadline.declare_faults_recovered(
         rt.store(),
         &sectors_array,

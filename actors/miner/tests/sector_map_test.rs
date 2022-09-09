@@ -45,7 +45,7 @@ fn create_deadline_sector_map(
                     policy,
                     deadline_index,
                     partition_index,
-                    &make_bitfield(&[deadline_index * partition_count + partition_index]),
+                    make_bitfield(&[deadline_index * partition_count + partition_index]),
                 )
                 .unwrap();
         })
