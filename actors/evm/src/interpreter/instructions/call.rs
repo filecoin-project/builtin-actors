@@ -25,11 +25,12 @@ pub enum CallKind {
     CallCode,
 }
 
-pub fn calldataload(state: &mut ExecutionState) {
-    let index = state.stack.pop();
-    let input_len = state.input_data.len();
+#[inline]
+pub fn calldataload(state: &mut ExecutionState) -> Result<(), StatusCode> {
+    state.stack.apply::<1,_>(|args| {
+        let index = args[0];
+        let input_len = state.input_data.len();
 
-    state.stack.push({
         if index > U256::from(input_len) {
             U256::zero()
         } else {
@@ -41,69 +42,75 @@ pub fn calldataload(state: &mut ExecutionState) {
 
             U256::from_big_endian(&data)
         }
-    });
+    })
 }
 
 #[inline]
-pub fn calldatasize(state: &mut ExecutionState) {
-    state.stack.push(u128::try_from(state.input_data.len()).unwrap().into());
+pub fn calldatasize(state: &mut ExecutionState) -> Result<(), StatusCode> {
+    state.stack.push(u128::try_from(state.input_data.len()).unwrap().into())
 }
 
+#[inline]
 pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let mem_index = state.stack.pop();
-    let input_index = state.stack.pop();
-    let size = state.stack.pop();
+    state.stack.with::<3,_,_>(|args| {
+        let mem_index = args[2];
+        let input_index = args[1];
+        let size = args[0];
 
-    let region = get_memory_region(&mut state.memory, mem_index, size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+        let region = get_memory_region(&mut state.memory, mem_index, size)
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    if let Some(region) = &region {
-        let input_len = U256::from(state.input_data.len());
-        let src = core::cmp::min(input_len, input_index);
-        let copy_size = core::cmp::min(size, input_len - src).as_usize();
-        let src = src.as_usize();
+        if let Some(region) = &region {
+            let input_len = U256::from(state.input_data.len());
+            let src = core::cmp::min(input_len, input_index);
+            let copy_size = core::cmp::min(size, input_len - src).as_usize();
+            let src = src.as_usize();
 
-        if copy_size > 0 {
-            state.memory[region.offset..region.offset + copy_size]
-                .copy_from_slice(&state.input_data[src..src + copy_size]);
+            if copy_size > 0 {
+                state.memory[region.offset..region.offset + copy_size]
+                    .copy_from_slice(&state.input_data[src..src + copy_size]);
+            }
+
+            if region.size.get() > copy_size {
+                state.memory[region.offset + copy_size..region.offset + region.size.get()].fill(0);
+            }
         }
 
-        if region.size.get() > copy_size {
-            state.memory[region.offset + copy_size..region.offset + region.size.get()].fill(0);
-        }
-    }
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[inline]
-pub fn codesize(stack: &mut Stack, code: &[u8]) {
+pub fn codesize(stack: &mut Stack, code: &[u8]) -> Result<(), StatusCode> {
     stack.push(U256::from(code.len()))
 }
 
+#[inline]
 pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCode> {
-    let mem_index = state.stack.pop();
-    let input_index = state.stack.pop();
-    let size = state.stack.pop();
+    state.stack.with::<3,_,_>(|args| {
+        let mem_index = args[2];
+        let input_index = args[1];
+        let size = args[0];
 
-    let region = get_memory_region(&mut state.memory, mem_index, size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+        let region = get_memory_region(&mut state.memory, mem_index, size)
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    if let Some(region) = region {
-        let src = core::cmp::min(U256::from(code.len()), input_index).as_usize();
-        let copy_size = core::cmp::min(region.size.get(), code.len() - src);
+        if let Some(region) = region {
+            let src = core::cmp::min(U256::from(code.len()), input_index).as_usize();
+            let copy_size = core::cmp::min(region.size.get(), code.len() - src);
 
-        if copy_size > 0 {
-            state.memory[region.offset..region.offset + copy_size]
-                .copy_from_slice(&code[src..src + copy_size]);
+            if copy_size > 0 {
+                state.memory[region.offset..region.offset + copy_size]
+                    .copy_from_slice(&code[src..src + copy_size]);
+            }
+
+            if region.size.get() > copy_size {
+                state.memory[region.offset + copy_size..region.offset + region.size.get()].fill(0);
+            }
         }
 
-        if region.size.get() > copy_size {
-            state.memory[region.offset + copy_size..region.offset + region.size.get()].fill(0);
-        }
-    }
-
-    Ok(())
+        Ok(())
+    })
 }
 
 pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
@@ -117,25 +124,29 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     // NOTE gas is currently ignored as FVM's send doesn't allow the caller to specify a gas
     //      limit (external invocation gas limit applies). This may changed in the future.
     let (_gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
-        CallKind::Call | CallKind::CallCode => (
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-        ),
+        CallKind::Call | CallKind::CallCode =>
+            stack.with::<7,_,_>(|args| {
+                Ok((args[6],
+                    args[5],
+                    args[4],
+                    args[3],
+                    args[2],
+                    args[1],
+                    args[0],
+                ))
+            })?,
 
-        CallKind::DelegateCall | CallKind::StaticCall => (
-            stack.pop(),
-            stack.pop(),
-            U256::from(0),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-        ),
+        CallKind::DelegateCall | CallKind::StaticCall =>
+            stack.with::<6,_,_>(|args| {
+                Ok((args[5],
+                    args[4],
+                    U256::zero(),
+                    args[3],
+                    args[2],
+                    args[1],
+                    args[0],
+                ))
+            })?
     };
 
     let input_region = get_memory_region(memory, input_offset, input_size)
@@ -230,6 +241,5 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
             .copy_from_slice(&result);
     }
 
-    stack.push(U256::from(1));
-    Ok(())
+    stack.push(U256::from(1))
 }

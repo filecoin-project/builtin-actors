@@ -1,77 +1,122 @@
 use {
-    crate::interpreter::stack::Stack, crate::interpreter::uints::*, crate::interpreter::U256,
+    crate::interpreter::stack::Stack, crate::interpreter::uints, crate::interpreter::U256,
+    crate::interpreter::StatusCode,
     std::cmp::Ordering,
 };
 
 #[inline]
-pub fn lt(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
+pub fn lt(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let a = args[1];
+        let b = args[0];
 
-    *b = if a.lt(b) { U256::from(1) } else { U256::zero() }
+        if a.lt(&b) {
+            U256::from(1)
+        } else {
+            U256::zero()
+        }
+    })
 }
 
 #[inline]
-pub fn gt(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
+pub fn gt(stack: &mut Stack) -> Result<(), StatusCode>{
+    stack.apply::<2,_>(|args| {
+        let a = args[1];
+        let b = args[0];
 
-    *b = if a.gt(b) { U256::from(1) } else { U256::zero() }
+        if a.gt(&b) {
+            U256::from(1)
+        } else {
+            U256::zero()
+        }
+    })
 }
 
 #[inline]
-pub(crate) fn slt(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
+pub fn slt(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let a = args[1];
+        let b = args[0];
 
-    *b = if i256_cmp(a, *b) == Ordering::Less { U256::from(1) } else { U256::zero() }
+        if uints::i256_cmp(a, b) == Ordering::Less {
+            U256::from(1)
+        } else {
+            U256::zero()
+        }
+    })
 }
 
 #[inline]
-pub(crate) fn sgt(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
+pub fn sgt(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let a = args[1];
+        let b = args[0];
 
-    *b = if i256_cmp(a, *b) == Ordering::Greater { U256::from(1) } else { U256::zero() }
+        if uints::i256_cmp(a, b) == Ordering::Greater {
+            U256::from(1)
+        } else {
+            U256::zero()
+        }
+    })
 }
 
 #[inline]
-pub fn eq(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
+pub fn eq(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let a = args[1];
+        let b = args[0];
 
-    *b = if a.eq(b) { U256::from(1) } else { U256::zero() }
+        if a.eq(&b) {
+            U256::from(1)
+        } else {
+            U256::zero()
+        }
+    })
 }
 
 #[inline]
-pub fn iszero(stack: &mut Stack) {
-    let a = stack.get_mut(0);
-    *a = if *a == U256::zero() { U256::from(1) } else { U256::zero() }
+pub fn iszero(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<1,_>(|args| {
+        let a = args[0];
+        if a.is_zero() {
+            U256::from(1)
+        } else {
+            U256::zero()
+        }
+    })
 }
 
 #[inline]
-pub(crate) fn and(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-    *b = a & *b;
+pub fn and(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let a = args[1];
+        let b = args[0];
+        a & b
+    })
 }
 
 #[inline]
-pub(crate) fn or(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-    *b = a | *b;
+pub fn or(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let a = args[1];
+        let b = args[0];
+        a | b
+    })
 }
 
 #[inline]
-pub(crate) fn xor(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-    *b = a ^ *b;
+pub fn xor(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let a = args[1];
+        let b = args[0];
+        a ^ b
+    })
 }
 
 #[inline]
-pub(crate) fn not(stack: &mut Stack) {
-    let v = stack.get_mut(0);
-    *v = !*v;
+pub fn not(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<1,_>(|args| {
+        let v = args[0];
+        !v
+    })
 }

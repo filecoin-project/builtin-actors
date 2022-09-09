@@ -1,7 +1,7 @@
-use {crate::interpreter::stack::Stack, crate::interpreter::U256};
+use {crate::interpreter::stack::Stack, crate::interpreter::U256, crate::interpreter::StatusCode};
 
 #[inline]
-pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> usize {
+pub fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> Result<usize, StatusCode> {
     let pushval = &code[..LEN];
     stack.push(match pushval.len() {
         0 => U256::zero(),
@@ -11,21 +11,22 @@ pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> usize {
             padded[32 - pushval.len()..].copy_from_slice(pushval);
             U256::from_big_endian(&padded)
         }
-    });
-    LEN
+    })?;
+    Ok(LEN)
 }
 
 #[inline]
-pub(crate) fn dup<const HEIGHT: usize>(stack: &mut Stack) {
-    stack.push(*stack.get(HEIGHT - 1));
+pub fn dup<const HEIGHT: usize>(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.push(stack.peek(HEIGHT - 1)?)
 }
 
 #[inline]
-pub(crate) fn swap<const HEIGHT: usize>(stack: &mut Stack) {
-    stack.swap_top(HEIGHT);
+pub fn swap<const HEIGHT: usize>(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.swap(HEIGHT)
 }
 
 #[inline]
-pub(crate) fn pop(stack: &mut Stack) {
-    stack.pop();
+pub fn pop(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.pop()?;
+    Ok(())
 }

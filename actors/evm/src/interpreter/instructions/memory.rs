@@ -68,7 +68,7 @@ pub fn get_memory_region(
 
 #[inline]
 pub fn mload(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let index = state.stack.pop();
+    let index = state.stack.pop()?;
 
     let region =
         get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
@@ -76,15 +76,14 @@ pub fn mload(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let value =
         U256::from_big_endian(&state.memory[region.offset..region.offset + region.size.get()]);
 
-    state.stack.push(value);
-
-    Ok(())
+    state.stack.push(value)
 }
 
 #[inline]
 pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let index = state.stack.pop();
-    let value = state.stack.pop();
+    let (index, value) = state.stack.with::<2,_,_>(|args| {
+        Ok((args[1], args[0]))
+    })?;
 
     let region =
         get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
@@ -99,8 +98,9 @@ pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn mstore8(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let index = state.stack.pop();
-    let value = state.stack.pop();
+    let (index, value) = state.stack.with::<2,_,_>(|args| {
+        Ok((args[1], args[0]))
+    })?;
 
     let region = get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(1).unwrap())
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
@@ -113,6 +113,6 @@ pub fn mstore8(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn msize(state: &mut ExecutionState) {
-    state.stack.push(u64::try_from(state.memory.len()).unwrap().into());
+pub fn msize(state: &mut ExecutionState) -> Result<(), StatusCode> {
+    state.stack.push(u64::try_from(state.memory.len()).unwrap().into())
 }

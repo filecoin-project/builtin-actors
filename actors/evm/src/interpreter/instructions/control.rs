@@ -6,79 +6,90 @@ use {
 
 #[inline]
 pub fn ret(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let offset = *state.stack.get(0);
-    let size = *state.stack.get(1);
+    state.stack.with::<2,_,_>(|args| {
+        let offset = args[1];
+        let size = args[0];
 
-    if let Some(region) = super::memory::get_memory_region(&mut state.memory, offset, size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?
-    {
-        state.output_data =
-            state.memory[region.offset..region.offset + region.size.get()].to_vec().into();
-    }
+        if let Some(region) = super::memory::get_memory_region(&mut state.memory, offset, size)
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?
+        {
+            state.output_data =
+                state.memory[region.offset..region.offset + region.size.get()].to_vec().into();
+        }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 #[inline]
-pub fn returndatasize(state: &mut ExecutionState) {
-    state.stack.push(U256::from(state.return_data.len()));
+pub fn returndatasize(state: &mut ExecutionState) -> Result<(), StatusCode>  {
+    state.stack.push(U256::from(state.return_data.len()))
 }
 
 #[inline]
 pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let mem_index = state.stack.pop();
-    let input_index = state.stack.pop();
-    let size = state.stack.pop();
+    state.stack.with::<3,_,_>(|args| {
+        let mem_index = args[2];
+        let input_index = args[1];
+        let size = args[0];
 
-    let region = get_memory_region(&mut state.memory, mem_index, size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+        let region = get_memory_region(&mut state.memory, mem_index, size)
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    if input_index > U256::from(state.return_data.len()) {
-        return Err(StatusCode::InvalidMemoryAccess);
-    }
-    let src = input_index.as_usize();
+        if input_index > U256::from(state.return_data.len()) {
+            return Err(StatusCode::InvalidMemoryAccess);
+        }
+        let src = input_index.as_usize();
 
-    if src + region.as_ref().map(|r| r.size.get()).unwrap_or(0) > state.return_data.len() {
-        return Err(StatusCode::InvalidMemoryAccess);
-    }
+        if src + region.as_ref().map(|r| r.size.get()).unwrap_or(0) > state.return_data.len() {
+            return Err(StatusCode::InvalidMemoryAccess);
+        }
 
-    if let Some(region) = region {
-        state.memory[region.offset..region.offset + region.size.get()]
-            .copy_from_slice(&state.return_data[src..src + region.size.get()]);
-    }
+        if let Some(region) = region {
+            state.memory[region.offset..region.offset + region.size.get()]
+                .copy_from_slice(&state.return_data[src..src + region.size.get()]);
+        }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 #[inline]
-pub fn gas(_state: &mut ExecutionState) {
+pub fn gas(_state: &mut ExecutionState)  -> Result<(), StatusCode> {
     todo!()
 }
 
 #[inline]
-pub fn pc(stack: &mut Stack, pc: usize) {
+pub fn pc(stack: &mut Stack, pc: usize)  -> Result<(), StatusCode> {
     stack.push(U256::from(pc))
 }
 
 #[inline]
-pub fn jump(stack: &mut Stack, bytecode: &Bytecode) -> Result<usize, StatusCode> {
-    let dst = stack.pop().as_usize();
-    if !bytecode.valid_jump_destination(dst) {
+fn jump_target(dest: &U256, bytecode: &Bytecode) -> Result<usize, StatusCode> {
+    let dest = dest.as_usize(); // XXX as_usize can panic if it doesn't fit
+    if !bytecode.valid_jump_destination(dest) {
         return Err(StatusCode::BadJumpDestination);
     }
-    Ok(dst)
+    Ok(dest)
 }
 
 #[inline]
-pub fn jumpi(stack: &mut Stack, bytecode: &Bytecode) -> Result<Option<usize>, StatusCode> {
-    if *stack.get(1) != U256::zero() {
-        let ret = Ok(Some(jump(stack, bytecode)?));
-        stack.pop();
-        ret
-    } else {
-        stack.pop();
-        stack.pop();
+pub fn jump(stack: &mut Stack, bytecode: &Bytecode) -> Result<usize, StatusCode> {
+    let dest = stack.pop()?;
+    jump_target(&dest, bytecode)
+}
 
-        Ok(None)
-    }
+
+#[inline]
+pub fn jumpi(stack: &mut Stack, bytecode: &Bytecode) -> Result<Option<usize>, StatusCode> {
+    stack.with::<2,_,_>(|args| {
+        let dest = args[1];
+        let cond = args[0];
+        if !cond.is_zero() {
+            let dest = jump_target(&dest, bytecode)?;
+            Ok(Some(dest))
+        } else {
+            Ok(None)
+        }
+    })
 }

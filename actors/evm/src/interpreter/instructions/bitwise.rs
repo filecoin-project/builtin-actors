@@ -1,81 +1,90 @@
 use {
-    crate::interpreter::stack::Stack, crate::interpreter::uints::Sign,
-    crate::interpreter::uints::*, crate::interpreter::U256,
+    crate::interpreter::StatusCode,
+    crate::interpreter::U256,
+    crate::interpreter::stack::Stack,
+    crate::interpreter::uints,
 };
 
 #[inline]
-pub fn byte(stack: &mut Stack) {
-    let i = stack.pop();
-    let x = stack.get_mut(0);
+pub fn byte(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let i = args[1];
+        let x = args[0];
 
-    if i >= U256::from(32) {
-        *x = U256::zero();
-        return;
-    }
-
-    let mut i = u256_low(i);
-
-    let x_word = if i >= 16 {
-        i -= 16;
-        u256_low(*x)
-    } else {
-        u256_high(*x)
-    };
-
-    *x = U256::from((x_word >> (120 - i * 8)) & 0xFF);
-}
-
-#[inline]
-pub fn shl(stack: &mut Stack) {
-    let shift = stack.pop();
-    let value = stack.get_mut(0);
-
-    if *value == U256::zero() || shift >= U256::from(256) {
-        *value = U256::zero();
-    } else {
-        *value <<= shift
-    };
-}
-
-#[inline]
-pub fn shr(stack: &mut Stack) {
-    let shift = stack.pop();
-    let value = stack.get_mut(0);
-
-    if *value == U256::zero() || shift >= U256::from(256) {
-        *value = U256::zero()
-    } else {
-        *value >>= shift
-    };
-}
-
-#[inline]
-pub fn sar(stack: &mut Stack) {
-    let shift = stack.pop();
-    let mut value = stack.pop();
-
-    let value_sign = i256_sign::<true>(&mut value);
-
-    stack.push(if value == U256::zero() || shift >= U256::from(256) {
-        match value_sign {
-            // value is 0 or >=1, pushing 0
-            Sign::Plus | Sign::Zero => U256::zero(),
-            // value is <0, pushing -1
-            Sign::Minus => two_compl(U256::from(1)),
+        if i >= U256::from(32) {
+            return U256::zero();
         }
-    } else {
-        let shift = shift.as_u128();
 
-        match value_sign {
-            Sign::Plus | Sign::Zero => value >> shift,
-            Sign::Minus => {
-                let shifted = ((value.overflowing_sub(U256::from(1)).0) >> shift)
-                    .overflowing_add(U256::from(1))
-                    .0;
-                two_compl(shifted)
+        let mut i = uints::u256_low(i);
+
+        let x_word = if i >= 16 {
+            i -= 16;
+            uints::u256_low(x)
+        } else {
+            uints::u256_high(x)
+        };
+
+        U256::from((x_word >> (120 - i * 8)) & 0xFF)
+    })
+}
+
+#[inline]
+pub fn shl(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let shift = args[1];
+        let value = args[0];
+
+        if value.is_zero() || shift >= U256::from(256) {
+            U256::zero()
+        } else {
+            value << shift
+        }
+    })
+}
+
+#[inline]
+pub fn shr(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let shift = args[1];
+        let value = args[0];
+
+        if value.is_zero() || shift >= U256::from(256) {
+            U256::zero()
+        } else {
+            value >> shift
+        }
+    })
+}
+
+#[inline]
+pub fn sar(stack: &mut Stack) -> Result<(), StatusCode> {
+    stack.apply::<2,_>(|args| {
+        let shift = args[1];
+        let mut value = args[0];
+
+        let value_sign = uints::i256_sign::<true>(&mut value);
+
+        if value.is_zero() || shift >= U256::from(256) {
+            match value_sign {
+                // value is 0 or >=1, pushing 0
+                uints::Sign::Plus | uints::Sign::Zero => U256::zero(),
+                // value is <0, pushing -1
+                uints::Sign::Minus => uints::two_compl(U256::from(1)),
+            }
+        } else {
+            let shift = shift.as_u128();
+
+            match value_sign {
+                uints::Sign::Plus | uints::Sign::Zero => value >> shift,
+                uints::Sign::Minus => {
+                    let shifted = ((value.overflowing_sub(U256::from(1)).0) >> shift)
+                        .overflowing_add(U256::from(1))
+                        .0;
+                    uints::two_compl(shifted)
+                }
             }
         }
-    });
+    })
 }
 
 #[cfg(test)]
