@@ -525,14 +525,15 @@ mod claims {
 }
 
 mod datacap {
+    use fil_fungible_token::receiver::types::{UniversalReceiverParams, FRC46_TOKEN_TYPE};
     use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{ActorID, MethodNum};
 
-    use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
     use fil_actor_verifreg::{Actor as VerifregActor, Method, RestoreBytesParams, State};
+    use fil_actors_runtime::cbor::serialize;
     use fil_actors_runtime::runtime::policy_constants::{
         MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION, MAXIMUM_VERIFIED_ALLOCATION_TERM,
         MINIMUM_VERIFIED_ALLOCATION_SIZE, MINIMUM_VERIFIED_ALLOCATION_TERM,
@@ -565,7 +566,7 @@ mod datacap {
                 make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE),
                 make_alloc_req(&rt, PROVIDER2, ALLOC_SIZE * 2),
             ];
-            let payload = make_token_receiver_hook_params(CLIENT1, reqs.clone());
+            let payload = make_receiver_hook_token_payload(CLIENT1, reqs.clone());
             h.receive_tokens(&mut rt, payload).unwrap();
 
             // Verify allocations in state.
@@ -587,7 +588,7 @@ mod datacap {
         {
             // Make another allocation from a different client
             let reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
-            let payload = make_token_receiver_hook_params(CLIENT2, reqs.clone());
+            let payload = make_receiver_hook_token_payload(CLIENT2, reqs.clone());
             h.receive_tokens(&mut rt, payload).unwrap();
 
             // Verify allocations in state.
@@ -609,10 +610,17 @@ mod datacap {
         let (h, mut rt) = new_harness();
         add_miner(&mut rt, PROVIDER1);
 
-        let payload = make_token_receiver_hook_params(
-            CLIENT1,
-            vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)],
-        );
+        let params = UniversalReceiverParams {
+            type_: FRC46_TOKEN_TYPE,
+            payload: serialize(
+                &make_receiver_hook_token_payload(
+                    CLIENT1,
+                    vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)],
+                ),
+                "payload",
+            )
+            .unwrap(),
+        };
 
         rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR); // Wrong caller
         rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
@@ -620,8 +628,8 @@ mod datacap {
             ExitCode::USR_FORBIDDEN,
             "caller address",
             rt.call::<VerifregActor>(
-                Method::FungibleTokenReceiverHook as MethodNum,
-                &RawBytes::serialize(&payload).unwrap(),
+                Method::UniversalReceiverHook as MethodNum,
+                &RawBytes::serialize(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -633,12 +641,16 @@ mod datacap {
         let (h, mut rt) = new_harness();
         add_miner(&mut rt, PROVIDER1);
 
-        let mut payload = make_token_receiver_hook_params(
+        let mut payload = make_receiver_hook_token_payload(
             CLIENT1,
             vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)],
         );
         // Set invalid receiver hook "to" address (should be the verified registry itself).
         payload.to = PROVIDER1;
+        let params = UniversalReceiverParams {
+            type_: FRC46_TOKEN_TYPE,
+            payload: serialize(&payload, "payload").unwrap(),
+        };
 
         rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
@@ -646,8 +658,8 @@ mod datacap {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "token receiver expected to",
             rt.call::<VerifregActor>(
-                Method::FungibleTokenReceiverHook as MethodNum,
-                &RawBytes::serialize(&payload).unwrap(),
+                Method::UniversalReceiverHook as MethodNum,
+                &RawBytes::serialize(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -657,13 +669,14 @@ mod datacap {
     #[test]
     fn receive_requires_miner_actor() {
         let (h, mut rt) = new_harness();
-        rt.set_address_actor_type(Address::new_id(PROVIDER1), *ACCOUNT_ACTOR_CODE_ID);
+        let provider1 = Address::new_id(PROVIDER1);
+        rt.set_address_actor_type(provider1, *ACCOUNT_ACTOR_CODE_ID);
 
         let reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
-        let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+        let payload = make_receiver_hook_token_payload(CLIENT1, reqs);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            "allocation provider f0301 must be a miner actor",
+            format!("allocation provider {} must be a miner actor", provider1).as_str(),
             h.receive_tokens(&mut rt, payload),
         );
         h.check_state(&rt);
@@ -677,7 +690,7 @@ mod datacap {
         // Alloc too small
         {
             let reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE - 1)];
-            let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            let payload = make_receiver_hook_token_payload(CLIENT1, reqs);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "allocation size 1048575 below minimum 1048576",
@@ -688,7 +701,7 @@ mod datacap {
         {
             let mut reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
             reqs[0].term_min = MINIMUM_VERIFIED_ALLOCATION_TERM - 1;
-            let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            let payload = make_receiver_hook_token_payload(CLIENT1, reqs);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "allocation term min 518399 below limit 518400",
@@ -699,7 +712,7 @@ mod datacap {
         {
             let mut reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
             reqs[0].term_max = MAXIMUM_VERIFIED_ALLOCATION_TERM + 1;
-            let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            let payload = make_receiver_hook_token_payload(CLIENT1, reqs);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "allocation term max 5259486 above limit 5259485",
@@ -711,7 +724,7 @@ mod datacap {
             let mut reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
             reqs[0].term_max = 2 * EPOCHS_IN_YEAR;
             reqs[0].term_min = reqs[0].term_max + 1;
-            let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            let payload = make_receiver_hook_token_payload(CLIENT1, reqs);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "allocation term min 2103795 exceeds term max 2103794",
@@ -722,7 +735,7 @@ mod datacap {
         {
             let mut reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
             reqs[0].expiration = rt.epoch + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION + 1;
-            let payload = make_token_receiver_hook_params(CLIENT1, reqs);
+            let payload = make_receiver_hook_token_payload(CLIENT1, reqs);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "allocation expiration 86401 exceeds maximum 86400",
@@ -735,11 +748,25 @@ mod datacap {
                 make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE),
                 make_alloc_req(&rt, PROVIDER2, ALLOC_SIZE),
             ];
-            let mut payload = make_token_receiver_hook_params(CLIENT1, reqs);
-            payload.amount = TokenAmount::from(ALLOC_SIZE * 2 + 1) * TOKEN_PRECISION;
+            let mut payload = make_receiver_hook_token_payload(CLIENT1, reqs);
+            payload.amount = TokenAmount::from_whole((ALLOC_SIZE * 2 + 1) as i64);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "total allocation size 2097152 must match data cap amount received 2097153",
+                h.receive_tokens(&mut rt, payload),
+            );
+        }
+        // One bad request fails the lot
+        {
+            let reqs = vec![
+                make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE),
+                make_alloc_req(&rt, PROVIDER2, ALLOC_SIZE - 1),
+            ];
+            let mut payload = make_receiver_hook_token_payload(CLIENT1, reqs);
+            payload.amount = TokenAmount::from_whole((ALLOC_SIZE * 2 - 1) as i64);
+            expect_abort_contains_message(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                "allocation size 1048575 below minimum 1048576",
                 h.receive_tokens(&mut rt, payload),
             );
         }

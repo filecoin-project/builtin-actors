@@ -1,7 +1,9 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_fungible_token::receiver::types::TokensReceivedParams;
+use fil_fungible_token::receiver::types::{
+    FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
+};
 use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
 use fil_fungible_token::token::TOKEN_PRECISION;
 use fvm_ipld_blockstore::Blockstore;
@@ -13,7 +15,6 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::StoragePower;
 use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use log::info;
 use num_derive::FromPrimitive;
@@ -23,10 +24,9 @@ use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, resolve_to_id_addr,
-    ActorContext, ActorDowncast, ActorError, AsActorError, BatchReturnGen, Map,
-    DATACAP_TOKEN_ACTOR_ADDR, FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
+    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen, DATACAP_TOKEN_ACTOR_ADDR};
 
@@ -58,7 +58,7 @@ pub enum Method {
     RemoveVerifiedClientDataCap = 7,
     RemoveExpiredAllocations = 8,
     ClaimAllocations = 9,
-    FungibleTokenReceiverHook = FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM,
+    UniversalReceiverHook = UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 }
 
 pub struct Actor;
@@ -529,7 +529,7 @@ impl Actor {
                         ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
                         info!(
                             "invalid sector {:?} for allocation {}",
-                            claim_alloc.sector_id, claim_alloc.allocation_id,
+                            claim_alloc.sector, claim_alloc.allocation_id,
                         );
                         continue;
                     }
@@ -542,7 +542,7 @@ impl Actor {
                         term_min: alloc.term_min,
                         term_max: alloc.term_max,
                         term_start: rt.curr_epoch(),
-                        sector: claim_alloc.sector_id,
+                        sector: claim_alloc.sector,
                     };
 
                     let inserted = claims
@@ -580,9 +580,9 @@ impl Actor {
         Ok(ret_gen.gen())
     }
 
-    pub fn fungible_token_receiver_hook<BS, RT>(
+    pub fn universal_receiver_hook<BS, RT>(
         rt: &mut RT,
-        params: &RawBytes,
+        params: UniversalReceiverParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -596,7 +596,7 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
 
         // Validate receiver hook payload.
-        let tokens_received = validate_tokens_received(params, my_id)?;
+        let tokens_received = validate_tokens_received(&params, my_id)?;
         let token_datacap = tokens_to_datacap(&tokens_received.amount);
         let client_address = Address::new_id(tokens_received.from);
 
@@ -834,12 +834,20 @@ where
     )
 }
 
-// Deserializes and validates a token receiver hook payload.
+// Deserializes and validates a receiver hook payload, expecting only an FRC-46 transfer.
 fn validate_tokens_received(
-    raw: &RawBytes,
+    params: &UniversalReceiverParams,
     my_id: u64,
-) -> Result<TokensReceivedParams, ActorError> {
-    let payload: TokensReceivedParams = deserialize(raw, "receiver hook payload")?;
+) -> Result<FRC46TokenReceived, ActorError> {
+    if params.type_ != FRC46_TOKEN_TYPE {
+        return Err(actor_error!(
+            illegal_argument,
+            "invalid token type {}, expected {} (FRC-46)",
+            params.type_,
+            FRC46_TOKEN_TYPE
+        ));
+    }
+    let payload: FRC46TokenReceived = deserialize(&params.payload, "receiver hook payload")?;
     // Payload to address must match receiving actor.
     if payload.to != my_id {
         return Err(actor_error!(
@@ -861,12 +869,12 @@ fn validate_alloc_req(
 ) -> Result<AllocationRequests, ActorError> {
     let reqs: AllocationRequests = deserialize(serialized, "allocation requests")?;
 
-    let mut allocation_total = StoragePower::zero();
+    let mut allocation_total = DataCap::zero();
     for req in &reqs.requests {
-        allocation_total += StoragePower::from(req.size.0);
+        allocation_total += DataCap::from(req.size.0);
 
         // Size must be at least the policy minimum.
-        if StoragePower::from(req.size.0) < policy.minimum_verified_allocation_size {
+        if DataCap::from(req.size.0) < policy.minimum_verified_allocation_size {
             return Err(actor_error!(
                 illegal_argument,
                 "allocation size {} below minimum {}",
@@ -903,6 +911,15 @@ fn validate_alloc_req(
             ));
         }
 
+        // Allocation must expire in the future.
+        if req.expiration < curr_epoch {
+            return Err(actor_error!(
+                illegal_argument,
+                "allocation expiration epoch {} has passed current epoch {}",
+                req.expiration,
+                curr_epoch
+            ));
+        }
         // Allocation must expire soon enough.
         let max_expiration = curr_epoch + policy.maximum_verified_allocation_expiration;
         if req.expiration > max_expiration {
@@ -934,15 +951,11 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    let id = rt
-        .resolve_address(addr)
-        .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-            format!("failed to resolve provider address {}", addr)
-        })?
-        .id()
-        .unwrap();
+    let id = rt.resolve_address(addr).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+        format!("failed to resolve provider address {}", addr)
+    })?;
     let code_cid =
-        rt.get_actor_code_cid(addr).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+        rt.get_actor_code_cid(&id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
             format!("no code CID for provider {}", addr)
         })?;
     let provider_type = rt
@@ -1026,8 +1039,8 @@ impl ActorCode for Actor {
                 let res = Self::claim_allocations(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::FungibleTokenReceiverHook) => {
-                Self::fungible_token_receiver_hook(rt, params)?;
+            Some(Method::UniversalReceiverHook) => {
+                Self::universal_receiver_hook(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

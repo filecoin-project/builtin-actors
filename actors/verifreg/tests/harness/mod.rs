@@ -1,4 +1,6 @@
-use fil_fungible_token::receiver::types::TokensReceivedParams;
+use fil_fungible_token::receiver::types::{
+    FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
+};
 use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
 use fil_fungible_token::token::TOKEN_PRECISION;
 use fvm_ipld_encoding::RawBytes;
@@ -11,7 +13,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
-use num_traits::{Signed, ToPrimitive, Zero};
+use num_traits::{ToPrimitive, Zero};
 
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
@@ -327,13 +329,18 @@ impl Harness {
     pub fn receive_tokens(
         &self,
         rt: &mut MockRuntime,
-        payload: TokensReceivedParams,
+        payload: FRC46TokenReceived,
     ) -> Result<(), ActorError> {
         rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
+        let params = UniversalReceiverParams {
+            type_: FRC46_TOKEN_TYPE,
+            payload: serialize(&payload, "payload").unwrap(),
+        };
+
         rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
         let ret = rt.call::<VerifregActor>(
-            Method::FungibleTokenReceiverHook as MethodNum,
-            &RawBytes::serialize(&payload).unwrap(),
+            Method::UniversalReceiverHook as MethodNum,
+            &serialize(&params, "hook params").unwrap(),
         )?;
         assert_eq!(RawBytes::default(), ret);
         rt.verify();
@@ -389,22 +396,22 @@ pub fn make_claim_req(
         allocation_id: id,
         data: alloc.data,
         size: alloc.size,
-        sector_id,
+        sector: sector_id,
         sector_expiry,
     }
 }
 
-pub fn make_token_receiver_hook_params(
+pub fn make_receiver_hook_token_payload(
     client: ActorID,
     requests: Vec<AllocationRequest>,
-) -> TokensReceivedParams {
+) -> FRC46TokenReceived {
     let total_size: u64 = requests.iter().map(|r| r.size.0).sum();
     let payload = AllocationRequests { requests };
-    TokensReceivedParams {
+    FRC46TokenReceived {
         from: client,
         to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
         operator: client,
-        amount: TokenAmount::from(total_size) * TOKEN_PRECISION,
+        amount: TokenAmount::from_whole(total_size as i64),
         operator_data: serialize(&payload, "operator data").unwrap(),
         token_data: Default::default(),
     }

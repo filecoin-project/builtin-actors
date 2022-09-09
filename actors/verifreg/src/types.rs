@@ -119,7 +119,7 @@ pub struct SectorAllocationClaim {
     pub allocation_id: AllocationID,
     pub data: Cid,
     pub size: PaddedPieceSize,
-    pub sector_id: SectorNumber,
+    pub sector: SectorNumber,
     pub sector_expiry: ChainEpoch,
 }
 impl Cbor for SectorAllocationClaim {}
