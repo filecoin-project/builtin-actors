@@ -80,7 +80,7 @@ impl DeadlineSectorMap {
             policy,
             deadline_idx,
             partition_idx,
-            &BitField::try_from_bits(sector_numbers.iter().copied()).unwrap(), // sector_numbers may be nil to unwrap
+            &BitField::try_from_bits(sector_numbers.iter().copied())?,
         )
     }
 
@@ -106,8 +106,7 @@ impl PartitionSectorMap {
         partition_idx: u64,
         sector_numbers: Vec<u64>,
     ) -> anyhow::Result<()> {
-        self.add(partition_idx, &BitField::try_from_bits(sector_numbers).unwrap())
-        // sector_numbers maybe nil to unwrap
+        self.add(partition_idx, &BitField::try_from_bits(sector_numbers)?)
     }
     /// Records the given sector bitfield at the given partition index, merging
     /// it with any existing bitfields if necessary.
