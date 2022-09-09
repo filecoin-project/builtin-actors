@@ -111,7 +111,7 @@ mod tests {
 
         assert_eq!(stack.pop().unwrap(), U256::from(0xef));
         assert_eq!(stack.pop().unwrap(), U256::from(0xbe));
-        assert_eq!(stack.pop().unwrap(), U256::from(0xab));
+        assert_eq!(stack.pop().unwrap(), U256::from(0xad));
         assert_eq!(stack.pop().unwrap(), U256::from(0xde));
     }
 }
