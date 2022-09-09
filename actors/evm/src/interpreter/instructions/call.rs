@@ -205,11 +205,10 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     // TODO this limits addressable output to 2G (31 bits full),
     //      but it is still probably too much and we should consistently limit further.
     //      See also https://github.com/filecoin-project/ref-fvm/issues/851
-    let output_usize = if output_size.bits() < 32 {
-        output_size.as_usize()
-    } else {
-        return Err(StatusCode::InvalidMemoryAccess);
-    };
+    let output_usize = (output_size.bits() < 32)
+        .then(|| output_size.as_usize())
+        .ok_or(StatusCode::InvalidMemoryAccess)?;
+
     if output_usize > 0 {
         let output_region = get_memory_region(memory, output_offset, output_size)
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
