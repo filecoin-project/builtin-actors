@@ -97,29 +97,29 @@ mod tests {
 
         for i in 0u16..32 {
             let mut stack = Stack::new();
-            stack.push(value);
-            stack.push(U256::from(i));
+            stack.push(value).unwrap();
+            stack.push(U256::from(i)).unwrap();
 
-            byte(&mut stack);
-            let result = stack.pop();
+            byte(&mut stack).unwrap();
+            let result = stack.pop().unwrap();
 
             assert_eq!(result, U256::from(5 * (i + 1)));
         }
 
         let mut stack = Stack::new();
-        stack.push(value);
-        stack.push(U256::from(100u128));
+        stack.push(value).unwrap();
+        stack.push(U256::from(100u128)).unwrap();
 
-        byte(&mut stack);
-        let result = stack.pop();
+        byte(&mut stack).unwrap();
+        let result = stack.pop().unwrap();
         assert_eq!(result, U256::zero());
 
         let mut stack = Stack::new();
-        stack.push(value);
-        stack.push(u128_words_to_u256(1, 0));
+        stack.push(value).unwrap();
+        stack.push(u128_words_to_u256(1, 0)).unwrap();
 
-        byte(&mut stack);
-        let result = stack.pop();
+        byte(&mut stack).unwrap();
+        let result = stack.pop().unwrap();
         assert_eq!(result, U256::zero());
     }
 }
