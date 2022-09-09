@@ -10,7 +10,7 @@ use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::SectorID;
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::HAMT_BIT_WIDTH;
 
 use fil_actors_runtime::{
@@ -112,7 +112,7 @@ impl State {
         let allowance = verifiers
             .get(&verifier.to_bytes())
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier")?;
-        Ok(allowance.map(|a| a.0.clone() as DataCap)) // TODO: can I avoid the clone?
+        Ok(allowance.map(|a| a.0.clone() as DataCap))
     }
 
     pub fn load_verifiers<'a, BS: Blockstore>(
@@ -146,20 +146,62 @@ impl State {
         Ok(())
     }
 
+    /// Inserts a batch of allocations under a single client address.
+    /// The allocations are assigned sequential IDs starting from the next available.
+    pub fn insert_allocations<'a, BS: Blockstore, I>(
+        &mut self,
+        store: &'a BS,
+        client: &Address,
+        new_allocs: I,
+    ) -> Result<(), ActorError>
+    where
+        I: Iterator<Item = Allocation>,
+    {
+        let mut allocs = self.load_allocs(store)?;
+        // These local variables allow the id-associating map closure to move the allocations
+        // from the iterator rather than clone, without moving self.
+        let first_id = self.next_allocation_id;
+        let mut count = 0;
+        let count_ref = &mut count;
+        allocs
+            .put_many(
+                *client,
+                new_allocs.map(move |a| {
+                    let id = first_id + *count_ref;
+                    *count_ref += 1;
+                    (id, a)
+                }),
+            )
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to put allocations")?;
+        self.save_allocs(&mut allocs)?;
+        self.next_allocation_id += count;
+        Ok(())
+    }
+
     pub fn load_claims<'a, BS: Blockstore>(
         &self,
         store: &'a BS,
     ) -> Result<MapMap<'a, BS, Claim, Address, ClaimID>, ActorError> {
         MapMap::<BS, Claim, Address, ClaimID>::from_root(
             store,
-            &self.allocations,
+            &self.claims,
             HAMT_BIT_WIDTH,
             HAMT_BIT_WIDTH,
         )
         .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load claims table")
     }
+
+    pub fn save_claims<'a, BS: Blockstore>(
+        &mut self,
+        claims: &mut MapMap<'a, BS, Claim, Address, ClaimID>,
+    ) -> Result<(), ActorError> {
+        self.claims = claims
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims table")?;
+        Ok(())
+    }
 }
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
 pub struct Claim {
     // The provider storing the data (from allocation).
     pub provider: Address,
@@ -176,7 +218,7 @@ pub struct Claim {
     // The epoch at which the (first range of the) piece was committed.
     pub term_start: ChainEpoch,
     // ID of the provider's sector in which the data is committed.
-    pub sector: SectorID,
+    pub sector: SectorNumber,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]

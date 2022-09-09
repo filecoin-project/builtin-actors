@@ -10,7 +10,7 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::SectorID;
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::StoragePower;
 
 pub type AllocationID = u64;
@@ -104,41 +104,70 @@ impl AddrPairKey {
     }
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveExpiredAllocationsParams {
     pub client: Address,
     pub allocation_ids: Vec<AllocationID>,
 }
+impl Cbor for RemoveExpiredAllocationsParams {}
 
 pub type RemoveExpiredAllocationsReturn = BatchReturn;
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorAllocationClaim {
     pub client: Address,
     pub allocation_id: AllocationID,
     pub data: Cid,
     pub size: PaddedPieceSize,
-    pub sector_id: SectorID,
+    pub sector: SectorNumber,
     pub sector_expiry: ChainEpoch,
 }
+impl Cbor for SectorAllocationClaim {}
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsParams {
     pub sectors: Vec<SectorAllocationClaim>,
 }
+impl Cbor for ClaimAllocationsParams {}
 
 pub type ClaimAllocationsReturn = BatchReturn;
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimTerm {
     provider: Address,
     claim_id: ClaimID,
     term_max: ChainEpoch,
 }
+impl Cbor for ClaimTerm {}
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ExtendClaimTermsParams {
     pub claims: Vec<ClaimTerm>,
 }
+impl Cbor for ExtendClaimTermsParams {}
 
 pub type ExtendClaimTermsReturn = BatchReturn;
+
+//
+// Receiver hook payload
+//
+
+// See Allocation state for description of field semantics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct AllocationRequest {
+    pub provider: Address,
+    pub data: Cid,
+    pub size: PaddedPieceSize,
+    pub term_min: ChainEpoch,
+    pub term_max: ChainEpoch,
+    pub expiration: ChainEpoch,
+}
+impl Cbor for AllocationRequest {}
+
+/// Operator-data payload for a datacap token transfer receiver hook specifying an allocation.
+/// The implied client is the sender of the datacap.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct AllocationRequests {
+    pub requests: Vec<AllocationRequest>,
+}
+impl Cbor for AllocationRequests {}
