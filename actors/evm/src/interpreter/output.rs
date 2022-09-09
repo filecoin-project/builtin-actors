@@ -119,3 +119,9 @@ impl From<RTActorError> for StatusCode {
         Self::ActorError(ae)
     }
 }
+
+impl From<fvm_ipld_encoding::Error> for StatusCode {
+    fn from(err: fvm_ipld_encoding::Error) -> Self {
+        Self::InternalError(format!("IPLD error: {:?}", &err))
+    }
+}
