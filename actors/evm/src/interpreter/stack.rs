@@ -37,7 +37,7 @@ impl Stack {
         if self.d > 0 {
             self.d -= 1;
             //Ok(self.sk[self.d])
-            Ok(unsafe{ *self.sk.get_unchecked(self.d) })
+            Ok(unsafe { *self.sk.get_unchecked(self.d) })
         } else {
             Err(StatusCode::StackUnderflow)
         }
@@ -129,7 +129,11 @@ impl Stack {
     ) -> Result<R, StatusCode> {
         if self.d >= 3 {
             unsafe {
-                let r = f(*self.sk.get_unchecked(self.d - 1), *self.sk.get_unchecked(self.d - 2), *self.sk.get_unchecked(self.d - 3));
+                let r = f(
+                    *self.sk.get_unchecked(self.d - 1),
+                    *self.sk.get_unchecked(self.d - 2),
+                    *self.sk.get_unchecked(self.d - 3),
+                );
                 self.d -= 3;
                 r
             }
@@ -156,10 +160,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn apply1<F: FnOnce(U256) -> U256>(
-        &mut self,
-        f: F,
-    ) -> Result<(), StatusCode> {
+    pub fn apply1<F: FnOnce(U256) -> U256>(&mut self, f: F) -> Result<(), StatusCode> {
         if self.d >= 1 {
             unsafe {
                 let r = f(*self.sk.get_unchecked(self.d - 1));
@@ -172,10 +173,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn apply2<F: FnOnce(U256, U256) -> U256>(
-        &mut self,
-        f: F,
-    ) -> Result<(), StatusCode> {
+    pub fn apply2<F: FnOnce(U256, U256) -> U256>(&mut self, f: F) -> Result<(), StatusCode> {
         if self.d >= 2 {
             unsafe {
                 let r = f(*self.sk.get_unchecked(self.d - 1), *self.sk.get_unchecked(self.d - 2));
@@ -189,13 +187,14 @@ impl Stack {
     }
 
     #[inline]
-    pub fn apply3<F: FnOnce(U256, U256, U256) -> U256>(
-        &mut self,
-        f: F,
-    ) -> Result<(), StatusCode> {
+    pub fn apply3<F: FnOnce(U256, U256, U256) -> U256>(&mut self, f: F) -> Result<(), StatusCode> {
         if self.d >= 3 {
             unsafe {
-                let r = f(*self.sk.get_unchecked(self.d - 1), *self.sk.get_unchecked(self.d - 2), *self.sk.get_unchecked(self.d - 3));
+                let r = f(
+                    *self.sk.get_unchecked(self.d - 1),
+                    *self.sk.get_unchecked(self.d - 2),
+                    *self.sk.get_unchecked(self.d - 3),
+                );
                 *self.sk.get_unchecked_mut(self.d - 3) = r;
                 self.d -= 2;
             }

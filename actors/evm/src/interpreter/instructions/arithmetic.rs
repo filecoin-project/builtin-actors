@@ -7,63 +7,37 @@ use {
 
 #[inline]
 pub fn add(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| {
-        a.overflowing_add(b).0
-    })
+    stack.apply2(|a, b| a.overflowing_add(b).0)
 }
 
 #[inline]
 pub fn mul(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| {
-        a.overflowing_mul(b).0
-    })
+    stack.apply2(|a, b| a.overflowing_mul(b).0)
 }
 
 #[inline]
 pub fn sub(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| {
-        a.overflowing_sub(b).0
-    })
+    stack.apply2(|a, b| a.overflowing_sub(b).0)
 }
 
 #[inline]
 pub fn div(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| {
-        if b.is_zero() {
-            b
-        } else {
-            a / b
-        }
-    })
+    stack.apply2(|a, b| if b.is_zero() { b } else { a / b })
 }
 
 #[inline]
 pub fn sdiv(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| {
-        uints::i256_div(a, b)
-    })
+    stack.apply2(|a, b| uints::i256_div(a, b))
 }
 
 #[inline]
 pub fn modulo(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| {
-        if b.is_zero() {
-            b
-        } else {
-            a % b
-        }
-    })
+    stack.apply2(|a, b| if b.is_zero() { b } else { a % b })
 }
 
 #[inline]
 pub fn smod(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| {
-        if b.is_zero() {
-            b
-        } else {
-            uints::i256_mod(a, b)
-        }
-    })
+    stack.apply2(|a, b| if b.is_zero() { b } else { uints::i256_mod(a, b) })
 }
 
 #[inline]
