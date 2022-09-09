@@ -30,7 +30,7 @@ pub fn calldataload(state: &mut ExecutionState) -> Result<(), StatusCode> {
     state.stack.apply1(|index| {
         let input_len = state.input_data.len();
 
-        if index > U256::from(input_len) {
+        if index > &U256::from(input_len) {
             U256::zero()
         } else {
             let index_usize = index.as_usize();
@@ -51,18 +51,14 @@ pub fn calldatasize(state: &mut ExecutionState) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    state.stack.with::<3, _, _>(|args| {
-        let mem_index = args[2];
-        let input_index = args[1];
-        let size = args[0];
-
+    state.stack.with3(|mem_index, input_index, size| {
         let region = get_memory_region(&mut state.memory, mem_index, size)
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
         if let Some(region) = &region {
             let input_len = U256::from(state.input_data.len());
-            let src = core::cmp::min(input_len, input_index);
-            let copy_size = core::cmp::min(size, input_len - src).as_usize();
+            let src = core::cmp::min(&input_len, input_index);
+            let copy_size = core::cmp::min(size, &(input_len - src)).as_usize();
             let src = src.as_usize();
 
             if copy_size > 0 {
@@ -86,16 +82,12 @@ pub fn codesize(stack: &mut Stack, code: &[u8]) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCode> {
-    state.stack.with::<3, _, _>(|args| {
-        let mem_index = args[2];
-        let input_index = args[1];
-        let size = args[0];
-
+    state.stack.with3(|mem_index, input_index, size| {
         let region = get_memory_region(&mut state.memory, mem_index, size)
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
         if let Some(region) = region {
-            let src = core::cmp::min(U256::from(code.len()), input_index).as_usize();
+            let src = core::cmp::min(&U256::from(code.len()), input_index).as_usize();
             let copy_size = core::cmp::min(region.size.get(), code.len() - src);
 
             if copy_size > 0 {
@@ -132,7 +124,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         })?,
     };
 
-    let input_region = get_memory_region(memory, input_offset, input_size)
+    let input_region = get_memory_region(memory, &input_offset, &input_size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     let mut result = {
@@ -205,7 +197,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         return Err(StatusCode::InvalidMemoryAccess);
     };
     if output_usize > 0 {
-        let output_region = get_memory_region(memory, output_offset, output_size)
+        let output_region = get_memory_region(memory, &output_offset, &output_size)
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
         let output_data = output_region
             .map(|MemoryRegion { offset, size }| &mut memory[offset..][..size.get()])

@@ -6,7 +6,7 @@ use {
 #[inline]
 pub fn byte(stack: &mut Stack) -> Result<(), StatusCode> {
     stack.apply2(|i, x| {
-        if i >= U256::from(32) {
+        if i >= &U256::from(32) {
             return U256::zero();
         }
 
@@ -26,7 +26,7 @@ pub fn byte(stack: &mut Stack) -> Result<(), StatusCode> {
 #[inline]
 pub fn shl(stack: &mut Stack) -> Result<(), StatusCode> {
     stack.apply2(|shift, value| {
-        if value.is_zero() || shift >= U256::from(256) {
+        if value.is_zero() || shift >= &U256::from(256) {
             U256::zero()
         } else {
             value << shift
@@ -37,7 +37,7 @@ pub fn shl(stack: &mut Stack) -> Result<(), StatusCode> {
 #[inline]
 pub fn shr(stack: &mut Stack) -> Result<(), StatusCode> {
     stack.apply2(|shift, value| {
-        if value.is_zero() || shift >= U256::from(256) {
+        if value.is_zero() || shift >= &U256::from(256) {
             U256::zero()
         } else {
             value >> shift
@@ -47,15 +47,16 @@ pub fn shr(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn sar(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|shift, mut value| {
-        let value_sign = uints::i256_sign::<true>(&mut value);
+    stack.apply2(|shift, value| {
+        let value_sign = uints::i256_sign(value);
+        let value = if value_sign == uints::Sign::Minus { uints::two_compl(value) } else { *value };
 
-        if value.is_zero() || shift >= U256::from(256) {
+        if value.is_zero() || shift >= &U256::from(256) {
             match value_sign {
                 // value is 0 or >=1, pushing 0
                 uints::Sign::Plus | uints::Sign::Zero => U256::zero(),
                 // value is <0, pushing -1
-                uints::Sign::Minus => uints::two_compl(U256::from(1)),
+                uints::Sign::Minus => uints::two_compl(&U256::from(1)),
             }
         } else {
             let shift = shift.as_u128();
@@ -66,7 +67,7 @@ pub fn sar(stack: &mut Stack) -> Result<(), StatusCode> {
                     let shifted = ((value.overflowing_sub(U256::from(1)).0) >> shift)
                         .overflowing_add(U256::from(1))
                         .0;
-                    uints::two_compl(shifted)
+                    uints::two_compl(&shifted)
                 }
             }
         }

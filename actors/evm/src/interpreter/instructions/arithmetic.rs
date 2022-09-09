@@ -7,44 +7,44 @@ use {
 
 #[inline]
 pub fn add(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| a.overflowing_add(b).0)
+    stack.apply2(|a, b| a.overflowing_add(*b).0)
 }
 
 #[inline]
 pub fn mul(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| a.overflowing_mul(b).0)
+    stack.apply2(|a, b| a.overflowing_mul(*b).0)
 }
 
 #[inline]
 pub fn sub(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| a.overflowing_sub(b).0)
+    stack.apply2(|a, b| a.overflowing_sub(*b).0)
 }
 
 #[inline]
 pub fn div(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| if b.is_zero() { b } else { a / b })
+    stack.apply2(|a, b| if b.is_zero() { *b } else { a / b })
 }
 
 #[inline]
 pub fn sdiv(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(uints::i256_div)
+    stack.apply2(|a, b| uints::i256_div(a, b))
 }
 
 #[inline]
 pub fn modulo(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| if b.is_zero() { b } else { a % b })
+    stack.apply2(|a, b| if b.is_zero() { *b } else { a % b })
 }
 
 #[inline]
 pub fn smod(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|a, b| if b.is_zero() { b } else { uints::i256_mod(a, b) })
+    stack.apply2(|a, b| if b.is_zero() { *b } else { uints::i256_mod(a, b) })
 }
 
 #[inline]
 pub fn addmod(stack: &mut Stack) -> Result<(), StatusCode> {
     stack.apply3(|a, b, c| {
         if c.is_zero() {
-            c
+            *c
         } else {
             let mut a_be = [0u8; 32];
             let mut b_be = [0u8; 32];
@@ -70,7 +70,7 @@ pub fn addmod(stack: &mut Stack) -> Result<(), StatusCode> {
 pub fn mulmod(stack: &mut Stack) -> Result<(), StatusCode> {
     stack.apply3(|a, b, c| {
         if c.is_zero() {
-            c
+            *c
         } else {
             let mut a_be = [0u8; 32];
             let mut b_be = [0u8; 32];
@@ -95,30 +95,31 @@ pub fn mulmod(stack: &mut Stack) -> Result<(), StatusCode> {
 #[inline]
 pub fn signextend(stack: &mut Stack) -> Result<(), StatusCode> {
     stack.apply2(|a, b| {
-        if a < U256::from(32) {
+        if a < &U256::from(32) {
             let bit_index = (8 * uints::u256_low(a) as u8 + 7) as u16;
             let hi = uints::u256_high(b);
             let lo = uints::u256_low(b);
             let bit = if bit_index > 0x7f { hi } else { lo } & (1 << (bit_index % 128)) != 0;
             let mask = (U256::from(1) << bit_index) - U256::from(1);
             if bit {
-                b | !mask
+                *b | !mask
             } else {
-                b & mask
+                *b & mask
             }
         } else {
-            b
+            *b
         }
     })
 }
 
 #[inline]
 pub fn exp(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply2(|mut base, mut power| {
+    stack.apply2(|b, pwr| {
+        let mut power = *pwr;
+        let mut base = *b;
         let mut v = U256::from(1);
-
-        while power > U256::zero() {
-            if (power & U256::from(1)) != U256::zero() {
+        while !power.is_zero() {
+            if !(power & U256::from(1)).is_zero() {
                 v = v.overflowing_mul(base).0;
             }
             power >>= 1;

@@ -29,10 +29,10 @@ pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
         let region = get_memory_region(&mut state.memory, mem_index, size)
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-        if input_index > U256::from(state.return_data.len()) {
+        let src = input_index.as_usize();
+        if src > state.return_data.len() {
             return Err(StatusCode::InvalidMemoryAccess);
         }
-        let src = input_index.as_usize();
 
         if src + region.as_ref().map(|r| r.size.get()).unwrap_or(0) > state.return_data.len() {
             return Err(StatusCode::InvalidMemoryAccess);
@@ -76,7 +76,7 @@ pub fn jump(stack: &mut Stack, bytecode: &Bytecode) -> Result<usize, StatusCode>
 pub fn jumpi(stack: &mut Stack, bytecode: &Bytecode) -> Result<Option<usize>, StatusCode> {
     stack.with2(|dest, cond| {
         if !cond.is_zero() {
-            let dest = jump_target(&dest, bytecode)?;
+            let dest = jump_target(dest, bytecode)?;
             Ok(Some(dest))
         } else {
             Ok(None)

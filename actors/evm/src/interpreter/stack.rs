@@ -91,13 +91,13 @@ impl Stack {
     }
 
     #[inline]
-    pub fn with1<R, F: FnOnce(U256) -> Result<R, StatusCode>>(
+    pub fn with1<R, F: FnOnce(&U256) -> Result<R, StatusCode>>(
         &mut self,
         f: F,
     ) -> Result<R, StatusCode> {
         if self.d >= 1 {
             unsafe {
-                let r = f(*self.sk.get_unchecked(self.d - 1));
+                let r = f(self.sk.get_unchecked(self.d - 1));
                 self.d -= 1;
                 r
             }
@@ -107,13 +107,13 @@ impl Stack {
     }
 
     #[inline]
-    pub fn with2<R, F: FnOnce(U256, U256) -> Result<R, StatusCode>>(
+    pub fn with2<R, F: FnOnce(&U256, &U256) -> Result<R, StatusCode>>(
         &mut self,
         f: F,
     ) -> Result<R, StatusCode> {
         if self.d >= 2 {
             unsafe {
-                let r = f(*self.sk.get_unchecked(self.d - 1), *self.sk.get_unchecked(self.d - 2));
+                let r = f(self.sk.get_unchecked(self.d - 1), self.sk.get_unchecked(self.d - 2));
                 self.d -= 2;
                 r
             }
@@ -123,16 +123,16 @@ impl Stack {
     }
 
     #[inline]
-    pub fn with3<R, F: FnOnce(U256, U256, U256) -> Result<R, StatusCode>>(
+    pub fn with3<R, F: FnOnce(&U256, &U256, &U256) -> Result<R, StatusCode>>(
         &mut self,
         f: F,
     ) -> Result<R, StatusCode> {
         if self.d >= 3 {
             unsafe {
                 let r = f(
-                    *self.sk.get_unchecked(self.d - 1),
-                    *self.sk.get_unchecked(self.d - 2),
-                    *self.sk.get_unchecked(self.d - 3),
+                    self.sk.get_unchecked(self.d - 1),
+                    self.sk.get_unchecked(self.d - 2),
+                    self.sk.get_unchecked(self.d - 3),
                 );
                 self.d -= 3;
                 r
@@ -160,10 +160,10 @@ impl Stack {
     }
 
     #[inline]
-    pub fn apply1<F: FnOnce(U256) -> U256>(&mut self, f: F) -> Result<(), StatusCode> {
+    pub fn apply1<F: FnOnce(&U256) -> U256>(&mut self, f: F) -> Result<(), StatusCode> {
         if self.d >= 1 {
             unsafe {
-                let r = f(*self.sk.get_unchecked(self.d - 1));
+                let r = f(self.sk.get_unchecked(self.d - 1));
                 *self.sk.get_unchecked_mut(self.d - 1) = r;
             }
             Ok(())
@@ -173,10 +173,10 @@ impl Stack {
     }
 
     #[inline]
-    pub fn apply2<F: FnOnce(U256, U256) -> U256>(&mut self, f: F) -> Result<(), StatusCode> {
+    pub fn apply2<F: FnOnce(&U256, &U256) -> U256>(&mut self, f: F) -> Result<(), StatusCode> {
         if self.d >= 2 {
             unsafe {
-                let r = f(*self.sk.get_unchecked(self.d - 1), *self.sk.get_unchecked(self.d - 2));
+                let r = f(self.sk.get_unchecked(self.d - 1), self.sk.get_unchecked(self.d - 2));
                 *self.sk.get_unchecked_mut(self.d - 2) = r;
                 self.d -= 1;
             }
@@ -187,13 +187,16 @@ impl Stack {
     }
 
     #[inline]
-    pub fn apply3<F: FnOnce(U256, U256, U256) -> U256>(&mut self, f: F) -> Result<(), StatusCode> {
+    pub fn apply3<F: FnOnce(&U256, &U256, &U256) -> U256>(
+        &mut self,
+        f: F,
+    ) -> Result<(), StatusCode> {
         if self.d >= 3 {
             unsafe {
                 let r = f(
-                    *self.sk.get_unchecked(self.d - 1),
-                    *self.sk.get_unchecked(self.d - 2),
-                    *self.sk.get_unchecked(self.d - 3),
+                    self.sk.get_unchecked(self.d - 1),
+                    self.sk.get_unchecked(self.d - 2),
+                    self.sk.get_unchecked(self.d - 3),
                 );
                 *self.sk.get_unchecked_mut(self.d - 3) = r;
                 self.d -= 2;

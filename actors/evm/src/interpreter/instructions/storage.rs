@@ -25,10 +25,10 @@ pub fn sstore<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r mut System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    let (location, value) = state.stack.with::<2, _, _>(|args| Ok((args[1], args[0])))?;
+    state.stack.with2(|location, value| {
+        let opt_value = if value.is_zero() { None } else { Some(*value) };
 
-    let opt_value = if value.is_zero() { None } else { Some(value) };
-
-    platform.set_storage(location, opt_value)?;
-    Ok(())
+        platform.set_storage(*location, opt_value)?;
+        Ok(())
+    })
 }
