@@ -149,7 +149,7 @@ fn deadline_sector_map_overflow() {
     let mut deadline_sector_map = DeadlineSectorMap::new();
     (0..deadline_count).for_each(|deadline_index| {
         deadline_sector_map
-            .add(&policy, deadline_index, 0, &create_bitfield_sequence(0, u64::MAX))
+            .add(&policy, deadline_index, 0, create_bitfield_sequence(0, u64::MAX))
             .unwrap();
     });
 
@@ -163,7 +163,7 @@ fn partition_sector_map_overflow() {
     let partition_count = 2;
 
     (0..partition_count).for_each(|partition_index| {
-        partition_sector_map.add(partition_index, &create_bitfield_sequence(0, u64::MAX)).unwrap();
+        partition_sector_map.add(partition_index, create_bitfield_sequence(0, u64::MAX)).unwrap();
     });
 
     assert!(partition_sector_map.count().is_err());

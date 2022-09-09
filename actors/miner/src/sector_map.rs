@@ -59,7 +59,7 @@ impl DeadlineSectorMap {
         policy: &Policy,
         deadline_idx: u64,
         partition_idx: u64,
-        sector_numbers: &BitField,
+        sector_numbers: BitField,
     ) -> anyhow::Result<()> {
         if deadline_idx >= policy.wpost_period_deadlines {
             return Err(anyhow!("invalid deadline {}", deadline_idx));
@@ -80,7 +80,7 @@ impl DeadlineSectorMap {
             policy,
             deadline_idx,
             partition_idx,
-            &BitField::try_from_bits(sector_numbers.iter().copied())?,
+            BitField::try_from_bits(sector_numbers.iter().copied())?,
         )
     }
 
@@ -106,17 +106,16 @@ impl PartitionSectorMap {
         partition_idx: u64,
         sector_numbers: Vec<u64>,
     ) -> anyhow::Result<()> {
-        self.add(partition_idx, &BitField::try_from_bits(sector_numbers)?)
+        self.add(partition_idx, BitField::try_from_bits(sector_numbers)?)
     }
     /// Records the given sector bitfield at the given partition index, merging
     /// it with any existing bitfields if necessary.
-    pub fn add(&mut self, partition_idx: u64, sector_numbers: &BitField) -> anyhow::Result<()> {
+    pub fn add(&mut self, partition_idx: u64, sector_numbers: BitField) -> anyhow::Result<()> {
         match self.0.get_mut(&partition_idx) {
             Some(old_sector_numbers) => {
-                *old_sector_numbers |= sector_numbers;
+                *old_sector_numbers |= &sector_numbers;
             }
             None => {
-                let sector_numbers = sector_numbers.clone();
                 self.0.insert(partition_idx, sector_numbers);
             }
         }

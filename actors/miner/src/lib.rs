@@ -2448,7 +2448,7 @@ impl Actor {
             let deadline = term.deadline;
             let partition = term.partition;
 
-            to_process.add(rt.policy(), deadline, partition, &term.sectors).map_err(|e| {
+            to_process.add(rt.policy(), deadline, partition, term.sectors).map_err(|e| {
                 actor_error!(
                     illegal_argument,
                     "failed to process deadline {}, partition {}: {}",
@@ -2599,7 +2599,7 @@ impl Actor {
             let deadline = term.deadline;
             let partition = term.partition;
 
-            to_process.add(rt.policy(), deadline, partition, &term.sectors).map_err(|e| {
+            to_process.add(rt.policy(), deadline, partition, term.sectors).map_err(|e| {
                 actor_error!(
                     illegal_argument,
                     "failed to process deadline {}, partition {}: {}",
@@ -2742,7 +2742,7 @@ impl Actor {
             let deadline = term.deadline;
             let partition = term.partition;
 
-            to_process.add(rt.policy(), deadline, partition, &term.sectors).map_err(|e| {
+            to_process.add(rt.policy(), deadline, partition, term.sectors).map_err(|e| {
                 actor_error!(
                     illegal_argument,
                     "failed to process deadline {}, partition {}: {}",

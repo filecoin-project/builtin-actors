@@ -1031,7 +1031,7 @@ impl Deadline {
 
             // Record active sectors for marking faults.
             let active = partition_snapshot.active_sectors();
-            disputed_sectors.add(part_idx, &active)?;
+            disputed_sectors.add(part_idx, active)?;
 
             // Record disputed power for penalties.
             //
