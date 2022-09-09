@@ -5,10 +5,7 @@ use {
 
 #[inline]
 pub fn byte(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let i = args[1];
-        let x = args[0];
-
+    stack.apply2(|i, x| {
         if i >= U256::from(32) {
             return U256::zero();
         }
@@ -28,10 +25,7 @@ pub fn byte(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn shl(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let shift = args[1];
-        let value = args[0];
-
+    stack.apply2(|shift, value| {
         if value.is_zero() || shift >= U256::from(256) {
             U256::zero()
         } else {
@@ -42,10 +36,7 @@ pub fn shl(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn shr(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let shift = args[1];
-        let value = args[0];
-
+    stack.apply2(|shift, value| {
         if value.is_zero() || shift >= U256::from(256) {
             U256::zero()
         } else {
@@ -56,10 +47,7 @@ pub fn shr(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn sar(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let shift = args[1];
-        let mut value = args[0];
-
+    stack.apply2(|shift, mut value| {
         let value_sign = uints::i256_sign::<true>(&mut value);
 
         if value.is_zero() || shift >= U256::from(256) {

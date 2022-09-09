@@ -27,8 +27,7 @@ pub enum CallKind {
 
 #[inline]
 pub fn calldataload(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    state.stack.apply::<1, _>(|args| {
-        let index = args[0];
+    state.stack.apply1(|index| {
         let input_len = state.input_data.len();
 
         if index > U256::from(input_len) {

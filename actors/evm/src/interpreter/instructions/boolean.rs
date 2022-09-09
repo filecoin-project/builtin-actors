@@ -5,10 +5,7 @@ use {
 
 #[inline]
 pub fn lt(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let a = args[1];
-        let b = args[0];
-
+    stack.apply2(|a, b| {
         if a.lt(&b) {
             U256::from(1)
         } else {
@@ -19,10 +16,7 @@ pub fn lt(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn gt(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let a = args[1];
-        let b = args[0];
-
+    stack.apply2(|a, b| {
         if a.gt(&b) {
             U256::from(1)
         } else {
@@ -33,10 +27,7 @@ pub fn gt(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn slt(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let a = args[1];
-        let b = args[0];
-
+    stack.apply2(|a, b| {
         if uints::i256_cmp(a, b) == Ordering::Less {
             U256::from(1)
         } else {
@@ -47,10 +38,7 @@ pub fn slt(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn sgt(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let a = args[1];
-        let b = args[0];
-
+    stack.apply2(|a, b| {
         if uints::i256_cmp(a, b) == Ordering::Greater {
             U256::from(1)
         } else {
@@ -61,10 +49,7 @@ pub fn sgt(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn eq(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let a = args[1];
-        let b = args[0];
-
+    stack.apply2(|a, b| {
         if a.eq(&b) {
             U256::from(1)
         } else {
@@ -75,8 +60,7 @@ pub fn eq(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn iszero(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<1, _>(|args| {
-        let a = args[0];
+    stack.apply1(|a| {
         if a.is_zero() {
             U256::from(1)
         } else {
@@ -87,35 +71,28 @@ pub fn iszero(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn and(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let a = args[1];
-        let b = args[0];
+    stack.apply2(|a, b| {
         a & b
     })
 }
 
 #[inline]
 pub fn or(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let a = args[1];
-        let b = args[0];
+    stack.apply2(|a, b| {
         a | b
     })
 }
 
 #[inline]
 pub fn xor(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2, _>(|args| {
-        let a = args[1];
-        let b = args[0];
+    stack.apply2(|a, b| {
         a ^ b
     })
 }
 
 #[inline]
 pub fn not(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<1, _>(|args| {
-        let v = args[0];
+    stack.apply1(|v| {
         !v
     })
 }

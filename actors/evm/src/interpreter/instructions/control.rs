@@ -6,10 +6,7 @@ use {
 
 #[inline]
 pub fn ret(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    state.stack.with::<2, _, _>(|args| {
-        let offset = args[1];
-        let size = args[0];
-
+    state.stack.with2(|offset, size| {
         if let Some(region) = super::memory::get_memory_region(&mut state.memory, offset, size)
             .map_err(|_| StatusCode::InvalidMemoryAccess)?
         {
@@ -28,11 +25,7 @@ pub fn returndatasize(state: &mut ExecutionState) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    state.stack.with::<3, _, _>(|args| {
-        let mem_index = args[2];
-        let input_index = args[1];
-        let size = args[0];
-
+    state.stack.with3(|mem_index, input_index, size| {
         let region = get_memory_region(&mut state.memory, mem_index, size)
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
@@ -81,9 +74,7 @@ pub fn jump(stack: &mut Stack, bytecode: &Bytecode) -> Result<usize, StatusCode>
 
 #[inline]
 pub fn jumpi(stack: &mut Stack, bytecode: &Bytecode) -> Result<Option<usize>, StatusCode> {
-    stack.with::<2, _, _>(|args| {
-        let dest = args[1];
-        let cond = args[0];
+    stack.with2(|dest, cond| {
         if !cond.is_zero() {
             let dest = jump_target(&dest, bytecode)?;
             Ok(Some(dest))
