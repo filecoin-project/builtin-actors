@@ -27,7 +27,7 @@ pub enum CallKind {
 
 #[inline]
 pub fn calldataload(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    state.stack.apply::<1,_>(|args| {
+    state.stack.apply::<1, _>(|args| {
         let index = args[0];
         let input_len = state.input_data.len();
 
@@ -52,7 +52,7 @@ pub fn calldatasize(state: &mut ExecutionState) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    state.stack.with::<3,_,_>(|args| {
+    state.stack.with::<3, _, _>(|args| {
         let mem_index = args[2];
         let input_index = args[1];
         let size = args[0];
@@ -87,7 +87,7 @@ pub fn codesize(stack: &mut Stack, code: &[u8]) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCode> {
-    state.stack.with::<3,_,_>(|args| {
+    state.stack.with::<3, _, _>(|args| {
         let mem_index = args[2];
         let input_index = args[1];
         let size = args[0];
@@ -124,29 +124,13 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     // NOTE gas is currently ignored as FVM's send doesn't allow the caller to specify a gas
     //      limit (external invocation gas limit applies). This may changed in the future.
     let (_gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
-        CallKind::Call | CallKind::CallCode =>
-            stack.with::<7,_,_>(|args| {
-                Ok((args[6],
-                    args[5],
-                    args[4],
-                    args[3],
-                    args[2],
-                    args[1],
-                    args[0],
-                ))
-            })?,
+        CallKind::Call | CallKind::CallCode => stack.with::<7, _, _>(|args| {
+            Ok((args[6], args[5], args[4], args[3], args[2], args[1], args[0]))
+        })?,
 
-        CallKind::DelegateCall | CallKind::StaticCall =>
-            stack.with::<6,_,_>(|args| {
-                Ok((args[5],
-                    args[4],
-                    U256::zero(),
-                    args[3],
-                    args[2],
-                    args[1],
-                    args[0],
-                ))
-            })?
+        CallKind::DelegateCall | CallKind::StaticCall => stack.with::<6, _, _>(|args| {
+            Ok((args[5], args[4], U256::zero(), args[3], args[2], args[1], args[0]))
+        })?,
     };
 
     let input_region = get_memory_region(memory, input_offset, input_size)

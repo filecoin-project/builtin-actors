@@ -7,9 +7,7 @@ use {
 };
 
 pub fn keccak256(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let (index, size) = state.stack.with::<2,_,_>(|args| {
-        Ok((args[1], args[0]))
-    })?;
+    let (index, size) = state.stack.with::<2, _, _>(|args| Ok((args[1], args[0])))?;
 
     let region = get_memory_region(&mut state.memory, index, size) //
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;

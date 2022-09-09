@@ -6,7 +6,7 @@ use {
 
 #[inline]
 pub fn ret(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    state.stack.with::<2,_,_>(|args| {
+    state.stack.with::<2, _, _>(|args| {
         let offset = args[1];
         let size = args[0];
 
@@ -22,13 +22,13 @@ pub fn ret(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn returndatasize(state: &mut ExecutionState) -> Result<(), StatusCode>  {
+pub fn returndatasize(state: &mut ExecutionState) -> Result<(), StatusCode> {
     state.stack.push(U256::from(state.return_data.len()))
 }
 
 #[inline]
 pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    state.stack.with::<3,_,_>(|args| {
+    state.stack.with::<3, _, _>(|args| {
         let mem_index = args[2];
         let input_index = args[1];
         let size = args[0];
@@ -55,12 +55,12 @@ pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn gas(_state: &mut ExecutionState)  -> Result<(), StatusCode> {
+pub fn gas(_state: &mut ExecutionState) -> Result<(), StatusCode> {
     todo!()
 }
 
 #[inline]
-pub fn pc(stack: &mut Stack, pc: usize)  -> Result<(), StatusCode> {
+pub fn pc(stack: &mut Stack, pc: usize) -> Result<(), StatusCode> {
     stack.push(U256::from(pc))
 }
 
@@ -79,10 +79,9 @@ pub fn jump(stack: &mut Stack, bytecode: &Bytecode) -> Result<usize, StatusCode>
     jump_target(&dest, bytecode)
 }
 
-
 #[inline]
 pub fn jumpi(stack: &mut Stack, bytecode: &Bytecode) -> Result<Option<usize>, StatusCode> {
-    stack.with::<2,_,_>(|args| {
+    stack.with::<2, _, _>(|args| {
         let dest = args[1];
         let cond = args[0];
         if !cond.is_zero() {

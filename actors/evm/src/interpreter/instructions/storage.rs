@@ -25,9 +25,7 @@ pub fn sstore<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r mut System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    let (location, value) = state.stack.with::<2,_,_>(|args| {
-        Ok((args[1], args[0]))
-    })?;
+    let (location, value) = state.stack.with::<2, _, _>(|args| Ok((args[1], args[0])))?;
 
     let opt_value = if value.is_zero() { None } else { Some(value) };
 

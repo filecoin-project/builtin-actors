@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use {crate::interpreter::U256, crate::interpreter::StatusCode};
+use {crate::interpreter::StatusCode, crate::interpreter::U256};
 
 /// Ethereum Yellow Paper (9.1)
 pub const STACK_SIZE: usize = 1024;
@@ -15,10 +15,7 @@ pub struct Stack {
 impl Stack {
     #[inline]
     pub const fn new() -> Self {
-        Stack {
-            sk: [U256::zero(); STACK_SIZE],
-            d: 0,
-        }
+        Stack { sk: [U256::zero(); STACK_SIZE], d: 0 }
     }
 
     #[inline]
@@ -44,9 +41,9 @@ impl Stack {
 
     #[inline]
     pub fn dup(&mut self, i: usize) -> Result<(), StatusCode> {
-        if self.d > i-1 {
+        if self.d > i - 1 {
             if self.d < STACK_SIZE {
-                self.sk[self.d] = self.sk[self.d-i];
+                self.sk[self.d] = self.sk[self.d - i];
                 self.d += 1;
                 Ok(())
             } else {
@@ -59,7 +56,7 @@ impl Stack {
 
     #[inline]
     pub fn swap(&mut self, i: usize) -> Result<(), StatusCode> {
-        if self.d > i+1 {
+        if self.d > i + 1 {
             let top = self.d - 1;
             let bottom = top - i;
             let tmp = self.sk[top];
@@ -72,7 +69,10 @@ impl Stack {
     }
 
     #[inline]
-    pub fn with<const N: usize, R, F: FnOnce(&[U256; N]) -> Result<R, StatusCode>>(&mut self, f: F) -> Result<R, StatusCode> {
+    pub fn with<const N: usize, R, F: FnOnce(&[U256; N]) -> Result<R, StatusCode>>(
+        &mut self,
+        f: F,
+    ) -> Result<R, StatusCode> {
         if self.d >= N {
             let top = self.d;
             self.d -= N;
@@ -83,7 +83,10 @@ impl Stack {
     }
 
     #[inline]
-    pub fn apply<const N: usize, F: FnOnce(&[U256; N]) -> U256>(&mut self, f: F) -> Result<(), StatusCode> {
+    pub fn apply<const N: usize, F: FnOnce(&[U256; N]) -> U256>(
+        &mut self,
+        f: F,
+    ) -> Result<(), StatusCode> {
         if self.d >= N {
             let top = self.d;
             self.d -= N;

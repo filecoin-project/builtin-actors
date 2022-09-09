@@ -1,4 +1,4 @@
-use {crate::interpreter::stack::Stack, crate::interpreter::U256, crate::interpreter::StatusCode};
+use {crate::interpreter::stack::Stack, crate::interpreter::StatusCode, crate::interpreter::U256};
 
 #[inline]
 pub fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> Result<usize, StatusCode> {

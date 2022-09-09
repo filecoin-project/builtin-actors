@@ -1,8 +1,13 @@
-use {crate::interpreter::stack::Stack, crate::interpreter::{U256, U512}, crate::interpreter::uints, crate::interpreter::StatusCode};
+use {
+    crate::interpreter::stack::Stack,
+    crate::interpreter::uints,
+    crate::interpreter::StatusCode,
+    crate::interpreter::{U256, U512},
+};
 
 #[inline]
 pub fn add(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let a = args[1];
         let b = args[0];
         a.overflowing_add(b).0
@@ -11,7 +16,7 @@ pub fn add(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn mul(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let a = args[1];
         let b = args[0];
         a.overflowing_mul(b).0
@@ -20,7 +25,7 @@ pub fn mul(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn sub(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let a = args[1];
         let b = args[0];
         a.overflowing_sub(b).0
@@ -29,7 +34,7 @@ pub fn sub(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn div(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let a = args[1];
         let b = args[2];
         if b.is_zero() {
@@ -42,7 +47,7 @@ pub fn div(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn sdiv(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let a = args[1];
         let b = args[0];
         uints::i256_div(a, b)
@@ -51,7 +56,7 @@ pub fn sdiv(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn modulo(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let a = args[1];
         let b = args[2];
         if b.is_zero() {
@@ -64,7 +69,7 @@ pub fn modulo(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn smod(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let a = args[1];
         let b = args[0];
         if b.is_zero() {
@@ -77,7 +82,7 @@ pub fn smod(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn addmod(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<3,_>(|args| {
+    stack.apply::<3, _>(|args| {
         let a = args[2];
         let b = args[1];
         let c = args[0];
@@ -107,7 +112,7 @@ pub fn addmod(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn mulmod(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<3,_>(|args| {
+    stack.apply::<3, _>(|args| {
         let a = args[2];
         let b = args[1];
         let c = args[0];
@@ -137,7 +142,7 @@ pub fn mulmod(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn signextend(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let a = args[1];
         let b = args[0];
 
@@ -160,7 +165,7 @@ pub fn signextend(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn exp(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let mut base = args[1];
         let mut power = args[0];
 

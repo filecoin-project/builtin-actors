@@ -81,9 +81,7 @@ pub fn mload(state: &mut ExecutionState) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let (index, value) = state.stack.with::<2,_,_>(|args| {
-        Ok((args[1], args[0]))
-    })?;
+    let (index, value) = state.stack.with::<2, _, _>(|args| Ok((args[1], args[0])))?;
 
     let region =
         get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
@@ -98,9 +96,7 @@ pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn mstore8(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let (index, value) = state.stack.with::<2,_,_>(|args| {
-        Ok((args[1], args[0]))
-    })?;
+    let (index, value) = state.stack.with::<2, _, _>(|args| Ok((args[1], args[0])))?;
 
     let region = get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(1).unwrap())
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;

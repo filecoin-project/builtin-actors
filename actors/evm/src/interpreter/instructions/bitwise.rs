@@ -1,13 +1,11 @@
 use {
-    crate::interpreter::StatusCode,
+    crate::interpreter::stack::Stack, crate::interpreter::uints, crate::interpreter::StatusCode,
     crate::interpreter::U256,
-    crate::interpreter::stack::Stack,
-    crate::interpreter::uints,
 };
 
 #[inline]
 pub fn byte(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let i = args[1];
         let x = args[0];
 
@@ -30,7 +28,7 @@ pub fn byte(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn shl(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let shift = args[1];
         let value = args[0];
 
@@ -44,7 +42,7 @@ pub fn shl(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn shr(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let shift = args[1];
         let value = args[0];
 
@@ -58,7 +56,7 @@ pub fn shr(stack: &mut Stack) -> Result<(), StatusCode> {
 
 #[inline]
 pub fn sar(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.apply::<2,_>(|args| {
+    stack.apply::<2, _>(|args| {
         let shift = args[1];
         let mut value = args[0];
 
