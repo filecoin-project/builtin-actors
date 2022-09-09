@@ -114,6 +114,8 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let ExecutionState { stack, memory, .. } = state;
     let rt = &*platform.rt; // as immutable reference
 
+    // NOTE gas is currently ignored as FVM's send doesn't allow the caller to specify a gas
+    //      limit (external invocation gas limit applies). This may changed in the future.
     let (_gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
         CallKind::Call | CallKind::CallCode => (
             stack.pop(),
@@ -200,11 +202,13 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     state.return_data = result.clone().into();
 
     // copy return data to output region if it is non-zero
+    // TODO this limits addressable output to 2G (31 bits full),
+    //      but it is still probably too much and we should consistently limit further.
+    //      See also https://github.com/filecoin-project/ref-fvm/issues/851
     let output_usize = if output_size.bits() < 32 {
         output_size.as_usize()
     } else {
-        // XXX that's probably a bug, should we barf instead?
-        1 << 31
+        return Err(StatusCode::InvalidMemoryAccess);
     };
     if output_usize > 0 {
         let output_region = get_memory_region(memory, output_offset, output_size)
