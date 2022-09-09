@@ -163,8 +163,11 @@ impl Harness {
         let client_resolved = rt.get_id_address(client).unwrap_or(*client);
 
         // Expect tokens to be minted.
-        let mint_params =
-            ext::datacap::MintParams { to: client_resolved, amount: allowance * TOKEN_PRECISION };
+        let mint_params = ext::datacap::MintParams {
+            to: client_resolved,
+            amount: TokenAmount::from_whole(allowance.to_i64().unwrap()),
+            operators: vec![*STORAGE_MARKET_ACTOR_ADDR],
+        };
         rt.expect_send(
             *DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
@@ -248,8 +251,11 @@ impl Harness {
         let client_resolved = rt.get_id_address(client).unwrap_or(*client);
 
         // Expect tokens to be minted.
-        let mint_params =
-            ext::datacap::MintParams { to: client_resolved, amount: amount * TOKEN_PRECISION };
+        let mint_params = ext::datacap::MintParams {
+            to: client_resolved,
+            amount: TokenAmount::from_whole(amount.to_i64().unwrap()),
+            operators: vec![*STORAGE_MARKET_ACTOR_ADDR],
+        };
         rt.expect_send(
             *DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,

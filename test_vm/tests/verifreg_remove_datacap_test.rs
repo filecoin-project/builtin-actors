@@ -22,7 +22,8 @@ use fil_actor_verifreg::{AddrPairKey, Method as VerifregMethod};
 use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State as VerifregState};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, DATACAP_TOKEN_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    make_map_with_root_and_bitwidth, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use test_vm::util::{add_verifier, apply_ok, create_accounts};
 use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
@@ -47,8 +48,11 @@ fn remove_datacap_simple_successful_path() {
     // register the verified client
     let add_verified_client_params =
         AddVerifierClientParams { address: verified_client, allowance: verifier_allowance.clone() };
-    let mint_params =
-        MintParams { to: verified_client, amount: &verifier_allowance * TOKEN_PRECISION };
+    let mint_params = MintParams {
+        to: verified_client,
+        amount: TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()),
+        operators: vec![*STORAGE_MARKET_ACTOR_ADDR],
+    };
     apply_ok(
         &v,
         verifier1,

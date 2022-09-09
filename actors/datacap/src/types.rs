@@ -5,9 +5,12 @@ use fvm_shared::bigint::{bigint_ser, BigInt};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct MintParams {
+    // Recipient of the newly minted tokens.
     pub to: Address,
-    #[serde(with = "bigint_ser")]
-    pub amount: BigInt,
+    // Amount of tokens to mint.
+    pub amount: TokenAmount,
+    // Addresses to be granted effectively-infinite operator allowance for the recipient.
+    pub operators: Vec<Address>,
 }
 
 impl Cbor for MintParams {}

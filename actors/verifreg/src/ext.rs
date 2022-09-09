@@ -31,8 +31,8 @@ pub mod datacap {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct MintParams {
         pub to: Address,
-        #[serde(with = "bigint_ser")]
-        pub amount: BigInt,
+        pub amount: TokenAmount,
+        pub operators: Vec<Address>,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
