@@ -66,8 +66,7 @@ impl EvmContractActor {
         let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
 
         // identify bytecode valid jump destinations
-        let bytecode = Bytecode::new(&params.bytecode)
-            .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
+        let bytecode = Bytecode::new(&params.bytecode);
 
         // invoke the contract constructor
         let exec_status =
@@ -121,8 +120,7 @@ impl EvmContractActor {
             .map_err(|e| ActorError::unspecified(format!("failed to load bytecode: {e:?}")))?
             .ok_or_else(|| ActorError::unspecified("missing bytecode".to_string()))?;
 
-        let bytecode = Bytecode::new(&bytecode)
-            .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
+        let bytecode = Bytecode::new(&bytecode);
 
         // clone the blockstore here to pass to the System, this is bound to the HAMT.
         let blockstore = rt.store().clone();
