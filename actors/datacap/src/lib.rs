@@ -14,6 +14,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::receipt::Receipt;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use lazy_static::lazy_static;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
@@ -34,6 +35,10 @@ pub mod testing;
 mod types;
 
 pub const DATACAP_GRANULARITY: u64 = TOKEN_PRECISION as u64;
+
+lazy_static! {
+    static ref INFINITE_ALLOWANCE: TokenAmount = TokenAmount::from_whole(2_000_000_000);
+}
 
 /// Static method numbers for builtin-actor private dispatch.
 /// The methods are also expected to be exposed via FRC-XXXX standard calling convention,
@@ -133,6 +138,7 @@ impl Actor {
     }
 
     /// Mints new data cap tokens for an address (a verified client).
+    /// Simultaneously sets the allowance for any specified operators to effectively infinite.
     /// Only the registry can call this method.
     /// This method is not part of the fungible token standard.
     // TODO: return the new balance when the token library does
@@ -150,7 +156,7 @@ impl Actor {
                 let msg = Messenger { rt, dummy: Default::default() };
                 let mut token = as_token(st, &msg);
                 // Mint tokens "from" the operator to the beneficiary.
-                token
+                let hook_params = token
                     .mint(
                         &operator,
                         &params.to,
@@ -158,7 +164,17 @@ impl Actor {
                         RawBytes::default(),
                         RawBytes::default(),
                     )
-                    .actor_result()
+                    .actor_result();
+
+                // Set allowance for any specified operators.
+                // TODO: use set_allowance when supported by the token library
+                for delegate in &params.operators {
+                    token
+                        .increase_allowance(&params.to, delegate, &INFINITE_ALLOWANCE)
+                        .actor_result()?;
+                }
+
+                hook_params
             })
             .context("state transaction failed")?;
 

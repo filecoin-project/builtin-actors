@@ -210,7 +210,8 @@ impl Actor {
         })?;
 
         // Credit client token allowance.
-        mint(rt, &st.token, &client, &params.allowance).context(format!(
+        let operators = vec![*STORAGE_MARKET_ACTOR_ADDR];
+        mint(rt, &st.token, &client, &params.allowance, operators).context(format!(
             "failed to mint {} data cap to client {}",
             &params.allowance, client
         ))?;
@@ -299,7 +300,8 @@ impl Actor {
             ));
         }
 
-        mint(rt, &st.token, &client, &params.deal_size).context(format!(
+        let operators = vec![*STORAGE_MARKET_ACTOR_ADDR];
+        mint(rt, &st.token, &client, &params.deal_size, operators).context(format!(
             "failed to restore {} to allowance for {}",
             &params.deal_size, &client
         ))
@@ -617,13 +619,14 @@ fn mint<BS, RT>(
     token: &Address,
     to: &Address,
     amount: &DataCap,
+    operators: Vec<Address>,
 ) -> Result<(), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     let token_amt = datacap_to_tokens(amount);
-    let params = MintParams { to: *to, amount: token_amt };
+    let params = MintParams { to: *to, amount: token_amt, operators };
     rt.send(
         token,
         ext::datacap::Method::Mint as u64,

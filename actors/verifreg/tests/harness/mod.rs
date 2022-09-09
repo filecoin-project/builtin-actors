@@ -166,6 +166,7 @@ impl Harness {
         let mint_params = ext::datacap::MintParams {
             to: client_resolved,
             amount: TokenAmount::from_whole(allowance.to_i64().unwrap()),
+            operators: vec![*STORAGE_MARKET_ACTOR_ADDR],
         };
         rt.expect_send(
             *DATACAP_TOKEN_ACTOR_ADDR,
@@ -257,6 +258,7 @@ impl Harness {
         let mint_params = ext::datacap::MintParams {
             to: client_resolved,
             amount: TokenAmount::from_whole(amount.to_i64().unwrap()),
+            operators: vec![*STORAGE_MARKET_ACTOR_ADDR],
         };
         rt.expect_send(
             *DATACAP_TOKEN_ACTOR_ADDR,

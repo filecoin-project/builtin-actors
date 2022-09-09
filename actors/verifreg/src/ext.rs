@@ -29,6 +29,7 @@ pub mod datacap {
     pub struct MintParams {
         pub to: Address,
         pub amount: TokenAmount,
+        pub operators: Vec<Address>,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
