@@ -59,9 +59,7 @@ impl Stack {
         if self.d > i + 1 {
             let top = self.d - 1;
             let bottom = top - i;
-            let tmp = self.sk[top];
-            self.sk[top] = self.sk[bottom];
-            self.sk[bottom] = tmp;
+            self.sk.swap(top, bottom);
             Ok(())
         } else {
             Err(StatusCode::StackUnderflow)
@@ -102,6 +100,11 @@ impl Stack {
     #[inline]
     pub fn len(&self) -> usize {
         self.d
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.d == 0
     }
 }
 
