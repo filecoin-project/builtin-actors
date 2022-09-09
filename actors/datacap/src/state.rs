@@ -11,15 +11,15 @@ use fil_actors_runtime::{ActorError, AsActorError};
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct State {
-    pub registry: Address,
+    pub governor: Address,
     pub token: token::state::TokenState,
 }
 
 impl State {
-    pub fn new<BS: Blockstore>(store: &BS, registry: Address) -> Result<State, ActorError> {
+    pub fn new<BS: Blockstore>(store: &BS, governor: Address) -> Result<State, ActorError> {
         let token_state = token::state::TokenState::new(store)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create token state")?;
-        Ok(State { registry, token: token_state })
+        Ok(State { governor, token: token_state })
     }
 
     // Visible for testing
