@@ -99,7 +99,7 @@ impl EvmContractActor {
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             Err(e)
         } else {
-            Err(ActorError::unspecified("EVM constructor failed".to_string()))
+            Err(ActorError::unspecified(format!("EVM constructor failed: {}", exec_status.status_code)))
         }
     }
 
