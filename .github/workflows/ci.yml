@@ -17,12 +17,7 @@ jobs:
     - name: Checking out
       uses: actions/checkout@v2
     - name: Running rustfmt
-      uses: ./.github/actions/rust-cargo-run
-      with:
-        command: fmt
-        args: -- --check
-        components: rustfmt
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+      run: make rustfmt
 
   check-clippy:
     runs-on: ubuntu-latest
