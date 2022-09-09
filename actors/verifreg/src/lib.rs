@@ -470,10 +470,10 @@ impl Actor {
         .context("state transaction failed")?;
 
         // Transfer the recovered datacap back to the client.
-        transfer(rt, &client, &recovered_datacap).with_context(|| {
+        transfer(rt, client, &recovered_datacap).with_context(|| {
             format!(
                 "failed to transfer recovered datacap {} back to client {}",
-                &recovered_datacap, &client
+                &recovered_datacap, client
             )
         })?;
 
@@ -492,7 +492,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-        let provider = rt.message().caller();
+        let provider = rt.message().caller().id().unwrap();
         if params.sectors.is_empty() {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"));
         }
@@ -593,7 +593,7 @@ impl Actor {
         // Validate receiver hook payload.
         let tokens_received = validate_tokens_received(&params, my_id)?;
         let token_datacap = tokens_to_datacap(&tokens_received.amount);
-        let client_address = Address::new_id(tokens_received.from);
+        let client = tokens_received.from;
 
         // Extract and validate allocation request from the operator data.
         let alloc_reqs = validate_alloc_req(
@@ -610,8 +610,8 @@ impl Actor {
             // This doesn't matter much, but is more ergonomic to fail rather than lock up datacap.
             let provider_id = resolve_miner_id(rt, &req.provider)?;
             new_allocs.push(Allocation {
-                client: client_address,
-                provider: Address::new_id(provider_id),
+                client,
+                provider: provider_id,
                 data: req.data,
                 size: req.size,
                 term_min: req.term_min,
@@ -621,7 +621,7 @@ impl Actor {
         }
         // Save allocations
         rt.transaction(|st: &mut State, rt| {
-            st.insert_allocations(rt.store(), &client_address, new_allocs.into_iter())
+            st.insert_allocations(rt.store(), client, new_allocs.into_iter())
         })?;
         Ok(())
     }
@@ -728,13 +728,17 @@ where
 }
 
 // Invokes transfer on a data cap token actor for whole units of data cap.
-fn transfer<BS, RT>(rt: &mut RT, to: &Address, amount: &DataCap) -> Result<(), ActorError>
+fn transfer<BS, RT>(rt: &mut RT, to: ActorID, amount: &DataCap) -> Result<(), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     let token_amt = datacap_to_tokens(amount);
-    let params = TransferParams { to: *to, amount: token_amt, operator_data: Default::default() };
+    let params = TransferParams {
+        to: Address::new_id(to),
+        amount: token_amt,
+        operator_data: Default::default(),
+    };
     rt.send(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Transfer as u64,
@@ -965,7 +969,7 @@ where
 
 fn can_claim_alloc(
     claim_alloc: &SectorAllocationClaim,
-    provider: Address,
+    provider: ActorID,
     alloc: &Allocation,
     curr_epoch: ChainEpoch,
 ) -> bool {

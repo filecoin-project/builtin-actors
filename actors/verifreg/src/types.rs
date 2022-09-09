@@ -12,6 +12,7 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::StoragePower;
+use fvm_shared::ActorID;
 
 pub type AllocationID = u64;
 pub type ClaimID = u64;
@@ -106,7 +107,7 @@ impl AddrPairKey {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveExpiredAllocationsParams {
-    pub client: Address,
+    pub client: ActorID,
     pub allocation_ids: Vec<AllocationID>,
 }
 impl Cbor for RemoveExpiredAllocationsParams {}
@@ -115,7 +116,7 @@ pub type RemoveExpiredAllocationsReturn = BatchReturn;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorAllocationClaim {
-    pub client: Address,
+    pub client: ActorID,
     pub allocation_id: AllocationID,
     pub data: Cid,
     pub size: PaddedPieceSize,
@@ -134,7 +135,7 @@ pub type ClaimAllocationsReturn = BatchReturn;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimTerm {
-    provider: Address,
+    provider: ActorID,
     claim_id: ClaimID,
     term_max: ChainEpoch,
 }
