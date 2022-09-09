@@ -17,7 +17,7 @@ pub fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> Result<usize, S
 
 #[inline]
 pub fn dup<const HEIGHT: usize>(stack: &mut Stack) -> Result<(), StatusCode> {
-    stack.push(stack.peek(HEIGHT - 1)?)
+    stack.dup(HEIGHT)
 }
 
 #[inline]

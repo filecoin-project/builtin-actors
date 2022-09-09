@@ -43,9 +43,15 @@ impl Stack {
     }
 
     #[inline]
-    pub fn peek(&self, i: usize) -> Result<U256, StatusCode> {
-        if self.d > i {
-            Ok(self.sk[self.d-i])
+    pub fn dup(&mut self, i: usize) -> Result<(), StatusCode> {
+        if self.d >= i {
+            if self.d < STACK_SIZE {
+                self.sk[self.d] = self.sk[self.d-i];
+                self.d += 1;
+                Ok(())
+            } else {
+                Err(StatusCode::StackOverflow)
+            }
         } else {
             Err(StatusCode::StackUnderflow)
         }
