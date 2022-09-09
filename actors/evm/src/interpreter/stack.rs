@@ -21,7 +21,10 @@ impl Stack {
     #[inline]
     pub fn push(&mut self, v: U256) -> Result<(), StatusCode> {
         if self.d < STACK_SIZE {
-            self.sk[self.d] = v;
+            //self.sk[self.d] = v;
+            unsafe {
+                *self.sk.get_unchecked_mut(self.d) = v;
+            }
             self.d += 1;
             Ok(())
         } else {
@@ -33,7 +36,8 @@ impl Stack {
     pub fn pop(&mut self) -> Result<U256, StatusCode> {
         if self.d > 0 {
             self.d -= 1;
-            Ok(self.sk[self.d])
+            //Ok(self.sk[self.d])
+            Ok(unsafe{ *self.sk.get_unchecked(self.d) })
         } else {
             Err(StatusCode::StackUnderflow)
         }
@@ -43,7 +47,8 @@ impl Stack {
     pub fn dup(&mut self, i: usize) -> Result<(), StatusCode> {
         if self.d > i - 1 {
             if self.d < STACK_SIZE {
-                self.sk[self.d] = self.sk[self.d - i];
+                //self.sk[self.d] = self.sk[self.d - i];
+                unsafe { *self.sk.get_unchecked_mut(self.d) = *self.sk.get_unchecked(self.d - i) };
                 self.d += 1;
                 Ok(())
             } else {
@@ -59,7 +64,12 @@ impl Stack {
         if self.d > i + 1 {
             let top = self.d - 1;
             let bottom = top - i;
-            self.sk.swap(top, bottom);
+            //self.sk.swap(top, bottom);
+            unsafe {
+                let tmp = *self.sk.get_unchecked(top);
+                *self.sk.get_unchecked_mut(top) = *self.sk.get_unchecked(bottom);
+                *self.sk.get_unchecked_mut(bottom) = tmp;
+            }
             Ok(())
         } else {
             Err(StatusCode::StackUnderflow)
