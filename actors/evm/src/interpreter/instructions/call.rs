@@ -9,7 +9,7 @@ use {
     crate::interpreter::System,
     crate::interpreter::U256,
     crate::RawBytes,
-    crate::Method,
+    crate::{Method, EVM_CONTRACT_REVERTED},
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
     fvm_shared::econ::TokenAmount,
@@ -140,15 +140,16 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let input_region = get_memory_region(memory, input_offset, input_size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    let mut result = {
+    let result = {
         // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = input_region
             .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
             .ok_or(StatusCode::InvalidMemoryAccess)?;
 
         if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
-            precompiles::Precompiles::call_precompile(rt, dst, input_data)
-                .map_err(|_| StatusCode::PrecompileFailure)?
+            let result = precompiles::Precompiles::call_precompile(rt, dst, input_data)
+                .map_err(|_| StatusCode::PrecompileFailure)?;
+            Ok(RawBytes::from(result))
         } else {
             let dst_addr = Address::try_from(dst)?
                 .as_id_address()
@@ -156,13 +157,12 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
             match kind {
                 CallKind::Call => {
-                    let result = rt.send(
+                    rt.send(
                         &dst_addr,
                         Method::InvokeContract as u64,
                         RawBytes::from(input_data.to_vec()),
                         TokenAmount::from(&value),
-                    );
-                    result.map_err(StatusCode::from)?.to_vec()
+                    )
                 }
                 CallKind::DelegateCall => {
                     todo!()
@@ -176,6 +176,22 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
             }
         }
     };
+
+    match result {
+        Err(ae) => {
+            if ae.exit_code() == EVM_CONTRACT_REVERTED {
+                // reverted -- we don't have return data yet
+                // push failure
+                stack.push(U256::zero());
+                return Ok(())
+            } else {
+                return Err(StatusCode::from(ae))
+            }
+        }
+        _ => {}
+    }
+
+    let mut result = result.unwrap().to_vec();
 
     // save return_data
     state.return_data = result.clone().into();
@@ -248,18 +264,31 @@ pub fn callactor<'r, BS: Blockstore, RT: Runtime<BS>>(
             .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
             .ok_or(StatusCode::InvalidMemoryAccess)?
             .to_vec();
-        let result = rt.send(
+        rt.send(
             &dst_addr,
             methodnum,
             RawBytes::from(input_data),
             TokenAmount::from(&value),
-        );
-        result.map_err(StatusCode::from)?.to_vec()
+        )
     };
 
-    // save return_data
-    state.return_data = result.into();
+    match result {
+        Err(ae) => {
+            if ae.exit_code() == EVM_CONTRACT_REVERTED {
+                // reverted -- we don't have return data yet
+                // push failure
+                stack.push(U256::zero());
+                return Ok(())
+            } else {
+                return Err(StatusCode::from(ae))
+            }
+        }
+        _ => {}
+    }
 
+    // save return_data
+    state.return_data = result.unwrap().to_vec().into();
+    // push success
     stack.push(U256::from(1));
     Ok(())
 }
