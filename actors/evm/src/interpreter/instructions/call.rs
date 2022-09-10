@@ -142,9 +142,11 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
     let result = {
         // ref to memory is dropped after calling so we can mutate it on output later
-        let input_data = input_region
-            .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
-            .ok_or(StatusCode::InvalidMemoryAccess)?;
+        let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
+            &memory[offset..][..size.get()]
+        } else {
+            &[]
+        };
 
         if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
             let result = precompiles::Precompiles::call_precompile(rt, dst, input_data)
@@ -257,10 +259,11 @@ pub fn callactor<'r, BS: Blockstore, RT: Runtime<BS>>(
         }
         let methodnum = method.as_u64();
 
-        let input_data = input_region
-            .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
-            .ok_or(StatusCode::InvalidMemoryAccess)?
-            .to_vec();
+        let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
+            &memory[offset..][..size.get()]
+        } else {
+            &[]
+        }.to_vec();
         rt.send(
             &dst_addr,
             methodnum,
