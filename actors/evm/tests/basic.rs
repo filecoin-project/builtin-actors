@@ -1,6 +1,11 @@
+mod asm;
+
+use cid::Cid;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::ActorError;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 
@@ -71,4 +76,123 @@ fn basic_contract_construction_and_invocation() {
         )
         .unwrap();
     assert_eq!(U256::from_big_endian(&result), U256::from(10000));
+}
+
+#[test]
+fn basic_get_bytecode() {
+    let (init_code, verbatim_body) = {
+        let init = "";
+        let body = r#"
+# get call payload size
+push1 0x20
+calldatasize
+sub
+# store payload to mem 0x00
+push1 0x20
+push1 0x00
+calldatacopy
+return
+"#;
+
+        let body_bytecode = {
+            let mut ret = Vec::new();
+            let mut ingest = etk_asm::ingest::Ingest::new(&mut ret);
+            ingest.ingest("body", body).unwrap();
+            ret
+        };
+
+        (asm::new_contract("get_bytecode", init, body).unwrap(), body_bytecode)
+    };
+
+    let mut rt = MockRuntime::default();
+
+    rt.expect_validate_caller_any();
+    let params =
+        evm::ConstructorParams { bytecode: init_code.into(), input_data: RawBytes::default() };
+    let result = rt
+        .call::<evm::EvmContractActor>(
+            evm::Method::Constructor as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+    expect_empty(result);
+    rt.verify();
+    rt.reset();
+
+    rt.expect_validate_caller_any();
+    let returned_bytecode_cid: Cid = rt
+        .call::<evm::EvmContractActor>(evm::Method::GetBytecode as u64, &Default::default())
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+
+    let bytecode = rt.store.get(&returned_bytecode_cid).unwrap().unwrap();
+
+    assert_eq!(bytecode.as_slice(), verbatim_body.as_slice());
+}
+
+#[test]
+fn basic_get_storage_at() {
+    let init_code = {
+        // Initialize storage entry on key 0x8965 during init.
+        let init = r"
+push2 0xfffa
+push2 0x8965
+sstore";
+        let body = r#"return"#;
+
+        asm::new_contract("get_storage_at", init, body).unwrap()
+    };
+
+    let mut rt = MockRuntime::default();
+
+    rt.expect_validate_caller_any();
+    let params =
+        evm::ConstructorParams { bytecode: init_code.into(), input_data: RawBytes::default() };
+    let result = rt
+        .call::<evm::EvmContractActor>(
+            evm::Method::Constructor as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+    expect_empty(result);
+    rt.verify();
+    rt.reset();
+
+    let params = evm::GetStorageAtParams { storage_key: 0x8965.into() };
+
+    let sender = Address::new_id(0); // zero address because this method is not invokable on-chain
+    rt.expect_validate_caller_addr(vec![sender]);
+    rt.caller = sender;
+
+    //
+    // Get the storage key that was initialized in the init code.
+    //
+    let value: U256 = rt
+        .call::<evm::EvmContractActor>(
+            evm::Method::GetStorageAt as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+    rt.reset();
+
+    assert_eq!(U256::from(0xfffa), value);
+
+    //
+    // Get a storage key that doesn't exist.
+    //
+    let params = evm::GetStorageAtParams { storage_key: 0xaaaa.into() };
+
+    rt.expect_validate_caller_addr(vec![sender]);
+    let ret = rt.call::<evm::EvmContractActor>(
+        evm::Method::GetStorageAt as u64,
+        &RawBytes::serialize(params).unwrap(),
+    );
+    rt.verify();
+
+    assert_eq!(ActorError::not_found("storage key not found".to_string()), ret.err().unwrap());
 }
