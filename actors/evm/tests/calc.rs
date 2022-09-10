@@ -89,13 +89,13 @@ fn test_magic_calc() {
 
     // invoke contract -- get_magic
     let contract_params = vec![0u8; 32];
-    let params = evm::InvokeParams { input_data: RawBytes::from(contract_params) };
+    let input_data = RawBytes::from(contract_params);
 
     rt.expect_validate_caller_any();
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,
-            &RawBytes::serialize(params).unwrap(),
+            &input_data,
         )
         .unwrap();
 
@@ -105,13 +105,13 @@ fn test_magic_calc() {
     let mut contract_params = vec![0u8; 36];
     contract_params[3] = 0x01;
     contract_params[35] = 0x01;
-    let params = evm::InvokeParams { input_data: RawBytes::from(contract_params) };
+    let input_data = RawBytes::from(contract_params);
 
     rt.expect_validate_caller_any();
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,
-            &RawBytes::serialize(params).unwrap(),
+            &input_data,
         )
         .unwrap();
 
@@ -121,13 +121,13 @@ fn test_magic_calc() {
     let mut contract_params = vec![0u8; 36];
     contract_params[3] = 0x02;
     contract_params[35] = 0x02;
-    let params = evm::InvokeParams { input_data: RawBytes::from(contract_params) };
+    let input_data = RawBytes::from(contract_params);
 
     rt.expect_validate_caller_any();
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,
-            &RawBytes::serialize(params).unwrap(),
+            &input_data,
         )
         .unwrap();
 

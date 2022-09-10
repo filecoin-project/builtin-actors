@@ -84,11 +84,10 @@ fn test_call() {
     // dest + method 0 with no data
     let mut contract_params = vec![0u8; 36];
     evm_target_word.to_big_endian(&mut contract_params[..32]);
-    let params = evm::InvokeParams { input_data: RawBytes::from(contract_params) };
+    let input_data = RawBytes::from(contract_params);
 
     let proxy_call_contract_params = vec![0u8; 4];
-    let proxy_call_params =
-        evm::InvokeParams { input_data: RawBytes::from(proxy_call_contract_params) };
+    let proxy_call_input_data = RawBytes::from(proxy_call_contract_params);
 
     // expected return data
     let mut return_data = vec![0u8; 32];
@@ -98,7 +97,7 @@ fn test_call() {
     rt.expect_send(
         target,
         evm::Method::InvokeContract as u64,
-        RawBytes::serialize(proxy_call_params).unwrap(),
+        proxy_call_input_data,
         TokenAmount::zero(),
         RawBytes::from(return_data),
         ExitCode::OK,
@@ -106,7 +105,7 @@ fn test_call() {
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,
-            &RawBytes::serialize(params).unwrap(),
+            &input_data,
         )
         .unwrap();
 

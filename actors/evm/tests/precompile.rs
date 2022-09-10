@@ -21,7 +21,7 @@ jump # call hash, output written to 0x0200
 sha256_hash:
 jumpdest
 push1 0x20   # out size (32 bytes)
-push2 0x0200 # out offset 
+push2 0x0200 # out offset
 push1 0x10   # in size (16 bytes)
 push2 0x0110 # in offset
 push1 0x00 # _value
@@ -59,13 +59,13 @@ fn test_precompile_hash() {
 
     // invoke contract
     let contract_params = vec![0u8; 32];
-    let params = evm::InvokeParams { input_data: RawBytes::from(contract_params) };
+    let input_data = RawBytes::from(contract_params);
 
     rt.expect_validate_caller_any();
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,
-            &RawBytes::serialize(params).unwrap(),
+            &input_data,
         )
         .unwrap();
 

@@ -44,13 +44,13 @@ fn basic_contract_construction_and_invocation() {
     let mut arg0 = vec![0u8; 32];
     solidity_params.append(&mut arg0);
 
-    let params = evm::InvokeParams { input_data: RawBytes::from(solidity_params) };
+    let input_data = RawBytes::from(solidity_params);
 
     rt.expect_validate_caller_any();
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,
-            &RawBytes::serialize(params).unwrap(),
+            &input_data,
         )
         .unwrap();
 
@@ -66,13 +66,13 @@ fn basic_contract_construction_and_invocation() {
     arg0[31] = 100; // the owner address
     solidity_params.append(&mut arg0);
 
-    let params = evm::InvokeParams { input_data: RawBytes::from(solidity_params) };
+    let input_data = RawBytes::from(solidity_params);
 
     rt.expect_validate_caller_any();
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,
-            &RawBytes::serialize(params).unwrap(),
+            &input_data,
         )
         .unwrap();
     assert_eq!(U256::from_big_endian(&result), U256::from(10000));
