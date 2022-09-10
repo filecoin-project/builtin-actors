@@ -158,14 +158,12 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
                 .ok_or_else(|| StatusCode::BadAddress("not an actor id address".to_string()))?;
 
             match kind {
-                CallKind::Call => {
-                    rt.send(
-                        &dst_addr,
-                        Method::InvokeContract as u64,
-                        RawBytes::from(input_data.to_vec()),
-                        TokenAmount::from(&value),
-                    )
-                }
+                CallKind::Call => rt.send(
+                    &dst_addr,
+                    Method::InvokeContract as u64,
+                    RawBytes::from(input_data.to_vec()),
+                    TokenAmount::from(&value),
+                ),
                 CallKind::DelegateCall => {
                     todo!()
                 }
@@ -184,9 +182,9 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
             // reverted -- we don't have return data yet
             // push failure
             stack.push(U256::zero());
-            return Ok(())
+            return Ok(());
         } else {
-            return Err(StatusCode::from(ae))
+            return Err(StatusCode::from(ae));
         }
     }
 
@@ -255,7 +253,7 @@ pub fn callactor<'r, BS: Blockstore, RT: Runtime<BS>>(
             .ok_or_else(|| StatusCode::BadAddress(format!("not an actor id address: {}", dst)))?;
 
         if method.bits() > 64 {
-            return Err(StatusCode::ArgumentOutOfRange(format!("bad method number: {}", method)))
+            return Err(StatusCode::ArgumentOutOfRange(format!("bad method number: {}", method)));
         }
         let methodnum = method.as_u64();
 
@@ -263,13 +261,9 @@ pub fn callactor<'r, BS: Blockstore, RT: Runtime<BS>>(
             &memory[offset..][..size.get()]
         } else {
             &[]
-        }.to_vec();
-        rt.send(
-            &dst_addr,
-            methodnum,
-            RawBytes::from(input_data),
-            TokenAmount::from(&value),
-        )
+        }
+        .to_vec();
+        rt.send(&dst_addr, methodnum, RawBytes::from(input_data), TokenAmount::from(&value))
     };
 
     if let Err(ae) = result {
@@ -277,9 +271,9 @@ pub fn callactor<'r, BS: Blockstore, RT: Runtime<BS>>(
             // reverted -- we don't have return data yet
             // push failure
             stack.push(U256::zero());
-            return Ok(())
+            return Ok(());
         } else {
-            return Err(StatusCode::from(ae))
+            return Err(StatusCode::from(ae));
         }
     }
 

@@ -98,5 +98,4 @@ fn with_fevm_extensions(body: &str) -> String {
     body.to_owned()
         .replace("@callactor", "%include_hex(\"tests/opcodes/callactor.hex\")")
         .replace("@methodnum", "%include_hex(\"tests/opcodes/methodnum.hex\")")
-
 }

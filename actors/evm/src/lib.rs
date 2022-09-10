@@ -70,7 +70,7 @@ impl EvmContractActor {
         // create a new execution context
         let mut exec_state = ExecutionState::new(
             Method::Constructor as u64,
-            Bytes::copy_from_slice(&params.input_data)
+            Bytes::copy_from_slice(&params.input_data),
         );
 
         // identify bytecode valid jump destinations
@@ -89,7 +89,9 @@ impl EvmContractActor {
             Err(ActorError::unchecked(EVM_CONTRACT_REVERTED, "constructor reverted".to_string()))
         } else if exec_status.status_code == StatusCode::Success {
             if exec_status.output_data.is_empty() {
-                return Err(ActorError::unspecified("EVM constructor returned empty contract".to_string()))
+                return Err(ActorError::unspecified(
+                    "EVM constructor returned empty contract".to_string(),
+                ));
             }
             // constructor ran to completion successfully and returned
             // the resulting bytecode.
@@ -158,7 +160,10 @@ impl EvmContractActor {
 
         // TODO this does not return revert data yet, but it has correct semantics.
         if exec_status.reverted {
-            return Err(ActorError::unchecked(EVM_CONTRACT_REVERTED, "contract reverted".to_string()))
+            return Err(ActorError::unchecked(
+                EVM_CONTRACT_REVERTED,
+                "contract reverted".to_string(),
+            ));
         } else if exec_status.status_code == StatusCode::Success {
             // this needs to be outside the transaction or else rustc has a fit about
             // mutably borrowing the runtime twice.... sigh.
@@ -253,9 +258,7 @@ impl ActorCode for EvmContractActor {
                 let value = Self::storage_at(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(value)?)
             }
-            None => {
-                Self::invoke_contract(rt, method, params)
-            }
+            None => Self::invoke_contract(rt, method, params),
         }
     }
 }

@@ -102,12 +102,8 @@ fn test_call() {
         RawBytes::from(return_data),
         ExitCode::OK,
     );
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::InvokeContract as u64,
-            &input_data,
-        )
-        .unwrap();
+    let result =
+        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
 
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 }
@@ -129,7 +125,6 @@ return
     asm::new_contract("methodnum", init, body).unwrap()
 }
 
-
 #[test]
 fn test_methodnum() {
     let mut rt = MockRuntime::default();
@@ -150,12 +145,7 @@ fn test_methodnum() {
     // invoke the contract
     rt.expect_validate_caller_any();
 
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            0x42,
-            &RawBytes::default(),
-        )
-        .unwrap();
+    let result = rt.call::<evm::EvmContractActor>(0x42, &RawBytes::default()).unwrap();
 
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 }
@@ -253,12 +243,8 @@ fn test_callactor() {
         RawBytes::from(return_data),
         ExitCode::OK,
     );
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::InvokeContract as u64,
-            &input_data,
-        )
-        .unwrap();
+    let result =
+        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
 
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 }

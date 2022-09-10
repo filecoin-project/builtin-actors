@@ -34,10 +34,6 @@ fn test_selfdestruct() {
     rt.expect_validate_caller_any();
     rt.expect_delete_actor(beneficiary);
 
-    rt.call::<evm::EvmContractActor>(
-        evm::Method::InvokeContract as u64,
-        &input_data,
-    )
-    .unwrap();
+    rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
     rt.verify();
 }

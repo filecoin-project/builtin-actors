@@ -62,12 +62,8 @@ fn test_precompile_hash() {
     let input_data = RawBytes::from(contract_params);
 
     rt.expect_validate_caller_any();
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::InvokeContract as u64,
-            &input_data,
-        )
-        .unwrap();
+    let result =
+        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
 
     let expected =
         hex_literal::hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");

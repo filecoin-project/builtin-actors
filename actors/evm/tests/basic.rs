@@ -47,12 +47,8 @@ fn basic_contract_construction_and_invocation() {
     let input_data = RawBytes::from(solidity_params);
 
     rt.expect_validate_caller_any();
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::InvokeContract as u64,
-            &input_data,
-        )
-        .unwrap();
+    let result =
+        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
 
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 
@@ -69,12 +65,8 @@ fn basic_contract_construction_and_invocation() {
     let input_data = RawBytes::from(solidity_params);
 
     rt.expect_validate_caller_any();
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::InvokeContract as u64,
-            &input_data,
-        )
-        .unwrap();
+    let result =
+        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
     assert_eq!(U256::from_big_endian(&result), U256::from(10000));
 }
 
