@@ -7,7 +7,7 @@ use {
     bytes::Bytes,
     cid::Cid,
     fil_actors_runtime::{
-        actor_error, cbor,
+        cbor,
         runtime::{ActorCode, Runtime},
         ActorDowncast, ActorError,
     },
@@ -66,7 +66,10 @@ impl EvmContractActor {
         })?;
 
         // create a new execution context
-        let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
+        let mut exec_state = ExecutionState::new(
+            Method::Constructor as u64,
+            Bytes::copy_from_slice(&params.input_data)
+        );
 
         // identify bytecode valid jump destinations
         let bytecode = Bytecode::new(&params.bytecode)
@@ -109,7 +112,8 @@ impl EvmContractActor {
 
     pub fn invoke_contract<BS, RT>(
         rt: &mut RT,
-        params: InvokeParams,
+        method: u64,
+        input_data: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
         BS: Blockstore + Clone,
@@ -139,7 +143,7 @@ impl EvmContractActor {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
-        let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
+        let mut exec_state = ExecutionState::new(method, input_data.to_vec().into());
 
         let exec_status =
             execute(&bytecode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
@@ -236,7 +240,7 @@ impl ActorCode for EvmContractActor {
                 Ok(RawBytes::default())
             }
             Some(Method::InvokeContract) => {
-                Self::invoke_contract(rt, cbor::deserialize_params(params)?)
+                Self::invoke_contract(rt, Method::InvokeContract as u64, params)
             }
             Some(Method::GetBytecode) => {
                 let cid = Self::bytecode(rt)?;
@@ -246,7 +250,9 @@ impl ActorCode for EvmContractActor {
                 let value = Self::storage_at(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(value)?)
             }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
+            None => {
+                Self::invoke_contract(rt, method, params)
+            }
         }
     }
 }
@@ -254,11 +260,6 @@ impl ActorCode for EvmContractActor {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ConstructorParams {
     pub bytecode: RawBytes,
-    pub input_data: RawBytes,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct InvokeParams {
     pub input_data: RawBytes,
 }
 
