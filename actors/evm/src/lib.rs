@@ -5,6 +5,7 @@ use {
     crate::interpreter::{execute, Bytecode, ExecutionState, StatusCode, System, U256},
     crate::state::State,
     bytes::Bytes,
+    cid::Cid,
     fil_actors_runtime::{
         actor_error, cbor,
         runtime::{ActorCode, Runtime},
@@ -32,6 +33,8 @@ const MAX_CODE_SIZE: usize = 24 << 10;
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     InvokeContract = 2,
+    GetBytecode = 3,
+    GetStorageAt = 4,
 }
 
 pub struct EvmContractActor;
@@ -173,6 +176,48 @@ impl EvmContractActor {
         let output = RawBytes::from(exec_status.output_data.to_vec());
         Ok(output)
     }
+
+    pub fn bytecode<BS, RT>(rt: &mut RT) -> Result<Cid, ActorError>
+    where
+        BS: Blockstore + Clone,
+        RT: Runtime<BS>,
+    {
+        // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
+        rt.validate_immediate_caller_accept_any()?;
+
+        let state: State = rt.state()?;
+        Ok(state.bytecode)
+    }
+
+    pub fn storage_at<BS, RT>(rt: &mut RT, params: GetStorageAtParams) -> Result<U256, ActorError>
+    where
+        BS: Blockstore + Clone,
+        RT: Runtime<BS>,
+    {
+        // This method cannot be called on-chain; other on-chain logic should not be able to
+        // access arbitrary storage keys from a contract.
+        rt.validate_immediate_caller_is([&fvm_shared::address::Address::new_id(0)])?;
+
+        let state: State = rt.state()?;
+        let blockstore = rt.store().clone();
+
+        // load the storage HAMT
+        let mut hamt =
+            Hamt::<_, _, U256>::load(&state.contract_state, blockstore).map_err(|e| {
+                ActorError::illegal_state(format!(
+                    "failed to load storage HAMT on invoke: {e:?}, e"
+                ))
+            })?;
+
+        let mut system = System::new(rt, &mut hamt).map_err(|e| {
+            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
+        })?;
+
+        system
+            .get_storage(params.storage_key)
+            .map_err(|st| ActorError::unspecified(format!("failed to get storage key: {}", &st)))?
+            .ok_or_else(|| ActorError::not_found(String::from("storage key not found")))
+    }
 }
 
 impl ActorCode for EvmContractActor {
@@ -193,6 +238,14 @@ impl ActorCode for EvmContractActor {
             Some(Method::InvokeContract) => {
                 Self::invoke_contract(rt, cbor::deserialize_params(params)?)
             }
+            Some(Method::GetBytecode) => {
+                let cid = Self::bytecode(rt)?;
+                Ok(RawBytes::serialize(cid)?)
+            }
+            Some(Method::GetStorageAt) => {
+                let value = Self::storage_at(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(value)?)
+            }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
@@ -207,4 +260,9 @@ pub struct ConstructorParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct InvokeParams {
     pub input_data: RawBytes,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetStorageAtParams {
+    pub storage_key: U256,
 }
