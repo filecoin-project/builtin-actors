@@ -177,18 +177,15 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         }
     };
 
-    match result {
-        Err(ae) => {
-            if ae.exit_code() == EVM_CONTRACT_REVERTED {
-                // reverted -- we don't have return data yet
-                // push failure
-                stack.push(U256::zero());
-                return Ok(())
-            } else {
-                return Err(StatusCode::from(ae))
-            }
+    if let Err(ae) = result {
+        if ae.exit_code() == EVM_CONTRACT_REVERTED {
+            // reverted -- we don't have return data yet
+            // push failure
+            stack.push(U256::zero());
+            return Ok(())
+        } else {
+            return Err(StatusCode::from(ae))
         }
-        _ => {}
     }
 
     let mut result = result.unwrap().to_vec();
@@ -272,18 +269,15 @@ pub fn callactor<'r, BS: Blockstore, RT: Runtime<BS>>(
         )
     };
 
-    match result {
-        Err(ae) => {
-            if ae.exit_code() == EVM_CONTRACT_REVERTED {
-                // reverted -- we don't have return data yet
-                // push failure
-                stack.push(U256::zero());
-                return Ok(())
-            } else {
-                return Err(StatusCode::from(ae))
-            }
+    if let Err(ae) = result {
+        if ae.exit_code() == EVM_CONTRACT_REVERTED {
+            // reverted -- we don't have return data yet
+            // push failure
+            stack.push(U256::zero());
+            return Ok(())
+        } else {
+            return Err(StatusCode::from(ae))
         }
-        _ => {}
     }
 
     // save return_data
