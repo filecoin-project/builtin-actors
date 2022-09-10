@@ -84,6 +84,7 @@ impl EvmContractActor {
                 _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
             })?;
 
+        // TODO this does not return revert data yet, but it has correct semantics.
         if exec_status.reverted {
             Err(ActorError::unchecked(EVM_CONTRACT_REVERTED, "constructor reverted".to_string()))
         } else if exec_status.status_code == StatusCode::Success {
@@ -155,9 +156,7 @@ impl EvmContractActor {
                 _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
             })?;
 
-        // TODO this is not the correct handling of reverts -- we need to abort (and return the
-        //      output data), so that the entire transaction (including parent/sibling calls)
-        //      can be reverted.
+        // TODO this does not return revert data yet, but it has correct semantics.
         if exec_status.reverted {
             return Err(ActorError::unchecked(EVM_CONTRACT_REVERTED, "contract reverted".to_string()))
         } else if exec_status.status_code == StatusCode::Success {
