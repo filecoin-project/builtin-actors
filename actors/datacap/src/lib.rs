@@ -68,18 +68,18 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for DataCap Actor
-    pub fn constructor<BS, RT>(rt: &mut RT, verifreg: Address) -> Result<(), ActorError>
+    pub fn constructor<BS, RT>(rt: &mut RT, governor: Address) -> Result<(), ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
 
-        // Confirm the registry address is an ID.
-        rt.resolve_address(&verifreg)
-            .ok_or_else(|| actor_error!(illegal_argument, "failed to resolve registry address"))?;
+        // Confirm the governor address is an ID.
+        rt.resolve_address(&governor)
+            .ok_or_else(|| actor_error!(illegal_argument, "failed to resolve governor address"))?;
 
-        let st = State::new(rt.store(), verifreg).context("failed to create verifreg state")?;
+        let st = State::new(rt.store(), governor).context("failed to create datacap state")?;
         rt.create(&st)?;
         Ok(())
     }
@@ -139,7 +139,7 @@ impl Actor {
 
     /// Mints new data cap tokens for an address (a verified client).
     /// Simultaneously sets the allowance for any specified operators to effectively infinite.
-    /// Only the registry can call this method.
+    /// Only the governor can call this method.
     /// This method is not part of the fungible token standard.
     pub fn mint<BS, RT>(rt: &mut RT, params: MintParams) -> Result<MintReturn, ActorError>
     where
@@ -148,9 +148,9 @@ impl Actor {
     {
         let (mut hook, result) = rt
             .transaction(|st: &mut State, rt| {
-                // Only the registry can mint datacap tokens.
-                rt.validate_immediate_caller_is(std::iter::once(&st.registry))?;
-                let operator = st.registry;
+                // Only the governor can mint datacap tokens.
+                rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
+                let operator = st.governor;
 
                 let msg = Messenger { rt, dummy: Default::default() };
                 let mut token = as_token(st, &msg);
@@ -183,7 +183,7 @@ impl Actor {
     }
 
     /// Destroys data cap tokens for an address (a verified client).
-    /// Only the registry can call this method.
+    /// Only the governor can call this method.
     /// This method is not part of the fungible token standard, and is named distinctly from
     /// "burn" to reflect that distinction.
     pub fn destroy<BS, RT>(rt: &mut RT, params: DestroyParams) -> Result<BurnReturn, ActorError>
@@ -192,13 +192,13 @@ impl Actor {
         RT: Runtime<BS>,
     {
         rt.transaction(|st: &mut State, rt| {
-            // Only the registry can destroy datacap tokens on behalf of a holder.
-            rt.validate_immediate_caller_is(std::iter::once(&st.registry))?;
+            // Only the governor can destroy datacap tokens on behalf of a holder.
+            rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
 
             let msg = Messenger { rt, dummy: Default::default() };
             let mut token = as_token(st, &msg);
             // Burn tokens as if the holder had invoked burn() themselves.
-            // The registry doesn't need an allowance.
+            // The governor doesn't need an allowance.
             token.burn(&params.owner, &params.amount).actor_result()
         })
         .context("state transaction failed")
@@ -206,7 +206,7 @@ impl Actor {
 
     /// Transfers data cap tokens to an address.
     /// Data cap tokens are not generally transferable.
-    /// Succeeds if the to address is the registry, otherwise always fails.
+    /// Succeeds if the to address is the governor, otherwise always fails.
     pub fn transfer<BS, RT>(
         rt: &mut RT,
         params: TransferParams,
@@ -218,7 +218,7 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let operator = &rt.message().caller();
         let from = operator;
-        // Resolve to address for comparison with registry address.
+        // Resolve to address for comparison with governor address.
         let to = rt
             .resolve_address(&params.to)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be ID address")?;
@@ -226,7 +226,7 @@ impl Actor {
 
         let (mut hook, result) = rt
             .transaction(|st: &mut State, rt| {
-                let allowed = to_address == st.registry;
+                let allowed = to_address == st.governor;
                 if !allowed {
                     return Err(actor_error!(forbidden, "transfer not allowed"));
                 }
@@ -252,7 +252,7 @@ impl Actor {
 
     /// Transfers data cap tokens between addresses.
     /// Data cap tokens are not generally transferable between addresses.
-    /// Succeeds if the to address is the registry, otherwise always fails.
+    /// Succeeds if the to address is the governor, otherwise always fails.
     pub fn transfer_from<BS, RT>(
         rt: &mut RT,
         params: TransferFromParams,
@@ -264,7 +264,7 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let operator = rt.message().caller();
         let from = params.from;
-        // Resolve to address for comparison with registry.
+        // Resolve to address for comparison with governor.
         let to = rt
             .resolve_address(&params.to)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be an ID address")?;
@@ -272,7 +272,7 @@ impl Actor {
 
         let (mut hook, result) = rt
             .transaction(|st: &mut State, rt| {
-                let allowed = to_address == st.registry;
+                let allowed = to_address == st.governor;
                 if !allowed {
                     return Err(actor_error!(forbidden, "transfer not allowed"));
                 }

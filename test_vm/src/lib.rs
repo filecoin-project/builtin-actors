@@ -227,9 +227,7 @@ impl<'bs> VM<'bs> {
         let root_msig_addr = msig_ctor_ret.id_address;
         assert_eq!(TEST_VERIFREG_ROOT_ADDR, root_msig_addr);
         // verifreg
-        let verifreg_head = v.put_store(
-            &VerifRegState::new(&v.store, root_msig_addr, *DATACAP_TOKEN_ACTOR_ADDR).unwrap(),
-        );
+        let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
             *VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero()),

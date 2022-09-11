@@ -54,7 +54,7 @@ impl Harness {
         rt.verify();
 
         let state: State = rt.get_state();
-        assert_eq!(self.registry, state.registry);
+        assert_eq!(self.registry, state.governor);
     }
 
     pub fn mint(
