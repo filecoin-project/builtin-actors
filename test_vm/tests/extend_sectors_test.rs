@@ -216,9 +216,7 @@ fn extend_sector_with_deals() {
         extensions: vec![ExpirationExtension {
             deadline: deadline_info.index,
             partition: partition_index,
-            sectors: fvm_ipld_bitfield::UnvalidatedBitField::Validated(
-                BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            ),
+            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
             new_expiration: deal_start + 2 * 180 * EPOCHS_IN_DAY,
         }],
     };
@@ -268,9 +266,7 @@ fn extend_sector_with_deals() {
         extensions: vec![ExpirationExtension {
             deadline: deadline_info.index,
             partition: partition_index,
-            sectors: fvm_ipld_bitfield::UnvalidatedBitField::Validated(
-                BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            ),
+            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
             new_expiration: deal_start + 3 * 180 * EPOCHS_IN_DAY,
         }],
     };
