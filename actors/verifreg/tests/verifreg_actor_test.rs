@@ -512,15 +512,17 @@ mod claims {
         let store = rt.store();
         let mut allocs = st.load_allocs(&store).unwrap();
         // allocs deleted
-        assert!(allocs.get(*CLIENT, 1).unwrap().is_none());
-        assert!(allocs.get(*CLIENT, 2).unwrap().is_none());
-        assert!(allocs.get(*CLIENT, 3).unwrap().is_none());
+        let client_id = CLIENT.id().unwrap();
+        assert!(allocs.get(client_id, 1).unwrap().is_none());
+        assert!(allocs.get(client_id, 2).unwrap().is_none());
+        assert!(allocs.get(client_id, 3).unwrap().is_none());
 
         // claims inserted
         let mut claims = st.load_claims(&store).unwrap();
-        assert_eq!(claims.get(provider, 1).unwrap().unwrap().client, *CLIENT);
-        assert_eq!(claims.get(provider, 2).unwrap().unwrap().client, *CLIENT);
-        assert_eq!(claims.get(provider, 3).unwrap().unwrap().client, *CLIENT);
+        let provider_id = provider.id().unwrap();
+        assert_eq!(claims.get(provider_id, 1).unwrap().unwrap().client, client_id);
+        assert_eq!(claims.get(provider_id, 2).unwrap().unwrap().client, client_id);
+        assert_eq!(claims.get(provider_id, 3).unwrap().unwrap().client, client_id);
     }
 }
 
@@ -574,14 +576,13 @@ mod datacap {
             let store = &rt.store();
             let mut allocs = st.load_allocs(store).unwrap();
 
-            let client_addr = Address::new_id(CLIENT1);
             assert_eq!(
-                &alloc_from_req(&client_addr, &reqs[0]),
-                allocs.get(client_addr, 1).unwrap().unwrap()
+                &alloc_from_req(CLIENT1, &reqs[0]),
+                allocs.get(CLIENT1, 1).unwrap().unwrap()
             );
             assert_eq!(
-                &alloc_from_req(&client_addr, &reqs[1]),
-                allocs.get(client_addr, 2).unwrap().unwrap()
+                &alloc_from_req(CLIENT1, &reqs[1]),
+                allocs.get(CLIENT1, 2).unwrap().unwrap()
             );
             assert_eq!(3, st.next_allocation_id);
         }
@@ -595,10 +596,9 @@ mod datacap {
             let st: State = rt.get_state();
             let store = &rt.store();
             let mut allocs = st.load_allocs(store).unwrap();
-            let client_addr = Address::new_id(CLIENT2);
             assert_eq!(
-                &alloc_from_req(&client_addr, &reqs[0]),
-                allocs.get(client_addr, 3).unwrap().unwrap()
+                &alloc_from_req(CLIENT2, &reqs[0]),
+                allocs.get(CLIENT2, 3).unwrap().unwrap()
             );
             assert_eq!(4, st.next_allocation_id);
         }
