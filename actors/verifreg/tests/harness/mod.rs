@@ -12,11 +12,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
-<<<<<<< HEAD
-use num_traits::{Signed, Zero};
-=======
 use num_traits::{ToPrimitive, Zero};
->>>>>>> 5f944a61 (Implemented verified registry token receiver hook (#601))
 
 use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::testing::check_state_invariants;
@@ -203,61 +199,6 @@ impl Harness {
         Ok(())
     }
 
-<<<<<<< HEAD
-    pub fn use_bytes(
-        &self,
-        rt: &mut MockRuntime,
-        client: &Address,
-        amount: &DataCap,
-        result: ExitCode,    // Mocked exit code from the token destroy
-        remaining: &DataCap, // Mocked remaining balance after token destroy
-    ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR);
-        let client_resolved = rt.get_id_address(client).unwrap_or(*client);
-
-        // Expect tokens to be destroyed.
-        let destroy_params = ext::datacap::DestroyParams {
-            owner: client_resolved,
-            amount: amount * TOKEN_PRECISION,
-        };
-        rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::Destroy as MethodNum,
-            RawBytes::serialize(&destroy_params).unwrap(),
-            TokenAmount::zero(),
-            serialize(&BurnReturn { balance: remaining * TOKEN_PRECISION }, "").unwrap(),
-            result,
-        );
-
-        // Expect second destroy if remaining balance is below minimum.
-        if remaining.is_positive() && remaining < &rt.policy.minimum_verified_deal_size {
-            let destroy_params = ext::datacap::DestroyParams {
-                owner: client_resolved,
-                amount: remaining * TOKEN_PRECISION,
-            };
-            rt.expect_send(
-                *DATACAP_TOKEN_ACTOR_ADDR,
-                ext::datacap::Method::Destroy as MethodNum,
-                RawBytes::serialize(&destroy_params).unwrap(),
-                TokenAmount::zero(),
-                serialize(&BurnReturn { balance: TokenAmount::zero() }, "").unwrap(),
-                result,
-            );
-        }
-
-        let params = UseBytesParams { address: *client, deal_size: amount.clone() };
-        let ret = rt.call::<VerifregActor>(
-            Method::UseBytes as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
-        )?;
-        assert_eq!(RawBytes::default(), ret);
-        rt.verify();
-        Ok(())
-    }
-
-=======
->>>>>>> 5f944a61 (Implemented verified registry token receiver hook (#601))
     pub fn restore_bytes(
         &self,
         rt: &mut MockRuntime,

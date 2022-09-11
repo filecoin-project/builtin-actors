@@ -3,8 +3,8 @@ use std::marker::PhantomData;
 use fil_fungible_token::runtime::messaging::{Messaging, MessagingError};
 use fil_fungible_token::token::types::{
     BurnFromParams, BurnFromReturn, BurnParams, BurnReturn, DecreaseAllowanceParams,
-    GetAllowanceParams, IncreaseAllowanceParams, RevokeAllowanceParams, TransferFromParams,
-    TransferFromReturn, TransferParams, TransferReturn,
+    GetAllowanceParams, IncreaseAllowanceParams, MintReturn, RevokeAllowanceParams,
+    TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
 };
 use fil_fungible_token::token::{Token, TokenError, TOKEN_PRECISION};
 use fvm_ipld_blockstore::Blockstore;
@@ -143,13 +143,12 @@ impl Actor {
     /// Simultaneously sets the allowance for any specified operators to effectively infinite.
     /// Only the registry can call this method.
     /// This method is not part of the fungible token standard.
-    // TODO: return the new balance when the token library does
-    pub fn mint<BS, RT>(rt: &mut RT, params: MintParams) -> Result<(), ActorError>
+    pub fn mint<BS, RT>(rt: &mut RT, params: MintParams) -> Result<MintReturn, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let hook_params = rt
+        let (mut hook, result) = rt
             .transaction(|st: &mut State, rt| {
                 // Only the registry can mint datacap tokens.
                 rt.validate_immediate_caller_is(std::iter::once(&st.registry))?;
@@ -158,7 +157,7 @@ impl Actor {
                 let msg = Messenger { rt, dummy: Default::default() };
                 let mut token = as_token(st, &msg);
                 // Mint tokens "from" the operator to the beneficiary.
-                let hook_params = token
+                let ret = token
                     .mint(
                         &operator,
                         &params.to,
@@ -176,15 +175,15 @@ impl Actor {
                         .actor_result()?;
                 }
 
-                hook_params
+                ret
             })
             .context("state transaction failed")?;
 
         // This state load is unused, necessary to work around awkward API to call receiver hooks.
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let mut token = as_token(&mut st, &msg);
-        token.call_receiver_hook(&params.to, hook_params).actor_result()
+        hook.call(&&msg).actor_result()?;
+        Ok(result)
     }
 
     /// Destroys data cap tokens for an address (a verified client).
@@ -517,8 +516,8 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             Some(Method::Mint) => {
-                Self::mint(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let ret = Self::mint(rt, cbor::deserialize_params(params)?)?;
+                serialize(&ret, "mint result")
             }
             Some(Method::Destroy) => {
                 let ret = Self::destroy(rt, cbor::deserialize_params(params)?)?;
