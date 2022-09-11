@@ -1,6 +1,7 @@
 use fil_fungible_token::receiver::types::{
     FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
 };
+use fil_fungible_token::token::types::MintReturn;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -62,7 +63,7 @@ impl Harness {
         to: &Address,
         amount: &TokenAmount,
         operators: Vec<Address>,
-    ) -> Result<(), ActorError> {
+    ) -> Result<MintReturn, ActorError> {
         rt.expect_validate_caller_addr(vec![*VERIFIED_REGISTRY_ACTOR_ADDR]);
 
         // Expect the token receiver hook to be called.
@@ -95,9 +96,8 @@ impl Harness {
         let ret =
             rt.call::<DataCapActor>(Method::Mint as MethodNum, &serialize(&params, "params")?)?;
 
-        assert_eq!(RawBytes::default(), ret);
         rt.verify();
-        Ok(())
+        Ok(ret.deserialize().unwrap())
     }
 
     // Reads the total supply from state directly.
