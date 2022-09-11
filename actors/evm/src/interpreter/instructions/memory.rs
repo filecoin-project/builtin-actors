@@ -66,6 +66,41 @@ pub fn get_memory_region(
     get_memory_region_u64(mem, offset, NonZeroUsize::new(size.as_usize()).unwrap()).map(Some)
 }
 
+pub fn copy_to_memory(
+    memory: &mut Memory,
+    dest_offset: U256,
+    data_offset: U256,
+    size: U256,
+    data: &[u8],
+) -> Result<(), StatusCode> {
+    // TODO this limits addressable output to 2G (31 bits full),
+    //      but it is still probably too much and we should consistently limit further.
+    //      See also https://github.com/filecoin-project/ref-fvm/issues/851
+    let output_usize =
+        (size.bits() < 32).then(|| size.as_usize()).ok_or(StatusCode::InvalidMemoryAccess)?;
+
+    if output_usize > 0 {
+        let output_region = get_memory_region(memory, dest_offset, size)
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+        let output_data = output_region
+            .map(|MemoryRegion { offset, size }| &mut memory[offset..][..size.get()])
+            .ok_or(StatusCode::InvalidMemoryAccess)?;
+
+        // Limit the size if we're copying less than the data length.
+        let mut copy_len = data.len();
+        if output_usize < copy_len {
+            copy_len = output_usize;
+        }
+
+        output_data
+            .get_mut(..copy_len)
+            .ok_or(StatusCode::InvalidMemoryAccess)?
+            .copy_from_slice(&data[data_offset.as_usize()..][..copy_len]);
+    }
+
+    Ok(())
+}
+
 #[inline]
 pub fn mload(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let index = state.stack.pop();
