@@ -24,8 +24,6 @@ use crate::{AllocationID, ClaimID};
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct State {
     pub root_key: Address,
-    // Address of the data cap token actor
-    pub token: Address,
     // Maps verifier addresses to data cap minting allowance (in bytes).
     pub verifiers: Cid,
     pub remove_data_cap_proposal_ids: Cid,
@@ -35,11 +33,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new<BS: Blockstore>(
-        store: &BS,
-        root_key: Address,
-        token: Address,
-    ) -> Result<State, ActorError> {
+    pub fn new<BS: Blockstore>(store: &BS, root_key: Address) -> Result<State, ActorError> {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
             .map_err(|e| actor_error!(illegal_state, "failed to create empty map: {}", e))?;
@@ -53,7 +47,6 @@ impl State {
 
         Ok(State {
             root_key,
-            token,
             verifiers: empty_map,
             remove_data_cap_proposal_ids: empty_map,
             allocations: empty_mapmap,
@@ -142,7 +135,7 @@ impl State {
     ) -> Result<(), ActorError> {
         self.allocations = allocs
             .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocation table")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush allocations table")?;
         Ok(())
     }
 

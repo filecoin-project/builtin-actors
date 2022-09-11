@@ -76,9 +76,8 @@ impl Actor {
             .resolve_address(&root_key)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "root should be an ID address")?;
 
-        let st = State::new(rt.store(), Address::new_id(id_addr)).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create verifreg state")
-        })?;
+        let st = State::new(rt.store(), Address::new_id(id_addr))
+            .context("failed to create verifreg state")?;
 
         rt.create(&st)?;
         Ok(())
@@ -116,7 +115,7 @@ impl Actor {
         }
 
         // Disallow existing clients as verifiers.
-        let token_balance = balance_of(rt, &st.token, &verifier)?;
+        let token_balance = balance_of(rt, &verifier)?;
         if token_balance.is_positive() {
             return Err(actor_error!(
                 illegal_argument,
@@ -222,7 +221,7 @@ impl Actor {
 
         // Credit client token allowance.
         let operators = vec![*STORAGE_MARKET_ACTOR_ADDR];
-        mint(rt, &st.token, &client, &params.allowance, operators).context(format!(
+        mint(rt, &client, &params.allowance, operators).context(format!(
             "failed to mint {} data cap to client {}",
             &params.allowance, client
         ))?;
@@ -257,17 +256,15 @@ impl Actor {
             ));
         }
 
-        let st: State = rt.state()?;
-
         // Deduct from client's token allowance.
-        let remaining = destroy(rt, &st.token, &client, &params.deal_size).context(format!(
+        let remaining = destroy(rt, &client, &params.deal_size).context(format!(
             "failed to deduct {} from allowance for {}",
             &params.deal_size, &client
         ))?;
 
         // Destroy any remaining balance below minimum verified deal size.
         if remaining.is_positive() && remaining < rt.policy().minimum_verified_allocation_size {
-            destroy(rt, &st.token, &client, &remaining).context(format!(
+            destroy(rt, &client, &remaining).context(format!(
                 "failed to destroy remaining {} from allowance for {}",
                 &remaining, &client
             ))?;
@@ -316,7 +313,7 @@ impl Actor {
         }
 
         let operators = vec![*STORAGE_MARKET_ACTOR_ADDR];
-        mint(rt, &st.token, &client, &params.deal_size, operators).context(format!(
+        mint(rt, &client, &params.deal_size, operators).context(format!(
             "failed to restore {} to allowance for {}",
             &params.deal_size, &client
         ))
@@ -374,7 +371,7 @@ impl Actor {
         }
 
         // Validate and then remove the proposal.
-        let token = rt.transaction(|st: &mut State, rt| {
+        rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
 
             if !is_verifier(rt, st, verifier_1)? {
@@ -419,13 +416,13 @@ impl Actor {
             st.remove_data_cap_proposal_ids = proposal_ids
                 .flush()
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush proposal ids")?;
-            Ok(st.token)
+            Ok(())
         })?;
 
         // Burn the client's data cap tokens.
-        let balance = balance_of(rt, &token, &client).context("failed to fetch balance")?;
+        let balance = balance_of(rt, &client).context("failed to fetch balance")?;
         let burnt = std::cmp::min(balance, params.data_cap_amount_to_remove);
-        destroy(rt, &token, &client, &burnt)
+        destroy(rt, &client, &burnt)
             .context(format!("failed to destroy {} from allowance for {}", &burnt, &client))?;
 
         Ok(RemoveDataCapReturn {
@@ -449,45 +446,44 @@ impl Actor {
         let client = params.client;
         let mut ret_gen = BatchReturnGen::new(params.allocation_ids.len());
         let mut recovered_datacap = DataCap::zero();
-        let token_addr = rt
-            .transaction(|st: &mut State, rt| {
-                let mut allocs = st.load_allocs(rt.store())?;
-                for alloc_id in params.allocation_ids {
-                    let maybe_alloc = allocs.get(client, alloc_id).context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "HAMT lookup failure getting allocation",
-                    )?;
-                    let alloc = match maybe_alloc {
-                        None => {
-                            ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
-                            info!(
+        rt.transaction(|st: &mut State, rt| {
+            let mut allocs = st.load_allocs(rt.store())?;
+            for alloc_id in params.allocation_ids {
+                let maybe_alloc = allocs.get(client, alloc_id).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "HAMT lookup failure getting allocation",
+                )?;
+                let alloc = match maybe_alloc {
+                    None => {
+                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                        info!(
                             "claim references allocation id {} that does not belong to client {}",
                             alloc_id, client,
                         );
-                            continue;
-                        }
-                        Some(a) => a,
-                    };
-                    if alloc.expiration > rt.curr_epoch() {
-                        ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
-                        info!("cannot revoke allocation {} that has not expired", alloc_id);
                         continue;
                     }
-                    recovered_datacap += alloc.size.0;
-
-                    allocs.remove(client, alloc_id).context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to remove allocation {}", alloc_id),
-                    )?;
-                    ret_gen.add_success();
+                    Some(a) => a,
+                };
+                if alloc.expiration > rt.curr_epoch() {
+                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                    info!("cannot revoke allocation {} that has not expired", alloc_id);
+                    continue;
                 }
-                st.save_allocs(&mut allocs)?;
-                Ok(st.token)
-            })
-            .context("state transaction failed")?;
+                recovered_datacap += alloc.size.0;
+
+                allocs.remove(client, alloc_id).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to remove allocation {}", alloc_id),
+                )?;
+                ret_gen.add_success();
+            }
+            st.save_allocs(&mut allocs)?;
+            Ok(())
+        })
+        .context("state transaction failed")?;
 
         // Transfer the recovered datacap back to the client.
-        transfer(rt, &token_addr, &client, &recovered_datacap).with_context(|| {
+        transfer(rt, &client, &recovered_datacap).with_context(|| {
             format!(
                 "failed to transfer recovered datacap {} back to client {}",
                 &recovered_datacap, &client
@@ -515,81 +511,80 @@ impl Actor {
         }
         let mut datacap_claimed = DataCap::zero();
         let mut ret_gen = BatchReturnGen::new(params.sectors.len());
-        let token = rt
-            .transaction(|st: &mut State, rt| {
-                let mut claims = st.load_claims(rt.store())?;
-                let mut allocs = st.load_allocs(rt.store())?;
+        rt.transaction(|st: &mut State, rt| {
+            let mut claims = st.load_claims(rt.store())?;
+            let mut allocs = st.load_allocs(rt.store())?;
 
-                for claim_alloc in params.sectors {
-                    let maybe_alloc =
-                        allocs.get(claim_alloc.client, claim_alloc.allocation_id).context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "HAMT lookup failure getting allocation",
-                        )?;
-
-                    let alloc: &Allocation = match maybe_alloc {
-                        None => {
-                            ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
-                            info!(
-                                "no allocation {} for client {}",
-                                claim_alloc.allocation_id, claim_alloc.client,
-                            );
-                            continue;
-                        }
-                        Some(a) => a,
-                    };
-
-                    if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
-                        ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
-                        info!(
-                            "invalid sector {:?} for allocation {}",
-                            claim_alloc.sector, claim_alloc.allocation_id,
-                        );
-                        continue;
-                    }
-
-                    let new_claim = Claim {
-                        provider,
-                        client: alloc.client,
-                        data: alloc.data,
-                        size: alloc.size,
-                        term_min: alloc.term_min,
-                        term_max: alloc.term_max,
-                        term_start: rt.curr_epoch(),
-                        sector: claim_alloc.sector,
-                    };
-
-                    let inserted = claims
-                        .put_if_absent(provider, claim_alloc.allocation_id, new_claim)
-                        .context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to write claim {}", claim_alloc.allocation_id),
-                        )?;
-                    if !inserted {
-                        ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE); // should be unreachable since claim and alloc can't exist at once
-                        info!(
-                            "claim for allocation {} could not be inserted as it already exists",
-                            claim_alloc.allocation_id,
-                        );
-                        continue;
-                    }
-
-                    allocs.remove(claim_alloc.client, claim_alloc.allocation_id).context_code(
+            for claim_alloc in params.sectors {
+                let maybe_alloc =
+                    allocs.get(claim_alloc.client, claim_alloc.allocation_id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to remove allocation {}", claim_alloc.allocation_id),
+                        "HAMT lookup failure getting allocation",
                     )?;
 
-                    datacap_claimed += DataCap::from(claim_alloc.size.0);
-                    ret_gen.add_success();
+                let alloc: &Allocation = match maybe_alloc {
+                    None => {
+                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                        info!(
+                            "no allocation {} for client {}",
+                            claim_alloc.allocation_id, claim_alloc.client,
+                        );
+                        continue;
+                    }
+                    Some(a) => a,
+                };
+
+                if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
+                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                    info!(
+                        "invalid sector {:?} for allocation {}",
+                        claim_alloc.sector, claim_alloc.allocation_id,
+                    );
+                    continue;
                 }
-                st.save_allocs(&mut allocs)?;
-                st.save_claims(&mut claims)?;
-                Ok(st.token)
-            })
-            .context("state transaction failed")?;
+
+                let new_claim = Claim {
+                    provider,
+                    client: alloc.client,
+                    data: alloc.data,
+                    size: alloc.size,
+                    term_min: alloc.term_min,
+                    term_max: alloc.term_max,
+                    term_start: rt.curr_epoch(),
+                    sector: claim_alloc.sector,
+                };
+
+                let inserted = claims
+                    .put_if_absent(provider, claim_alloc.allocation_id, new_claim)
+                    .context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to write claim {}", claim_alloc.allocation_id),
+                    )?;
+                if !inserted {
+                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE); // should be unreachable since claim and alloc can't exist at once
+                    info!(
+                        "claim for allocation {} could not be inserted as it already exists",
+                        claim_alloc.allocation_id,
+                    );
+                    continue;
+                }
+
+                allocs.remove(claim_alloc.client, claim_alloc.allocation_id).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to remove allocation {}", claim_alloc.allocation_id),
+                )?;
+
+                datacap_claimed += DataCap::from(claim_alloc.size.0);
+                ret_gen.add_success();
+            }
+            st.save_allocs(&mut allocs)?;
+            st.save_claims(&mut claims)?;
+            Ok(())
+        })
+        .context("state transaction failed")?;
 
         // Burn the datacap tokens from verified registry's own balance.
-        burn(rt, &token, &datacap_claimed)?;
+        burn(rt, &datacap_claimed)?;
 
         Ok(ret_gen.gen())
     }
@@ -602,9 +597,8 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let st: State = rt.state()?;
         // Accept only the data cap token.
-        rt.validate_immediate_caller_is(&[st.token])?;
+        rt.validate_immediate_caller_is(&[*DATACAP_TOKEN_ACTOR_ADDR])?;
 
         let my_id = rt.message().receiver().id().unwrap();
         let curr_epoch = rt.curr_epoch();
@@ -664,24 +658,28 @@ where
     Ok(found)
 }
 
-// Invokes BalanceOf on a data cap token actor, and converts the result to whole units of data cap.
-fn balance_of<BS, RT>(rt: &mut RT, token: &Address, owner: &Address) -> Result<DataCap, ActorError>
+// Invokes BalanceOf on the data cap token actor, and converts the result to whole units of data cap.
+fn balance_of<BS, RT>(rt: &mut RT, owner: &Address) -> Result<DataCap, ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     let params = serialize(owner, "owner address")?;
     let ret = rt
-        .send(*token, ext::datacap::Method::BalanceOf as u64, params, TokenAmount::zero())
-        .context(format!("failed to query balance of {} for {}", token, owner))?;
-    let x: BigIntDe = deserialize(&ret, "balance result")?;
-    Ok(tokens_to_datacap(&x.0))
+        .send(
+            &DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::Method::BalanceOf as u64,
+            params,
+            TokenAmount::zero(),
+        )
+        .context(format!("failed to query datacap balance of {}", owner))?;
+    let x: TokenAmount = deserialize(&ret, "balance result")?;
+    Ok(tokens_to_datacap(&x))
 }
 
 // Invokes Mint on a data cap token actor for whole units of data cap.
 fn mint<BS, RT>(
     rt: &mut RT,
-    token: &Address,
     to: &Address,
     amount: &DataCap,
     operators: Vec<Address>,
@@ -693,17 +691,17 @@ where
     let token_amt = datacap_to_tokens(amount);
     let params = MintParams { to: *to, amount: token_amt, operators };
     rt.send(
-        *token,
+        &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Mint as u64,
         serialize(&params, "mint params")?,
         TokenAmount::zero(),
     )
-    .context(format!("failed to send mint {:?} to {}", params, token))?;
+    .context(format!("failed to send mint {:?} to datacap", params))?;
     Ok(())
 }
 
 // Invokes Burn on a data cap token actor for whole units of data cap.
-fn burn<BS, RT>(rt: &mut RT, token: &Address, amount: &DataCap) -> Result<DataCap, ActorError>
+fn burn<BS, RT>(rt: &mut RT, amount: &DataCap) -> Result<DataCap, ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
@@ -712,23 +710,18 @@ where
     let params = BurnParams { amount: token_amt };
     let ret: BurnReturn = rt
         .send(
-            *token,
+            &DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Burn as u64,
             serialize(&params, "burn params")?,
             TokenAmount::zero(),
         )
-        .context(format!("failed to send burn {:?} to {}", params, token))?
+        .context(format!("failed to send burn {:?} to datacap", params))?
         .deserialize()?;
     Ok(tokens_to_datacap(&ret.balance))
 }
 
 // Invokes Destroy on a data cap token actor for whole units of data cap.
-fn destroy<BS, RT>(
-    rt: &mut RT,
-    token: &Address,
-    owner: &Address,
-    amount: &DataCap,
-) -> Result<DataCap, ActorError>
+fn destroy<BS, RT>(rt: &mut RT, owner: &Address, amount: &DataCap) -> Result<DataCap, ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
@@ -737,23 +730,18 @@ where
     let params = DestroyParams { owner: *owner, amount: token_amt };
     let ret: BurnReturn = rt
         .send(
-            *token,
+            &DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Destroy as u64,
             serialize(&params, "destroy params")?,
             TokenAmount::zero(),
         )
-        .context(format!("failed to send destroy {:?} to {}", params, token))?
+        .context(format!("failed to send destroy {:?} to datacap", params))?
         .deserialize()?;
     Ok(tokens_to_datacap(&ret.balance))
 }
 
 // Invokes transfer on a data cap token actor for whole units of data cap.
-fn transfer<BS, RT>(
-    rt: &mut RT,
-    token: &Address,
-    to: &Address,
-    amount: &DataCap,
-) -> Result<(), ActorError>
+fn transfer<BS, RT>(rt: &mut RT, to: &Address, amount: &DataCap) -> Result<(), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
@@ -761,12 +749,12 @@ where
     let token_amt = datacap_to_tokens(amount);
     let params = TransferParams { to: *to, amount: token_amt, operator_data: Default::default() };
     rt.send(
-        *token,
+        &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Transfer as u64,
         serialize(&params, "transfer params")?,
         TokenAmount::zero(),
     )
-    .context(format!("failed to send transfer {:?} to {}", params, token))?;
+    .context(format!("failed to send transfer to datacap {:?}", params))?;
     Ok(())
 }
 
