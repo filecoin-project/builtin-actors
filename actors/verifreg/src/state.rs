@@ -11,7 +11,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError, Map,
@@ -25,11 +25,15 @@ use crate::{AllocationID, ClaimID};
 pub struct State {
     pub root_key: Address,
     // Maps verifier addresses to data cap minting allowance (in bytes).
-    pub verifiers: Cid,
+    pub verifiers: Cid, // HAMT[Address]DataCap
     pub remove_data_cap_proposal_ids: Cid,
-    pub allocations: Cid, // HAMT[Address]HAMT[AllocationID]Allocation
+    // Maps client IDs to allocations made by that client.
+    pub allocations: Cid, // HAMT[ActorID]HAMT[AllocationID]Allocation
+    // Next allocation identifier to use.
+    // The value 0 is reserved to mean "no allocation".
     pub next_allocation_id: u64,
-    pub claims: Cid, // HAMT[Address]HAMT[ClaimID]Claim
+    // Maps provider IDs to allocations claimed by that provider.
+    pub claims: Cid, // HAMT[ActorID]HAMT[ClaimID]Claim
 }
 
 impl State {
@@ -39,10 +43,10 @@ impl State {
             .map_err(|e| actor_error!(illegal_state, "failed to create empty map: {}", e))?;
 
         let empty_mapmap =
-            MapMap::<_, (), Address, AllocationID>::new(store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH)
+            MapMap::<_, (), ActorID, u64>::new(store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH)
                 .flush()
                 .map_err(|e| {
-                    actor_error!(illegal_state, "Failed to create empty multi map: {}", e)
+                    actor_error!(illegal_state, "failed to create empty multi map: {}", e)
                 })?;
 
         Ok(State {
@@ -119,8 +123,8 @@ impl State {
     pub fn load_allocs<'a, BS: Blockstore>(
         &self,
         store: &'a BS,
-    ) -> Result<MapMap<'a, BS, Allocation, Address, AllocationID>, ActorError> {
-        MapMap::<BS, Allocation, Address, AllocationID>::from_root(
+    ) -> Result<MapMap<'a, BS, Allocation, ActorID, AllocationID>, ActorError> {
+        MapMap::<BS, Allocation, ActorID, AllocationID>::from_root(
             store,
             &self.allocations,
             HAMT_BIT_WIDTH,
@@ -131,7 +135,7 @@ impl State {
 
     pub fn save_allocs<'a, BS: Blockstore>(
         &mut self,
-        allocs: &mut MapMap<'a, BS, Allocation, Address, AllocationID>,
+        allocs: &mut MapMap<'a, BS, Allocation, ActorID, AllocationID>,
     ) -> Result<(), ActorError> {
         self.allocations = allocs
             .flush()
@@ -141,10 +145,10 @@ impl State {
 
     /// Inserts a batch of allocations under a single client address.
     /// The allocations are assigned sequential IDs starting from the next available.
-    pub fn insert_allocations<'a, BS: Blockstore, I>(
+    pub fn insert_allocations<BS: Blockstore, I>(
         &mut self,
-        store: &'a BS,
-        client: &Address,
+        store: &BS,
+        client: ActorID,
         new_allocs: I,
     ) -> Result<(), ActorError>
     where
@@ -158,7 +162,7 @@ impl State {
         let count_ref = &mut count;
         allocs
             .put_many(
-                *client,
+                client,
                 new_allocs.map(move |a| {
                     let id = first_id + *count_ref;
                     *count_ref += 1;
@@ -174,8 +178,8 @@ impl State {
     pub fn load_claims<'a, BS: Blockstore>(
         &self,
         store: &'a BS,
-    ) -> Result<MapMap<'a, BS, Claim, Address, ClaimID>, ActorError> {
-        MapMap::<BS, Claim, Address, ClaimID>::from_root(
+    ) -> Result<MapMap<'a, BS, Claim, ActorID, ClaimID>, ActorError> {
+        MapMap::<BS, Claim, ActorID, ClaimID>::from_root(
             store,
             &self.claims,
             HAMT_BIT_WIDTH,
@@ -186,7 +190,7 @@ impl State {
 
     pub fn save_claims<'a, BS: Blockstore>(
         &mut self,
-        claims: &mut MapMap<'a, BS, Claim, Address, ClaimID>,
+        claims: &mut MapMap<'a, BS, Claim, ActorID, ClaimID>,
     ) -> Result<(), ActorError> {
         self.claims = claims
             .flush()
@@ -197,9 +201,9 @@ impl State {
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
 pub struct Claim {
     // The provider storing the data (from allocation).
-    pub provider: Address,
+    pub provider: ActorID,
     // The client which allocated the DataCap (from allocation).
-    pub client: Address,
+    pub client: ActorID,
     // Identifier of the data committed (from allocation).
     pub data: Cid,
     // The (padded) size of data (from allocation).
@@ -217,9 +221,9 @@ pub struct Claim {
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
 pub struct Allocation {
     // The verified client which allocated the DataCap.
-    pub client: Address,
+    pub client: ActorID,
     // The provider (miner actor) which may claim the allocation.
-    pub provider: Address,
+    pub provider: ActorID,
     // Identifier of the data to be committed.
     pub data: Cid,
     // The (padded) size of data.

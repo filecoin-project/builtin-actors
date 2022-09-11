@@ -314,7 +314,8 @@ impl Harness {
             ExitCode::OK,
         );
 
-        let params = RemoveExpiredAllocationsParams { client: *client, allocation_ids };
+        let params =
+            RemoveExpiredAllocationsParams { client: client.id().unwrap(), allocation_ids };
         let ret = rt
             .call::<VerifregActor>(
                 Method::RemoveExpiredAllocations as MethodNum,
@@ -350,8 +351,8 @@ impl Harness {
 
 pub fn make_alloc(data_id: &str, client: &Address, provider: &Address, size: u64) -> Allocation {
     Allocation {
-        client: *client,
-        provider: *provider,
+        client: client.id().unwrap(),
+        provider: provider.id().unwrap(),
         data: make_piece_cid(data_id.as_bytes()),
         size: PaddedPieceSize(size),
         term_min: 1000,
@@ -373,10 +374,10 @@ pub fn make_alloc_req(rt: &MockRuntime, provider: ActorID, size: u64) -> Allocat
 }
 
 // Creates the expected allocation from a request.
-pub fn alloc_from_req(client: &Address, req: &AllocationRequest) -> Allocation {
+pub fn alloc_from_req(client: ActorID, req: &AllocationRequest) -> Allocation {
     Allocation {
-        client: *client,
-        provider: req.provider,
+        client,
+        provider: req.provider.id().unwrap(),
         data: req.data,
         size: req.size,
         term_min: req.term_min,
