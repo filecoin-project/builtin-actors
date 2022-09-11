@@ -22,14 +22,7 @@ use fil_actor_power::{
 };
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
-use fil_actors_runtime::runtime::policy_constants::{
-    MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
-};
-use fil_fungible_token::receiver::types::{
-    FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
-};
-use fil_fungible_token::token::types::TransferFromParams;
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -439,9 +432,7 @@ pub fn declare_recovery(
         recoveries: vec![RecoveryDeclaration {
             deadline,
             partition,
-            sectors: UnvalidatedBitField::Validated(
-                BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            ),
+            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
         }],
     };
 
@@ -465,10 +456,7 @@ pub fn submit_windowed_post(
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
-        partitions: vec![PoStPartition {
-            index: partition_idx,
-            skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new()),
-        }],
+        partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
             proof_bytes: vec![],
@@ -517,10 +505,7 @@ pub fn submit_invalid_post(
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
-        partitions: vec![PoStPartition {
-            index: partition_idx,
-            skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new()),
-        }],
+        partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
             proof_bytes: TEST_VM_INVALID_POST.as_bytes().to_vec(),
@@ -704,8 +689,8 @@ pub fn publish_deal(
     ret
 }
 
-pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
-    UnvalidatedBitField::Validated(BitField::try_from_bits(bits.iter().copied()).unwrap())
+pub fn make_bitfield(bits: &[u64]) -> BitField {
+    BitField::try_from_bits(bits.iter().copied()).unwrap()
 }
 
 pub fn bf_all(bf: BitField) -> Vec<u64> {

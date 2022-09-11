@@ -445,8 +445,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let params =
-            CompactSectorNumbersParams { mask_sector_numbers: UnvalidatedBitField::Validated(bf) };
+        let params = CompactSectorNumbersParams { mask_sector_numbers: bf };
 
         rt.call::<Actor>(Method::CompactSectorNumbers as u64, &RawBytes::serialize(params).unwrap())
     }
@@ -1174,9 +1173,8 @@ impl ActorHarness {
             let maybe_partition = dln.load_partition(&rt.store, p.index);
             if let Ok(partition) = maybe_partition {
                 let expected_faults = &partition.faults - &partition.recoveries;
-                let skipped = get_bitfield(&p.skipped);
-                all_ignored |= &(&expected_faults | &skipped);
-                all_recovered |= &(&partition.recoveries - &skipped);
+                all_ignored |= &(&expected_faults | &p.skipped);
+                all_recovered |= &(&partition.recoveries - &p.skipped);
             }
         }
         let optimistic = all_recovered.is_empty();
@@ -1551,10 +1549,7 @@ impl ActorHarness {
                             power_delta -= &new_faulty_power;
                             power_delta += &new_proven_power;
 
-                            partitions.push(PoStPartition {
-                                index: part_idx,
-                                skipped: UnvalidatedBitField::Validated(to_skip),
-                            });
+                            partitions.push(PoStPartition { index: part_idx, skipped: to_skip });
 
                             Ok(())
                         })
@@ -1636,11 +1631,8 @@ impl ActorHarness {
         }
 
         // Calculate params from faulted sector infos
-        let recovery = RecoveryDeclaration {
-            deadline: dlidx,
-            partition: pidx,
-            sectors: UnvalidatedBitField::Validated(recovery_sectors),
-        };
+        let recovery =
+            RecoveryDeclaration { deadline: dlidx, partition: pidx, sectors: recovery_sectors };
         let params = DeclareFaultsRecoveredParams { recoveries: vec![recovery] };
         let ret = rt.call::<Actor>(
             Method::DeclareFaultsRecovered as u64,
@@ -2295,10 +2287,7 @@ impl ActorHarness {
         deadline: u64,
         partition: BitField,
     ) -> Result<(), ActorError> {
-        let params = CompactPartitionsParams {
-            deadline,
-            partitions: UnvalidatedBitField::Validated(partition),
-        };
+        let params = CompactPartitionsParams { deadline, partitions: partition };
 
         rt.expect_validate_caller_addr(self.caller_addrs());
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
@@ -2510,13 +2499,13 @@ pub fn assert_bitfield_equals(bf: &BitField, bits: &[u64]) {
 }
 
 #[allow(dead_code)]
-pub fn make_empty_bitfield() -> UnvalidatedBitField {
-    UnvalidatedBitField::Validated(BitField::new())
+pub fn make_empty_bitfield() -> BitField {
+    BitField::new()
 }
 
 #[allow(dead_code)]
-pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
-    UnvalidatedBitField::Validated(BitField::try_from_bits(bits.iter().copied()).unwrap())
+pub fn make_bitfield(bits: &[u64]) -> BitField {
+    BitField::try_from_bits(bits.iter().copied()).unwrap()
 }
 
 #[allow(dead_code)]
@@ -2530,7 +2519,7 @@ pub fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
 #[allow(dead_code)]
 pub fn make_prove_commit_aggregate(sector_nos: &BitField) -> ProveCommitAggregateParams {
     ProveCommitAggregateParams {
-        sector_numbers: UnvalidatedBitField::Validated(sector_nos.clone()),
+        sector_numbers: sector_nos.clone(),
         aggregate_proof: vec![0; 1024],
     }
 }
@@ -2601,17 +2590,14 @@ fn make_fault_params_from_faulting_sectors(
         let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
         match declaration_map.get_mut(&(dlidx, pidx)) {
             Some(declaration) => {
-                declaration.sectors.validate_mut().unwrap().set(sector.sector_number);
+                declaration.sectors.set(sector.sector_number);
             }
             None => {
                 let mut bf = BitField::new();
                 bf.set(sector.sector_number);
 
-                let declaration = FaultDeclaration {
-                    deadline: dlidx,
-                    partition: pidx,
-                    sectors: UnvalidatedBitField::Validated(bf),
-                };
+                let declaration =
+                    FaultDeclaration { deadline: dlidx, partition: pidx, sectors: bf };
 
                 declaration_map.insert((dlidx, pidx), declaration);
             }

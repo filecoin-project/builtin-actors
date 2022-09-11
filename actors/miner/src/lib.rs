@@ -22,7 +22,7 @@ use fil_actors_runtime::{
     CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
@@ -679,7 +679,7 @@ impl Actor {
     /// and precommit state is removed.
     fn prove_commit_aggregate<BS, RT>(
         rt: &mut RT,
-        mut params: ProveCommitAggregateParams,
+        params: ProveCommitAggregateParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -2229,9 +2229,7 @@ impl Actor {
                         .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
                     let old_sectors = sectors
-                        .load_sector(&mut fvm_ipld_bitfield::UnvalidatedBitField::Validated(
-                            decl.sectors.clone(),
-                        ))
+                        .load_sector(&decl.sectors)
                         .map_err(|e| e.wrap("failed to load sectors"))?;
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
@@ -2820,7 +2818,7 @@ impl Actor {
     /// May not be invoked if the deadline has any un-processed early terminations.
     fn compact_partitions<BS, RT>(
         rt: &mut RT,
-        mut params: CompactPartitionsParams,
+        params: CompactPartitionsParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -2961,7 +2959,7 @@ impl Actor {
     /// 99 can be masked out to collapse these two ranges into one.
     fn compact_sector_numbers<BS, RT>(
         rt: &mut RT,
-        mut params: CompactSectorNumbersParams,
+        params: CompactSectorNumbersParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -4600,10 +4598,8 @@ fn validate_fr_declaration_deadline(deadline: &DeadlineInfo) -> anyhow::Result<(
 /// Validates that a partition contains the given sectors.
 fn validate_partition_contains_sectors(
     partition: &Partition,
-    sectors: &mut UnvalidatedBitField,
+    sectors: &BitField,
 ) -> anyhow::Result<()> {
-    let sectors = sectors.validate().map_err(|e| anyhow!("failed to check sectors: {}", e))?;
-
     // Check that the declared sectors are actually assigned to the partition.
     if partition.sectors.contains_all(sectors) {
         Ok(())
