@@ -141,7 +141,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let input_region = get_memory_region(memory, input_offset, input_size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    let mut result = {
+    let result = {
         // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = input_region
             .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
