@@ -18,6 +18,9 @@ pub fn extcodesize<'r, BS: Blockstore, RT: Runtime<BS>>(
     platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
     let addr = state.stack.pop();
+    // TODO we're fetching the entire block here just to get its size. We should instead use
+    //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
+    //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
     let len = get_evm_bytecode_cid(platform.rt, addr)
         .and_then(|cid| get_evm_bytecode(platform.rt, &cid))
         .map(|bytecode| bytecode.len())?;
