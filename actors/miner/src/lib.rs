@@ -1074,11 +1074,7 @@ impl Actor {
 
             let expiration = sector_info.expiration;
             let seal_proof = sector_info.seal_proof;
-            validated_updates.push(UpdateAndSectorInfo {
-                update,
-                sector_info,
-                deal_sizes: deal_sizes,
-            });
+            validated_updates.push(UpdateAndSectorInfo { update, sector_info, deal_sizes });
 
             sectors_deals.push(ext::market::SectorDeals {
                 sector_type: seal_proof,
@@ -4658,8 +4654,8 @@ where
                 deal_ids: pre_commit.info.deal_ids,
                 expiration: pre_commit.info.expiration,
                 activation,
-                deal_weight: deal_weight,
-                verified_deal_weight: verified_deal_weight,
+                deal_weight,
+                verified_deal_weight,
                 initial_pledge,
                 expected_day_reward: day_reward,
                 expected_storage_pledge: storage_pledge,
