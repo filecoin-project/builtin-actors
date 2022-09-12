@@ -32,8 +32,10 @@ pub fn extcodehash<'r, BS: Blockstore, RT: Runtime<BS>>(
 ) -> Result<(), StatusCode> {
     let addr = state.stack.pop();
     let cid = get_evm_bytecode_cid(platform.rt, addr)?;
+    let digest = cid.hash().digest();
     // Take the first 32 bytes of the Multihash
-    state.stack.push(cid.hash().digest()[..32].into());
+    let digest_len = digest.len().min(32);
+    state.stack.push(digest[..digest_len].into());
     Ok(())
 }
 
