@@ -50,6 +50,10 @@ pub enum StatusCode {
     #[strum(serialize = "invalid instruction")]
     InvalidInstruction,
 
+    /// An argument passed to an instruction does not meet expectations.
+    #[strum(serialize = "invalid argument")]
+    InvalidArgument(String),
+
     /// An undefined instruction has been encountered.
     #[strum(serialize = "undefined instruction")]
     UndefinedInstruction,

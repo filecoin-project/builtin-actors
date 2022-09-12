@@ -58,14 +58,15 @@ fn get_evm_bytecode_cid<BS: Blockstore, RT: Runtime<BS>>(
     rt: &RT,
     addr: U256,
 ) -> Result<Cid, StatusCode> {
-    let addr =
-        Address::try_from(addr)?.as_id_address().expect("no support for non-ID addresses yet");
+    let addr = Address::try_from(addr)?
+        .as_id_address()
+        .ok_or_else(|| StatusCode::BadAddress("no support for non-ID addresses yet".to_string()))?;
 
     let evm_cid = rt.get_code_cid_for_type(Type::EVM);
     let target_cid = rt.get_actor_code_cid(&addr.id().expect("not an ID address"));
 
     if Some(evm_cid) != target_cid {
-        return Err(StatusCode::InternalError(
+        return Err(StatusCode::InvalidArgument(
             "cannot invoke EXTCODESIZE for non-EVM actor".to_string(),
         )); // TODO better error code
     }
