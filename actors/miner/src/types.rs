@@ -19,6 +19,7 @@ use fvm_shared::sector::{
     StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
+use crate::ext::verifreg::ClaimID;
 
 pub type CronEvent = i64;
 
@@ -143,6 +144,14 @@ pub struct ExpirationExtension {
     pub deadline: u64,
     pub partition: u64,
     pub sectors: UnvalidatedBitField,
+    pub new_expiration: ChainEpoch,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ExpirationExtension2 {
+    pub deadline: u64,
+    pub partition: u64,
+    pub sectors: Vec<(SectorNumber, Vec<ClaimID>)>,
     pub new_expiration: ChainEpoch,
 }
 

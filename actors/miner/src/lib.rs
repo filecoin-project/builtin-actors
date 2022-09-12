@@ -122,6 +122,7 @@ pub enum Method {
     ProveReplicaUpdates2 = 29,
     ChangeBeneficiary = 30,
     GetBeneficiary = 31,
+    ExtendSectorExpiration2 = 32,
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -2111,6 +2112,10 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+
+    /* 1. Validate input params, same f() for both 
+        f(inputs) -> ()
+    */        
         {
             let policy = rt.policy();
             if params.extensions.len() as u64 > policy.declarations_max {
@@ -2173,6 +2178,16 @@ impl Actor {
 
         let curr_epoch = rt.curr_epoch();
 
+    /* 2. TODO validation that claims include entire set of claims and that claims work with new extension  
+        To start with iterate through all sector ids and gather all claim ids.  Then call to verifreg and 
+            a. get confirmation that claim exists
+            b. get back information on claimed data size
+            
+            package these sizes into a local datastructure for sector number.  Later on this will be checked 
+    */
+    
+
+        /* Loop over sectors and do extension */
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
             rt.validate_immediate_caller_is(
@@ -2391,6 +2406,7 @@ impl Actor {
             Ok((power_delta, pledge_delta))
         })?;
 
+        /* Update power and pledge, no change this is already really good  */
         request_update_power(rt, power_delta)?;
 
         // Note: the pledge delta is expected to be zero, since pledge is not re-calculated for the extension.
@@ -4873,6 +4889,10 @@ impl ActorCode for Actor {
             Some(Method::GetBeneficiary) => {
                 let res = Self::get_beneficiary(rt)?;
                 Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::ExtendSectorExpiration2) => {
+                Self::extend_sector_expiration(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
         }
