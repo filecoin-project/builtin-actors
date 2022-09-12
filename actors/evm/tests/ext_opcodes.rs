@@ -51,7 +51,7 @@ fn test_extcodesize() {
     // a random CID
     let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
     let other_bytecode = vec![0x01, 0x02, 0x03, 0x04];
-    rt.store.put_keyed(&bytecode_cid, &other_bytecode.as_slice()).unwrap();
+    rt.store.put_keyed(&bytecode_cid, other_bytecode.as_slice()).unwrap();
 
     rt.expect_validate_caller_any();
     rt.expect_send(
@@ -167,7 +167,7 @@ fn test_extcodecopy() {
     // a random CID
     let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
     let other_bytecode = vec![0x01, 0x02, 0x03, 0x04];
-    rt.store.put_keyed(&bytecode_cid, &other_bytecode.as_slice()).unwrap();
+    rt.store.put_keyed(&bytecode_cid, other_bytecode.as_slice()).unwrap();
 
     rt.expect_validate_caller_any();
     rt.expect_send(
