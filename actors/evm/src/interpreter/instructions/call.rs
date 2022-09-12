@@ -9,8 +9,7 @@ use {
     crate::interpreter::System,
     crate::interpreter::U256,
     crate::RawBytes,
-    crate::{InvokeParams, Method},
-    fil_actors_runtime::runtime::builtins::Type as ActorType,
+    crate::{Method, EVM_CONTRACT_REVERTED},
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
     fvm_shared::econ::TokenAmount,
@@ -143,48 +142,28 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
     let result = {
         // ref to memory is dropped after calling so we can mutate it on output later
-        let input_data = input_region
-            .map(|MemoryRegion { offset, size }| &memory[offset..][..size.get()])
-            .ok_or(StatusCode::InvalidMemoryAccess)?;
+        let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
+            &memory[offset..][..size.get()]
+        } else {
+            &[]
+        };
 
         if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
-            precompiles::Precompiles::call_precompile(rt, dst, input_data)
-                .map_err(|_| StatusCode::PrecompileFailure)?
+            let result = precompiles::Precompiles::call_precompile(rt, dst, input_data)
+                .map_err(|_| StatusCode::PrecompileFailure)?;
+            Ok(RawBytes::from(result))
         } else {
-            // CALL and its brethren can only invoke other EVM contracts; see the (magic)
-            // CALLMETHOD/METHODNUM opcodes for calling fil actors with native call
-            // conventions.
             let dst_addr = Address::try_from(dst)?
                 .as_id_address()
                 .ok_or_else(|| StatusCode::BadAddress("not an actor id address".to_string()))?;
 
-            let dst_code_cid = rt
-                .get_actor_code_cid(
-                    &rt.resolve_address(&dst_addr).ok_or_else(|| {
-                        StatusCode::BadAddress("cannot resolve address".to_string())
-                    })?,
-                )
-                .ok_or_else(|| StatusCode::BadAddress("unknown actor".to_string()))?;
-            let evm_code_cid = rt.get_code_cid_for_type(ActorType::EVM);
-            if dst_code_cid != evm_code_cid {
-                return Err(StatusCode::BadAddress("cannot call non EVM actor".to_string()));
-            }
-
             match kind {
-                CallKind::Call => {
-                    let params = InvokeParams { input_data: RawBytes::from(input_data.to_vec()) };
-                    let result = rt.send(
-                        &dst_addr,
-                        Method::InvokeContract as u64,
-                        RawBytes::serialize(params).map_err(|_| {
-                            StatusCode::InternalError(
-                                "failed to marshall invocation data".to_string(),
-                            )
-                        })?,
-                        TokenAmount::from(&value),
-                    );
-                    result.map_err(StatusCode::from)?.to_vec()
-                }
+                CallKind::Call => rt.send(
+                    &dst_addr,
+                    Method::InvokeContract as u64,
+                    RawBytes::from(input_data.to_vec()),
+                    TokenAmount::from(&value),
+                ),
                 CallKind::DelegateCall => {
                     todo!()
                 }
@@ -198,6 +177,19 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         }
     };
 
+    if let Err(ae) = result {
+        return if ae.exit_code() == EVM_CONTRACT_REVERTED {
+            // reverted -- we don't have return data yet
+            // push failure
+            stack.push(U256::zero());
+            Ok(())
+        } else {
+            Err(StatusCode::from(ae))
+        };
+    }
+
+    let result = result.unwrap().to_vec();
+
     // save return_data
     state.return_data = result.clone().into();
 
@@ -206,4 +198,66 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
 
     stack.push(U256::from(1));
     Ok(())
+}
+
+pub fn callactor<'r, BS: Blockstore, RT: Runtime<BS>>(
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
+) -> Result<(), StatusCode> {
+    let ExecutionState { stack, memory, .. } = state;
+    let rt = &*platform.rt; // as immutable reference
+
+    // stack: GAS DEST VALUE METHODNUM INPUT-OFFSET INPUT-SIZE
+    // NOTE: we don't need output-offset/output-size (which the CALL instructions have)
+    //       becase these are kinda useless; we can just use RETURNDATA anyway.
+    // NOTE: gas is currently ignored
+    let _gas = stack.pop();
+    let dst = stack.pop();
+    let value = stack.pop();
+    let method = stack.pop();
+    let input_offset = stack.pop();
+    let input_size = stack.pop();
+
+    let input_region = get_memory_region(memory, input_offset, input_size)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+
+    let result = {
+        let dst_addr = Address::try_from(dst)?
+            .as_id_address()
+            .ok_or_else(|| StatusCode::BadAddress(format!("not an actor id address: {}", dst)))?;
+
+        if method.bits() > 64 {
+            return Err(StatusCode::ArgumentOutOfRange(format!("bad method number: {}", method)));
+        }
+        let methodnum = method.as_u64();
+
+        let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
+            &memory[offset..][..size.get()]
+        } else {
+            &[]
+        }
+        .to_vec();
+        rt.send(&dst_addr, methodnum, RawBytes::from(input_data), TokenAmount::from(&value))
+    };
+
+    if let Err(ae) = result {
+        return if ae.exit_code() == EVM_CONTRACT_REVERTED {
+            // reverted -- we don't have return data yet
+            // push failure
+            stack.push(U256::zero());
+            Ok(())
+        } else {
+            Err(StatusCode::from(ae))
+        };
+    }
+
+    // save return_data
+    state.return_data = result.unwrap().to_vec().into();
+    // push success
+    stack.push(U256::from(1));
+    Ok(())
+}
+
+pub fn methodnum(state: &mut ExecutionState) {
+    state.stack.push(U256::from(state.method));
 }

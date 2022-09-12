@@ -94,7 +94,7 @@ pub enum StatusCode {
     /// An argument to a state accessing method has a value outside of the
     /// accepted range of values.
     #[strum(serialize = "argument out of range")]
-    ArgumentOutOfRange,
+    ArgumentOutOfRange(String),
 
     /// The caller does not have enough funds for value transfer.
     #[strum(serialize = "insufficient balance")]

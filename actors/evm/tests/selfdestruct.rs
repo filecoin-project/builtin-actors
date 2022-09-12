@@ -30,14 +30,10 @@ fn test_selfdestruct() {
     rt.verify();
 
     let solidity_params = hex::decode("35f46994").unwrap();
-    let params = evm::InvokeParams { input_data: RawBytes::from(solidity_params) };
+    let input_data = RawBytes::from(solidity_params);
     rt.expect_validate_caller_any();
     rt.expect_delete_actor(beneficiary);
 
-    rt.call::<evm::EvmContractActor>(
-        evm::Method::InvokeContract as u64,
-        &RawBytes::serialize(params).unwrap(),
-    )
-    .unwrap();
+    rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
     rt.verify();
 }
