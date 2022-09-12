@@ -171,14 +171,16 @@ mod tests {
     #[test]
     fn copy_to_memory_big() {
         let mut mem: Memory = Default::default();
-        let result = copy_to_memory(&mut mem, U256::zero(), U256::from(1u128 << 40), U256::zero(), &[]);
+        let result =
+            copy_to_memory(&mut mem, U256::zero(), U256::from(1u128 << 40), U256::zero(), &[]);
         assert_eq!(result, Err(StatusCode::InvalidMemoryAccess));
     }
 
     #[test]
     fn copy_to_memory_zero() {
         let mut mem: Memory = Default::default();
-        let result = copy_to_memory(&mut mem, U256::zero(), U256::zero(), U256::zero(), &[1u8, 2u8, 3u8]);
+        let result =
+            copy_to_memory(&mut mem, U256::zero(), U256::zero(), U256::zero(), &[1u8, 2u8, 3u8]);
         assert_eq!(result, Ok(()));
         assert!(mem.is_empty());
     }
@@ -204,5 +206,4 @@ mod tests {
         assert_eq!(mem.len(), 32);
         assert_eq!(&mem[0..4], result_data);
     }
-
 }
