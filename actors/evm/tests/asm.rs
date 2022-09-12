@@ -89,10 +89,10 @@ pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_a
 // directly embed (otherwise invalid) asm instructions in the stream... sigh.
 // Ideally we would just do them as macros like
 // %macro methodnum()
-//   %0xb1
+//   0xb1
 // %end
 // Note that to add insult to injury, macros cannot %include_hex... double sigh.
-// So fuck it, we'll just hack this until there is support.
+// So f*ck it, we'll just hack this until there is support.
 // See also https://github.com/quilt/etk/issues/110
 fn with_fevm_extensions(body: &str) -> String {
     body.to_owned()
