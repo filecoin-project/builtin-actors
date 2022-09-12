@@ -35,7 +35,7 @@ fn get_memory_region_u64(
     offset: U256,
     size: NonZeroUsize,
 ) -> Result<MemoryRegion, ()> {
-    if offset > U256::from(u32::MAX) {
+    if offset.bits() >= 32 {
         return Err(());
     }
 
@@ -55,11 +55,11 @@ pub fn get_memory_region(
     offset: U256,
     size: U256,
 ) -> Result<Option<MemoryRegion>, ()> {
-    if size == U256::zero() {
+    if size.is_zero() {
         return Ok(None);
     }
 
-    if size > U256::from(u32::MAX) {
+    if size.bits() >= 32 {
         return Err(());
     }
 

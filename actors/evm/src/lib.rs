@@ -7,7 +7,7 @@ use {
     bytes::Bytes,
     cid::Cid,
     fil_actors_runtime::{
-        actor_error, cbor,
+        cbor,
         runtime::{ActorCode, Runtime},
         ActorDowncast, ActorError,
     },
@@ -27,6 +27,8 @@ fil_actors_runtime::wasm_trampoline!(EvmContractActor);
 /// Maximum allowed EVM bytecode size.
 /// The contract code size limit is 24kB.
 const MAX_CODE_SIZE: usize = 24 << 10;
+
+pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
 
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -66,7 +68,10 @@ impl EvmContractActor {
         })?;
 
         // create a new execution context
-        let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
+        let mut exec_state = ExecutionState::new(
+            Method::Constructor as u64,
+            Bytes::copy_from_slice(&params.input_data),
+        );
 
         // identify bytecode valid jump destinations
         let bytecode = Bytecode::new(&params.bytecode)
@@ -79,10 +84,15 @@ impl EvmContractActor {
                 _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
             })?;
 
-        if !exec_status.reverted
-            && exec_status.status_code == StatusCode::Success
-            && !exec_status.output_data.is_empty()
-        {
+        // TODO this does not return revert data yet, but it has correct semantics.
+        if exec_status.reverted {
+            Err(ActorError::unchecked(EVM_CONTRACT_REVERTED, "constructor reverted".to_string()))
+        } else if exec_status.status_code == StatusCode::Success {
+            if exec_status.output_data.is_empty() {
+                return Err(ActorError::unspecified(
+                    "EVM constructor returned empty contract".to_string(),
+                ));
+            }
             // constructor ran to completion successfully and returned
             // the resulting bytecode.
             let contract_bytecode = exec_status.output_data;
@@ -109,7 +119,8 @@ impl EvmContractActor {
 
     pub fn invoke_contract<BS, RT>(
         rt: &mut RT,
-        params: InvokeParams,
+        method: u64,
+        input_data: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
         BS: Blockstore + Clone,
@@ -139,7 +150,7 @@ impl EvmContractActor {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
-        let mut exec_state = ExecutionState::new(Bytes::copy_from_slice(&params.input_data));
+        let mut exec_state = ExecutionState::new(method, input_data.to_vec().into());
 
         let exec_status =
             execute(&bytecode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
@@ -147,19 +158,20 @@ impl EvmContractActor {
                 _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
             })?;
 
-        // TODO this is not the correct handling of reverts -- we need to abort (and return the
-        //      output data), so that the entire transaction (including parent/sibling calls)
-        //      can be reverted.
-        if exec_status.status_code == StatusCode::Success {
-            if !exec_status.reverted {
-                // this needs to be outside the transaction or else rustc has a fit about
-                // mutably borrowing the runtime twice.... sigh.
-                let contract_state = system.flush_state()?;
-                rt.transaction(|state: &mut State, _rt| {
-                    state.contract_state = contract_state;
-                    Ok(())
-                })?;
-            }
+        // TODO this does not return revert data yet, but it has correct semantics.
+        if exec_status.reverted {
+            return Err(ActorError::unchecked(
+                EVM_CONTRACT_REVERTED,
+                "contract reverted".to_string(),
+            ));
+        } else if exec_status.status_code == StatusCode::Success {
+            // this needs to be outside the transaction or else rustc has a fit about
+            // mutably borrowing the runtime twice.... sigh.
+            let contract_state = system.flush_state()?;
+            rt.transaction(|state: &mut State, _rt| {
+                state.contract_state = contract_state;
+                Ok(())
+            })?;
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             return Err(e);
         } else {
@@ -236,7 +248,7 @@ impl ActorCode for EvmContractActor {
                 Ok(RawBytes::default())
             }
             Some(Method::InvokeContract) => {
-                Self::invoke_contract(rt, cbor::deserialize_params(params)?)
+                Self::invoke_contract(rt, Method::InvokeContract as u64, params)
             }
             Some(Method::GetBytecode) => {
                 let cid = Self::bytecode(rt)?;
@@ -246,7 +258,7 @@ impl ActorCode for EvmContractActor {
                 let value = Self::storage_at(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(value)?)
             }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
+            None => Self::invoke_contract(rt, method, params),
         }
     }
 }
@@ -254,11 +266,6 @@ impl ActorCode for EvmContractActor {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ConstructorParams {
     pub bytecode: RawBytes,
-    pub input_data: RawBytes,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct InvokeParams {
     pub input_data: RawBytes,
 }
 
