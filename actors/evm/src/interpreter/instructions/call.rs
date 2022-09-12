@@ -194,7 +194,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     state.return_data = result.clone().into();
 
     // copy return data to output region if it is non-zero
-    copy_to_memory(memory, output_offset, U256::zero(), output_size, result.as_slice())?;
+    copy_to_memory(memory, output_offset, output_size, U256::zero(), result.as_slice())?;
 
     stack.push(U256::from(1));
     Ok(())

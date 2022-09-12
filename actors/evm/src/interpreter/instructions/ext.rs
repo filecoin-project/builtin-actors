@@ -47,7 +47,7 @@ pub fn extcodecopy<'r, BS: Blockstore, RT: Runtime<BS>>(
     let bytecode = get_evm_bytecode_cid(platform.rt, addr)
         .and_then(|cid| get_evm_bytecode(platform.rt, &cid))?;
 
-    copy_to_memory(&mut state.memory, dest_offset, data_offset, size, bytecode.as_slice())?;
+    copy_to_memory(&mut state.memory, dest_offset, size, data_offset, bytecode.as_slice())?;
 
     Ok(())
 }
