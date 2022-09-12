@@ -38,8 +38,9 @@ mod types;
 pub const DATACAP_GRANULARITY: u64 = TOKEN_PRECISION as u64;
 
 lazy_static! {
+    // > 800 EiB
     static ref INFINITE_ALLOWANCE: TokenAmount = TokenAmount::from_atto(
-        BigInt::from(1_000_000_000_000_000_000_i64)
+        BigInt::from(TOKEN_PRECISION)
             * BigInt::from(1_000_000_000_000_000_000_000_i128)
     );
 }
