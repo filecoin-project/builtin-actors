@@ -85,28 +85,6 @@ mod mint {
             h.mint(&mut rt, &*ALICE, &amt, vec![]),
         );
     }
-
-    #[test]
-    fn adds_allowance_for_operator() {
-        let (mut rt, h) = make_harness();
-
-        let amt = TokenAmount::from_whole(1);
-        let allowance = TokenAmount::from_whole(2_000_000_000);
-        h.mint(&mut rt, &*ALICE, &amt, vec![*BOB]).unwrap();
-        assert_eq!(allowance, h.get_allowance(&rt, &*ALICE, &BOB));
-
-        h.mint(&mut rt, &*ALICE, &amt, vec![*BOB]).unwrap();
-        // Note: the doubling of allowance here is unfortunate, should be resolved when
-        // the token library offers a set_allowance method.
-        assert_eq!(&allowance * 2, h.get_allowance(&rt, &*ALICE, &BOB));
-
-        // Different operator
-        h.mint(&mut rt, &*ALICE, &amt, vec![*CARLA]).unwrap();
-        assert_eq!(&allowance * 2, h.get_allowance(&rt, &*ALICE, &BOB));
-        assert_eq!(allowance, h.get_allowance(&rt, &*ALICE, &CARLA));
-
-        h.check_state(&rt);
-    }
 }
 
 fn make_harness() -> (MockRuntime, Harness) {

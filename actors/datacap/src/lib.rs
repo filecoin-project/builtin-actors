@@ -10,7 +10,7 @@ use fil_fungible_token::token::{Token, TokenError, TOKEN_PRECISION};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntSer;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::receipt::Receipt;
@@ -38,9 +38,12 @@ mod types;
 pub const DATACAP_GRANULARITY: u64 = TOKEN_PRECISION as u64;
 
 lazy_static! {
-    static ref INFINITE_ALLOWANCE: TokenAmount = TokenAmount::from_whole(2_000_000_000);
+    // > 800 EiB
+    static ref INFINITE_ALLOWANCE: TokenAmount = TokenAmount::from_atto(
+        BigInt::from(TOKEN_PRECISION)
+            * BigInt::from(1_000_000_000_000_000_000_000_i128)
+    );
 }
-
 /// Static method numbers for builtin-actor private dispatch.
 /// The methods are also expected to be exposed via FRC-XXXX standard calling convention,
 /// with numbers determined by name.

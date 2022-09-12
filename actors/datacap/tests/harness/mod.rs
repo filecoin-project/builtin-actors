@@ -110,19 +110,6 @@ impl Harness {
         rt.get_state::<State>().token.get_balance(rt.store(), address.id().unwrap()).unwrap()
     }
 
-    // Reads an allowance from state directly.
-    pub fn get_allowance(
-        &self,
-        rt: &MockRuntime,
-        owner: &Address,
-        operator: &Address,
-    ) -> TokenAmount {
-        rt.get_state::<State>()
-            .token
-            .get_allowance_between(rt.store(), owner.id().unwrap(), operator.id().unwrap())
-            .unwrap()
-    }
-
     pub fn check_state(&self, rt: &MockRuntime) {
         let (_, acc) = check_state_invariants(&rt.get_state(), rt.store());
         acc.assert_empty();
