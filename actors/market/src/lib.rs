@@ -1121,7 +1121,7 @@ where
         }
     }
     if let Some(sector_size) = sector_size {
-        let total_deal_size = deal_size + verified_deal_size ;
+        let total_deal_size = deal_size + verified_deal_size;
         if total_deal_size > sector_size as u64 {
             return Err(actor_error!(
                 illegal_argument,
@@ -1133,10 +1133,7 @@ where
         }
     }
 
-    Ok(DealSizes {
-        deal_space: deal_size,
-        verified_deal_space: verified_deal_size,
-    })
+    Ok(DealSizes { deal_space: deal_size, verified_deal_space: verified_deal_size })
 }
 
 pub fn gen_rand_next_epoch(

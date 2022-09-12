@@ -51,8 +51,8 @@ fn verify_deal_and_activate_to_get_deal_weight_for_unverified_deal_proposal() {
     let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
     assert_eq!(1, v_response.sectors.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.sectors[0].commd);
-    assert_eq!(BigInt::zero(), a_response.weights.verified_deal_weight);
-    assert_eq!(deal_weight(&deal_proposal), a_response.weights.deal_weight);
+    assert_eq!(BigInt::zero(), a_response.sizes.verified_deal_space);
+    assert_eq!(&deal_proposal.piece_size.0, a_response.sizes.deal_space);
 
     check_state(&rt);
 }

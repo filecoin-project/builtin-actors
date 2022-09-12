@@ -2,7 +2,7 @@
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivateDealsParams, ActivateDealsResult, DealWeights, Method as MarketMethod,
+    ActivateDealsParams, ActivateDealsResult, Method as MarketMethod, DealSizes,
     OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifyDealsForActivationParams,
     VerifyDealsForActivationReturn,
 };
@@ -888,8 +888,8 @@ impl ActorHarness {
                 }
 
                 let ret = ActivateDealsResult {
-                    weights: cfg
-                        .deal_weights
+                    sizes: cfg
+                        .deal_sizes
                         .get(&pc.info.sector_number)
                         .cloned()
                         .unwrap_or_default(),
@@ -915,7 +915,7 @@ impl ActorHarness {
 
             for pc in valid_pcs {
                 let weights =
-                    cfg.deal_weights.get(&pc.info.sector_number).cloned().unwrap_or_default();
+                    cfg.deal_sizes.get(&pc.info.sector_number).cloned().unwrap_or_default();
 
                 let duration = pc.info.expiration - rt.epoch;
                 if duration >= rt.policy.min_sector_expiration {
@@ -2277,13 +2277,13 @@ impl PreCommitConfig {
 #[derive(Default, Clone)]
 pub struct ProveCommitConfig {
     pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
-    pub deal_weights: HashMap<SectorNumber, DealWeights>,
+    pub deal_sizes: HashMap<SectorNumber, DealSizes>,
 }
 
 #[allow(dead_code)]
 impl ProveCommitConfig {
     pub fn empty() -> ProveCommitConfig {
-        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_weights: HashMap::new() }
+        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_sizes: HashMap::new() }
     }
 }
 
