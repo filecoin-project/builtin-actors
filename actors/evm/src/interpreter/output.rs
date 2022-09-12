@@ -50,6 +50,10 @@ pub enum StatusCode {
     #[strum(serialize = "invalid instruction")]
     InvalidInstruction,
 
+    /// An argument passed to an instruction does not meet expectations.
+    #[strum(serialize = "invalid argument")]
+    InvalidArgument(String),
+
     /// An undefined instruction has been encountered.
     #[strum(serialize = "undefined instruction")]
     UndefinedInstruction,
@@ -117,5 +121,11 @@ pub enum StatusCode {
 impl From<RTActorError> for StatusCode {
     fn from(ae: RTActorError) -> Self {
         Self::ActorError(ae)
+    }
+}
+
+impl From<fvm_ipld_encoding::Error> for StatusCode {
+    fn from(err: fvm_ipld_encoding::Error) -> Self {
+        Self::InternalError(format!("IPLD error: {:?}", &err))
     }
 }

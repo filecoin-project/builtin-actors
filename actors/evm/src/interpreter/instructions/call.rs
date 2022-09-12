@@ -1,5 +1,5 @@
 use {
-    super::memory::get_memory_region,
+    super::memory::{copy_to_memory, get_memory_region},
     crate::interpreter::address::Address,
     crate::interpreter::instructions::memory::MemoryRegion,
     crate::interpreter::output::StatusCode,
@@ -188,39 +188,13 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         };
     }
 
-    let mut result = result.unwrap().to_vec();
+    let result = result.unwrap().to_vec();
 
     // save return_data
     state.return_data = result.clone().into();
 
     // copy return data to output region if it is non-zero
-    // TODO this limits addressable output to 2G (31 bits full),
-    //      but it is still probably too much and we should consistently limit further.
-    //      See also https://github.com/filecoin-project/ref-fvm/issues/851
-    if output_size.bits() >= 32 {
-        return Err(StatusCode::InvalidMemoryAccess);
-    }
-    let output_usize = output_size.as_usize();
-
-    if output_usize > 0 {
-        let output_region = get_memory_region(memory, output_offset, output_size)
-            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
-        let output_data = output_region
-            .map(|MemoryRegion { offset, size }| &mut memory[offset..][..size.get()])
-            .ok_or(StatusCode::InvalidMemoryAccess)?;
-
-        // truncate if needed
-        let mut result_usize = result.len();
-        if result_usize > output_usize {
-            result_usize = output_usize;
-            result.truncate(output_usize);
-        }
-
-        output_data
-            .get_mut(..result_usize)
-            .ok_or(StatusCode::InvalidMemoryAccess)?
-            .copy_from_slice(&result);
-    }
+    copy_to_memory(memory, output_offset, output_size, U256::zero(), result.as_slice())?;
 
     stack.push(U256::from(1));
     Ok(())
