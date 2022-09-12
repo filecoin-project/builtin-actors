@@ -39,13 +39,14 @@ fn get_memory_region_u64(
         return Err(());
     }
 
-    let new_size = offset.as_usize() + size.get();
+    let offset_usize = offset.as_usize();
+    let new_size = offset_usize + size.get();
     let current_size = mem.len();
     if new_size > current_size {
         grow_memory(mem, new_size)?;
     }
 
-    Ok(MemoryRegion { offset: offset.as_usize(), size })
+    Ok(MemoryRegion { offset: offset_usize, size })
 }
 
 #[inline]
@@ -69,35 +70,43 @@ pub fn get_memory_region(
 pub fn copy_to_memory(
     memory: &mut Memory,
     dest_offset: U256,
+    dest_size: U256,
     data_offset: U256,
-    size: U256,
     data: &[u8],
 ) -> Result<(), StatusCode> {
     // TODO this limits addressable output to 2G (31 bits full),
     //      but it is still probably too much and we should consistently limit further.
     //      See also https://github.com/filecoin-project/ref-fvm/issues/851
-    if size.bits() >= 32 {
+    if dest_size.bits() >= 32 {
         return Err(StatusCode::InvalidMemoryAccess);
     }
-    let output_usize = size.as_usize();
+    let output_usize = dest_size.as_usize();
+
+    if data_offset.bits() >= 32 {
+        return Err(StatusCode::InvalidMemoryAccess);
+    }
+    let data_offset_usize = data_offset.as_usize();
+    if data_offset_usize > data.len() {
+        return Err(StatusCode::InvalidMemoryAccess);
+    }
 
     if output_usize > 0 {
-        let output_region = get_memory_region(memory, dest_offset, size)
+        // Limit the size if we're copying less than the data length.
+        let mut copy_len = data.len() - data_offset_usize;
+        if output_usize < copy_len {
+            copy_len = output_usize;
+        }
+
+        let output_region = get_memory_region(memory, dest_offset, dest_size)
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
         let output_data = output_region
             .map(|MemoryRegion { offset, size }| &mut memory[offset..][..size.get()])
             .ok_or(StatusCode::InvalidMemoryAccess)?;
 
-        // Limit the size if we're copying less than the data length.
-        let mut copy_len = data.len();
-        if output_usize < copy_len {
-            copy_len = output_usize;
-        }
-
         output_data
             .get_mut(..copy_len)
             .ok_or(StatusCode::InvalidMemoryAccess)?
-            .copy_from_slice(&data[data_offset.as_usize()..][..copy_len]);
+            .copy_from_slice(&data[data_offset_usize..][..copy_len]);
     }
 
     Ok(())
@@ -152,4 +161,49 @@ pub fn mstore8(state: &mut ExecutionState) -> Result<(), StatusCode> {
 #[inline]
 pub fn msize(state: &mut ExecutionState) {
     state.stack.push(u64::try_from(state.memory.len()).unwrap().into());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interpreter::memory::Memory;
+
+    #[test]
+    fn copy_to_memory_big() {
+        let mut mem: Memory = Default::default();
+        let result =
+            copy_to_memory(&mut mem, U256::zero(), U256::from(1u128 << 40), U256::zero(), &[]);
+        assert_eq!(result, Err(StatusCode::InvalidMemoryAccess));
+    }
+
+    #[test]
+    fn copy_to_memory_zero() {
+        let mut mem: Memory = Default::default();
+        let result =
+            copy_to_memory(&mut mem, U256::zero(), U256::zero(), U256::zero(), &[1u8, 2u8, 3u8]);
+        assert_eq!(result, Ok(()));
+        assert!(mem.is_empty());
+    }
+
+    #[test]
+    fn copy_to_memory_some() {
+        let data = &[1u8, 2u8, 3u8];
+        let mut mem: Memory = Default::default();
+        let result = copy_to_memory(&mut mem, U256::zero(), U256::from(3), U256::zero(), data);
+        assert_eq!(result, Ok(()));
+        assert_eq!(mem.len(), 32);
+        assert_eq!(&mem[0..3], data);
+    }
+
+    #[test]
+    fn copy_to_memory_some_truncate() {
+        let data = &[1u8, 2u8, 3u8, 4u8];
+        let result_data = &[1u8, 2u8, 3u8, 0u8];
+
+        let mut mem: Memory = Default::default();
+        let result = copy_to_memory(&mut mem, U256::zero(), U256::from(3), U256::zero(), data);
+        assert_eq!(result, Ok(()));
+        assert_eq!(mem.len(), 32);
+        assert_eq!(&mem[0..4], result_data);
+    }
 }
