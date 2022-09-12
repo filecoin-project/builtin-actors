@@ -3,7 +3,6 @@
 
 mod harness;
 
-use fil_actor_market::policy::detail::deal_weight;
 use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams};
 use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, make_piece_cid, ACCOUNT_ACTOR_CODE_ID,
@@ -12,13 +11,11 @@ use fil_actors_runtime::test_utils::{
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
 use harness::*;
-use num_traits::Zero;
 
 const START_EPOCH: ChainEpoch = 10;
 const CURR_EPOCH: ChainEpoch = START_EPOCH;
@@ -51,8 +48,8 @@ fn verify_deal_and_activate_to_get_deal_weight_for_unverified_deal_proposal() {
     let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
     assert_eq!(1, v_response.sectors.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.sectors[0].commd);
-    assert_eq!(BigInt::zero(), a_response.sizes.verified_deal_space);
-    assert_eq!(&deal_proposal.piece_size.0, a_response.sizes.deal_space);
+    assert_eq!(0, a_response.sizes.verified_deal_space);
+    assert_eq!(deal_proposal.piece_size.0, a_response.sizes.deal_space);
 
     check_state(&rt);
 }
@@ -84,8 +81,8 @@ fn verify_deal_and_activate_to_get_deal_weight_for_verified_deal_proposal() {
 
     assert_eq!(1, response.sectors.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), response.sectors[0].commd);
-    assert_eq!(deal_weight(&deal_proposal), a_response.weights.verified_deal_weight);
-    assert_eq!(BigInt::zero(), a_response.weights.deal_weight);
+    assert_eq!(deal_proposal.piece_size.0, a_response.sizes.verified_deal_space);
+    assert_eq!(0, a_response.sizes.deal_space);
 
     check_state(&rt);
 }
@@ -137,14 +134,14 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
         },
     );
 
-    let verified_weight = deal_weight(&verified_deal_1) + deal_weight(&verified_deal_2);
-    let unverified_weight = deal_weight(&unverified_deal_1) + deal_weight(&unverified_deal_2);
+    let verified_size = verified_deal_1.piece_size.0 + verified_deal_2.piece_size.0;
+    let unverified_weight = unverified_deal_1.piece_size.0 + unverified_deal_2.piece_size.0;
 
     let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &deal_ids);
 
     assert_eq!(1, response.sectors.len());
-    assert_eq!(verified_weight, a_response.weights.verified_deal_weight);
-    assert_eq!(unverified_weight, a_response.weights.deal_weight);
+    assert_eq!(verified_size, a_response.sizes.verified_deal_space);
+    assert_eq!(unverified_weight, a_response.sizes.deal_space);
 
     check_state(&rt);
 }
