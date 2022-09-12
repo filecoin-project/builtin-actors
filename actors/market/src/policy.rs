@@ -16,7 +16,6 @@ use num_traits::Zero;
 pub mod detail {
     /// Maximum length of a deal label.
     pub const DEAL_MAX_LABEL_SIZE: usize = 256;
-
 }
 
 /// Bounds (inclusive) on deal duration.
