@@ -1,17 +1,15 @@
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
 
 mod util;
 use util::*;
 
 const PERIOD_OFFSET: ChainEpoch = 100;
-const BIG_BALANCE: u128 = 1_000_000_000_000_000_000_000_000u128;
 
 #[test]
 fn cron_enrolls_on_precommit_prove_commits_and_continues_enrolling() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
     let cron_ctrl = CronControl::default();
@@ -37,7 +35,7 @@ fn cron_enrolls_on_precommit_prove_commits_and_continues_enrolling() {
 fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precommit_immediately() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     let epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(epoch);
     h.construct_and_verify(&mut rt);
@@ -52,7 +50,7 @@ fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precomm
 ) {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     let mut epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(epoch);
     h.construct_and_verify(&mut rt);
@@ -71,7 +69,7 @@ fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precomm
 fn enroll_pcd_expire_re_enroll_x_3() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
-    rt.set_balance(TokenAmount::from(BIG_BALANCE));
+    rt.set_balance(BIG_BALANCE.clone());
     let mut epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(epoch);
     h.construct_and_verify(&mut rt);

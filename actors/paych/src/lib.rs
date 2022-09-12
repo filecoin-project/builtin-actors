@@ -3,16 +3,18 @@
 
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, resolve_to_id_addr, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{
+    actor_error, cbor, resolve_to_actor_id, ActorDowncast, ActorError, Array,
+};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{BigInt, Sign};
+
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, Zero};
 
 pub use self::state::{LaneState, Merge, State};
 pub use self::types::*;
@@ -73,12 +75,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let resolved = resolve_to_id_addr(rt, raw).map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to resolve address {}", raw),
-            )
-        })?;
+        let resolved = resolve_to_actor_id(rt, raw)?;
 
         let code_cid = rt
             .get_actor_code_cid(&resolved)
@@ -94,7 +91,7 @@ impl Actor {
                 typ
             ))
         } else {
-            Ok(resolved)
+            Ok(Address::new_id(resolved))
         }
     }
 
@@ -140,17 +137,17 @@ impl Actor {
         })?;
 
         let pch_addr = rt.message().receiver();
-        let svpch_id_addr = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {
+        let svpch_id = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {
             actor_error!(
                 illegal_argument,
                 "voucher payment channel address {} does not resolve to an ID address",
                 sv.channel_addr
             )
         })?;
-        if pch_addr != svpch_id_addr {
+        if pch_addr != Address::new_id(svpch_id) {
             return Err(actor_error!(illegal_argument;
                     "voucher payment channel address {} does not match receiver {}",
-                    svpch_id_addr, pch_addr));
+                    svpch_id, pch_addr));
         }
 
         if rt.curr_epoch() < sv.time_lock_min {
@@ -161,7 +158,7 @@ impl Actor {
             return Err(actor_error!(illegal_argument; "this voucher has expired"));
         }
 
-        if sv.amount.sign() == Sign::Minus {
+        if sv.amount.is_negative() {
             return Err(actor_error!(illegal_argument;
                     "voucher amount must be non-negative, was {}", sv.amount));
         }
@@ -174,7 +171,7 @@ impl Actor {
         }
 
         if let Some(extra) = &sv.extra {
-            rt.send(extra.actor, extra.method, extra.data.clone(), TokenAmount::from(0u8))
+            rt.send(&extra.actor, extra.method, extra.data.clone(), TokenAmount::zero())
                 .map_err(|e| e.wrap("spend voucher verification failed"))?;
         }
 
@@ -201,7 +198,7 @@ impl Actor {
             // The next section actually calculates the payment amounts to update
             // the payment channel state
             // 1. (optional) sum already redeemed value of all merging lanes
-            let mut redeemed_from_others = BigInt::default();
+            let mut redeemed_from_others = TokenAmount::zero();
             for merge in sv.merges {
                 if merge.lane == sv.lane {
                     return Err(actor_error!(illegal_argument;
@@ -240,7 +237,7 @@ impl Actor {
             // 4. check operation validity
             let new_send_balance = balance_delta + &st.to_send;
 
-            if new_send_balance < TokenAmount::from(0) {
+            if new_send_balance < TokenAmount::zero() {
                 return Err(actor_error!(illegal_argument;
                     "voucher would leave channel balance negative"));
             }
@@ -311,7 +308,7 @@ impl Actor {
         }
 
         // send ToSend to `to`
-        rt.send(st.to, METHOD_SEND, RawBytes::default(), st.to_send)
+        rt.send(&st.to, METHOD_SEND, RawBytes::default(), st.to_send)
             .map_err(|e| e.wrap("Failed to send funds to `to` address"))?;
 
         // the remaining balance will be returned to "From" upon deletion.

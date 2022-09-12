@@ -21,11 +21,10 @@ use fil_actors_runtime::{
     actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
-use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
@@ -33,6 +32,8 @@ use fvm_shared::econ::TokenAmount;
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
+
+pub use beneficiary::*;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::error::*;
@@ -44,7 +45,7 @@ use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, info, warn};
 pub use monies::*;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed, Zero};
+use num_traits::{FromPrimitive, Zero};
 pub use partition_state::*;
 pub use policy::*;
 pub use sector_map::*;
@@ -60,6 +61,7 @@ use crate::Code::Blake2b256;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+mod beneficiary;
 mod bitfield_queue;
 mod commd;
 mod deadline_assignment;
@@ -118,6 +120,8 @@ pub enum Method {
     ProveReplicaUpdates = 27,
     PreCommitSectorBatch2 = 28,
     ProveReplicaUpdates2 = 29,
+    ChangeBeneficiary = 30,
+    GetBeneficiary = 31,
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -314,6 +318,15 @@ impl Actor {
                         new_address
                     ));
                 }
+
+                // Change beneficiary address to new owner if current beneficiary address equal to old owner address
+                if info.beneficiary == info.owner {
+                    info.beneficiary = pending_address;
+                }
+                // Cancel pending beneficiary term change when the owner changes
+                info.pending_beneficiary_term = None;
+
+                // Set the new owner address
                 info.owner = pending_address;
             }
 
@@ -536,7 +549,7 @@ impl Actor {
                 params.chain_commit_epoch,
                 &[],
             )?;
-            if comm_rand != params.chain_commit_rand {
+            if Randomness(comm_rand.into()) != params.chain_commit_rand {
                 return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
             }
 
@@ -664,7 +677,7 @@ impl Actor {
     /// and precommit state is removed.
     fn prove_commit_aggregate<BS, RT>(
         rt: &mut RT,
-        mut params: ProveCommitAggregateParams,
+        params: ProveCommitAggregateParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -786,8 +799,8 @@ impl Actor {
 
             let svi = AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
-                randomness: sv_info_randomness,
-                interactive_randomness: sv_info_interactive_randomness,
+                randomness: Randomness(sv_info_randomness.into()),
+                interactive_randomness: Randomness(sv_info_interactive_randomness.into()),
                 sealed_cid: precommit.info.sealed_cid,
                 unsealed_cid,
             };
@@ -1039,7 +1052,7 @@ impl Actor {
             }
 
             let res = rt.send(
-                *STORAGE_MARKET_ACTOR_ADDR,
+                &STORAGE_MARKET_ACTOR_ADDR,
                 ext::market::ACTIVATE_DEALS_METHOD,
                 RawBytes::serialize(ext::market::ActivateDealsParams {
                     deal_ids: update.deals.clone(),
@@ -1569,7 +1582,8 @@ impl Actor {
 
         request_update_power(rt, power_delta)?;
         if !to_reward.is_zero() {
-            if let Err(e) = rt.send(reporter, METHOD_SEND, RawBytes::default(), to_reward.clone()) {
+            if let Err(e) = rt.send(&reporter, METHOD_SEND, RawBytes::default(), to_reward.clone())
+            {
                 error!("failed to send reward: {}", e);
                 to_burn += to_reward;
             }
@@ -1778,7 +1792,7 @@ impl Actor {
                 sectors.len()
             ));
         }
-        let mut fee_to_burn = TokenAmount::from(0_u32);
+        let mut fee_to_burn = TokenAmount::zero();
         let mut needs_cron = false;
         rt.transaction(|state: &mut State, rt| {
             // Aggregate fee applies only when batching.
@@ -1821,7 +1835,7 @@ impl Actor {
             }
 
             let mut chain_infos = Vec::with_capacity(sectors.len());
-            let mut total_deposit_required = BigInt::zero();
+            let mut total_deposit_required = TokenAmount::zero();
             let mut clean_up_events = Vec::with_capacity(sectors.len());
             let deal_count_max = sector_deals_max(rt.policy(), info.sector_size);
 
@@ -2014,10 +2028,10 @@ impl Actor {
         )?;
 
         rt.send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
             RawBytes::serialize(&svi)?,
-            BigInt::zero(),
+            TokenAmount::zero(),
         )?;
 
         Ok(())
@@ -2234,7 +2248,7 @@ impl Actor {
                         .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
                     let old_sectors = sectors
-                        .load_sector(&mut decl.sectors)
+                        .load_sector(&decl.sectors)
                         .map_err(|e| e.wrap("failed to load sectors"))?;
 
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
@@ -2849,7 +2863,7 @@ impl Actor {
     /// May not be invoked if the deadline has any un-processed early terminations.
     fn compact_partitions<BS, RT>(
         rt: &mut RT,
-        mut params: CompactPartitionsParams,
+        params: CompactPartitionsParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -2990,7 +3004,7 @@ impl Actor {
     /// 99 can be masked out to collapse these two ranges into one.
     fn compact_sector_numbers<BS, RT>(
         rt: &mut RT,
-        mut params: CompactSectorNumbersParams,
+        params: CompactSectorNumbersParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -3156,11 +3170,12 @@ impl Actor {
 
         // The policy amounts we should burn and send to reporter
         // These may differ from actual funds send when miner goes into fee debt
-        let this_epoch_reward = reward_stats.this_epoch_reward_smoothed.estimate();
+        let this_epoch_reward =
+            TokenAmount::from_atto(reward_stats.this_epoch_reward_smoothed.estimate());
         let fault_penalty = consensus_fault_penalty(this_epoch_reward.clone());
         let slasher_reward = reward_for_consensus_slash_report(&this_epoch_reward);
 
-        let mut pledge_delta = TokenAmount::from(0);
+        let mut pledge_delta = TokenAmount::zero();
 
         let (burn_amount, reward_amount) = rt.transaction(|st: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), st)?;
@@ -3207,7 +3222,7 @@ impl Actor {
             Ok((burn_amount, reward_amount))
         })?;
 
-        if let Err(e) = rt.send(reporter, METHOD_SEND, RawBytes::default(), reward_amount) {
+        if let Err(e) = rt.send(&reporter, METHOD_SEND, RawBytes::default(), reward_amount) {
             error!("failed to send reward: {}", e);
         }
 
@@ -3235,13 +3250,13 @@ impl Actor {
             ));
         }
 
-        let (info, newly_vested, fee_to_burn, available_balance, state) =
+        let (info, amount_withdrawn, newly_vested, fee_to_burn, state) =
             rt.transaction(|state: &mut State, rt| {
-                let info = get_miner_info(rt.store(), state)?;
+                let mut info = get_miner_info(rt.store(), state)?;
 
                 // Only the owner is allowed to withdraw the balance as it belongs to/is controlled by the owner
                 // and not the worker.
-                rt.validate_immediate_caller_is(&[info.owner])?;
+                rt.validate_immediate_caller_is(&[info.owner, info.beneficiary])?;
 
                 // Ensure we don't have any pending terminations.
                 if !state.early_terminations.is_empty() {
@@ -3273,36 +3288,197 @@ impl Actor {
                 // Verify unlocked funds cover both InitialPledgeRequirement and FeeDebt
                 // and repay fee debt now.
                 let fee_to_burn = repay_debts_or_abort(rt, state)?;
-
-                Ok((info, newly_vested, fee_to_burn, available_balance, state.clone()))
+                let mut amount_withdrawn =
+                    std::cmp::min(&available_balance, &params.amount_requested);
+                if amount_withdrawn.is_negative() {
+                    return Err(actor_error!(
+                        illegal_state,
+                        "negative amount to withdraw: {}",
+                        amount_withdrawn
+                    ));
+                }
+                if info.beneficiary != info.owner {
+                    // remaining_quota always zero and positive
+                    let remaining_quota = info.beneficiary_term.available(rt.curr_epoch());
+                    amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
+                    if amount_withdrawn.is_positive() {
+                        info.beneficiary_term.used_quota += amount_withdrawn;
+                        state.save_info(rt.store(), &info).map_err(|e| {
+                            e.downcast_default(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "failed to save miner info",
+                            )
+                        })?;
+                    }
+                    Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
+                } else {
+                    Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
+                }
             })?;
 
-        let amount_withdrawn = std::cmp::min(&available_balance, &params.amount_requested);
-        if amount_withdrawn.is_negative() {
-            return Err(actor_error!(
-                illegal_state,
-                "negative amount to withdraw: {}",
-                amount_withdrawn
-            ));
-        }
-        if amount_withdrawn > &available_balance {
-            return Err(actor_error!(
-                illegal_state,
-                "amount to withdraw {} < available {}",
-                amount_withdrawn,
-                available_balance
-            ));
-        }
-
         if amount_withdrawn.is_positive() {
-            rt.send(info.owner, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
+            rt.send(&info.beneficiary, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
         }
 
         burn_funds(rt, fee_to_burn)?;
         notify_pledge_changed(rt, &newly_vested.neg())?;
 
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
-        Ok(WithdrawBalanceReturn { amount_withdrawn: amount_withdrawn.clone() })
+        Ok(WithdrawBalanceReturn { amount_withdrawn })
+    }
+
+    /// Proposes or confirms a change of beneficiary address.
+    /// A proposal must be submitted by the owner, and takes effect after approval of both the proposed beneficiary and current beneficiary,
+    /// if applicable, any current beneficiary that has time and quota remaining.
+    //// See FIP-0029, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0029.md
+    fn change_beneficiary<BS, RT>(
+        rt: &mut RT,
+        params: ChangeBeneficiaryParams,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        let caller = rt.message().caller();
+        let new_beneficiary =
+            Address::new_id(rt.resolve_address(&params.new_beneficiary).ok_or_else(|| {
+                actor_error!(
+                    illegal_argument,
+                    "unable to resolve address: {}",
+                    params.new_beneficiary
+                )
+            })?);
+
+        rt.transaction(|state: &mut State, rt| {
+            let mut info = get_miner_info(rt.store(), state)?;
+            if caller == info.owner {
+                // This is a ChangeBeneficiary proposal when the caller is Owner
+                if new_beneficiary != info.owner {
+                    // When beneficiary is not owner, just check quota in params,
+                    // Expiration maybe an expiration value, but wouldn't cause problem, just the new beneficiary never get any benefit
+                    if !params.new_quota.is_positive() {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "beneficial quota {} must bigger than zero",
+                            params.new_quota
+                        ));
+                    }
+                } else {
+                    // Expiration/quota must set to 0 while change beneficiary to owner
+                    if !params.new_quota.is_zero() {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "owner beneficial quota {} must be zero",
+                            params.new_quota
+                        ));
+                    }
+
+                    if params.new_expiration != 0 {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "owner beneficial expiration {} must be zero",
+                            params.new_expiration
+                        ));
+                    }
+                }
+
+                let mut pending_beneficiary_term = PendingBeneficiaryChange::new(
+                    new_beneficiary,
+                    params.new_quota,
+                    params.new_expiration,
+                );
+                if info.beneficiary_term.available(rt.curr_epoch()).is_zero() {
+                    // Set current beneficiary to approved when current beneficiary is not effective
+                    pending_beneficiary_term.approved_by_beneficiary = true;
+                }
+                info.pending_beneficiary_term = Some(pending_beneficiary_term);
+            } else if let Some(pending_term) = &info.pending_beneficiary_term {
+                if caller != info.beneficiary && caller != pending_term.new_beneficiary {
+                    return Err(actor_error!(
+                        forbidden,
+                        "message caller {} is neither proposal beneficiary{} nor current beneficiary{}",
+                        caller,
+                        params.new_beneficiary,
+                        info.beneficiary
+                    ));
+                }
+
+                if pending_term.new_beneficiary != new_beneficiary {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "new beneficiary address must be equal expect {}, but got {}",
+                        pending_term.new_beneficiary,
+                        params.new_beneficiary
+                    ));
+                }
+                if pending_term.new_quota != params.new_quota {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "new beneficiary quota must be equal expect {}, but got {}",
+                        pending_term.new_quota,
+                        params.new_quota
+                    ));
+                }
+                if pending_term.new_expiration != params.new_expiration {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "new beneficiary expire date must be equal expect {}, but got {}",
+                        pending_term.new_expiration,
+                        params.new_expiration
+                    ));
+                }
+            } else {
+                return Err(actor_error!(forbidden, "No changeBeneficiary proposal exists"));
+            }
+
+            if let Some(pending_term) = info.pending_beneficiary_term.as_mut() {
+                if caller == info.beneficiary {
+                    pending_term.approved_by_beneficiary = true
+                }
+
+                if caller == new_beneficiary {
+                    pending_term.approved_by_nominee = true
+                }
+
+                if pending_term.approved_by_beneficiary && pending_term.approved_by_nominee {
+                    //approved by both beneficiary and nominee
+                    if new_beneficiary != info.beneficiary {
+                        //if beneficiary changes, reset used_quota to zero
+                        info.beneficiary_term.used_quota = TokenAmount::zero();
+                    }
+                    info.beneficiary = new_beneficiary;
+                    info.beneficiary_term.quota = pending_term.new_quota.clone();
+                    info.beneficiary_term.expiration = pending_term.new_expiration;
+                    // clear the pending proposal
+                    info.pending_beneficiary_term = None;
+                }
+            }
+
+            state.save_info(rt.store(), &info).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
+            })?;
+            Ok(())
+        })
+    }
+
+    // GetBeneficiary retrieves the currently active and proposed beneficiary information.
+    // This method is for use by other actors (such as those acting as beneficiaries),
+    // and to abstract the state representation for clients.
+    fn get_beneficiary<BS, RT>(rt: &mut RT) -> Result<GetBeneficiaryReturn, ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_accept_any()?;
+        let info = rt.transaction(|state: &mut State, rt| get_miner_info(rt.store(), state))?;
+
+        Ok(GetBeneficiaryReturn {
+            active: ActiveBeneficiary {
+                beneficiary: info.beneficiary,
+                term: info.beneficiary_term,
+            },
+            proposed: info.pending_beneficiary_term,
+        })
     }
 
     fn repay_debt<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
@@ -3752,7 +3928,7 @@ where
     let ser_params =
         serialize(&ext::power::EnrollCronEventParams { event_epoch, payload }, "cron params")?;
     rt.send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
         ext::power::ENROLL_CRON_EVENT_METHOD,
         ser_params,
         TokenAmount::zero(),
@@ -3773,7 +3949,7 @@ where
     let delta_clone = delta.clone();
 
     rt.send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
         ext::power::UPDATE_CLAIMED_POWER_METHOD,
         RawBytes::serialize(ext::power::UpdateClaimedPowerParams {
             raw_byte_delta: delta.raw,
@@ -3799,7 +3975,7 @@ where
 
     for chunk in deal_ids.chunks(MAX_LENGTH) {
         rt.send(
-            *STORAGE_MARKET_ACTOR_ADDR,
+            &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
             RawBytes::serialize(ext::market::OnMinerSectorsTerminateParamsRef {
                 epoch,
@@ -3853,7 +4029,7 @@ where
 
     // Regenerate challenge randomness, which must match that generated for the proof.
     let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
-    let randomness: PoStRandomness = rt.get_randomness_from_beacon(
+    let randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::WindowedPoStChallengeSeed,
         challenge_epoch,
         &entropy,
@@ -3869,8 +4045,12 @@ where
         .collect();
 
     // get public inputs
-    let pv_info =
-        WindowPoStVerifyInfo { randomness, proofs, challenged_sectors, prover: miner_actor_id };
+    let pv_info = WindowPoStVerifyInfo {
+        randomness: Randomness(randomness.into()),
+        proofs,
+        challenged_sectors,
+        prover: miner_actor_id,
+    };
 
     // verify the post proof
     let result = rt.verify_post(&pv_info);
@@ -3900,12 +4080,12 @@ where
         ));
     };
     let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
-    let randomness: SealRandomness = rt.get_randomness_from_tickets(
+    let randomness = rt.get_randomness_from_tickets(
         DomainSeparationTag::SealRandomness,
         params.seal_rand_epoch,
         &entropy,
     )?;
-    let interactive_randomness: InteractiveSealRandomness = rt.get_randomness_from_beacon(
+    let interactive_randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::InteractiveSealChallengeSeed,
         params.interactive_epoch,
         &entropy,
@@ -3917,9 +4097,9 @@ where
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
         deal_ids: params.deal_ids,
-        interactive_randomness,
+        interactive_randomness: Randomness(interactive_randomness.into()),
         proof: params.proof,
-        randomness,
+        randomness: Randomness(randomness.into()),
         sealed_cid: params.sealed_cid,
         unsealed_cid: commd,
     })
@@ -3945,7 +4125,7 @@ where
     }
 
     let serialized = rt.send(
-        *STORAGE_MARKET_ACTOR_ADDR,
+        &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
         RawBytes::serialize(ext::market::VerifyDealsForActivationParamsRef { sectors })?,
         TokenAmount::zero(),
@@ -3965,7 +4145,7 @@ where
 {
     let ret = rt
         .send(
-            *REWARD_ACTOR_ADDR,
+            &REWARD_ACTOR_ADDR,
             ext::reward::THIS_EPOCH_REWARD_METHOD,
             Default::default(),
             TokenAmount::zero(),
@@ -3986,7 +4166,7 @@ where
 {
     let ret = rt
         .send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::CURRENT_TOTAL_POWER_METHOD,
             Default::default(),
             TokenAmount::zero(),
@@ -4025,7 +4205,7 @@ where
         ));
     }
 
-    Ok(resolved)
+    Ok(Address::new_id(resolved))
 }
 
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
@@ -4052,7 +4232,7 @@ where
 
     if raw.protocol() != Protocol::BLS {
         let ret = rt.send(
-            resolved,
+            &Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
             RawBytes::default(),
             TokenAmount::zero(),
@@ -4067,7 +4247,7 @@ where
             ));
         }
     }
-    Ok(resolved)
+    Ok(Address::new_id(resolved))
 }
 
 fn burn_funds<BS, RT>(rt: &mut RT, amount: TokenAmount) -> Result<(), ActorError>
@@ -4077,21 +4257,21 @@ where
 {
     log::debug!("storage provder {} burning {}", rt.message().receiver(), amount);
     if amount.is_positive() {
-        rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount)?;
+        rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount)?;
     }
     Ok(())
 }
 
-fn notify_pledge_changed<BS, RT>(rt: &mut RT, pledge_delta: &BigInt) -> Result<(), ActorError>
+fn notify_pledge_changed<BS, RT>(rt: &mut RT, pledge_delta: &TokenAmount) -> Result<(), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     if !pledge_delta.is_zero() {
         rt.send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
-            RawBytes::serialize(BigIntSer(pledge_delta))?,
+            RawBytes::serialize(pledge_delta)?,
             TokenAmount::zero(),
         )?;
     }
@@ -4179,10 +4359,8 @@ fn validate_fr_declaration_deadline(deadline: &DeadlineInfo) -> anyhow::Result<(
 /// Validates that a partition contains the given sectors.
 fn validate_partition_contains_sectors(
     partition: &Partition,
-    sectors: &mut UnvalidatedBitField,
+    sectors: &BitField,
 ) -> anyhow::Result<()> {
-    let sectors = sectors.validate().map_err(|e| anyhow!("failed to check sectors: {}", e))?;
-
     // Check that the declared sectors are actually assigned to the partition.
     if partition.sectors.contains_all(sectors) {
         Ok(())
@@ -4379,7 +4557,7 @@ where
         let deal_weights = if !pre_commit.info.deal_ids.is_empty() {
             // Check (and activate) storage deals associated to sector. Abort if checks failed.
             let res = rt.send(
-                *STORAGE_MARKET_ACTOR_ADDR,
+                &STORAGE_MARKET_ACTOR_ADDR,
                 ext::market::ACTIVATE_DEALS_METHOD,
                 RawBytes::serialize(ext::market::ActivateDealsParams {
                     deal_ids: pre_commit.info.deal_ids.clone(),
@@ -4687,6 +4865,14 @@ impl ActorCode for Actor {
             Some(Method::ProveReplicaUpdates2) => {
                 return Err(actor_error!(unhandled_message, "Invalid method"));
                 let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::ChangeBeneficiary) => {
+                Self::change_beneficiary(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::GetBeneficiary) => {
+                let res = Self::get_beneficiary(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),

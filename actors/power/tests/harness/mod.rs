@@ -22,6 +22,7 @@ use fvm_ipld_hamt::Error;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -71,13 +72,13 @@ pub fn new_runtime() -> MockRuntime {
 }
 
 pub fn new_harness() -> Harness {
-    let rwd = TokenAmount::from(10) * TokenAmount::from(10_i128.pow(18));
+    let rwd = TokenAmount::from_whole(10);
     Harness {
         miner_seq: 0,
         seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
         window_post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
         this_epoch_baseline_power: StoragePower::from(1i64 << 50),
-        this_epoch_reward_smoothed: FilterEstimate::new(rwd, TokenAmount::zero()),
+        this_epoch_reward_smoothed: FilterEstimate::new(rwd.atto().clone(), BigInt::zero()),
     }
 }
 
@@ -196,7 +197,7 @@ impl Harness {
             peer,
             vec![],
             self.window_post_proof,
-            &TokenAmount::from(0),
+            &TokenAmount::zero(),
         )
     }
 
@@ -289,7 +290,7 @@ impl Harness {
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
         rt.call::<PowerActor>(
             Method::UpdatePledgeTotal as MethodNum,
-            &RawBytes::serialize(BigIntDe(delta.clone())).unwrap(),
+            &RawBytes::serialize(delta).unwrap(),
         )
         .unwrap();
         rt.verify();
@@ -380,7 +381,7 @@ impl Harness {
             *REWARD_ACTOR_ADDR,
             ThisEpochReward as u64,
             RawBytes::default(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::serialize(current_reward).unwrap(),
             ExitCode::OK,
         );

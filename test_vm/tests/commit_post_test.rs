@@ -13,7 +13,7 @@ use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -23,13 +23,12 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
 use fvm_shared::METHOD_SEND;
-use num_traits::sign::Signed;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, apply_code, apply_ok,
     create_accounts, create_miner, invariant_failure_patterns, precommit_sectors,
     submit_windowed_post,
 };
-use test_vm::{ExpectInvocation, TEST_VM_RAND_STRING, VM};
+use test_vm::{ExpectInvocation, TEST_VM_RAND_ARRAY, VM};
 
 struct SectorInfo {
     number: SectorNumber,
@@ -47,7 +46,7 @@ struct MinerInfo {
 
 fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -55,7 +54,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
     let mut v = v.with_epoch(200);
 
@@ -201,16 +200,14 @@ fn skip_sector() {
         deadline: sector_info.deadline_info.index,
         partitions: vec![PoStPartition {
             index: sector_info.partition_index,
-            skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(
-                BitField::try_from_bits([sector_info.number].iter().copied()).unwrap(),
-            ),
+            skipped: BitField::try_from_bits([sector_info.number].iter().copied()).unwrap(),
         }],
         proofs: vec![PoStProof {
             post_proof: miner_info.seal_proof.registered_window_post_proof().unwrap(),
             proof_bytes: vec![],
         }],
         chain_commit_epoch: sector_info.deadline_info.challenge,
-        chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
+        chain_commit_rand: Randomness(TEST_VM_RAND_ARRAY.into()),
     };
 
     // PoSt is rejected for skipping all sectors.
@@ -312,7 +309,7 @@ fn overdue_precommit() {
     let store = MemoryBlockstore::new();
     let policy = &Policy::default();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let id_addr = create_miner(
@@ -320,7 +317,7 @@ fn overdue_precommit() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     )
     .0;
     let mut v = v.with_epoch(200);
@@ -426,7 +423,7 @@ fn overdue_precommit() {
 fn aggregate_bad_sector_number() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -434,7 +431,7 @@ fn aggregate_bad_sector_number() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
     let mut v = v.with_epoch(200);
     let policy = &Policy::default();
@@ -476,7 +473,7 @@ fn aggregate_bad_sector_number() {
     precommited_sector_nos.set(MAX_SECTOR_NUMBER + 1);
 
     let prove_params = ProveCommitAggregateParams {
-        sector_numbers: UnvalidatedBitField::from(precommited_sector_nos),
+        sector_numbers: precommited_sector_nos,
         aggregate_proof: vec![],
     };
     let prove_params_ser = serialize(&prove_params, "commit params").unwrap();
@@ -507,7 +504,7 @@ fn aggregate_size_limits() {
     let oversized_batch = 820;
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -515,7 +512,7 @@ fn aggregate_size_limits() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(100_000e18 as i128),
+        TokenAmount::from_whole(100_000),
     );
     let mut v = v.with_epoch(200);
     let policy = &Policy::default();
@@ -555,7 +552,7 @@ fn aggregate_size_limits() {
     // Fail with too many sectors
 
     let mut prove_params = ProveCommitAggregateParams {
-        sector_numbers: UnvalidatedBitField::from(precommited_sector_nos.clone()),
+        sector_numbers: precommited_sector_nos.clone(),
         aggregate_proof: vec![],
     };
     let mut prove_params_ser = serialize(&prove_params, "commit params").unwrap();
@@ -582,7 +579,7 @@ fn aggregate_size_limits() {
     let too_few_sector_nos_bf =
         precommited_sector_nos.slice(0, policy.min_aggregated_sectors - 1).unwrap();
     prove_params = ProveCommitAggregateParams {
-        sector_numbers: UnvalidatedBitField::from(too_few_sector_nos_bf),
+        sector_numbers: too_few_sector_nos_bf,
         aggregate_proof: vec![],
     };
     prove_params_ser = serialize(&prove_params, "commit params").unwrap();
@@ -609,7 +606,7 @@ fn aggregate_size_limits() {
     let just_right_sectors_no_bf =
         precommited_sector_nos.slice(0, policy.max_aggregated_sectors).unwrap();
     prove_params = ProveCommitAggregateParams {
-        sector_numbers: UnvalidatedBitField::from(just_right_sectors_no_bf),
+        sector_numbers: just_right_sectors_no_bf,
         aggregate_proof: vec![0; policy.max_aggregated_proof_size + 1],
     };
 
@@ -640,7 +637,7 @@ fn aggregate_size_limits() {
 fn aggregate_bad_sender() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 2, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 2, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -648,7 +645,7 @@ fn aggregate_bad_sender() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
     let mut v = v.with_epoch(200);
     let policy = &Policy::default();
@@ -686,7 +683,7 @@ fn aggregate_bad_sender() {
     let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
 
     let prove_params = ProveCommitAggregateParams {
-        sector_numbers: UnvalidatedBitField::from(precommited_sector_nos),
+        sector_numbers: precommited_sector_nos,
         aggregate_proof: vec![],
     };
     let prove_params_ser = serialize(&prove_params, "commit params").unwrap();
@@ -716,7 +713,7 @@ fn aggregate_bad_sender() {
 fn aggregate_one_precommit_expires() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
@@ -724,7 +721,7 @@ fn aggregate_one_precommit_expires() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
     let mut v = v.with_epoch(200);
     let policy = &Policy::default();
@@ -794,10 +791,8 @@ fn aggregate_one_precommit_expires() {
             && agg_setors_count < policy.max_aggregated_sectors
     );
 
-    let prove_params = ProveCommitAggregateParams {
-        sector_numbers: UnvalidatedBitField::from(sector_nos_bf),
-        aggregate_proof: vec![],
-    };
+    let prove_params =
+        ProveCommitAggregateParams { sector_numbers: sector_nos_bf, aggregate_proof: vec![] };
     let prove_params_ser = serialize(&prove_params, "commit params").unwrap();
     apply_ok(
         &v,

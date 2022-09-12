@@ -23,7 +23,7 @@ use test_vm::{ExpectInvocation, VM};
 fn test_proposal_hash() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from(10_000e18 as u64));
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let alice = addrs[0];
     let bob = addrs[1];
     let sys_act_start_bal = v.get_actor(*SYSTEM_ACTOR_ADDR).unwrap().balance;
@@ -31,7 +31,7 @@ fn test_proposal_hash() {
     let msig_addr = create_msig(&v, addrs, 2);
 
     // fund msig and propose send funds to system actor
-    let fil_delta = TokenAmount::from(3 * 1_000_000_000_u64); // 3 nFIL
+    let fil_delta = TokenAmount::from_nano(3);
     let propose_send_sys_params = ProposeParams {
         to: *SYSTEM_ACTOR_ADDR,
         value: fil_delta.clone(),
@@ -49,7 +49,7 @@ fn test_proposal_hash() {
 
     let wrong_tx = Transaction {
         to: *SYSTEM_ACTOR_ADDR,
-        value: fil_delta.clone() - 1_u64, // incorrect send amount not consistent with proposal
+        value: &fil_delta - TokenAmount::from_atto(1), // incorrect send amount not consistent with proposal
         method: METHOD_SEND,
         approved: vec![alice],
         params: RawBytes::default(),
@@ -103,7 +103,7 @@ fn test_delete_self() {
     let test = |threshold: usize, signers: u64, remove_idx: usize| {
         let store = MemoryBlockstore::new();
         let v = VM::new_with_singletons(&store);
-        let addrs = create_accounts(&v, signers, TokenAmount::from(10_000e18 as u64));
+        let addrs = create_accounts(&v, signers, TokenAmount::from_whole(10_000));
 
         let msig_addr = create_msig(&v, addrs.clone(), threshold as u64);
 
@@ -175,7 +175,7 @@ fn test_delete_self() {
 fn swap_self_1_of_2() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from(10_000e18 as u64));
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
 
     let (alice, bob, chuck) = (addrs[0], addrs[1], addrs[2]);
     let msig_addr = create_msig(&v, vec![alice, bob], 1);
@@ -204,7 +204,7 @@ fn swap_self_1_of_2() {
 fn swap_self_2_of_3() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 4, TokenAmount::from(10_000e18 as u64));
+    let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let (alice, bob, chuck, dinesh) = (addrs[0], addrs[1], addrs[2], addrs[3]);
 
     let msig_addr = create_msig(&v, vec![alice, bob, chuck], 2);
@@ -289,7 +289,7 @@ fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
         v,
         signers[0],
         *INIT_ACTOR_ADDR,
-        TokenAmount::from(0_u64),
+        TokenAmount::zero(),
         fil_actor_init::Method::Exec as u64,
         fil_actor_init::ExecParams {
             code_cid: *MULTISIG_ACTOR_CODE_ID,

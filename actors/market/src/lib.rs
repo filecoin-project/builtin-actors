@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,7 +20,7 @@ use fvm_shared::sector::{RegisteredSealProof, SectorSize, StoragePower};
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::info;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed, Zero};
+use num_traits::{FromPrimitive, Zero};
 
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -53,14 +54,14 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 
 fn request_miner_control_addrs<BS, RT>(
     rt: &mut RT,
-    miner_addr: Address,
+    miner_id: ActorID,
 ) -> Result<(Address, Address, Vec<Address>), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     let ret = rt.send(
-        miner_addr,
+        &Address::new_id(miner_id),
         ext::miner::CONTROL_ADDRESSES_METHOD,
         RawBytes::default(),
         TokenAmount::zero(),
@@ -113,7 +114,7 @@ impl Actor {
     {
         let msg_value = rt.message().value_received();
 
-        if msg_value <= TokenAmount::from(0) {
+        if msg_value <= TokenAmount::zero() {
             return Err(actor_error!(
                 illegal_argument,
                 "balance to add must be greater than zero was: {}",
@@ -162,7 +163,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        if params.amount < TokenAmount::from(0) {
+        if params.amount < TokenAmount::zero() {
             return Err(actor_error!(illegal_argument, "negative amount: {}", params.amount));
         }
 
@@ -206,7 +207,7 @@ impl Actor {
             Ok(ex)
         })?;
 
-        rt.send(recipient, METHOD_SEND, RawBytes::default(), amount_extracted.clone())?;
+        rt.send(&recipient, METHOD_SEND, RawBytes::default(), amount_extracted.clone())?;
 
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_extracted })
     }
@@ -229,13 +230,13 @@ impl Actor {
 
         // All deals should have the same provider so get worker once
         let provider_raw = params.deals[0].proposal.provider;
-        let provider = rt.resolve_address(&provider_raw).ok_or_else(|| {
+        let provider_id = rt.resolve_address(&provider_raw).ok_or_else(|| {
             actor_error!(not_found, "failed to resolve provider address {}", provider_raw)
         })?;
 
         let code_id = rt
-            .get_actor_code_cid(&provider)
-            .ok_or_else(|| actor_error!(illegal_argument, "no code ID for address {}", provider))?;
+            .get_actor_code_cid(&provider_id)
+            .ok_or_else(|| actor_error!(not_found, "no code ID for address {}", provider_id))?;
 
         if rt.resolve_builtin_actor_type(&code_id) != Some(Type::Miner) {
             return Err(actor_error!(
@@ -244,7 +245,7 @@ impl Actor {
             ));
         }
 
-        let (_, worker, controllers) = request_miner_control_addrs(rt, provider)?;
+        let (_, worker, controllers) = request_miner_control_addrs(rt, provider_id)?;
         let caller = rt.message().caller();
         let mut caller_ok = caller == worker;
         for controller in controllers.iter() {
@@ -258,7 +259,7 @@ impl Actor {
                 forbidden,
                 "caller {} is not worker or control address of provider {}",
                 caller,
-                provider
+                provider_id
             ));
         }
 
@@ -290,14 +291,16 @@ impl Actor {
                 continue;
             }
 
-            if deal.proposal.provider != provider && deal.proposal.provider != provider_raw {
+            if deal.proposal.provider != Address::new_id(provider_id)
+                && deal.proposal.provider != provider_raw
+            {
                 info!(
                     "invalid deal {}: cannot publish deals from multiple providers in one batch",
                     di
                 );
                 continue;
             }
-            let client = match rt.resolve_address(&deal.proposal.client) {
+            let client_id = match rt.resolve_address(&deal.proposal.client) {
                 Some(client) => client,
                 _ => {
                     info!(
@@ -309,17 +312,17 @@ impl Actor {
             };
 
             // drop deals with insufficient lock up to cover costs
-            let client_id = client.id().expect("resolved address should be an ID address");
             let mut client_lockup =
                 total_client_lockup.get(&client_id).cloned().unwrap_or_default();
             client_lockup += deal.proposal.client_balance_requirement();
 
-            let client_balance_ok = msm.balance_covered(client, &client_lockup).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to check client balance coverage",
-                )
-            })?;
+            let client_balance_ok =
+                msm.balance_covered(Address::new_id(client_id), &client_lockup).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to check client balance coverage",
+                    )
+                })?;
 
             if !client_balance_ok {
                 info!("invalid deal: {}: insufficient client funds to cover proposal cost", di);
@@ -328,8 +331,9 @@ impl Actor {
 
             let mut provider_lockup = total_provider_lockup.clone();
             provider_lockup += &deal.proposal.provider_collateral;
-            let provider_balance_ok =
-                msm.balance_covered(provider, &provider_lockup).map_err(|e| {
+            let provider_balance_ok = msm
+                .balance_covered(Address::new_id(provider_id), &provider_lockup)
+                .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to check provider balance coverage",
@@ -345,9 +349,9 @@ impl Actor {
             // Normalise provider and client addresses in the proposal stored on chain.
             // Must happen after signature verification and before taking cid.
 
-            deal.proposal.provider = provider;
-            deal.proposal.client = client;
-            let pcid = deal.proposal.cid().map_err(
+            deal.proposal.provider = Address::new_id(provider_id);
+            deal.proposal.client = Address::new_id(client_id);
+            let pcid = rt_deal_cid(rt, &deal.proposal).map_err(
                 |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
             )?;
 
@@ -370,10 +374,10 @@ impl Actor {
             // drop deals with a DealSize that cannot be fully covered by VerifiedClient's available DataCap
             if deal.proposal.verified_deal {
                 if let Err(e) = rt.send(
-                    *VERIFIED_REGISTRY_ACTOR_ADDR,
+                    &VERIFIED_REGISTRY_ACTOR_ADDR,
                     crate::ext::verifreg::USE_BYTES_METHOD as u64,
                     RawBytes::serialize(UseBytesParams {
-                        address: client,
+                        address: Address::new_id(client_id),
                         deal_size: BigInt::from(deal.proposal.piece_size.0),
                     })?,
                     TokenAmount::zero(),
@@ -593,9 +597,7 @@ impl Actor {
                     })?
                     .ok_or_else(|| actor_error!(not_found, "no such deal_id: {}", deal_id))?;
 
-                let propc = proposal
-                    .cid()
-                    .map_err(|e| ActorError::from(e).wrap("failed to calculate proposal Cid"))?;
+                let propc = rt_deal_cid(rt, proposal)?;
 
                 let has =
                     msm.pending_deals.as_ref().unwrap().has(&propc.to_bytes()).map_err(|e| {
@@ -766,7 +768,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_is(std::iter::once(&*CRON_ACTOR_ADDR))?;
 
-        let mut amount_slashed = BigInt::zero();
+        let mut amount_slashed = TokenAmount::zero();
         let curr_epoch = rt.curr_epoch();
         let mut timed_out_verified_deals: Vec<DealProposal> = Vec::new();
 
@@ -820,10 +822,7 @@ impl Actor {
                         })?
                         .clone();
 
-                    let dcid = deal.cid().map_err(|e| {
-                        ActorError::from(e)
-                            .wrap(format!("failed to calculate cid for proposal {}", deal_id))
-                    })?;
+                    let dcid = rt_deal_cid(rt, &deal)?;
 
                     let state = msm
                         .deal_states
@@ -1029,7 +1028,7 @@ impl Actor {
 
         for d in timed_out_verified_deals {
             let res = rt.send(
-                *VERIFIED_REGISTRY_ACTOR_ADDR,
+                &VERIFIED_REGISTRY_ACTOR_ADDR,
                 ext::verifreg::RESTORE_BYTES_METHOD,
                 RawBytes::serialize(ext::verifreg::RestoreBytesParams {
                     address: d.client,
@@ -1051,7 +1050,7 @@ impl Actor {
         }
 
         if !amount_slashed.is_zero() {
-            rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount_slashed)?;
+            rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount_slashed)?;
         }
         Ok(())
     }
@@ -1283,13 +1282,46 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
+    let signature_bytes = proposal.client_signature.bytes.clone();
     // Generate unsigned bytes
-    let sv_bz = serialize_vec(&proposal.proposal, "deal proposal")?;
-    rt.verify_signature(&proposal.client_signature, &proposal.proposal.client, &sv_bz).map_err(
-        |e| e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "signature proposal invalid"),
-    )?;
+    let proposal_bytes = serialize_vec(&proposal.proposal, "deal proposal")?;
 
+    rt.send(
+        &proposal.proposal.client,
+        ext::account::AUTHENTICATE_MESSAGE_METHOD,
+        RawBytes::serialize(ext::account::AuthenticateMessageParams {
+            signature: signature_bytes,
+            message: proposal_bytes,
+        })?,
+        TokenAmount::zero(),
+    )
+    .map_err(|e| e.wrap("proposal authentication failed"))?;
     Ok(())
+}
+
+pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
+
+/// Compute a deal CID using the runtime.
+pub(crate) fn rt_deal_cid<BS, RT>(rt: &RT, proposal: &DealProposal) -> Result<Cid, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    const DIGEST_SIZE: u32 = 32;
+    let data = &proposal.marshal_cbor()?;
+    let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
+        .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
+    debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
+    Ok(Cid::new_v1(DAG_CBOR, hash))
+}
+
+/// Compute a deal CID directly.
+pub(crate) fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
+    const DIGEST_SIZE: u32 = 32;
+    let data = &proposal.marshal_cbor()?;
+    let hash = Code::Blake2b256.digest(data);
+    debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
+    Ok(Cid::new_v1(DAG_CBOR, hash))
 }
 
 /// Resolves a provider or client address to the canonical form against which a balance should be held, and
@@ -1311,13 +1343,15 @@ where
         .get_actor_code_cid(&nominal)
         .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", nominal))?;
 
+    let nominal_addr = Address::new_id(nominal);
+
     if rt.resolve_builtin_actor_type(&code_id) == Some(Type::Miner) {
         // Storage miner actor entry; implied funds recipient is the associated owner address.
         let (owner_addr, worker_addr, _) = request_miner_control_addrs(rt, nominal)?;
-        return Ok((nominal, owner_addr, vec![owner_addr, worker_addr]));
+        return Ok((nominal_addr, owner_addr, vec![owner_addr, worker_addr]));
     }
 
-    Ok((nominal, nominal, vec![nominal]))
+    Ok((nominal_addr, nominal_addr, vec![nominal_addr]))
 }
 
 /// Requests the current epoch target block reward from the reward actor.
@@ -1327,10 +1361,10 @@ where
     RT: Runtime<BS>,
 {
     let rwret = rt.send(
-        *REWARD_ACTOR_ADDR,
+        &REWARD_ACTOR_ADDR,
         ext::reward::THIS_EPOCH_REWARD_METHOD,
         RawBytes::default(),
-        0.into(),
+        TokenAmount::zero(),
     )?;
     let ret: ThisEpochRewardReturn = rwret.deserialize()?;
     Ok(ret.this_epoch_baseline_power)
@@ -1346,10 +1380,10 @@ where
     RT: Runtime<BS>,
 {
     let rwret = rt.send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
         ext::power::CURRENT_TOTAL_POWER_METHOD,
         RawBytes::default(),
-        0.into(),
+        TokenAmount::zero(),
     )?;
     let ret: ext::power::CurrentTotalPowerReturnParams = rwret.deserialize()?;
     Ok((ret.raw_byte_power, ret.quality_adj_power))

@@ -1,15 +1,16 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
+    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError,
+    FIRST_NON_SINGLETON_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::{Address, Protocol};
+use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 
 /// State is reponsible for creating
@@ -21,10 +22,10 @@ pub struct State {
 }
 
 impl State {
-    pub fn new<BS: Blockstore>(store: &BS, network_name: String) -> anyhow::Result<Self> {
+    pub fn new<BS: Blockstore>(store: &BS, network_name: String) -> Result<Self, ActorError> {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
-            .map_err(|e| anyhow!("failed to create empty map: {}", e))?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty map")?;
         Ok(Self { address_map: empty_map, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
     }
 
@@ -36,22 +37,26 @@ impl State {
         &mut self,
         store: &BS,
         addr: &Address,
-    ) -> anyhow::Result<ActorID> {
+    ) -> Result<ActorID, ActorError> {
         let id = self.next_id;
         self.next_id += 1;
 
-        let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)?;
-        let is_new = map.set_if_absent(addr.to_bytes().into(), id)?;
+        let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load address map")?;
+        let is_new = map
+            .set_if_absent(addr.to_bytes().into(), id)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set map key")?;
         if !is_new {
             // this is impossible today as the robust address is a hash of unique inputs
             // but in close future predictable address generation will make this possible
-            return Err(anyhow!(actor_error!(
+            return Err(actor_error!(
                 forbidden,
                 "robust address {} is already allocated in the address map",
                 addr
-            )));
+            ));
         }
-        self.address_map = map.flush()?;
+        self.address_map =
+            map.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store address map")?;
 
         Ok(id)
     }
@@ -70,14 +75,18 @@ impl State {
         &self,
         store: &BS,
         addr: &Address,
-    ) -> anyhow::Result<Option<Address>> {
+    ) -> Result<Option<Address>, ActorError> {
         if addr.protocol() == Protocol::ID {
             return Ok(Some(*addr));
         }
 
-        let map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)?;
+        let map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load address map")?;
 
-        Ok(map.get(&addr.to_bytes())?.copied().map(Address::new_id))
+        let found = map
+            .get(&addr.to_bytes())
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get address entry")?;
+        Ok(found.copied().map(Address::new_id))
     }
 }
 

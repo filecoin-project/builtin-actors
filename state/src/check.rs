@@ -28,14 +28,13 @@ use fvm_ipld_encoding::from_slice;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Address;
 use fvm_shared::address::Protocol;
-use fvm_shared::bigint::BigInt;
+
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
 use anyhow::anyhow;
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::bigint::bigint_ser;
 
 use fil_actor_account::testing as account;
 use fil_actor_cron::testing as cron;
@@ -51,7 +50,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 
 /// Value type of the top level of the state tree.
 /// Represents the on-chain state of a single actor.
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
 pub struct Actor {
     /// CID representing the code associated with the actor
     pub code: Cid,
@@ -59,7 +58,6 @@ pub struct Actor {
     pub head: Cid,
     /// `call_seq_num` for the next message to be received by the actor (non-zero for accounts only)
     pub call_seq_num: u64,
-    #[serde(with = "bigint_ser")]
     /// Token balance of the actor
     pub balance: TokenAmount,
 }
@@ -115,7 +113,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
     prior_epoch: ChainEpoch,
 ) -> anyhow::Result<MessageAccumulator> {
     let acc = MessageAccumulator::default();
-    let mut total_fil = BigInt::zero();
+    let mut total_fil = TokenAmount::zero();
 
     let mut init_summary: Option<init::StateSummary> = None;
     let mut cron_summary: Option<cron::StateSummary> = None;

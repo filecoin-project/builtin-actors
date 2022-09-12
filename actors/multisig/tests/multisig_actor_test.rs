@@ -10,7 +10,7 @@ use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
-use fvm_shared::bigint::bigint_ser;
+
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -54,7 +54,7 @@ mod constructor_tests {
             start_epoch: 100,
         };
 
-        rt.set_received(TokenAmount::from(100u8));
+        rt.set_received(TokenAmount::from_atto(100u8));
         rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
         rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
         let ret = rt.call::<MultisigActor>(
@@ -67,7 +67,7 @@ mod constructor_tests {
         let st: State = rt.get_state();
         assert_eq!(params.signers, st.signers);
         assert_eq!(params.num_approvals_threshold, st.num_approvals_threshold);
-        assert_eq!(TokenAmount::from(100u8), st.initial_balance);
+        assert_eq!(TokenAmount::from_atto(100u8), st.initial_balance);
         assert_eq!(200, st.unlock_duration);
         assert_eq!(100, st.start_epoch);
         h.assert_transactions(&rt, vec![]);
@@ -227,7 +227,7 @@ mod constructor_tests {
         );
         rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
         expect_abort(
-            ExitCode::USR_ILLEGAL_STATE,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
                 &RawBytes::serialize(&params).unwrap(),
@@ -284,6 +284,7 @@ mod constructor_tests {
 #[cfg(test)]
 mod vesting_tests {
     use super::*;
+    use lazy_static::lazy_static;
 
     const MSIG: Address = Address::new_id(1000);
     const ANNE: Address = Address::new_id(101);
@@ -293,15 +294,18 @@ mod vesting_tests {
 
     const UNLOCK_DURATION: ChainEpoch = 10;
     const START_EPOCH: ChainEpoch = 0;
-    const MSIG_INITIAL_BALANCE: u8 = 100;
+
+    lazy_static! {
+        static ref MSIG_INITIAL_BALANCE: TokenAmount = TokenAmount::from_atto(100);
+    }
 
     #[test]
     fn happy_path_full_vesting() {
         let mut rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
-        rt.set_balance(TokenAmount::from(MSIG_INITIAL_BALANCE));
-        rt.set_received(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        rt.set_balance(MSIG_INITIAL_BALANCE.clone());
+        rt.set_received(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
@@ -310,7 +314,7 @@ mod vesting_tests {
         let proposal_hash = h.propose_ok(
             &mut rt,
             DARLENE,
-            TokenAmount::from(MSIG_INITIAL_BALANCE),
+            MSIG_INITIAL_BALANCE.clone(),
             METHOD_SEND,
             RawBytes::default(),
         );
@@ -326,7 +330,7 @@ mod vesting_tests {
             DARLENE,
             METHOD_SEND,
             RawBytes::default(),
-            TokenAmount::from(MSIG_INITIAL_BALANCE),
+            MSIG_INITIAL_BALANCE.clone(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -341,8 +345,8 @@ mod vesting_tests {
         let mut rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
-        rt.set_balance(TokenAmount::from(MSIG_INITIAL_BALANCE));
-        rt.set_received(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        rt.set_balance(MSIG_INITIAL_BALANCE.clone());
+        rt.set_received(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
@@ -350,7 +354,7 @@ mod vesting_tests {
         let proposal_hash = h.propose_ok(
             &mut rt,
             DARLENE,
-            TokenAmount::from(MSIG_INITIAL_BALANCE / 2),
+            MSIG_INITIAL_BALANCE.div_floor(2),
             METHOD_SEND,
             RawBytes::default(),
         );
@@ -360,7 +364,7 @@ mod vesting_tests {
             DARLENE,
             METHOD_SEND,
             RawBytes::default(),
-            TokenAmount::from(MSIG_INITIAL_BALANCE / 2),
+            MSIG_INITIAL_BALANCE.div_floor(2),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -374,8 +378,8 @@ mod vesting_tests {
         let mut rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
-        rt.set_balance(TokenAmount::from(MSIG_INITIAL_BALANCE));
-        rt.set_received(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        rt.set_balance(MSIG_INITIAL_BALANCE.clone());
+        rt.set_received(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
@@ -385,14 +389,14 @@ mod vesting_tests {
             h.propose(
                 &mut rt,
                 DARLENE,
-                TokenAmount::from(MSIG_INITIAL_BALANCE),
+                MSIG_INITIAL_BALANCE.clone(),
                 METHOD_SEND,
                 RawBytes::default(),
             ),
         );
         rt.reset();
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION / 10);
-        let amount_out = TokenAmount::from(MSIG_INITIAL_BALANCE / 10);
+        let amount_out = MSIG_INITIAL_BALANCE.div_floor(10);
         rt.expect_send(
             DARLENE,
             METHOD_SEND,
@@ -411,8 +415,8 @@ mod vesting_tests {
         let mut rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
-        rt.set_balance(TokenAmount::from(MSIG_INITIAL_BALANCE));
-        rt.set_received(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        rt.set_balance(MSIG_INITIAL_BALANCE.clone());
+        rt.set_received(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
@@ -420,7 +424,7 @@ mod vesting_tests {
         let proposal_hash = h.propose_ok(
             &mut rt,
             DARLENE,
-            TokenAmount::from(MSIG_INITIAL_BALANCE / 2),
+            MSIG_INITIAL_BALANCE.div_floor(2),
             METHOD_SEND,
             RawBytes::default(),
         );
@@ -435,8 +439,8 @@ mod vesting_tests {
         let mut rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
-        let locked_balance = TokenAmount::from(UNLOCK_DURATION - 1); // balance < duration
-        let one = TokenAmount::from(1u8);
+        let locked_balance = TokenAmount::from_atto(UNLOCK_DURATION - 1); // balance < duration
+        let one = TokenAmount::from_atto(1u8);
         rt.set_balance(locked_balance.clone());
         rt.set_received(locked_balance.clone());
         h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
@@ -510,8 +514,8 @@ mod vesting_tests {
         let mut rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
-        rt.set_balance(TokenAmount::from(MSIG_INITIAL_BALANCE));
-        rt.set_received(TokenAmount::from(MSIG_INITIAL_BALANCE));
+        rt.set_balance(MSIG_INITIAL_BALANCE.clone());
+        rt.set_received(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
@@ -534,11 +538,12 @@ mod vesting_tests {
 
         h.construct_and_verify(&mut rt, 1, 0, START_EPOCH, vec![ANNE]);
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, MSIG);
-        rt.set_balance(TokenAmount::from(10u8));
-        rt.set_received(TokenAmount::from(10u8));
+        rt.set_balance(TokenAmount::from_atto(10u8));
+        rt.set_received(TokenAmount::from_atto(10u8));
 
         // lock up funds the actor doesn't have yet
-        h.lock_balance(&mut rt, START_EPOCH, UNLOCK_DURATION, TokenAmount::from(10u8)).unwrap();
+        h.lock_balance(&mut rt, START_EPOCH, UNLOCK_DURATION, TokenAmount::from_atto(10u8))
+            .unwrap();
 
         // make a tx that transfers no value
         let send_amount = TokenAmount::zero();
@@ -554,7 +559,7 @@ mod vesting_tests {
         h.propose_ok(&mut rt, BOB, send_amount, METHOD_SEND, RawBytes::default());
 
         // verify that sending any value is prevented
-        let send_amount = TokenAmount::from(1u8);
+        let send_amount = TokenAmount::from_atto(1u8);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
             h.propose(&mut rt, BOB, send_amount, METHOD_SEND, RawBytes::default()),
@@ -578,7 +583,7 @@ fn test_simple_propose() {
     let start_epoch = 0;
     let signers = vec![anne, bob];
 
-    let send_value = TokenAmount::from(10u8);
+    let send_value = TokenAmount::from_atto(10u8);
     h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
     h.propose_ok(&mut rt, chuck, send_value.clone(), METHOD_SEND, RawBytes::default());
@@ -605,12 +610,12 @@ fn test_propose_with_threshold_met() {
     let bob = Address::new_id(102);
     let chuck = Address::new_id(103);
     let fake_params = RawBytes::from([99u8; 3].to_vec());
-    let send_value = TokenAmount::from(10u8);
+    let send_value = TokenAmount::from_atto(10u8);
 
     let no_unlock_duration = 0;
     let start_epoch = 0;
     let signers = vec![anne, bob];
-    rt.set_balance(TokenAmount::from(10u8));
+    rt.set_balance(TokenAmount::from_atto(10u8));
     rt.set_received(TokenAmount::zero());
     h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
 
@@ -639,12 +644,12 @@ fn test_propose_with_threshold_and_non_empty_return_value() {
     let bob = Address::new_id(102);
     let chuck = Address::new_id(103);
     let fake_params = RawBytes::from([99u8; 3].to_vec());
-    let send_value = TokenAmount::from(10u8);
+    let send_value = TokenAmount::from_atto(10u8);
     let no_unlock_duration = 0;
     let start_epoch = 0;
     let signers = vec![anne, bob];
 
-    rt.set_balance(TokenAmount::from(20u8));
+    rt.set_balance(TokenAmount::from_atto(20u8));
     rt.set_received(TokenAmount::zero());
     h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
 
@@ -652,14 +657,13 @@ fn test_propose_with_threshold_and_non_empty_return_value() {
     struct FakeReturn {
         addr1: Address,
         addr2: Address,
-        #[serde(with = "bigint_ser")]
         tokens: TokenAmount,
     }
 
     let propose_ret = FakeReturn {
         addr1: Address::new_id(1),
         addr2: Address::new_id(2),
-        tokens: TokenAmount::from(77u8),
+        tokens: TokenAmount::from_atto(77u8),
     };
     let inner_ret_bytes = serialize(&propose_ret, "fake proposal return value").unwrap();
     let fake_method = 42u64;
@@ -695,7 +699,7 @@ fn test_fail_propose_with_threshold_met_and_insufficient_balance() {
     let bob = Address::new_id(102);
     let chuck = Address::new_id(103);
     let fake_params = RawBytes::from([99u8; 3].to_vec());
-    let send_value = TokenAmount::from(10u8);
+    let send_value = TokenAmount::from_atto(10u8);
     let no_unlock_duration = 0;
     let start_epoch = 0;
     let signers = vec![anne, bob];
@@ -725,7 +729,7 @@ fn test_fail_propose_from_non_signer() {
     let bob = Address::new_id(102);
     let chuck = Address::new_id(103);
     let fake_params = RawBytes::from([99u8; 3].to_vec());
-    let send_value = TokenAmount::from(10u8);
+    let send_value = TokenAmount::from_atto(10u8);
     let no_unlock_duration = 0;
     let start_epoch = 0;
     let signers = vec![anne, bob];
@@ -1305,7 +1309,7 @@ mod approval_tests {
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         let fake_ret = RawBytes::from(vec![4, 3, 2, 1]);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
             h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
@@ -1337,7 +1341,7 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
@@ -1366,7 +1370,7 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(20u8);
+        let send_value = TokenAmount::from_atto(20u8);
         let unlock_duration = 20;
         let start_epoch = 10;
         let h = util::ActorHarness::new();
@@ -1415,9 +1419,9 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
-        rt.set_balance(send_value.clone() - 1);
+        rt.set_balance(send_value.clone() - TokenAmount::from_atto(1));
         rt.set_received(TokenAmount::zero());
         h.construct_and_verify(&mut rt, 2, 0, 0, signers);
 
@@ -1452,7 +1456,7 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(20u8);
+        let send_value = TokenAmount::from_atto(20u8);
         let unlock_duration = 20;
         let start_epoch = 10;
         let h = util::ActorHarness::new();
@@ -1492,7 +1496,7 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
@@ -1526,7 +1530,7 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
@@ -1562,7 +1566,7 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
@@ -1601,7 +1605,7 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value);
         rt.set_received(TokenAmount::zero());
@@ -1624,7 +1628,7 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
@@ -1664,7 +1668,7 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
@@ -1704,7 +1708,7 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob, chuck];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
@@ -1749,7 +1753,7 @@ mod approval_tests {
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
         let mut rt = construct_runtime(msig);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
@@ -1808,7 +1812,7 @@ mod cancel_tests {
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         // anne proposes tx
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash = h.propose_ok(&mut rt, chuck, send_value, fake_method, fake_params);
@@ -1828,7 +1832,7 @@ mod cancel_tests {
         let anne = Address::new_id(101);
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
 
         let mut rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
@@ -1856,7 +1860,7 @@ mod cancel_tests {
         let anne = Address::new_id(101);
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
 
         let mut rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
@@ -1898,7 +1902,7 @@ mod cancel_tests {
         let anne = Address::new_id(101);
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
 
         let mut rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
@@ -1939,7 +1943,7 @@ mod cancel_tests {
         let anne = Address::new_id(101);
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
 
         let mut rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
@@ -1981,7 +1985,7 @@ mod cancel_tests {
         let anne = Address::new_id(101);
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         let num_approvers = 3;
 
         let mut rt = construct_runtime(msig);
@@ -2120,7 +2124,7 @@ mod change_threshold_tests {
 
         // anne proposes tx id 0
         let fake_method = 42;
-        let send_value = TokenAmount::from(10u8);
+        let send_value = TokenAmount::from_atto(10u8);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
             h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, RawBytes::default());
@@ -2166,13 +2170,13 @@ mod lock_balance_tests {
         // some time later, initialize vesting
         rt.set_epoch(200);
         let vest_start = 0;
-        let lock_amount = TokenAmount::from(100_000u32);
+        let lock_amount = TokenAmount::from_atto(100_000u32);
         let vest_duration = 1000;
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
         h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
 
         rt.set_epoch(300);
-        let vested = TokenAmount::from(30_000);
+        let vested = TokenAmount::from_atto(30_000);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
 
         // Fail to spend balance the multisig doesn't have
@@ -2189,7 +2193,7 @@ mod lock_balance_tests {
             h.propose(
                 &mut rt,
                 bob,
-                vested.clone() + TokenAmount::from(1),
+                vested.clone() + TokenAmount::from_atto(1),
                 METHOD_SEND,
                 RawBytes::default(),
             ),
@@ -2212,13 +2216,13 @@ mod lock_balance_tests {
         rt.set_balance(lock_amount - vested);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+            h.propose(&mut rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default()),
         );
         rt.reset();
 
         // later can spend the rest
         rt.set_epoch(vest_start + vest_duration);
-        let rested = TokenAmount::from(70_000u32);
+        let rested = TokenAmount::from_atto(70_000u32);
         rt.expect_send(
             bob,
             METHOD_SEND,
@@ -2246,7 +2250,7 @@ mod lock_balance_tests {
         // some time later initialize vesting
         rt.set_epoch(200);
         let vest_start = 1000;
-        let lock_amount = TokenAmount::from(100_000);
+        let lock_amount = TokenAmount::from_atto(100_000);
         let vest_duration = 1000;
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
         h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
@@ -2254,28 +2258,28 @@ mod lock_balance_tests {
         // oversupply the wallet allow spending the oversupply
         rt.set_epoch(300);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        rt.set_balance(lock_amount.clone() + TokenAmount::from(1));
+        rt.set_balance(lock_amount.clone() + TokenAmount::from_atto(1));
         rt.expect_send(
             bob,
             METHOD_SEND,
             RawBytes::default(),
-            TokenAmount::from(1),
+            TokenAmount::from_atto(1),
             RawBytes::default(),
             ExitCode::OK,
         );
-        h.propose_ok(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default());
+        h.propose_ok(&mut rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default());
 
         // fail to spend locked funds before vesting starts
         rt.set_balance(lock_amount.clone());
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+            h.propose(&mut rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default()),
         );
         rt.reset();
 
         // can spend partially vested amount
         rt.set_epoch(vest_start + 200);
-        let expect_vested = TokenAmount::from(20_000);
+        let expect_vested = TokenAmount::from_atto(20_000);
         rt.expect_send(
             bob,
             METHOD_SEND,
@@ -2290,12 +2294,12 @@ mod lock_balance_tests {
         rt.set_balance(lock_amount - expect_vested);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, bob, TokenAmount::from(1), METHOD_SEND, RawBytes::default()),
+            h.propose(&mut rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default()),
         );
 
         // later, can spend the rest
         rt.set_epoch(vest_start + vest_duration);
-        let rested = TokenAmount::from(80_000);
+        let rested = TokenAmount::from_atto(80_000);
         rt.expect_send(
             bob,
             METHOD_SEND,
@@ -2322,7 +2326,7 @@ mod lock_balance_tests {
 
         // initialize vesting from zero
         let vest_start = 0;
-        let lock_amount = TokenAmount::from(100_000);
+        let lock_amount = TokenAmount::from_atto(100_000);
         let vest_duration = 1000;
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
         h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
@@ -2342,7 +2346,12 @@ mod lock_balance_tests {
         // can't change locked amount
         expect_abort(
             ExitCode::USR_FORBIDDEN,
-            h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount - TokenAmount::from(1)),
+            h.lock_balance(
+                &mut rt,
+                vest_start,
+                vest_duration,
+                lock_amount - TokenAmount::from_atto(1),
+            ),
         );
         rt.reset();
         check_state(&rt);
@@ -2381,7 +2390,7 @@ mod lock_balance_tests {
         h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
 
         let vest_start = 0_i64;
-        let lock_amount = TokenAmount::from(100_000u32);
+        let lock_amount = TokenAmount::from_atto(100_000u32);
         let vest_duration = 1000_i64;
 
         // Disallow negative duration but allow negative start epoch
@@ -2394,7 +2403,7 @@ mod lock_balance_tests {
         // Disallow negative amount
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.lock_balance(&mut rt, vest_start, vest_duration, TokenAmount::from(-1i32)),
+            h.lock_balance(&mut rt, vest_start, vest_duration, TokenAmount::from_atto(-1i32)),
         );
         check_state(&rt);
     }

@@ -217,7 +217,7 @@ impl Harness {
 
 fn load_verifiers(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
     let state: State = rt.get_state();
-    make_map_with_root_and_bitwidth::<_, BigIntDe>(&state.verifiers, &rt.store, HAMT_BIT_WIDTH)
+    make_map_with_root_and_bitwidth::<_, BigIntDe>(&state.verifiers, &*rt.store, HAMT_BIT_WIDTH)
         .unwrap()
 }
 
@@ -225,7 +225,7 @@ fn load_clients(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
     let state: State = rt.get_state();
     make_map_with_root_and_bitwidth::<_, BigIntDe>(
         &state.verified_clients,
-        &rt.store,
+        &*rt.store,
         HAMT_BIT_WIDTH,
     )
     .unwrap()

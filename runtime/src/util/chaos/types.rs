@@ -5,7 +5,6 @@ use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -25,13 +24,12 @@ pub struct CreateActorArgs {
 /// Holds the response of a call to runtime.ResolveAddress
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ResolveAddressResponse {
-    pub address: Address,
+    pub id: ActorID,
     pub success: bool,
 }
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct SendArgs {
     pub to: Address,
-    #[serde(with = "bigint_ser")]
     pub value: TokenAmount,
     #[serde(rename = "MethodNum")]
     pub method: u64,
@@ -62,10 +60,8 @@ pub struct AbortWithArgs {
 pub struct InspectRuntimeReturn {
     pub caller: Address,
     pub receiver: Address,
-    #[serde(with = "bigint_ser")]
     pub value_received: TokenAmount,
     pub curr_epoch: ChainEpoch,
-    #[serde(with = "bigint_ser")]
     pub current_balance: TokenAmount,
     pub state: State,
 }

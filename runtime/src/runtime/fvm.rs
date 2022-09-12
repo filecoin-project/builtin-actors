@@ -11,7 +11,7 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
@@ -140,7 +140,8 @@ where
         self.assert_not_validated()?;
         let caller_cid = {
             let caller_addr = self.message().caller();
-            self.get_actor_code_cid(&caller_addr).expect("failed to lookup caller code")
+            self.get_actor_code_cid(&caller_addr.id().unwrap())
+                .expect("failed to lookup caller code")
         };
 
         match self.resolve_builtin_actor_type(&caller_cid) {
@@ -157,21 +158,20 @@ where
         fvm::sself::current_balance()
     }
 
-    fn resolve_address(&self, address: &Address) -> Option<Address> {
-        fvm::actor::resolve_address(address).map(Address::new_id)
+    fn resolve_address(&self, address: &Address) -> Option<ActorID> {
+        fvm::actor::resolve_address(address)
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
-        fvm::actor::get_actor_code_cid(addr)
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
+        fvm::actor::get_actor_code_cid(&Address::new_id(*id))
     }
 
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type> {
-        fvm::actor::get_builtin_actor_type(code_id).and_then(|t| Type::from_i32(t as i32))
+        fvm::actor::get_builtin_actor_type(code_id).and_then(Type::from_i32)
     }
 
     fn get_code_cid_for_type(&self, typ: Type) -> Cid {
-        let t = fvm_shared::actor::builtin::Type::from_i32(typ as i32).unwrap();
-        fvm::actor::get_code_cid_for_type(t)
+        fvm::actor::get_code_cid_for_type(typ as i32)
     }
 
     fn get_randomness_from_tickets(
@@ -179,7 +179,7 @@ where
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         // Note: For Go actors, Lotus treated all failures to get randomness as "fatal" errors,
         // which it then translated into exit code SysErrReserved1 (= 4, and now known as
         // SYS_ILLEGAL_INSTRUCTION), rather than just aborting with an appropriate exit code.
@@ -190,7 +190,8 @@ where
         //
         // Since that behaviour changes, we may as well abort with a more appropriate exit code
         // explicitly.
-        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy)
+            .map_err(|e| {
             if self.network_version() < NetworkVersion::V16 {
                 ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
                     "failed to get chain randomness".into())
@@ -210,9 +211,10 @@ where
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         // See note on exit codes in get_randomness_from_tickets.
-        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy)
+            .map_err(|e| {
             if self.network_version() < NetworkVersion::V16 {
                 ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
                     "failed to get chain randomness".into())
@@ -280,7 +282,7 @@ where
 
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
@@ -288,7 +290,7 @@ where
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
         }
-        match fvm::send::send(&to, method, params, value) {
+        match fvm::send::send(to, method, params, value) {
             Ok(ret) => {
                 if ret.exit_code.is_success() {
                     Ok(ret.return_data)

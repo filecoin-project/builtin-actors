@@ -48,7 +48,7 @@ fn create_miner() {
         peer,
         multiaddrs,
         RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        &TokenAmount::from(10),
+        &TokenAmount::from_atto(10),
     )
     .unwrap();
 
@@ -119,8 +119,8 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
 
     // owner send CreateMiner to Actor
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *OWNER);
-    rt.value_received = TokenAmount::from(10);
-    rt.set_balance(TokenAmount::from(10));
+    rt.value_received = TokenAmount::from_atto(10);
+    rt.set_balance(TokenAmount::from_atto(10));
     rt.expect_validate_caller_type(CALLER_TYPES_SIGNABLE.to_vec());
 
     let message_params = ExecParams {
@@ -140,7 +140,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
         *INIT_ACTOR_ADDR,
         EXEC_METHOD,
         RawBytes::serialize(message_params).unwrap(),
-        TokenAmount::from(10),
+        TokenAmount::from_atto(10),
         RawBytes::default(),
         ExitCode::SYS_INSUFFICIENT_FUNDS,
     );
@@ -234,9 +234,9 @@ fn power_and_pledge_accounted_below_threshold() {
 
     // Add power and pledge for miner2
     h.update_claimed_power(&mut rt, MINER2, small_power_unit, small_power_unit);
-    h.update_pledge_total(&mut rt, MINER1, &TokenAmount::from(1_000_000));
+    h.update_pledge_total(&mut rt, MINER1, &TokenAmount::from_atto(1_000_000));
     h.expect_total_power_eager(&mut rt, small_power_unit_x2, small_power_unit_x3);
-    h.expect_total_pledge_eager(&mut rt, &TokenAmount::from(1_000_000));
+    h.expect_total_pledge_eager(&mut rt, &TokenAmount::from_atto(1_000_000));
 
     rt.verify();
 
@@ -251,9 +251,9 @@ fn power_and_pledge_accounted_below_threshold() {
 
     // Subtract power and some pledge for miner2
     h.update_claimed_power(&mut rt, MINER2, &small_power_unit.neg(), &small_power_unit.neg());
-    h.update_pledge_total(&mut rt, MINER2, &TokenAmount::from(100_000).neg());
+    h.update_pledge_total(&mut rt, MINER2, &TokenAmount::from_atto(100_000).neg());
     h.expect_total_power_eager(&mut rt, small_power_unit, small_power_unit_x2);
-    h.expect_total_pledge_eager(&mut rt, &TokenAmount::from(900_000));
+    h.expect_total_pledge_eager(&mut rt, &TokenAmount::from_atto(900_000));
 
     let claim2 = h.get_claim(&rt, &MINER2).unwrap();
     assert!(claim2.raw_byte_power.is_zero());
@@ -604,7 +604,7 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
         "unknown miner",
         rt.call::<PowerActor>(
             Method::UpdatePledgeTotal as u64,
-            &RawBytes::serialize(BigIntSer(&TokenAmount::from(1_000_000))).unwrap(),
+            &RawBytes::serialize(&TokenAmount::from_atto(1_000_000)).unwrap(),
         ),
     );
 
@@ -679,7 +679,7 @@ mod cron_tests {
 
         let expected_power: BigInt = power_unit * 4u8;
 
-        let delta = TokenAmount::from(1u8);
+        let delta = TokenAmount::from_atto(1u8);
         h.update_pledge_total(&mut rt, miner1, &delta);
         h.on_epoch_tick_end(&mut rt, 0, &expected_power, Vec::new(), Vec::new());
 
@@ -751,7 +751,7 @@ mod cron_tests {
             *REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&expected_raw_byte_power)).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -779,7 +779,7 @@ mod cron_tests {
             *REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&expected_raw_byte_power)).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -818,7 +818,7 @@ mod cron_tests {
             *REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&expected_raw_byte_power)).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -895,7 +895,7 @@ mod cron_tests {
             *REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -972,7 +972,7 @@ mod cron_tests {
             *REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -999,7 +999,7 @@ mod cron_tests {
             *REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -1233,7 +1233,7 @@ mod cron_batch_proof_verifies_tests {
             cs.miner,
             CONFIRM_SECTOR_PROOFS_VALID_METHOD,
             RawBytes::serialize(params).unwrap(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -1245,7 +1245,7 @@ mod cron_batch_proof_verifies_tests {
             *REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -1281,7 +1281,7 @@ mod cron_batch_proof_verifies_tests {
             *REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );

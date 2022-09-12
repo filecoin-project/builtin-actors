@@ -10,7 +10,7 @@ use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
@@ -24,15 +24,15 @@ pub use self::randomness::DomainSeparationTag;
 use crate::runtime::builtins::Type;
 use crate::ActorError;
 
+mod actor_code;
+pub mod builtins;
+pub mod policy;
+mod randomness;
+
 #[cfg(feature = "fil-actor")]
 mod actor_blockstore;
 #[cfg(feature = "fil-actor")]
-pub mod builtins;
 pub mod fvm;
-pub mod policy;
-
-mod actor_code;
-mod randomness;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
@@ -62,10 +62,10 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// Resolves an address of any protocol to an ID address (via the Init actor's table).
     /// This allows resolution of externally-provided SECP, BLS, or actor addresses to the canonical form.
     /// If the argument is an ID address it is returned directly.
-    fn resolve_address(&self, address: &Address) -> Option<Address>;
+    fn resolve_address(&self, address: &Address) -> Option<ActorID>;
 
     /// Look up the code ID at an actor address.
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid>;
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid>;
 
     /// Randomness returns a (pseudo)random byte array drawing from the latest
     /// ticket chain from a given epoch and incorporating requisite entropy.
@@ -75,7 +75,7 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError>;
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 
     /// Randomness returns a (pseudo)random byte array drawing from the latest
     /// beacon from a given epoch and incorporating requisite entropy.
@@ -85,7 +85,7 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError>;
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.
@@ -118,7 +118,7 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// invoking the target actor/method.
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
