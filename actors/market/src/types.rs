@@ -97,16 +97,13 @@ pub struct ActivateDealsParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ActivateDealsResult {
-    pub weights: DealWeights,
+    pub sizes: DealSizes,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Default)]
-pub struct DealWeights {
+pub struct DealSizes {
     pub deal_space: u64,
-    #[serde(with = "bigint_ser")]
-    pub deal_weight: DealWeight,
-    #[serde(with = "bigint_ser")]
-    pub verified_deal_weight: DealWeight,
+    pub verified_deal_space: u64,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

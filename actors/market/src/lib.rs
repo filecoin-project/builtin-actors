@@ -534,7 +534,7 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let deal_weights = {
+        let deal_sizes = {
             let st: State = rt.state()?;
             let proposals = DealArray::load(&st.proposals, rt.store()).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
@@ -641,7 +641,7 @@ impl Actor {
             Ok(())
         })?;
 
-        Ok(ActivateDealsResult { weights: deal_weights })
+        Ok(ActivateDealsResult { sizes: deal_sizes })
     }
 
     /// Terminate a set of deals in response to their containing sector being terminated.
@@ -1091,14 +1091,13 @@ pub fn validate_and_compute_deal_weight<BS>(
     sector_expiry: ChainEpoch,
     sector_activation: ChainEpoch,
     sector_size: Option<SectorSize>,
-) -> anyhow::Result<DealWeights>
+) -> anyhow::Result<DealSizes>
 where
     BS: Blockstore,
 {
     let mut seen_deal_ids = BTreeSet::new();
-    let mut total_deal_size = 0;
-    let mut total_deal_space_time = BigInt::zero();
-    let mut total_verified_space_time = BigInt::zero();
+    let mut deal_size = 0;
+    let mut verified_deal_size = 0;
     for deal_id in deal_ids {
         if !seen_deal_ids.insert(deal_id) {
             return Err(actor_error!(
@@ -1115,15 +1114,14 @@ where
         validate_deal_can_activate(proposal, miner_addr, sector_expiry, sector_activation)
             .map_err(|e| e.wrap(&format!("cannot activate deal {}", deal_id)))?;
 
-        total_deal_size += proposal.piece_size.0;
-        let deal_space_time = detail::deal_weight(proposal);
         if proposal.verified_deal {
-            total_verified_space_time += deal_space_time;
+            verified_deal_size += proposal.piece_size.0;
         } else {
-            total_deal_space_time += deal_space_time;
+            deal_size += proposal.piece_size.0;
         }
     }
     if let Some(sector_size) = sector_size {
+        let total_deal_size = deal_size + verified_deal_size ;
         if total_deal_size > sector_size as u64 {
             return Err(actor_error!(
                 illegal_argument,
@@ -1135,10 +1133,9 @@ where
         }
     }
 
-    Ok(DealWeights {
-        deal_space: total_deal_size,
-        deal_weight: total_deal_space_time,
-        verified_deal_weight: total_verified_space_time,
+    Ok(DealSizes {
+        deal_space: deal_size,
+        verified_deal_space: verified_deal_size,
     })
 }
 

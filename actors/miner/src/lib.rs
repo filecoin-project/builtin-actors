@@ -950,7 +950,7 @@ impl Actor {
         struct UpdateAndSectorInfo<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: SectorOnChainInfo,
-            deal_weights: ext::market::DealWeights,
+            deal_sizes: ext::market::DealSizes,
         }
 
         let mut sectors_deals = Vec::<ext::market::SectorDeals>::new();
@@ -1060,10 +1060,10 @@ impl Actor {
                 })?,
                 TokenAmount::zero(),
             );
-            let weights = if let Ok(res) = res {
+            let deal_sizes = if let Ok(res) = res {
                 // Erroring in this case as it means something went really wrong
                 let activate_ret: ext::market::ActivateDealsResult = res.deserialize()?;
-                activate_ret.weights
+                activate_ret.sizes
             } else {
                 info!(
                     "failed to activate deals on sector {0}, skipping sector {0}",
@@ -1077,7 +1077,7 @@ impl Actor {
             validated_updates.push(UpdateAndSectorInfo {
                 update,
                 sector_info,
-                deal_weights: weights,
+                deal_sizes: deal_sizes,
             });
 
             sectors_deals.push(ext::market::SectorDeals {
@@ -1110,7 +1110,7 @@ impl Actor {
         struct UpdateWithDetails<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: &'a SectorOnChainInfo,
-            deal_weights: &'a ext::market::DealWeights,
+            deal_sizes: &'a ext::market::DealSizes,
             full_unsealed_cid: Cid,
         }
 
@@ -1137,7 +1137,7 @@ impl Actor {
             decls_by_deadline.entry(dl).or_default().push(UpdateWithDetails {
                 update: with_sector_info.update,
                 sector_info: &with_sector_info.sector_info,
-                deal_weights: &with_sector_info.deal_weights,
+                deal_sizes: &with_sector_info.deal_sizes,
                 full_unsealed_cid: computed_commd,
             });
         }
@@ -1206,6 +1206,7 @@ impl Actor {
 
                     let mut new_sector_info = with_details.sector_info.clone();
 
+                    new_sector_info.simple_qa_power = true;
                     new_sector_info.sealed_cid = with_details.update.new_sealed_cid;
                     new_sector_info.sector_key_cid = match new_sector_info.sector_key_cid {
                         None => Some(with_details.sector_info.sealed_cid),
@@ -1216,12 +1217,12 @@ impl Actor {
                     new_sector_info.deal_ids = with_details.update.deals.clone();
                     new_sector_info.activation = rt.curr_epoch();
 
-                    new_sector_info.deal_weight = with_details.deal_weights.deal_weight.clone();
-                    new_sector_info.verified_deal_weight = with_details.deal_weights.verified_deal_weight.clone();
-
-                    // compute initial pledge
                     let duration = with_details.sector_info.expiration - rt.curr_epoch();
 
+                    new_sector_info.deal_weight = BigInt::from(with_details.deal_sizes.deal_space) * duration;
+                    new_sector_info.verified_deal_weight = BigInt::from(with_details.deal_sizes.verified_deal_space) * duration;
+
+                    // compute initial pledge
                     let qa_pow = qa_power_for_weight(
                         info.sector_size,
                         duration,
@@ -4552,7 +4553,7 @@ where
     let mut valid_pre_commits = Vec::default();
 
     for pre_commit in pre_commits {
-        let deal_weights = if !pre_commit.info.deal_ids.is_empty() {
+        let deal_sizes = if !pre_commit.info.deal_ids.is_empty() {
             // Check (and activate) storage deals associated to sector. Abort if checks failed.
             let res = rt.send(
                 &STORAGE_MARKET_ACTOR_ADDR,
@@ -4566,7 +4567,7 @@ where
             match res {
                 Ok(res) => {
                     let activate_res: ext::market::ActivateDealsResult = res.deserialize()?;
-                    activate_res.weights
+                    activate_res.sizes
                 }
                 Err(e) => {
                     info!(
@@ -4578,10 +4579,10 @@ where
                 }
             }
         } else {
-            ext::market::DealWeights::default()
+            ext::market::DealSizes::default()
         };
 
-        valid_pre_commits.push((pre_commit, deal_weights));
+        valid_pre_commits.push((pre_commit, deal_sizes));
     }
 
     // When all prove commits have failed abort early
@@ -4599,7 +4600,7 @@ where
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
-        for (pre_commit, deal_weights) in valid_pre_commits {
+        for (pre_commit, deal_sizes) in valid_pre_commits {
             // compute initial pledge
             let duration = pre_commit.info.expiration - activation;
 
@@ -4612,11 +4613,14 @@ where
                 continue;
             }
 
+            let deal_weight = BigInt::from(deal_sizes.deal_space) * duration;
+            let verified_deal_weight = BigInt::from(deal_sizes.verified_deal_space) * duration;
+
             let power = qa_power_for_weight(
                 info.sector_size,
                 duration,
-                &deal_weights.deal_weight,
-                &deal_weights.verified_deal_weight,
+                &deal_weight,
+                &verified_deal_weight,
             );
 
             let day_reward = expected_reward_for_power(
@@ -4654,14 +4658,15 @@ where
                 deal_ids: pre_commit.info.deal_ids,
                 expiration: pre_commit.info.expiration,
                 activation,
-                deal_weight: deal_weights.deal_weight,
-                verified_deal_weight: deal_weights.verified_deal_weight,
+                deal_weight: deal_weight,
+                verified_deal_weight: verified_deal_weight,
                 initial_pledge,
                 expected_day_reward: day_reward,
                 expected_storage_pledge: storage_pledge,
                 replaced_sector_age: ChainEpoch::zero(),
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
+                simple_qa_power: true,
             };
 
             new_sector_numbers.push(new_sector_info.sector_number);
