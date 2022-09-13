@@ -46,7 +46,10 @@ fn prove_single_sector() {
     let expiration =
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
                                                                                            // Fill the sector with verified deals
-    let deal_spaces = DealSpaces { deal_space: 0, verified_deal_space: h.sector_size as u64 };
+    let deal_spaces = DealSpaces {
+        deal_space: BigInt::zero(),
+        verified_deal_space: BigInt::from(h.sector_size as u64),
+    };
 
     // Pre-commit with a deal in order to exercise non-zero deal weights.
     let precommit_params =
@@ -99,8 +102,8 @@ fn prove_single_sector() {
 
     // The sector is exactly full with verified deals, so expect fully verified power.
     let duration = precommit.info.expiration - prove_commit_epoch;
-    let deal_weight = BigInt::from(deal_spaces.deal_space as i64 * duration);
-    let verified_deal_weight = BigInt::from(deal_spaces.verified_deal_space as i64 * duration);
+    let deal_weight = BigInt::from(deal_spaces.deal_space * duration);
+    let verified_deal_weight = BigInt::from(deal_spaces.verified_deal_space * duration);
     let expected_power = StoragePower::from(h.sector_size as u64)
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER / QUALITY_BASE_MULTIPLIER);
     let qa_power =
@@ -181,7 +184,8 @@ fn prove_sectors_from_batch_pre_commit() {
     let deal_lifespan = sector_expiration - prove_commit_epoch;
     let verified_deal_weight = deal_space * DealWeight::from(deal_lifespan);
 
-    let deal_spaces = DealSpaces { deal_space: 0, verified_deal_space: deal_space };
+    let deal_spaces =
+        DealSpaces { deal_space: BigInt::zero(), verified_deal_space: BigInt::from(deal_space) };
 
     let conf = PreCommitBatchConfig {
         sector_deal_data: vec![

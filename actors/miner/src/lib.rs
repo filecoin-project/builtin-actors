@@ -1214,10 +1214,10 @@ impl Actor {
                     new_sector_info.deal_ids = with_details.update.deals.clone();
                     new_sector_info.activation = rt.curr_epoch();
 
-                    let duration = with_details.sector_info.expiration - rt.curr_epoch();
+                    let duration = new_sector_info.expiration - new_sector_info.activation;
 
-                    new_sector_info.deal_weight = DealWeight::from(with_details.deal_spaces.deal_space) * duration;
-                    new_sector_info.verified_deal_weight = DealWeight::from(with_details.deal_spaces.verified_deal_space) * duration;
+                    new_sector_info.deal_weight = with_details.deal_spaces.deal_space.clone() * duration;
+                    new_sector_info.verified_deal_weight = with_details.deal_spaces.verified_deal_space.clone() * duration;
 
                     // compute initial pledge
                     let qa_pow = qa_power_for_weight(
@@ -4610,8 +4610,8 @@ where
                 continue;
             }
 
-            let deal_weight = DealWeight::from(deal_spaces.deal_space) * duration;
-            let verified_deal_weight = DealWeight::from(deal_spaces.verified_deal_space) * duration;
+            let deal_weight = deal_spaces.deal_space * duration;
+            let verified_deal_weight = deal_spaces.verified_deal_space * duration;
 
             let power = qa_power_for_weight(
                 info.sector_size,

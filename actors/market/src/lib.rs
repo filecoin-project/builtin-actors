@@ -1096,8 +1096,8 @@ where
     BS: Blockstore,
 {
     let mut seen_deal_ids = BTreeSet::new();
-    let mut deal_space = 0;
-    let mut verified_deal_space = 0;
+    let mut deal_space = BigInt::zero();
+    let mut verified_deal_space = BigInt::zero();
     for deal_id in deal_ids {
         if !seen_deal_ids.insert(deal_id) {
             return Err(actor_error!(
@@ -1121,8 +1121,8 @@ where
         }
     }
     if let Some(sector_size) = sector_size {
-        let total_deal_space = deal_space + verified_deal_space;
-        if total_deal_space > sector_size as u64 {
+        let total_deal_space = deal_space.clone() + verified_deal_space.clone();
+        if total_deal_space > BigInt::from(sector_size as u64) {
             return Err(actor_error!(
                 illegal_argument,
                 "deals too large to fit in sector {} > {}",

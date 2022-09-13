@@ -39,7 +39,10 @@ fn valid_precommits_then_aggregate_provecommit() {
         dl_info.period_end() + rt.policy.wpost_proving_period * DEFAULT_SECTOR_EXPIRATION;
     // fill the sector with verified seals
     let duration = expiration - prove_commit_epoch;
-    let deal_spaces = DealSpaces { deal_space: 0, verified_deal_space: actor.sector_size as u64 };
+    let deal_spaces = DealSpaces {
+        deal_space: BigInt::zero(),
+        verified_deal_space: BigInt::from(actor.sector_size as u64),
+    };
 
     let mut precommits = vec![];
     let mut sector_nos_bf = BitField::new();
@@ -86,8 +89,8 @@ fn valid_precommits_then_aggregate_provecommit() {
     // The sector is exactly full with verified deals, so expect fully verified power.
     let expected_power = BigInt::from(actor.sector_size as i64)
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
-    let deal_weight = BigInt::from(deal_spaces.deal_space as i64 * duration);
-    let verified_deal_weight = BigInt::from(deal_spaces.verified_deal_space as i64 * duration);
+    let deal_weight = BigInt::from(deal_spaces.deal_space * duration);
+    let verified_deal_weight = BigInt::from(deal_spaces.verified_deal_space * duration);
     let qa_power = qa_power_for_weight(
         actor.sector_size,
         expiration - rt.epoch,

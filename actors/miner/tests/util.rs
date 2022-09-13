@@ -918,14 +918,14 @@ impl ActorHarness {
                     cfg.deal_spaces.get(&pc.info.sector_number).cloned().unwrap_or_default();
 
                 let duration = pc.info.expiration - rt.epoch;
-                let deal_weight = spaces.deal_space as i64 * duration;
-                let verified_deal_weight = spaces.verified_deal_space as i64 * duration;
+                let deal_weight = spaces.deal_space * duration;
+                let verified_deal_weight = spaces.verified_deal_space * duration;
                 if duration >= rt.policy.min_sector_expiration {
                     let qa_power_delta = qa_power_for_weight(
                         self.sector_size,
                         duration,
-                        &BigInt::from(deal_weight),
-                        &BigInt::from(verified_deal_weight),
+                        &deal_weight,
+                        &verified_deal_weight,
                     );
                     expected_qa_power += &qa_power_delta;
                     expected_raw_power += self.sector_size as u64;

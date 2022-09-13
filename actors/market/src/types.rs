@@ -7,6 +7,7 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
+use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -101,8 +102,10 @@ pub struct ActivateDealsResult {
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Default)]
 pub struct DealSpaces {
-    pub deal_space: u64,
-    pub verified_deal_space: u64,
+    #[serde(with = "bigint_ser")]
+    pub deal_space: BigInt,
+    #[serde(with = "bigint_ser")]
+    pub verified_deal_space: BigInt,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
