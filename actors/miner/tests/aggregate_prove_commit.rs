@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
-use fil_actor_market::DealSizes;
+use fil_actor_market::DealSpaces;
 use fil_actor_miner::{
     initial_pledge_for_power, qa_power_for_weight, PowerPair, QUALITY_BASE_MULTIPLIER,
     VERIFIED_DEAL_WEIGHT_MULTIPLIER,
@@ -40,7 +40,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     // fill the sector with verified seals
     //    let deal_space = actor.sector_size as u64 * (expiration - prove_commit_epoch) as u64;
     let duration = expiration - prove_commit_epoch;
-    let deal_sizes = DealSizes { deal_space: 0, verified_deal_space: actor.sector_size as u64 };
+    let deal_spaces = DealSpaces { deal_space: 0, verified_deal_space: actor.sector_size as u64 };
 
     let mut precommits = vec![];
     let mut sector_nos_bf = BitField::new();
@@ -58,8 +58,8 @@ fn valid_precommits_then_aggregate_provecommit() {
     rt.set_balance(TokenAmount::from_whole(1000));
 
     let pcc = ProveCommitConfig {
-        deal_sizes: HashMap::from_iter(
-            precommits.iter().map(|pc| (pc.info.sector_number, deal_sizes.clone())),
+        deal_spaces: HashMap::from_iter(
+            precommits.iter().map(|pc| (pc.info.sector_number, deal_spaces.clone())),
         ),
         ..Default::default()
     };
@@ -87,8 +87,8 @@ fn valid_precommits_then_aggregate_provecommit() {
     // The sector is exactly full with verified deals, so expect fully verified power.
     let expected_power = BigInt::from(actor.sector_size as i64)
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
-    let deal_weight = BigInt::from(deal_sizes.deal_space as i64 * duration);
-    let verified_deal_weight = BigInt::from(deal_sizes.verified_deal_space as i64 * duration);
+    let deal_weight = BigInt::from(deal_spaces.deal_space as i64 * duration);
+    let verified_deal_weight = BigInt::from(deal_spaces.verified_deal_space as i64 * duration);
     let qa_power = qa_power_for_weight(
         actor.sector_size,
         expiration - rt.epoch,

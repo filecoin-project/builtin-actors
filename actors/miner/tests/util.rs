@@ -2,7 +2,7 @@
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivateDealsParams, ActivateDealsResult, DealSizes, Method as MarketMethod,
+    ActivateDealsParams, ActivateDealsResult, DealSpaces, Method as MarketMethod,
     OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifyDealsForActivationParams,
     VerifyDealsForActivationReturn,
 };
@@ -888,7 +888,7 @@ impl ActorHarness {
                 }
 
                 let ret = ActivateDealsResult {
-                    sizes: cfg.deal_sizes.get(&pc.info.sector_number).cloned().unwrap_or_default(),
+                    spaces: cfg.deal_spaces.get(&pc.info.sector_number).cloned().unwrap_or_default(),
                 };
 
                 rt.expect_send(
@@ -910,7 +910,7 @@ impl ActorHarness {
             let mut expected_raw_power = BigInt::from(0);
 
             for pc in valid_pcs {
-                let sizes = cfg.deal_sizes.get(&pc.info.sector_number).cloned().unwrap_or_default();
+                let sizes = cfg.deal_spaces.get(&pc.info.sector_number).cloned().unwrap_or_default();
 
                 let duration = pc.info.expiration - rt.epoch;
                 let deal_weight = sizes.deal_space as i64 * duration;
@@ -2274,13 +2274,13 @@ impl PreCommitConfig {
 #[derive(Default, Clone)]
 pub struct ProveCommitConfig {
     pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
-    pub deal_sizes: HashMap<SectorNumber, DealSizes>,
+    pub deal_spaces: HashMap<SectorNumber, DealSpaces>,
 }
 
 #[allow(dead_code)]
 impl ProveCommitConfig {
     pub fn empty() -> ProveCommitConfig {
-        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_sizes: HashMap::new() }
+        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_spaces: HashMap::new() }
     }
 }
 

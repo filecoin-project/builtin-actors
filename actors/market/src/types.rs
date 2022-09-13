@@ -96,11 +96,11 @@ pub struct ActivateDealsParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ActivateDealsResult {
-    pub sizes: DealSizes,
+    pub spaces: DealSpaces,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Default)]
-pub struct DealSizes {
+pub struct DealSpaces {
     pub deal_space: u64,
     pub verified_deal_space: u64,
 }

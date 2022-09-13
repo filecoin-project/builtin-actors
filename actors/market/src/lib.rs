@@ -534,7 +534,7 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let deal_sizes = {
+        let deal_spaces = {
             let st: State = rt.state()?;
             let proposals = DealArray::load(&st.proposals, rt.store()).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
@@ -641,7 +641,7 @@ impl Actor {
             Ok(())
         })?;
 
-        Ok(ActivateDealsResult { sizes: deal_sizes })
+        Ok(ActivateDealsResult { spaces: deal_spaces })
     }
 
     /// Terminate a set of deals in response to their containing sector being terminated.
@@ -1091,7 +1091,7 @@ pub fn validate_and_compute_deal_weight<BS>(
     sector_expiry: ChainEpoch,
     sector_activation: ChainEpoch,
     sector_size: Option<SectorSize>,
-) -> anyhow::Result<DealSizes>
+) -> anyhow::Result<DealSpaces>
 where
     BS: Blockstore,
 {
@@ -1133,7 +1133,7 @@ where
         }
     }
 
-    Ok(DealSizes { deal_space: deal_size, verified_deal_space: verified_deal_size })
+    Ok(DealSpaces { deal_space: deal_size, verified_deal_space: verified_deal_size })
 }
 
 pub fn gen_rand_next_epoch(
