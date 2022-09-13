@@ -35,7 +35,7 @@ jobs:
       uses: ./.github/actions/rust-cargo-run
       with:
         command: test
-        args: --locked --all --no-fail-fast
+        args: --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
         github_token: ${{ secrets.GITHUB_TOKEN }}
         save_cache: true
 
