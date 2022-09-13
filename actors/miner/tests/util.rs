@@ -888,7 +888,11 @@ impl ActorHarness {
                 }
 
                 let ret = ActivateDealsResult {
-                    spaces: cfg.deal_spaces.get(&pc.info.sector_number).cloned().unwrap_or_default(),
+                    spaces: cfg
+                        .deal_spaces
+                        .get(&pc.info.sector_number)
+                        .cloned()
+                        .unwrap_or_default(),
                 };
 
                 rt.expect_send(
@@ -910,7 +914,8 @@ impl ActorHarness {
             let mut expected_raw_power = BigInt::from(0);
 
             for pc in valid_pcs {
-                let sizes = cfg.deal_spaces.get(&pc.info.sector_number).cloned().unwrap_or_default();
+                let sizes =
+                    cfg.deal_spaces.get(&pc.info.sector_number).cloned().unwrap_or_default();
 
                 let duration = pc.info.expiration - rt.epoch;
                 let deal_weight = sizes.deal_space as i64 * duration;

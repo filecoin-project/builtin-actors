@@ -493,7 +493,7 @@ impl Actor {
                 .sector_type
                 .sector_size()
                 .map_err(|e| actor_error!(illegal_argument, "sector size unknown: {}", e))?;
-            validate_and_compute_deal_weight(
+            validate_and_return_deal_space(
                 &proposals,
                 &sector.deal_ids,
                 &miner_addr,
@@ -540,7 +540,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
             })?;
 
-            validate_and_compute_deal_weight(
+            validate_and_return_deal_space(
                 &proposals,
                 &params.deal_ids,
                 &miner_addr,
@@ -1084,7 +1084,7 @@ where
     })
 }
 
-pub fn validate_and_compute_deal_weight<BS>(
+pub fn validate_and_return_deal_space<BS>(
     proposals: &DealArray<BS>,
     deal_ids: &[DealID],
     miner_addr: &Address,
@@ -1096,8 +1096,8 @@ where
     BS: Blockstore,
 {
     let mut seen_deal_ids = BTreeSet::new();
-    let mut deal_size = 0;
-    let mut verified_deal_size = 0;
+    let mut deal_space = 0;
+    let mut verified_deal_space = 0;
     for deal_id in deal_ids {
         if !seen_deal_ids.insert(deal_id) {
             return Err(actor_error!(
@@ -1115,25 +1115,25 @@ where
             .map_err(|e| e.wrap(&format!("cannot activate deal {}", deal_id)))?;
 
         if proposal.verified_deal {
-            verified_deal_size += proposal.piece_size.0;
+            verified_deal_space += proposal.piece_size.0;
         } else {
-            deal_size += proposal.piece_size.0;
+            deal_space += proposal.piece_size.0;
         }
     }
     if let Some(sector_size) = sector_size {
-        let total_deal_size = deal_size + verified_deal_size;
-        if total_deal_size > sector_size as u64 {
+        let total_deal_space = deal_space + verified_deal_space;
+        if total_deal_space > sector_size as u64 {
             return Err(actor_error!(
                 illegal_argument,
                 "deals too large to fit in sector {} > {}",
-                total_deal_size,
+                total_deal_space,
                 sector_size
             )
             .into());
         }
     }
 
-    Ok(DealSpaces { deal_space: deal_size, verified_deal_space: verified_deal_size })
+    Ok(DealSpaces { deal_space, verified_deal_space })
 }
 
 pub fn gen_rand_next_epoch(

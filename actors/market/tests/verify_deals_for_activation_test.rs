@@ -29,7 +29,7 @@ const MINER_ADDRESSES: MinerAddresses = MinerAddresses {
 };
 
 #[test]
-fn verify_deal_and_activate_to_get_deal_weight_for_unverified_deal_proposal() {
+fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
     let mut rt = setup();
     let deal_id =
         generate_and_publish_deal(&mut rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
@@ -48,14 +48,14 @@ fn verify_deal_and_activate_to_get_deal_weight_for_unverified_deal_proposal() {
     let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
     assert_eq!(1, v_response.sectors.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.sectors[0].commd);
-    assert_eq!(0, a_response.sizes.verified_deal_space);
-    assert_eq!(deal_proposal.piece_size.0, a_response.sizes.deal_space);
+    assert_eq!(0, a_response.spaces.verified_deal_space);
+    assert_eq!(deal_proposal.piece_size.0, a_response.spaces.deal_space);
 
     check_state(&rt);
 }
 
 #[test]
-fn verify_deal_and_activate_to_get_deal_weight_for_verified_deal_proposal() {
+fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
     let mut rt = setup();
     let deal_id = generate_and_publish_verified_deal(
         &mut rt,
@@ -81,8 +81,8 @@ fn verify_deal_and_activate_to_get_deal_weight_for_verified_deal_proposal() {
 
     assert_eq!(1, response.sectors.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), response.sectors[0].commd);
-    assert_eq!(deal_proposal.piece_size.0, a_response.sizes.verified_deal_space);
-    assert_eq!(0, a_response.sizes.deal_space);
+    assert_eq!(deal_proposal.piece_size.0, a_response.spaces.verified_deal_space);
+    assert_eq!(0, a_response.spaces.deal_space);
 
     check_state(&rt);
 }
@@ -140,8 +140,8 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
     let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &deal_ids);
 
     assert_eq!(1, response.sectors.len());
-    assert_eq!(verified_size, a_response.sizes.verified_deal_space);
-    assert_eq!(unverified_weight, a_response.sizes.deal_space);
+    assert_eq!(verified_size, a_response.spaces.verified_deal_space);
+    assert_eq!(unverified_weight, a_response.spaces.deal_space);
 
     check_state(&rt);
 }

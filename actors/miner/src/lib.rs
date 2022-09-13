@@ -950,7 +950,7 @@ impl Actor {
         struct UpdateAndSectorInfo<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: SectorOnChainInfo,
-            deal_sizes: ext::market::DealSizes,
+            deal_sizes: ext::market::DealSpaces,
         }
 
         let mut sectors_deals = Vec::<ext::market::SectorDeals>::new();
@@ -1063,7 +1063,7 @@ impl Actor {
             let deal_sizes = if let Ok(res) = res {
                 // Erroring in this case as it means something went really wrong
                 let activate_ret: ext::market::ActivateDealsResult = res.deserialize()?;
-                activate_ret.sizes
+                activate_ret.spaces
             } else {
                 info!(
                     "failed to activate deals on sector {0}, skipping sector {0}",
@@ -1106,7 +1106,7 @@ impl Actor {
         struct UpdateWithDetails<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: &'a SectorOnChainInfo,
-            deal_sizes: &'a ext::market::DealSizes,
+            deal_sizes: &'a ext::market::DealSpaces,
             full_unsealed_cid: Cid,
         }
 
@@ -4549,7 +4549,7 @@ where
     let mut valid_pre_commits = Vec::default();
 
     for pre_commit in pre_commits {
-        let deal_sizes = if !pre_commit.info.deal_ids.is_empty() {
+        let deal_spaces = if !pre_commit.info.deal_ids.is_empty() {
             // Check (and activate) storage deals associated to sector. Abort if checks failed.
             let res = rt.send(
                 &STORAGE_MARKET_ACTOR_ADDR,
@@ -4563,7 +4563,7 @@ where
             match res {
                 Ok(res) => {
                     let activate_res: ext::market::ActivateDealsResult = res.deserialize()?;
-                    activate_res.sizes
+                    activate_res.spaces
                 }
                 Err(e) => {
                     info!(
@@ -4575,10 +4575,10 @@ where
                 }
             }
         } else {
-            ext::market::DealSizes::default()
+            ext::market::DealSpaces::default()
         };
 
-        valid_pre_commits.push((pre_commit, deal_sizes));
+        valid_pre_commits.push((pre_commit, deal_spaces));
     }
 
     // When all prove commits have failed abort early
@@ -4596,7 +4596,7 @@ where
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
-        for (pre_commit, deal_sizes) in valid_pre_commits {
+        for (pre_commit, deal_spaces) in valid_pre_commits {
             // compute initial pledge
             let duration = pre_commit.info.expiration - activation;
 
@@ -4609,8 +4609,8 @@ where
                 continue;
             }
 
-            let deal_weight = BigInt::from(deal_sizes.deal_space) * duration;
-            let verified_deal_weight = BigInt::from(deal_sizes.verified_deal_space) * duration;
+            let deal_weight = BigInt::from(deal_spaces.deal_space) * duration;
+            let verified_deal_weight = BigInt::from(deal_spaces.verified_deal_space) * duration;
 
             let power = qa_power_for_weight(
                 info.sector_size,
