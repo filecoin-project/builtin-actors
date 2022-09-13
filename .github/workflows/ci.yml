@@ -37,12 +37,12 @@ jobs:
         command: test
         args: --locked --all --no-fail-fast
         github_token: ${{ secrets.GITHUB_TOKEN }}
+        save_cache: true
 
   build:
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
     strategy:
       matrix:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
@@ -64,7 +64,6 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
     steps:
     - name: Checking out
       uses: actions/checkout@v2
