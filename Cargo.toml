@@ -100,6 +100,9 @@ incremental = false
 
 ## So tests don't take ages.
 
+[profile.dev.package."fvm_ipld_bitfield"]
+opt-level = 2
+
 [profile.dev.package."num-bigint"]
 opt-level = 2
 
