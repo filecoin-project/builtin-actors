@@ -6,7 +6,7 @@ use fil_actors_runtime::{
     runtime::{Runtime, RuntimePolicy},
     test_utils::{expect_abort_contains_message, MockRuntime},
 };
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_bitfield::BitField;
 use fvm_shared::{clock::ChainEpoch, error::ExitCode, sector::RegisteredSealProof};
 
 mod util;
@@ -326,10 +326,7 @@ fn supports_extensions_off_deadline_boundary() {
     // advance to deadline and submit one last PoSt
     let deadline_info = h.advance_to_deadline(&mut rt, deadline_index);
 
-    let partitions = vec![PoStPartition {
-        index: partition_index,
-        skipped: UnvalidatedBitField::Validated(BitField::default()),
-    }];
+    let partitions = vec![PoStPartition { index: partition_index, skipped: BitField::default() }];
     h.submit_window_post(
         &mut rt,
         &deadline_info,

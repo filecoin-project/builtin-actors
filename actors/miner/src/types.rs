@@ -5,7 +5,7 @@ use super::beneficiary::*;
 use crate::commd::CompactCommD;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
-use fvm_ipld_bitfield::UnvalidatedBitField;
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, BytesDe, Cbor};
 use fvm_shared::address::Address;
@@ -96,7 +96,7 @@ pub struct PoStPartition {
     /// Partitions are numbered per-deadline, from zero.
     pub index: u64,
     /// Sectors skipped while proving that weren't already declared faulty.
-    pub skipped: UnvalidatedBitField,
+    pub skipped: BitField,
 }
 
 /// Information submitted by a miner to provide a Window PoSt.
@@ -142,7 +142,7 @@ impl Cbor for ExtendSectorExpirationParams {}
 pub struct ExpirationExtension {
     pub deadline: u64,
     pub partition: u64,
-    pub sectors: UnvalidatedBitField,
+    pub sectors: BitField,
     pub new_expiration: ChainEpoch,
 }
 
@@ -157,7 +157,7 @@ impl Cbor for TerminateSectorsParams {}
 pub struct TerminationDeclaration {
     pub deadline: u64,
     pub partition: u64,
-    pub sectors: UnvalidatedBitField,
+    pub sectors: BitField,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -182,7 +182,7 @@ pub struct FaultDeclaration {
     /// Partition index within the deadline containing the faulty sectors.
     pub partition: u64,
     /// Sectors in the partition being declared faulty.
-    pub sectors: UnvalidatedBitField,
+    pub sectors: BitField,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -199,7 +199,7 @@ pub struct RecoveryDeclaration {
     /// Partition index within the deadline containing the recovered sectors.
     pub partition: u64,
     /// Sectors in the partition being declared recovered.
-    pub sectors: UnvalidatedBitField,
+    pub sectors: BitField,
 }
 
 impl Cbor for RecoveryDeclaration {}
@@ -207,12 +207,12 @@ impl Cbor for RecoveryDeclaration {}
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CompactPartitionsParams {
     pub deadline: u64,
-    pub partitions: UnvalidatedBitField,
+    pub partitions: BitField,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CompactSectorNumbersParams {
-    pub mask_sector_numbers: UnvalidatedBitField,
+    pub mask_sector_numbers: BitField,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -356,7 +356,7 @@ impl Cbor for ProveCommitAggregateParams {}
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
-    pub sector_numbers: UnvalidatedBitField,
+    pub sector_numbers: BitField,
     #[serde(with = "serde_bytes")]
     pub aggregate_proof: Vec<u8>,
 }
