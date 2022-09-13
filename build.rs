@@ -28,8 +28,6 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("evm", "evm"),
 ];
 
-const WASM_FEATURES: &[&str] = &["+bulk-memory", "+crt-static"];
-
 /// Default Cargo features to activate during the build.
 const DEFAULT_CARGO_FEATURES: &[&str] = &["fil-actor"];
 
@@ -119,10 +117,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("cargo:rerun-if-changed={}", file);
     }
 
-    let rustflags =
-        WASM_FEATURES.iter().flat_map(|flag| ["-Ctarget-feature=", *flag, " "]).collect::<String>()
-            + "-Clink-arg=--export-table";
-
     // Compute Cargo features to apply.
     let features = {
         let extra = EXTRA_CARGO_FEATURES
@@ -142,7 +136,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         .arg("--locked")
         .arg("--features=".to_owned() + &features.join(","))
         .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
-        .env("RUSTFLAGS", rustflags)
         .env(NETWORK_ENV, network_name)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
