@@ -36,14 +36,14 @@ jobs:
       uses: ./.github/actions/rust-cargo-run
       with:
         command: test
-        args: --locked --all --no-fail-fast
+        args: --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
         github_token: ${{ secrets.GITHUB_TOKEN }}
+        save_cache: true
 
   build:
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
     strategy:
       matrix:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs', 'wallaby', 'devnet-wasm' ]
@@ -69,7 +69,6 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
     steps:
     - name: Checking out
       uses: actions/checkout@v2
@@ -79,6 +78,8 @@ jobs:
         command: version
         components: llvm-tools-preview
         github_token: ${{ secrets.GITHUB_TOKEN }}
+        cache_name: cov
+        save_cache: true
     - name: Put LLVM tools into the PATH
       run: echo "${HOME}/.rustup/toolchains/$(cat rust-toolchain)-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin" >> $GITHUB_PATH
     - name: Install demangler

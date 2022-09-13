@@ -96,3 +96,17 @@ lto = "thin"
 opt-level = "z"
 strip = true
 codegen-units = 1
+
+## So tests don't take ages.
+
+[profile.dev.package."num-bigint"]
+opt-level = 2
+
+[profile.dev.package."sha2"]
+opt-level = 2
+
+[profile.dev.package."blake2b_simd"]
+opt-level = 2
+
+[profile.dev.package."test_vm"]
+opt-level = 2
