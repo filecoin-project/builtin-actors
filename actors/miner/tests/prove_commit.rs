@@ -102,8 +102,8 @@ fn prove_single_sector() {
 
     // The sector is exactly full with verified deals, so expect fully verified power.
     let duration = precommit.info.expiration - prove_commit_epoch;
-    let deal_weight = BigInt::from(deal_spaces.deal_space * duration);
-    let verified_deal_weight = BigInt::from(deal_spaces.verified_deal_space * duration);
+    let deal_weight = deal_spaces.deal_space * duration;
+    let verified_deal_weight = deal_spaces.verified_deal_space * duration;
     let expected_power = StoragePower::from(h.sector_size as u64)
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER / QUALITY_BASE_MULTIPLIER);
     let qa_power =
