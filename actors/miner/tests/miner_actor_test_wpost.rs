@@ -2,6 +2,7 @@
 
 use fil_actor_miner as miner;
 use fil_actor_miner::PowerPair;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::DomainSeparationTag;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_bitfield::BitField;
@@ -1030,7 +1031,7 @@ fn cannot_dispute_posts_when_the_challenge_window_is_open() {
     let params = miner::DisputeWindowedPoStParams { deadline: dlinfo.index, post_index: 0 };
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
     h.expect_query_network_info(&mut rt);
 
     let result = rt.call::<miner::Actor>(
@@ -1091,7 +1092,7 @@ fn can_dispute_up_till_window_end_but_not_after() {
     // Now try to dispute.
     let params = miner::DisputeWindowedPoStParams { deadline: dlidx, post_index: 0 };
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
 
     h.expect_query_network_info(&mut rt);
 
@@ -1124,7 +1125,7 @@ fn cant_dispute_up_with_an_invalid_deadline() {
     let params = miner::DisputeWindowedPoStParams { deadline: 50, post_index: 0 };
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
 
     let result = rt.call::<miner::Actor>(
         miner::Method::DisputeWindowedPoSt as u64,

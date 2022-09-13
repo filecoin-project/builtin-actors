@@ -5,6 +5,7 @@ mod harness;
 
 use fil_actor_market::policy::detail::deal_weight;
 use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams};
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, make_piece_cid, ACCOUNT_ACTOR_CODE_ID,
     MINER_ACTOR_CODE_ID,
@@ -156,7 +157,7 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
         generate_and_publish_deal(&mut rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
@@ -189,7 +190,7 @@ fn fail_when_deal_proposal_is_not_found() {
         }],
     };
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     expect_abort(
         ExitCode::USR_NOT_FOUND,
         rt.call::<MarketActor>(
@@ -209,7 +210,7 @@ fn fail_when_caller_is_not_the_provider() {
         generate_and_publish_deal(&mut rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(205));
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
@@ -238,7 +239,7 @@ fn fail_when_current_epoch_is_greater_than_proposal_start_epoch() {
     rt.set_epoch(START_EPOCH + 1);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
@@ -266,7 +267,7 @@ fn fail_when_deal_end_epoch_is_greater_than_sector_expiration() {
         generate_and_publish_deal(&mut rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
@@ -294,7 +295,7 @@ fn fail_when_the_same_deal_id_is_passed_multiple_times() {
         generate_and_publish_deal(&mut rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {

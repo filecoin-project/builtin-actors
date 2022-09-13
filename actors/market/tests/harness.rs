@@ -20,7 +20,7 @@ use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::UseBytesParams;
 use fil_actors_runtime::{
     network::EPOCHS_IN_DAY,
-    runtime::{Policy, Runtime},
+    runtime::{builtins::Type, Policy, Runtime},
     test_utils::*,
     ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -179,7 +179,7 @@ pub fn add_participant_funds(rt: &mut MockRuntime, addr: Address, amount: TokenA
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
 
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
 
     assert!(rt
         .call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(addr).unwrap())
@@ -279,7 +279,7 @@ pub fn activate_deals_raw(
 ) -> Result<RawBytes, ActorError> {
     rt.set_epoch(current_epoch);
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = ActivateDealsParams { deal_ids: deal_ids.to_vec(), sector_expiry };
 
@@ -710,7 +710,7 @@ where
     rt.set_epoch(current_epoch);
     post_setup(&mut rt, &mut deal_proposal);
 
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -929,7 +929,7 @@ pub fn terminate_deals_raw(
     deal_ids: &[DealID],
 ) -> Result<RawBytes, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: deal_ids.to_vec() };
 
@@ -953,7 +953,7 @@ pub fn verify_deals_for_activation<F>(
 where
     F: Fn(usize) -> Option<Vec<PieceInfo>>,
 {
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
 
     for (i, sd) in sector_deals.iter().enumerate() {

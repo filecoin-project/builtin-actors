@@ -11,7 +11,7 @@ use fil_actor_market::{
 use fil_actor_verifreg::UseBytesParams;
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::{Policy, Runtime};
+use fil_actors_runtime::runtime::{builtins::Type, Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -1291,7 +1291,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
     let params = PublishStorageDealsParams {
         deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig }],
     };
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -1337,7 +1337,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
         end_epoch,
     );
 
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     rt.set_epoch(start_epoch + 1);
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
@@ -1364,7 +1364,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
         end_epoch,
     );
 
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry: end_epoch - 1 };
     expect_abort(
@@ -1401,7 +1401,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
         end_epoch + 1,
     );
 
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = ActivateDealsParams { deal_ids: vec![deal_id1, deal_id2], sector_expiry };
     expect_abort(
@@ -1691,7 +1691,7 @@ fn insufficient_client_balance_in_a_batch() {
         ],
     };
 
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
 
@@ -1808,7 +1808,7 @@ fn insufficient_provider_balance_in_a_batch() {
         ],
     };
 
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
 

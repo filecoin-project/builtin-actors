@@ -4,6 +4,7 @@ use fil_actor_multisig::{
     TxnIDParams,
 };
 use fil_actor_multisig::{ChangeNumApprovalsThresholdParams, LockBalanceParams};
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actors_runtime::{make_map_with_root, ActorError};
@@ -125,7 +126,7 @@ impl ActorHarness {
         method: MethodNum,
         params: RawBytes,
     ) -> Result<RawBytes, ActorError> {
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
         let propose_params = ProposeParams { to, value, method, params };
         let ret =
             rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap());
@@ -139,7 +140,7 @@ impl ActorHarness {
         txn_id: TxnID,
         proposal_hash: [u8; 32],
     ) -> Result<RawBytes, ActorError> {
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
         let approve_params =
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
         let ret =
@@ -154,7 +155,7 @@ impl ActorHarness {
         txn_id: TxnID,
         proposal_hash: [u8; 32],
     ) -> Result<RawBytes, ActorError> {
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
         let cancel_params =
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
         let ret =

@@ -44,10 +44,10 @@ use fil_actor_power::{
     UpdateClaimedPowerParams,
 };
 use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::{
-    MockRuntime, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
-    SYSTEM_ACTOR_CODE_ID,
+    MockRuntime, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
 use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, ActorError, Map, INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -140,7 +140,7 @@ impl Harness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *owner);
         rt.set_value(value.clone());
         rt.set_balance(value.clone());
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
 
         let miner_ctor_params = MinerConstructorParams {
             owner: *owner,
@@ -245,7 +245,7 @@ impl Harness {
         payload: &RawBytes,
     ) -> Result<(), ActorError> {
         rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address.to_owned());
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
         let params = RawBytes::serialize(EnrollCronEventParams {
             event_epoch: epoch,
             payload: payload.clone(),
@@ -287,7 +287,7 @@ impl Harness {
         let prev = st.total_pledge_collateral;
 
         rt.set_caller(*MINER_ACTOR_CODE_ID, miner);
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.call::<PowerActor>(
             Method::UpdatePledgeTotal as MethodNum,
             &RawBytes::serialize(delta).unwrap(),
@@ -324,7 +324,7 @@ impl Harness {
             quality_adjusted_delta: qa_delta.clone(),
         };
         rt.set_caller(*MINER_ACTOR_CODE_ID, miner);
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.call::<PowerActor>(
             Method::UpdateClaimedPower as MethodNum,
             &RawBytes::serialize(params).unwrap(),
@@ -448,7 +448,7 @@ impl Harness {
         seal_info: SealVerifyInfo,
     ) -> Result<(), ActorError> {
         rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL);
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address);
         rt.call::<PowerActor>(
             Method::SubmitPoRepForBulkVerify as u64,

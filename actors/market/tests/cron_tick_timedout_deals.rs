@@ -6,6 +6,7 @@ use fil_actor_market::{
     ext, Actor as MarketActor, ClientDealProposal, Method, PublishStorageDealsParams,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
@@ -85,7 +86,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     let client_deal_proposal =
         ClientDealProposal { proposal: deal_proposal2.clone(), client_signature: sig };
     let params = PublishStorageDealsParams { deals: vec![client_deal_proposal] };
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
