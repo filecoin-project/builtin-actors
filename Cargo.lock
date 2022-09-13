@@ -1069,9 +1069,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_bitfield"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af1587207c7455ea70a762d4360f502b6728ea6e2dfbec2b66b6d4d943ee29ae"
+checksum = "97dfb38431e301bf063a412f870a3d9ebb541d581d1884f95e921f5ea823d29d"
 dependencies = [
  "cs_serde_bytes",
  "fvm_ipld_encoding",
@@ -1147,9 +1147,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "2.0.0-alpha.4"
+version = "2.0.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d487a6a8d4397616daacab63e24c3432b4da83f7c589522d06747a78eb4f548e"
+checksum = "10bcff8770912a1b7a3019eefd1511db11c150b6951633afa11d174d68254003"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -1162,9 +1162,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "2.0.0-alpha.3"
+version = "2.0.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42d46c69de1e45a25f101efbd7017a0cca932c96797bf7a1089ed7c2239d8338"
+checksum = "c6c411761095958091282ca45aa1c3febc044ad25603609617abc2fd8cc44efa"
 dependencies = [
  "anyhow",
  "blake2b_simd",
