@@ -18,8 +18,9 @@ pub use deadlines::*;
 pub use expiration_queue::*;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    actor_error, cbor, ActorDowncast, ActorError, DealWeight, BURNT_FUNDS_ACTOR_ADDR,
+    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
@@ -950,7 +951,7 @@ impl Actor {
         struct UpdateAndSectorInfo<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: SectorOnChainInfo,
-            deal_sizes: ext::market::DealSpaces,
+            deal_spaces: ext::market::DealSpaces,
         }
 
         let mut sectors_deals = Vec::<ext::market::SectorDeals>::new();
@@ -1060,7 +1061,7 @@ impl Actor {
                 })?,
                 TokenAmount::zero(),
             );
-            let deal_sizes = if let Ok(res) = res {
+            let deal_spaces = if let Ok(res) = res {
                 // Erroring in this case as it means something went really wrong
                 let activate_ret: ext::market::ActivateDealsResult = res.deserialize()?;
                 activate_ret.spaces
@@ -1074,7 +1075,7 @@ impl Actor {
 
             let expiration = sector_info.expiration;
             let seal_proof = sector_info.seal_proof;
-            validated_updates.push(UpdateAndSectorInfo { update, sector_info, deal_sizes });
+            validated_updates.push(UpdateAndSectorInfo { update, sector_info, deal_spaces });
 
             sectors_deals.push(ext::market::SectorDeals {
                 sector_type: seal_proof,
@@ -1106,7 +1107,7 @@ impl Actor {
         struct UpdateWithDetails<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: &'a SectorOnChainInfo,
-            deal_sizes: &'a ext::market::DealSpaces,
+            deal_spaces: &'a ext::market::DealSpaces,
             full_unsealed_cid: Cid,
         }
 
@@ -1133,7 +1134,7 @@ impl Actor {
             decls_by_deadline.entry(dl).or_default().push(UpdateWithDetails {
                 update: with_sector_info.update,
                 sector_info: &with_sector_info.sector_info,
-                deal_sizes: &with_sector_info.deal_sizes,
+                deal_spaces: &with_sector_info.deal_spaces,
                 full_unsealed_cid: computed_commd,
             });
         }
@@ -1215,8 +1216,8 @@ impl Actor {
 
                     let duration = with_details.sector_info.expiration - rt.curr_epoch();
 
-                    new_sector_info.deal_weight = BigInt::from(with_details.deal_sizes.deal_space) * duration;
-                    new_sector_info.verified_deal_weight = BigInt::from(with_details.deal_sizes.verified_deal_space) * duration;
+                    new_sector_info.deal_weight = DealWeight::from(with_details.deal_spaces.deal_space) * duration;
+                    new_sector_info.verified_deal_weight = DealWeight::from(with_details.deal_spaces.verified_deal_space) * duration;
 
                     // compute initial pledge
                     let qa_pow = qa_power_for_weight(
@@ -4609,8 +4610,8 @@ where
                 continue;
             }
 
-            let deal_weight = BigInt::from(deal_spaces.deal_space) * duration;
-            let verified_deal_weight = BigInt::from(deal_spaces.verified_deal_space) * duration;
+            let deal_weight = DealWeight::from(deal_spaces.deal_space) * duration;
+            let verified_deal_weight = DealWeight::from(deal_spaces.verified_deal_space) * duration;
 
             let power = qa_power_for_weight(
                 info.sector_size,

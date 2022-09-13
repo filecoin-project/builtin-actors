@@ -134,14 +134,14 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
         },
     );
 
-    let verified_size = verified_deal_1.piece_size.0 + verified_deal_2.piece_size.0;
-    let unverified_weight = unverified_deal_1.piece_size.0 + unverified_deal_2.piece_size.0;
+    let verified_space = verified_deal_1.piece_size.0 + verified_deal_2.piece_size.0;
+    let unverified_space = unverified_deal_1.piece_size.0 + unverified_deal_2.piece_size.0;
 
     let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &deal_ids);
 
     assert_eq!(1, response.sectors.len());
-    assert_eq!(verified_size, a_response.spaces.verified_deal_space);
-    assert_eq!(unverified_weight, a_response.spaces.deal_space);
+    assert_eq!(verified_space, a_response.spaces.verified_deal_space);
+    assert_eq!(unverified_space, a_response.spaces.deal_space);
 
     check_state(&rt);
 }

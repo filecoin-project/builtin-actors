@@ -38,7 +38,6 @@ fn valid_precommits_then_aggregate_provecommit() {
     let expiration =
         dl_info.period_end() + rt.policy.wpost_proving_period * DEFAULT_SECTOR_EXPIRATION;
     // fill the sector with verified seals
-    //    let deal_space = actor.sector_size as u64 * (expiration - prove_commit_epoch) as u64;
     let duration = expiration - prove_commit_epoch;
     let deal_spaces = DealSpaces { deal_space: 0, verified_deal_space: actor.sector_size as u64 };
 
