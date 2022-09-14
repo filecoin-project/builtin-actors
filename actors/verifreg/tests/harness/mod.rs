@@ -345,6 +345,7 @@ impl Harness {
             &serialize(&params, "hook params").unwrap(),
         )?;
         assert_eq!(RawBytes::default(), ret);
+        rt.verify();
         Ok(())
     }
 
