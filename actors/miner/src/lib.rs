@@ -3094,8 +3094,7 @@ impl Actor {
             rt.transaction(|state: &mut State, rt| {
                 let mut info = get_miner_info(rt.store(), state)?;
 
-                // Only the owner is allowed to withdraw the balance as it belongs to/is controlled by the owner
-                // and not the worker.
+                // Only the owner or the beneficiary is allowed to withdraw the balance.
                 rt.validate_immediate_caller_is(&[info.owner, info.beneficiary])?;
 
                 // Ensure we don't have any pending terminations.
