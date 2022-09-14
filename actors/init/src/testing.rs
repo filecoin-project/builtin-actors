@@ -29,7 +29,8 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     let mut init_summary = StateSummary { ids_by_address: HashMap::new(), next_id: state.next_id };
 
-    let mut address_by_id = HashMap::<ActorID, Address>::new();
+    let mut stable_address_by_id = HashMap::<ActorID, Address>::new();
+    let mut delegated_address_by_id = HashMap::<ActorID, Address>::new();
     match Map::<_, ActorID>::load(&state.address_map, store) {
         Ok(address_map) => {
             let ret = address_map.for_each(|key, actor_id| {
@@ -44,11 +45,29 @@ pub fn check_state_invariants<BS: Blockstore>(
                     format!("unexpected singleton ID value {actor_id}"),
                 );
 
-                if let Some(duplicate) = address_by_id.insert(*actor_id, key_address) {
-                    acc.add(format!(
-                        "duplicate mapping to ID {actor_id}: {key_address} {duplicate}"
-                    ));
+                match key_address.protocol() {
+                    Protocol::ID => {
+                        acc.add(format!("key {key_address} is an ID address"));
+                    }
+                    Protocol::Delegated => {
+                        if let Some(duplicate) =
+                            delegated_address_by_id.insert(*actor_id, key_address)
+                        {
+                            acc.add(format!(
+                                "duplicate mapping to ID {actor_id}: {key_address} {duplicate}"
+                            ));
+                        }
+                    }
+                    _ => {
+                        if let Some(duplicate) = stable_address_by_id.insert(*actor_id, key_address)
+                        {
+                            acc.add(format!(
+                                "duplicate mapping to ID {actor_id}: {key_address} {duplicate}"
+                            ));
+                        }
+                    }
                 }
+
                 init_summary.ids_by_address.insert(key_address, *actor_id);
 
                 Ok(())
