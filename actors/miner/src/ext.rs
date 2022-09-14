@@ -129,3 +129,7 @@ pub mod power {
 pub mod reward {
     pub const THIS_EPOCH_REWARD_METHOD: u64 = 3;
 }
+
+pub mod verifreg {
+    pub type ClaimID = u64;
+}
