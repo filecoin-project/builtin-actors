@@ -12,7 +12,6 @@ impl Bytecode {
     pub fn new(bytecode: Vec<u8>) -> Self {
         // only jumps to those addresses are valid. This is a security
         // feature by EVM to disallow jumps to arbitary code addresses.
-        // todo: create the jumpdest table only once during initial contract deployment
         let mut jumpdest = vec![false; bytecode.len()];
         let mut i = 0;
         while i < bytecode.len() {
