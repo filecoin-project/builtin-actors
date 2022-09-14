@@ -17,7 +17,7 @@ pub struct Stack {
 impl Stack {
     #[inline]
     pub fn new() -> Self {
-        Stack { sk: Vec::from([U256::zero(); INITIAL_STACK_SIZE]), d: 0 }
+        Stack { sk: vec![U256::zero(); INITIAL_STACK_SIZE], d: 0 }
     }
 
     #[inline]
