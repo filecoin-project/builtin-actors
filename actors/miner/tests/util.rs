@@ -15,17 +15,18 @@ use fil_actor_miner::{
     qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, ActiveBeneficiary,
     Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue, ChangeBeneficiaryParams,
     ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams,
-    CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
+    CompactCommD, CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
     CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
     ExpirationQueue, ExpirationSet, ExtendSectorExpirationParams, FaultDeclaration,
     GetBeneficiaryReturn, GetControlAddressesReturn, Method,
     MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
-    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
-    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
-    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
-    TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
-    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
+    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
+    PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration,
+    ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
+    Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
+    VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
+    CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -77,6 +78,7 @@ use fil_actor_miner::testing::{
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
+use std::iter;
 use std::ops::Neg;
 
 const RECEIVER_ID: u64 = 1000;
@@ -126,7 +128,6 @@ pub struct ActorHarness {
     pub window_post_proof_type: RegisteredPoStProof,
     pub sector_size: SectorSize,
     pub partition_size: u64,
-    pub period_offset: ChainEpoch,
     pub next_sector_no: SectorNumber,
 
     pub network_pledge: TokenAmount,
@@ -136,11 +137,25 @@ pub struct ActorHarness {
 
     pub epoch_reward_smooth: FilterEstimate,
     pub epoch_qa_power_smooth: FilterEstimate,
+
+    pub options: HarnessOptions,
+}
+
+pub struct HarnessOptions {
+    pub proving_period_offset: ChainEpoch,
+    pub use_v2_pre_commit_and_replica_update: bool,
+}
+
+impl Default for HarnessOptions {
+    // could be a derive(Default) but I expect options in future that won't be such
+    fn default() -> Self {
+        HarnessOptions { proving_period_offset: 0, use_v2_pre_commit_and_replica_update: false }
+    }
 }
 
 #[allow(dead_code)]
 impl ActorHarness {
-    pub fn new(proving_period_offset: ChainEpoch) -> ActorHarness {
+    pub fn new_with_options(options: HarnessOptions) -> ActorHarness {
         let owner = Address::new_id(100);
         let worker = Address::new_id(101);
         let control_addrs = vec![Address::new_id(999), Address::new_id(998), Address::new_id(997)];
@@ -163,7 +178,6 @@ impl ActorHarness {
             sector_size: proof_type.sector_size().unwrap(),
             partition_size: proof_type.window_post_partitions_sector().unwrap(),
 
-            period_offset: proving_period_offset,
             next_sector_no: 0,
 
             network_pledge: rwd.clone() * 1000,
@@ -173,7 +187,13 @@ impl ActorHarness {
 
             epoch_reward_smooth: FilterEstimate::new(rwd.atto().clone(), BigInt::from(0)),
             epoch_qa_power_smooth: FilterEstimate::new(pwr, BigInt::from(0)),
+
+            options,
         }
+    }
+
+    pub fn new(proving_period_offset: ChainEpoch) -> ActorHarness {
+        Self::new_with_options(HarnessOptions { proving_period_offset, ..Default::default() })
     }
 
     pub fn get_state(&self, rt: &MockRuntime) -> State {
@@ -197,7 +217,7 @@ impl ActorHarness {
             rt.actor_code_cids.insert(*addr, *ACCOUNT_ACTOR_CODE_ID);
         }
 
-        rt.hash_func = fixed_hasher(self.period_offset);
+        rt.hash_func = fixed_hasher(self.options.proving_period_offset);
 
         rt
     }
@@ -458,10 +478,138 @@ impl ActorHarness {
         }
     }
 
+    pub fn make_pre_commit_params_v2(
+        &self,
+        sector_no: u64,
+        challenge: ChainEpoch,
+        expiration: ChainEpoch,
+        sector_deal_ids: Vec<DealID>,
+        unsealed_cid: Option<Cid>,
+    ) -> SectorPreCommitInfo {
+        SectorPreCommitInfo {
+            seal_proof: self.seal_proof_type,
+            sector_number: sector_no,
+            sealed_cid: make_sealed_cid(b"commr"),
+            seal_rand_epoch: challenge,
+            deal_ids: sector_deal_ids,
+            expiration,
+            unsealed_cid: CompactCommD::new(unsealed_cid),
+        }
+    }
+
     pub fn make_prove_commit_params(&self, sector_no: u64) -> ProveCommitSectorParams {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192] }
     }
 
+    pub fn pre_commit_sector_batch_v2(
+        &self,
+        rt: &mut MockRuntime,
+        params: PreCommitSectorBatchParams2,
+        first_for_miner: bool,
+        base_fee: &TokenAmount,
+    ) -> Result<RawBytes, ActorError> {
+        if !self.options.use_v2_pre_commit_and_replica_update {
+            let mut deal_data = Vec::new();
+            let v1 = params
+                .sectors
+                .into_iter()
+                .map(|s| {
+                    deal_data.push(SectorDealData { commd: s.unsealed_cid.0 });
+                    PreCommitSectorParams {
+                        seal_proof: s.seal_proof,
+                        sector_number: s.sector_number,
+                        sealed_cid: s.sealed_cid,
+                        seal_rand_epoch: s.seal_rand_epoch,
+                        deal_ids: s.deal_ids,
+                        expiration: s.expiration,
+                        // unused
+                        replace_capacity: false,
+                        replace_sector_deadline: 0,
+                        replace_sector_partition: 0,
+                        replace_sector_number: 0,
+                    }
+                })
+                .collect();
+
+            return self.pre_commit_sector_batch(
+                rt,
+                PreCommitSectorBatchParams { sectors: v1 },
+                &PreCommitBatchConfig { first_for_miner, sector_deal_data: deal_data },
+                base_fee,
+            );
+        }
+
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        self.expect_query_network_info(rt);
+        let mut sector_deals = Vec::new();
+        let mut sector_deal_data = Vec::new();
+        let mut any_deals = false;
+        for sector in params.sectors.iter() {
+            sector_deals.push(SectorDeals {
+                sector_type: sector.seal_proof,
+                sector_expiry: sector.expiration,
+                deal_ids: sector.deal_ids.clone(),
+            });
+
+            sector_deal_data.push(SectorDealData { commd: sector.unsealed_cid.0 });
+            // Sanity check on expectations
+            let sector_has_deals = !sector.deal_ids.is_empty();
+            any_deals |= sector_has_deals;
+        }
+        if any_deals {
+            let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
+            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
+            rt.expect_send(
+                *STORAGE_MARKET_ACTOR_ADDR,
+                MarketMethod::VerifyDealsForActivation as u64,
+                RawBytes::serialize(vdparams).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::serialize(vdreturn).unwrap(),
+                ExitCode::OK,
+            );
+        }
+
+        let state = self.get_state(rt);
+        // burn networkFee
+        if state.fee_debt.is_positive() || params.sectors.len() > 1 {
+            let expected_network_fee =
+                aggregate_pre_commit_network_fee(params.sectors.len() as i64, base_fee);
+            let expected_burn = expected_network_fee + state.fee_debt;
+            rt.expect_send(
+                *BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                RawBytes::default(),
+                expected_burn,
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        if first_for_miner {
+            let dlinfo = new_deadline_info_from_offset_and_epoch(
+                &rt.policy,
+                state.proving_period_start,
+                rt.epoch,
+            );
+            let cron_params = make_deadline_cron_event_params(dlinfo.last());
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                PowerMethod::EnrollCronEvent as u64,
+                RawBytes::serialize(cron_params).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let result = rt.call::<Actor>(
+            Method::PreCommitSectorBatch2 as u64,
+            &RawBytes::serialize(params.clone()).unwrap(),
+        );
+        result
+    }
     pub fn pre_commit_sector_batch(
         &self,
         rt: &mut MockRuntime,
@@ -469,6 +617,34 @@ impl ActorHarness {
         conf: &PreCommitBatchConfig,
         base_fee: &TokenAmount,
     ) -> Result<RawBytes, ActorError> {
+        if self.options.use_v2_pre_commit_and_replica_update {
+            let v2 = params
+                .sectors
+                .into_iter()
+                .zip(
+                    conf.sector_deal_data
+                        .iter()
+                        .chain(iter::repeat(&SectorDealData { commd: None })),
+                )
+                .map(|(s, dd)| SectorPreCommitInfo {
+                    seal_proof: s.seal_proof,
+                    sector_number: s.sector_number,
+                    sealed_cid: s.sealed_cid,
+                    seal_rand_epoch: s.seal_rand_epoch,
+                    deal_ids: s.deal_ids,
+                    expiration: s.expiration,
+                    unsealed_cid: CompactCommD::new(dd.commd),
+                })
+                .collect();
+
+            return self.pre_commit_sector_batch_v2(
+                rt,
+                PreCommitSectorBatchParams2 { sectors: v2 },
+                conf.first_for_miner,
+                base_fee,
+            );
+        }
+
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
@@ -2458,7 +2634,7 @@ fn make_piece_cid(input: &[u8]) -> Cid {
     Cid::new_v1(FIL_COMMITMENT_UNSEALED, h)
 }
 
-fn make_deadline_cron_event_params(epoch: ChainEpoch) -> EnrollCronEventParams {
+pub fn make_deadline_cron_event_params(epoch: ChainEpoch) -> EnrollCronEventParams {
     let payload = CronEventPayload { event_type: CRON_EVENT_PROVING_DEADLINE };
     EnrollCronEventParams { event_epoch: epoch, payload: RawBytes::serialize(payload).unwrap() }
 }
