@@ -6,6 +6,7 @@ use super::address::EthAddress;
 use {
     super::instructions::*,
     super::opcode::OpCode,
+    super::opcode::StackSpec,
     super::StatusCode,
     crate::interpreter::instructions::call::CallKind,
     crate::interpreter::instructions::log::*,
@@ -36,7 +37,7 @@ pub struct ExecutionState {
 impl ExecutionState {
     pub fn new(caller: EthAddress, receiver: EthAddress, input_data: Bytes) -> Self {
         Self {
-            stack: Stack::default(),
+            stack: Stack::new(),
             memory: Memory::default(),
             input_data,
             return_data: Default::default(),
@@ -92,11 +93,27 @@ macro_rules! def_ins {
                 Err(StatusCode::UndefinedInstruction)
             }
         }
-        $(def_ins1! { $op ($arg) $body })*
+        $(def_ins1! { $op ($arg) { check_stack!($op, $arg); $body } })*
         def_jmptable! {
             $($op)*
         }
     }
+}
+
+macro_rules! check_stack {
+    ($op:ident, $arg:ident) => {{
+        const SPEC: StackSpec = OpCode::$op.spec();
+        if SPEC.required > 0 {
+            if !$arg.runtime.stack.require(SPEC.required as usize) {
+                return Err(StatusCode::StackUnderflow);
+            }
+        }
+        if SPEC.changed > 0 {
+            if !$arg.runtime.stack.ensure(SPEC.changed as usize) {
+                return Err(StatusCode::StackOverflow);
+            }
+        }
+    }};
 }
 
 impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
@@ -134,7 +151,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     }
 
     def_ins! {
-        STOP(_m) {
+        STOP(m) {
             Ok(ControlFlow::Exit)
         }
 
@@ -452,7 +469,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Continue)
         }
 
-        JUMPDEST(_m) {
+        JUMPDEST(m) {
             // marker opcode for valid jumps addresses
             Ok(ControlFlow::Continue)
         }
@@ -843,7 +860,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Exit)
         }
 
-        INVALID(_m) {
+        INVALID(m) {
             Err(StatusCode::InvalidInstruction)
         }
 
