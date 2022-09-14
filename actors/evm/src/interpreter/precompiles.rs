@@ -7,7 +7,7 @@ use fvm_shared::{
     bigint::BigUint,
     crypto::{
         hash::SupportedHashes,
-        signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
+        signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
     },
 };
 use num_traits::{One, Zero};
@@ -72,7 +72,7 @@ fn read_u256_infalliable(buf: &[u8], start: usize) -> U256 {
 
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     if input.len() != 128 {
-        return Err(PrecompileError::IncorrectInputSize)
+        return Err(PrecompileError::IncorrectInputSize);
     }
     let mut hash = [0u8; SECP_SIG_MESSAGE_HASH_SIZE];
     let mut sig = [0u8; SECP_SIG_LEN];
@@ -84,16 +84,16 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     // recovery byte is a single byte value but is represented with 32 bytes, sad
     let p = if input[32..63] == [0u8; 31] && matches!(recovery_byte, 27 | 28) {
         recovery_byte - 27
-    }else {
+    } else {
         return Ok(Vec::new());
     };
-    
+
     sig[64] = p;
 
     let pubkey = if let Ok(key) = rt.recover_secp_public_key(&hash, &sig) {
         key
     } else {
-        return Ok(Vec::new())
+        return Ok(Vec::new());
     };
 
     let mut address = rt.hash(SupportedHashes::Keccak256, &pubkey[1..]);
@@ -125,8 +125,11 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
         return Ok(Vec::new());
     }
 
-    // TODO bounds checking
     let mut start = 96;
+    if base_len + exponent_len + mod_len != input[start..].len() {
+        return Err(PrecompileError::IncorrectInputSize);
+    }
+
     let base = BigUint::from_bytes_be(&input[start..start + base_len]);
     start += base_len;
     let exponent = BigUint::from_bytes_be(&input[start..start + exponent_len]);
@@ -141,7 +144,7 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 
     if output.len() < mod_len {
         let mut ret = Vec::with_capacity(mod_len);
-        ret.extend(core::iter::repeat(0).take(mod_len - output.len()));
+        // ret.extend(core::iter::repeat(0).take(mod_len - output.len()));
         ret.extend_from_slice(&output);
         output = ret;
     }
@@ -323,6 +326,45 @@ mod tests {
     use hex_literal::hex;
 
     #[test]
+    fn bn_recover() {
+        let rt = MockRuntime::default();
+
+        let input = &hex!(
+            "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
+            "000000000000000000000000000000000000000000000000000000000000001c" // v (recovery byte)
+            // signature
+            "9242685bf161793cc25603c231bc2f568eb630ea16aa137d2664ac8038825608" // r
+            "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
+        );
+
+        let expected = hex!("7156526fbd7a3c72969b54f64e42c10fbb768c8a");
+        let res = ec_recover(&rt, input).unwrap();
+        assert_eq!(&res, &expected);
+
+        let input = &hex!(
+            "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
+            "000000000000000000000000000000000000000000000000000000000000001c" // v (recovery byte)
+            // signature
+            "0000005bf161793cc25603c231bc2f568eb630ea16aa137d2664ac8038825608" // r
+            "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
+        );
+        // wrong signature
+        let res = ec_recover(&rt, input).unwrap();
+        assert_eq!(res, Vec::new());
+
+        let input = &hex!(
+            "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
+            "000000000000000000000000000000000000000000000000000000000000000a" // v (recovery byte)
+            // signature
+            "0000005bf161793cc25603c231bc2f568eb630ea16aa137d2664ac8038825608" // r
+            "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
+        );
+        // invalid recovery byte
+        let res = ec_recover(&rt, input).unwrap();
+        assert_eq!(res, Vec::new());
+    }
+
+    #[test]
     fn sha256() {
         use super::sha256 as hash;
         let input = "foo bar baz boxy".as_bytes();
@@ -346,30 +388,63 @@ mod tests {
         assert_eq!(&res, &expected);
     }
 
-    // TODO modexp test
-    
     #[test]
-    fn bn_recover() {
+    fn mod_exponent() {
         let input = &hex!(
-            "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
-            "000000000000000000000000000000000000000000000000000000000000001c" // v (recovery byte)
-            // signature
-            "9242685bf161793cc25603c231bc2f568eb630ea16aa137d2664ac8038825608" // r 
-            "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s 
+            "0000000000000000000000000000000000000000000000000000000000000001" // base len
+            "0000000000000000000000000000000000000000000000000000000000000001" // exp len
+            "0000000000000000000000000000000000000000000000000000000000000001" // mod len
+            "08" // base
+            "09" // exp
+            "0A" // mod
         );
 
         let rt = MockRuntime::default();
 
-        let expected = hex!("7156526fbd7a3c72969b54f64e42c10fbb768c8a");
-        let res = ec_recover(&rt, input).unwrap();
-        println!("7156526fbd7a3c72969b54f64e42c10fbb768c8a\n{}", hex::encode(&res));
+        let expected = hex!("08");
+        let res = modexp(&rt, input).unwrap();
         assert_eq!(&res, &expected);
+
+        let input = &hex!(
+            "0000000000000000000000000000000000000000000000000000000000000004" // base len
+            "0000000000000000000000000000000000000000000000000000000000000002" // exp len
+            "0000000000000000000000000000000000000000000000000000000000000006" // mod len
+            "12345678" // base
+            "1234" // exp
+            "012345678910" // mod
+        );
+        let expected = hex!("358eac8f30"); // 230026940208
+        let res = modexp(&rt, input).unwrap();
+        assert_eq!(&res, &expected);
+
+        let input = &hex!(
+            "0000000000000000000000000000000000000000000000000000000000000001" // base len
+            "0000000000000000000000000000000000000000000000000000000000000002" // exp len
+            "0000000000000000000000000000000000000000000000000000000000000003" // mod len
+            "01" // base
+            "02" // exp
+            "03" // mod
+        );
+        // input smaller than expected
+        let res = modexp(&rt, input);
+        assert_eq!(res, Err(PrecompileError::IncorrectInputSize));
+
+        let input = &hex!(
+            "0000000000000000000000000000000000000000000000000000000000000001" // base len
+            "0000000000000000000000000000000000000000000000000000000000000001" // exp len
+            "0000000000000000000000000000000000000000000000000000000000000000" // mod len
+            "08" // base
+            "09" // exp
+        );
+        // no mod is invalid
+        let res = modexp(&rt, input).unwrap();
+        assert_eq!(res, Vec::new());
     }
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
         use super::MockRuntime;
-        use crate::interpreter::precompiles::{ec_add, ec_mul, PrecompileError, ec_pairing};
+        use crate::interpreter::precompiles::{ec_add, ec_mul, ec_pairing, PrecompileError};
 
         #[test]
         fn bn_add() {
