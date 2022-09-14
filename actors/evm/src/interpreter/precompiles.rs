@@ -322,6 +322,18 @@ mod tests {
         assert_eq!(&res, &expected);
     }
 
+    #[test]
+    fn ripemd160() {
+        use super::ripemd160 as hash;
+        let input = "foo bar baz boxy".as_bytes();
+
+        let rt = MockRuntime::default();
+
+        let expected = hex!("4cd7a0452bd3d682e4cbd5fa90f446d7285b156a");
+        let res = hash(&rt, input).unwrap();
+        assert_eq!(&res, &expected);
+    }
+
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
         use super::MockRuntime;
