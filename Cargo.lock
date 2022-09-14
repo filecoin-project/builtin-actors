@@ -876,7 +876,7 @@ dependencies = [
 [[package]]
 name = "fil_fungible_token"
 version = "0.1.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=80ff125cac8cf657744140ebf4d10513986e145c#80ff125cac8cf657744140ebf4d10513986e145c"
+source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
 dependencies = [
  "anyhow",
  "cid",
@@ -911,8 +911,8 @@ dependencies = [
 
 [[package]]
 name = "frc42_dispatch"
-version = "0.2.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=80ff125cac8cf657744140ebf4d10513986e145c#80ff125cac8cf657744140ebf4d10513986e145c"
+version = "0.3.0"
+source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
 dependencies = [
  "frc42_hasher",
  "frc42_macros",
@@ -924,8 +924,8 @@ dependencies = [
 
 [[package]]
 name = "frc42_hasher"
-version = "0.1.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=80ff125cac8cf657744140ebf4d10513986e145c#80ff125cac8cf657744140ebf4d10513986e145c"
+version = "0.2.0"
+source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
@@ -934,8 +934,8 @@ dependencies = [
 
 [[package]]
 name = "frc42_macros"
-version = "0.1.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=80ff125cac8cf657744140ebf4d10513986e145c#80ff125cac8cf657744140ebf4d10513986e145c"
+version = "0.2.0"
+source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
 dependencies = [
  "blake2b_simd",
  "frc42_hasher",
