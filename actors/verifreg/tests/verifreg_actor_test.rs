@@ -527,21 +527,20 @@ mod claims {
         assert_eq!(claim2.client, client_id);
         assert_eq!(claim3.client, client_id);
 
-        // get claims 
+        // get claims
         //successfully
-        let succ_gc = h.get_claims(& mut rt, provider_id, vec![1, 2, 3]).unwrap();
+        let succ_gc = h.get_claims(&mut rt, provider_id, vec![1, 2, 3]).unwrap();
         assert_eq!(3, succ_gc.batch_info.success_count);
         assert_eq!(claim2, succ_gc.claims[1]);
-        
+
         // bad provider
-        let fail_gc = h.get_claims(& mut rt, provider_id+42, vec![1, 2, 3]).unwrap();
+        let fail_gc = h.get_claims(&mut rt, provider_id + 42, vec![1, 2, 3]).unwrap();
         assert_eq!(0, fail_gc.batch_info.success_count);
 
         // mixed bag
-        let mix_gc = h.get_claims(& mut rt, provider_id, vec![1, 4, 5]).unwrap();
+        let mix_gc = h.get_claims(&mut rt, provider_id, vec![1, 4, 5]).unwrap();
         assert_eq!(1, mix_gc.batch_info.success_count);
         assert_eq!(claim1, succ_gc.claims[0]);
-
     }
 }
 

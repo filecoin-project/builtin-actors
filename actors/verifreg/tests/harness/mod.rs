@@ -19,9 +19,9 @@ use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
     AllocationID, AllocationRequest, AllocationRequests, ClaimAllocationsParams,
-    ClaimAllocationsReturn, DataCap, Method, RemoveExpiredAllocationsParams,
-    RemoveExpiredAllocationsReturn, RestoreBytesParams, SectorAllocationClaim, State,
-    ClaimID, GetClaimsParams, GetClaimsReturn,
+    ClaimAllocationsReturn, ClaimID, DataCap, GetClaimsParams, GetClaimsReturn, Method,
+    RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RestoreBytesParams,
+    SectorAllocationClaim, State,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -345,7 +345,7 @@ impl Harness {
             &serialize(&params, "hook params").unwrap(),
         )?;
         assert_eq!(RawBytes::default(), ret);
-        Ok(())   
+        Ok(())
     }
 
     pub fn get_claims(
@@ -355,16 +355,14 @@ impl Harness {
         claim_ids: Vec<ClaimID>,
     ) -> Result<GetClaimsReturn, ActorError> {
         rt.expect_validate_caller_any();
-        let params = GetClaimsParams{
-            claim_ids,
-            provider,
-        };
-        let ret = rt.call::<VerifregActor>(
-            Method::GetClaims as MethodNum,
-            &serialize(&params, "get claims params").unwrap(),
-        )?
-        .deserialize()
-        .expect("failed to deserialize get claims return");
+        let params = GetClaimsParams { claim_ids, provider };
+        let ret = rt
+            .call::<VerifregActor>(
+                Method::GetClaims as MethodNum,
+                &serialize(&params, "get claims params").unwrap(),
+            )?
+            .deserialize()
+            .expect("failed to deserialize get claims return");
         rt.verify();
         Ok(ret)
     }
