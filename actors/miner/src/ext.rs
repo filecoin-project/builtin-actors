@@ -1,8 +1,7 @@
 use cid::Cid;
-use fil_actors_runtime::DealWeight;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::bigint::bigint_ser;
+use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -37,18 +36,16 @@ pub mod market {
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct ActivateDealsResult {
-        pub weights: DealWeights,
+        pub spaces: DealSpaces,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone, Default)]
-    pub struct DealWeights {
-        pub deal_space: u64,
+    pub struct DealSpaces {
         #[serde(with = "bigint_ser")]
-        pub deal_weight: DealWeight,
+        pub deal_space: BigInt,
         #[serde(with = "bigint_ser")]
-        pub verified_deal_weight: DealWeight,
+        pub verified_deal_space: BigInt,
     }
-
     #[derive(Serialize_tuple)]
     pub struct ComputeDataCommitmentParamsRef<'a> {
         pub inputs: &'a [SectorDataSpec],

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actors_runtime::{Array, DealWeight};
+use fil_actors_runtime::Array;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
+use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -97,16 +97,15 @@ pub struct ActivateDealsParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ActivateDealsResult {
-    pub weights: DealWeights,
+    pub spaces: DealSpaces,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Default)]
-pub struct DealWeights {
-    pub deal_space: u64,
+pub struct DealSpaces {
     #[serde(with = "bigint_ser")]
-    pub deal_weight: DealWeight,
+    pub deal_space: BigInt,
     #[serde(with = "bigint_ser")]
-    pub verified_deal_weight: DealWeight,
+    pub verified_deal_space: BigInt,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

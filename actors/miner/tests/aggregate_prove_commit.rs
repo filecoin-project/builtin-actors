@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
+use fil_actor_market::DealSpaces;
 use fil_actor_miner::{
     initial_pledge_for_power, qa_power_for_weight, PowerPair, QUALITY_BASE_MULTIPLIER,
     VERIFIED_DEAL_WEIGHT_MULTIPLIER,
@@ -10,7 +11,6 @@ use fvm_ipld_bitfield::BitField;
 use fvm_shared::{bigint::BigInt, clock::ChainEpoch, econ::TokenAmount};
 
 mod util;
-use fil_actor_market::DealWeights;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use num_traits::Zero;
 use util::*;
@@ -38,11 +38,10 @@ fn valid_precommits_then_aggregate_provecommit() {
     let expiration =
         dl_info.period_end() + rt.policy.wpost_proving_period * DEFAULT_SECTOR_EXPIRATION;
     // fill the sector with verified seals
-    let deal_space = actor.sector_size as u64 * (expiration - prove_commit_epoch) as u64;
-    let deal_weights = DealWeights {
-        deal_weight: BigInt::zero(),
-        deal_space,
-        verified_deal_weight: BigInt::from(deal_space),
+    let duration = expiration - prove_commit_epoch;
+    let deal_spaces = DealSpaces {
+        deal_space: BigInt::zero(),
+        verified_deal_space: BigInt::from(actor.sector_size as u64),
     };
 
     let mut precommits = vec![];
@@ -61,8 +60,8 @@ fn valid_precommits_then_aggregate_provecommit() {
     rt.set_balance(TokenAmount::from_whole(1000));
 
     let pcc = ProveCommitConfig {
-        deal_weights: HashMap::from_iter(
-            precommits.iter().map(|pc| (pc.info.sector_number, deal_weights.clone())),
+        deal_spaces: HashMap::from_iter(
+            precommits.iter().map(|pc| (pc.info.sector_number, deal_spaces.clone())),
         ),
         ..Default::default()
     };
@@ -90,11 +89,13 @@ fn valid_precommits_then_aggregate_provecommit() {
     // The sector is exactly full with verified deals, so expect fully verified power.
     let expected_power = BigInt::from(actor.sector_size as i64)
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
+    let deal_weight = deal_spaces.deal_space * duration;
+    let verified_deal_weight = deal_spaces.verified_deal_space * duration;
     let qa_power = qa_power_for_weight(
         actor.sector_size,
         expiration - rt.epoch,
-        &deal_weights.deal_weight,
-        &deal_weights.verified_deal_weight,
+        &deal_weight,
+        &verified_deal_weight,
     );
     assert_eq!(expected_power, qa_power);
     let expected_initial_pledge = initial_pledge_for_power(
@@ -111,8 +112,8 @@ fn valid_precommits_then_aggregate_provecommit() {
     for sector_no in sector_nos_bf.iter() {
         let sector = actor.get_sector(&rt, sector_no);
         // expect deal weights to be transferred to on chain info
-        assert_eq!(deal_weights.deal_weight, sector.deal_weight);
-        assert_eq!(deal_weights.verified_deal_weight, sector.verified_deal_weight);
+        assert_eq!(deal_weight, sector.deal_weight);
+        assert_eq!(verified_deal_weight, sector.verified_deal_weight);
 
         // expect activation epoch to be current epoch
         assert_eq!(rt.epoch, sector.activation);

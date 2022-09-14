@@ -1,4 +1,4 @@
-use fil_actor_market::{DealWeights, SectorDealData};
+use fil_actor_market::{DealSpaces, SectorDealData};
 use fil_actor_miner::{
     initial_pledge_for_power, max_prove_commit_duration, pre_commit_deposit_for_power,
     qa_power_for_weight, qa_power_max, PowerPair, PreCommitSectorBatchParams, VestSpec,
@@ -46,12 +46,9 @@ fn prove_single_sector() {
     let expiration =
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
                                                                                            // Fill the sector with verified deals
-    let sector_weight =
-        DealWeight::from(h.sector_size as u64) * DealWeight::from(expiration - prove_commit_epoch);
-    let deal_weight = DealWeights {
-        deal_space: h.sector_size as u64,
-        deal_weight: DealWeight::zero(),
-        verified_deal_weight: sector_weight,
+    let deal_spaces = DealSpaces {
+        deal_space: BigInt::zero(),
+        verified_deal_space: BigInt::from(h.sector_size as u64),
     };
 
     // Pre-commit with a deal in order to exercise non-zero deal weights.
@@ -76,7 +73,7 @@ fn prove_single_sector() {
     rt.set_epoch(prove_commit_epoch);
     rt.balance.replace(TokenAmount::from_whole(1000));
     let pcc = ProveCommitConfig {
-        deal_weights: HashMap::from([(sector_no, deal_weight.clone())]),
+        deal_spaces: HashMap::from([(sector_no, deal_spaces.clone())]),
         ..Default::default()
     };
 
@@ -104,21 +101,20 @@ fn prove_single_sector() {
     assert!(st.pre_commit_deposits.is_zero());
 
     // The sector is exactly full with verified deals, so expect fully verified power.
+    let duration = precommit.info.expiration - prove_commit_epoch;
+    let deal_weight = deal_spaces.deal_space * duration;
+    let verified_deal_weight = deal_spaces.verified_deal_space * duration;
     let expected_power = StoragePower::from(h.sector_size as u64)
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER / QUALITY_BASE_MULTIPLIER);
-    let qa_power = qa_power_for_weight(
-        h.sector_size,
-        precommit.info.expiration - rt.epoch,
-        &deal_weight.deal_weight,
-        &deal_weight.verified_deal_weight,
-    );
+    let qa_power =
+        qa_power_for_weight(h.sector_size, duration, &deal_weight, &verified_deal_weight);
     assert_eq!(expected_power, qa_power);
     let sector_power =
         PowerPair { raw: StoragePower::from(h.sector_size as u64), qa: qa_power.clone() };
 
     // expect deal weights to be transferred to on chain info
-    assert_eq!(deal_weight.deal_weight, sector.deal_weight);
-    assert_eq!(deal_weight.verified_deal_weight, sector.verified_deal_weight);
+    assert_eq!(deal_weight, sector.deal_weight);
+    assert_eq!(verified_deal_weight, sector.verified_deal_weight);
 
     // expect initial plege of sector to be set, and be total pledge requirement
     let expected_initial_pledge = initial_pledge_for_power(
@@ -182,17 +178,14 @@ fn prove_sectors_from_batch_pre_commit() {
         h.make_pre_commit_params(102, precommit_epoch - 1, sector_expiration, vec![2, 3]), // 2 * 16GiB verified deals
     ];
 
-    let deal_space = 32 << 30;
+    let deal_space: i64 = 32 << 30;
     let deal_weight = DealWeight::zero();
     let prove_commit_epoch = precommit_epoch + rt.policy.pre_commit_challenge_delay + 1;
     let deal_lifespan = sector_expiration - prove_commit_epoch;
     let verified_deal_weight = deal_space * DealWeight::from(deal_lifespan);
 
-    let deal_weights = DealWeights {
-        deal_space,
-        deal_weight: deal_weight.clone(),
-        verified_deal_weight: verified_deal_weight.clone(),
-    };
+    let deal_spaces =
+        DealSpaces { deal_space: BigInt::zero(), verified_deal_space: BigInt::from(deal_space) };
 
     let conf = PreCommitBatchConfig {
         sector_deal_data: vec![
@@ -271,7 +264,7 @@ fn prove_sectors_from_batch_pre_commit() {
     {
         let precommit = &precommits[1];
         let pcc = ProveCommitConfig {
-            deal_weights: HashMap::from([(precommit.info.sector_number, deal_weights.clone())]),
+            deal_spaces: HashMap::from([(precommit.info.sector_number, deal_spaces.clone())]),
             ..Default::default()
         };
         let sector = h
@@ -300,7 +293,7 @@ fn prove_sectors_from_batch_pre_commit() {
     {
         let precommit = &precommits[2];
         let pcc = ProveCommitConfig {
-            deal_weights: HashMap::from([(precommit.info.sector_number, deal_weights)]),
+            deal_spaces: HashMap::from([(precommit.info.sector_number, deal_spaces)]),
             ..Default::default()
         };
         let sector = h
