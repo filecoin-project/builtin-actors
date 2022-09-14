@@ -23,7 +23,7 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 lazy_static = "1.4.0"
 anyhow = "1.0.56"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-fil_fungible_token = { git = "https://github.com/helix-onchain/filecoin", rev = "0bffadc1897746cdae8e76f148fbbe3fe57f09f3" }
+fil_fungible_token = { git = "https://github.com/helix-onchain/filecoin", rev = "39320534b8e992b9c5e53e15641ea4c9c113ed3e" }
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.2"
 fvm_ipld_hamt = "0.5.1"

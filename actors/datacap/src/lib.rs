@@ -150,7 +150,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let (mut hook, result) = rt
+        let mut hook = rt
             .transaction(|st: &mut State, rt| {
                 // Only the governor can mint datacap tokens.
                 rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
@@ -184,7 +184,7 @@ impl Actor {
         // This state load is unused, necessary to work around awkward API to call receiver hooks.
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        hook.call(&&msg).actor_result()?;
+        let result = hook.call(&&msg).actor_result()?;
         Ok(result)
     }
 
@@ -229,7 +229,7 @@ impl Actor {
             .resolve_address(&params.to)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be ID address")?;
 
-        let (hook_params, result) = rt
+        let mut hook = rt
             .transaction(|st: &mut State, rt| {
                 let allowed = to_address == st.governor;
                 if !allowed {
@@ -253,8 +253,7 @@ impl Actor {
         // This state load is unused, necessary to work around awkward API to call receiver hooks.
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let mut token = as_token(&mut st, &msg);
-        token.call_receiver_hook(&params.to, hook_params).actor_result()?;
+        let result = hook.call(&&msg).actor_result()?;
         Ok(result)
     }
 
@@ -277,7 +276,7 @@ impl Actor {
             .resolve_address(&params.to)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be an ID address")?;
 
-        let (hook_params, result) = rt
+        let mut hook = rt
             .transaction(|st: &mut State, rt| {
                 let allowed = to_address == st.governor;
                 if !allowed {
@@ -302,8 +301,7 @@ impl Actor {
         // This state load is unused, necessary to work around awkward API to call receiver hooks.
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
-        let mut token = as_token(&mut st, &msg);
-        token.call_receiver_hook(&params.to, hook_params).actor_result()?;
+        let result = hook.call(&&msg).actor_result()?;
         Ok(result)
     }
 
@@ -350,7 +348,7 @@ impl Actor {
     pub fn revoke_allowance<BS, RT>(
         rt: &mut RT,
         params: RevokeAllowanceParams,
-    ) -> Result<(), ActorError>
+    ) -> Result<TokenAmount, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
