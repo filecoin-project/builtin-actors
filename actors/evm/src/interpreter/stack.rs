@@ -1,21 +1,24 @@
 #![allow(dead_code)]
 
 use crate::interpreter::U256;
+use std::cmp::max;
 
 /// Ethereum Yellow Paper (9.1)
 pub const STACK_SIZE: usize = 1024;
 
+const INITIAL_STACK_SIZE: usize = 32;
+
 /// EVM stack.
 #[derive(Clone, Debug)]
 pub struct Stack {
-    sk: [U256; STACK_SIZE],
+    sk: Vec<U256>,
     d: usize,
 }
 
 impl Stack {
     #[inline]
     pub fn new() -> Self {
-        Stack { sk: [U256::zero(); STACK_SIZE], d: 0 }
+        Stack { sk: Vec::from([U256::zero(); INITIAL_STACK_SIZE]), d: 0 }
     }
 
     #[inline]
@@ -24,8 +27,15 @@ impl Stack {
     }
 
     #[inline]
-    pub fn ensure(&self, space: usize) -> bool {
-        self.d + space <= STACK_SIZE
+    pub fn ensure(&mut self, space: usize) -> bool {
+        if self.d + space > STACK_SIZE {
+            return false;
+        }
+
+        if self.d + space >= self.sk.len() {
+            self.sk.resize(max(2 * self.sk.len(), self.d + space), U256::zero());
+        }
+        true
     }
 
     #[inline]
