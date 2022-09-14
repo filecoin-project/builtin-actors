@@ -34,9 +34,9 @@ impl Stack {
                 return false;
             }
 
-            // Note: this breaks if space > current stack size (initial: 32), but there is
-            //       no instruction that does that.
-            self.sk.resize(2 * self.sk.len(), U256::zero());
+            while required > self.sk.len() {
+                self.sk.resize(2 * self.sk.len(), U256::zero());
+            }
         }
         true
     }
