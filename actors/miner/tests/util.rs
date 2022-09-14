@@ -2,7 +2,7 @@
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivateDealsParams, ActivateDealsResult, DealWeights, Method as MarketMethod,
+    ActivateDealsParams, ActivateDealsResult, DealSpaces, Method as MarketMethod,
     OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifyDealsForActivationParams,
     VerifyDealsForActivationReturn,
 };
@@ -888,8 +888,8 @@ impl ActorHarness {
                 }
 
                 let ret = ActivateDealsResult {
-                    weights: cfg
-                        .deal_weights
+                    spaces: cfg
+                        .deal_spaces
                         .get(&pc.info.sector_number)
                         .cloned()
                         .unwrap_or_default(),
@@ -914,16 +914,18 @@ impl ActorHarness {
             let mut expected_raw_power = BigInt::from(0);
 
             for pc in valid_pcs {
-                let weights =
-                    cfg.deal_weights.get(&pc.info.sector_number).cloned().unwrap_or_default();
+                let spaces =
+                    cfg.deal_spaces.get(&pc.info.sector_number).cloned().unwrap_or_default();
 
                 let duration = pc.info.expiration - rt.epoch;
+                let deal_weight = spaces.deal_space * duration;
+                let verified_deal_weight = spaces.verified_deal_space * duration;
                 if duration >= rt.policy.min_sector_expiration {
                     let qa_power_delta = qa_power_for_weight(
                         self.sector_size,
                         duration,
-                        &weights.deal_weight,
-                        &weights.verified_deal_weight,
+                        &deal_weight,
+                        &verified_deal_weight,
                     );
                     expected_qa_power += &qa_power_delta;
                     expected_raw_power += self.sector_size as u64;
@@ -2277,13 +2279,13 @@ impl PreCommitConfig {
 #[derive(Default, Clone)]
 pub struct ProveCommitConfig {
     pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
-    pub deal_weights: HashMap<SectorNumber, DealWeights>,
+    pub deal_spaces: HashMap<SectorNumber, DealSpaces>,
 }
 
 #[allow(dead_code)]
 impl ProveCommitConfig {
     pub fn empty() -> ProveCommitConfig {
-        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_weights: HashMap::new() }
+        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_spaces: HashMap::new() }
     }
 }
 

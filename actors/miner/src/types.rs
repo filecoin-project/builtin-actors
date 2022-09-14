@@ -329,6 +329,8 @@ pub struct SectorOnChainInfo {
     pub replaced_day_reward: TokenAmount,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,
+    // Flag for QA power mechanism introduced in fip 0045
+    pub simple_qa_power: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]

@@ -493,7 +493,7 @@ impl Actor {
                 .sector_type
                 .sector_size()
                 .map_err(|e| actor_error!(illegal_argument, "sector size unknown: {}", e))?;
-            validate_and_compute_deal_weight(
+            validate_and_return_deal_space(
                 &proposals,
                 &sector.deal_ids,
                 &miner_addr,
@@ -534,13 +534,13 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let deal_weights = {
+        let deal_spaces = {
             let st: State = rt.state()?;
             let proposals = DealArray::load(&st.proposals, rt.store()).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
             })?;
 
-            validate_and_compute_deal_weight(
+            validate_and_return_deal_space(
                 &proposals,
                 &params.deal_ids,
                 &miner_addr,
@@ -641,7 +641,7 @@ impl Actor {
             Ok(())
         })?;
 
-        Ok(ActivateDealsResult { weights: deal_weights })
+        Ok(ActivateDealsResult { spaces: deal_spaces })
     }
 
     /// Terminate a set of deals in response to their containing sector being terminated.
@@ -1084,21 +1084,20 @@ where
     })
 }
 
-pub fn validate_and_compute_deal_weight<BS>(
+pub fn validate_and_return_deal_space<BS>(
     proposals: &DealArray<BS>,
     deal_ids: &[DealID],
     miner_addr: &Address,
     sector_expiry: ChainEpoch,
     sector_activation: ChainEpoch,
     sector_size: Option<SectorSize>,
-) -> anyhow::Result<DealWeights>
+) -> anyhow::Result<DealSpaces>
 where
     BS: Blockstore,
 {
     let mut seen_deal_ids = BTreeSet::new();
-    let mut total_deal_size = 0;
-    let mut total_deal_space_time = BigInt::zero();
-    let mut total_verified_space_time = BigInt::zero();
+    let mut deal_space = BigInt::zero();
+    let mut verified_deal_space = BigInt::zero();
     for deal_id in deal_ids {
         if !seen_deal_ids.insert(deal_id) {
             return Err(actor_error!(
@@ -1115,31 +1114,26 @@ where
         validate_deal_can_activate(proposal, miner_addr, sector_expiry, sector_activation)
             .map_err(|e| e.wrap(&format!("cannot activate deal {}", deal_id)))?;
 
-        total_deal_size += proposal.piece_size.0;
-        let deal_space_time = detail::deal_weight(proposal);
         if proposal.verified_deal {
-            total_verified_space_time += deal_space_time;
+            verified_deal_space += proposal.piece_size.0;
         } else {
-            total_deal_space_time += deal_space_time;
+            deal_space += proposal.piece_size.0;
         }
     }
     if let Some(sector_size) = sector_size {
-        if total_deal_size > sector_size as u64 {
+        let total_deal_space = deal_space.clone() + verified_deal_space.clone();
+        if total_deal_space > BigInt::from(sector_size as u64) {
             return Err(actor_error!(
                 illegal_argument,
                 "deals too large to fit in sector {} > {}",
-                total_deal_size,
+                total_deal_space,
                 sector_size
             )
             .into());
         }
     }
 
-    Ok(DealWeights {
-        deal_space: total_deal_size,
-        deal_weight: total_deal_space_time,
-        verified_deal_weight: total_verified_space_time,
-    })
+    Ok(DealSpaces { deal_space, verified_deal_space })
 }
 
 pub fn gen_rand_next_epoch(
