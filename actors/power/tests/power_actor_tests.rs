@@ -5,7 +5,7 @@ use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
     SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{runtime::Policy, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
@@ -91,7 +91,7 @@ fn create_miner_given_caller_is_not_of_signable_type_should_fail() {
     };
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *OWNER);
-    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_abort(
         ExitCode::USR_FORBIDDEN,
         rt.call::<PowerActor>(
@@ -122,7 +122,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *OWNER);
     rt.value_received = TokenAmount::from_atto(10);
     rt.set_balance(TokenAmount::from_atto(10));
-    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
     let message_params = ExecParams {
         code_cid: *MINER_ACTOR_CODE_ID,

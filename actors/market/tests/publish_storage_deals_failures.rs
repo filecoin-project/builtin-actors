@@ -7,9 +7,9 @@ use fil_actor_market::{
     PublishStorageDealsReturn,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::CALLER_TYPES_SIGNABLE;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -255,7 +255,7 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
         deals: vec![ClientDealProposal { proposal: deal1.clone(), client_signature: sig }],
     };
 
-    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -315,7 +315,7 @@ fn fail_when_deals_have_different_providers() {
         ],
     };
 
-    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -376,7 +376,7 @@ fn fail_when_caller_is_not_of_signable_type() {
     };
     let w = Address::new_id(1000);
     rt.set_caller(*MINER_ACTOR_CODE_ID, w);
-    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_abort(
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
@@ -392,7 +392,7 @@ fn fail_when_no_deals_in_params() {
     let mut rt = setup();
     let params = PublishStorageDealsParams { deals: vec![] };
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
@@ -417,7 +417,7 @@ fn fail_to_resolve_provider_address() {
         deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
     };
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_abort(
         ExitCode::USR_NOT_FOUND,
         rt.call::<MarketActor>(
@@ -440,7 +440,7 @@ fn caller_is_not_the_same_as_the_worker_address_for_miner() {
         deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
     };
 
-    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(999));
     expect_abort(
@@ -469,7 +469,7 @@ fn fails_if_provider_is_not_a_storage_miner_actor() {
         deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
     };
 
-    rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,

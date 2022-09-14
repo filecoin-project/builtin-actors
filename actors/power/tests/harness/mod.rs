@@ -13,6 +13,7 @@ use fil_actor_power::CRON_QUEUE_HAMT_BITWIDTH;
 use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::CRON_ACTOR_CODE_ID;
 use fil_actors_runtime::Multimap;
+use fil_actors_runtime::CALLER_TYPES_SIGNABLE;
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fvm_ipld_blockstore::Blockstore;
@@ -140,7 +141,7 @@ impl Harness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *owner);
         rt.set_value(value.clone());
         rt.set_balance(value.clone());
-        rt.expect_validate_caller_type(vec![Type::Account, Type::Multisig]);
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
         let miner_ctor_params = MinerConstructorParams {
             owner: *owner,

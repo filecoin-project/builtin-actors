@@ -83,7 +83,6 @@ lazy_static! {
     ]
     .into_iter()
     .collect();
-    pub static ref CALLER_TYPES_SIGNABLE: Vec<Type> = vec![Type::Account, Type::Multisig];
     pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {
         let mut map = BTreeMap::new();
         map.insert(*ACCOUNT_ACTOR_CODE_ID, ());
