@@ -21,7 +21,7 @@ use fil_actors_runtime::{
     actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
@@ -549,7 +549,7 @@ impl Actor {
                 params.chain_commit_epoch,
                 &[],
             )?;
-            if comm_rand != params.chain_commit_rand {
+            if Randomness(comm_rand.into()) != params.chain_commit_rand {
                 return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
             }
 
@@ -677,7 +677,7 @@ impl Actor {
     /// and precommit state is removed.
     fn prove_commit_aggregate<BS, RT>(
         rt: &mut RT,
-        mut params: ProveCommitAggregateParams,
+        params: ProveCommitAggregateParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -799,8 +799,8 @@ impl Actor {
 
             let svi = AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
-                randomness: sv_info_randomness,
-                interactive_randomness: sv_info_interactive_randomness,
+                randomness: Randomness(sv_info_randomness.into()),
+                interactive_randomness: Randomness(sv_info_interactive_randomness.into()),
                 sealed_cid: precommit.info.sealed_cid,
                 unsealed_cid,
             };
@@ -2248,7 +2248,7 @@ impl Actor {
                         .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
                     let old_sectors = sectors
-                        .load_sector(&mut decl.sectors)
+                        .load_sector(&decl.sectors)
                         .map_err(|e| e.wrap("failed to load sectors"))?;
 
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
@@ -2863,7 +2863,7 @@ impl Actor {
     /// May not be invoked if the deadline has any un-processed early terminations.
     fn compact_partitions<BS, RT>(
         rt: &mut RT,
-        mut params: CompactPartitionsParams,
+        params: CompactPartitionsParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -3004,7 +3004,7 @@ impl Actor {
     /// 99 can be masked out to collapse these two ranges into one.
     fn compact_sector_numbers<BS, RT>(
         rt: &mut RT,
-        mut params: CompactSectorNumbersParams,
+        params: CompactSectorNumbersParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -4038,7 +4038,7 @@ where
 
     // Regenerate challenge randomness, which must match that generated for the proof.
     let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
-    let randomness: PoStRandomness = rt.get_randomness_from_beacon(
+    let randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::WindowedPoStChallengeSeed,
         challenge_epoch,
         &entropy,
@@ -4054,8 +4054,12 @@ where
         .collect();
 
     // get public inputs
-    let pv_info =
-        WindowPoStVerifyInfo { randomness, proofs, challenged_sectors, prover: miner_actor_id };
+    let pv_info = WindowPoStVerifyInfo {
+        randomness: Randomness(randomness.into()),
+        proofs,
+        challenged_sectors,
+        prover: miner_actor_id,
+    };
 
     // verify the post proof
     let result = rt.verify_post(&pv_info);
@@ -4085,12 +4089,12 @@ where
         ));
     };
     let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
-    let randomness: SealRandomness = rt.get_randomness_from_tickets(
+    let randomness = rt.get_randomness_from_tickets(
         DomainSeparationTag::SealRandomness,
         params.seal_rand_epoch,
         &entropy,
     )?;
-    let interactive_randomness: InteractiveSealRandomness = rt.get_randomness_from_beacon(
+    let interactive_randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::InteractiveSealChallengeSeed,
         params.interactive_epoch,
         &entropy,
@@ -4102,9 +4106,9 @@ where
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
         deal_ids: params.deal_ids,
-        interactive_randomness,
+        interactive_randomness: Randomness(interactive_randomness.into()),
         proof: params.proof,
-        randomness,
+        randomness: Randomness(randomness.into()),
         sealed_cid: params.sealed_cid,
         unsealed_cid: commd,
     })
@@ -4364,10 +4368,8 @@ fn validate_fr_declaration_deadline(deadline: &DeadlineInfo) -> anyhow::Result<(
 /// Validates that a partition contains the given sectors.
 fn validate_partition_contains_sectors(
     partition: &Partition,
-    sectors: &mut UnvalidatedBitField,
+    sectors: &BitField,
 ) -> anyhow::Result<()> {
-    let sectors = sectors.validate().map_err(|e| anyhow!("failed to check sectors: {}", e))?;
-
     // Check that the declared sectors are actually assigned to the partition.
     if partition.sectors.contains_all(sectors) {
         Ok(())

@@ -57,6 +57,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, PoStProof, RegisteredPoStProof, RegisteredSealProof, SealVerifyInfo,
     SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
@@ -78,6 +79,15 @@ use std::convert::TryInto;
 use std::ops::Neg;
 
 const RECEIVER_ID: u64 = 1000;
+
+pub const TEST_RANDOMNESS_ARRAY_FROM_ONE: [u8; 32] = [
+    1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32,
+];
+pub const TEST_RANDOMNESS_ARRAY_FROM_TWO: [u8; 32] = [
+    2u8, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+    27, 28, 29, 30, 31, 32, 33,
+];
 
 pub type SectorsMap = BTreeMap<SectorNumber, SectorOnChainInfo>;
 
@@ -410,8 +420,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let params =
-            CompactSectorNumbersParams { mask_sector_numbers: UnvalidatedBitField::Validated(bf) };
+        let params = CompactSectorNumbersParams { mask_sector_numbers: bf };
 
         rt.call::<Actor>(Method::CompactSectorNumbers as u64, &RawBytes::serialize(params).unwrap())
     }
@@ -702,8 +711,8 @@ impl ActorHarness {
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
     ) -> Result<(), ActorError> {
-        let seal_rand = Randomness(vec![1, 2, 3, 4]);
-        let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
+        let seal_rand = TEST_RANDOMNESS_ARRAY_FROM_ONE;
+        let seal_int_rand = TEST_RANDOMNESS_ARRAY_FROM_TWO;
         let interactive_epoch = pc.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
 
         // Prepare for and receive call to ProveCommitSector
@@ -728,8 +737,8 @@ impl ActorHarness {
             registered_proof: pc.info.seal_proof,
             proof: params.proof.clone(),
             deal_ids: pc.info.deal_ids.clone(),
-            randomness: seal_rand,
-            interactive_randomness: seal_int_rand,
+            randomness: Randomness(seal_rand.into()),
+            interactive_randomness: Randomness(seal_int_rand.into()),
             unsealed_cid: pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap(),
         };
         rt.expect_send(
@@ -770,9 +779,9 @@ impl ActorHarness {
         let mut seal_int_rands = Vec::new();
 
         for precommit in precommits.iter() {
-            let seal_rand = Randomness(vec![1, 2, 3, 4]);
+            let seal_rand = TEST_RANDOMNESS_ARRAY_FROM_ONE;
             seal_rands.push(seal_rand.clone());
-            let seal_int_rand = Randomness(vec![5, 6, 7, 8]);
+            let seal_int_rand = TEST_RANDOMNESS_ARRAY_FROM_TWO;
             seal_int_rands.push(seal_int_rand.clone());
             let interactive_epoch =
                 precommit.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
@@ -789,7 +798,7 @@ impl ActorHarness {
                 DomainSeparationTag::InteractiveSealChallengeSeed,
                 interactive_epoch,
                 buf,
-                seal_int_rand,
+                seal_int_rand.clone(),
             );
         }
 
@@ -798,8 +807,8 @@ impl ActorHarness {
         for (i, precommit) in precommits.iter().enumerate() {
             svis.push(AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
-                randomness: seal_rands.get(i).cloned().unwrap(),
-                interactive_randomness: seal_int_rands.get(i).cloned().unwrap(),
+                randomness: Randomness(seal_rands.get(i).cloned().unwrap().into()),
+                interactive_randomness: Randomness(seal_int_rands.get(i).cloned().unwrap().into()),
                 sealed_cid: precommit.info.sealed_cid,
                 unsealed_cid: comm_ds[i],
             })
@@ -1100,7 +1109,7 @@ impl ActorHarness {
             partitions,
             proofs: make_post_proofs(self.window_post_proof_type),
             chain_commit_epoch: deadline.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         self.submit_window_post_raw(rt, deadline, infos, params, cfg).unwrap();
         rt.verify();
@@ -1117,7 +1126,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let chain_commit_rand = match cfg.chain_randomness {
             Some(r) => r,
-            None => params.chain_commit_rand.clone(),
+            None => TEST_RANDOMNESS_ARRAY_FROM_ONE.into(),
         };
         rt.expect_get_randomness_from_tickets(
             DomainSeparationTag::PoStChainCommit,
@@ -1127,7 +1136,7 @@ impl ActorHarness {
         );
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let challenge_rand = Randomness(Vec::from([10, 11, 12, 13]));
+        let challenge_rand = TEST_RANDOMNESS_ARRAY_FROM_TWO;
 
         // only sectors that are not skipped and not existing non-recovered faults will be verified
         let mut all_ignored = BitField::new();
@@ -1137,9 +1146,8 @@ impl ActorHarness {
             let maybe_partition = dln.load_partition(&rt.store, p.index);
             if let Ok(partition) = maybe_partition {
                 let expected_faults = &partition.faults - &partition.recoveries;
-                let skipped = get_bitfield(&p.skipped);
-                all_ignored |= &(&expected_faults | &skipped);
-                all_recovered |= &(&partition.recoveries - &skipped);
+                all_ignored |= &(&expected_faults | &p.skipped);
+                all_recovered |= &(&partition.recoveries - &p.skipped);
             }
         }
         let optimistic = all_recovered.is_empty();
@@ -1168,7 +1176,7 @@ impl ActorHarness {
                     &infos,
                     &all_ignored,
                     good_info,
-                    challenge_rand,
+                    Randomness(challenge_rand.into()),
                     params.proofs.clone(),
                 );
                 let exit_code = match cfg.verification_exit {
@@ -1242,7 +1250,7 @@ impl ActorHarness {
 
         self.expect_query_network_info(rt);
 
-        let challenge_rand = Randomness(Vec::from([10, 11, 12, 13]));
+        let challenge_rand = TEST_RANDOMNESS_ARRAY_FROM_ONE;
         let mut all_ignored = BitField::new();
         let dln = self.get_deadline(rt, deadline.index);
         let post = self.get_submitted_proof(rt, &dln, proof_index);
@@ -1275,7 +1283,7 @@ impl ActorHarness {
             infos,
             &all_ignored,
             good_info,
-            challenge_rand,
+            Randomness(challenge_rand.into()),
             post.proofs,
         );
         let verify_result = match expect_success {
@@ -1514,10 +1522,7 @@ impl ActorHarness {
                             power_delta -= &new_faulty_power;
                             power_delta += &new_proven_power;
 
-                            partitions.push(PoStPartition {
-                                index: part_idx,
-                                skipped: UnvalidatedBitField::Validated(to_skip),
-                            });
+                            partitions.push(PoStPartition { index: part_idx, skipped: to_skip });
 
                             Ok(())
                         })
@@ -1599,11 +1604,8 @@ impl ActorHarness {
         }
 
         // Calculate params from faulted sector infos
-        let recovery = RecoveryDeclaration {
-            deadline: dlidx,
-            partition: pidx,
-            sectors: UnvalidatedBitField::Validated(recovery_sectors),
-        };
+        let recovery =
+            RecoveryDeclaration { deadline: dlidx, partition: pidx, sectors: recovery_sectors };
         let params = DeclareFaultsRecoveredParams { recoveries: vec![recovery] };
         let ret = rt.call::<Actor>(
             Method::DeclareFaultsRecovered as u64,
@@ -2179,10 +2181,7 @@ impl ActorHarness {
         deadline: u64,
         partition: BitField,
     ) -> Result<(), ActorError> {
-        let params = CompactPartitionsParams {
-            deadline,
-            partitions: UnvalidatedBitField::Validated(partition),
-        };
+        let params = CompactPartitionsParams { deadline, partitions: partition };
 
         rt.expect_validate_caller_addr(self.caller_addrs());
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
@@ -2228,7 +2227,7 @@ impl ActorHarness {
 
 #[allow(dead_code)]
 pub struct PoStConfig {
-    pub chain_randomness: Option<Randomness>,
+    pub chain_randomness: Option<[u8; RANDOMNESS_LENGTH]>,
     pub expected_power_delta: Option<PowerPair>,
     pub verification_exit: Option<ExitCode>,
 }
@@ -2243,7 +2242,7 @@ impl PoStConfig {
         }
     }
 
-    pub fn with_randomness(rand: Randomness) -> PoStConfig {
+    pub fn with_randomness(rand: [u8; RANDOMNESS_LENGTH]) -> PoStConfig {
         PoStConfig {
             chain_randomness: Some(rand),
             expected_power_delta: None,
@@ -2394,13 +2393,13 @@ pub fn assert_bitfield_equals(bf: &BitField, bits: &[u64]) {
 }
 
 #[allow(dead_code)]
-pub fn make_empty_bitfield() -> UnvalidatedBitField {
-    UnvalidatedBitField::Validated(BitField::new())
+pub fn make_empty_bitfield() -> BitField {
+    BitField::new()
 }
 
 #[allow(dead_code)]
-pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
-    UnvalidatedBitField::Validated(BitField::try_from_bits(bits.iter().copied()).unwrap())
+pub fn make_bitfield(bits: &[u64]) -> BitField {
+    BitField::try_from_bits(bits.iter().copied()).unwrap()
 }
 
 #[allow(dead_code)]
@@ -2414,7 +2413,7 @@ pub fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
 #[allow(dead_code)]
 pub fn make_prove_commit_aggregate(sector_nos: &BitField) -> ProveCommitAggregateParams {
     ProveCommitAggregateParams {
-        sector_numbers: UnvalidatedBitField::Validated(sector_nos.clone()),
+        sector_numbers: sector_nos.clone(),
         aggregate_proof: vec![0; 1024],
     }
 }
@@ -2485,17 +2484,14 @@ fn make_fault_params_from_faulting_sectors(
         let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
         match declaration_map.get_mut(&(dlidx, pidx)) {
             Some(declaration) => {
-                declaration.sectors.validate_mut().unwrap().set(sector.sector_number);
+                declaration.sectors.set(sector.sector_number);
             }
             None => {
                 let mut bf = BitField::new();
                 bf.set(sector.sector_number);
 
-                let declaration = FaultDeclaration {
-                    deadline: dlidx,
-                    partition: pidx,
-                    sectors: UnvalidatedBitField::Validated(bf),
-                };
+                let declaration =
+                    FaultDeclaration { deadline: dlidx, partition: pidx, sectors: bf };
 
                 declaration_map.insert((dlidx, pidx), declaration);
             }

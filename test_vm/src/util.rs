@@ -19,7 +19,7 @@ use fil_actor_power::{
 };
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -429,9 +429,7 @@ pub fn declare_recovery(
         recoveries: vec![RecoveryDeclaration {
             deadline,
             partition,
-            sectors: UnvalidatedBitField::Validated(
-                BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            ),
+            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
         }],
     };
 
@@ -455,16 +453,13 @@ pub fn submit_windowed_post(
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
-        partitions: vec![PoStPartition {
-            index: partition_idx,
-            skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new()),
-        }],
+        partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
             proof_bytes: vec![],
         }],
         chain_commit_epoch: dline_info.challenge,
-        chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
+        chain_commit_rand: Randomness(TEST_VM_RAND_ARRAY.into()),
     };
     apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
     let mut subinvocs = None;
@@ -507,16 +502,13 @@ pub fn submit_invalid_post(
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
-        partitions: vec![PoStPartition {
-            index: partition_idx,
-            skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new()),
-        }],
+        partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
             proof_bytes: TEST_VM_INVALID_POST.as_bytes().to_vec(),
         }],
         chain_commit_epoch: dline_info.challenge,
-        chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
+        chain_commit_rand: Randomness(TEST_VM_RAND_ARRAY.into()),
     };
     apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
 }
@@ -642,8 +634,8 @@ pub fn publish_deal(
     ret
 }
 
-pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
-    UnvalidatedBitField::Validated(BitField::try_from_bits(bits.iter().copied()).unwrap())
+pub fn make_bitfield(bits: &[u64]) -> BitField {
+    BitField::try_from_bits(bits.iter().copied()).unwrap()
 }
 
 pub fn bf_all(bf: BitField) -> Vec<u64> {
