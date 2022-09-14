@@ -50,6 +50,7 @@ testing = []
 testing-fake-proofs = []
 
 [workspace]
+resolver = "2"
 members = [
      "actors/*",
      "state",
