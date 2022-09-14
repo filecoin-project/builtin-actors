@@ -32,7 +32,7 @@ impl Stack {
             return false;
         }
 
-        if self.d + space >= self.sk.len() {
+        if self.d + space > self.sk.len() {
             self.sk.resize(max(2 * self.sk.len(), self.d + space), U256::zero());
         }
         true
