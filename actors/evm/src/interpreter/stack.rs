@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use crate::interpreter::U256;
-use std::cmp::max;
 
 /// Ethereum Yellow Paper (9.1)
 pub const STACK_SIZE: usize = 1024;
@@ -28,12 +27,16 @@ impl Stack {
 
     #[inline]
     pub fn ensure(&mut self, space: usize) -> bool {
-        if self.d + space > STACK_SIZE {
-            return false;
-        }
+        let required = self.d + space;
 
-        if self.d + space > self.sk.len() {
-            self.sk.resize(max(2 * self.sk.len(), self.d + space), U256::zero());
+        if required > self.sk.len() {
+            if required > STACK_SIZE {
+                return false;
+            }
+
+            // Note: this breaks if space > current stack size (initial: 32), but there is
+            //       no instruction that does that.
+            self.sk.resize(2 * self.sk.len(), U256::zero());
         }
         true
     }
