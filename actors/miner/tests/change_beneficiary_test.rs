@@ -1,5 +1,5 @@
 use fil_actor_miner::BeneficiaryTerm;
-use fil_actors_runtime::test_utils::{expect_abort, MockRuntime};
+use fil_actors_runtime::test_utils::{expect_abort, expect_abort_contains_message, MockRuntime};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
 use num_traits::Zero;
@@ -274,14 +274,14 @@ fn successfully_change_quota_and_test_withdraw() {
 
     //withdraw 0 zero
     let withdraw_left = TokenAmount::from_atto(20);
-    h.withdraw_funds(
+    let ret = h.withdraw_funds(
         &mut rt,
         h.beneficiary,
         &withdraw_left,
         &TokenAmount::zero(),
         &TokenAmount::zero(),
-    )
-    .unwrap();
+    );
+    expect_abort_contains_message(ExitCode::USR_FORBIDDEN, "beneficiary expiration of epoch", ret);
 
     let increase_quota = TokenAmount::from_atto(120);
     let increase_beneficiary_change =

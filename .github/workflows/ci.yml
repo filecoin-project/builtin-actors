@@ -35,14 +35,12 @@ jobs:
       uses: ./.github/actions/rust-cargo-run
       with:
         command: test
-        args: --locked --all --no-fail-fast
+        args: --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
         github_token: ${{ secrets.GITHUB_TOKEN }}
+        save_cache: true
 
   build:
     runs-on: ubuntu-latest
-    env:
-      CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
     strategy:
       matrix:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
@@ -63,8 +61,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
     steps:
     - name: Checking out
       uses: actions/checkout@v2
@@ -74,26 +70,18 @@ jobs:
         command: version
         components: llvm-tools-preview
         github_token: ${{ secrets.GITHUB_TOKEN }}
+        cache_name: cov
+        save_cache: true
     - name: Put LLVM tools into the PATH
       run: echo "${HOME}/.rustup/toolchains/$(cat rust-toolchain)-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin" >> $GITHUB_PATH
     - name: Install demangler
       run: cargo install rustfilt
     - name: Create coverage report
       env:
-        # Incremental build is not supported when profiling.
-        CARGO_INCREMENTAL: 0
         # Make sure that each run of an executable creates a new profile file,
         # with the default name they would override each other.
         LLVM_PROFILE_FILE: "%m.profraw"
-        # -Cinstrument-coverage: enable llvm coverage instrumentation
-        # -Ccodegen-units=1: building in parallel is not supported when profiling
-        # -Copt-level=0: disable optimizations for more accurate coverage
-        # -Coverflow-checks=off: checking for overflow is not needed for coverage reporting
-        # -Cinline-threshold=0: do not inline
-        # For code coverage the `-Clink-dead-code` flag should be set, as dead
-        # code should be considered as not covered code. Though this would make
-        # the build fail, hence it is not set.
-        RUSTFLAGS: -Cinstrument-coverage -Ccodegen-units=1 -Copt-level=0 -Coverflow-checks=off -Cinline-threshold=0
+        RUSTFLAGS: "-Cinstrument-coverage"
       run: cargo test --workspace --exclude fil_builtin_actors_bundle
     - name: Merge profiling data
       # Do *not* use sparse output. It leads to more lines that are not taken
