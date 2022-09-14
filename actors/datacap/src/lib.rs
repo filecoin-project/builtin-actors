@@ -150,7 +150,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let (mut hook, result) = rt
+        let mut hook = rt
             .transaction(|st: &mut State, rt| {
                 // Only the governor can mint datacap tokens.
                 rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
@@ -182,7 +182,7 @@ impl Actor {
             .context("state transaction failed")?;
 
         let msg = Messenger { rt, dummy: Default::default() };
-        hook.call(&&msg).actor_result()?;
+        let result = hook.call(&&msg).actor_result()?;
         Ok(result)
     }
 
@@ -228,7 +228,7 @@ impl Actor {
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be ID address")?;
         let to_address = Address::new_id(to);
 
-        let (mut hook, result) = rt
+        let mut hook = rt
             .transaction(|st: &mut State, rt| {
                 let allowed = to_address == st.governor;
                 if !allowed {
@@ -250,7 +250,7 @@ impl Actor {
             .context("state transaction failed")?;
 
         let msg = Messenger { rt, dummy: Default::default() };
-        hook.call(&&msg).actor_result()?;
+        let result = hook.call(&&msg).actor_result()?;
         Ok(result)
     }
 
@@ -274,7 +274,7 @@ impl Actor {
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be an ID address")?;
         let to_address = Address::new_id(to);
 
-        let (mut hook, result) = rt
+        let mut hook = rt
             .transaction(|st: &mut State, rt| {
                 let allowed = to_address == st.governor;
                 if !allowed {
@@ -297,7 +297,7 @@ impl Actor {
             .context("state transaction failed")?;
 
         let msg = Messenger { rt, dummy: Default::default() };
-        hook.call(&&msg).actor_result()?;
+        let result = hook.call(&&msg).actor_result()?;
         Ok(result)
     }
 
@@ -344,7 +344,7 @@ impl Actor {
     pub fn revoke_allowance<BS, RT>(
         rt: &mut RT,
         params: RevokeAllowanceParams,
-    ) -> Result<(), ActorError>
+    ) -> Result<TokenAmount, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
