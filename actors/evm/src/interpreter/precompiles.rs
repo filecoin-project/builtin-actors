@@ -71,7 +71,7 @@ fn read_u256_infalliable(buf: &[u8], start: usize) -> U256 {
 }
 
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    if input.len() != 128 {
+    if input.len() < 128 {
         return Err(PrecompileError::IncorrectInputSize);
     }
     let mut hash = [0u8; SECP_SIG_MESSAGE_HASH_SIZE];
