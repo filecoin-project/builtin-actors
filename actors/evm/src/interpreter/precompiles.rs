@@ -71,24 +71,36 @@ fn read_u256_infalliable(buf: &[u8], start: usize) -> U256 {
 }
 
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    let mut buf = [0u8; 128];
-    buf[..input.len().min(128)].copy_from_slice(&input[..input.len().min(128)]);
-
+    if input.len() != 128 {
+        return Err(PrecompileError::IncorrectInputSize)
+    }
     let mut hash = [0u8; SECP_SIG_MESSAGE_HASH_SIZE];
     let mut sig = [0u8; SECP_SIG_LEN];
 
-    hash.copy_from_slice(&input[..32]);
-    sig.copy_from_slice(&input[64..]); // TODO this assumes input is exactly 65 bytes which would panic if incorrect
+    hash.copy_from_slice(&input[0..32]);
+    sig[..64].copy_from_slice(&input[64..128]);
+    let recovery_byte = input[63];
 
-    // recovery byte means a single byte value is 32 bytes long, sad
-    if input[32..63] != [0u8; 31] || !matches!(input[63], 23 | 28) {
+    // recovery byte is a single byte value but is represented with 32 bytes, sad
+    let p = if input[32..63] == [0u8; 31] && matches!(recovery_byte, 27 | 28) {
+        recovery_byte - 27
+    }else {
         return Ok(Vec::new());
-    }
-    sig[64] = input[63] - 27;
+    };
+    
+    sig[64] = p;
 
-    let recovered = rt.recover_secp_public_key(&hash, &sig).unwrap_or([0u8; SECP_PUB_LEN]);
+    let pubkey = if let Ok(key) = rt.recover_secp_public_key(&hash, &sig) {
+        key
+    } else {
+        return Ok(Vec::new())
+    };
 
-    Ok(recovered.to_vec())
+    let mut address = rt.hash(SupportedHashes::Keccak256, &pubkey[1..]);
+    address.drain(..12);
+    debug_assert_eq!(address.len(), 20);
+
+    Ok(address)
 }
 
 fn sha256<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
@@ -138,7 +150,7 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 }
 
 /// converts 2 byte arrays (U256) into a point on a field
-/// exits with OutOfGas for any failed operation
+/// exits with EcErr for any failed operation
 fn uint_to_point(x: U256, y: U256) -> Result<G1, PrecompileError> {
     let x = Fq::from_u256(x.0.into()).map_err(|_| PrecompileError::EcErr)?;
     let y = Fq::from_u256(y.0.into()).map_err(|_| PrecompileError::EcErr)?;
@@ -335,15 +347,32 @@ mod tests {
     }
 
     // TODO modexp test
-    // TODO ec_recover test
     
+    #[test]
+    fn bn_recover() {
+        let input = &hex!(
+            "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
+            "000000000000000000000000000000000000000000000000000000000000001c" // v (recovery byte)
+            // signature
+            "9242685bf161793cc25603c231bc2f568eb630ea16aa137d2664ac8038825608" // r 
+            "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s 
+        );
+
+        let rt = MockRuntime::default();
+
+        let expected = hex!("7156526fbd7a3c72969b54f64e42c10fbb768c8a");
+        let res = ec_recover(&rt, input).unwrap();
+        println!("7156526fbd7a3c72969b54f64e42c10fbb768c8a\n{}", hex::encode(&res));
+        assert_eq!(&res, &expected);
+    }
+
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
         use super::MockRuntime;
         use crate::interpreter::precompiles::{ec_add, ec_mul, PrecompileError, ec_pairing};
 
         #[test]
-        fn bn128_add() {
+        fn bn_add() {
             let rt = MockRuntime::default();
 
             let input = hex::decode(
@@ -404,7 +433,7 @@ mod tests {
         }
 
         #[test]
-        fn bn128_mul() {
+        fn bn_mul() {
             let rt = MockRuntime::default();
 
             let input = hex::decode(
