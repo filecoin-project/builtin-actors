@@ -4,6 +4,7 @@ use fvm_shared::address::Address as FilecoinAddress;
 use {
     super::instructions::*,
     super::opcode::OpCode,
+    super::opcode::StackSpec,
     super::StatusCode,
     crate::interpreter::instructions::call::CallKind,
     crate::interpreter::instructions::log::*,
@@ -32,7 +33,7 @@ pub struct ExecutionState {
 impl ExecutionState {
     pub fn new(method: u64, input_data: Bytes) -> Self {
         Self {
-            stack: Stack::default(),
+            stack: Stack::new(),
             memory: Memory::default(),
             method,
             input_data,
@@ -87,11 +88,27 @@ macro_rules! def_ins {
                 Err(StatusCode::UndefinedInstruction)
             }
         }
-        $(def_ins1! { $op ($arg) $body })*
+        $(def_ins1! { $op ($arg) { check_stack!($op, $arg); $body } })*
         def_jmptable! {
             $($op)*
         }
     }
+}
+
+macro_rules! check_stack {
+    ($op:ident, $arg:ident) => {{
+        const SPEC: StackSpec = OpCode::$op.spec();
+        if SPEC.required > 0 {
+            if !$arg.runtime.stack.require(SPEC.required as usize) {
+                return Err(StatusCode::StackUnderflow);
+            }
+        }
+        if SPEC.changed > 0 {
+            if !$arg.runtime.stack.ensure(SPEC.changed as usize) {
+                return Err(StatusCode::StackOverflow);
+            }
+        }
+    }};
 }
 
 impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
@@ -134,7 +151,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
     }
 
     def_ins! {
-        STOP(_m) {
+        STOP(m) {
             Ok(ControlFlow::Exit)
         }
 
@@ -452,7 +469,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
             Ok(ControlFlow::Continue)
         }
 
-        JUMPDEST(_m) {
+        JUMPDEST(m) {
             // marker opcode for valid jumps addresses
             Ok(ControlFlow::Continue)
         }
@@ -843,7 +860,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
             Ok(ControlFlow::Exit)
         }
 
-        INVALID(_m) {
+        INVALID(m) {
             Err(StatusCode::InvalidInstruction)
         }
 
