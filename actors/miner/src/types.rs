@@ -4,7 +4,10 @@
 use super::beneficiary::*;
 use crate::commd::CompactCommD;
 use cid::Cid;
+use fil_actors_runtime::ActorError;
 use fil_actors_runtime::DealWeight;
+use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen, DATACAP_TOKEN_ACTOR_ADDR};
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, BytesDe, Cbor};
@@ -13,13 +16,15 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
     StoragePower,
 };
-use fvm_shared::smooth::FilterEstimate;
+
 use crate::ext::verifreg::ClaimID;
+use fvm_shared::smooth::FilterEstimate;
 
 pub type CronEvent = i64;
 
@@ -147,11 +152,42 @@ pub struct ExpirationExtension {
     pub new_expiration: ChainEpoch,
 }
 
+impl From<&ExpirationExtension2> for ExpirationExtension {
+    fn from(e2: &ExpirationExtension2) -> Self {
+        let sectors = BitField::new();
+        for sc in e2.sectors_with_claims {
+            sectors.set(sc.sector_number)
+        }
+        sectors &= e2.sectors.validate_mut().unwrap();
+        Self {
+            deadline: e2.deadline,
+            partition: e2.partition,
+            sectors: fvm_ipld_bitfield::UnvalidatedBitField::Validated(sectors),
+            new_expiration: e2.new_expiration,
+        }
+    }
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ExtendSectorExpiration2Params {
+    pub extensions: Vec<ExpirationExtension2>,
+}
+
+impl Cbor for ExtendSectorExpiration2Params {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+
+pub struct SectorClaim {
+    pub sector_number: SectorNumber,
+    pub maintain_claims: Vec<ClaimID>,
+}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ExpirationExtension2 {
     pub deadline: u64,
     pub partition: u64,
-    pub sectors: Vec<(SectorNumber, Vec<ClaimID>)>,
+    pub sectors: UnvalidatedBitField, // IDs of non simple_qa_power FIL+ sectors
+    pub sectors_with_claims: Vec<SectorClaim>,
     pub new_expiration: ChainEpoch,
 }
 
