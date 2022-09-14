@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::anyhow;
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_bitfield::{BitField, Validate};
 use serde::{Deserialize, Serialize};
 
 use fil_actors_runtime::runtime::Policy;
@@ -59,7 +59,7 @@ impl DeadlineSectorMap {
         policy: &Policy,
         deadline_idx: u64,
         partition_idx: u64,
-        sector_numbers: UnvalidatedBitField,
+        sector_numbers: BitField,
     ) -> anyhow::Result<()> {
         if deadline_idx >= policy.wpost_period_deadlines {
             return Err(anyhow!("invalid deadline {}", deadline_idx));
@@ -80,7 +80,7 @@ impl DeadlineSectorMap {
             policy,
             deadline_idx,
             partition_idx,
-            BitField::try_from_bits(sector_numbers.iter().copied())?.into(),
+            BitField::try_from_bits(sector_numbers.iter().copied())?,
         )
     }
 
@@ -97,7 +97,7 @@ impl DeadlineSectorMap {
 
 /// Maps partitions to sector bitfields.
 #[derive(Default, Serialize, Deserialize)]
-pub struct PartitionSectorMap(BTreeMap<u64, UnvalidatedBitField>);
+pub struct PartitionSectorMap(BTreeMap<u64, BitField>);
 
 impl PartitionSectorMap {
     /// Records the given sectors at the given partition.
@@ -106,24 +106,14 @@ impl PartitionSectorMap {
         partition_idx: u64,
         sector_numbers: Vec<u64>,
     ) -> anyhow::Result<()> {
-        self.add(partition_idx, BitField::try_from_bits(sector_numbers)?.into())
+        self.add(partition_idx, BitField::try_from_bits(sector_numbers)?)
     }
     /// Records the given sector bitfield at the given partition index, merging
     /// it with any existing bitfields if necessary.
-    pub fn add(
-        &mut self,
-        partition_idx: u64,
-        mut sector_numbers: UnvalidatedBitField,
-    ) -> anyhow::Result<()> {
+    pub fn add(&mut self, partition_idx: u64, sector_numbers: BitField) -> anyhow::Result<()> {
         match self.0.get_mut(&partition_idx) {
             Some(old_sector_numbers) => {
-                let old = old_sector_numbers
-                    .validate_mut()
-                    .map_err(|e| anyhow!("failed to validate sector bitfield: {}", e))?;
-                let new = sector_numbers
-                    .validate()
-                    .map_err(|e| anyhow!("failed to validate new sector bitfield: {}", e))?;
-                *old |= new;
+                *old_sector_numbers |= &sector_numbers;
             }
             None => {
                 self.0.insert(partition_idx, sector_numbers);
@@ -151,7 +141,7 @@ impl PartitionSectorMap {
     }
 
     /// Walks the partitions in the map, in order of increasing index.
-    pub fn iter(&mut self) -> impl Iterator<Item = (u64, &mut UnvalidatedBitField)> + '_ {
+    pub fn iter(&mut self) -> impl Iterator<Item = (u64, &mut BitField)> + '_ {
         self.0.iter_mut().map(|(&i, x)| (i, x))
     }
 
