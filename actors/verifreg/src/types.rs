@@ -14,6 +14,8 @@ use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::ActorID;
 
+use crate::Claim;
+
 pub type AllocationID = u64;
 pub type ClaimID = u64;
 
@@ -172,3 +174,18 @@ pub struct AllocationRequests {
     pub requests: Vec<AllocationRequest>,
 }
 impl Cbor for AllocationRequests {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+
+pub struct GetClaimsParams {
+    pub provider: ActorID,
+    pub claim_ids: Vec<ClaimID>,
+}
+
+impl Cbor for GetClaimsParams {}
+
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct GetClaimsReturn {
+    pub batch_info: BatchReturn,
+    pub claims: Vec<Claim>,
+}

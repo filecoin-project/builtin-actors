@@ -57,6 +57,7 @@ pub enum Method {
     RemoveVerifiedClientDataCap = 7,
     RemoveExpiredAllocations = 8,
     ClaimAllocations = 9,
+    GetClaims = 10,
     UniversalReceiverHook = UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 }
 
@@ -589,6 +590,44 @@ impl Actor {
         Ok(ret_gen.gen())
     }
 
+    // get claims for a provider
+    pub fn get_claims<BS, RT>(
+        rt: &mut RT,
+        params: GetClaimsParams,
+    ) -> Result<GetClaimsReturn, ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_accept_any()?;
+        let mut batch_gen = BatchReturnGen::new(params.claim_ids.len());
+        let claims = rt
+            .transaction(|st: &mut State, rt| {
+                let mut st_claims = st.load_claims(rt.store())?;
+                let mut ret_claims = Vec::new();
+                for id in params.claim_ids {
+                    let maybe_claim = st_claims.get(params.provider, id).context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "HAMT lookup failure getting allocation",
+                    )?;
+
+                    match maybe_claim {
+                        None => {
+                            batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                            info!("no claim {} for provider {}", id, params.provider,);
+                        }
+                        Some(claim) => {
+                            batch_gen.add_success();
+                            ret_claims.push(claim.clone());
+                        }
+                    };
+                }
+                Ok(ret_claims)
+            })
+            .context("state transaction failed")?;
+        Ok(GetClaimsReturn { batch_info: batch_gen.gen(), claims })
+    }
+
     pub fn universal_receiver_hook<BS, RT>(
         rt: &mut RT,
         params: UniversalReceiverParams,
@@ -1048,6 +1087,10 @@ impl ActorCode for Actor {
             Some(Method::UniversalReceiverHook) => {
                 Self::universal_receiver_hook(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
+            }
+            Some(Method::GetClaims) => {
+                let res = Self::get_claims(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
