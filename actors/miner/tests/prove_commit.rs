@@ -178,7 +178,7 @@ fn prove_sectors_from_batch_pre_commit() {
         h.make_pre_commit_params(102, precommit_epoch - 1, sector_expiration, vec![2, 3]), // 2 * 16GiB verified deals
     ];
 
-    let deal_space = 32 << 30;
+    let deal_space: i64 = 32 << 30;
     let deal_weight = DealWeight::zero();
     let prove_commit_epoch = precommit_epoch + rt.policy.pre_commit_challenge_delay + 1;
     let deal_lifespan = sector_expiration - prove_commit_epoch;
