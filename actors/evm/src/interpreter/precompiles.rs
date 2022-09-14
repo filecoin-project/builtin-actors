@@ -200,14 +200,14 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
         let y3 = read_u256(input, 128)?;
         let x3 = read_u256(input, 160)?;
 
-        // TODO errs
-        let ax = Fq::from_u256(x1.0.into()).unwrap();
-        let ay = Fq::from_u256(y1.0.into()).unwrap();
+        // TODO Would be nice to have more specific errors
+        let ax = Fq::from_u256(x1.0.into()).map_err(|_| PrecompileError::EcErr)?;
+        let ay = Fq::from_u256(y1.0.into()).map_err(|_| PrecompileError::EcErr)?;
 
-        let twisted_ax = Fq::from_u256(x2.0.into()).unwrap();
-        let twisted_ay = Fq::from_u256(y2.0.into()).unwrap();
-        let twisted_bx = Fq::from_u256(x3.0.into()).unwrap();
-        let twisted_by = Fq::from_u256(y3.0.into()).unwrap();
+        let twisted_ax = Fq::from_u256(x2.0.into()).map_err(|_| PrecompileError::EcErr)?;
+        let twisted_ay = Fq::from_u256(y2.0.into()).map_err(|_| PrecompileError::EcErr)?;
+        let twisted_bx = Fq::from_u256(x3.0.into()).map_err(|_| PrecompileError::EcErr)?;
+        let twisted_by = Fq::from_u256(y3.0.into()).map_err(|_| PrecompileError::EcErr)?;
 
         let twisted_a = Fq2::new(twisted_ax, twisted_ay);
         let twisted_b = Fq2::new(twisted_bx, twisted_by);
@@ -216,7 +216,7 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
             if twisted_a.is_zero() && twisted_b.is_zero() {
                 G2::zero()
             } else {
-                AffineG2::new(twisted_a, twisted_b).unwrap().into()
+                AffineG2::new(twisted_a, twisted_b).map_err(|_| PrecompileError::EcErr)?.into()
             }
         };
 
@@ -224,7 +224,7 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
             if ax.is_zero() && ay.is_zero() {
                 substrate_bn::G1::zero()
             } else {
-                AffineG1::new(ax, ay).unwrap().into()
+                AffineG1::new(ax, ay).map_err(|_| PrecompileError::EcErr)?.into()
             }
         };
 
@@ -334,10 +334,13 @@ mod tests {
         assert_eq!(&res, &expected);
     }
 
+    // TODO modexp test
+    // TODO ec_recover test
+    
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
         use super::MockRuntime;
-        use crate::interpreter::precompiles::{ec_add, ec_mul, PrecompileError};
+        use crate::interpreter::precompiles::{ec_add, ec_mul, PrecompileError, ec_pairing};
 
         #[test]
         fn bn128_add() {
@@ -453,82 +456,84 @@ mod tests {
             assert!(matches!(res, Err(PrecompileError::EcErr)));
         }
 
-        // #[test]
-        // fn bn128_pair() {
-        //     let input = hex::decode(
-        //         "\
-        //         1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
-        //         3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
-        //         209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
-        //         04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
-        //         2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
-        //         120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550\
-        //         111e129f1cf1097710d41c4ac70fcdfa5ba2023c6ff1cbeac322de49d1b6df7c\
-        //         2032c61a830e3c17286de9462bf242fca2883585b93870a73853face6a6bf411\
-        //         198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2\
-        //         1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed\
-        //         090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b\
-        //         12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
-        //     )
-        //     .unwrap();
-        //     let expected =
-        //         hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
-        //             .unwrap();
-        //     let res =
-        //         Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false).unwrap().output;
-        //     assert_eq!(res, expected);
-        //     // out of gas test
-        //     let input = hex::decode(
-        //         "\
-        //         1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
-        //         3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
-        //         209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
-        //         04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
-        //         2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
-        //         120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550\
-        //         111e129f1cf1097710d41c4ac70fcdfa5ba2023c6ff1cbeac322de49d1b6df7c\
-        //         2032c61a830e3c17286de9462bf242fca2883585b93870a73853face6a6bf411\
-        //         198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2\
-        //         1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed\
-        //         090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b\
-        //         12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
-        //     )
-        //     .unwrap();
-        //     let res = Bn128Pair::<Byzantium>::run(&input, 259_999, &new_context(), false);
-        //     assert!(matches!(res, Err(Return::OutOfGas)));
-        //     // no input test
-        //     let input = [0u8; 0];
-        //     let expected =
-        //         hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
-        //             .unwrap();
-        //     let res =
-        //         Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false).unwrap().output;
-        //     assert_eq!(res, expected);
-        //     // point not on curve fail
-        //     let input = hex::decode(
-        //         "\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111",
-        //     )
-        //     .unwrap();
-        //     let res = Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false);
-        //     assert!(matches!(res, Err(Return::Other(Cow::Borrowed("ERR_BN128_INVALID_A")))));
-        //     // invalid input length
-        //     let input = hex::decode(
-        //         "\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         111111111111111111111111111111\
-        //     ",
-        //     )
-        //     .unwrap();
-        //     let res = Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false);
-        //     assert!(matches!(res, Err(Return::Other(Cow::Borrowed("ERR_BN128_INVALID_LEN",)))));
-        // }
+        #[test]
+        fn bn_pair() {
+            let rt = MockRuntime::default();
+
+            let input = hex::decode(
+                "\
+                1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
+                3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
+                209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
+                04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
+                2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
+                120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550\
+                111e129f1cf1097710d41c4ac70fcdfa5ba2023c6ff1cbeac322de49d1b6df7c\
+                2032c61a830e3c17286de9462bf242fca2883585b93870a73853face6a6bf411\
+                198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2\
+                1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed\
+                090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b\
+                12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
+            )
+            .unwrap();
+            let expected =
+                hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                    .unwrap();
+
+            let res = ec_pairing(&rt, &input).unwrap();
+            assert_eq!(res, expected);
+
+            // out of gas test
+            let input = hex::decode(
+                "\
+                1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
+                3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
+                209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
+                04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
+                2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
+                120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550\
+                111e129f1cf1097710d41c4ac70fcdfa5ba2023c6ff1cbeac322de49d1b6df7c\
+                2032c61a830e3c17286de9462bf242fca2883585b93870a73853face6a6bf411\
+                198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2\
+                1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed\
+                090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b\
+                12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
+            )
+            .unwrap();
+            let res = ec_pairing(&rt, &input).unwrap();
+            assert_eq!(res, expected);
+            // no input test
+            let input = [0u8; 0];
+            let expected =
+                hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                    .unwrap();
+            let res = ec_pairing(&rt, &input).unwrap();
+            assert_eq!(res, expected);
+            // point not on curve fail
+            let input = hex::decode(
+                "\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111",
+            )
+            .unwrap();
+            let res = ec_pairing(&rt, &input);
+            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            // invalid input length
+            let input = hex::decode(
+                "\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                111111111111111111111111111111\
+            ",
+            )
+            .unwrap();
+            let res = ec_pairing(&rt, &input);
+            assert_eq!(res, Err(PrecompileError::IncorrectInputSize));
+        }
     }
 
     // https://eips.ethereum.org/EIPS/eip-152#test-cases
