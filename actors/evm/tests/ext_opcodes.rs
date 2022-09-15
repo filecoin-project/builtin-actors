@@ -34,7 +34,7 @@ fn test_extcodesize() {
 
     let mut rt = MockRuntime::default();
     rt.expect_validate_caller_any();
-    let params = evm::ConstructorParams { bytecode, input_data: RawBytes::default() };
+    let params = evm::ConstructorParams { bytecode };
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
@@ -93,7 +93,7 @@ fn test_extcodehash() {
 
     let mut rt = MockRuntime::default();
     rt.expect_validate_caller_any();
-    let params = evm::ConstructorParams { bytecode, input_data: RawBytes::default() };
+    let params = evm::ConstructorParams { bytecode };
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
@@ -150,7 +150,7 @@ fn test_extcodecopy() {
 
     let mut rt = MockRuntime::default();
     rt.expect_validate_caller_any();
-    let params = evm::ConstructorParams { bytecode, input_data: RawBytes::default() };
+    let params = evm::ConstructorParams { bytecode };
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
