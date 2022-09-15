@@ -97,12 +97,6 @@ fn get_data(input: &[u8], start: usize, len: usize) -> Cow<[u8]> {
     read_right_pad(&input[start..end], len)
 }
 
-/// read 32 bytes (u256) from buffer or pad
-fn read_u256_padded(input: &[u8], start: usize) -> U256 {
-    let input = get_data(input, start, 32);
-    U256::from_big_endian(&input)
-}
-
 fn read_bigint(input: &[u8], start: usize, len: usize) -> BigUint {
     let data = get_data(input, start, len);
     BigUint::from_bytes_be(&data)
@@ -179,9 +173,10 @@ fn identity<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 // https://eips.ethereum.org/EIPS/eip-198
 /// modulus exponent a number
 fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let base_len = read_u256_padded(input, 0).as_usize();
-    let exponent_len = read_u256_padded(input, 32).as_usize();
-    let mod_len = read_u256_padded(input, 64).as_usize();
+    let len_buf = read_right_pad(input, 96);
+    let base_len = U256::from_big_endian(&len_buf[..32]).as_usize();
+    let exponent_len = U256::from_big_endian(&len_buf[32..64]).as_usize();
+    let mod_len = U256::from_big_endian(&len_buf[64..96]).as_usize();
 
     let input = if input.len() > 96 { &input[96..] } else { &[] };
 
@@ -210,11 +205,12 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     Ok(output)
 }
 
-/// converts 2 byte arrays (U256) into a point on a field
+/// reads a point from 2, 32 byte coordinates with right padding
 /// exits with EcErr for any failed operation
-fn curve_point(x: U256, y: U256) -> Result<G1, PrecompileError> {
-    let x = Fq::from_u256(x.into())?;
-    let y = Fq::from_u256(y.into())?;
+/// panics if input.len() < 64
+fn curve_point(input: &[u8]) -> Result<G1, PrecompileError> {
+    let x = Fq::from_u256(U256::from_big_endian(&input[..32]).into())?;
+    let y = Fq::from_u256(U256::from_big_endian(&input[32..64]).into())?;
 
     Ok(if x.is_zero() && y.is_zero() { G1::zero() } else { AffineG1::new(x, y)?.into() })
 }
@@ -233,17 +229,9 @@ fn curve_to_vec(curve: G1) -> Vec<u8> {
 // https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L413
 /// add 2 points together on an elliptic curve
 fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let point1 = {
-        let x = read_u256_padded(input, 0);
-        let y = read_u256_padded(input, 32);
-        curve_point(x, y)?
-    };
-
-    let point2 = {
-        let x = read_u256_padded(input, 64);
-        let y = read_u256_padded(input, 96);
-        curve_point(x, y)?
-    };
+    let input = read_right_pad(input, 128);
+    let point1 = curve_point(&input)?;
+    let point2 = curve_point(&input[64..128])?;
 
     Ok(curve_to_vec(point1 + point2))
 }
@@ -251,14 +239,11 @@ fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 // https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L455
 /// multiply a point on an elliptic curve by a scalar value
 fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let point = {
-        let x = read_u256_padded(input, 0);
-        let y = read_u256_padded(input, 32);
-        curve_point(x, y)?
-    };
+    let input = read_right_pad(input, 96);
+    let point = curve_point(&input)?;
 
     let scalar = {
-        let data = read_u256_padded(input, 64);
+        let data = U256::from_big_endian(&input[64..96]);
         Fr::new_mul_factor(data.into())
     };
 
