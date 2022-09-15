@@ -17,7 +17,7 @@ use uint::byteorder::{ByteOrder, LE};
 pub use substrate_bn::{CurveError, FieldError, GroupError};
 
 lazy_static::lazy_static! {
-    pub(crate) static ref SECP256K1: BigUint = BigUint::from_bytes_be(&hex::decode("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141").unwrap());
+    pub(crate) static ref SECP256K1: BigUint = BigUint::from_bytes_be(&hex_literal::hex!("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"));
 }
 
 #[derive(Debug)]
