@@ -159,6 +159,10 @@ pub struct Policy {
     /// supply that must be covered by provider collateral
     pub prov_collateral_percent_supply_denom: i64,
 
+    /// The default duration after a verified deal's nominal term to set for the corresponding
+    /// allocation's maximum term.
+    pub market_default_allocation_term_buffer: i64,
+
     // --- power ---
     /// Minimum miner consensus power
     #[serde(with = "bigint_ser")]
@@ -242,6 +246,8 @@ impl Default for Policy {
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
             prov_collateral_percent_supply_denom:
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_DENOM,
+            market_default_allocation_term_buffer:
+                policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
 
             minimum_consensus_power: StoragePower::from(policy_constants::MINIMUM_CONSENSUS_POWER),
         }
@@ -380,7 +386,7 @@ pub mod policy_constants {
     pub const MINIMUM_VERIFIED_ALLOCATION_SIZE: i32 = 256;
     pub const MINIMUM_VERIFIED_ALLOCATION_TERM: i64 = 180 * EPOCHS_IN_DAY;
     pub const MAXIMUM_VERIFIED_ALLOCATION_TERM: i64 = 5 * EPOCHS_IN_YEAR;
-    pub const MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION: i64 = 30 * EPOCHS_IN_DAY;
+    pub const MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION: i64 = 60 * EPOCHS_IN_DAY;
 
     /// DealUpdatesInterval is the number of blocks between payouts for deals
     pub const DEAL_UPDATES_INTERVAL: i64 = EPOCHS_IN_DAY;
@@ -395,6 +401,8 @@ pub mod policy_constants {
     /// Denominator of the percentage of normalized cirulating
     /// supply that must be covered by provider collateral
     pub const PROV_COLLATERAL_PERCENT_SUPPLY_DENOM: i64 = 100;
+
+    pub const MARKET_DEFAULT_ALLOCATION_TERM_BUFFER: i64 = 90 * EPOCHS_IN_DAY;
 
     #[cfg(feature = "min-power-2k")]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 10;

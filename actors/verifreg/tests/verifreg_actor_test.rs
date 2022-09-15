@@ -587,7 +587,7 @@ mod datacap {
                 make_alloc_req(&rt, PROVIDER2, ALLOC_SIZE * 2),
             ];
             let payload = make_receiver_hook_token_payload(CLIENT1, reqs.clone());
-            h.receive_tokens(&mut rt, payload).unwrap();
+            h.receive_tokens(&mut rt, payload, vec![1, 2]).unwrap();
 
             // Verify allocations in state.
             let st: State = rt.get_state();
@@ -608,7 +608,7 @@ mod datacap {
             // Make another allocation from a different client
             let reqs = vec![make_alloc_req(&rt, PROVIDER1, ALLOC_SIZE)];
             let payload = make_receiver_hook_token_payload(CLIENT2, reqs.clone());
-            h.receive_tokens(&mut rt, payload).unwrap();
+            h.receive_tokens(&mut rt, payload, vec![3]).unwrap();
 
             // Verify allocations in state.
             let st: State = rt.get_state();
@@ -695,7 +695,7 @@ mod datacap {
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             format!("allocation provider {} must be a miner actor", provider1).as_str(),
-            h.receive_tokens(&mut rt, payload),
+            h.receive_tokens(&mut rt, payload, vec![1]),
         );
         h.check_state(&rt);
     }
@@ -712,7 +712,7 @@ mod datacap {
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "allocation size 1048575 below minimum 1048576",
-                h.receive_tokens(&mut rt, payload),
+                h.receive_tokens(&mut rt, payload, vec![]),
             );
         }
         // Min term too short
@@ -723,7 +723,7 @@ mod datacap {
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "allocation term min 518399 below limit 518400",
-                h.receive_tokens(&mut rt, payload),
+                h.receive_tokens(&mut rt, payload, vec![]),
             );
         }
         // Max term too long
@@ -734,7 +734,7 @@ mod datacap {
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "allocation term max 5259486 above limit 5259485",
-                h.receive_tokens(&mut rt, payload),
+                h.receive_tokens(&mut rt, payload, vec![]),
             );
         }
         // Term minimum greater than maximum
@@ -746,7 +746,7 @@ mod datacap {
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "allocation term min 2103795 exceeds term max 2103794",
-                h.receive_tokens(&mut rt, payload),
+                h.receive_tokens(&mut rt, payload, vec![]),
             );
         }
         // Allocation expires too late
@@ -756,8 +756,8 @@ mod datacap {
             let payload = make_receiver_hook_token_payload(CLIENT1, reqs);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                "allocation expiration 86401 exceeds maximum 86400",
-                h.receive_tokens(&mut rt, payload),
+                "allocation expiration 172801 exceeds maximum 172800",
+                h.receive_tokens(&mut rt, payload, vec![]),
             );
         }
         // Tokens received doesn't match sum of allocation sizes
@@ -771,7 +771,7 @@ mod datacap {
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "total allocation size 2097152 must match data cap amount received 2097153",
-                h.receive_tokens(&mut rt, payload),
+                h.receive_tokens(&mut rt, payload, vec![]),
             );
         }
         // One bad request fails the lot
@@ -785,7 +785,7 @@ mod datacap {
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "allocation size 1048575 below minimum 1048576",
-                h.receive_tokens(&mut rt, payload),
+                h.receive_tokens(&mut rt, payload, vec![]),
             );
         }
         h.check_state(&rt);
