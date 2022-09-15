@@ -36,7 +36,6 @@ use fvm_shared::econ::TokenAmount;
 
 use crate::Code::Blake2b256;
 pub use beneficiary::*;
-pub use commd::*;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::error::*;
