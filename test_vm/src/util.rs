@@ -22,7 +22,9 @@ use fil_actor_power::{
 };
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
-use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::policy_constants::{
+    MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
+};
 use fil_fungible_token::receiver::types::{
     FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
 };
@@ -640,7 +642,8 @@ pub fn publish_deal(
     if verified_deal {
         let deal_term = deal.end_epoch - deal.start_epoch;
         let token_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
-        let alloc_expiration = min(deal.start_epoch, v.curr_epoch + 60 * EPOCHS_IN_DAY);
+        let alloc_expiration =
+            min(deal.start_epoch, v.curr_epoch + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
 
         let alloc_reqs = AllocationsRequest {
             requests: vec![AllocationRequest {
@@ -648,7 +651,7 @@ pub fn publish_deal(
                 data: deal.piece_cid,
                 size: deal.piece_size,
                 term_min: deal_term,
-                term_max: deal_term + 90 * EPOCHS_IN_DAY,
+                term_max: deal_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
                 expiration: alloc_expiration,
             }],
         };

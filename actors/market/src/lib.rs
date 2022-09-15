@@ -361,6 +361,9 @@ impl Actor {
             // Drop deal if the transfer fails.
             // This could be done in a batch, but one-at-a-time allows dropping of only
             // some deals if the client's balance is insufficient, rather than dropping them all.
+            // An alternative could first fetch the available balance/allowance, and then make
+            // a batch transfer for an amount known to be available.
+            // https://github.com/filecoin-project/builtin-actors/issues/662
             let allocation_id = if deal.proposal.verified_deal {
                 let params = datacap_transfer_request(
                     &Address::new_id(client_id),
@@ -378,7 +381,7 @@ impl Actor {
                     Ok(ids) => {
                         if ids.len() != 1 {
                             return Err(actor_error!(
-                                illegal_argument,
+                                unspecified,
                                 "expected 1 allocation ID, got {:?}",
                                 ids
                             ));

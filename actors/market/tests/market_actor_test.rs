@@ -4,8 +4,8 @@
 use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
-    ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray,
-    Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn, State,
+    deal_id_key, ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
+    DealMetaArray, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn, State,
     WithdrawBalanceParams, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
@@ -13,8 +13,9 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map, SetMultimap,
+    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_fungible_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_amt::Amt;
@@ -32,7 +33,7 @@ use regex::Regex;
 use std::ops::Add;
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
-use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationsResponse};
+use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use num_traits::{FromPrimitive, Zero};
 
 mod harness;
@@ -767,11 +768,11 @@ fn deal_expires() {
     // The proposal is gone
     assert!(DealArray::load(&st.proposals, &rt.store).unwrap().get(deal_id).unwrap().is_none());
 
-    // TODO: no deal state, proposal is gone, allocationID is gone.
-
-    // let deal1st = get_deal_state(&mut rt, deal1_id);
-    // assert_eq!(publish_epoch, deal1st.sector_start_epoch);
-    // assert_eq!(NO_ALLOCATION_ID, deal1st.verified_claim);
+    // Pending allocation ID is gone
+    let pending_allocs: Map<_, AllocationID> =
+        make_map_with_root_and_bitwidth(&st.pending_deal_allocation_ids, &rt.store, HAMT_BIT_WIDTH)
+            .unwrap();
+    assert!(pending_allocs.get(&deal_id_key(deal_id)).unwrap().is_none());
 
     check_state(&rt);
 }
