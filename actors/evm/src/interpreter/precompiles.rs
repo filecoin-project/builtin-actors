@@ -93,7 +93,6 @@ impl<'a> Data<'a> {
     }
 
     /// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/common/bytes.go#L108
-    /// Return type is kept Vec since the upper scope needs to own it.
     fn read_right_pad(input: &'a [u8], len: usize) -> Self {
         if len <= input.len() {
             Self::Slice(input)
