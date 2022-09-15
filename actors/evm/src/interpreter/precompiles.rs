@@ -86,12 +86,10 @@ impl<BS: Blockstore, RT: Runtime<BS>> Precompiles<BS, RT> {
 fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u8]> {
     let mut input: Cow<[u8]> = input.into();
     let input_len = input.len();
-    if len <= input_len {
-        input
-    } else {
+    if len > input_len {
         input.to_mut().resize(len, 0);
-        input
-    }
+    } 
+    input
 }
 
 /// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/common.go#L54
@@ -244,7 +242,7 @@ fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
         Fr::new_mul_factor(data.into())
     };
 
-    Ok(curve_to_vec(point.mul(scalar)))
+    Ok(curve_to_vec(point * scalar))
 }
 
 // https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L504
