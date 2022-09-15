@@ -2097,7 +2097,8 @@ dependencies = [
 [[package]]
 name = "substrate-bn"
 version = "0.6.0"
-source = "git+https://github.com/mriise/bn.git?branch=err-eq#b7775153f29bc1fcb2fe909d7bf89fdd12fbd3ce"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b5bbfa79abbae15dd642ea8176a21a635ff3c00059961d1ea27ad04e5b441c"
 dependencies = [
  "byteorder",
  "crunchy",
