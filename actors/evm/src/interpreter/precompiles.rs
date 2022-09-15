@@ -89,7 +89,7 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
     if len <= input_len {
         input
     } else {
-        input.to_mut().splice(..0, core::iter::repeat(0).take(len - input_len));
+        input.to_mut().splice(..0, std::iter::repeat(0).take(len - input_len));
         input
     }
 }
@@ -144,8 +144,7 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     };
 
     let mut address = rt.hash(SupportedHashes::Keccak256, &pubkey[1..]);
-    address.drain(..12); // TODO
-                         // address[..12].copy_from_slice(&[0u8; 12]);  // TODO left padding, do we care about alignment in precompiles really?
+    address[..12].copy_from_slice(&[0u8; 12]);
 
     Ok(address)
 }
@@ -195,7 +194,7 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 
     if output.len() < mod_len {
         let mut ret = Vec::with_capacity(mod_len);
-        ret.extend(core::iter::repeat(0).take(mod_len - output.len())); // left padding
+        ret.extend(std::iter::repeat(0).take(mod_len - output.len())); // left padding
         ret.extend_from_slice(&output);
         output = ret;
     }
@@ -387,7 +386,7 @@ mod tests {
             "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
         );
 
-        let expected = hex!("7156526fbd7a3c72969b54f64e42c10fbb768c8a");
+        let expected = hex!("0000000000000000000000007156526fbd7a3c72969b54f64e42c10fbb768c8a");
         let res = ec_recover(&rt, input).unwrap();
         assert_eq!(&res, &expected);
 
