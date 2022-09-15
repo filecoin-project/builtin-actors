@@ -3,6 +3,8 @@
 // see https://github.com/paritytech/parity-common/issues/660
 #![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern)]
 
+use substrate_bn::arith;
+
 use {
     fvm_shared::bigint::BigInt, fvm_shared::econ::TokenAmount, impl_serde::impl_uint_serde,
     std::cmp::Ordering, uint::construct_uint,
@@ -15,6 +17,12 @@ impl From<&TokenAmount> for U256 {
     fn from(amount: &TokenAmount) -> U256 {
         let (_, bytes) = amount.atto().to_bytes_be();
         U256::from(bytes.as_slice())
+    }
+}
+
+impl Into<arith::U256> for U256 {
+    fn into(self) -> arith::U256 {
+        arith::U256::from(self.0)
     }
 }
 

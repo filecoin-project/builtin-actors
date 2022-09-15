@@ -38,7 +38,8 @@ fixed-hash = { version = "0.7.0", default-features = false }
 impl-serde = { version = "0.3.2", default-features = false }
 arrayvec = { version = "0.7.2", features = ["serde"] }
 hex = "0.4.3"
-substrate-bn = { version = "0.6.0", default-features = false }
+# TODO check this. needed Eq for errors, looked unmaintained 
+substrate-bn = { version = "0.6.0", default-features = false, git = "https://github.com/mriise/bn.git", branch = "err-eq"} 
 near-blake2 = { version = "0.9.1", git = "https://github.com/filecoin-project/near-blake2.git" }
 
 [dev-dependencies]

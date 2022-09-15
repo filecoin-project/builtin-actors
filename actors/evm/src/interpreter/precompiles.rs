@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::Mul};
+use std::{convert::TryInto, marker::PhantomData, ops::Mul};
 
 use super::U256;
 use fil_actors_runtime::runtime::{Primitives, Runtime};
@@ -14,10 +14,31 @@ use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
 
+pub use substrate_bn::{GroupError, FieldError, CurveError};
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum PrecompileError {
-    EcErr,
+    EcErr(CurveError),
+    EcGroupErr(GroupError),
     IncorrectInputSize,
+}
+
+impl From<CurveError> for PrecompileError {
+    fn from(src: CurveError) -> Self {
+        PrecompileError::EcErr(src)
+    }
+}
+
+impl From<FieldError> for PrecompileError {
+    fn from(src: FieldError) -> Self {
+        PrecompileError::EcErr(src.into())
+    }
+}
+
+impl From<GroupError> for PrecompileError {
+    fn from(src: GroupError) -> Self {
+        PrecompileError::EcGroupErr(src)
+    }
 }
 
 pub type PrecompileFn<RT> = fn(&RT, &[u8]) -> PrecompileResult;
@@ -57,38 +78,87 @@ impl<BS: Blockstore, RT: Runtime<BS>> Precompiles<BS, RT> {
     }
 }
 
-/// read 32 bytes (u256) from buffer or error
-fn read_u256(buf: &[u8], start: usize) -> Result<U256, PrecompileError> {
-    let slice = buf.get(start..start + 32).ok_or(PrecompileError::IncorrectInputSize)?;
-    Ok(U256::from_big_endian(slice))
+/// Intermediary container to hold a data as slice or turn into a vec with padding as needed.
+/// This is intended to not copy in normal operations
+enum Data<'a> {
+    Slice(&'a [u8]),
+    Vec(Vec<u8>),
 }
-
-/// read 32 bytes (u256) from buffer, pass in exit reason that is desired
-/// returns 0 if failed to read
-fn read_u256_infalliable(buf: &[u8], start: usize) -> U256 {
-    let slice = buf.get(start..start + 32).unwrap_or(&[0u8; 32]);
-    U256::from_big_endian(slice)
-}
-
-fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    if input.len() < 128 {
-        return Err(PrecompileError::IncorrectInputSize);
+impl<'a> Data<'a> {
+    fn slice(&self) -> &[u8] {
+        match self {
+            Self::Slice(s) => s,
+            Self::Vec(v) => &v,
+        }
     }
-    let mut hash = [0u8; SECP_SIG_MESSAGE_HASH_SIZE];
-    let mut sig = [0u8; SECP_SIG_LEN];
 
-    hash.copy_from_slice(&input[0..32]);
-    sig[..64].copy_from_slice(&input[64..128]);
+    /// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/common/bytes.go#L108
+    /// Return type is kept Vec since the upper scope needs to own it.
+    fn read_right_pad(input: &'a [u8], len: usize) -> Self {
+        if len <= input.len() {
+            Self::Slice(input)
+        } else {
+            let mut padded = vec![0u8; len];
+            padded[..input.len()].copy_from_slice(input);
+            Self::Vec(padded)
+        }
+    }
+
+    /// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/common.go#L54
+    fn get_data(input: &'a [u8], start: usize, len: usize) -> Self {
+        let start = start.min(input.len());
+        let end = (start + len).min(input.len());
+        Self::read_right_pad(&input[start..end], len)
+    }
+
+    /// read 32 bytes (u256) from buffer or pad
+    fn read_u256_padded(input: &[u8], start: usize) -> U256 {
+        let input = Data::get_data(input, start, 32);
+        U256::from_big_endian(input.slice())
+    }
+
+    fn read_bigint(input: &'a [u8], start: usize, len: usize) -> BigUint {
+        let data = Self::get_data(input, start, len);
+        BigUint::from_bytes_be(data.slice())
+    }
+}
+
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L165
+/// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
+fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    let data = Data::read_right_pad(input, 128);
+    let input = data.slice();
+
+    let hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE] = input[0..32].try_into().unwrap();
+    let r = BigUint::from_bytes_be(&input[64..96]);
+    let s = BigUint::from_bytes_be(&input[96..128]);
     let recovery_byte = input[63];
 
     // recovery byte is a single byte value but is represented with 32 bytes, sad
-    let p = if input[32..63] == [0u8; 31] && matches!(recovery_byte, 27 | 28) {
+    let v = if input[32..63] == [0u8; 31] && matches!(recovery_byte, 27 | 28) {
         recovery_byte - 27
     } else {
         return Ok(Vec::new());
     };
 
-    sig[64] = p;
+    let valid = if r <= BigUint::one() || s <= BigUint::one() {
+        false
+    } else {
+        let secp256k1_n = BigUint::parse_bytes(
+            b"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+            16,
+        )
+        .unwrap();
+        r <= secp256k1_n && s <= secp256k1_n && (v == 0 || v == 1)
+    };
+
+    if !valid {
+        return Ok(Vec::new());
+    }
+
+    let mut sig: [u8; SECP_SIG_LEN] = [0u8; 65];
+    sig[..64].copy_from_slice(&input[64..128]);
+    sig[64] = v;
 
     let pubkey = if let Ok(key) = rt.recover_secp_public_key(&hash, &sig) {
         key
@@ -97,54 +167,57 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     };
 
     let mut address = rt.hash(SupportedHashes::Keccak256, &pubkey[1..]);
-    address.drain(..12);
-    debug_assert_eq!(address.len(), 20);
+    address.drain(..12); // TODO
+                         // address[..12].copy_from_slice(&[0u8; 12]);  // TODO left padding, do we care about alignment in precompiles really?
 
     Ok(address)
 }
 
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L206
+/// hash with sha2-256
 fn sha256<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(rt.hash(SupportedHashes::Sha2_256, input))
 }
 
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L221
+/// hash with ripemd160
 fn ripemd160<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(rt.hash(SupportedHashes::Ripemd160, input))
 }
 
+/// data copy
 fn identity<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     Ok(Vec::from(input))
 }
 
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L363
 // https://eips.ethereum.org/EIPS/eip-198
+/// modulus exponent a number
 fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let base_len = read_u256(input, 0)?.as_usize();
-    let exponent_len = read_u256(input, 32)?.as_usize();
-    let mod_len = read_u256(input, 64)?.as_usize();
+    let base_len = Data::read_u256_padded(input, 0).as_usize();
+    let exponent_len = Data::read_u256_padded(input, 32).as_usize();
+    let mod_len = Data::read_u256_padded(input, 64).as_usize();
 
-    if mod_len == 0 {
+    let input = if input.len() > 96 { &input[96..] } else { &[] };
+
+    if base_len == 0 && mod_len == 0 {
         return Ok(Vec::new());
     }
 
-    let mut start = 96;
-    if base_len + exponent_len + mod_len != input[start..].len() {
-        return Err(PrecompileError::IncorrectInputSize);
+    let base = Data::read_bigint(input, 0, base_len);
+    let exponent = Data::read_bigint(input, base_len, exponent_len);
+    let modulus = Data::read_bigint(input, base_len + exponent_len, mod_len);
+
+    if modulus.is_zero() || modulus.is_one() {
+        // mod 0 is undefined: 0, base mod 1 is always 0
+        return Ok(vec![0; mod_len]);
     }
 
-    let base = BigUint::from_bytes_be(&input[start..start + base_len]);
-    start += base_len;
-    let exponent = BigUint::from_bytes_be(&input[start..start + exponent_len]);
-    start += exponent_len;
-    let modulus = BigUint::from_bytes_be(&input[start..start + mod_len]);
-
-    let mut output = if modulus.is_zero() || modulus.is_one() {
-        BigUint::zero().to_bytes_be()
-    } else {
-        base.modpow(&exponent, &modulus).to_bytes_be()
-    };
+    let mut output = base.modpow(&exponent, &modulus).to_bytes_be();
 
     if output.len() < mod_len {
         let mut ret = Vec::with_capacity(mod_len);
-        // ret.extend(core::iter::repeat(0).take(mod_len - output.len()));
+        ret.extend(core::iter::repeat(0).take(mod_len - output.len())); // left padding
         ret.extend_from_slice(&output);
         output = ret;
     }
@@ -154,59 +227,74 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 
 /// converts 2 byte arrays (U256) into a point on a field
 /// exits with EcErr for any failed operation
-fn uint_to_point(x: U256, y: U256) -> Result<G1, PrecompileError> {
-    let x = Fq::from_u256(x.0.into()).map_err(|_| PrecompileError::EcErr)?;
-    let y = Fq::from_u256(y.0.into()).map_err(|_| PrecompileError::EcErr)?;
+fn curve_point(x: U256, y: U256) -> Result<G1, PrecompileError> {
+    let x = Fq::from_u256(x.0.into())?;
+    let y = Fq::from_u256(y.0.into())?;
 
     Ok(if x.is_zero() && y.is_zero() {
         G1::zero()
     } else {
-        AffineG1::new(x, y).map_err(|_| PrecompileError::EcErr)?.into()
+        AffineG1::new(x, y)?.into()
     })
 }
 
-/// add 2 points together on `alt_bn128`
-fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let x1 = read_u256_infalliable(input, 0);
-    let y1 = read_u256_infalliable(input, 32);
-    let point1 = uint_to_point(x1, y1)?;
-
-    let x2 = read_u256_infalliable(input, 64);
-    let y2 = read_u256_infalliable(input, 96);
-    let point2 = uint_to_point(x2, y2)?;
-
-    let output = AffineG1::from_jacobian(point1 + point2).map_or(vec![0; 64], |sum| {
-        let mut output = vec![0; 64];
-        sum.x().to_big_endian(&mut output[..32]).unwrap();
-        sum.y().to_big_endian(&mut output[32..]).unwrap();
-        output
-    });
-
-    Ok(output)
+fn curve_to_vec(curve: G1) -> Vec<u8> {
+    AffineG1::from_jacobian(curve)
+        .map(|product| {
+            let mut output = vec![0; 64];
+            product.x().to_big_endian(&mut output[..32]).unwrap();
+            product.y().to_big_endian(&mut output[32..]).unwrap();
+            output
+        })
+        .unwrap_or(vec![0; 64])
 }
 
-/// multiply a scalar and a point on `alt_bn128`
-fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let x = read_u256_infalliable(input, 0);
-    let y = read_u256_infalliable(input, 32);
-    let point = uint_to_point(x, y)?;
-
-    let scalar = if let Some(scalar) = input.get(64..96) {
-        Fr::from_slice(scalar).map_err(|_| PrecompileError::EcErr)?
-    } else {
-        return Ok(vec![0; 64]);
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L413
+/// add 2 points together on an elliptic curve
+fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
+    let point1 = {
+        let x = Data::read_u256_padded(input, 0);
+        let y = Data::read_u256_padded(input, 32);
+        curve_point(x, y)?
     };
 
-    AffineG1::from_jacobian(point.mul(scalar)).ok_or(PrecompileError::EcErr).map(|product| {
-        let mut output = vec![0; 64];
-        product.x().to_big_endian(&mut output[..32]).unwrap();
-        product.y().to_big_endian(&mut output[32..]).unwrap();
-        output
-    })
+    let point2 = {
+        let x = Data::read_u256_padded(input, 64);
+        let y = Data::read_u256_padded(input, 96);
+        curve_point(x, y)?
+    };
+
+    Ok(curve_to_vec(point1 + point2))
 }
 
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L455
+/// multiply a point on an elliptic curve by a scalar value
+fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
+    let point = {
+        let x = Data::read_u256_padded(input, 0);
+        let y = Data::read_u256_padded(input, 32);
+        curve_point(x, y)?
+    };
+
+    let scalar = {
+        let data = Data::read_u256_padded(input, 64);
+        Fr::new_mul_factor(data.into())
+    };
+
+    Ok(curve_to_vec(point.mul(scalar)))
+}
+
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L504
+/// pairs multple groups of twisted bn curves
 fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
+
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
+        /// read 32 bytes (u256) from buffer or error
+        fn read_u256(input: &[u8], start: usize) -> Result<U256, PrecompileError> {
+            let slice = input.get(start..start + 32).ok_or(PrecompileError::IncorrectInputSize)?;
+            Ok(U256::from_big_endian(slice))
+        }
+
         let x1 = read_u256(input, 0)?;
         let y1 = read_u256(input, 32)?;
 
@@ -215,14 +303,13 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
         let y3 = read_u256(input, 128)?;
         let x3 = read_u256(input, 160)?;
 
-        // TODO Would be nice to have more specific errors
-        let ax = Fq::from_u256(x1.0.into()).map_err(|_| PrecompileError::EcErr)?;
-        let ay = Fq::from_u256(y1.0.into()).map_err(|_| PrecompileError::EcErr)?;
+        let ax = Fq::from_u256(x1.0.into())?;
+        let ay = Fq::from_u256(y1.0.into())?;
 
-        let twisted_ax = Fq::from_u256(x2.0.into()).map_err(|_| PrecompileError::EcErr)?;
-        let twisted_ay = Fq::from_u256(y2.0.into()).map_err(|_| PrecompileError::EcErr)?;
-        let twisted_bx = Fq::from_u256(x3.0.into()).map_err(|_| PrecompileError::EcErr)?;
-        let twisted_by = Fq::from_u256(y3.0.into()).map_err(|_| PrecompileError::EcErr)?;
+        let twisted_ax = Fq::from_u256(x2.0.into())?;
+        let twisted_ay = Fq::from_u256(y2.0.into())?;
+        let twisted_bx = Fq::from_u256(x3.0.into())?;
+        let twisted_by = Fq::from_u256(y3.0.into())?;
 
         let twisted_a = Fq2::new(twisted_ax, twisted_ay);
         let twisted_b = Fq2::new(twisted_bx, twisted_by);
@@ -231,7 +318,7 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
             if twisted_a.is_zero() && twisted_b.is_zero() {
                 G2::zero()
             } else {
-                AffineG2::new(twisted_a, twisted_b).map_err(|_| PrecompileError::EcErr)?.into()
+                AffineG2::new(twisted_a, twisted_b)?.into()
             }
         };
 
@@ -239,7 +326,7 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
             if ax.is_zero() && ay.is_zero() {
                 substrate_bn::G1::zero()
             } else {
-                AffineG1::new(ax, ay).map_err(|_| PrecompileError::EcErr)?.into()
+                AffineG1::new(ax, ay)?.into()
             }
         };
 
@@ -260,26 +347,26 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 
     let accumulated = pairing_batch(&groups);
 
-    let output = if accumulated == Gt::one() { U256::one() } else { U256::zero() };
-    let mut buf = [0u8; 32];
-    output.to_big_endian(&mut buf);
-    Ok(buf.to_vec())
+    let paring_success = if accumulated == Gt::one() { U256::one() } else { U256::zero() };
+    let mut ret = [0u8; 32];
+    paring_success.to_big_endian(&mut ret);
+    Ok(ret.to_vec())
 }
 
-// https://eips.ethereum.org/EIPS/eip-152
+/// https://eips.ethereum.org/EIPS/eip-152
+/// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L581
 fn blake2f<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     if input.len() != 213 {
         return Err(PrecompileError::IncorrectInputSize);
     }
     let mut hasher = near_blake2::VarBlake2b::default();
-
     let mut rounds = [0u8; 4];
 
-    // 4 bytes
     let mut start = 0;
+
+    // 4 bytes
     rounds.copy_from_slice(&input[..4]);
     start += 4;
-
     // 64 bytes
     let h = &input[start..start + 64];
     start += 64;
@@ -413,10 +500,11 @@ mod tests {
             "1234" // exp
             "012345678910" // mod
         );
-        let expected = hex!("358eac8f30"); // 230026940208
+        let expected = hex!("00358eac8f30"); // left padding & 230026940208
         let res = modexp(&rt, input).unwrap();
         assert_eq!(&res, &expected);
 
+        let expected = hex!("000000"); // invalid values will just be [0; mod_len]
         let input = &hex!(
             "0000000000000000000000000000000000000000000000000000000000000001" // base len
             "0000000000000000000000000000000000000000000000000000000000000002" // exp len
@@ -426,8 +514,8 @@ mod tests {
             "03" // mod
         );
         // input smaller than expected
-        let res = modexp(&rt, input);
-        assert_eq!(res, Err(PrecompileError::IncorrectInputSize));
+        let res = modexp(&rt, input).unwrap();
+        assert_eq!(&res, &expected);
 
         let input = &hex!(
             "0000000000000000000000000000000000000000000000000000000000000001" // base len
@@ -443,7 +531,7 @@ mod tests {
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
-        use super::MockRuntime;
+        use super::{MockRuntime, GroupError};
         use crate::interpreter::precompiles::{ec_add, ec_mul, ec_pairing, PrecompileError};
 
         #[test]
@@ -504,7 +592,7 @@ mod tests {
             )
             .unwrap();
             let res = ec_add(&rt, &input);
-            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
         }
 
         #[test]
@@ -535,8 +623,8 @@ mod tests {
                 0200000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_mul(&rt, &input);
-            assert_eq!(res, Err(PrecompileError::EcErr));
+            let res = ec_mul(&rt, &input).unwrap();
+            assert_eq!(&res, &vec![0; 64]);
 
             // no input test
             let input = [0u8; 0];
@@ -557,7 +645,7 @@ mod tests {
             )
             .unwrap();
             let res = ec_mul(&rt, &input);
-            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
         }
 
         #[test]
@@ -625,7 +713,7 @@ mod tests {
             )
             .unwrap();
             let res = ec_pairing(&rt, &input);
-            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
             // invalid input length
             let input = hex::decode(
                 "\
@@ -753,10 +841,10 @@ mod tests {
 
         // T8
         // NOTE:
-        // original test case ran ffffffff rounds of blake2b
-        // with an output of fc59093aafa9ab43daae0e914c57635c5402d8e3d2130eb9b3cc181de7f0ecf9b22bf99a7815ce16419e200e01846e6b5df8cc7703041bbceb571de6631d2615
-        // I ran this sucessfully while grabbing a cup of coffee, so if you fee like wasting u32::MAX rounds of hash time (25-ish min on Ryzen5 2600) you can test it as such
-        // For my and CI's sanity however, we are capping it at 0000ffff.
+        //  original test case ran ffffffff rounds of blake2b
+        //  with an expected output of fc59093aafa9ab43daae0e914c57635c5402d8e3d2130eb9b3cc181de7f0ecf9b22bf99a7815ce16419e200e01846e6b5df8cc7703041bbceb571de6631d2615
+        //  I ran this sucessfully while grabbing a cup of coffee, so if you fee like wasting u32::MAX rounds of hash time, (25-ish min on Ryzen5 2600) you can test it as such.
+        //  For my and CI's sanity however, we are capping it at 0000ffff.
         let expected = &hex!("183ed9b1e5594bcdd715a4e4fd7b0dc2eaa2ef9bda48242af64c687081142156621bc94bb2d5aa99d83c2f1a5d9c426e1b6a1755a5e080f6217e2a5f3b9c4624");
         let input = &hex!(
             "0000ffff"
