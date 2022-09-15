@@ -3,11 +3,11 @@ use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
     Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
-    ReplicaUpdate, SectorOnChainInfo, State as MinerState, TerminateSectorsParams,
-    TerminationDeclaration, SECTORS_AMT_BITWIDTH,
+    ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo,
+    State as MinerState, TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 
-use fil_actors_runtime::test_utils::make_sealed_cid;
+use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fvm_shared::piece::PaddedPieceSize;
 
 use fil_actors_runtime::runtime::Policy;
@@ -25,6 +25,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
+use test_case::test_case;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     apply_code, apply_ok, bf_all, check_sector_active, check_sector_faulty, create_accounts,
@@ -33,22 +34,23 @@ use test_vm::util::{
     submit_invalid_post, submit_windowed_post,
 };
 use test_vm::VM;
-
 // ---- Success cases ----
 
 // Tests that an active CC sector can be correctly upgraded, and the expected state changes occur
-#[test]
-fn replica_update_simple_path_success() {
-    create_miner_and_upgrade_sector(&MemoryBlockstore::new()).0.assert_state_invariants();
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn replica_update_simple_path_success(v2: bool) {
+    create_miner_and_upgrade_sector(&MemoryBlockstore::new(), v2).0.assert_state_invariants();
 }
 
 // Tests a successful upgrade, followed by the sector going faulty and recovering
-#[test]
-fn replica_update_full_path_success() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn replica_update_full_path_success(v2: bool) {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
-        create_miner_and_upgrade_sector(store);
+        create_miner_and_upgrade_sector(store, v2);
     let sector_number = sector_info.sector_number;
 
     // submit post successfully
@@ -105,12 +107,13 @@ fn replica_update_full_path_success() {
     v.assert_state_invariants();
 }
 
-#[test]
-fn upgrade_and_miss_post() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn upgrade_and_miss_post(v2: bool) {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let (mut v, sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
-        create_miner_and_upgrade_sector(store);
+        create_miner_and_upgrade_sector(store, v2);
     let sector_number = sector_info.sector_number;
 
     let power_after_update = miner_power(&v, miner_id);
@@ -526,7 +529,8 @@ fn bad_batch_size_failure() {
 #[test]
 fn no_dispute_after_upgrade() {
     let store = &MemoryBlockstore::new();
-    let (v, _, worker, miner_id, deadline_index, _, _) = create_miner_and_upgrade_sector(store);
+    let (v, _, worker, miner_id, deadline_index, _, _) =
+        create_miner_and_upgrade_sector(store, false);
 
     let dispute_params = DisputeWindowedPoStParams { deadline: deadline_index, post_index: 0 };
     apply_code(
@@ -546,7 +550,7 @@ fn upgrade_bad_post_dispute() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(store);
+        create_miner_and_upgrade_sector(store, false);
     let sector_number = sector_info.sector_number;
 
     let (deadline_info, _, mut v) = advance_to_proving_deadline(v, miner_id, sector_number);
@@ -653,7 +657,7 @@ fn bad_post_upgrade_dispute() {
 fn terminate_after_upgrade() {
     let store = &MemoryBlockstore::new();
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(store);
+        create_miner_and_upgrade_sector(store, false);
     let sector_number = sector_info.sector_number;
 
     let terminate_params = TerminateSectorsParams {
@@ -695,7 +699,7 @@ fn extend_after_upgrade() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(store);
+        create_miner_and_upgrade_sector(store, false);
     let sector_number = sector_info.sector_number;
 
     let extension_params = ExtendSectorExpirationParams {
@@ -970,6 +974,7 @@ fn deal_included_in_multiple_sectors_failure() {
 
 fn create_miner_and_upgrade_sector(
     store: &MemoryBlockstore,
+    v2: bool,
 ) -> (VM, SectorOnChainInfo, Address, Address, u64, u64, SectorSize) {
     let mut v = VM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
@@ -995,23 +1000,44 @@ fn create_miner_and_upgrade_sector(
 
     // replica update
     let new_cid = make_sealed_cid(b"replica1");
-    let replica_update = ReplicaUpdate {
-        sector_number,
-        deadline: d_idx,
-        partition: p_idx,
-        new_sealed_cid: new_cid,
-        deals: deal_ids.clone(),
-        update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
-    };
-    let updated_sectors: BitField = apply_ok(
-        &v,
-        worker,
-        robust,
-        TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates: vec![replica_update] },
-    )
+    let updated_sectors: BitField = if !v2 {
+        let replica_update = ReplicaUpdate {
+            sector_number,
+            deadline: d_idx,
+            partition: p_idx,
+            new_sealed_cid: new_cid,
+            deals: deal_ids.clone(),
+            update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
+            replica_proof: vec![],
+        };
+        apply_ok(
+            &v,
+            worker,
+            robust,
+            TokenAmount::zero(),
+            MinerMethod::ProveReplicaUpdates as u64,
+            ProveReplicaUpdatesParams { updates: vec![replica_update] },
+        )
+    } else {
+        let replica_update = ReplicaUpdate2 {
+            sector_number,
+            deadline: d_idx,
+            partition: p_idx,
+            new_sealed_cid: new_cid,
+            deals: deal_ids.clone(),
+            update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
+            replica_proof: vec![],
+            new_unsealed_cid: make_piece_cid(b"unsealed from itest vm"),
+        };
+        apply_ok(
+            &v,
+            worker,
+            robust,
+            TokenAmount::zero(),
+            MinerMethod::ProveReplicaUpdates2 as u64,
+            ProveReplicaUpdatesParams2 { updates: vec![replica_update] },
+        )
+    }
     .deserialize()
     .unwrap();
     assert_eq!(vec![100], bf_all(updated_sectors));

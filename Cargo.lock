@@ -1831,6 +1831,7 @@ dependencies = [
  "rand_chacha",
  "regex",
  "serde",
+ "test-case",
  "thiserror",
 ]
 
