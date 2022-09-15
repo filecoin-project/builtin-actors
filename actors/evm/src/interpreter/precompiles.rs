@@ -89,7 +89,7 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
     if len <= input_len {
         input
     } else {
-        input.to_mut().splice(..0, std::iter::repeat(0).take(len - input_len));
+        input.to_mut().resize(len, 0);
         input
     }
 }
@@ -373,6 +373,27 @@ mod tests {
     use super::*;
     use fil_actors_runtime::test_utils::MockRuntime;
     use hex_literal::hex;
+
+    #[test]
+    fn padding() {
+        let input = b"foo bar boxy";
+        let mut input = Vec::from(*input);
+        for i in 12..64 {
+            let mut expected = input.clone();
+            expected.resize(i, 0);
+
+            let res = read_right_pad(&input, i);
+            assert_eq!(&*res, &expected);
+
+            let res = get_data(&input, 0, i);
+            assert_eq!(&*res, &expected);
+
+            let res = get_data(&input, i + i, i);
+            assert_eq!(&*res, &vec![0; i]);
+
+            input.push(0);
+        }
+    }
 
     #[test]
     fn bn_recover() {
