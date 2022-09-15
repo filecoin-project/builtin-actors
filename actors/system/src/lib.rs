@@ -60,7 +60,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let state = State::new(rt.store()).context("failed to construct state")?;
         rt.create(&state)?;
@@ -100,8 +100,8 @@ mod tests {
 
     pub fn new_runtime() -> MockRuntime {
         MockRuntime {
-            receiver: *SYSTEM_ACTOR_ADDR,
-            caller: *SYSTEM_ACTOR_ADDR,
+            receiver: SYSTEM_ACTOR_ADDR,
+            caller: SYSTEM_ACTOR_ADDR,
             caller_type: *SYSTEM_ACTOR_CODE_ID,
             ..Default::default()
         }
@@ -110,8 +110,8 @@ mod tests {
     #[test]
     fn construct_with_root_id() {
         let mut rt = new_runtime();
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
-        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, *SYSTEM_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.call::<Actor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
 
         let state: State = rt.get_state();

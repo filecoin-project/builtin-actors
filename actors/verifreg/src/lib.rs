@@ -50,7 +50,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // root should be an ID address
         let id_addr = rt
@@ -308,7 +308,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_MARKET_ACTOR_ADDR))?;
 
         let client = resolve_to_actor_id(rt, &params.address)?;
         let client = Address::new_id(client);
@@ -405,7 +405,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_MARKET_ACTOR_ADDR))?;
         if params.deal_size < rt.policy().minimum_verified_deal_size {
             return Err(actor_error!(
                 illegal_argument,

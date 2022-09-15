@@ -61,7 +61,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         if let Some(power) = curr_realized_power {
             rt.create(&State::new(power))?;
@@ -89,7 +89,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         let prior_balance = rt.current_balance();
         if params.penalty.is_negative() {
             return Err(actor_error!(illegal_argument, "negative penalty {}", params.penalty));
@@ -209,7 +209,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_POWER_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
         let curr_realized_power = curr_realized_power
             .ok_or_else(|| actor_error!(illegal_argument, "argument cannot be None"))?;
 

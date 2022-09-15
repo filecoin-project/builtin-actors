@@ -3,6 +3,7 @@
 
 // TODO: disable everything else when not using runtime-wasm
 
+#[allow(unused_imports)] // rust seems to be wrong here
 #[macro_use]
 extern crate lazy_static;
 // workaround for a compiler bug, see https://github.com/rust-lang/rust/issues/55779
