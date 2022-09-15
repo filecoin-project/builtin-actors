@@ -16,7 +16,7 @@ use uint::byteorder::{ByteOrder, LE};
 
 pub use substrate_bn::{CurveError, FieldError, GroupError};
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum PrecompileError {
     EcErr(CurveError),
     EcGroupErr(GroupError),
@@ -704,7 +704,7 @@ mod tests {
             )
             .unwrap();
             let res = ec_pairing(&rt, &input);
-            assert_eq!(res, Err(PrecompileError::IncorrectInputSize));
+            assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
         }
     }
 
@@ -734,7 +734,7 @@ mod tests {
         // }
 
         // T0 invalid input len
-        assert_eq!(blake2f(&rt, &[]), Err(PrecompileError::IncorrectInputSize));
+        assert!(matches!(blake2f(&rt, &[]), Err(PrecompileError::IncorrectInputSize)));
 
         // T1 too small
         let input = &hex!(
@@ -745,7 +745,7 @@ mod tests {
             "0000000000000000"
             "02"
         );
-        assert_eq!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize));
+        assert!(matches!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize)));
 
         // T2 too large
         let input = &hex!(
@@ -756,7 +756,7 @@ mod tests {
             "0000000000000000"
             "02"
         );
-        assert_eq!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize));
+        assert!(matches!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize)));
 
         // T3 final block indicator invalid
         let input = &hex!(
@@ -767,12 +767,12 @@ mod tests {
             "0000000000000000"
             "02"
         );
-        assert_eq!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize));
+        assert!(matches!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize)));
 
         // outputs
 
         // T4
-        let expected = &hex!("08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b");
+        let expected = hex!("08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b");
         let input = &hex!(
             "00000000"
             "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
@@ -781,7 +781,7 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert_eq!(blake2f(&rt, input), Ok(expected.to_vec()));
+        assert!(matches!(blake2f(&rt, input), Ok(v) if v == expected));
 
         // T5
         let expected = &hex!("ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923");
@@ -793,7 +793,7 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert_eq!(blake2f(&rt, input), Ok(expected.to_vec()));
+        assert!(matches!(blake2f(&rt, input), Ok(v) if v == expected));
 
         // T6
         let expected = &hex!("75ab69d3190a562c51aef8d88f1c2775876944407270c42c9844252c26d2875298743e7f6d5ea2f2d3e8d226039cd31b4e426ac4f2d3d666a610c2116fde4735");
@@ -805,7 +805,7 @@ mod tests {
             "0000000000000000"
             "00"
         );
-        assert_eq!(blake2f(&rt, input), Ok(expected.to_vec()));
+        assert!(matches!(blake2f(&rt, input), Ok(v) if v == expected));
 
         // T7
         let expected = &hex!("b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421");
@@ -817,7 +817,7 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert_eq!(blake2f(&rt, input), Ok(expected.to_vec()));
+        assert!(matches!(blake2f(&rt, input), Ok(v) if v == expected));
 
         // T8
         // NOTE:
@@ -834,6 +834,6 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert_eq!(blake2f(&rt, input), Ok(expected.to_vec()));
+        assert!(matches!(blake2f(&rt, input), Ok(v) if v == expected));
     }
 }
