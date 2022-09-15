@@ -1,4 +1,4 @@
-use std::{borrow::Cow, convert::TryInto, marker::PhantomData, ops::Mul};
+use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
 
 use super::U256;
 use fil_actors_runtime::runtime::{Primitives, Runtime};
@@ -88,7 +88,7 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
     let input_len = input.len();
     if len > input_len {
         input.to_mut().resize(len, 0);
-    } 
+    }
     input
 }
 
