@@ -171,9 +171,9 @@ fn identity<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 /// modulus exponent a number
 fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let len_buf = read_right_pad(input, 96);
-    let base_len = U256::from_big_endian(&len_buf[..32]).as_usize();
-    let exponent_len = U256::from_big_endian(&len_buf[32..64]).as_usize();
-    let mod_len = U256::from_big_endian(&len_buf[64..96]).as_usize();
+    let base_len = U256::from_big_endian(&len_buf[..32]).low_u64() as usize;
+    let exponent_len = U256::from_big_endian(&len_buf[32..64]).low_u64() as usize;
+    let mod_len = U256::from_big_endian(&len_buf[64..96]).low_u64() as usize;
 
     let input = if input.len() > 96 { &input[96..] } else { &[] };
 
