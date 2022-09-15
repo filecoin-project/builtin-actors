@@ -75,8 +75,7 @@ fn test_magic_calc() {
     // invoke constructor
     rt.expect_validate_caller_any();
 
-    let params =
-        evm::ConstructorParams { bytecode: contract.into(), input_data: RawBytes::default() };
+    let params = evm::ConstructorParams { bytecode: contract.into() };
 
     let result = rt
         .call::<evm::EvmContractActor>(

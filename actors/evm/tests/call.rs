@@ -63,8 +63,7 @@ fn test_call() {
     // construct the proxy
     let contract = call_proxy_contract();
     rt.expect_validate_caller_any();
-    let params =
-        evm::ConstructorParams { bytecode: contract.into(), input_data: RawBytes::default() };
+    let params = evm::ConstructorParams { bytecode: contract.into() };
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
@@ -131,8 +130,7 @@ fn test_methodnum() {
 
     let contract = methodnum_contract();
     rt.expect_validate_caller_any();
-    let params =
-        evm::ConstructorParams { bytecode: contract.into(), input_data: RawBytes::default() };
+    let params = evm::ConstructorParams { bytecode: contract.into() };
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
@@ -204,8 +202,7 @@ fn test_callactor() {
     // construct the proxy
     let contract = callactor_proxy_contract();
     rt.expect_validate_caller_any();
-    let params =
-        evm::ConstructorParams { bytecode: contract.into(), input_data: RawBytes::default() };
+    let params = evm::ConstructorParams { bytecode: contract.into() };
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,

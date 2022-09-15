@@ -68,10 +68,7 @@ impl EvmContractActor {
         })?;
 
         // create a new execution context
-        let mut exec_state = ExecutionState::new(
-            Method::Constructor as u64,
-            Bytes::copy_from_slice(&params.input_data),
-        );
+        let mut exec_state = ExecutionState::new(Method::Constructor as u64, Bytes::new());
 
         // identify bytecode valid jump destinations
         let bytecode = Bytecode::new(&params.bytecode)
@@ -266,7 +263,6 @@ impl ActorCode for EvmContractActor {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ConstructorParams {
     pub bytecode: RawBytes,
-    pub input_data: RawBytes,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
