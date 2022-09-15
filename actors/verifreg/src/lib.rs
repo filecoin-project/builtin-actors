@@ -53,8 +53,8 @@ pub enum Method {
     AddVerifier = 2,
     RemoveVerifier = 3,
     AddVerifiedClient = 4,
-    UseBytes = 5,     // Deprecated
-    RestoreBytes = 6, // Deprecated
+    // UseBytes = 5,     // Deprecated
+    // RestoreBytes = 6, // Deprecated
     RemoveVerifiedClientDataCap = 7,
     RemoveExpiredAllocations = 8,
     ClaimAllocations = 9,
@@ -222,93 +222,6 @@ impl Actor {
             &params.allowance, client
         ))?;
         Ok(())
-    }
-
-    /// Called by StorageMarketActor during PublishStorageDeals.
-    /// Do not allow partially verified deals (DealSize must be greater than equal to allowed cap).
-    /// Delete VerifiedClient if remaining DataCap is smaller than minimum VerifiedDealSize.
-    pub fn use_bytes<BS, RT>(rt: &mut RT, params: UseBytesParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
-        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
-
-        let client = resolve_to_actor_id(rt, &params.address).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", params.address),
-        )?;
-
-        let client = Address::new_id(client);
-
-        if params.deal_size < rt.policy().minimum_verified_allocation_size {
-            return Err(actor_error!(
-                illegal_argument,
-                "use bytes {} is below minimum {}",
-                params.deal_size,
-                rt.policy().minimum_verified_allocation_size
-            ));
-        }
-
-        // Deduct from client's token allowance.
-        let remaining = destroy(rt, &client, &params.deal_size).context(format!(
-            "failed to deduct {} from allowance for {}",
-            &params.deal_size, &client
-        ))?;
-
-        // Destroy any remaining balance below minimum verified deal size.
-        if remaining.is_positive() && remaining < rt.policy().minimum_verified_allocation_size {
-            destroy(rt, &client, &remaining).context(format!(
-                "failed to destroy remaining {} from allowance for {}",
-                &remaining, &client
-            ))?;
-        }
-        Ok(())
-    }
-
-    /// Called by HandleInitTimeoutDeals from StorageMarketActor when a VerifiedDeal fails to init.
-    /// Restore allowable cap for the client, creating new entry if the client has been deleted.
-    pub fn restore_bytes<BS, RT>(rt: &mut RT, params: RestoreBytesParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
-        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_MARKET_ACTOR_ADDR))?;
-        if params.deal_size < rt.policy().minimum_verified_allocation_size {
-            return Err(actor_error!(
-                illegal_argument,
-                "Below minimum VerifiedDealSize requested in RestoreBytes: {}",
-                params.deal_size
-            ));
-        }
-
-        let client = resolve_to_actor_id(rt, &params.address).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", params.address),
-        )?;
-
-        let client = Address::new_id(client);
-
-        let st: State = rt.state()?;
-        // Disallow root as a client.
-        if client == st.root_key {
-            return Err(actor_error!(illegal_argument, "cannot restore allowance for root"));
-        }
-
-        // Disallow existing verifiers as clients.
-        if st.get_verifier_cap(rt.store(), &client)?.is_some() {
-            return Err(actor_error!(
-                illegal_argument,
-                "cannot restore allowance for verifier {}",
-                client
-            ));
-        }
-
-        let operators = vec![*STORAGE_MARKET_ACTOR_ADDR];
-        mint(rt, &client, &params.deal_size, operators).context(format!(
-            "failed to restore {} to allowance for {}",
-            &params.deal_size, &client
-        ))
     }
 
     /// Removes DataCap allocated to a verified client.
@@ -1052,14 +965,6 @@ impl ActorCode for Actor {
             }
             Some(Method::AddVerifiedClient) => {
                 Self::add_verified_client(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::UseBytes) => {
-                Self::use_bytes(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::RestoreBytes) => {
-                Self::restore_bytes(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::RemoveVerifiedClientDataCap) => {
