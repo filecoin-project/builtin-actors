@@ -1,4 +1,4 @@
-use std::{convert::TryInto, marker::PhantomData, ops::Mul};
+use std::{borrow::Cow, convert::TryInto, marker::PhantomData, ops::Mul};
 
 use super::U256;
 use fil_actors_runtime::runtime::{Primitives, Runtime};
@@ -78,55 +78,40 @@ impl<BS: Blockstore, RT: Runtime<BS>> Precompiles<BS, RT> {
     }
 }
 
-/// Intermediary container to hold a data as slice or turn into a vec with padding as needed.
-/// This is intended to not copy in normal operations
-enum Data<'a> {
-    Slice(&'a [u8]),
-    Vec(Vec<u8>),
+/// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/common/bytes.go#L108
+fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u8]> {
+    let mut input: Cow<[u8]> = input.into();
+    let input_len = input.len();
+    if len <= input_len {
+        input
+    } else {
+        input.to_mut().splice(..0, core::iter::repeat(0).take(len - input_len));
+        input
+    }
 }
-impl<'a> Data<'a> {
-    fn slice(&self) -> &[u8] {
-        match self {
-            Self::Slice(s) => s,
-            Self::Vec(v) => v,
-        }
-    }
 
-    /// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/common/bytes.go#L108
-    fn read_right_pad(input: &'a [u8], len: usize) -> Self {
-        if len <= input.len() {
-            Self::Slice(input)
-        } else {
-            let mut padded = vec![0u8; len];
-            padded[..input.len()].copy_from_slice(input);
-            Self::Vec(padded)
-        }
-    }
+/// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/common.go#L54
+fn get_data(input: &[u8], start: usize, len: usize) -> Cow<[u8]> {
+    let start = start.min(input.len());
+    let end = (start + len).min(input.len());
+    read_right_pad(&input[start..end], len)
+}
 
-    /// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/common.go#L54
-    fn get_data(input: &'a [u8], start: usize, len: usize) -> Self {
-        let start = start.min(input.len());
-        let end = (start + len).min(input.len());
-        Self::read_right_pad(&input[start..end], len)
-    }
+/// read 32 bytes (u256) from buffer or pad
+fn read_u256_padded(input: &[u8], start: usize) -> U256 {
+    let input = get_data(input, start, 32);
+    U256::from_big_endian(&input)
+}
 
-    /// read 32 bytes (u256) from buffer or pad
-    fn read_u256_padded(input: &[u8], start: usize) -> U256 {
-        let input = Data::get_data(input, start, 32);
-        U256::from_big_endian(input.slice())
-    }
-
-    fn read_bigint(input: &'a [u8], start: usize, len: usize) -> BigUint {
-        let data = Self::get_data(input, start, len);
-        BigUint::from_bytes_be(data.slice())
-    }
+fn read_bigint(input: &[u8], start: usize, len: usize) -> BigUint {
+    let data = get_data(input, start, len);
+    BigUint::from_bytes_be(&data)
 }
 
 // https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L165
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    let data = Data::read_right_pad(input, 128);
-    let input = data.slice();
+    let input = read_right_pad(input, 128);
 
     let hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE] = input[0..32].try_into().unwrap();
     let r = BigUint::from_bytes_be(&input[64..96]);
@@ -148,6 +133,7 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
             16,
         )
         .unwrap();
+
         r <= secp256k1_n && s <= secp256k1_n && (v == 0 || v == 1)
     };
 
@@ -193,9 +179,9 @@ fn identity<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 // https://eips.ethereum.org/EIPS/eip-198
 /// modulus exponent a number
 fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let base_len = Data::read_u256_padded(input, 0).as_usize();
-    let exponent_len = Data::read_u256_padded(input, 32).as_usize();
-    let mod_len = Data::read_u256_padded(input, 64).as_usize();
+    let base_len = read_u256_padded(input, 0).as_usize();
+    let exponent_len = read_u256_padded(input, 32).as_usize();
+    let mod_len = read_u256_padded(input, 64).as_usize();
 
     let input = if input.len() > 96 { &input[96..] } else { &[] };
 
@@ -203,9 +189,9 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
         return Ok(Vec::new());
     }
 
-    let base = Data::read_bigint(input, 0, base_len);
-    let exponent = Data::read_bigint(input, base_len, exponent_len);
-    let modulus = Data::read_bigint(input, base_len + exponent_len, mod_len);
+    let base = read_bigint(input, 0, base_len);
+    let exponent = read_bigint(input, base_len, exponent_len);
+    let modulus = read_bigint(input, base_len + exponent_len, mod_len);
 
     if modulus.is_zero() || modulus.is_one() {
         // mod 0 is undefined: 0, base mod 1 is always 0
@@ -227,8 +213,8 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 /// converts 2 byte arrays (U256) into a point on a field
 /// exits with EcErr for any failed operation
 fn curve_point(x: U256, y: U256) -> Result<G1, PrecompileError> {
-    let x = Fq::from_u256(x.0.into())?;
-    let y = Fq::from_u256(y.0.into())?;
+    let x = Fq::from_u256(x.into())?;
+    let y = Fq::from_u256(y.into())?;
 
     Ok(if x.is_zero() && y.is_zero() { G1::zero() } else { AffineG1::new(x, y)?.into() })
 }
@@ -248,14 +234,14 @@ fn curve_to_vec(curve: G1) -> Vec<u8> {
 /// add 2 points together on an elliptic curve
 fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let point1 = {
-        let x = Data::read_u256_padded(input, 0);
-        let y = Data::read_u256_padded(input, 32);
+        let x = read_u256_padded(input, 0);
+        let y = read_u256_padded(input, 32);
         curve_point(x, y)?
     };
 
     let point2 = {
-        let x = Data::read_u256_padded(input, 64);
-        let y = Data::read_u256_padded(input, 96);
+        let x = read_u256_padded(input, 64);
+        let y = read_u256_padded(input, 96);
         curve_point(x, y)?
     };
 
@@ -266,13 +252,13 @@ fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 /// multiply a point on an elliptic curve by a scalar value
 fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let point = {
-        let x = Data::read_u256_padded(input, 0);
-        let y = Data::read_u256_padded(input, 32);
+        let x = read_u256_padded(input, 0);
+        let y = read_u256_padded(input, 32);
         curve_point(x, y)?
     };
 
     let scalar = {
-        let data = Data::read_u256_padded(input, 64);
+        let data = read_u256_padded(input, 64);
         Fr::new_mul_factor(data.into())
     };
 
@@ -297,13 +283,13 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
         let y3 = read_u256(input, 128)?;
         let x3 = read_u256(input, 160)?;
 
-        let ax = Fq::from_u256(x1.0.into())?;
-        let ay = Fq::from_u256(y1.0.into())?;
+        let ax = Fq::from_u256(x1.into())?;
+        let ay = Fq::from_u256(y1.into())?;
 
-        let twisted_ax = Fq::from_u256(x2.0.into())?;
-        let twisted_ay = Fq::from_u256(y2.0.into())?;
-        let twisted_bx = Fq::from_u256(x3.0.into())?;
-        let twisted_by = Fq::from_u256(y3.0.into())?;
+        let twisted_ax = Fq::from_u256(x2.into())?;
+        let twisted_ay = Fq::from_u256(y2.into())?;
+        let twisted_bx = Fq::from_u256(x3.into())?;
+        let twisted_by = Fq::from_u256(y3.into())?;
 
         let twisted_a = Fq2::new(twisted_ax, twisted_ay);
         let twisted_b = Fq2::new(twisted_bx, twisted_by);
