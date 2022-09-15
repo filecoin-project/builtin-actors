@@ -39,7 +39,7 @@ impl-serde = { version = "0.3.2", default-features = false }
 arrayvec = { version = "0.7.2", features = ["serde"] }
 hex = "0.4.3"
 hex-literal = "0.3.4"
-substrate-bn = { version = "0.6.0", default-features = false } 
+substrate-bn = { version = "0.6.0", default-features = false }
 near-blake2 = { version = "0.9.1", git = "https://github.com/filecoin-project/near-blake2.git" }
 lazy_static = "1.4.0"
 
