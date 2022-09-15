@@ -216,8 +216,8 @@ def_opcodes! {
     //////////////////////////////////////////////////////////
     // FEVM extension opcodes
     // FIL call conventions
-    0xb0: CALLACTOR(6, -5),
-    0xb1: METHODNUM(0, 1),
+    0xc0: CALLACTOR(6, -5),
+    0xc1: METHODNUM(0, 1),
     //////////////////////////////////////////////////////////
     0xf0: CREATE(3, -2),
     0xf1: CALL(7, -6),
