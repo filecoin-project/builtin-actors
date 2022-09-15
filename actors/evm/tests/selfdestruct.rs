@@ -12,7 +12,6 @@ fn test_selfdestruct() {
 
     let params = evm::ConstructorParams {
         bytecode: hex::decode(include_str!("selfdestruct.hex")).unwrap().into(),
-        input_data: RawBytes::default(),
     };
 
     // invoke constructor
