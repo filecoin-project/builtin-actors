@@ -16,6 +16,10 @@ use uint::byteorder::{ByteOrder, LE};
 
 pub use substrate_bn::{CurveError, FieldError, GroupError};
 
+lazy_static::lazy_static! {
+    pub(crate) static ref SECP256K1: BigUint = BigUint::from_bytes_be(&hex::decode("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141").unwrap());
+}
+
 #[derive(Debug)]
 pub enum PrecompileError {
     EcErr(CurveError),
@@ -122,13 +126,7 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let valid = if r <= BigUint::one() || s <= BigUint::one() {
         false
     } else {
-        let secp256k1_n = BigUint::parse_bytes(
-            b"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
-            16,
-        )
-        .unwrap();
-
-        r <= secp256k1_n && s <= secp256k1_n && (v == 0 || v == 1)
+        r <= *SECP256K1 && s <= *SECP256K1 && (v == 0 || v == 1)
     };
 
     if !valid {
