@@ -18,10 +18,10 @@ use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
-    AllocationID, AllocationRequest, AllocationRequests, ClaimAllocationsParams,
-    ClaimAllocationsReturn, ClaimID, DataCap, GetClaimsParams, GetClaimsReturn, Method,
-    RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RestoreBytesParams,
-    SectorAllocationClaim, State,
+    AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse,
+    ClaimAllocationsParams, ClaimAllocationsReturn, ClaimID, DataCap, GetClaimsParams,
+    GetClaimsReturn, Method, RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn,
+    RestoreBytesParams, SectorAllocationClaim, State,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -332,6 +332,7 @@ impl Harness {
         &self,
         rt: &mut MockRuntime,
         payload: FRC46TokenReceived,
+        expected_alloc_ids: Vec<AllocationID>,
     ) -> Result<(), ActorError> {
         rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
         let params = UniversalReceiverParams {
@@ -344,7 +345,10 @@ impl Harness {
             Method::UniversalReceiverHook as MethodNum,
             &serialize(&params, "hook params").unwrap(),
         )?;
-        assert_eq!(RawBytes::default(), ret);
+        assert_eq!(
+            RawBytes::serialize(AllocationsResponse { allocations: expected_alloc_ids }).unwrap(),
+            ret
+        );
         rt.verify();
         Ok(())
     }

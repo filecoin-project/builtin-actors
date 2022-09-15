@@ -628,10 +628,14 @@ impl Actor {
         Ok(GetClaimsReturn { batch_info: batch_gen.gen(), claims })
     }
 
+    // Receives data cap tokens (only) and creates allocations according to one or more
+    // allocation requests specified in the transfer's operator data.
+    // The token amount received must exactly correspond to the sum of the requested allocation sizes.
+    // Returns the ids of the created allocations.
     pub fn universal_receiver_hook<BS, RT>(
         rt: &mut RT,
         params: UniversalReceiverParams,
-    ) -> Result<(), ActorError>
+    ) -> Result<AllocationsResponse, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
@@ -672,10 +676,10 @@ impl Actor {
             })
         }
         // Save allocations
-        rt.transaction(|st: &mut State, rt| {
+        let ids = rt.transaction(|st: &mut State, rt| {
             st.insert_allocations(rt.store(), client, new_allocs.into_iter())
         })?;
-        Ok(())
+        Ok(AllocationsResponse { allocations: ids })
     }
 }
 
@@ -1085,8 +1089,8 @@ impl ActorCode for Actor {
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::UniversalReceiverHook) => {
-                Self::universal_receiver_hook(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
+                let res = Self::universal_receiver_hook(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
             }
             Some(Method::GetClaims) => {
                 let res = Self::get_claims(rt, cbor::deserialize_params(params)?)?;

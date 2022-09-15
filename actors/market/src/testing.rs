@@ -5,6 +5,7 @@ use std::{
 };
 
 use cid::Cid;
+use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, parse_uint_key, MessageAccumulator, SetMultimap,
 };
@@ -15,8 +16,10 @@ use fvm_shared::{
     deal::DealID,
     econ::TokenAmount,
 };
+use integer_encoding::VarInt;
 use num_traits::Zero;
 
+use crate::ext::verifreg::AllocationID;
 use crate::{
     balance_table::BalanceTable, deal_cid, DealArray, DealMetaArray, State, PROPOSALS_AMT_BITWIDTH,
 };
@@ -138,6 +141,26 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
         ),
     );
 
+    let mut pending_allocations = BTreeMap::<DealID, AllocationID>::new();
+    match make_map_with_root_and_bitwidth(&state.pending_deal_allocation_ids, store, HAMT_BIT_WIDTH)
+    {
+        Ok(pending_allocations_hamt) => {
+            let ret = pending_allocations_hamt.for_each(|key, allocation_id| {
+                let deal_id: u64 = u64::decode_var(key.0.as_slice()).unwrap().0;
+
+                acc.require(
+                    proposal_stats.get(&deal_id).is_some(),
+                    format!("pending deal allocation {} not found in proposals", deal_id),
+                );
+
+                pending_allocations.insert(deal_id, *allocation_id);
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating pending allocations");
+        }
+        Err(e) => acc.add(format!("error loading pending allocations: {e}")),
+    };
+
     // deal states
     let mut deal_state_count = 0;
     match DealMetaArray::load(&state.states, store) {
@@ -172,6 +195,7 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
                 } else {
                     acc.add(format!("no deal proposal for deal state {deal_id}"));
                 }
+                acc.require(!pending_allocations.contains_key(&deal_id), format!("deal {deal_id} has pending allocation"));
 
                 deal_state_count += 1;
 
@@ -184,7 +208,6 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
 
     // pending proposals
     let mut pending_proposal_count = 0;
-
     match make_map_with_root_and_bitwidth::<_, ()>(
         &state.pending_proposals,
         store,

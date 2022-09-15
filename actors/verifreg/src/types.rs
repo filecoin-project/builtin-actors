@@ -175,6 +175,14 @@ pub struct AllocationRequests {
 }
 impl Cbor for AllocationRequests {}
 
+/// Recipient data payload in response to a datacap token transfer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct AllocationsResponse {
+    pub allocations: Vec<AllocationID>,
+}
+
+impl Cbor for AllocationsResponse {}
+
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 
 pub struct GetClaimsParams {
