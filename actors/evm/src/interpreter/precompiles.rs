@@ -14,7 +14,7 @@ use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
 
-pub use substrate_bn::{GroupError, FieldError, CurveError};
+pub use substrate_bn::{CurveError, FieldError, GroupError};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum PrecompileError {
@@ -88,7 +88,7 @@ impl<'a> Data<'a> {
     fn slice(&self) -> &[u8] {
         match self {
             Self::Slice(s) => s,
-            Self::Vec(v) => &v,
+            Self::Vec(v) => v,
         }
     }
 
@@ -160,7 +160,7 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     sig[..64].copy_from_slice(&input[64..128]);
     sig[64] = v;
 
-    let pubkey = if let Ok(key) = rt.recover_secp_public_key(&hash, &sig) {
+    let pubkey = if let Ok(key) = rt.recover_secp_public_key(hash, &sig) {
         key
     } else {
         return Ok(Vec::new());
@@ -231,11 +231,7 @@ fn curve_point(x: U256, y: U256) -> Result<G1, PrecompileError> {
     let x = Fq::from_u256(x.0.into())?;
     let y = Fq::from_u256(y.0.into())?;
 
-    Ok(if x.is_zero() && y.is_zero() {
-        G1::zero()
-    } else {
-        AffineG1::new(x, y)?.into()
-    })
+    Ok(if x.is_zero() && y.is_zero() { G1::zero() } else { AffineG1::new(x, y)?.into() })
 }
 
 fn curve_to_vec(curve: G1) -> Vec<u8> {
@@ -246,7 +242,7 @@ fn curve_to_vec(curve: G1) -> Vec<u8> {
             product.y().to_big_endian(&mut output[32..]).unwrap();
             output
         })
-        .unwrap_or(vec![0; 64])
+        .unwrap_or_else(|| vec![0; 64])
 }
 
 // https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L413
@@ -287,7 +283,6 @@ fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 // https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L504
 /// pairs multple groups of twisted bn curves
 fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
         /// read 32 bytes (u256) from buffer or error
         fn read_u256(input: &[u8], start: usize) -> Result<U256, PrecompileError> {
@@ -531,7 +526,7 @@ mod tests {
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
-        use super::{MockRuntime, GroupError};
+        use super::{GroupError, MockRuntime};
         use crate::interpreter::precompiles::{ec_add, ec_mul, ec_pairing, PrecompileError};
 
         #[test]

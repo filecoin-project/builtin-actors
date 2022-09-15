@@ -20,9 +20,9 @@ impl From<&TokenAmount> for U256 {
     }
 }
 
-impl Into<arith::U256> for U256 {
-    fn into(self) -> arith::U256 {
-        arith::U256::from(self.0)
+impl From<U256> for arith::U256 {
+    fn from(src: U256) -> arith::U256 {
+        arith::U256::from(src.0)
     }
 }
 
