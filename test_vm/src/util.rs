@@ -7,6 +7,7 @@ use fil_actor_market::{
     PublishStorageDealsReturn,
 };
 
+use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationsRequest};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams,
@@ -21,6 +22,11 @@ use fil_actor_power::{
 };
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
+use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_fungible_token::receiver::types::{
+    FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
+};
+use fil_fungible_token::token::types::TransferFromParams;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
 use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
@@ -565,7 +571,7 @@ pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
 #[allow(clippy::too_many_arguments)]
 pub fn publish_deal(
     v: &VM,
-    provider: Address,
+    worker: Address,
     deal_client: Address,
     miner_id: Address,
     deal_label: String,
@@ -600,7 +606,7 @@ pub fn publish_deal(
     };
     let ret: PublishStorageDealsReturn = apply_ok(
         v,
-        provider,
+        worker,
         *STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
         MarketMethod::PublishStorageDeals as u64,
@@ -632,9 +638,54 @@ pub fn publish_deal(
         },
     ];
     if verified_deal {
+        let deal_term = deal.end_epoch - deal.start_epoch;
+        let token_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
+        let alloc_expiration = min(deal.start_epoch, v.curr_epoch + 60 * EPOCHS_IN_DAY);
+
+        let alloc_reqs = AllocationsRequest {
+            requests: vec![AllocationRequest {
+                provider: miner_id,
+                data: deal.piece_cid,
+                size: deal.piece_size,
+                term_min: deal_term,
+                term_max: deal_term + 90 * EPOCHS_IN_DAY,
+                expiration: alloc_expiration,
+            }],
+        };
         expect_publish_invocs.push(ExpectInvocation {
-            to: *VERIFIED_REGISTRY_ACTOR_ADDR,
-            method: VerifregMethod::UseBytes as u64,
+            to: *DATACAP_TOKEN_ACTOR_ADDR,
+            method: DataCapMethod::TransferFrom as u64,
+            params: Some(
+                RawBytes::serialize(&TransferFromParams {
+                    from: deal_client,
+                    to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+                    amount: token_amount.clone(),
+                    operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                })
+                .unwrap(),
+            ),
+            code: Some(ExitCode::OK),
+            subinvocs: Some(vec![ExpectInvocation {
+                to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+                method: VerifregMethod::UniversalReceiverHook as u64,
+                params: Some(
+                    RawBytes::serialize(&UniversalReceiverParams {
+                        type_: FRC46_TOKEN_TYPE,
+                        payload: RawBytes::serialize(&FRC46TokenReceived {
+                            from: deal_client.id().unwrap(),
+                            to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+                            operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
+                            amount: token_amount,
+                            operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                            token_data: Default::default(),
+                        })
+                        .unwrap(),
+                    })
+                    .unwrap(),
+                ),
+                code: Some(ExitCode::OK),
+                ..Default::default()
+            }]),
             ..Default::default()
         })
     }

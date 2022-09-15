@@ -65,6 +65,7 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
         &MINER_ADDRESSES,
         START_EPOCH,
         END_EPOCH,
+        1,
     );
     let deal_proposal = get_deal_proposal(&mut rt, deal_id);
 
@@ -116,7 +117,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
     ];
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(&mut rt, &MINER_ADDRESSES, &deals.clone());
+    let deal_ids = publish_deals(&mut rt, &MINER_ADDRESSES, &deals.clone(), 1);
 
     let response = verify_deals_for_activation(
         &mut rt,

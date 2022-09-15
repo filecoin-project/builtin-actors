@@ -150,7 +150,7 @@ impl State {
         store: &BS,
         client: ActorID,
         new_allocs: I,
-    ) -> Result<(), ActorError>
+    ) -> Result<Vec<AllocationID>, ActorError>
     where
         I: Iterator<Item = Allocation>,
     {
@@ -172,7 +172,8 @@ impl State {
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to put allocations")?;
         self.save_allocs(&mut allocs)?;
         self.next_allocation_id += count;
-        Ok(())
+        let allocated_ids = (first_id..first_id + count).collect();
+        Ok(allocated_ids)
     }
 
     pub fn load_claims<'a, BS: Blockstore>(
