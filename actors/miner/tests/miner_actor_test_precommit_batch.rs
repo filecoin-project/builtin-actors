@@ -388,7 +388,6 @@ mod miner_actor_precommit_batch {
             h.expect_query_network_info(&mut rt);
             let mut sector_deals = Vec::new();
             let mut sector_deal_data = Vec::new();
-            let mut any_deals = false;
             for sector in &sectors {
                 sector_deals.push(SectorDeals {
                     sector_type: sector.seal_proof,
@@ -396,23 +395,20 @@ mod miner_actor_precommit_batch {
                     deal_ids: sector.deal_ids.clone(),
                 });
 
-                sector_deal_data.push(SectorDealData { commd: Some(make_piece_cid(&[2])) }); //mismatch here
-                                                                                             // Sanity check on expectations
-                let sector_has_deals = !sector.deal_ids.is_empty();
-                any_deals |= sector_has_deals;
+                //mismatch here
+                sector_deal_data.push(SectorDealData { commd: Some(make_piece_cid(&[2])) });
             }
-            if any_deals {
-                let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
-                let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
-                rt.expect_send(
-                    *STORAGE_MARKET_ACTOR_ADDR,
-                    MarketMethod::VerifyDealsForActivation as u64,
-                    RawBytes::serialize(vdparams).unwrap(),
-                    TokenAmount::zero(),
-                    RawBytes::serialize(vdreturn).unwrap(),
-                    ExitCode::OK,
-                );
-            }
+
+            let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
+            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
+            rt.expect_send(
+                *STORAGE_MARKET_ACTOR_ADDR,
+                MarketMethod::VerifyDealsForActivation as u64,
+                RawBytes::serialize(vdparams).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::serialize(vdreturn).unwrap(),
+                ExitCode::OK,
+            );
 
             let state = h.get_state(&rt);
 

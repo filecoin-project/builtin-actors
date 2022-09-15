@@ -65,7 +65,7 @@ use fvm_shared::sector::{
     SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{HAMT_BIT_WIDTH, METHOD_SEND};
+use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
 
 use cid::Cid;
 use itertools::Itertools;
@@ -508,11 +508,20 @@ impl ActorHarness {
         first_for_miner: bool,
         base_fee: &TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        if !self.options.use_v2_pre_commit_and_replica_update {
+        if self.options.use_v2_pre_commit_and_replica_update {
+            self.pre_commit_sector_batch_inner(
+                rt,
+                &params.sectors,
+                Method::PreCommitSectorBatch2 as u64,
+                params.clone(),
+                first_for_miner,
+                base_fee,
+            )
+        } else {
             let mut deal_data = Vec::new();
             let v1 = params
                 .sectors
-                .into_iter()
+                .iter()
                 .map(|s| {
                     deal_data.push(SectorDealData { commd: s.unsealed_cid.0 });
                     PreCommitSectorParams {
@@ -520,7 +529,7 @@ impl ActorHarness {
                         sector_number: s.sector_number,
                         sealed_cid: s.sealed_cid,
                         seal_rand_epoch: s.seal_rand_epoch,
-                        deal_ids: s.deal_ids,
+                        deal_ids: s.deal_ids.clone(),
                         expiration: s.expiration,
                         // unused
                         replace_capacity: false,
@@ -531,14 +540,68 @@ impl ActorHarness {
                 })
                 .collect();
 
-            return self.pre_commit_sector_batch(
+            self.pre_commit_sector_batch_inner(
                 rt,
+                &params.sectors,
+                Method::PreCommitSectorBatch as u64,
                 PreCommitSectorBatchParams { sectors: v1 },
-                &PreCommitBatchConfig { first_for_miner, sector_deal_data: deal_data },
+                first_for_miner,
+                base_fee,
+            )
+        }
+    }
+    pub fn pre_commit_sector_batch(
+        &self,
+        rt: &mut MockRuntime,
+        params: PreCommitSectorBatchParams,
+        conf: &PreCommitBatchConfig,
+        base_fee: &TokenAmount,
+    ) -> Result<RawBytes, ActorError> {
+        let v2: Vec<_> = params
+            .sectors
+            .iter()
+            .zip(conf.sector_deal_data.iter().chain(iter::repeat(&SectorDealData { commd: None })))
+            .map(|(s, dd)| SectorPreCommitInfo {
+                seal_proof: s.seal_proof,
+                sector_number: s.sector_number,
+                sealed_cid: s.sealed_cid,
+                seal_rand_epoch: s.seal_rand_epoch,
+                deal_ids: s.deal_ids.clone(),
+                expiration: s.expiration,
+                unsealed_cid: CompactCommD::new(dd.commd),
+            })
+            .collect();
+
+        if self.options.use_v2_pre_commit_and_replica_update {
+            return self.pre_commit_sector_batch_inner(
+                rt,
+                &v2,
+                Method::PreCommitSectorBatch2 as u64,
+                PreCommitSectorBatchParams2 { sectors: v2.clone() },
+                conf.first_for_miner,
                 base_fee,
             );
+        } else {
+            self.pre_commit_sector_batch_inner(
+                rt,
+                &v2,
+                Method::PreCommitSectorBatch as u64,
+                params,
+                conf.first_for_miner,
+                base_fee,
+            )
         }
+    }
 
+    fn pre_commit_sector_batch_inner(
+        &self,
+        rt: &mut MockRuntime,
+        sectors: &[SectorPreCommitInfo],
+        method: MethodNum,
+        param: impl Cbor,
+        first_for_miner: bool,
+        base_fee: &TokenAmount,
+    ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
@@ -546,7 +609,7 @@ impl ActorHarness {
         let mut sector_deals = Vec::new();
         let mut sector_deal_data = Vec::new();
         let mut any_deals = false;
-        for sector in params.sectors.iter() {
+        for sector in sectors.iter() {
             sector_deals.push(SectorDeals {
                 sector_type: sector.seal_proof,
                 sector_expiry: sector.expiration,
@@ -556,122 +619,6 @@ impl ActorHarness {
             sector_deal_data.push(SectorDealData { commd: sector.unsealed_cid.0 });
             // Sanity check on expectations
             let sector_has_deals = !sector.deal_ids.is_empty();
-            any_deals |= sector_has_deals;
-        }
-        if any_deals {
-            let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
-            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
-            rt.expect_send(
-                *STORAGE_MARKET_ACTOR_ADDR,
-                MarketMethod::VerifyDealsForActivation as u64,
-                RawBytes::serialize(vdparams).unwrap(),
-                TokenAmount::zero(),
-                RawBytes::serialize(vdreturn).unwrap(),
-                ExitCode::OK,
-            );
-        }
-
-        let state = self.get_state(rt);
-        // burn networkFee
-        if state.fee_debt.is_positive() || params.sectors.len() > 1 {
-            let expected_network_fee =
-                aggregate_pre_commit_network_fee(params.sectors.len() as i64, base_fee);
-            let expected_burn = expected_network_fee + state.fee_debt;
-            rt.expect_send(
-                *BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                RawBytes::default(),
-                expected_burn,
-                RawBytes::default(),
-                ExitCode::OK,
-            );
-        }
-
-        if first_for_miner {
-            let dlinfo = new_deadline_info_from_offset_and_epoch(
-                &rt.policy,
-                state.proving_period_start,
-                rt.epoch,
-            );
-            let cron_params = make_deadline_cron_event_params(dlinfo.last());
-            rt.expect_send(
-                *STORAGE_POWER_ACTOR_ADDR,
-                PowerMethod::EnrollCronEvent as u64,
-                RawBytes::serialize(cron_params).unwrap(),
-                TokenAmount::zero(),
-                RawBytes::default(),
-                ExitCode::OK,
-            );
-        }
-
-        let result = rt.call::<Actor>(
-            Method::PreCommitSectorBatch2 as u64,
-            &RawBytes::serialize(params.clone()).unwrap(),
-        );
-        result
-    }
-    pub fn pre_commit_sector_batch(
-        &self,
-        rt: &mut MockRuntime,
-        params: PreCommitSectorBatchParams,
-        conf: &PreCommitBatchConfig,
-        base_fee: &TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
-        if self.options.use_v2_pre_commit_and_replica_update {
-            let v2 = params
-                .sectors
-                .into_iter()
-                .zip(
-                    conf.sector_deal_data
-                        .iter()
-                        .chain(iter::repeat(&SectorDealData { commd: None })),
-                )
-                .map(|(s, dd)| SectorPreCommitInfo {
-                    seal_proof: s.seal_proof,
-                    sector_number: s.sector_number,
-                    sealed_cid: s.sealed_cid,
-                    seal_rand_epoch: s.seal_rand_epoch,
-                    deal_ids: s.deal_ids,
-                    expiration: s.expiration,
-                    unsealed_cid: CompactCommD::new(dd.commd),
-                })
-                .collect();
-
-            return self.pre_commit_sector_batch_v2(
-                rt,
-                PreCommitSectorBatchParams2 { sectors: v2 },
-                conf.first_for_miner,
-                base_fee,
-            );
-        }
-
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        rt.expect_validate_caller_addr(self.caller_addrs());
-
-        self.expect_query_network_info(rt);
-        let mut sector_deals = Vec::new();
-        let mut sector_deal_data = Vec::new();
-        let mut any_deals = false;
-        for (i, sector) in params.sectors.iter().enumerate() {
-            sector_deals.push(SectorDeals {
-                sector_type: sector.seal_proof,
-                sector_expiry: sector.expiration,
-                deal_ids: sector.deal_ids.clone(),
-            });
-
-            if conf.sector_deal_data.len() > i {
-                sector_deal_data.push(conf.sector_deal_data[i].clone());
-            } else {
-                sector_deal_data.push(SectorDealData { commd: None });
-            }
-
-            // Sanity check on expectations
-            let sector_has_deals = !sector.deal_ids.is_empty();
-            assert_eq!(
-                sector_has_deals,
-                conf.sector_deal_data.get(i).and_then(|dd| { dd.commd }).is_some(),
-                "sector deals inconsistent with result from verification"
-            );
             any_deals |= sector_has_deals;
         }
         if any_deals {
@@ -689,9 +636,9 @@ impl ActorHarness {
 
         let state = self.get_state(rt);
         // burn networkFee
-        if state.fee_debt.is_positive() || params.sectors.len() > 1 {
+        if state.fee_debt.is_positive() || sectors.len() > 1 {
             let expected_network_fee =
-                aggregate_pre_commit_network_fee(params.sectors.len() as i64, base_fee);
+                aggregate_pre_commit_network_fee(sectors.len() as i64, base_fee);
             let expected_burn = expected_network_fee + state.fee_debt;
             rt.expect_send(
                 BURNT_FUNDS_ACTOR_ADDR,
@@ -703,7 +650,7 @@ impl ActorHarness {
             );
         }
 
-        if conf.first_for_miner {
+        if first_for_miner {
             let dlinfo = new_deadline_info_from_offset_and_epoch(
                 &rt.policy,
                 state.proving_period_start,
@@ -720,10 +667,7 @@ impl ActorHarness {
             );
         }
 
-        let result = rt.call::<Actor>(
-            Method::PreCommitSectorBatch as u64,
-            &RawBytes::serialize(params.clone()).unwrap(),
-        );
+        let result = rt.call::<Actor>(method as u64, &RawBytes::serialize(param).unwrap());
         result
     }
 
