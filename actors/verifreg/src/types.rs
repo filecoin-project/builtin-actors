@@ -36,18 +36,6 @@ pub type AddVerifierClientParams = VerifierParams;
 /// We can introduce policy changes and replace this in the future.
 pub type DataCap = StoragePower;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct BytesParams {
-    /// Address of verified client.
-    pub address: Address,
-    /// Number of bytes to use.
-    #[serde(with = "bigint_ser")]
-    pub deal_size: StoragePower,
-}
-
-pub type UseBytesParams = BytesParams;
-pub type RestoreBytesParams = BytesParams;
-
 pub const SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP: &[u8] = b"fil_removedatacap:";
 
 impl Cbor for RemoveDataCapParams {}

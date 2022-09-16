@@ -21,7 +21,7 @@ use fil_actor_verifreg::{
     AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse,
     ClaimAllocationsParams, ClaimAllocationsReturn, ClaimID, DataCap, GetClaimsParams,
     GetClaimsReturn, Method, RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn,
-    RestoreBytesParams, SectorAllocationClaim, State,
+    SectorAllocationClaim, State,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -197,41 +197,6 @@ impl Harness {
         assert_eq!(RawBytes::default(), ret);
         rt.verify();
 
-        Ok(())
-    }
-
-    pub fn restore_bytes(
-        &self,
-        rt: &mut MockRuntime,
-        client: &Address,
-        amount: &DataCap,
-    ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR);
-        let client_resolved = rt.get_id_address(client).unwrap_or(*client);
-
-        // Expect tokens to be minted.
-        let mint_params = ext::datacap::MintParams {
-            to: client_resolved,
-            amount: TokenAmount::from_whole(amount.to_i64().unwrap()),
-            operators: vec![*STORAGE_MARKET_ACTOR_ADDR],
-        };
-        rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::Mint as MethodNum,
-            RawBytes::serialize(&mint_params).unwrap(),
-            TokenAmount::zero(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-
-        let params = RestoreBytesParams { address: *client, deal_size: amount.clone() };
-        let ret = rt.call::<VerifregActor>(
-            Method::RestoreBytes as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
-        )?;
-        assert_eq!(RawBytes::default(), ret);
-        rt.verify();
         Ok(())
     }
 
