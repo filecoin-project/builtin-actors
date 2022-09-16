@@ -6,6 +6,7 @@ use fil_actor_market::{
     SectorDataSpec,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
@@ -64,7 +65,7 @@ mod compute_data_commitment {
             ExitCode::OK,
         );
         rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
 
         let ret: ComputeDataCommitmentReturn = rt
             .call::<MarketActor>(
@@ -97,7 +98,7 @@ mod compute_data_commitment {
             ExitCode::OK,
         );
         rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
 
         let ret: ComputeDataCommitmentReturn = rt
             .call::<MarketActor>(
@@ -171,7 +172,7 @@ mod compute_data_commitment {
             ExitCode::OK,
         );
         rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
 
         let ret: ComputeDataCommitmentReturn = rt
             .call::<MarketActor>(
@@ -199,7 +200,7 @@ mod compute_data_commitment {
         };
         let param = ComputeDataCommitmentParams { inputs: vec![input] };
         rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
         expect_abort(
             ExitCode::USR_NOT_FOUND,
             rt.call::<MarketActor>(
@@ -239,7 +240,7 @@ mod compute_data_commitment {
             ExitCode::USR_ILLEGAL_ARGUMENT,
         );
         rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MarketActor>(
@@ -285,7 +286,7 @@ mod compute_data_commitment {
             ExitCode::OK,
         ); // first sector is computed
         rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
         expect_abort(
             ExitCode::USR_NOT_FOUND,
             rt.call::<MarketActor>(
@@ -336,7 +337,7 @@ mod compute_data_commitment {
             ExitCode::USR_ILLEGAL_ARGUMENT,
         );
         rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MarketActor>(

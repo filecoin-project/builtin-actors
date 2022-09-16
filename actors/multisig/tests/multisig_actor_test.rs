@@ -6,7 +6,7 @@ use fil_actor_multisig::{
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
@@ -1550,7 +1550,7 @@ mod approval_tests {
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
         let params = TxnIDParams { id: TxnID(0), proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
             .unwrap();
@@ -1612,7 +1612,7 @@ mod approval_tests {
         h.construct_and_verify(&mut rt, 1, 0, 0, signers);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
         let params = TxnIDParams { id: dne_tx_id, proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
             .expect_err("should fail on approve of non existent tx id");
