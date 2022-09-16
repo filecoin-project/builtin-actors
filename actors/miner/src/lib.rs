@@ -2263,6 +2263,14 @@ impl Actor {
                                 ));
                             }
 
+                            // it is an error to do legacy sector expiration on simple-qa power sectors with deal weight
+                            if sector.simple_qa_power && (sector.verified_deal_weight > BigInt::zero() || sector.deal_weight > BigInt::zero()){
+                                return Err(actor_error!(
+                                    forbidden,
+                                    "cannot use legacy sector extension for simple qa power with deal weight {}", sector.sector_number
+                                ));
+                            }
+
                             // This can happen if the sector should have already expired, but hasn't
                             // because the end of its deadline hasn't passed yet.
                             if sector.expiration < rt.curr_epoch() {
