@@ -1,10 +1,11 @@
 use fil_actor_power::ext::init::{ExecParams, EXEC_METHOD};
 use fil_actor_power::ext::miner::MinerConstructorParams;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, CALLER_TYPES_SIGNABLE,
-    MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
+    SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{runtime::Policy, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
@@ -90,7 +91,7 @@ fn create_miner_given_caller_is_not_of_signable_type_should_fail() {
     };
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *OWNER);
-    rt.expect_validate_caller_type(CALLER_TYPES_SIGNABLE.to_vec());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_abort(
         ExitCode::USR_FORBIDDEN,
         rt.call::<PowerActor>(
@@ -121,7 +122,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *OWNER);
     rt.value_received = TokenAmount::from_atto(10);
     rt.set_balance(TokenAmount::from_atto(10));
-    rt.expect_validate_caller_type(CALLER_TYPES_SIGNABLE.to_vec());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
     let message_params = ExecParams {
         code_cid: *MINER_ACTOR_CODE_ID,
@@ -166,7 +167,7 @@ fn claimed_power_given_caller_is_not_storage_miner_should_fail() {
     };
 
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, *MINER);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     expect_abort(
         ExitCode::USR_FORBIDDEN,
@@ -190,7 +191,7 @@ fn claimed_power_given_claim_does_not_exist_should_fail() {
     };
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     expect_abort(
         ExitCode::USR_NOT_FOUND,
@@ -447,7 +448,7 @@ fn enroll_cron_epoch_given_negative_epoch_should_fail() {
     let (h, mut rt) = setup();
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = EnrollCronEventParams {
         event_epoch: -1,
@@ -598,7 +599,7 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
     h.delete_claim(&mut rt, &*MINER);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "unknown miner",

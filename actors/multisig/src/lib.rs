@@ -4,10 +4,10 @@
 use std::collections::BTreeSet;
 
 use fil_actors_runtime::cbor::serialize_vec;
-use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
+use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id, ActorDowncast,
-    ActorError, Map, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR,
+    ActorError, Map, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -134,7 +134,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let proposer: Address = rt.message().caller();
 
         if params.value.is_negative() {
@@ -196,7 +196,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let approver: Address = rt.message().caller();
 
         let id = params.id;
@@ -236,7 +236,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let caller_addr: Address = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {

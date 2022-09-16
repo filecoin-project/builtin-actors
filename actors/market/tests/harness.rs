@@ -19,10 +19,10 @@ use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::UseBytesParams;
 use fil_actors_runtime::{
     network::EPOCHS_IN_DAY,
-    runtime::{Policy, Runtime},
+    runtime::{builtins::Type, Policy, Runtime},
     test_utils::*,
-    ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::{to_vec, RawBytes};
@@ -156,7 +156,7 @@ pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &Min
     rt.set_value(amount.clone());
     rt.set_address_actor_type(addrs.provider, *MINER_ACTOR_CODE_ID);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.owner);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
     expect_provider_control_address(rt, addrs.provider, addrs.owner, addrs.worker);
 
@@ -177,7 +177,7 @@ pub fn add_participant_funds(rt: &mut MockRuntime, addr: Address, amount: TokenA
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
 
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
     assert!(rt
         .call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(addr).unwrap())
@@ -276,7 +276,7 @@ pub fn activate_deals_raw(
     deal_ids: &[DealID],
 ) -> Result<RawBytes, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = ActivateDealsParams { deal_ids: deal_ids.to_vec(), sector_expiry };
 
@@ -434,7 +434,7 @@ pub fn publish_deals(
     addrs: &MinerAddresses,
     publish_deals: &[DealProposal],
 ) -> Vec<DealID> {
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
     let return_value = ext::miner::GetControlAddressesReturnParams {
         owner: addrs.owner,
@@ -516,7 +516,7 @@ pub fn publish_deals_expect_abort(
     proposal: DealProposal,
     expected_exit_code: ExitCode,
 ) {
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(
         rt,
         miner_addresses.provider,
@@ -695,7 +695,7 @@ pub fn assert_deal_failure<F>(
     rt.set_epoch(current_epoch);
     post_setup(&mut rt, &mut deal_proposal);
 
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -903,7 +903,7 @@ pub fn terminate_deals_raw(
     deal_ids: &[DealID],
 ) -> Result<RawBytes, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: deal_ids.to_vec() };
 
@@ -924,7 +924,7 @@ pub fn verify_deals_for_activation(
     sector_deals: Vec<SectorDeals>,
 ) -> VerifyDealsForActivationReturn {
     let param = VerifyDealsForActivationParams { sectors: sector_deals };
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
 
     let ret: VerifyDealsForActivationReturn = rt
