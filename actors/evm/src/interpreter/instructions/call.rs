@@ -1,6 +1,6 @@
 use {
     super::memory::{copy_to_memory, get_memory_region},
-    crate::interpreter::address::Address,
+    crate::interpreter::address::EthAddress,
     crate::interpreter::instructions::memory::MemoryRegion,
     crate::interpreter::output::StatusCode,
     crate::interpreter::precompiles,
@@ -153,7 +153,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
                 .map_err(|_| StatusCode::PrecompileFailure)?;
             Ok(RawBytes::from(result))
         } else {
-            let dst_addr = Address::try_from(dst)?
+            let dst_addr = EthAddress::try_from(dst)?
                 .as_id_address()
                 .ok_or_else(|| StatusCode::BadAddress("not an actor id address".to_string()))?;
 
@@ -222,7 +222,7 @@ pub fn callactor<'r, BS: Blockstore, RT: Runtime<BS>>(
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     let result = {
-        let dst_addr = Address::try_from(dst)?
+        let dst_addr = EthAddress::try_from(dst)?
             .as_id_address()
             .ok_or_else(|| StatusCode::BadAddress(format!("not an actor id address: {}", dst)))?;
 
