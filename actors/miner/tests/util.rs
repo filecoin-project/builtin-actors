@@ -319,6 +319,26 @@ impl ActorHarness {
         deal_ids: Vec<Vec<DealID>>,
         first: bool,
     ) -> Vec<SectorOnChainInfo> {
+        self.commit_and_prove_sectors_with_cfgs(
+            rt,
+            num_sectors,
+            lifetime_periods,
+            deal_ids,
+            first,
+            (0..num_sectors).map(|_| ProveCommitConfig::empty()).collect(),
+        )
+    }
+
+    pub fn commit_and_prove_sectors_with_cfgs(
+        &mut self,
+        rt: &mut MockRuntime,
+        num_sectors: usize,
+        lifetime_periods: u64,
+        deal_ids: Vec<Vec<DealID>>,
+        first: bool,
+        prove_cfgs: Vec<ProveCommitConfig>, // must be same length as num_sectors
+    ) -> Vec<SectorOnChainInfo> {
+        assert_eq!(num_sectors, prove_cfgs.len());
         let precommit_epoch = rt.epoch;
         let deadline = self.get_deadline_info(rt);
         let expiration =
@@ -352,13 +372,13 @@ impl ActorHarness {
         );
 
         let mut info = Vec::with_capacity(num_sectors);
-        for pc in precommits {
+        for (i, pc) in precommits.iter().enumerate() {
             let sector = self
                 .prove_commit_sector_and_confirm(
                     rt,
                     &pc,
                     self.make_prove_commit_params(pc.info.sector_number),
-                    ProveCommitConfig::empty(),
+                    prove_cfgs[i].clone(),
                 )
                 .unwrap();
             info.push(sector);
@@ -2183,7 +2203,7 @@ impl ActorHarness {
         &self,
         rt: &mut MockRuntime,
         mut params: ExtendSectorExpiration2Params,
-        expected_claims: BTreeMap<ClaimID, FILPlusClaim>,
+        expected_claims: HashMap<ClaimID, FILPlusClaim>,
     ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
@@ -2197,6 +2217,7 @@ impl ActorHarness {
                     claims.push(expected_claims.get(&claim_id).unwrap().clone())
                 }
 
+                // TODO add the ability to create failures
                 rt.expect_send(
                     *VERIFIED_REGISTRY_ACTOR_ADDR,
                     VerifregMethod::GetClaims as u64,

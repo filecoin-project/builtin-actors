@@ -1,13 +1,23 @@
+use fil_actor_market::DealSpaces;
 use fil_actor_miner::{
     power_for_sector, seal_proof_sector_maximum_lifetime, ExpirationExtension,
-    ExtendSectorExpirationParams, PoStPartition, SectorOnChainInfo, State,
+    ExpirationExtension2, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
+    PoStPartition, SectorClaim, SectorOnChainInfo, State,
+};
+use fil_actor_verifreg::{
+    Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn, Method as VerifregMethod,
 };
 use fil_actors_runtime::{
     runtime::{Runtime, RuntimePolicy},
-    test_utils::{expect_abort_contains_message, MockRuntime},
+    test_utils::{expect_abort_contains_message, make_piece_cid, MockRuntime},
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
-use fvm_shared::{clock::ChainEpoch, error::ExitCode, sector::RegisteredSealProof};
+use fvm_shared::bigint::Zero;
+use fvm_shared::{
+    address::Address, bigint::BigInt, clock::ChainEpoch, error::ExitCode, piece::UnpaddedPieceSize,
+    sector::RegisteredSealProof,
+};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 mod util;
 use itertools::Itertools;
@@ -352,3 +362,97 @@ fn supports_extensions_off_deadline_boundary() {
 
     h.check_state(&rt);
 }
+
+fn commit_sector_verified_deal(h: &mut ActorHarness, rt: &mut MockRuntime) -> SectorOnChainInfo {
+    h.construct_and_verify(rt);
+
+    let sector_space = h.sector_size as u64;
+    let mut prove_commit_spaces = HashMap::new();
+    prove_commit_spaces.insert(
+        h.next_sector_no,
+        DealSpaces { deal_space: BigInt::zero(), verified_deal_space: BigInt::from(sector_space) },
+    );
+    let sector_info = &h.commit_and_prove_sectors_with_cfgs(
+        rt,
+        1,
+        DEFAULT_SECTOR_EXPIRATION as u64,
+        Vec::new(),
+        true,
+        vec![ProveCommitConfig {
+            verify_deals_exit: HashMap::new(),
+            deal_spaces: prove_commit_spaces,
+        }],
+    )[0];
+
+    sector_info.clone()
+}
+
+#[test]
+fn update_expiration_with_claim() {
+    let (mut h, mut rt) = setup();
+    // add in verified deal
+    let old_sector = commit_sector_verified_deal(&mut h, &mut rt);
+    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+
+    let state: State = rt.get_state();
+
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+
+    let extension = 42 * rt.policy().wpost_proving_period;
+    let new_expiration = old_sector.expiration + extension;
+
+    let claim_id = 400;
+    let client = Address::new_id(3000).id().unwrap();
+    let fake_claim = FILPlusClaim {
+        provider: h.receiver.id().unwrap(),
+        client,
+        data: make_piece_cid("1234".as_bytes()),
+        size: UnpaddedPieceSize(h.sector_size as u64).padded(),
+        term_min: rt.policy.minimum_verified_allocation_term,
+        term_max: new_expiration - old_sector.activation + 1,
+        term_start: old_sector.activation,
+        sector: old_sector.sector_number,
+    };
+    let mut claims = HashMap::new();
+    claims.insert(claim_id, fake_claim).unwrap();
+
+    let params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[]),
+            new_expiration,
+            sectors_with_claims: vec![SectorClaim {
+                sector_number: old_sector.sector_number,
+                maintain_claims: vec![claim_id],
+            }],
+        }],
+    };
+
+    h.extend_sectors2(&mut rt, params, claims).unwrap();
+
+    // assert sector expiration is set to the new value
+    let new_sector = h.get_sector(&rt, old_sector.sector_number);
+    assert_eq!(new_expiration, new_sector.expiration);
+
+    let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
+
+    // assert that new expiration exists
+    let (_, mut partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+    let expiration_set =
+        partition.pop_expired_sectors(rt.store(), new_expiration - 1, quant).unwrap();
+    assert!(expiration_set.is_empty());
+
+    let expiration_set = partition
+        .pop_expired_sectors(rt.store(), quant.quantize_up(new_expiration), quant)
+        .unwrap();
+    assert_eq!(expiration_set.len(), 1);
+    assert!(expiration_set.on_time_sectors.get(old_sector.sector_number));
+
+    h.check_state(&rt);
+}
+
+fn update_expiration_claim_not_found() {}
+
+fn update_expiration_bad_claim() {}
