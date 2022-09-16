@@ -17,7 +17,6 @@ fn basic_contract_construction_and_invocation() {
 
     let params = evm::ConstructorParams {
         bytecode: hex::decode(include_str!("simplecoin.hex")).unwrap().into(),
-        input_data: RawBytes::default(),
     };
 
     // invoke constructor
@@ -99,8 +98,7 @@ return
     let mut rt = MockRuntime::default();
 
     rt.expect_validate_caller_any();
-    let params =
-        evm::ConstructorParams { bytecode: init_code.into(), input_data: RawBytes::default() };
+    let params = evm::ConstructorParams { bytecode: init_code.into() };
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
@@ -140,8 +138,7 @@ sstore";
     let mut rt = MockRuntime::default();
 
     rt.expect_validate_caller_any();
-    let params =
-        evm::ConstructorParams { bytecode: init_code.into(), input_data: RawBytes::default() };
+    let params = evm::ConstructorParams { bytecode: init_code.into() };
     let result = rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
