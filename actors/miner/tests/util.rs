@@ -41,8 +41,8 @@ use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimeP
 use fil_actors_runtime::{test_utils::*, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
@@ -1273,7 +1273,7 @@ impl ActorHarness {
         expect_success: Option<PoStDisputeResult>,
     ) {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
         self.expect_query_network_info(rt);
 
@@ -1713,7 +1713,7 @@ impl ActorHarness {
         from: Address,
         fault: Option<ConsensusFault>,
     ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from);
         let params =
             ReportConsensusFaultParams { header1: vec![], header2: vec![], header_extra: vec![] };

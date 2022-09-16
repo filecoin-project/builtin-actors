@@ -3,6 +3,7 @@
 
 use fil_actor_market::{ActivateDealsParams, Actor as MarketActor, Method};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -25,7 +26,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
 
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
 
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     expect_abort(
         ExitCode::USR_FORBIDDEN,
@@ -39,7 +40,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
 #[test]
 fn fail_when_caller_is_not_a_storage_miner_actor() {
     let mut rt = setup();
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, PROVIDER_ADDR);
 
     let params = ActivateDealsParams { deal_ids: vec![], sector_expiry: 0 };
@@ -57,7 +58,7 @@ fn fail_when_deal_has_not_been_published_before() {
     let mut rt = setup();
     let params = ActivateDealsParams { deal_ids: vec![DealID::from(42u32)], sector_expiry: 0 };
 
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     expect_abort(
         ExitCode::USR_NOT_FOUND,
@@ -84,7 +85,7 @@ fn fail_when_deal_has_already_been_activated() {
     );
     activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
 
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
     expect_abort(

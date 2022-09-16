@@ -5,6 +5,7 @@ use std::convert::TryInto;
 
 use fil_actor_market::{Actor as MarketActor, Method, OnMinerSectorsTerminateParams};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
@@ -298,7 +299,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
 #[test]
 fn fail_when_caller_is_not_a_storage_miner_actor() {
     let mut rt = setup();
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: vec![] };
 

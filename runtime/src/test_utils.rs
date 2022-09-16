@@ -86,8 +86,6 @@ lazy_static::lazy_static! {
     ]
     .into_iter()
     .collect();
-    pub static ref CALLER_TYPES_SIGNABLE: Vec<Cid> =
-        vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID];
     pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {
         let mut map = BTreeMap::new();
         map.insert(*ACCOUNT_ACTOR_CODE_ID, ());
@@ -142,7 +140,7 @@ pub struct MockRuntime {
 pub struct Expectations {
     pub expect_validate_caller_any: bool,
     pub expect_validate_caller_addr: Option<Vec<Address>>,
-    pub expect_validate_caller_type: Option<Vec<Cid>>,
+    pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
     pub expect_delete_actor: Option<Address>,
@@ -514,7 +512,7 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
-    pub fn expect_validate_caller_type(&mut self, types: Vec<Cid>) {
+    pub fn expect_validate_caller_type(&mut self, types: Vec<Type>) {
         assert!(!types.is_empty(), "addrs must be non-empty");
         self.expectations.borrow_mut().expect_validate_caller_type = Some(types);
     }
@@ -737,14 +735,7 @@ impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
             "unexpected validate caller code"
         );
 
-        let find_by_type = |typ| {
-            (*ACTOR_TYPES)
-                .iter()
-                .find_map(|(cid, t)| if t == typ { Some(cid) } else { None })
-                .cloned()
-                .unwrap()
-        };
-        let types: Vec<Cid> = types.into_iter().map(find_by_type).collect();
+        let types: Vec<Type> = types.into_iter().copied().collect();
         let expected_caller_type =
             self.expectations.borrow_mut().expect_validate_caller_type.clone().unwrap();
         assert_eq!(
@@ -753,8 +744,9 @@ impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
             types, expected_caller_type,
         );
 
+        let call_type = self.resolve_builtin_actor_type(&self.caller_type).unwrap();
         for expected in &types {
-            if &self.caller_type == expected {
+            if &call_type == expected {
                 self.expectations.borrow_mut().expect_validate_caller_type = None;
                 return Ok(());
             }
