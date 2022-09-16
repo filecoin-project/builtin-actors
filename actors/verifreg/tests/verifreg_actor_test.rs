@@ -41,7 +41,7 @@ mod construction {
     #[test]
     fn construct_with_root_id() {
         let mut rt = new_runtime();
-        let h = Harness { root: *ROOT_ADDR };
+        let h = Harness { root: ROOT_ADDR };
         h.construct_and_verify(&mut rt, &h.root);
         h.check_state(&rt);
     }
@@ -49,7 +49,7 @@ mod construction {
     #[test]
     fn construct_resolves_non_id() {
         let mut rt = new_runtime();
-        let h = Harness { root: *ROOT_ADDR };
+        let h = Harness { root: ROOT_ADDR };
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         rt.id_addresses.insert(root_pubkey, h.root);
         h.construct_and_verify(&mut rt, &root_pubkey);
@@ -61,7 +61,7 @@ mod construction {
         let mut rt = new_runtime();
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
 
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<VerifregActor>(
@@ -517,8 +517,8 @@ mod datacap {
     #[test]
     fn consume_requires_market_actor_caller() {
         let (h, mut rt) = new_harness();
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
         let params = UseBytesParams {
             address: *CLIENT,
             deal_size: rt.policy.minimum_verified_deal_size.clone(),
@@ -675,8 +675,8 @@ mod datacap {
     #[test]
     fn restore_requires_market_actor_caller() {
         let (h, mut rt) = new_harness();
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
         let params = RestoreBytesParams {
             address: *CLIENT,
             deal_size: rt.policy.minimum_verified_deal_size.clone(),

@@ -43,14 +43,14 @@ fn remove_datacap_simple_successful_path() {
     apply_ok(
         &v,
         verifier1,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
         add_verified_client_params,
     );
 
     ExpectInvocation {
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifiedClient as u64,
         params: Some(add_verified_client_params_ser),
         subinvocs: Some(vec![]),
@@ -59,7 +59,7 @@ fn remove_datacap_simple_successful_path() {
     .matches(v.take_invocations().last().unwrap());
 
     // state checks on the 2 verifiers and the client
-    let mut v_st = v.get_state::<VerifregState>(*VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let mut v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let verifiers =
         make_map_with_root_and_bitwidth::<_, BigIntDe>(&v_st.verifiers, &store, HAMT_BIT_WIDTH)
             .unwrap();
@@ -140,7 +140,7 @@ fn remove_datacap_simple_successful_path() {
     let remove_datacap_ret: RemoveDataCapReturn = apply_ok(
         &v,
         TEST_VERIFREG_ROOT_ADDR,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
         remove_datacap_params,
@@ -149,7 +149,7 @@ fn remove_datacap_simple_successful_path() {
     .unwrap();
 
     ExpectInvocation {
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
         params: Some(remove_datacap_params_ser),
         subinvocs: Some(vec![]),
@@ -160,7 +160,7 @@ fn remove_datacap_simple_successful_path() {
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
 
-    v_st = v.get_state::<VerifregState>(*VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
 
     // confirm client's allowance has fallen by half
     verified_clients = make_map_with_root_and_bitwidth::<_, BigIntDe>(
@@ -234,7 +234,7 @@ fn remove_datacap_simple_successful_path() {
     let remove_datacap_ret: RemoveDataCapReturn = apply_ok(
         &v,
         TEST_VERIFREG_ROOT_ADDR,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
         remove_datacap_params,
@@ -243,7 +243,7 @@ fn remove_datacap_simple_successful_path() {
     .unwrap();
 
     ExpectInvocation {
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
         params: Some(remove_datacap_params_ser),
         subinvocs: Some(vec![]),
@@ -256,7 +256,7 @@ fn remove_datacap_simple_successful_path() {
 
     // confirm client has been removed entirely
 
-    v_st = v.get_state::<VerifregState>(*VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     verified_clients = make_map_with_root_and_bitwidth::<_, BigIntDe>(
         &v_st.verified_clients,
         &store,

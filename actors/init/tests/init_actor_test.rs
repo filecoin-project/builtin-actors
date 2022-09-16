@@ -27,7 +27,7 @@ fn check_state(rt: &MockRuntime) {
 fn construct_runtime() -> MockRuntime {
     MockRuntime {
         receiver: Address::new_id(1000),
-        caller: *SYSTEM_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -163,7 +163,7 @@ fn create_storage_miner() {
     construct_and_verify(&mut rt);
 
     // only the storage power actor can create a miner
-    rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
+    rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
 
     let unique_address = Address::new_actor(b"miner");
     rt.new_actor_addr = Some(unique_address);
@@ -248,7 +248,7 @@ fn sending_constructor_failure() {
     construct_and_verify(&mut rt);
 
     // Only the storage power actor can create a miner
-    rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
+    rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
 
     // Assign new address for the storage actor miner
     let unique_address = Address::new_actor(b"miner");
@@ -288,7 +288,7 @@ fn sending_constructor_failure() {
 }
 
 fn construct_and_verify(rt: &mut MockRuntime) {
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let params = ConstructorParams { network_name: "mock".to_string() };
     let ret =
         rt.call::<InitActor>(METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap()).unwrap();

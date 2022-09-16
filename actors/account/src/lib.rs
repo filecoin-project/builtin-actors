@@ -47,7 +47,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         match address.protocol() {
             Protocol::Secp256k1 | Protocol::BLS => {}
             protocol => {

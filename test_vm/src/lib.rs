@@ -139,56 +139,50 @@ impl<'bs> VM<'bs> {
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
-        v.set_actor(*SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value));
+        v.set_actor(SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value));
 
         // init
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
-        v.set_actor(
-            *INIT_ACTOR_ADDR,
-            actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero()),
-        );
+        v.set_actor(INIT_ACTOR_ADDR, actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero()));
 
         // reward
 
         let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
-        v.set_actor(*REWARD_ACTOR_ADDR, actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total));
+        v.set_actor(REWARD_ACTOR_ADDR, actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total));
 
         // cron
         let builtin_entries = vec![
             CronEntry {
-                receiver: *STORAGE_POWER_ACTOR_ADDR,
+                receiver: STORAGE_POWER_ACTOR_ADDR,
                 method_num: MethodPower::OnEpochTickEnd as u64,
             },
             CronEntry {
-                receiver: *STORAGE_MARKET_ACTOR_ADDR,
+                receiver: STORAGE_MARKET_ACTOR_ADDR,
                 method_num: MarketMethod::CronTick as u64,
             },
         ];
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
-        v.set_actor(
-            *CRON_ACTOR_ADDR,
-            actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()),
-        );
+        v.set_actor(CRON_ACTOR_ADDR, actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()));
 
         // power
         let power_head = v.put_store(&PowerState::new(&v.store).unwrap());
         v.set_actor(
-            *STORAGE_POWER_ACTOR_ADDR,
+            STORAGE_POWER_ACTOR_ADDR,
             actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero()),
         );
 
         // market
         let market_head = v.put_store(&MarketState::new(&v.store).unwrap());
         v.set_actor(
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero()),
         );
 
         // verifreg
         // initialize verifreg root signer
         v.apply_message(
-            *INIT_ACTOR_ADDR,
+            INIT_ACTOR_ADDR,
             Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
             TokenAmount::zero(),
             METHOD_SEND,
@@ -211,8 +205,8 @@ impl<'bs> VM<'bs> {
         .unwrap();
         let msig_ctor_ret: ExecReturn = v
             .apply_message(
-                *SYSTEM_ACTOR_ADDR,
-                *INIT_ACTOR_ADDR,
+                SYSTEM_ACTOR_ADDR,
+                INIT_ACTOR_ADDR,
                 TokenAmount::zero(),
                 fil_actor_init::Method::Exec as u64,
                 fil_actor_init::ExecParams {
@@ -229,20 +223,20 @@ impl<'bs> VM<'bs> {
         // verifreg
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
-            *VERIFIED_REGISTRY_ACTOR_ADDR,
+            VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero()),
         );
 
         // burnt funds
-        let burnt_funds_head = v.put_store(&AccountState { address: *BURNT_FUNDS_ACTOR_ADDR });
+        let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
         v.set_actor(
-            *BURNT_FUNDS_ACTOR_ADDR,
+            BURNT_FUNDS_ACTOR_ADDR,
             actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero()),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
         v.apply_message(
-            *SYSTEM_ACTOR_ADDR,
+            SYSTEM_ACTOR_ADDR,
             Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
             faucet_total,
             METHOD_SEND,
@@ -281,9 +275,9 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn get_network_stats(&self) -> NetworkStats {
-        let power_state = self.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
-        let reward_state = self.get_state::<RewardState>(*REWARD_ACTOR_ADDR).unwrap();
-        let market_state = self.get_state::<MarketState>(*STORAGE_MARKET_ACTOR_ADDR).unwrap();
+        let power_state = self.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
+        let reward_state = self.get_state::<RewardState>(REWARD_ACTOR_ADDR).unwrap();
+        let market_state = self.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
 
         NetworkStats {
             total_raw_byte_power: power_state.total_raw_byte_power,
@@ -360,7 +354,7 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn normalize_address(&self, addr: &Address) -> Option<Address> {
-        let st = self.get_state::<InitState>(*INIT_ACTOR_ADDR).unwrap();
+        let st = self.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
         st.resolve_address::<MemoryBlockstore>(self.store, addr).unwrap()
     }
 
@@ -562,15 +556,15 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
             _ => (),
         }
-        let mut st = self.v.get_state::<InitState>(*INIT_ACTOR_ADDR).unwrap();
+        let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
         let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
         let target_id_addr = Address::new_id(target_id);
-        let mut init_actor = self.v.get_actor(*INIT_ACTOR_ADDR).unwrap();
+        let mut init_actor = self.v.get_actor(INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.v.set_actor(*INIT_ACTOR_ADDR, init_actor);
+        self.v.set_actor(INIT_ACTOR_ADDR, init_actor);
 
         let new_actor_msg = InternalMessage {
-            from: *SYSTEM_ACTOR_ADDR,
+            from: SYSTEM_ACTOR_ADDR,
             to: target_id_addr,
             value: TokenAmount::zero(),
             method: METHOD_CONSTRUCTOR,

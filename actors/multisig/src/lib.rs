@@ -53,7 +53,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*INIT_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
         if params.signers.is_empty() {
             return Err(actor_error!(illegal_argument; "Must have at least one signer"));
