@@ -25,6 +25,7 @@ pub enum PrecompileError {
     EcErr(CurveError),
     EcGroupErr(GroupError),
     IncorrectInputSize,
+    OutOfGas,
 }
 
 impl From<CurveError> for PrecompileError {
@@ -99,11 +100,6 @@ fn get_data(input: &[u8], start: usize, len: usize) -> Cow<[u8]> {
     read_right_pad(&input[start..end], len)
 }
 
-fn read_bigint(input: &[u8], start: usize, len: usize) -> BigUint {
-    let data = get_data(input, start, len);
-    BigUint::from_bytes_be(&data)
-}
-
 // https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L165
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
@@ -168,20 +164,38 @@ fn identity<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 // https://eips.ethereum.org/EIPS/eip-198
 /// modulus exponent a number
 fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let len_buf = read_right_pad(input, 96);
-    let base_len = U256::from_big_endian(&len_buf[..32]).low_u64() as usize;
-    let exponent_len = U256::from_big_endian(&len_buf[32..64]).low_u64() as usize;
-    let mod_len = U256::from_big_endian(&len_buf[64..96]).low_u64() as usize;
+    let input = read_right_pad(input, 96);
 
-    let input = if input.len() > 96 { &input[96..] } else { &[] };
+    const MAX_LEN: u32 = 256;
+    fn read_256_bigint(input: &[u8], size: usize) -> Result<usize, PrecompileError> {
+        let digits = BigUint::from_bytes_be(&input[size..size + 32]);
+        let mut digits = digits.iter_u32_digits();
+        let first = digits
+            .next()
+            .or(Some(0))
+            .and_then(|l| (l <= MAX_LEN).then_some(l as usize))
+            .ok_or(PrecompileError::OutOfGas)?;
+        digits.next().is_none().then_some(first).ok_or(PrecompileError::OutOfGas)
+    }
 
+    let base_len = read_256_bigint(&input, 0)?;
+    let exponent_len = read_256_bigint(&input, 32)?;
+    let mod_len = read_256_bigint(&input, 64)?;
+    
     if base_len == 0 && mod_len == 0 {
         return Ok(Vec::new());
     }
+    let input = if input.len() > 96 { &input[96..] } else { &[] };
+    let input = read_right_pad(input, base_len + exponent_len + mod_len);
 
-    let base = read_bigint(input, 0, base_len);
-    let exponent = read_bigint(input, base_len, exponent_len);
-    let modulus = read_bigint(input, base_len + exponent_len, mod_len);
+    // println!("{} {} {}\n{:x?}", base_len, exponent_len, mod_len, input);
+
+    let base = BigUint::from_bytes_be(&input[0..base_len]);
+    // println!("- {} {} : {:x?}", base_len, base, input);
+    let exponent = BigUint::from_bytes_be(&input[base_len..exponent_len + base_len]);
+    // println!("- {} {} : {:x?}", exponent_len, exponent, input);
+    let modulus = BigUint::from_bytes_be(&input[base_len + exponent_len..mod_len + base_len + exponent_len]);
+    // println!("- {} {} : {:x?}", mod_len, modulus, input);
 
     if modulus.is_zero() || modulus.is_one() {
         // mod 0 is undefined: 0, base mod 1 is always 0
