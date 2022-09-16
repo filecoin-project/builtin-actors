@@ -1,14 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-// TODO: disable everything else when not using runtime-wasm
-
-#[allow(unused_imports)] // rust seems to be wrong here
-#[macro_use]
-extern crate lazy_static;
-// workaround for a compiler bug, see https://github.com/rust-lang/rust/issues/55779
-extern crate serde;
-
 use builtin::HAMT_BIT_WIDTH;
 use cid::Cid;
 use fvm_ipld_amt::Amt;
