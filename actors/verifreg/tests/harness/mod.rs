@@ -5,7 +5,6 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
-use lazy_static::lazy_static;
 
 use fil_actor_verifreg::{
     Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, DataCap, Method,
@@ -17,14 +16,12 @@ use fil_actors_runtime::{
     SYSTEM_ACTOR_ADDR,
 };
 
-lazy_static! {
-    pub static ref ROOT_ADDR: Address = Address::new_id(101);
-}
+pub const ROOT_ADDR: Address = Address::new_id(101);
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
-        receiver: *ROOT_ADDR,
-        caller: *SYSTEM_ACTOR_ADDR,
+        receiver: ROOT_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -32,7 +29,7 @@ pub fn new_runtime() -> MockRuntime {
 
 pub fn new_harness() -> (Harness, MockRuntime) {
     let mut rt = new_runtime();
-    let h = Harness { root: *ROOT_ADDR };
+    let h = Harness { root: ROOT_ADDR };
     h.construct_and_verify(&mut rt, &h.root);
     (h, rt)
 }
@@ -43,7 +40,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct_and_verify(&self, rt: &mut MockRuntime, root_param: &Address) {
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
             .call::<VerifregActor>(
                 Method::Constructor as MethodNum,
@@ -179,8 +176,8 @@ impl Harness {
         client: &Address,
         amount: &DataCap,
     ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
         let params = UseBytesParams { address: *client, deal_size: amount.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::UseBytes as MethodNum,
@@ -197,8 +194,8 @@ impl Harness {
         client: &Address,
         amount: &DataCap,
     ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
         let params = RestoreBytesParams { address: *client, deal_size: amount.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::RestoreBytes as MethodNum,

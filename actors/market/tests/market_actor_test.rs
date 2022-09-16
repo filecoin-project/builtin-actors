@@ -51,12 +51,12 @@ fn test_remove_all_error() {
 fn simple_construction() {
     let mut rt = MockRuntime {
         receiver: Address::new_id(100),
-        caller: *SYSTEM_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         ..Default::default()
     };
 
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
     assert_eq!(
         RawBytes::default(),
@@ -793,7 +793,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     .unwrap();
 
     rt.expect_send(
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::USE_BYTES_METHOD as u64,
         param,
         TokenAmount::zero(),
@@ -1239,7 +1239,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
 
     // cron tick will slash deal1 and make payment for deal2
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         d1.provider_collateral.clone(),
@@ -1472,7 +1472,7 @@ fn locked_fund_tracking_states() {
     let curr = process_epoch(start_epoch, deal_id3);
     rt.set_epoch(curr);
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         d3.provider_collateral.clone(),
@@ -1513,7 +1513,7 @@ fn locked_fund_tracking_states() {
     clc = TokenAmount::zero();
     plc = TokenAmount::zero();
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         d1.provider_collateral,

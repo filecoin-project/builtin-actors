@@ -85,12 +85,12 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
         params: Some(prove_params_ser),
         subinvocs: Some(vec![
             ExpectInvocation {
-                to: *STORAGE_MARKET_ACTOR_ADDR,
+                to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::ComputeDataCommitment as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::SubmitPoRepForBulkVerify as u64,
                 ..Default::default()
             },
@@ -100,8 +100,8 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
     .matches(v.take_invocations().last().unwrap());
     let res = v
         .apply_message(
-            *SYSTEM_ACTOR_ADDR,
-            *CRON_ACTOR_ADDR,
+            SYSTEM_ACTOR_ADDR,
+            CRON_ACTOR_ADDR,
             TokenAmount::zero(),
             CronMethod::EpochTick as u64,
             RawBytes::default(),
@@ -109,15 +109,15 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
     ExpectInvocation {
-        to: *CRON_ACTOR_ADDR,
+        to: CRON_ACTOR_ADDR,
         method: CronMethod::EpochTick as u64,
         subinvocs: Some(vec![
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::OnEpochTickEnd as u64,
                 subinvocs: Some(vec![
                     ExpectInvocation {
-                        to: *REWARD_ACTOR_ADDR,
+                        to: REWARD_ACTOR_ADDR,
                         method: RewardMethod::ThisEpochReward as u64,
                         ..Default::default()
                     },
@@ -125,14 +125,14 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
                         to: id_addr,
                         method: MinerMethod::ConfirmSectorProofsValid as u64,
                         subinvocs: Some(vec![ExpectInvocation {
-                            to: *STORAGE_POWER_ACTOR_ADDR,
+                            to: STORAGE_POWER_ACTOR_ADDR,
                             method: PowerMethod::UpdatePledgeTotal as u64,
                             ..Default::default()
                         }]),
                         ..Default::default()
                     },
                     ExpectInvocation {
-                        to: *REWARD_ACTOR_ADDR,
+                        to: REWARD_ACTOR_ADDR,
                         method: RewardMethod::UpdateNetworkKPI as u64,
                         ..Default::default()
                     },
@@ -140,7 +140,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_MARKET_ACTOR_ADDR,
+                to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
                 ..Default::default()
             },
@@ -192,7 +192,7 @@ fn submit_post_succeeds() {
     );
     let balances = v.get_miner_balance(miner_info.miner_id);
     assert!(balances.initial_pledge.is_positive());
-    let p_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
+    let p_st = v.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(sector_power.raw, p_st.total_bytes_committed);
 
     v.assert_state_invariants();
@@ -254,24 +254,24 @@ fn missed_first_post_deadline() {
 
     apply_ok(
         &v,
-        *SYSTEM_ACTOR_ADDR,
-        *CRON_ACTOR_ADDR,
+        SYSTEM_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
         RawBytes::default(),
     );
 
     ExpectInvocation {
-        to: *CRON_ACTOR_ADDR,
+        to: CRON_ACTOR_ADDR,
         method: CronMethod::EpochTick as u64,
         params: None,
         subinvocs: Some(vec![
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::OnEpochTickEnd as u64,
                 subinvocs: Some(vec![
                     ExpectInvocation {
-                        to: *REWARD_ACTOR_ADDR,
+                        to: REWARD_ACTOR_ADDR,
                         method: RewardMethod::ThisEpochReward as u64,
                         ..Default::default()
                     },
@@ -279,14 +279,14 @@ fn missed_first_post_deadline() {
                         to: miner_info.miner_id,
                         method: MinerMethod::OnDeferredCronEvent as u64,
                         subinvocs: Some(vec![ExpectInvocation {
-                            to: *STORAGE_POWER_ACTOR_ADDR,
+                            to: STORAGE_POWER_ACTOR_ADDR,
                             method: PowerMethod::EnrollCronEvent as u64,
                             ..Default::default()
                         }]),
                         ..Default::default()
                     },
                     ExpectInvocation {
-                        to: *REWARD_ACTOR_ADDR,
+                        to: REWARD_ACTOR_ADDR,
                         method: RewardMethod::UpdateNetworkKPI as u64,
                         ..Default::default()
                     },
@@ -294,7 +294,7 @@ fn missed_first_post_deadline() {
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_MARKET_ACTOR_ADDR,
+                to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
                 ..Default::default()
             },
@@ -359,24 +359,24 @@ fn overdue_precommit() {
     // run cron which should clean up precommit
     apply_ok(
         &v,
-        *SYSTEM_ACTOR_ADDR,
-        *CRON_ACTOR_ADDR,
+        SYSTEM_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
         RawBytes::default(),
     );
 
     ExpectInvocation {
-        to: *CRON_ACTOR_ADDR,
+        to: CRON_ACTOR_ADDR,
         method: CronMethod::EpochTick as u64,
         params: None,
         subinvocs: Some(vec![
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::OnEpochTickEnd as u64,
                 subinvocs: Some(vec![
                     ExpectInvocation {
-                        to: *REWARD_ACTOR_ADDR,
+                        to: REWARD_ACTOR_ADDR,
                         method: RewardMethod::ThisEpochReward as u64,
                         ..Default::default()
                     },
@@ -386,7 +386,7 @@ fn overdue_precommit() {
                         subinvocs: Some(vec![
                             ExpectInvocation {
                                 // The call to burnt funds indicates the overdue precommit has been penalized
-                                to: *BURNT_FUNDS_ACTOR_ADDR,
+                                to: BURNT_FUNDS_ACTOR_ADDR,
                                 method: METHOD_SEND,
                                 value: Option::from(precommit.pre_commit_deposit),
                                 ..Default::default()
@@ -396,7 +396,7 @@ fn overdue_precommit() {
                         ..Default::default()
                     },
                     ExpectInvocation {
-                        to: *REWARD_ACTOR_ADDR,
+                        to: REWARD_ACTOR_ADDR,
                         method: RewardMethod::UpdateNetworkKPI as u64,
                         ..Default::default()
                     },
@@ -404,7 +404,7 @@ fn overdue_precommit() {
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_MARKET_ACTOR_ADDR,
+                to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
                 ..Default::default()
             },
@@ -819,27 +819,27 @@ fn aggregate_one_precommit_expires() {
         params: Some(prove_params_ser),
         subinvocs: Some(vec![
             ExpectInvocation {
-                to: *STORAGE_MARKET_ACTOR_ADDR,
+                to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::ComputeDataCommitment as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *REWARD_ACTOR_ADDR,
+                to: REWARD_ACTOR_ADDR,
                 method: RewardMethod::ThisEpochReward as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::CurrentTotalPower as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::UpdatePledgeTotal as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *BURNT_FUNDS_ACTOR_ADDR,
+                to: BURNT_FUNDS_ACTOR_ADDR,
                 method: METHOD_SEND,
                 ..Default::default()
             },

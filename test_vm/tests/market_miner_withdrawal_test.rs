@@ -32,7 +32,7 @@ mod market_tests {
             three_fil.clone(),
             three_fil.clone(),
             three_fil,
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             caller,
         );
     }
@@ -50,7 +50,7 @@ mod market_tests {
             two_fil.clone(),
             two_fil,
             three_fil,
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             caller,
         );
     }
@@ -67,7 +67,7 @@ mod market_tests {
             TokenAmount::zero(),
             TokenAmount::zero(),
             three_fil,
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             caller,
         );
     }

@@ -32,7 +32,7 @@ use crate::runtime::{
 };
 use crate::{actor_error, ActorError, Runtime};
 
-lazy_static! {
+lazy_static::lazy_static! {
     /// Cid of the empty array Cbor bytes (`EMPTY_ARR_BYTES`).
     pub static ref EMPTY_ARR_CID: Cid = {
         let empty = to_vec::<[(); 0]>(&[]).unwrap();

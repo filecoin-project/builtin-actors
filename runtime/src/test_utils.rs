@@ -45,7 +45,7 @@ use crate::runtime::{
 use crate::{actor_error, ActorError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
-lazy_static! {
+lazy_static::lazy_static! {
     pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/system");
     pub static ref INIT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/init");
     pub static ref CRON_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/cron");
