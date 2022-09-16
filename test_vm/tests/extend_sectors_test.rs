@@ -65,7 +65,7 @@ fn extend_sector_with_deals() {
     apply_ok(
         &v,
         verifier,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
         add_client_params,
@@ -76,7 +76,7 @@ fn extend_sector_with_deals() {
     apply_ok(
         &v,
         verified_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
         MarketMethod::AddBalance as u64,
         verified_client,
@@ -85,7 +85,7 @@ fn extend_sector_with_deals() {
     apply_ok(
         &v,
         worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         collateral,
         MarketMethod::AddBalance as u64,
         miner_id,
@@ -153,8 +153,8 @@ fn extend_sector_with_deals() {
     // In the same epoch, trigger cron to validate prove commit
     apply_ok(
         &v,
-        *SYSTEM_ACTOR_ADDR,
-        *CRON_ACTOR_ADDR,
+        SYSTEM_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
         RawBytes::default(),
@@ -240,7 +240,7 @@ fn extend_sector_with_deals() {
         to: miner_id,
         method: MinerMethod::ExtendSectorExpiration as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            to: *STORAGE_POWER_ACTOR_ADDR,
+            to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::UpdateClaimedPower as u64,
             params: Some(expected_update_claimed_power_params_ser),
             ..Default::default()
@@ -291,7 +291,7 @@ fn extend_sector_with_deals() {
         to: miner_id,
         method: MinerMethod::ExtendSectorExpiration as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            to: *STORAGE_POWER_ACTOR_ADDR,
+            to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::UpdateClaimedPower as u64,
             params: Some(expected_update_claimed_power_params_ser),
             ..Default::default()

@@ -65,8 +65,8 @@ lazy_static! {
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
-        receiver: *STORAGE_POWER_ACTOR_ADDR,
-        caller: *SYSTEM_ACTOR_ADDR,
+        receiver: STORAGE_POWER_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -101,7 +101,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct(&self, rt: &mut MockRuntime) {
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         rt.call::<PowerActor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
         rt.verify()
     }
@@ -157,7 +157,7 @@ impl Harness {
         };
         let create_miner_ret = CreateMinerReturn { id_address: *miner, robust_address: *robust };
         rt.expect_send(
-            *INIT_ACTOR_ADDR,
+            INIT_ACTOR_ADDR,
             ext::init::EXEC_METHOD,
             RawBytes::serialize(expected_init_params).unwrap(),
             value.clone(),
@@ -379,7 +379,7 @@ impl Harness {
         };
 
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             ThisEpochReward as u64,
             RawBytes::default(),
             TokenAmount::zero(),
@@ -423,17 +423,17 @@ impl Harness {
 
         // expect power sends to reward actor
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(expected_raw_power)).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::new(0),
         );
-        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
 
         rt.set_epoch(current_epoch);
-        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
 

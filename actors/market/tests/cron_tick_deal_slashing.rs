@@ -238,7 +238,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
         + &deal_proposal2.provider_collateral
         + &deal_proposal3.provider_collateral;
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         total_slashed,

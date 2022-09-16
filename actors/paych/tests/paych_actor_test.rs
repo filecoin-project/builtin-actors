@@ -1137,7 +1137,7 @@ fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouc
 
     let mut rt = MockRuntime {
         receiver: paych_addr,
-        caller: *INIT_ACTOR_ADDR,
+        caller: INIT_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         actor_code_cids,
         value_received: received,
