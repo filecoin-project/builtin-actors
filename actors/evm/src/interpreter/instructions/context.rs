@@ -1,4 +1,4 @@
-use crate::interpreter::address::Address;
+use crate::interpreter::address::EthAddress;
 use {
     crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::Runtime,
@@ -19,7 +19,7 @@ pub fn caller<'r, BS: Blockstore, RT: Runtime<BS>>(
     platform: &'r System<'r, BS, RT>,
 ) {
     let id = platform.rt.message().caller().id().unwrap();
-    state.stack.push(Address::from_id(id).as_evm_word())
+    state.stack.push(EthAddress::from_id(id).as_evm_word())
 }
 
 #[inline]
@@ -28,7 +28,7 @@ pub fn address<'r, BS: Blockstore, RT: Runtime<BS>>(
     platform: &'r System<'r, BS, RT>,
 ) {
     let id = platform.rt.message().receiver().id().unwrap();
-    state.stack.push(Address::from_id(id).as_evm_word())
+    state.stack.push(EthAddress::from_id(id).as_evm_word())
 }
 
 #[inline]
@@ -37,7 +37,7 @@ pub fn origin<'r, BS: Blockstore, RT: Runtime<BS>>(
     platform: &'r System<'r, BS, RT>,
 ) {
     let id = platform.rt.message().origin().id().unwrap();
-    state.stack.push(Address::from_id(id).as_evm_word())
+    state.stack.push(EthAddress::from_id(id).as_evm_word())
 }
 
 #[inline]
