@@ -56,14 +56,14 @@ fn remove_datacap_simple_successful_path() {
     apply_ok(
         &v,
         verifier1,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
         add_verified_client_params.clone(),
     );
 
     ExpectInvocation {
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifiedClient as u64,
         params: Some(serialize(&add_verified_client_params, "add verifier params").unwrap()),
         subinvocs: Some(vec![ExpectInvocation {
@@ -78,7 +78,7 @@ fn remove_datacap_simple_successful_path() {
     .matches(v.take_invocations().last().unwrap());
 
     // state checks on the 2 verifiers and the client
-    let mut v_st = v.get_state::<VerifregState>(*VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let mut v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let verifiers =
         make_map_with_root_and_bitwidth::<_, BigIntDe>(&v_st.verifiers, &store, HAMT_BIT_WIDTH)
             .unwrap();
@@ -149,7 +149,7 @@ fn remove_datacap_simple_successful_path() {
     let remove_datacap_ret: RemoveDataCapReturn = apply_ok(
         &v,
         TEST_VERIFREG_ROOT_ADDR,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
         remove_datacap_params.clone(),
@@ -157,10 +157,19 @@ fn remove_datacap_simple_successful_path() {
     .deserialize()
     .unwrap();
 
-    expect_remove_datacap(&remove_datacap_params).matches(v.take_invocations().last().unwrap());
+    ExpectInvocation {
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+        method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
+        params: Some(remove_datacap_params_ser),
+        subinvocs: Some(vec![]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
+
+    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
 
     // confirm client's allowance has fallen by half
     let token_st = v.get_state::<DataCapState>(*DATACAP_TOKEN_ACTOR_ADDR).unwrap();
@@ -225,7 +234,7 @@ fn remove_datacap_simple_successful_path() {
     let remove_datacap_ret: RemoveDataCapReturn = apply_ok(
         &v,
         TEST_VERIFREG_ROOT_ADDR,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
         remove_datacap_params.clone(),
@@ -233,15 +242,29 @@ fn remove_datacap_simple_successful_path() {
     .deserialize()
     .unwrap();
 
-    expect_remove_datacap(&remove_datacap_params).matches(v.take_invocations().last().unwrap());
+    ExpectInvocation {
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+        method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
+        params: Some(remove_datacap_params_ser),
+        subinvocs: Some(vec![]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
 
-    // confirm client has no balance
-    let token_st = v.get_state::<DataCapState>(*DATACAP_TOKEN_ACTOR_ADDR).unwrap();
-    let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
-    assert_eq!(balance, TokenAmount::zero());
+    // confirm client has been removed entirely
+
+    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    verified_clients = make_map_with_root_and_bitwidth::<_, BigIntDe>(
+        &v_st.verified_clients,
+        &store,
+        HAMT_BIT_WIDTH,
+    )
+    .unwrap();
+
+    assert!(verified_clients.get(&verified_client_id_addr.to_bytes()).unwrap().is_none());
 
     // confirm proposalIds has changed as expected
     v_st = v.get_state::<VerifregState>(*VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();

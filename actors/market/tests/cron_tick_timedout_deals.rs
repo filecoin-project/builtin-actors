@@ -41,7 +41,7 @@ fn timed_out_deal_is_slashed_and_deleted() {
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         deal_proposal.provider_collateral.clone(),
@@ -114,7 +114,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         deal_proposal.provider_collateral.clone(),
@@ -177,9 +177,36 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
     // ONLY deal1 and deal2 should be sent to the Registry actor
     rt.set_epoch(process_epoch(START_EPOCH, *deal_ids.last().unwrap()));
 
+    // expected sends to the registry actor
+    let param1 = RestoreBytesParams {
+        address: deal1.client,
+        deal_size: StoragePower::from(deal1.piece_size.0),
+    };
+    let param2 = RestoreBytesParams {
+        address: deal2.client,
+        deal_size: StoragePower::from(deal2.piece_size.0),
+    };
+
+    rt.expect_send(
+        VERIFIED_REGISTRY_ACTOR_ADDR,
+        ext::verifreg::RESTORE_BYTES_METHOD as u64,
+        RawBytes::serialize(param1).unwrap(),
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    rt.expect_send(
+        VERIFIED_REGISTRY_ACTOR_ADDR,
+        ext::verifreg::RESTORE_BYTES_METHOD as u64,
+        RawBytes::serialize(param2).unwrap(),
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
     let expected_burn = 3 * &deal1.provider_collateral;
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         expected_burn,

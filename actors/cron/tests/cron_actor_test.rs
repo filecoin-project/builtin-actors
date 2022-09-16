@@ -19,7 +19,7 @@ fn check_state(rt: &MockRuntime) {
 fn construct_runtime() -> MockRuntime {
     MockRuntime {
         receiver: Address::new_id(100),
-        caller: *SYSTEM_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -114,14 +114,14 @@ fn epoch_tick_with_entries() {
 }
 
 fn construct_and_verify(rt: &mut MockRuntime, params: &ConstructorParams) {
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt.call::<CronActor>(1, &RawBytes::serialize(&params).unwrap()).unwrap();
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
 }
 
 fn epoch_tick_and_verify(rt: &mut MockRuntime) {
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt.call::<CronActor>(2, &RawBytes::default()).unwrap();
     assert_eq!(RawBytes::default(), ret);
     rt.verify();

@@ -81,7 +81,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st = State::new(rt.store()).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create market state")
@@ -785,7 +785,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*CRON_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
         let mut amount_slashed = TokenAmount::zero();
         let curr_epoch = rt.curr_epoch();

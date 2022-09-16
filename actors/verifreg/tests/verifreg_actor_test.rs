@@ -44,7 +44,7 @@ mod construction {
     #[test]
     fn construct_with_root_id() {
         let mut rt = new_runtime();
-        let h = Harness { root: *ROOT_ADDR };
+        let h = Harness { root: ROOT_ADDR };
         h.construct_and_verify(&mut rt, &h.root);
         h.check_state(&rt);
     }
@@ -52,7 +52,7 @@ mod construction {
     #[test]
     fn construct_resolves_non_id() {
         let mut rt = new_runtime();
-        let h = Harness { root: *ROOT_ADDR };
+        let h = Harness { root: ROOT_ADDR };
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         rt.id_addresses.insert(root_pubkey, h.root);
         h.construct_and_verify(&mut rt, &root_pubkey);
@@ -64,7 +64,7 @@ mod construction {
         let mut rt = new_runtime();
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
 
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<VerifregActor>(
@@ -855,18 +855,21 @@ mod datacap {
         let (h, mut rt) = new_harness();
         add_miner(&mut rt, PROVIDER1);
 
-        let params = UniversalReceiverParams {
-            type_: FRC46_TOKEN_TYPE,
-            payload: serialize(
-                &make_receiver_hook_token_payload(
-                    CLIENT1,
-                    vec![make_alloc_req(&rt, PROVIDER1, SIZE)],
-                    vec![],
-                    SIZE,
-                ),
-                "payload",
-            )
-            .unwrap(),
+        // Use full allowance.
+        h.use_bytes(&mut rt, &CLIENT, &allowance).unwrap();
+        // Fail to use any more because client was removed.
+        expect_abort(ExitCode::USR_NOT_FOUND, h.use_bytes(&mut rt, &CLIENT, &allowance));
+        h.check_state(&rt)
+    }
+
+    #[test]
+    fn consume_requires_market_actor_caller() {
+        let (h, mut rt) = new_harness();
+        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
+        let params = UseBytesParams {
+            address: *CLIENT,
+            deal_size: rt.policy.minimum_verified_deal_size.clone(),
         };
 
         rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR); // Wrong caller
@@ -888,17 +891,62 @@ mod datacap {
         let (h, mut rt) = new_harness();
         add_miner(&mut rt, PROVIDER1);
 
-        let mut payload = make_receiver_hook_token_payload(
-            CLIENT1,
-            vec![make_alloc_req(&rt, PROVIDER1, SIZE)],
-            vec![],
-            SIZE,
-        );
-        // Set invalid receiver hook "to" address (should be the verified registry itself).
-        payload.to = PROVIDER1;
-        let params = UniversalReceiverParams {
-            type_: FRC46_TOKEN_TYPE,
-            payload: serialize(&payload, "payload").unwrap(),
+        // Use half allowance.
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
+        h.use_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
+        h.assert_client_allowance(&rt, &CLIENT, &rt.policy.minimum_verified_deal_size);
+
+        // Restore it.
+        h.restore_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
+        h.assert_client_allowance(&rt, &CLIENT, &allowance);
+        h.check_state(&rt)
+    }
+
+    #[test]
+    fn restore_resolves_client_address() {
+        let (h, mut rt) = new_harness();
+        let allowance = rt.policy.minimum_verified_deal_size.clone() * 2;
+        h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance);
+
+        // Use half allowance.
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
+        h.use_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
+        h.assert_client_allowance(&rt, &CLIENT, &rt.policy.minimum_verified_deal_size);
+
+        let client_pubkey = Address::new_secp256k1(&[3u8; 65]).unwrap();
+        rt.id_addresses.insert(client_pubkey, *CLIENT);
+
+        // Restore to pubkey address.
+        h.restore_bytes(&mut rt, &client_pubkey, &deal_size).unwrap();
+        h.assert_client_allowance(&rt, &CLIENT, &allowance);
+        h.check_state(&rt)
+    }
+
+    #[test]
+    fn restore_after_removing_client() {
+        let (h, mut rt) = new_harness();
+        let allowance = rt.policy.minimum_verified_deal_size.clone() + 1;
+        h.add_verifier_and_client(&mut rt, &VERIFIER, &CLIENT, &allowance, &allowance);
+
+        // Use allowance.
+        let deal_size = rt.policy.minimum_verified_deal_size.clone();
+        h.use_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
+        h.assert_client_removed(&rt, &CLIENT);
+
+        // Restore it. Client has only the restored bytes (lost the +1 in original allowance).
+        h.restore_bytes(&mut rt, &CLIENT, &deal_size).unwrap();
+        h.assert_client_allowance(&rt, &CLIENT, &deal_size);
+        h.check_state(&rt)
+    }
+
+    #[test]
+    fn restore_requires_market_actor_caller() {
+        let (h, mut rt) = new_harness();
+        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
+        let params = RestoreBytesParams {
+            address: *CLIENT,
+            deal_size: rt.policy.minimum_verified_deal_size.clone(),
         };
 
         rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);

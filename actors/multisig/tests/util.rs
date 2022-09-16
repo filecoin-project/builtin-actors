@@ -38,8 +38,8 @@ impl ActorHarness {
             unlock_duration,
             start_epoch,
         };
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         let result = rt
             .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
             .unwrap();

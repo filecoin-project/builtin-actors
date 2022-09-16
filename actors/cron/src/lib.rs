@@ -47,7 +47,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         rt.create(&State { entries: params.entries })?;
         Ok(())
     }
@@ -59,7 +59,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st: State = rt.state()?;
         for entry in st.entries {

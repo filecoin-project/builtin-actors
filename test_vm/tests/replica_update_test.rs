@@ -895,8 +895,8 @@ fn deal_included_in_multiple_sectors_failure() {
     // In the same epoch, trigger cron to validate prove commit
     apply_ok(
         &v,
-        *SYSTEM_ACTOR_ADDR,
-        *CRON_ACTOR_ADDR,
+        SYSTEM_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
         RawBytes::default(),
@@ -1070,8 +1070,8 @@ fn create_sector(
     );
     let res = v
         .apply_message(
-            *SYSTEM_ACTOR_ADDR,
-            *CRON_ACTOR_ADDR,
+            SYSTEM_ACTOR_ADDR,
+            CRON_ACTOR_ADDR,
             TokenAmount::zero(),
             CronMethod::EpochTick as u64,
             RawBytes::default(),
@@ -1129,7 +1129,7 @@ fn create_deals_frac(
     apply_ok(
         v,
         client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
         MarketMethod::AddBalance as u64,
         client,
@@ -1137,7 +1137,7 @@ fn create_deals_frac(
     apply_ok(
         v,
         worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         collateral,
         MarketMethod::AddBalance as u64,
         maddr,

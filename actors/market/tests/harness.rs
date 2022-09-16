@@ -85,8 +85,8 @@ pub fn setup() -> MockRuntime {
     ]);
 
     let mut rt = MockRuntime {
-        receiver: *STORAGE_MARKET_ACTOR_ADDR,
-        caller: *SYSTEM_ACTOR_ADDR,
+        receiver: STORAGE_MARKET_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         actor_code_cids,
         balance: RefCell::new(TokenAmount::from_whole(10)),
@@ -114,7 +114,7 @@ pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) 
 }
 
 pub fn construct_and_verify(rt: &mut MockRuntime) {
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     assert_eq!(
         RawBytes::default(),
         rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default()).unwrap()
@@ -371,7 +371,7 @@ pub fn cron_tick_and_assert_balances(
     let mut payment_end = d.end_epoch;
     if s.slash_epoch != EPOCH_UNDEFINED {
         rt.expect_send(
-            *BURNT_FUNDS_ACTOR_ADDR,
+            BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
             RawBytes::default(),
             d.provider_collateral.clone(),
@@ -515,9 +515,9 @@ pub fn publish_deals(
                 new_allocations: vec![alloc_id],
             };
             rt.expect_send(
-                *DATACAP_TOKEN_ACTOR_ADDR,
-                ext::datacap::TRANSFER_FROM_METHOD as u64,
-                serialize(&params, "transfer from params").unwrap(),
+                VERIFIED_REGISTRY_ACTOR_ADDR,
+                ext::verifreg::USE_BYTES_METHOD as u64,
+                param,
                 TokenAmount::zero(),
                 serialize(
                     &TransferFromReturn {
@@ -628,8 +628,8 @@ pub fn cron_tick(rt: &mut MockRuntime) {
 }
 
 pub fn cron_tick_raw(rt: &mut MockRuntime) -> Result<RawBytes, ActorError> {
-    rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
-    rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+    rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
+    rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
 
     rt.call::<MarketActor>(Method::CronTick as u64, &RawBytes::default())
 }
@@ -652,7 +652,7 @@ pub fn expect_query_network_info(rt: &mut MockRuntime) {
         this_epoch_reward_smoothed: epoch_reward_smooth,
     };
     rt.expect_send(
-        *REWARD_ACTOR_ADDR,
+        REWARD_ACTOR_ADDR,
         RewardMethod::ThisEpochReward as u64,
         RawBytes::default(),
         TokenAmount::zero(),
@@ -660,7 +660,7 @@ pub fn expect_query_network_info(rt: &mut MockRuntime) {
         ExitCode::OK,
     );
     rt.expect_send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        STORAGE_POWER_ACTOR_ADDR,
         PowerMethod::CurrentTotalPower as u64,
         RawBytes::default(),
         TokenAmount::zero(),

@@ -4,15 +4,8 @@ use fil_fungible_token::receiver::types::{
 use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::SectorNumber;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
-use lazy_static::lazy_static;
-use num_traits::{ToPrimitive, Zero};
+use fvm_shared::bigint::bigint_ser::BigIntDe;
+use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
 
 use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::testing::check_state_invariants;
@@ -34,14 +27,12 @@ use fil_actors_runtime::{
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
-lazy_static! {
-    pub static ref ROOT_ADDR: Address = Address::new_id(101);
-}
+pub const ROOT_ADDR: Address = Address::new_id(101);
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
-        receiver: *VERIFIED_REGISTRY_ACTOR_ADDR,
-        caller: *SYSTEM_ACTOR_ADDR,
+        receiver: ROOT_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -54,7 +45,7 @@ pub fn add_miner(rt: &mut MockRuntime, id: ActorID) {
 
 pub fn new_harness() -> (Harness, MockRuntime) {
     let mut rt = new_runtime();
-    let h = Harness { root: *ROOT_ADDR };
+    let h = Harness { root: ROOT_ADDR };
     h.construct_and_verify(&mut rt, &h.root);
     (h, rt)
 }
@@ -65,7 +56,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct_and_verify(&self, rt: &mut MockRuntime, root_param: &Address) {
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
             .call::<VerifregActor>(
                 Method::Constructor as MethodNum,
@@ -197,6 +188,73 @@ impl Harness {
         assert_eq!(RawBytes::default(), ret);
         rt.verify();
 
+        // Confirm the verifier was added to state.
+        self.assert_client_allowance(rt, client, expected_allowance);
+        Ok(())
+    }
+
+    pub fn assert_client_allowance(&self, rt: &MockRuntime, client: &Address, allowance: &DataCap) {
+        let client_id_addr = rt.get_id_address(client).unwrap();
+        assert_eq!(*allowance, self.get_client_allowance(rt, &client_id_addr));
+    }
+
+    pub fn get_client_allowance(&self, rt: &MockRuntime, client: &Address) -> DataCap {
+        let clients = load_clients(rt);
+        let BigIntDe(allowance) = clients.get(&client.to_bytes()).unwrap().unwrap();
+        allowance.clone()
+    }
+
+    pub fn assert_client_removed(&self, rt: &MockRuntime, client: &Address) {
+        let client_id_addr = rt.get_id_address(client).unwrap();
+        let clients = load_clients(rt);
+        assert!(!clients.contains_key(&client_id_addr.to_bytes()).unwrap())
+    }
+
+    pub fn add_verifier_and_client(
+        &self,
+        rt: &mut MockRuntime,
+        verifier: &Address,
+        client: &Address,
+        verifier_allowance: &DataCap,
+        client_allowance: &DataCap,
+    ) {
+        self.add_verifier(rt, verifier, verifier_allowance).unwrap();
+        self.add_client(rt, verifier, client, client_allowance, client_allowance).unwrap();
+    }
+
+    pub fn use_bytes(
+        &self,
+        rt: &mut MockRuntime,
+        client: &Address,
+        amount: &DataCap,
+    ) -> Result<(), ActorError> {
+        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
+        let params = UseBytesParams { address: *client, deal_size: amount.clone() };
+        let ret = rt.call::<VerifregActor>(
+            Method::UseBytes as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        assert_eq!(RawBytes::default(), ret);
+        rt.verify();
+        Ok(())
+    }
+
+    pub fn restore_bytes(
+        &self,
+        rt: &mut MockRuntime,
+        client: &Address,
+        amount: &DataCap,
+    ) -> Result<(), ActorError> {
+        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
+        let params = RestoreBytesParams { address: *client, deal_size: amount.clone() };
+        let ret = rt.call::<VerifregActor>(
+            Method::RestoreBytes as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+        assert_eq!(RawBytes::default(), ret);
+        rt.verify();
         Ok(())
     }
 

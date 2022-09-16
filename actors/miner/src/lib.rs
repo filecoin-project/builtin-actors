@@ -141,7 +141,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(&[*INIT_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
         check_control_addresses(rt.policy(), &params.control_addresses)?;
         check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
@@ -2050,7 +2050,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(iter::once(&*STORAGE_POWER_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
         // This should be enforced by the power actor. We log here just in case
         // something goes wrong.
@@ -3022,7 +3022,7 @@ impl Actor {
         let (pledge_delta_total, to_burn) = rt.transaction(|st: &mut State, rt| {
             let mut pledge_delta_total = TokenAmount::zero();
 
-            rt.validate_immediate_caller_is(std::iter::once(&*REWARD_ACTOR_ADDR))?;
+            rt.validate_immediate_caller_is(std::iter::once(&REWARD_ACTOR_ADDR))?;
 
             let (reward_to_lock, locked_reward_vesting_spec) =
                 locked_reward_from_reward(params.reward);
@@ -3486,7 +3486,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_POWER_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
         let payload: CronEventPayload = from_slice(&params.event_payload).map_err(|e| {
             actor_error!(

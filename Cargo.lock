@@ -815,6 +815,7 @@ dependencies = [
  "multihash",
  "num-derive",
  "num-traits",
+ "paste",
  "rand",
  "regex",
  "serde",
@@ -1518,6 +1519,12 @@ name = "parking"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "427c3892f9e783d91cc128285287e70a59e206ca452770ece88a76f7a3eddd72"
+
+[[package]]
+name = "paste"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1de2e551fb905ac83f73f7aedf2f0cb4a0da7e35efa24a202a936269f1f18e1"
 
 [[package]]
 name = "pin-project-lite"
