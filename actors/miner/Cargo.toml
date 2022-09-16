@@ -38,6 +38,7 @@ fil_actor_account = { path = "../account" }
 fil_actor_reward = { path = "../reward" }
 fil_actor_power = { path = "../power" }
 fil_actor_market = { path = "../market" }
+fil_actor_verifreg = {path = "../verifreg"}
 rand = "0.8.5"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false }

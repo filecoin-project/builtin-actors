@@ -2756,7 +2756,6 @@ impl Actor {
             Ok((power_delta, pledge_delta))
         })?;
 
-        /* Update power and pledge, no change this is already really good  */
         request_update_power(rt, power_delta)?;
 
         // Note: the pledge delta is expected to be zero, since pledge is not re-calculated for the extension.
