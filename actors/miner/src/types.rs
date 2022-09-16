@@ -148,7 +148,7 @@ pub struct ExpirationExtension {
     pub sectors: UnvalidatedBitField,
     pub new_expiration: ChainEpoch,
 }
-
+#[allow(clippy::too_many_arguments)] // validate mut prevents implementing From
 impl Into<ExpirationExtension> for ExpirationExtension2 {
     fn into(mut self) -> ExpirationExtension {
         let mut sectors = BitField::new();
