@@ -18,8 +18,9 @@ pub use deadlines::*;
 pub use expiration_queue::*;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    actor_error, cbor, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
@@ -37,7 +38,6 @@ pub use beneficiary::*;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::error::*;
-use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
@@ -2463,11 +2463,11 @@ impl Actor {
                     return Err(actor_error!(illegal_argument, "sector bitfield integer overflow"));
                 }
             }
-            for sc in decl.sectors_with_claims {
-                for claim_id in sc.maintain_claims {
-                    // XXX actually get claim
-                    //let claim = ext::verifreg::Claim::default();
+            for sc in &decl.sectors_with_claims {
+                let claims = get_claims(rt, &sc.maintain_claims)
+                    .context(format!("failed to get claims for sector {}", sc.sector_number))?;
 
+                for claim in claims {
                     // check provider and sector matches
                     if claim.provider != rt.message().receiver().id().unwrap() {
                         return Err(actor_error!(illegal_argument, "invalid declaration indexing wrong claim: expected provider {} but found {} ", rt.message().receiver().id().unwrap(), claim.provider));
@@ -2529,7 +2529,7 @@ impl Actor {
                 .take(rt.policy().wpost_period_deadlines as usize)
                 .collect();
             let mut deadlines_to_load = Vec::<u64>::new();
-            let decls: Vec<ExpirationExtension> = params.extensions.iter().map(|e2| {ExpirationExtension::from(e2)}).collect();
+            let decls: Vec<ExpirationExtension> = params.extensions.into_iter().map(|e2| {e2.into()}).collect();
             for decl in decls {
                 // the deadline indices are already checked.
                 let decls = &mut decls_by_deadline[decl.deadline as usize];
@@ -2633,11 +2633,10 @@ impl Actor {
                             )?;
 
                             // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
-                            let mut sector = sector.clone();
                             if sector.simple_qa_power {
                                 if sector.verified_deal_weight > BigInt::zero() {
                                     let duration = sector.expiration - sector.activation;
-                                    let verified_deal_space = sector.verified_deal_weight / duration;
+                                    let verified_deal_space = sector.verified_deal_weight.clone() / duration;
                                     let expected_verified_deal_space = match claim_space_by_sector.get(&sector.sector_number) {
                                         None => return Err(actor_error!(illegal_argument, "claim missing from declaration for sector {}", sector.sector_number)),
                                         Some(space) => space,
@@ -2662,8 +2661,7 @@ impl Actor {
                                 sector.deal_weight = new_deal_weight;
                                 sector.verified_deal_weight = new_verified_deal_weight;
                             }
-
-                            Ok(sector)
+                            Ok(sector.clone())
                         })
                         .collect::<Result<_, _>>()?;
 
@@ -4629,6 +4627,31 @@ where
         )?;
     }
     Ok(())
+}
+
+fn get_claims<BS, RT>(
+    rt: &mut RT,
+    ids: &Vec<ext::verifreg::ClaimID>,
+) -> Result<Vec<ext::verifreg::Claim>, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    let params = ext::verifreg::GetClaimsParams {
+        provider: rt.message().receiver().id().unwrap(),
+        claim_ids: ids.clone(),
+    };
+    let ret_raw = rt.send(
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        ext::verifreg::GET_CLAIMS as u64,
+        serialize(&params, "get claims parameters")?,
+        TokenAmount::zero(),
+    )?;
+    let claims_ret: ext::verifreg::GetClaimsReturn = deserialize(&ret_raw, "get claims return")?;
+    if claims_ret.batch_info.success_count < ids.len() {
+        return Err(actor_error!(illegal_argument, "invalid claims"));
+    }
+    Ok(claims_ret.claims)
 }
 
 /// Assigns proving period offset randomly in the range [0, WPoStProvingPeriod) by hashing

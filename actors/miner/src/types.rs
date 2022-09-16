@@ -4,9 +4,7 @@
 use super::beneficiary::*;
 use crate::commd::CompactCommD;
 use cid::Cid;
-use fil_actors_runtime::ActorError;
 use fil_actors_runtime::DealWeight;
-use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen, DATACAP_TOKEN_ACTOR_ADDR};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_encoding::tuple::*;
@@ -16,7 +14,6 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
@@ -152,18 +149,18 @@ pub struct ExpirationExtension {
     pub new_expiration: ChainEpoch,
 }
 
-impl From<&ExpirationExtension2> for ExpirationExtension {
-    fn from(e2: &ExpirationExtension2) -> Self {
-        let sectors = BitField::new();
-        for sc in e2.sectors_with_claims {
+impl Into<ExpirationExtension> for ExpirationExtension2 {
+    fn into(mut self) -> ExpirationExtension {
+        let mut sectors = BitField::new();
+        for sc in self.sectors_with_claims {
             sectors.set(sc.sector_number)
         }
-        sectors &= e2.sectors.validate_mut().unwrap();
-        Self {
-            deadline: e2.deadline,
-            partition: e2.partition,
+        sectors &= self.sectors.validate_mut().unwrap();
+        ExpirationExtension {
+            deadline: self.deadline,
+            partition: self.partition,
             sectors: fvm_ipld_bitfield::UnvalidatedBitField::Validated(sectors),
-            new_expiration: e2.new_expiration,
+            new_expiration: self.new_expiration,
         }
     }
 }
@@ -175,8 +172,7 @@ pub struct ExtendSectorExpiration2Params {
 
 impl Cbor for ExtendSectorExpiration2Params {}
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
-
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct SectorClaim {
     pub sector_number: SectorNumber,
     pub maintain_claims: Vec<ClaimID>,

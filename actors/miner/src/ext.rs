@@ -1,4 +1,5 @@
 use cid::Cid;
+use fil_actors_runtime::BatchReturn;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{bigint_ser, BigInt};
@@ -136,6 +137,8 @@ pub mod reward {
 pub mod verifreg {
     use super::*;
 
+    pub const GET_CLAIMS: u64 = 10;
+
     pub type ClaimID = u64;
     #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
     pub struct Claim {
@@ -155,5 +158,16 @@ pub mod verifreg {
         pub term_start: ChainEpoch,
         // ID of the provider's sector in which the data is committed.
         pub sector: SectorNumber,
+    }
+    #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+    pub struct GetClaimsParams {
+        pub provider: ActorID,
+        pub claim_ids: Vec<ClaimID>,
+    }
+    #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+
+    pub struct GetClaimsReturn {
+        pub batch_info: BatchReturn,
+        pub claims: Vec<Claim>,
     }
 }
