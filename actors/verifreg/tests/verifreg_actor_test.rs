@@ -552,7 +552,7 @@ mod datacap {
     use fvm_shared::error::ExitCode;
     use fvm_shared::{ActorID, MethodNum};
 
-    use fil_actor_verifreg::{Actor as VerifregActor, Method, RestoreBytesParams, State};
+    use fil_actor_verifreg::{Actor as VerifregActor, Method, State};
     use fil_actors_runtime::cbor::serialize;
     use fil_actors_runtime::runtime::policy_constants::{
         MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION, MAXIMUM_VERIFIED_ALLOCATION_TERM,
@@ -560,12 +560,8 @@ mod datacap {
     };
     use fil_actors_runtime::runtime::Runtime;
     use fil_actors_runtime::test_utils::*;
-    use fil_actors_runtime::{
-        DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR,
-        STORAGE_POWER_ACTOR_ADDR,
-    };
+    use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR};
     use harness::*;
-    use util::*;
 
     use crate::*;
 
@@ -789,77 +785,5 @@ mod datacap {
             );
         }
         h.check_state(&rt);
-    }
-
-    #[test]
-    fn restore() {
-        let (h, mut rt) = new_harness();
-        let deal_size = &rt.policy.minimum_verified_allocation_size.clone();
-        h.restore_bytes(&mut rt, &CLIENT, deal_size).unwrap();
-        h.check_state(&rt);
-    }
-
-    #[test]
-    fn restore_resolves_client_address() {
-        let (h, mut rt) = new_harness();
-        let client_pubkey = Address::new_secp256k1(&[3u8; 65]).unwrap();
-        rt.id_addresses.insert(client_pubkey, *CLIENT);
-
-        // Restore to pubkey address.
-        let deal_size = rt.policy.minimum_verified_allocation_size.clone();
-        h.restore_bytes(&mut rt, &client_pubkey, &deal_size).unwrap();
-        h.check_state(&rt)
-    }
-
-    #[test]
-    fn restore_requires_market_actor_caller() {
-        let (h, mut rt) = new_harness();
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
-        let params = RestoreBytesParams {
-            address: *CLIENT,
-            deal_size: rt.policy.minimum_verified_allocation_size.clone(),
-        };
-        expect_abort(
-            ExitCode::USR_FORBIDDEN,
-            rt.call::<VerifregActor>(
-                Method::RestoreBytes as MethodNum,
-                &RawBytes::serialize(params).unwrap(),
-            ),
-        );
-        h.check_state(&rt)
-    }
-
-    #[test]
-    fn restore_requires_minimum_deal_size() {
-        let (h, mut rt) = new_harness();
-
-        let deal_size = rt.policy.minimum_verified_allocation_size.clone() - 1;
-        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.restore_bytes(&mut rt, &CLIENT, &deal_size));
-        h.check_state(&rt)
-    }
-
-    #[test]
-    fn restore_rejects_root() {
-        let (h, mut rt) = new_harness();
-        let deal_size = rt.policy.minimum_verified_allocation_size.clone();
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.restore_bytes(&mut rt, &ROOT_ADDR, &deal_size),
-        );
-        h.check_state(&rt)
-    }
-
-    #[test]
-    fn restore_rejects_verifier() {
-        let (h, mut rt) = new_harness();
-        let allowance = verifier_allowance(&rt);
-        h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
-        let deal_size = rt.policy.minimum_verified_allocation_size.clone();
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.restore_bytes(&mut rt, &VERIFIER, &deal_size),
-        );
-        h.check_state(&rt)
     }
 }
