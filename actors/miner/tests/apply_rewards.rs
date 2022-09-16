@@ -123,8 +123,8 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
     let new_balance = &reward + &amt;
     rt.set_balance(new_balance);
 
-    rt.set_caller(*REWARD_ACTOR_CODE_ID, *REWARD_ACTOR_ADDR);
-    rt.expect_validate_caller_addr(vec![*REWARD_ACTOR_ADDR]);
+    rt.set_caller(*REWARD_ACTOR_CODE_ID, REWARD_ACTOR_ADDR);
+    rt.expect_validate_caller_addr(vec![REWARD_ACTOR_ADDR]);
 
     // pledge change is new reward - reward taken for fee debt
     // zero here since all reward goes to debt
@@ -133,7 +133,7 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
     // burn initial balance + reward = 2*amt
     let expect_burnt = 2 * &amt;
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         expect_burnt,
@@ -186,11 +186,11 @@ fn rewards_pay_back_fee_debt() {
     let remaining_locked = locked_reward - &st.fee_debt; // note that this would be clamped at 0 if difference above is < 0
     assert!(remaining_locked.is_positive());
     let pledge_delta = remaining_locked.clone();
-    rt.set_caller(*REWARD_ACTOR_CODE_ID, *REWARD_ACTOR_ADDR);
-    rt.expect_validate_caller_addr(vec![*REWARD_ACTOR_ADDR]);
+    rt.set_caller(*REWARD_ACTOR_CODE_ID, REWARD_ACTOR_ADDR);
+    rt.expect_validate_caller_addr(vec![REWARD_ACTOR_ADDR]);
     // expect pledge update
     rt.expect_send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        STORAGE_POWER_ACTOR_ADDR,
         PowerMethod::UpdatePledgeTotal as u64,
         RawBytes::serialize(&pledge_delta).unwrap(),
         TokenAmount::zero(),
@@ -200,7 +200,7 @@ fn rewards_pay_back_fee_debt() {
 
     let expect_burnt = st.fee_debt;
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         expect_burnt.clone(),

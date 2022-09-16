@@ -12,6 +12,7 @@ use fil_actor_paych::{
     Actor as PaychActor, ConstructorParams, LaneState, Merge, Method, ModVerifyParams,
     SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE, SETTLE_DELAY,
 };
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
@@ -67,6 +68,7 @@ fn check_state(rt: &MockRuntime) {
 }
 
 mod paych_constructor {
+    use fil_actors_runtime::runtime::builtins::Type;
     use fvm_shared::METHOD_CONSTRUCTOR;
     use fvm_shared::METHOD_SEND;
     use num_traits::Zero;
@@ -106,7 +108,7 @@ mod paych_constructor {
     #[test]
     fn actor_doesnt_exist_test() {
         let mut rt = construct_runtime();
-        rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams {
             to: Address::new_id(TEST_PAYCH_ADDR),
             from: Address::new_id(TEST_PAYER_ADDR),
@@ -185,7 +187,7 @@ mod paych_constructor {
                 ..Default::default()
             };
 
-            rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+            rt.expect_validate_caller_type(vec![Type::Init]);
             let params = ConstructorParams { to: test_case.to_addr, from: test_case.from_addr };
             expect_abort(
                 &mut rt,
@@ -224,7 +226,7 @@ mod paych_constructor {
             ExitCode::OK,
         );
 
-        rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams { from: non_id_addr, to: to_addr };
         expect_abort(
             &mut rt,
@@ -261,7 +263,7 @@ mod paych_constructor {
             ExitCode::OK,
         );
 
-        rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams { from: from_addr, to: non_id_addr };
         expect_abort(
             &mut rt,
@@ -1135,7 +1137,7 @@ fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouc
 
     let mut rt = MockRuntime {
         receiver: paych_addr,
-        caller: *INIT_ACTOR_ADDR,
+        caller: INIT_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         actor_code_cids,
         value_received: received,
@@ -1199,7 +1201,7 @@ fn require_add_new_lane(rt: &mut MockRuntime, param: LaneParams) -> SignedVouche
 
 fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address) {
     let params = ConstructorParams { from: sender, to: receiver };
-    rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Init]);
     call(rt, METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap());
     rt.verify();
     let sender_id = rt.id_addresses.get(&sender).unwrap_or(&sender);

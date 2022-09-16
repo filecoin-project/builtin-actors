@@ -71,7 +71,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     apply_ok(
         &v,
         verifier,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
         add_client_params,
@@ -81,7 +81,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     apply_ok(
         &v,
         client1,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         client_collateral.clone(),
         MarketMethod::AddBalance as u64,
         client1,
@@ -89,7 +89,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     apply_ok(
         &v,
         client2,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         client_collateral.clone(),
         MarketMethod::AddBalance as u64,
         client2,
@@ -97,7 +97,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     apply_ok(
         &v,
         verified_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         client_collateral,
         MarketMethod::AddBalance as u64,
         verified_client,
@@ -107,7 +107,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     apply_ok(
         &v,
         worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         miner_collateral,
         MarketMethod::AddBalance as u64,
         maddr,
@@ -229,7 +229,7 @@ fn psd_not_enought_client_lockup_for_batch() {
     apply_ok(
         &v,
         a.cheap_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         one_lifetime_cost,
         MarketMethod::AddBalance as u64,
         a.cheap_client,
@@ -269,7 +269,7 @@ fn psd_not_enough_provider_lockup_for_batch() {
     apply_ok(
         &v,
         cheap_worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         default_provider_collateral,
         MarketMethod::AddBalance as u64,
         cheap_maddr,
@@ -392,7 +392,7 @@ fn psd_random_assortment_of_failures() {
     apply_ok(
         &v,
         a.cheap_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         one_lifetime_cost,
         MarketMethod::AddBalance as u64,
         a.cheap_client,
@@ -611,7 +611,7 @@ impl<'bs> DealBatcher<'bs> {
         let ret: PublishStorageDealsReturn = apply_ok(
             self.v,
             sender,
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             TokenAmount::zero(),
             MarketMethod::PublishStorageDeals as u64,
             publish_params,
@@ -635,7 +635,7 @@ impl<'bs> DealBatcher<'bs> {
             .v
             .apply_message(
                 sender,
-                *STORAGE_MARKET_ACTOR_ADDR,
+                STORAGE_MARKET_ACTOR_ADDR,
                 TokenAmount::zero(),
                 MarketMethod::PublishStorageDeals as u64,
                 publish_params,

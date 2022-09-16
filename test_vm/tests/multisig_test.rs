@@ -26,14 +26,14 @@ fn test_proposal_hash() {
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let alice = addrs[0];
     let bob = addrs[1];
-    let sys_act_start_bal = v.get_actor(*SYSTEM_ACTOR_ADDR).unwrap().balance;
+    let sys_act_start_bal = v.get_actor(SYSTEM_ACTOR_ADDR).unwrap().balance;
 
     let msig_addr = create_msig(&v, addrs, 2);
 
     // fund msig and propose send funds to system actor
     let fil_delta = TokenAmount::from_nano(3);
     let propose_send_sys_params = ProposeParams {
-        to: *SYSTEM_ACTOR_ADDR,
+        to: SYSTEM_ACTOR_ADDR,
         value: fil_delta.clone(),
         method: METHOD_SEND,
         params: RawBytes::default(),
@@ -48,7 +48,7 @@ fn test_proposal_hash() {
     );
 
     let wrong_tx = Transaction {
-        to: *SYSTEM_ACTOR_ADDR,
+        to: SYSTEM_ACTOR_ADDR,
         value: &fil_delta - TokenAmount::from_atto(1), // incorrect send amount not consistent with proposal
         method: METHOD_SEND,
         approved: vec![alice],
@@ -67,7 +67,7 @@ fn test_proposal_hash() {
     );
 
     let correct_tx = Transaction {
-        to: *SYSTEM_ACTOR_ADDR,
+        to: SYSTEM_ACTOR_ADDR,
         value: fil_delta.clone(),
         method: METHOD_SEND,
         approved: vec![alice],
@@ -89,12 +89,12 @@ fn test_proposal_hash() {
         method: MsigMethod::Approve as u64,
         subinvocs: Some(vec![
             // Tx goes through to fund the system actor
-            ExpectInvocation { to: *SYSTEM_ACTOR_ADDR, method: METHOD_SEND, ..Default::default() },
+            ExpectInvocation { to: SYSTEM_ACTOR_ADDR, method: METHOD_SEND, ..Default::default() },
         ]),
         ..Default::default()
     };
     expect.matches(v.take_invocations().last().unwrap());
-    assert_eq!(sys_act_start_bal + fil_delta, v.get_actor(*SYSTEM_ACTOR_ADDR).unwrap().balance);
+    assert_eq!(sys_act_start_bal + fil_delta, v.get_actor(SYSTEM_ACTOR_ADDR).unwrap().balance);
     v.assert_state_invariants();
 }
 
@@ -288,7 +288,7 @@ fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
     let msig_ctor_ret: ExecReturn = apply_ok(
         v,
         signers[0],
-        *INIT_ACTOR_ADDR,
+        INIT_ACTOR_ADDR,
         TokenAmount::zero(),
         fil_actor_init::Method::Exec as u64,
         fil_actor_init::ExecParams {

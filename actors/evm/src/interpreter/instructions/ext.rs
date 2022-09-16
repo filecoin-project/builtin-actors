@@ -1,4 +1,4 @@
-use crate::interpreter::address::Address;
+use crate::interpreter::address::EthAddress;
 use crate::interpreter::instructions::memory::copy_to_memory;
 use crate::U256;
 use cid::Cid;
@@ -61,7 +61,7 @@ fn get_evm_bytecode_cid<BS: Blockstore, RT: Runtime<BS>>(
     rt: &RT,
     addr: U256,
 ) -> Result<Cid, StatusCode> {
-    let addr = Address::try_from(addr)?
+    let addr = EthAddress::try_from(addr)?
         .as_id_address()
         .ok_or_else(|| StatusCode::BadAddress("no support for non-ID addresses yet".to_string()))?;
 

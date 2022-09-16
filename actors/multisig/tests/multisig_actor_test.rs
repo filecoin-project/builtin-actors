@@ -6,7 +6,7 @@ use fil_actor_multisig::{
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
@@ -22,7 +22,7 @@ mod util;
 fn construct_runtime(receiver: Address) -> MockRuntime {
     MockRuntime {
         receiver,
-        caller: *SYSTEM_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -55,8 +55,8 @@ mod constructor_tests {
         };
 
         rt.set_received(TokenAmount::from_atto(100u8));
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         let ret = rt.call::<MultisigActor>(
             Method::Constructor as u64,
             &RawBytes::serialize(&params).unwrap(),
@@ -91,8 +91,8 @@ mod constructor_tests {
             start_epoch: 0,
         };
 
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         let ret = rt
             .call::<MultisigActor>(
                 Method::Constructor as u64,
@@ -114,8 +114,8 @@ mod constructor_tests {
             unlock_duration: 100,
             start_epoch: 1234,
         };
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         assert_eq!(
             RawBytes::default(),
             rt.call::<MultisigActor>(
@@ -144,8 +144,8 @@ mod constructor_tests {
             unlock_duration: 1,
             start_epoch: 0,
         };
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
 
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -172,8 +172,8 @@ mod constructor_tests {
             unlock_duration: 1,
             start_epoch: 0,
         };
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
@@ -193,8 +193,8 @@ mod constructor_tests {
             unlock_duration: 0,
             start_epoch: 0,
         };
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
@@ -216,7 +216,7 @@ mod constructor_tests {
             unlock_duration: 1,
             start_epoch: 0,
         };
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.expect_send(
             anne_non_id,
             METHOD_SEND,
@@ -225,7 +225,7 @@ mod constructor_tests {
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_STATE,
             rt.call::<MultisigActor>(
@@ -245,8 +245,8 @@ mod constructor_tests {
             unlock_duration: 0,
             start_epoch: 0,
         };
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
@@ -268,8 +268,8 @@ mod constructor_tests {
             unlock_duration: 0,
             start_epoch: 0,
         };
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
@@ -1550,7 +1550,7 @@ mod approval_tests {
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
         let params = TxnIDParams { id: TxnID(0), proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
             .unwrap();
@@ -1612,7 +1612,7 @@ mod approval_tests {
         h.construct_and_verify(&mut rt, 1, 0, 0, signers);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
         let params = TxnIDParams { id: dne_tx_id, proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
             .expect_err("should fail on approve of non existent tx id");

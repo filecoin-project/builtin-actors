@@ -109,7 +109,7 @@ pub fn create_miner(
     let res: CreateMinerReturn = v
         .apply_message(
             owner,
-            *STORAGE_POWER_ACTOR_ADDR,
+            STORAGE_POWER_ACTOR_ADDR,
             balance,
             PowerMethod::CreateMiner as u64,
             params,
@@ -137,12 +137,12 @@ pub fn precommit_sectors(
     let invocs_common = || -> Vec<ExpectInvocation> {
         vec![
             ExpectInvocation {
-                to: *REWARD_ACTOR_ADDR,
+                to: REWARD_ACTOR_ADDR,
                 method: RewardMethod::ThisEpochReward as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::CurrentTotalPower as u64,
                 ..Default::default()
             },
@@ -150,14 +150,14 @@ pub fn precommit_sectors(
     };
     let invoc_first = || -> ExpectInvocation {
         ExpectInvocation {
-            to: *STORAGE_POWER_ACTOR_ADDR,
+            to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::EnrollCronEvent as u64,
             ..Default::default()
         }
     };
     let invoc_net_fee = |fee: TokenAmount| -> ExpectInvocation {
         ExpectInvocation {
-            to: *BURNT_FUNDS_ACTOR_ADDR,
+            to: BURNT_FUNDS_ACTOR_ADDR,
             method: METHOD_SEND,
             value: Some(fee),
             ..Default::default()
@@ -269,27 +269,27 @@ pub fn prove_commit_sectors(
             params: Some(prove_commit_aggregate_params_ser),
             subinvocs: Some(vec![
                 ExpectInvocation {
-                    to: *STORAGE_MARKET_ACTOR_ADDR,
+                    to: STORAGE_MARKET_ACTOR_ADDR,
                     method: MarketMethod::ComputeDataCommitment as u64,
                     ..Default::default()
                 },
                 ExpectInvocation {
-                    to: *REWARD_ACTOR_ADDR,
+                    to: REWARD_ACTOR_ADDR,
                     method: RewardMethod::ThisEpochReward as u64,
                     ..Default::default()
                 },
                 ExpectInvocation {
-                    to: *STORAGE_POWER_ACTOR_ADDR,
+                    to: STORAGE_POWER_ACTOR_ADDR,
                     method: PowerMethod::CurrentTotalPower as u64,
                     ..Default::default()
                 },
                 ExpectInvocation {
-                    to: *STORAGE_POWER_ACTOR_ADDR,
+                    to: STORAGE_POWER_ACTOR_ADDR,
                     method: PowerMethod::UpdatePledgeTotal as u64,
                     ..Default::default()
                 },
                 ExpectInvocation {
-                    to: *BURNT_FUNDS_ACTOR_ADDR,
+                    to: BURNT_FUNDS_ACTOR_ADDR,
                     method: METHOD_SEND,
                     ..Default::default()
                 },
@@ -363,8 +363,8 @@ where
 
         let res = v
             .apply_message(
-                *SYSTEM_ACTOR_ADDR,
-                *CRON_ACTOR_ADDR,
+                SYSTEM_ACTOR_ADDR,
+                CRON_ACTOR_ADDR,
                 TokenAmount::zero(),
                 CronMethod::EpochTick as u64,
                 RawBytes::default(),
@@ -416,7 +416,7 @@ pub fn sector_info(v: &VM, m: Address, s: SectorNumber) -> SectorOnChainInfo {
 }
 
 pub fn miner_power(v: &VM, m: Address) -> PowerPair {
-    let st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
+    let st = v.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
     let claim = st.get_claim(v.store, &m).unwrap().unwrap();
     PowerPair::new(claim.raw_byte_power, claim.quality_adj_power)
 }
@@ -485,7 +485,7 @@ pub fn submit_windowed_post(
             )
             .unwrap();
             subinvocs = Some(vec![ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::UpdateClaimedPower as u64,
                 params: Some(update_power_params),
                 ..Default::default()
@@ -529,7 +529,7 @@ pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
     let add_verifier_params = VerifierParams { address: verifier, allowance: data_cap };
     // root address is msig, send proposal from root key
     let proposal = ProposeParams {
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         value: TokenAmount::zero(),
         method: VerifregMethod::AddVerifier as u64,
         params: serialize(&add_verifier_params, "verifreg add verifier params").unwrap(),
@@ -544,7 +544,7 @@ pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
         proposal,
     );
     let verifreg_invoc = ExpectInvocation {
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifier as u64,
         params: Some(serialize(&add_verifier_params, "verifreg add verifier params").unwrap()),
         subinvocs: Some(vec![]),
@@ -595,7 +595,7 @@ pub fn publish_deal(
     let ret: PublishStorageDealsReturn = apply_ok(
         v,
         provider,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
         MarketMethod::PublishStorageDeals as u64,
         publish_params,
@@ -610,25 +610,25 @@ pub fn publish_deal(
             ..Default::default()
         },
         ExpectInvocation {
-            to: *REWARD_ACTOR_ADDR,
+            to: REWARD_ACTOR_ADDR,
             method: RewardMethod::ThisEpochReward as u64,
             ..Default::default()
         },
         ExpectInvocation {
-            to: *STORAGE_POWER_ACTOR_ADDR,
+            to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::CurrentTotalPower as u64,
             ..Default::default()
         },
     ];
     if verified_deal {
         expect_publish_invocs.push(ExpectInvocation {
-            to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+            to: VERIFIED_REGISTRY_ACTOR_ADDR,
             method: VerifregMethod::UseBytes as u64,
             ..Default::default()
         })
     }
     ExpectInvocation {
-        to: *STORAGE_MARKET_ACTOR_ADDR,
+        to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,
         subinvocs: Some(expect_publish_invocs),
         ..Default::default()
