@@ -1,6 +1,6 @@
 mod asm;
 
-use evm::interpreter::address::Address as EVMAddress;
+use evm::interpreter::address::EthAddress;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
@@ -77,7 +77,7 @@ fn test_call() {
     let target = FILAddress::new_id(0x100);
     rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
 
-    let evm_target = EVMAddress::from_id_address(&target).unwrap();
+    let evm_target = EthAddress::from_id_address(&target).unwrap();
     let evm_target_word = evm_target.as_evm_word();
 
     // dest + method 0 with no data
@@ -216,7 +216,7 @@ fn test_callactor() {
     let target = FILAddress::new_id(0x100);
     rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
 
-    let evm_target = EVMAddress::from_id_address(&target).unwrap();
+    let evm_target = EthAddress::from_id_address(&target).unwrap();
     let evm_target_word = evm_target.as_evm_word();
 
     // dest + method 0x42 with no data
