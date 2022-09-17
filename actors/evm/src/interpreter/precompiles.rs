@@ -83,6 +83,7 @@ impl<BS: Blockstore, RT: Runtime<BS>> Precompiles<BS, RT> {
     }
 }
 
+// It is uncomfortable how much Eth pads everything...
 /// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/common/bytes.go#L108
 fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u8]> {
     let mut input: Cow<[u8]> = input.into();
@@ -91,13 +92,6 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
         input.to_mut().resize(len, 0);
     }
     input
-}
-
-/// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/common.go#L54
-fn get_data(input: &[u8], start: usize, len: usize) -> Cow<[u8]> {
-    let start = start.min(input.len());
-    let end = (start + len).min(input.len());
-    read_right_pad(&input[start..end], len)
 }
 
 // https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L165
@@ -166,36 +160,39 @@ fn identity<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let input = read_right_pad(input, 96);
 
-    const MAX_LEN: u32 = 256;
-    fn read_256_bigint(input: &[u8], size: usize) -> Result<usize, PrecompileError> {
+    // Follows go-ethereum by truncating bits to u64, ignoring other all other values in the first 24 bytes.
+    // We also need to try converting into u32 since we are running in WASM, and since we don't have any complexity
+    // functions or specific gas measurements of modexp in FEVM, we let values be whatever and have FEVM gas accounting
+    // be the one responsible for keeping things within reasonable limits.
+    // We _also_ will default with 0 (though this is already done with right padding above) since that is expected to be fine.
+    // Eth really relies heavily on gas checking being correct and safe for nodes...
+    fn read_bigint_len(input: &[u8], size: usize) -> Result<usize, PrecompileError> {
         let digits = BigUint::from_bytes_be(&input[size..size + 32]);
-        let mut digits = digits.iter_u32_digits();
-        let first = digits
+        let mut digits = digits.iter_u64_digits();
+        // truncate to 64 bits
+        digits
             .next()
             .or(Some(0))
-            .and_then(|l| (l <= MAX_LEN).then_some(l as usize))
-            .ok_or(PrecompileError::OutOfGas)?;
-        digits.next().is_none().then_some(first).ok_or(PrecompileError::OutOfGas)
+            // wont ever error here, just a type conversion
+            .ok_or(PrecompileError::OutOfGas)
+            .and_then(|d| u32::try_from(d).map_err(|_| PrecompileError::OutOfGas))
+            .map(|d| d as usize)
     }
 
-    let base_len = read_256_bigint(&input, 0)?;
-    let exponent_len = read_256_bigint(&input, 32)?;
-    let mod_len = read_256_bigint(&input, 64)?;
-    
+    let base_len = read_bigint_len(&input, 0)?;
+    let exponent_len = read_bigint_len(&input, 32)?;
+    let mod_len = read_bigint_len(&input, 64)?;
+
     if base_len == 0 && mod_len == 0 {
         return Ok(Vec::new());
     }
     let input = if input.len() > 96 { &input[96..] } else { &[] };
     let input = read_right_pad(input, base_len + exponent_len + mod_len);
 
-    // println!("{} {} {}\n{:x?}", base_len, exponent_len, mod_len, input);
-
     let base = BigUint::from_bytes_be(&input[0..base_len]);
-    // println!("- {} {} : {:x?}", base_len, base, input);
     let exponent = BigUint::from_bytes_be(&input[base_len..exponent_len + base_len]);
-    // println!("- {} {} : {:x?}", exponent_len, exponent, input);
-    let modulus = BigUint::from_bytes_be(&input[base_len + exponent_len..mod_len + base_len + exponent_len]);
-    // println!("- {} {} : {:x?}", mod_len, modulus, input);
+    let modulus =
+        BigUint::from_bytes_be(&input[base_len + exponent_len..mod_len + base_len + exponent_len]);
 
     if modulus.is_zero() || modulus.is_one() {
         // mod 0 is undefined: 0, base mod 1 is always 0
@@ -206,7 +203,7 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 
     if output.len() < mod_len {
         let mut ret = Vec::with_capacity(mod_len);
-        ret.extend(std::iter::repeat(0).take(mod_len - output.len())); // left padding
+        ret.resize(mod_len - output.len(), 0); // left padding
         ret.extend_from_slice(&output);
         output = ret;
     }
@@ -218,7 +215,7 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 /// exits with EcErr for any failed operation
 /// panics if input.len() < 64
 fn curve_point(input: &[u8]) -> Result<G1, PrecompileError> {
-    let x = Fq::from_u256(U256::from_big_endian(&input[..32]).into())?;
+    let x = Fq::from_u256(U256::from_big_endian(&input[0..32]).into())?;
     let y = Fq::from_u256(U256::from_big_endian(&input[32..64]).into())?;
 
     Ok(if x.is_zero() && y.is_zero() { G1::zero() } else { AffineG1::new(x, y)?.into() })
@@ -228,8 +225,8 @@ fn curve_to_vec(curve: G1) -> Vec<u8> {
     AffineG1::from_jacobian(curve)
         .map(|product| {
             let mut output = vec![0; 64];
-            product.x().to_big_endian(&mut output[..32]).unwrap();
-            product.y().to_big_endian(&mut output[32..]).unwrap();
+            product.x().to_big_endian(&mut output[0..32]).unwrap();
+            product.y().to_big_endian(&mut output[32..64]).unwrap();
             output
         })
         .unwrap_or_else(|| vec![0; 64])
@@ -269,38 +266,33 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
             Ok(U256::from_big_endian(slice))
         }
 
-        let x1 = read_u256(input, 0)?;
-        let y1 = read_u256(input, 32)?;
+        let x = Fq::from_u256(read_u256(input, 0)?.into())?;
+        let y = Fq::from_u256(read_u256(input, 32)?.into())?;
 
-        let y2 = read_u256(input, 64)?;
-        let x2 = read_u256(input, 96)?;
-        let y3 = read_u256(input, 128)?;
-        let x3 = read_u256(input, 160)?;
-
-        let ax = Fq::from_u256(x1.into())?;
-        let ay = Fq::from_u256(y1.into())?;
-
-        let twisted_ax = Fq::from_u256(x2.into())?;
-        let twisted_ay = Fq::from_u256(y2.into())?;
-        let twisted_bx = Fq::from_u256(x3.into())?;
-        let twisted_by = Fq::from_u256(y3.into())?;
-
-        let twisted_a = Fq2::new(twisted_ax, twisted_ay);
-        let twisted_b = Fq2::new(twisted_bx, twisted_by);
+        let twisted_x = {
+            let b = Fq::from_u256(read_u256(input, 64)?.into())?;
+            let a = Fq::from_u256(read_u256(input, 96)?.into())?;
+            Fq2::new(a, b)
+        };
+        let twisted_y = {
+            let b = Fq::from_u256(read_u256(input, 128)?.into())?;
+            let a = Fq::from_u256(read_u256(input, 160)?.into())?;
+            Fq2::new(a, b)
+        };
 
         let twisted = {
-            if twisted_a.is_zero() && twisted_b.is_zero() {
+            if twisted_x.is_zero() && twisted_y.is_zero() {
                 G2::zero()
             } else {
-                AffineG2::new(twisted_a, twisted_b)?.into()
+                AffineG2::new(twisted_x, twisted_y)?.into()
             }
         };
 
         let a = {
-            if ax.is_zero() && ay.is_zero() {
+            if x.is_zero() && y.is_zero() {
                 substrate_bn::G1::zero()
             } else {
-                AffineG1::new(ax, ay)?.into()
+                AffineG1::new(x, y)?.into()
             }
         };
 
@@ -396,12 +388,6 @@ mod tests {
 
             let res = read_right_pad(&input, i);
             assert_eq!(&*res, &expected);
-
-            let res = get_data(&input, 0, i);
-            assert_eq!(&*res, &expected);
-
-            let res = get_data(&input, i + i, i);
-            assert_eq!(&*res, &vec![0; i]);
 
             input.push(0);
         }
@@ -663,6 +649,7 @@ mod tests {
                 12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
             )
             .unwrap();
+            
             let expected =
                 hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                     .unwrap();
