@@ -17,7 +17,7 @@ use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier,
+    Verifier, EMPTY_ARR_CID,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::MessageAccumulator;
@@ -66,7 +66,6 @@ pub struct VM<'bs> {
     total_fil: TokenAmount,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
-    empty_obj_cid: Cid,
     network_version: NetworkVersion,
     curr_epoch: ChainEpoch,
     invocations: RefCell<Vec<InvocationTrace>>,
@@ -111,14 +110,12 @@ pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
 impl<'bs> VM<'bs> {
     pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
-        let empty = store.put_cbor(&(), Code::Blake2b256).unwrap();
         VM {
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
             total_fil: TokenAmount::zero(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
-            empty_obj_cid: empty,
             network_version: NetworkVersion::V16,
             curr_epoch: ChainEpoch::zero(),
             invocations: RefCell::new(vec![]),
@@ -256,7 +253,6 @@ impl<'bs> VM<'bs> {
             total_fil: self.total_fil,
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
-            empty_obj_cid: self.empty_obj_cid,
             network_version: self.network_version,
             curr_epoch: epoch,
             invocations: RefCell::new(vec![]),
@@ -683,7 +679,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "attempt to create new actor at existing address".to_string(),
             ));
         }
-        let a = actor(code_id, self.v.empty_obj_cid, 0, TokenAmount::zero());
+        let a = actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero());
         self.v.set_actor(addr, a);
         Ok(())
     }
@@ -838,7 +834,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "failed to create state".to_string(),
             )),
             Some(mut act) => {
-                if act.head != self.v.empty_obj_cid {
+                if act.head != EMPTY_ARR_CID {
                     Err(ActorError::unchecked(
                         ExitCode::SYS_ASSERTION_FAILED,
                         "failed to construct state: already initialized".to_string(),
