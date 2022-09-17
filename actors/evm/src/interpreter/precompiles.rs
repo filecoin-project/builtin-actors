@@ -649,7 +649,7 @@ mod tests {
                 12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
             )
             .unwrap();
-            
+
             let expected =
                 hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                     .unwrap();
