@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::Mul};
+use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
 
 use super::U256;
 use fil_actors_runtime::runtime::{Primitives, Runtime};
@@ -7,17 +7,43 @@ use fvm_shared::{
     bigint::BigUint,
     crypto::{
         hash::SupportedHashes,
-        signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
+        signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
     },
 };
 use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
 
-#[derive(Debug, Eq, PartialEq)]
+pub use substrate_bn::{CurveError, FieldError, GroupError};
+
+lazy_static::lazy_static! {
+    pub(crate) static ref SECP256K1: BigUint = BigUint::from_bytes_be(&hex_literal::hex!("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"));
+}
+
+#[derive(Debug)]
 pub enum PrecompileError {
-    EcErr,
+    EcErr(CurveError),
+    EcGroupErr(GroupError),
     IncorrectInputSize,
+    OutOfGas,
+}
+
+impl From<CurveError> for PrecompileError {
+    fn from(src: CurveError) -> Self {
+        PrecompileError::EcErr(src)
+    }
+}
+
+impl From<FieldError> for PrecompileError {
+    fn from(src: FieldError) -> Self {
+        PrecompileError::EcErr(src.into())
+    }
+}
+
+impl From<GroupError> for PrecompileError {
+    fn from(src: GroupError) -> Self {
+        PrecompileError::EcGroupErr(src)
+    }
 }
 
 pub type PrecompileFn<RT> = fn(&RT, &[u8]) -> PrecompileResult;
@@ -57,79 +83,127 @@ impl<BS: Blockstore, RT: Runtime<BS>> Precompiles<BS, RT> {
     }
 }
 
-/// read 32 bytes (u256) from buffer or error
-fn read_u256(buf: &[u8], start: usize) -> Result<U256, PrecompileError> {
-    let slice = buf.get(start..start + 32).ok_or(PrecompileError::IncorrectInputSize)?;
-    Ok(U256::from_big_endian(slice))
+// It is uncomfortable how much Eth pads everything...
+/// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/common/bytes.go#L108
+fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u8]> {
+    let mut input: Cow<[u8]> = input.into();
+    let input_len = input.len();
+    if len > input_len {
+        input.to_mut().resize(len, 0);
+    }
+    input
 }
 
-/// read 32 bytes (u256) from buffer, pass in exit reason that is desired
-/// returns 0 if failed to read
-fn read_u256_infalliable(buf: &[u8], start: usize) -> U256 {
-    let slice = buf.get(start..start + 32).unwrap_or(&[0u8; 32]);
-    U256::from_big_endian(slice)
-}
-
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L165
+/// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    let mut buf = [0u8; 128];
-    buf[..input.len().min(128)].copy_from_slice(&input[..input.len().min(128)]);
+    let input = read_right_pad(input, 128);
 
-    let mut hash = [0u8; SECP_SIG_MESSAGE_HASH_SIZE];
-    let mut sig = [0u8; SECP_SIG_LEN];
+    let hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE] = input[0..32].try_into().unwrap();
+    let r = BigUint::from_bytes_be(&input[64..96]);
+    let s = BigUint::from_bytes_be(&input[96..128]);
+    let recovery_byte = input[63];
 
-    hash.copy_from_slice(&input[..32]);
-    sig.copy_from_slice(&input[64..]); // TODO this assumes input is exactly 65 bytes which would panic if incorrect
+    // recovery byte is a single byte value but is represented with 32 bytes, sad
+    let v = if input[32..63] == [0u8; 31] && matches!(recovery_byte, 27 | 28) {
+        recovery_byte - 27
+    } else {
+        return Ok(Vec::new());
+    };
 
-    // recovery byte means a single byte value is 32 bytes long, sad
-    if input[32..63] != [0u8; 31] || !matches!(input[63], 23 | 28) {
+    let valid = if r <= BigUint::one() || s <= BigUint::one() {
+        false
+    } else {
+        r <= *SECP256K1 && s <= *SECP256K1 && (v == 0 || v == 1)
+    };
+
+    if !valid {
         return Ok(Vec::new());
     }
-    sig[64] = input[63] - 27;
 
-    let recovered = rt.recover_secp_public_key(&hash, &sig).unwrap_or([0u8; SECP_PUB_LEN]);
+    let mut sig: [u8; SECP_SIG_LEN] = [0u8; 65];
+    sig[..64].copy_from_slice(&input[64..128]);
+    sig[64] = v;
 
-    Ok(recovered.to_vec())
+    let pubkey = if let Ok(key) = rt.recover_secp_public_key(hash, &sig) {
+        key
+    } else {
+        return Ok(Vec::new());
+    };
+
+    let mut address = rt.hash(SupportedHashes::Keccak256, &pubkey[1..]);
+    address[..12].copy_from_slice(&[0u8; 12]);
+
+    Ok(address)
 }
 
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L206
+/// hash with sha2-256
 fn sha256<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(rt.hash(SupportedHashes::Sha2_256, input))
 }
 
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L221
+/// hash with ripemd160
 fn ripemd160<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(rt.hash(SupportedHashes::Ripemd160, input))
 }
 
+/// data copy
 fn identity<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     Ok(Vec::from(input))
 }
 
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L363
 // https://eips.ethereum.org/EIPS/eip-198
+/// modulus exponent a number
 fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let base_len = read_u256(input, 0)?.as_usize();
-    let exponent_len = read_u256(input, 32)?.as_usize();
-    let mod_len = read_u256(input, 64)?.as_usize();
+    let input = read_right_pad(input, 96);
 
-    if mod_len == 0 {
-        return Ok(Vec::new());
+    // Follows go-ethereum by truncating bits to u64, ignoring other all other values in the first 24 bytes.
+    // We also need to try converting into u32 since we are running in WASM, and since we don't have any complexity
+    // functions or specific gas measurements of modexp in FEVM, we let values be whatever and have FEVM gas accounting
+    // be the one responsible for keeping things within reasonable limits.
+    // We _also_ will default with 0 (though this is already done with right padding above) since that is expected to be fine.
+    // Eth really relies heavily on gas checking being correct and safe for nodes...
+    fn read_bigint_len(input: &[u8], size: usize) -> Result<usize, PrecompileError> {
+        let digits = BigUint::from_bytes_be(&input[size..size + 32]);
+        let mut digits = digits.iter_u64_digits();
+        // truncate to 64 bits
+        digits
+            .next()
+            .or(Some(0))
+            // wont ever error here, just a type conversion
+            .ok_or(PrecompileError::OutOfGas)
+            .and_then(|d| u32::try_from(d).map_err(|_| PrecompileError::OutOfGas))
+            .map(|d| d as usize)
     }
 
-    // TODO bounds checking
-    let mut start = 96;
-    let base = BigUint::from_bytes_be(&input[start..start + base_len]);
-    start += base_len;
-    let exponent = BigUint::from_bytes_be(&input[start..start + exponent_len]);
-    start += exponent_len;
-    let modulus = BigUint::from_bytes_be(&input[start..start + mod_len]);
+    let base_len = read_bigint_len(&input, 0)?;
+    let exponent_len = read_bigint_len(&input, 32)?;
+    let mod_len = read_bigint_len(&input, 64)?;
 
-    let mut output = if modulus.is_zero() || modulus.is_one() {
-        BigUint::zero().to_bytes_be()
-    } else {
-        base.modpow(&exponent, &modulus).to_bytes_be()
-    };
+    if base_len == 0 && mod_len == 0 {
+        return Ok(Vec::new());
+    }
+    let input = if input.len() > 96 { &input[96..] } else { &[] };
+    let input = read_right_pad(input, base_len + exponent_len + mod_len);
+
+    let base = BigUint::from_bytes_be(&input[0..base_len]);
+    let exponent = BigUint::from_bytes_be(&input[base_len..exponent_len + base_len]);
+    let modulus =
+        BigUint::from_bytes_be(&input[base_len + exponent_len..mod_len + base_len + exponent_len]);
+
+    if modulus.is_zero() || modulus.is_one() {
+        // mod 0 is undefined: 0, base mod 1 is always 0
+        return Ok(vec![0; mod_len]);
+    }
+
+    let mut output = base.modpow(&exponent, &modulus).to_bytes_be();
 
     if output.len() < mod_len {
         let mut ret = Vec::with_capacity(mod_len);
-        ret.extend(core::iter::repeat(0).take(mod_len - output.len()));
+        ret.resize(mod_len - output.len(), 0); // left padding
         ret.extend_from_slice(&output);
         output = ret;
     }
@@ -137,94 +211,88 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     Ok(output)
 }
 
-/// converts 2 byte arrays (U256) into a point on a field
-/// exits with OutOfGas for any failed operation
-fn uint_to_point(x: U256, y: U256) -> Result<G1, PrecompileError> {
-    let x = Fq::from_u256(x.0.into()).map_err(|_| PrecompileError::EcErr)?;
-    let y = Fq::from_u256(y.0.into()).map_err(|_| PrecompileError::EcErr)?;
+/// reads a point from 2, 32 byte coordinates with right padding
+/// exits with EcErr for any failed operation
+/// panics if input.len() < 64
+fn curve_point(input: &[u8]) -> Result<G1, PrecompileError> {
+    let x = Fq::from_u256(U256::from_big_endian(&input[0..32]).into())?;
+    let y = Fq::from_u256(U256::from_big_endian(&input[32..64]).into())?;
 
-    Ok(if x.is_zero() && y.is_zero() {
-        G1::zero()
-    } else {
-        AffineG1::new(x, y).map_err(|_| PrecompileError::EcErr)?.into()
-    })
+    Ok(if x.is_zero() && y.is_zero() { G1::zero() } else { AffineG1::new(x, y)?.into() })
 }
 
-/// add 2 points together on `alt_bn128`
+fn curve_to_vec(curve: G1) -> Vec<u8> {
+    AffineG1::from_jacobian(curve)
+        .map(|product| {
+            let mut output = vec![0; 64];
+            product.x().to_big_endian(&mut output[0..32]).unwrap();
+            product.y().to_big_endian(&mut output[32..64]).unwrap();
+            output
+        })
+        .unwrap_or_else(|| vec![0; 64])
+}
+
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L413
+/// add 2 points together on an elliptic curve
 fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let x1 = read_u256_infalliable(input, 0);
-    let y1 = read_u256_infalliable(input, 32);
-    let point1 = uint_to_point(x1, y1)?;
+    let input = read_right_pad(input, 128);
+    let point1 = curve_point(&input)?;
+    let point2 = curve_point(&input[64..128])?;
 
-    let x2 = read_u256_infalliable(input, 64);
-    let y2 = read_u256_infalliable(input, 96);
-    let point2 = uint_to_point(x2, y2)?;
-
-    let output = AffineG1::from_jacobian(point1 + point2).map_or(vec![0; 64], |sum| {
-        let mut output = vec![0; 64];
-        sum.x().to_big_endian(&mut output[..32]).unwrap();
-        sum.y().to_big_endian(&mut output[32..]).unwrap();
-        output
-    });
-
-    Ok(output)
+    Ok(curve_to_vec(point1 + point2))
 }
 
-/// multiply a scalar and a point on `alt_bn128`
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L455
+/// multiply a point on an elliptic curve by a scalar value
 fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
-    let x = read_u256_infalliable(input, 0);
-    let y = read_u256_infalliable(input, 32);
-    let point = uint_to_point(x, y)?;
+    let input = read_right_pad(input, 96);
+    let point = curve_point(&input)?;
 
-    let scalar = if let Some(scalar) = input.get(64..96) {
-        Fr::from_slice(scalar).map_err(|_| PrecompileError::EcErr)?
-    } else {
-        return Ok(vec![0; 64]);
+    let scalar = {
+        let data = U256::from_big_endian(&input[64..96]);
+        Fr::new_mul_factor(data.into())
     };
 
-    AffineG1::from_jacobian(point.mul(scalar)).ok_or(PrecompileError::EcErr).map(|product| {
-        let mut output = vec![0; 64];
-        product.x().to_big_endian(&mut output[..32]).unwrap();
-        product.y().to_big_endian(&mut output[32..]).unwrap();
-        output
-    })
+    Ok(curve_to_vec(point * scalar))
 }
 
+// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L504
+/// pairs multple groups of twisted bn curves
 fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
-        let x1 = read_u256(input, 0)?;
-        let y1 = read_u256(input, 32)?;
+        /// read 32 bytes (u256) from buffer or error
+        fn read_u256(input: &[u8], start: usize) -> Result<U256, PrecompileError> {
+            let slice = input.get(start..start + 32).ok_or(PrecompileError::IncorrectInputSize)?;
+            Ok(U256::from_big_endian(slice))
+        }
 
-        let y2 = read_u256(input, 64)?;
-        let x2 = read_u256(input, 96)?;
-        let y3 = read_u256(input, 128)?;
-        let x3 = read_u256(input, 160)?;
+        let x = Fq::from_u256(read_u256(input, 0)?.into())?;
+        let y = Fq::from_u256(read_u256(input, 32)?.into())?;
 
-        // TODO errs
-        let ax = Fq::from_u256(x1.0.into()).unwrap();
-        let ay = Fq::from_u256(y1.0.into()).unwrap();
-
-        let twisted_ax = Fq::from_u256(x2.0.into()).unwrap();
-        let twisted_ay = Fq::from_u256(y2.0.into()).unwrap();
-        let twisted_bx = Fq::from_u256(x3.0.into()).unwrap();
-        let twisted_by = Fq::from_u256(y3.0.into()).unwrap();
-
-        let twisted_a = Fq2::new(twisted_ax, twisted_ay);
-        let twisted_b = Fq2::new(twisted_bx, twisted_by);
+        let twisted_x = {
+            let b = Fq::from_u256(read_u256(input, 64)?.into())?;
+            let a = Fq::from_u256(read_u256(input, 96)?.into())?;
+            Fq2::new(a, b)
+        };
+        let twisted_y = {
+            let b = Fq::from_u256(read_u256(input, 128)?.into())?;
+            let a = Fq::from_u256(read_u256(input, 160)?.into())?;
+            Fq2::new(a, b)
+        };
 
         let twisted = {
-            if twisted_a.is_zero() && twisted_b.is_zero() {
+            if twisted_x.is_zero() && twisted_y.is_zero() {
                 G2::zero()
             } else {
-                AffineG2::new(twisted_a, twisted_b).unwrap().into()
+                AffineG2::new(twisted_x, twisted_y)?.into()
             }
         };
 
         let a = {
-            if ax.is_zero() && ay.is_zero() {
+            if x.is_zero() && y.is_zero() {
                 substrate_bn::G1::zero()
             } else {
-                AffineG1::new(ax, ay).unwrap().into()
+                AffineG1::new(x, y)?.into()
             }
         };
 
@@ -245,26 +313,26 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 
     let accumulated = pairing_batch(&groups);
 
-    let output = if accumulated == Gt::one() { U256::one() } else { U256::zero() };
-    let mut buf = [0u8; 32];
-    output.to_big_endian(&mut buf);
-    Ok(buf.to_vec())
+    let paring_success = if accumulated == Gt::one() { U256::one() } else { U256::zero() };
+    let mut ret = [0u8; 32];
+    paring_success.to_big_endian(&mut ret);
+    Ok(ret.to_vec())
 }
 
-// https://eips.ethereum.org/EIPS/eip-152
+/// https://eips.ethereum.org/EIPS/eip-152
+/// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L581
 fn blake2f<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     if input.len() != 213 {
         return Err(PrecompileError::IncorrectInputSize);
     }
     let mut hasher = near_blake2::VarBlake2b::default();
-
     let mut rounds = [0u8; 4];
 
-    // 4 bytes
     let mut start = 0;
+
+    // 4 bytes
     rounds.copy_from_slice(&input[..4]);
     start += 4;
-
     // 64 bytes
     let h = &input[start..start + 64];
     start += 64;
@@ -311,6 +379,60 @@ mod tests {
     use hex_literal::hex;
 
     #[test]
+    fn padding() {
+        let input = b"foo bar boxy";
+        let mut input = Vec::from(*input);
+        for i in 12..64 {
+            let mut expected = input.clone();
+            expected.resize(i, 0);
+
+            let res = read_right_pad(&input, i);
+            assert_eq!(&*res, &expected);
+
+            input.push(0);
+        }
+    }
+
+    #[test]
+    fn bn_recover() {
+        let rt = MockRuntime::default();
+
+        let input = &hex!(
+            "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
+            "000000000000000000000000000000000000000000000000000000000000001c" // v (recovery byte)
+            // signature
+            "9242685bf161793cc25603c231bc2f568eb630ea16aa137d2664ac8038825608" // r
+            "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
+        );
+
+        let expected = hex!("0000000000000000000000007156526fbd7a3c72969b54f64e42c10fbb768c8a");
+        let res = ec_recover(&rt, input).unwrap();
+        assert_eq!(&res, &expected);
+
+        let input = &hex!(
+            "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
+            "000000000000000000000000000000000000000000000000000000000000001c" // v (recovery byte)
+            // signature
+            "0000005bf161793cc25603c231bc2f568eb630ea16aa137d2664ac8038825608" // r
+            "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
+        );
+        // wrong signature
+        let res = ec_recover(&rt, input).unwrap();
+        assert_eq!(res, Vec::new());
+
+        let input = &hex!(
+            "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
+            "000000000000000000000000000000000000000000000000000000000000000a" // v (recovery byte)
+            // signature
+            "0000005bf161793cc25603c231bc2f568eb630ea16aa137d2664ac8038825608" // r
+            "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
+        );
+        // invalid recovery byte
+        let res = ec_recover(&rt, input).unwrap();
+        assert_eq!(res, Vec::new());
+    }
+
+    #[test]
     fn sha256() {
         use super::sha256 as hash;
         let input = "foo bar baz boxy".as_bytes();
@@ -334,13 +456,67 @@ mod tests {
         assert_eq!(&res, &expected);
     }
 
+    #[test]
+    fn mod_exponent() {
+        let input = &hex!(
+            "0000000000000000000000000000000000000000000000000000000000000001" // base len
+            "0000000000000000000000000000000000000000000000000000000000000001" // exp len
+            "0000000000000000000000000000000000000000000000000000000000000001" // mod len
+            "08" // base
+            "09" // exp
+            "0A" // mod
+        );
+
+        let rt = MockRuntime::default();
+
+        let expected = hex!("08");
+        let res = modexp(&rt, input).unwrap();
+        assert_eq!(&res, &expected);
+
+        let input = &hex!(
+            "0000000000000000000000000000000000000000000000000000000000000004" // base len
+            "0000000000000000000000000000000000000000000000000000000000000002" // exp len
+            "0000000000000000000000000000000000000000000000000000000000000006" // mod len
+            "12345678" // base
+            "1234" // exp
+            "012345678910" // mod
+        );
+        let expected = hex!("00358eac8f30"); // left padding & 230026940208
+        let res = modexp(&rt, input).unwrap();
+        assert_eq!(&res, &expected);
+
+        let expected = hex!("000000"); // invalid values will just be [0; mod_len]
+        let input = &hex!(
+            "0000000000000000000000000000000000000000000000000000000000000001" // base len
+            "0000000000000000000000000000000000000000000000000000000000000002" // exp len
+            "0000000000000000000000000000000000000000000000000000000000000003" // mod len
+            "01" // base
+            "02" // exp
+            "03" // mod
+        );
+        // input smaller than expected
+        let res = modexp(&rt, input).unwrap();
+        assert_eq!(&res, &expected);
+
+        let input = &hex!(
+            "0000000000000000000000000000000000000000000000000000000000000001" // base len
+            "0000000000000000000000000000000000000000000000000000000000000001" // exp len
+            "0000000000000000000000000000000000000000000000000000000000000000" // mod len
+            "08" // base
+            "09" // exp
+        );
+        // no mod is invalid
+        let res = modexp(&rt, input).unwrap();
+        assert_eq!(res, Vec::new());
+    }
+
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
-        use super::MockRuntime;
-        use crate::interpreter::precompiles::{ec_add, ec_mul, PrecompileError};
+        use super::{GroupError, MockRuntime};
+        use crate::interpreter::precompiles::{ec_add, ec_mul, ec_pairing, PrecompileError};
 
         #[test]
-        fn bn128_add() {
+        fn bn_add() {
             let rt = MockRuntime::default();
 
             let input = hex::decode(
@@ -397,11 +573,11 @@ mod tests {
             )
             .unwrap();
             let res = ec_add(&rt, &input);
-            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
         }
 
         #[test]
-        fn bn128_mul() {
+        fn bn_mul() {
             let rt = MockRuntime::default();
 
             let input = hex::decode(
@@ -428,8 +604,8 @@ mod tests {
                 0200000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_mul(&rt, &input);
-            assert_eq!(res, Err(PrecompileError::EcErr));
+            let res = ec_mul(&rt, &input).unwrap();
+            assert_eq!(&res, &vec![0; 64]);
 
             // no input test
             let input = [0u8; 0];
@@ -450,85 +626,88 @@ mod tests {
             )
             .unwrap();
             let res = ec_mul(&rt, &input);
-            assert!(matches!(res, Err(PrecompileError::EcErr)));
+            assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
         }
 
-        // #[test]
-        // fn bn128_pair() {
-        //     let input = hex::decode(
-        //         "\
-        //         1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
-        //         3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
-        //         209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
-        //         04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
-        //         2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
-        //         120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550\
-        //         111e129f1cf1097710d41c4ac70fcdfa5ba2023c6ff1cbeac322de49d1b6df7c\
-        //         2032c61a830e3c17286de9462bf242fca2883585b93870a73853face6a6bf411\
-        //         198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2\
-        //         1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed\
-        //         090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b\
-        //         12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
-        //     )
-        //     .unwrap();
-        //     let expected =
-        //         hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
-        //             .unwrap();
-        //     let res =
-        //         Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false).unwrap().output;
-        //     assert_eq!(res, expected);
-        //     // out of gas test
-        //     let input = hex::decode(
-        //         "\
-        //         1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
-        //         3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
-        //         209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
-        //         04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
-        //         2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
-        //         120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550\
-        //         111e129f1cf1097710d41c4ac70fcdfa5ba2023c6ff1cbeac322de49d1b6df7c\
-        //         2032c61a830e3c17286de9462bf242fca2883585b93870a73853face6a6bf411\
-        //         198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2\
-        //         1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed\
-        //         090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b\
-        //         12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
-        //     )
-        //     .unwrap();
-        //     let res = Bn128Pair::<Byzantium>::run(&input, 259_999, &new_context(), false);
-        //     assert!(matches!(res, Err(Return::OutOfGas)));
-        //     // no input test
-        //     let input = [0u8; 0];
-        //     let expected =
-        //         hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
-        //             .unwrap();
-        //     let res =
-        //         Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false).unwrap().output;
-        //     assert_eq!(res, expected);
-        //     // point not on curve fail
-        //     let input = hex::decode(
-        //         "\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111",
-        //     )
-        //     .unwrap();
-        //     let res = Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false);
-        //     assert!(matches!(res, Err(Return::Other(Cow::Borrowed("ERR_BN128_INVALID_A")))));
-        //     // invalid input length
-        //     let input = hex::decode(
-        //         "\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         1111111111111111111111111111111111111111111111111111111111111111\
-        //         111111111111111111111111111111\
-        //     ",
-        //     )
-        //     .unwrap();
-        //     let res = Bn128Pair::<Byzantium>::run(&input, 260_000, &new_context(), false);
-        //     assert!(matches!(res, Err(Return::Other(Cow::Borrowed("ERR_BN128_INVALID_LEN",)))));
-        // }
+        #[test]
+        fn bn_pair() {
+            let rt = MockRuntime::default();
+
+            let input = hex::decode(
+                "\
+                1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
+                3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
+                209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
+                04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
+                2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
+                120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550\
+                111e129f1cf1097710d41c4ac70fcdfa5ba2023c6ff1cbeac322de49d1b6df7c\
+                2032c61a830e3c17286de9462bf242fca2883585b93870a73853face6a6bf411\
+                198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2\
+                1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed\
+                090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b\
+                12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
+            )
+            .unwrap();
+
+            let expected =
+                hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                    .unwrap();
+
+            let res = ec_pairing(&rt, &input).unwrap();
+            assert_eq!(res, expected);
+
+            // out of gas test
+            let input = hex::decode(
+                "\
+                1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
+                3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
+                209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
+                04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
+                2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
+                120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550\
+                111e129f1cf1097710d41c4ac70fcdfa5ba2023c6ff1cbeac322de49d1b6df7c\
+                2032c61a830e3c17286de9462bf242fca2883585b93870a73853face6a6bf411\
+                198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2\
+                1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed\
+                090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b\
+                12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
+            )
+            .unwrap();
+            let res = ec_pairing(&rt, &input).unwrap();
+            assert_eq!(res, expected);
+            // no input test
+            let input = [0u8; 0];
+            let expected =
+                hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                    .unwrap();
+            let res = ec_pairing(&rt, &input).unwrap();
+            assert_eq!(res, expected);
+            // point not on curve fail
+            let input = hex::decode(
+                "\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111",
+            )
+            .unwrap();
+            let res = ec_pairing(&rt, &input);
+            assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
+            // invalid input length
+            let input = hex::decode(
+                "\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                1111111111111111111111111111111111111111111111111111111111111111\
+                111111111111111111111111111111\
+            ",
+            )
+            .unwrap();
+            let res = ec_pairing(&rt, &input);
+            assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
+        }
     }
 
     // https://eips.ethereum.org/EIPS/eip-152#test-cases
@@ -557,7 +736,7 @@ mod tests {
         // }
 
         // T0 invalid input len
-        assert_eq!(blake2f(&rt, &[]), Err(PrecompileError::IncorrectInputSize));
+        assert!(matches!(blake2f(&rt, &[]), Err(PrecompileError::IncorrectInputSize)));
 
         // T1 too small
         let input = &hex!(
@@ -568,7 +747,7 @@ mod tests {
             "0000000000000000"
             "02"
         );
-        assert_eq!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize));
+        assert!(matches!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize)));
 
         // T2 too large
         let input = &hex!(
@@ -579,7 +758,7 @@ mod tests {
             "0000000000000000"
             "02"
         );
-        assert_eq!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize));
+        assert!(matches!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize)));
 
         // T3 final block indicator invalid
         let input = &hex!(
@@ -590,12 +769,12 @@ mod tests {
             "0000000000000000"
             "02"
         );
-        assert_eq!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize));
+        assert!(matches!(blake2f(&rt, input), Err(PrecompileError::IncorrectInputSize)));
 
         // outputs
 
         // T4
-        let expected = &hex!("08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b");
+        let expected = hex!("08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b");
         let input = &hex!(
             "00000000"
             "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b"
@@ -604,7 +783,7 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert_eq!(blake2f(&rt, input), Ok(expected.to_vec()));
+        assert!(matches!(blake2f(&rt, input), Ok(v) if v == expected));
 
         // T5
         let expected = &hex!("ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923");
@@ -616,7 +795,7 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert_eq!(blake2f(&rt, input), Ok(expected.to_vec()));
+        assert!(matches!(blake2f(&rt, input), Ok(v) if v == expected));
 
         // T6
         let expected = &hex!("75ab69d3190a562c51aef8d88f1c2775876944407270c42c9844252c26d2875298743e7f6d5ea2f2d3e8d226039cd31b4e426ac4f2d3d666a610c2116fde4735");
@@ -628,7 +807,7 @@ mod tests {
             "0000000000000000"
             "00"
         );
-        assert_eq!(blake2f(&rt, input), Ok(expected.to_vec()));
+        assert!(matches!(blake2f(&rt, input), Ok(v) if v == expected));
 
         // T7
         let expected = &hex!("b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421");
@@ -640,14 +819,14 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert_eq!(blake2f(&rt, input), Ok(expected.to_vec()));
+        assert!(matches!(blake2f(&rt, input), Ok(v) if v == expected));
 
         // T8
         // NOTE:
-        // original test case ran ffffffff rounds of blake2b
-        // with an output of fc59093aafa9ab43daae0e914c57635c5402d8e3d2130eb9b3cc181de7f0ecf9b22bf99a7815ce16419e200e01846e6b5df8cc7703041bbceb571de6631d2615
-        // I ran this sucessfully while grabbing a cup of coffee, so if you fee like wasting u32::MAX rounds of hash time (25-ish min on Ryzen5 2600) you can test it as such
-        // For my and CI's sanity however, we are capping it at 0000ffff.
+        //  original test case ran ffffffff rounds of blake2b
+        //  with an expected output of fc59093aafa9ab43daae0e914c57635c5402d8e3d2130eb9b3cc181de7f0ecf9b22bf99a7815ce16419e200e01846e6b5df8cc7703041bbceb571de6631d2615
+        //  I ran this sucessfully while grabbing a cup of coffee, so if you fee like wasting u32::MAX rounds of hash time, (25-ish min on Ryzen5 2600) you can test it as such.
+        //  For my and CI's sanity however, we are capping it at 0000ffff.
         let expected = &hex!("183ed9b1e5594bcdd715a4e4fd7b0dc2eaa2ef9bda48242af64c687081142156621bc94bb2d5aa99d83c2f1a5d9c426e1b6a1755a5e080f6217e2a5f3b9c4624");
         let input = &hex!(
             "0000ffff"
@@ -657,6 +836,6 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert_eq!(blake2f(&rt, input), Ok(expected.to_vec()));
+        assert!(matches!(blake2f(&rt, input), Ok(v) if v == expected));
     }
 }
