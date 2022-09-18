@@ -125,15 +125,15 @@ pub type ClaimAllocationsReturn = BatchReturn;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimTerm {
-    provider: ActorID,
-    claim_id: ClaimID,
-    term_max: ChainEpoch,
+    pub provider: ActorID,
+    pub claim_id: ClaimID,
+    pub term_max: ChainEpoch,
 }
 impl Cbor for ClaimTerm {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ExtendClaimTermsParams {
-    pub claims: Vec<ClaimTerm>,
+    pub terms: Vec<ClaimTerm>,
 }
 impl Cbor for ExtendClaimTermsParams {}
 

@@ -18,10 +18,10 @@ use num_traits::{ToPrimitive, Zero};
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
-    AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse,
-    ClaimAllocationsParams, ClaimAllocationsReturn, ClaimID, DataCap, GetClaimsParams,
-    GetClaimsReturn, Method, RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn,
-    SectorAllocationClaim, State,
+    AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse, Claim,
+    ClaimAllocationsParams, ClaimAllocationsReturn, ClaimID, DataCap, ExtendClaimTermsParams,
+    ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
+    RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, SectorAllocationClaim, State,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -30,8 +30,8 @@ use fil_actors_runtime::runtime::policy_constants::{
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, AsActorError, MapMap, DATACAP_TOKEN_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    make_empty_map, ActorError, AsActorError, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 lazy_static! {
@@ -208,9 +208,7 @@ impl Harness {
     // TODO this should be implemented through a call to verifreg but for now it modifies state directly
     pub fn create_alloc(&self, rt: &mut MockRuntime, alloc: &Allocation) -> Result<(), ActorError> {
         let mut st: State = rt.get_state();
-        let mut allocs =
-            MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")?;
+        let mut allocs = st.load_allocs(rt.store()).unwrap();
         assert!(allocs
             .put_if_absent(alloc.client, st.next_allocation_id, alloc.clone())
             .context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
@@ -318,6 +316,19 @@ impl Harness {
         Ok(())
     }
 
+    pub fn create_claim(&self, rt: &mut MockRuntime, claim: &Claim) -> Result<ClaimID, ActorError> {
+        let mut st: State = rt.get_state();
+        let mut claims = st.load_claims(rt.store()).unwrap();
+        let id = st.next_allocation_id;
+        assert!(claims
+            .put_if_absent(claim.provider, id, claim.clone())
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
+        st.next_allocation_id += 1;
+        st.claims = claims.flush().expect("failed flushing allocation table");
+        rt.replace_state(&st);
+        Ok(id)
+    }
+
     pub fn get_claims(
         &self,
         rt: &mut MockRuntime,
@@ -333,6 +344,23 @@ impl Harness {
             )?
             .deserialize()
             .expect("failed to deserialize get claims return");
+        rt.verify();
+        Ok(ret)
+    }
+
+    pub fn extend_claim_terms(
+        &self,
+        rt: &mut MockRuntime,
+        params: &ExtendClaimTermsParams,
+    ) -> Result<ExtendClaimTermsReturn, ActorError> {
+        rt.expect_validate_caller_any();
+        let ret = rt
+            .call::<VerifregActor>(
+                Method::ExtendClaimTerms as MethodNum,
+                &serialize(&params, "extend claim terms params").unwrap(),
+            )?
+            .deserialize()
+            .expect("failed to deserialize extend claim terms return");
         rt.verify();
         Ok(ret)
     }
@@ -388,6 +416,29 @@ pub fn make_claim_req(
         size: alloc.size,
         sector: sector_id,
         sector_expiry,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn make_claim(
+    data_id: &str,
+    client: &Address,
+    provider: &Address,
+    size: u64,
+    term_min: i64,
+    term_max: i64,
+    term_start: i64,
+    sector: u64,
+) -> Claim {
+    Claim {
+        provider: provider.id().unwrap(),
+        client: client.id().unwrap(),
+        data: make_piece_cid(data_id.as_bytes()),
+        size: PaddedPieceSize(size),
+        term_min,
+        term_max,
+        term_start,
+        sector,
     }
 }
 

@@ -11,6 +11,7 @@ lazy_static! {
     static ref CLIENT3: Address = Address::new_id(303);
     static ref CLIENT4: Address = Address::new_id(304);
     static ref PROVIDER: Address = Address::new_id(305);
+    static ref PROVIDER2: Address = Address::new_id(306);
 }
 
 mod util {
@@ -423,8 +424,12 @@ mod clients {
 mod claims {
     use fvm_shared::error::ExitCode;
 
-    use fil_actor_verifreg::State;
+    use fil_actor_verifreg::{ClaimTerm, ExtendClaimTermsParams, State};
+    use fil_actors_runtime::runtime::policy_constants::{
+        MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_TERM,
+    };
     use fil_actors_runtime::runtime::Runtime;
+    use fil_actors_runtime::test_utils::ACCOUNT_ACTOR_CODE_ID;
     use fil_actors_runtime::BatchReturnGen;
     use harness::*;
 
@@ -541,6 +546,137 @@ mod claims {
         let mix_gc = h.get_claims(&mut rt, provider_id, vec![1, 4, 5]).unwrap();
         assert_eq!(1, mix_gc.batch_info.success_count);
         assert_eq!(claim1, succ_gc.claims[0]);
+    }
+
+    #[test]
+    fn extend_claims_basic() {
+        let (h, mut rt) = new_harness();
+        let size = 128;
+        let sector = 0;
+        let start = 0;
+        let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
+        let max_term = min_term + 1000;
+        let provider_id = PROVIDER.id().unwrap();
+        let provider2_id = PROVIDER2.id().unwrap();
+
+        let claim1 = make_claim("1", &CLIENT, &PROVIDER, size, min_term, max_term, start, sector);
+        let claim2 = make_claim("2", &CLIENT, &PROVIDER, size, min_term, max_term, start, sector);
+        let claim3 = make_claim("3", &CLIENT, &PROVIDER2, size, min_term, max_term, start, sector);
+
+        let id1 = h.create_claim(&mut rt, &claim1).unwrap();
+        let id2 = h.create_claim(&mut rt, &claim2).unwrap();
+        let id3 = h.create_claim(&mut rt, &claim3).unwrap();
+
+        // Extend claim terms and verify return value.
+        let params = ExtendClaimTermsParams {
+            terms: vec![
+                ClaimTerm { provider: provider_id, claim_id: id1, term_max: max_term + 1 },
+                ClaimTerm { provider: provider_id, claim_id: id2, term_max: max_term + 2 },
+                ClaimTerm { provider: provider2_id, claim_id: id3, term_max: max_term + 3 },
+            ],
+        };
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *CLIENT);
+        let ret = h.extend_claim_terms(&mut rt, &params).unwrap();
+        assert_eq!(ret.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK]);
+
+        // Verify state directly.
+        let st: State = rt.get_state();
+        let store = rt.store();
+        let mut claims = st.load_claims(&store).unwrap();
+
+        assert_eq!(max_term + 1, claims.get(provider_id, id1).unwrap().unwrap().term_max);
+        assert_eq!(max_term + 2, claims.get(provider_id, id2).unwrap().unwrap().term_max);
+        assert_eq!(max_term + 3, claims.get(provider2_id, id3).unwrap().unwrap().term_max);
+    }
+
+    #[test]
+    fn extend_claims_edge_cases() {
+        let (h, mut rt) = new_harness();
+        let size = 128;
+        let sector = 0;
+        let start = 0;
+        let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
+        let max_term = min_term + 1000;
+        let provider_id = PROVIDER.id().unwrap();
+        let provider2_id = PROVIDER2.id().unwrap();
+
+        let claim = make_claim("1", &CLIENT, &PROVIDER, size, min_term, max_term, start, sector);
+
+        // Basic success case with no-op extension
+        {
+            let claim_id = h.create_claim(&mut rt, &claim).unwrap();
+            let params = ExtendClaimTermsParams {
+                terms: vec![ClaimTerm { provider: provider_id, claim_id, term_max: max_term }],
+            };
+            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *CLIENT);
+            let ret = h.extend_claim_terms(&mut rt, &params).unwrap();
+            assert_eq!(ret.codes(), vec![ExitCode::OK]);
+            rt.verify()
+        }
+        // Mismatched client is forbidden
+        {
+            let claim_id = h.create_claim(&mut rt, &claim).unwrap();
+            let params = ExtendClaimTermsParams {
+                terms: vec![ClaimTerm { provider: provider_id, claim_id, term_max: max_term }],
+            };
+            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *CLIENT2);
+            let ret = h.extend_claim_terms(&mut rt, &params).unwrap();
+            assert_eq!(ret.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            rt.verify()
+        }
+        // Mismatched provider is not found
+        {
+            let claim_id = h.create_claim(&mut rt, &claim).unwrap();
+            let params = ExtendClaimTermsParams {
+                terms: vec![ClaimTerm { provider: provider2_id, claim_id, term_max: max_term }],
+            };
+            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *CLIENT);
+            let ret = h.extend_claim_terms(&mut rt, &params).unwrap();
+            assert_eq!(ret.codes(), vec![ExitCode::USR_NOT_FOUND]);
+            rt.verify()
+        }
+        // Term in excess of limit is denied
+        {
+            let claim_id = h.create_claim(&mut rt, &claim).unwrap();
+            let params = ExtendClaimTermsParams {
+                terms: vec![ClaimTerm {
+                    provider: provider_id,
+                    claim_id,
+                    term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM + 1,
+                }],
+            };
+            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *CLIENT);
+            let ret = h.extend_claim_terms(&mut rt, &params).unwrap();
+            assert_eq!(ret.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
+            rt.verify()
+        }
+        // Reducing term is denied.
+        {
+            let claim_id = h.create_claim(&mut rt, &claim).unwrap();
+            let params = ExtendClaimTermsParams {
+                terms: vec![ClaimTerm { provider: provider_id, claim_id, term_max: max_term - 1 }],
+            };
+            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *CLIENT);
+            let ret = h.extend_claim_terms(&mut rt, &params).unwrap();
+            assert_eq!(ret.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
+            rt.verify()
+        }
+        // Extending an already-expired claim is ok
+        {
+            let claim_id = h.create_claim(&mut rt, &claim).unwrap();
+            let params = ExtendClaimTermsParams {
+                terms: vec![ClaimTerm {
+                    provider: provider_id,
+                    claim_id,
+                    term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM,
+                }],
+            };
+            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *CLIENT);
+            rt.set_epoch(max_term + 1);
+            let ret = h.extend_claim_terms(&mut rt, &params).unwrap();
+            assert_eq!(ret.codes(), vec![ExitCode::OK]);
+            rt.verify()
+        }
     }
 }
 
