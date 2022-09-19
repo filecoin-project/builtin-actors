@@ -16,10 +16,12 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use itertools::Itertools;
 use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
+use crate::ext::datacap::{DestroyParams, MintParams};
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
@@ -29,8 +31,6 @@ use fil_actors_runtime::{
     UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen, DATACAP_TOKEN_ACTOR_ADDR};
-
-use crate::ext::datacap::{DestroyParams, MintParams};
 
 pub use self::state::Allocation;
 pub use self::state::Claim;
@@ -59,6 +59,7 @@ pub enum Method {
     RemoveExpiredAllocations = 8,
     ClaimAllocations = 9,
     GetClaims = 10,
+    ExtendClaimTerms = 11,
     UniversalReceiverHook = UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 }
 
@@ -350,10 +351,7 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let mut allocs = st.load_allocs(rt.store())?;
             for alloc_id in params.allocation_ids {
-                let maybe_alloc = allocs.get(client, alloc_id).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "HAMT lookup failure getting allocation",
-                )?;
+                let maybe_alloc = state::get_allocation(&mut allocs, client, alloc_id)?;
                 let alloc = match maybe_alloc {
                     None => {
                         ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
@@ -417,12 +415,11 @@ impl Actor {
             let mut allocs = st.load_allocs(rt.store())?;
 
             for claim_alloc in params.sectors {
-                let maybe_alloc =
-                    allocs.get(claim_alloc.client, claim_alloc.allocation_id).context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "HAMT lookup failure getting allocation",
-                    )?;
-
+                let maybe_alloc = state::get_allocation(
+                    &mut allocs,
+                    claim_alloc.client,
+                    claim_alloc.allocation_id,
+                )?;
                 let alloc: &Allocation = match maybe_alloc {
                     None => {
                         ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
@@ -506,11 +503,7 @@ impl Actor {
                 let mut st_claims = st.load_claims(rt.store())?;
                 let mut ret_claims = Vec::new();
                 for id in params.claim_ids {
-                    let maybe_claim = st_claims.get(params.provider, id).context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "HAMT lookup failure getting allocation",
-                    )?;
-
+                    let maybe_claim = state::get_claim(&mut st_claims, params.provider, id)?;
                     match maybe_claim {
                         None => {
                             batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
@@ -526,6 +519,87 @@ impl Actor {
             })
             .context("state transaction failed")?;
         Ok(GetClaimsReturn { batch_info: batch_gen.gen(), claims })
+    }
+
+    /// Extends the maximum term of some claims up to the largest value they could have been
+    /// originally allocated.
+    /// Callable only by the claims' client.
+    /// Cannot reduce a claim's term.
+    /// Can extend the term even if the claim has already expired.
+    /// Note that this method can't extend the term past the original limit,
+    /// even if the term has previously been extended past that by spending new datacap.
+    pub fn extend_claim_terms<BS, RT>(
+        rt: &mut RT,
+        params: ExtendClaimTermsParams,
+    ) -> Result<ExtendClaimTermsReturn, ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        // Permissions are checked per-claim.
+        rt.validate_immediate_caller_accept_any()?;
+        let caller_id = rt.message().caller().id().unwrap();
+        let term_limit = rt.policy().maximum_verified_allocation_term;
+
+        let mut batch_gen = BatchReturnGen::new(params.terms.len());
+        rt.transaction(|st: &mut State, rt| {
+            let mut st_claims = st.load_claims(rt.store())?;
+            // Group consecutive term extensions with the same provider so we can batch update
+            // the MapMap with new entries.
+            // This does not re-order the parameters, so that the batch return indices match.
+            // The caller can thus minimise gas consumption by grouping extensions by provider.
+            for (provider, terms) in &params.terms.iter().group_by(|e| e.provider) {
+                let mut provider_new_claims = Vec::<(ClaimID, Claim)>::new();
+                for term in terms {
+                    // Confirm the new term limit is allowed.
+                    if term.term_max > term_limit {
+                        batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                        info!(
+                            "term_max {} for claim {} exceeds maximum {}",
+                            term.term_max, term.claim_id, term_limit,
+                        );
+                        continue;
+                    }
+
+                    let maybe_claim = state::get_claim(&mut st_claims, provider, term.claim_id)?;
+                    if let Some(claim) = maybe_claim {
+                        // Confirm the caller is the claim's client.
+                        if claim.client != caller_id {
+                            batch_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                            info!(
+                                "client {} for claim {} does not match caller {}",
+                                claim.client, term.claim_id, caller_id,
+                            );
+                            continue;
+                        }
+                        // Confirm the new term limit is no less than the old one.
+                        if term.term_max < claim.term_max {
+                            batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                            info!(
+                                "term_max {} for claim {} is less than current {}",
+                                term.term_max, term.claim_id, claim.term_max,
+                            );
+                            continue;
+                        }
+
+                        let new_claim = Claim { term_max: term.term_max, ..*claim };
+                        provider_new_claims.push((term.claim_id, new_claim));
+                        batch_gen.add_success();
+                    } else {
+                        batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                        info!("no claim {} for provider {}", term.claim_id, provider);
+                    }
+                }
+                st_claims.put_many(provider, provider_new_claims.into_iter()).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "HAMT put failure storing new claims",
+                )?;
+            }
+            st.save_claims(&mut st_claims)?;
+            Ok(())
+        })
+        .context("state transaction failed")?;
+        Ok(batch_gen.gen())
     }
 
     // Receives data cap tokens (only) and creates allocations according to one or more
@@ -978,6 +1052,10 @@ impl ActorCode for Actor {
             }
             Some(Method::ClaimAllocations) => {
                 let res = Self::claim_allocations(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::ExtendClaimTerms) => {
+                let res = Self::extend_claim_terms(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::UniversalReceiverHook) => {

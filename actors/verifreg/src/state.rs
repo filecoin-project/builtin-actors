@@ -240,3 +240,29 @@ pub struct Allocation {
 }
 
 impl Cbor for State {}
+
+pub fn get_allocation<'a, BS>(
+    allocations: &'a mut MapMap<BS, Allocation, ActorID, AllocationID>,
+    client: ActorID,
+    id: AllocationID,
+) -> Result<Option<&'a Allocation>, ActorError>
+where
+    BS: Blockstore,
+{
+    allocations
+        .get(client, id)
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "HAMT lookup failure getting allocation")
+}
+
+pub fn get_claim<'a, BS>(
+    claims: &'a mut MapMap<BS, Claim, ActorID, ClaimID>,
+    provider: ActorID,
+    id: ClaimID,
+) -> Result<Option<&'a Claim>, ActorError>
+where
+    BS: Blockstore,
+{
+    claims
+        .get(provider, id)
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "HAMT lookup failure getting claim")
+}
