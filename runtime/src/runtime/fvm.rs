@@ -95,10 +95,12 @@ impl MessageInfo for FvmMessage {
     }
 }
 
-impl<B> Runtime<B> for FvmRuntime<B>
+impl<B> Runtime for FvmRuntime<B>
 where
     B: Blockstore,
 {
+    type Blockstore = B;
+
     fn network_version(&self) -> NetworkVersion {
         fvm::network::version()
     }
