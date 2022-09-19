@@ -781,6 +781,7 @@ dependencies = [
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
+ "itertools",
  "lazy_static",
  "log",
  "num-derive",
