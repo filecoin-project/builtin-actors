@@ -26,8 +26,8 @@ use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
-    ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, make_map_with_root_and_bitwidth, parse_uint_key, resolve_to_actor_id,
+    ActorDowncast, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen, DATACAP_TOKEN_ACTOR_ADDR};
@@ -335,6 +335,7 @@ impl Actor {
 
     // An allocation may be removed after its expiration epoch has passed (by anyone).
     // When removed, the DataCap tokens are transferred back to the client.
+    // If no allocations are specified, all eligible allocations are removed.
     pub fn remove_expired_allocations<BS, RT>(
         rt: &mut RT,
         params: RemoveExpiredAllocationsParams,
@@ -343,43 +344,68 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        // since the alloc is expired this should be safe to publically cleanup
+        // Since the allocations are expired, this is safe to be called by anyone.
         rt.validate_immediate_caller_accept_any()?;
         let client = params.client;
+        let curr_epoch = rt.curr_epoch();
         let mut ret_gen = BatchReturnGen::new(params.allocation_ids.len());
-        let mut recovered_datacap = DataCap::zero();
-        rt.transaction(|st: &mut State, rt| {
-            let mut allocs = st.load_allocs(rt.store())?;
-            for alloc_id in params.allocation_ids {
-                let maybe_alloc = state::get_allocation(&mut allocs, client, alloc_id)?;
-                let alloc = match maybe_alloc {
-                    None => {
+        // let mut recovered_datacap = DataCap::zero();
+        let recovered_datacap = rt
+            .transaction(|st: &mut State, rt| {
+                let mut allocs = st.load_allocs(rt.store())?;
+                let mut to_remove = Vec::<AllocationID>::new();
+                if params.allocation_ids.is_empty() {
+                    // Find all expired allocations for the client.
+                    allocs
+                        .for_each(params.client, |key, alloc| {
+                            if alloc.expiration <= curr_epoch {
+                                let id = parse_uint_key(key).context_code(
+                                    ExitCode::USR_ILLEGAL_STATE,
+                                    "failed to parse uint key",
+                                )?;
+                                to_remove.push(id);
+                            }
+                            Ok(())
+                        })
+                        .context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            "failed to iterate over allocations",
+                        )?;
+                }
+                for alloc_id in params.allocation_ids {
+                    // Check each specified allocation is expired.
+                    let maybe_alloc = state::get_allocation(&mut allocs, client, alloc_id)?;
+                    if let Some(alloc) = maybe_alloc {
+                        if alloc.expiration <= curr_epoch {
+                            to_remove.push(alloc_id);
+                            ret_gen.add_success();
+                        } else {
+                            ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                            info!("cannot revoke allocation {} that has not expired", alloc_id);
+                        }
+                    } else {
                         ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
                         info!(
                             "claim references allocation id {} that does not belong to client {}",
                             alloc_id, client,
                         );
-                        continue;
                     }
-                    Some(a) => a,
-                };
-                if alloc.expiration > rt.curr_epoch() {
-                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
-                    info!("cannot revoke allocation {} that has not expired", alloc_id);
-                    continue;
                 }
-                recovered_datacap += alloc.size.0;
 
-                allocs.remove(client, alloc_id).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to remove allocation {}", alloc_id),
-                )?;
-                ret_gen.add_success();
-            }
-            st.save_allocs(&mut allocs)?;
-            Ok(())
-        })
-        .context("state transaction failed")?;
+                let mut recovered_datacap = DataCap::zero();
+                for id in to_remove {
+                    let existing = allocs.remove(client, id).context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to remove allocation {}", id),
+                    )?;
+                    // Unwrapping here as both paths to here should ensure the allocation exists.
+                    recovered_datacap += existing.unwrap().size.0;
+                }
+
+                st.save_allocs(&mut allocs)?;
+                Ok(recovered_datacap)
+            })
+            .context("state transaction failed")?;
 
         // Transfer the recovered datacap back to the client.
         transfer(rt, client, &recovered_datacap).with_context(|| {

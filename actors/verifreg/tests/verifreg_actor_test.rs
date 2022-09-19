@@ -430,7 +430,6 @@ mod claims {
     };
     use fil_actors_runtime::runtime::Runtime;
     use fil_actors_runtime::test_utils::ACCOUNT_ACTOR_CODE_ID;
-    use fil_actors_runtime::BatchReturnGen;
     use harness::*;
 
     use crate::*;
@@ -443,44 +442,59 @@ mod claims {
         alloc1.expiration = 100;
         let mut alloc2 = make_alloc("2", &CLIENT, &PROVIDER, 256);
         alloc2.expiration = 200;
+        let total_size = alloc1.size.0 + alloc2.size.0;
 
-        h.create_alloc(&mut rt, &alloc1).unwrap();
-        h.create_alloc(&mut rt, &alloc2).unwrap();
+        let id1 = h.create_alloc(&mut rt, &alloc1).unwrap();
+        let id2 = h.create_alloc(&mut rt, &alloc2).unwrap();
         let state_with_allocs: State = rt.get_state();
 
         // Can't remove allocations that aren't expired
         let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], 0).unwrap();
-        assert_eq!(
-            BatchReturnGen::new(2)
-                .add_fail(ExitCode::USR_FORBIDDEN)
-                .add_fail(ExitCode::USR_FORBIDDEN)
-                .gen(),
-            ret
-        );
+        assert_eq!(vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN], ret.codes());
 
         // Remove the first alloc, which expired.
         rt.set_epoch(100);
         let ret =
             h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], alloc1.size.0).unwrap();
-        assert_eq!(
-            BatchReturnGen::new(2).add_success().add_fail(ExitCode::USR_FORBIDDEN).gen(),
-            ret
-        );
+        assert_eq!(vec![ExitCode::OK, ExitCode::USR_FORBIDDEN], ret.codes());
 
         // Remove the second alloc (the first is no longer found).
         rt.set_epoch(200);
         let ret =
             h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], alloc2.size.0).unwrap();
-        assert_eq!(
-            BatchReturnGen::new(2).add_fail(ExitCode::USR_NOT_FOUND).add_success().gen(),
-            ret
-        );
+        assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::OK], ret.codes());
 
         // Reset state and show we can remove two at once.
         rt.replace_state(&state_with_allocs);
-        let total_size = alloc1.size.0 + alloc2.size.0;
         let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![1, 2], total_size).unwrap();
-        assert_eq!(BatchReturnGen::new(2).add_success().add_success().gen(), ret);
+        assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.codes());
+
+        // Reset state and show that specifying none removes only expired allocations
+        rt.set_epoch(0);
+        rt.replace_state(&state_with_allocs);
+        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![], 0).unwrap();
+        assert_eq!(Vec::<ExitCode>::new(), ret.codes()); // Empty response when no allocs specified
+        assert!(h.load_alloc(&mut rt, &CLIENT, id1).is_some());
+        assert!(h.load_alloc(&mut rt, &CLIENT, id2).is_some());
+
+        rt.set_epoch(100);
+        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![], alloc1.size.0).unwrap();
+        assert_eq!(Vec::<ExitCode>::new(), ret.codes());
+        assert!(h.load_alloc(&mut rt, &CLIENT, id1).is_none()); // removed
+        assert!(h.load_alloc(&mut rt, &CLIENT, id2).is_some());
+
+        rt.set_epoch(200);
+        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![], alloc2.size.0).unwrap();
+        assert_eq!(Vec::<ExitCode>::new(), ret.codes());
+        assert!(h.load_alloc(&mut rt, &CLIENT, id1).is_none()); // removed
+        assert!(h.load_alloc(&mut rt, &CLIENT, id2).is_none()); // removed
+
+        // Reset state and show that specifying none removes *all* expired allocations
+        rt.replace_state(&state_with_allocs);
+        let ret = h.remove_expired_allocations(&mut rt, &CLIENT, vec![], total_size).unwrap();
+        assert_eq!(Vec::<ExitCode>::new(), ret.codes());
+        assert!(h.load_alloc(&mut rt, &CLIENT, id1).is_none()); // removed
+        assert!(h.load_alloc(&mut rt, &CLIENT, id2).is_none()); // removed
     }
 
     #[test]

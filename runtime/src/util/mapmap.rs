@@ -102,6 +102,18 @@ where
         in_map.get(&inside_k.key())
     }
 
+    // Runs a function over all values for one outer key.
+    pub fn for_each<F>(&mut self, outside_k: K1, f: F) -> Result<(), Error>
+    where
+        F: FnMut(&BytesKey, &V) -> anyhow::Result<()>,
+    {
+        let (is_empty, in_map) = self.load_inner_map(outside_k)?;
+        if is_empty {
+            return Ok(());
+        }
+        in_map.for_each(f)
+    }
+
     // Puts a key value pair in the MapMap if it is not already set.  Returns true
     // if key is newly set, false if it was already set.
     pub fn put_if_absent(&mut self, outside_k: K1, inside_k: K2, value: V) -> Result<bool, Error> {

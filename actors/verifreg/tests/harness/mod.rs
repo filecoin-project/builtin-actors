@@ -206,17 +206,35 @@ impl Harness {
     }
 
     // TODO this should be implemented through a call to verifreg but for now it modifies state directly
-    pub fn create_alloc(&self, rt: &mut MockRuntime, alloc: &Allocation) -> Result<(), ActorError> {
+    pub fn create_alloc(
+        &self,
+        rt: &mut MockRuntime,
+        alloc: &Allocation,
+    ) -> Result<AllocationID, ActorError> {
         let mut st: State = rt.get_state();
         let mut allocs = st.load_allocs(rt.store()).unwrap();
+        let alloc_id = st.next_allocation_id;
         assert!(allocs
-            .put_if_absent(alloc.client, st.next_allocation_id, alloc.clone())
+            .put_if_absent(alloc.client, alloc_id, alloc.clone())
             .context_code(ExitCode::USR_ILLEGAL_STATE, "faild to put")?);
         st.next_allocation_id += 1;
         st.allocations = allocs.flush().expect("failed flushing allocation table");
         rt.replace_state(&st);
+        Ok(alloc_id)
+    }
 
-        Ok(())
+    pub fn load_alloc(
+        &self,
+        rt: &mut MockRuntime,
+        client: &Address,
+        id: AllocationID,
+    ) -> Option<Allocation> {
+        let st: State = rt.get_state();
+        let mut allocs =
+            MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")
+                .unwrap();
+        allocs.get(client.id().unwrap(), id).unwrap().cloned()
     }
 
     // Invokes the ClaimAllocations actor method
