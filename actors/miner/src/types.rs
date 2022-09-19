@@ -183,7 +183,7 @@ pub struct SectorClaim {
 pub struct ExpirationExtension2 {
     pub deadline: u64,
     pub partition: u64,
-    pub sectors: UnvalidatedBitField, // IDs of non simple_qa_power FIL+ sectors
+    pub sectors: UnvalidatedBitField, // IDs of sectors without FIL+ claims
     pub sectors_with_claims: Vec<SectorClaim>,
     pub new_expiration: ChainEpoch,
 }
