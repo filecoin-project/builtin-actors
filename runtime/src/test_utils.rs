@@ -673,7 +673,9 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     }
 }
 
-impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
+impl<BS: Blockstore> Runtime for MockRuntime<BS> {
+    type Blockstore = Rc<BS>;
+
     fn network_version(&self) -> NetworkVersion {
         self.network_version
     }

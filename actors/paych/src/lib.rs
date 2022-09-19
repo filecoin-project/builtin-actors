@@ -44,11 +44,7 @@ pub const ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED: ExitCode = ExitCode::new(32);
 pub struct Actor;
 impl Actor {
     /// Constructor for Payment channel actor
-    pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         // Only InitActor can create a payment channel actor. It creates the actor on
         // behalf of the payer/payee.
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
@@ -70,11 +66,7 @@ impl Actor {
     }
 
     /// Resolves an address to a canonical ID address and requires it to address an account actor.
-    fn resolve_account<BS, RT>(rt: &mut RT, raw: &Address) -> Result<Address, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    fn resolve_account(rt: &mut impl Runtime, raw: &Address) -> Result<Address, ActorError> {
         let resolved = resolve_to_actor_id(rt, raw)?;
 
         let code_cid = rt
@@ -95,14 +87,10 @@ impl Actor {
         }
     }
 
-    pub fn update_channel_state<BS, RT>(
-        rt: &mut RT,
+    pub fn update_channel_state(
+        rt: &mut impl Runtime,
         params: UpdateChannelStateParams,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         let st: State = rt.state()?;
 
         rt.validate_immediate_caller_is([st.from, st.to].iter())?;
@@ -274,11 +262,7 @@ impl Actor {
         })
     }
 
-    pub fn settle<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn settle(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is([st.from, st.to].iter())?;
 
@@ -295,11 +279,7 @@ impl Actor {
         })
     }
 
-    pub fn collect<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn collect(rt: &mut impl Runtime) -> Result<(), ActorError> {
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(&[st.from, st.to])?;
 
@@ -336,14 +316,13 @@ where
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {

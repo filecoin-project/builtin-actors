@@ -49,11 +49,7 @@ pub enum Method {
 pub struct Actor;
 impl Actor {
     /// Constructor for Multisig actor
-    pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
         if params.signers.is_empty() {
@@ -122,11 +118,10 @@ impl Actor {
     }
 
     /// Multisig actor propose function
-    pub fn propose<BS, RT>(rt: &mut RT, params: ProposeParams) -> Result<ProposeReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn propose(
+        rt: &mut impl Runtime,
+        params: ProposeParams,
+    ) -> Result<ProposeReturn, ActorError> {
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let proposer: Address = rt.message().caller();
 
@@ -176,11 +171,10 @@ impl Actor {
     }
 
     /// Multisig actor approve function
-    pub fn approve<BS, RT>(rt: &mut RT, params: TxnIDParams) -> Result<ApproveReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn approve(
+        rt: &mut impl Runtime,
+        params: TxnIDParams,
+    ) -> Result<ApproveReturn, ActorError> {
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let approver: Address = rt.message().caller();
 
@@ -212,11 +206,7 @@ impl Actor {
     }
 
     /// Multisig actor cancel function
-    pub fn cancel<BS, RT>(rt: &mut RT, params: TxnIDParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn cancel(rt: &mut impl Runtime, params: TxnIDParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let caller_addr: Address = rt.message().caller();
 
@@ -261,11 +251,7 @@ impl Actor {
     }
 
     /// Multisig actor function to add signers to multisig
-    pub fn add_signer<BS, RT>(rt: &mut RT, params: AddSignerParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn add_signer(rt: &mut impl Runtime, params: AddSignerParams) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
         let resolved_new_signer = resolve_to_actor_id(rt, &params.signer)?;
@@ -293,11 +279,10 @@ impl Actor {
     }
 
     /// Multisig actor function to remove signers to multisig
-    pub fn remove_signer<BS, RT>(rt: &mut RT, params: RemoveSignerParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn remove_signer(
+        rt: &mut impl Runtime,
+        params: RemoveSignerParams,
+    ) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
         let resolved_old_signer = resolve_to_actor_id(rt, &params.signer)?;
@@ -344,11 +329,7 @@ impl Actor {
     }
 
     /// Multisig actor function to swap signers to multisig
-    pub fn swap_signer<BS, RT>(rt: &mut RT, params: SwapSignerParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn swap_signer(rt: &mut impl Runtime, params: SwapSignerParams) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
         let from_resolved = resolve_to_actor_id(rt, &params.from)?;
@@ -377,14 +358,10 @@ impl Actor {
     }
 
     /// Multisig actor function to change number of approvals needed
-    pub fn change_num_approvals_threshold<BS, RT>(
-        rt: &mut RT,
+    pub fn change_num_approvals_threshold(
+        rt: &mut impl Runtime,
         params: ChangeNumApprovalsThresholdParams,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
 
@@ -403,11 +380,10 @@ impl Actor {
     }
 
     /// Multisig actor function to change number of approvals needed
-    pub fn lock_balance<BS, RT>(rt: &mut RT, params: LockBalanceParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn lock_balance(
+        rt: &mut impl Runtime,
+        params: LockBalanceParams,
+    ) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
 
@@ -430,15 +406,11 @@ impl Actor {
         Ok(())
     }
 
-    fn approve_transaction<BS, RT>(
-        rt: &mut RT,
+    fn approve_transaction(
+        rt: &mut impl Runtime,
         tx_id: TxnID,
         mut txn: Transaction,
-    ) -> Result<(bool, RawBytes, ExitCode), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(bool, RawBytes, ExitCode), ActorError> {
         for previous_approver in &txn.approved {
             if *previous_approver == rt.message().caller() {
                 return Err(actor_error!(
@@ -475,29 +447,21 @@ impl Actor {
     }
 
     // Always succeeds, accepting any transfers.
-    pub fn universal_receiver_hook<BS, RT>(
-        rt: &mut RT,
+    pub fn universal_receiver_hook(
+        rt: &mut impl Runtime,
         _params: &RawBytes,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok(())
     }
 }
 
-fn execute_transaction_if_approved<BS, RT>(
-    rt: &mut RT,
+fn execute_transaction_if_approved(
+    rt: &mut impl Runtime,
     st: &State,
     txn_id: TxnID,
     txn: &Transaction,
-) -> Result<(bool, RawBytes, ExitCode), ActorError>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
+) -> Result<(bool, RawBytes, ExitCode), ActorError> {
     let mut out = RawBytes::default();
     let mut code = ExitCode::OK;
     let mut applied = false;
@@ -543,7 +507,7 @@ fn get_transaction<'bs, 'm, BS, RT>(
 ) -> Result<&'m Transaction, ActorError>
 where
     BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let txn = ptx
         .get(&txn_id.key())
@@ -584,14 +548,13 @@ pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow:
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {

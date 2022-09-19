@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
@@ -50,11 +49,7 @@ pub enum Method {
 pub struct Actor;
 
 impl Actor {
-    pub fn send<BS, RT>(rt: &mut RT, arg: SendArgs) -> Result<SendReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn send(rt: &mut impl Runtime, arg: SendArgs) -> Result<SendReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
 
         let result = rt.send(&arg.to, arg.method, arg.params, arg.value);
@@ -66,11 +61,7 @@ impl Actor {
     }
 
     /// Constructor for Account actor
-    pub fn constructor<BS, RT>(_rt: &mut RT)
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn constructor(_rt: &mut impl Runtime) {
         panic!("Constructor should not be called");
     }
 
@@ -81,14 +72,10 @@ impl Actor {
     ///  CALLER_VALIDATION_BRANCH_IS_ADDRESS validates against an empty caller
     ///  address set.
     ///  CALLER_VALIDATION_BRANCH_IS_TYPE validates against an empty caller type set.
-    pub fn caller_validation<BS, RT>(
-        rt: &mut RT,
+    pub fn caller_validation(
+        rt: &mut impl Runtime,
         args: CallerValidationArgs,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         match args.branch {
             x if x == CALLER_VALIDATION_BRANCH_NONE => {}
             x if x == CALLER_VALIDATION_BRANCH_TWICE => {
@@ -112,11 +99,7 @@ impl Actor {
     }
 
     // Creates an actor with the supplied CID and Address.
-    pub fn create_actor<BS, RT>(rt: &mut RT, arg: CreateActorArgs) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn create_actor(rt: &mut impl Runtime, arg: CreateActorArgs) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         // TODO Temporarily fine to use default as Undefined Cid, but may need to change in the future
         let actor_cid = if arg.undef_cid { Cid::default() } else { arg.cid };
@@ -127,33 +110,21 @@ impl Actor {
     }
 
     /// Resolves address, and returns the resolved address (defaulting to 0 ID) and success boolean.
-    pub fn resolve_address<BS, RT>(
-        rt: &mut RT,
+    pub fn resolve_address(
+        rt: &mut impl Runtime,
         args: Address,
-    ) -> Result<ResolveAddressResponse, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<ResolveAddressResponse, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let resolved = rt.resolve_address(&args);
         Ok(ResolveAddressResponse { id: resolved.unwrap_or(0), success: resolved.is_some() })
     }
 
-    pub fn delete_actor<BS, RT>(rt: &mut RT, beneficiary: Address) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn delete_actor(rt: &mut impl Runtime, beneficiary: Address) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         rt.delete_actor(&beneficiary)
     }
 
-    pub fn mutate_state<BS, RT>(rt: &mut RT, arg: MutateStateArgs) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn mutate_state(rt: &mut impl Runtime, arg: MutateStateArgs) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
 
         match arg.branch {
@@ -173,11 +144,7 @@ impl Actor {
         Err(ActorError::unchecked(arg.code, arg.message))
     }
 
-    pub fn inspect_runtime<BS, RT>(rt: &mut RT) -> Result<InspectRuntimeReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn inspect_runtime(rt: &mut impl Runtime) -> Result<InspectRuntimeReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok(InspectRuntimeReturn {
             caller: rt.message().caller(),
@@ -191,14 +158,13 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
