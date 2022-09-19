@@ -36,9 +36,9 @@ use fil_actor_verifreg::{
     Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn, Method as VerifregMethod,
 };
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{test_utils::*, BatchReturnGen};
 use fil_actors_runtime::{
-    ActorDowncast, ActorError, Array, BatchReturn, DealWeight, MessageAccumulator,
+    ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator,
     BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
@@ -2202,7 +2202,7 @@ impl ActorHarness {
         &self,
         rt: &mut MockRuntime,
         mut params: ExtendSectorExpiration2Params,
-        expected_claims: HashMap<ClaimID, FILPlusClaim>,
+        expected_claims: HashMap<ClaimID, Result<FILPlusClaim, ActorError>>,
     ) -> Result<RawBytes, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
@@ -2212,11 +2212,19 @@ impl ActorHarness {
             for sc in &extension.sectors_with_claims {
                 // construct expected return value
                 let mut claims = Vec::new();
+                let mut batch_gen = BatchReturnGen::new(sc.maintain_claims.len());
                 for claim_id in &sc.maintain_claims {
-                    claims.push(expected_claims.get(&claim_id).unwrap().clone())
+                    match expected_claims.get(&claim_id).unwrap().clone() {
+                        Ok(claim) => {
+                            batch_gen.add_success();
+                            claims.push(claim);
+                        }
+                        Err(ae) => {
+                            batch_gen.add_fail(ae.exit_code());
+                        }
+                    }
                 }
 
-                // TODO add the ability to create failures
                 rt.expect_send(
                     *VERIFIED_REGISTRY_ACTOR_ADDR,
                     VerifregMethod::GetClaims as u64,
@@ -2226,11 +2234,8 @@ impl ActorHarness {
                     })
                     .unwrap(),
                     TokenAmount::zero(),
-                    RawBytes::serialize(GetClaimsReturn {
-                        batch_info: BatchReturn { success_count: claims.len(), fail_codes: vec![] },
-                        claims,
-                    })
-                    .unwrap(),
+                    RawBytes::serialize(GetClaimsReturn { batch_info: batch_gen.gen(), claims })
+                        .unwrap(),
                     ExitCode::OK,
                 );
             }
