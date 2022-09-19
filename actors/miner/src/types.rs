@@ -149,18 +149,18 @@ pub struct ExpirationExtension {
     pub new_expiration: ChainEpoch,
 }
 #[allow(clippy::too_many_arguments)] // validate mut prevents implementing From
-impl Into<ExpirationExtension> for ExpirationExtension2 {
-    fn into(mut self) -> ExpirationExtension {
+impl Into<ValidatedExpirationExtension> for ExpirationExtension2 {
+    fn into(mut self) -> ValidatedExpirationExtension {
         let mut sectors = BitField::new();
         for sc in self.sectors_with_claims {
             sectors.set(sc.sector_number)
         }
         sectors |= self.sectors.validate_mut().unwrap();
 
-        ExpirationExtension {
+        ValidatedExpirationExtension {
             deadline: self.deadline,
             partition: self.partition,
-            sectors: fvm_ipld_bitfield::UnvalidatedBitField::Validated(sectors),
+            sectors,
             new_expiration: self.new_expiration,
         }
     }
@@ -187,6 +187,15 @@ pub struct ExpirationExtension2 {
     pub sectors_with_claims: Vec<SectorClaim>,
     pub new_expiration: ChainEpoch,
 }
+
+#[derive(Clone)]
+pub struct ValidatedExpirationExtension {
+    pub deadline: u64,
+    pub partition: u64,
+    pub sectors: BitField,
+    pub new_expiration: ChainEpoch,
+}
+
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct TerminateSectorsParams {
