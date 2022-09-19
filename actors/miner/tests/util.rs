@@ -325,7 +325,7 @@ impl ActorHarness {
             lifetime_periods,
             deal_ids,
             first,
-            (0..num_sectors).map(|_| ProveCommitConfig::empty()).collect(),
+            ProveCommitConfig::empty(),
         )
     }
 
@@ -336,9 +336,8 @@ impl ActorHarness {
         lifetime_periods: u64,
         deal_ids: Vec<Vec<DealID>>,
         first: bool,
-        prove_cfgs: Vec<ProveCommitConfig>, // must be same length as num_sectors
+        prove_cfg: ProveCommitConfig, // must be same length as num_sectors
     ) -> Vec<SectorOnChainInfo> {
-        assert_eq!(num_sectors, prove_cfgs.len());
         let precommit_epoch = rt.epoch;
         let deadline = self.get_deadline_info(rt);
         let expiration =
@@ -372,13 +371,13 @@ impl ActorHarness {
         );
 
         let mut info = Vec::with_capacity(num_sectors);
-        for (i, pc) in precommits.iter().enumerate() {
+        for pc in precommits {
             let sector = self
                 .prove_commit_sector_and_confirm(
                     rt,
                     &pc,
                     self.make_prove_commit_params(pc.info.sector_number),
-                    prove_cfgs[i].clone(),
+                    prove_cfg.clone(),
                 )
                 .unwrap();
             info.push(sector);

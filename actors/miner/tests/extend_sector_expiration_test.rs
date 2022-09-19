@@ -12,10 +12,10 @@ use fil_actors_runtime::{
     test_utils::{expect_abort_contains_message, make_piece_cid, MockRuntime},
 };
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
-use fvm_shared::bigint::Zero;
+use fvm_shared::{bigint::Zero, piece::PaddedPieceSize};
 use fvm_shared::{
-    address::Address, bigint::BigInt, clock::ChainEpoch, error::ExitCode, piece::UnpaddedPieceSize,
-    sector::RegisteredSealProof,
+    address::Address, bigint::BigInt, clock::ChainEpoch, error::ExitCode,
+    sector::{RegisteredSealProof, SectorSize},
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -372,16 +372,17 @@ fn commit_sector_verified_deal(h: &mut ActorHarness, rt: &mut MockRuntime) -> Se
         h.next_sector_no,
         DealSpaces { deal_space: BigInt::zero(), verified_deal_space: BigInt::from(sector_space) },
     );
+
     let sector_info = &h.commit_and_prove_sectors_with_cfgs(
         rt,
         1,
         DEFAULT_SECTOR_EXPIRATION as u64,
-        Vec::new(),
+        vec![vec![42]],
         true,
-        vec![ProveCommitConfig {
+        ProveCommitConfig {
             verify_deals_exit: HashMap::new(),
             deal_spaces: prove_commit_spaces,
-        }],
+        },
     )[0];
 
     sector_info.clone()
@@ -408,14 +409,14 @@ fn update_expiration_with_claim() {
         provider: h.receiver.id().unwrap(),
         client,
         data: make_piece_cid("1234".as_bytes()),
-        size: UnpaddedPieceSize(h.sector_size as u64).padded(),
+        size: PaddedPieceSize(h.sector_size as u64),
         term_min: rt.policy.minimum_verified_allocation_term,
         term_max: new_expiration - old_sector.activation + 1,
         term_start: old_sector.activation,
         sector: old_sector.sector_number,
     };
     let mut claims = HashMap::new();
-    claims.insert(claim_id, fake_claim).unwrap();
+    claims.insert(claim_id, fake_claim);
 
     let params = ExtendSectorExpiration2Params {
         extensions: vec![ExpirationExtension2 {
@@ -453,6 +454,10 @@ fn update_expiration_with_claim() {
     h.check_state(&rt);
 }
 
+
 fn update_expiration_claim_not_found() {}
 
 fn update_expiration_bad_claim() {}
+
+fn update_expiration_non_simple_qap_sector() {}
+

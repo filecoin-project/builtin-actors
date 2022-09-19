@@ -2511,14 +2511,6 @@ impl Actor {
 
         let curr_epoch = rt.curr_epoch();
 
-        /* 2. TODO validation that claims include entire set of claims and that claims work with new extension
-            To start with iterate through all sector ids and gather all claim ids.  Then call to verifreg and
-                a. get confirmation that claim exists
-                b. get back information on claimed data size
-
-                package these sizes into a local datastructure for sector number.  Later on this will be checked
-        */
-
         /* Loop over sectors and do extension */
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
@@ -2594,14 +2586,10 @@ impl Actor {
                     let old_sectors = sectors
                         .load_sector(&mut decl.sectors)
                         .map_err(|e| e.wrap("failed to load sectors"))?;
-
-/*let new_sectors: Vec<SectorOnChainInfo> = old_sectors
-                        .iter()
-                        .map(|sector| { */
-
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
                         .map(|sector| {
+
                             if !can_extend_seal_proof_type(sector.seal_proof) {
                                 return Err(actor_error!(
                                     forbidden,
@@ -2640,18 +2628,25 @@ impl Actor {
                                 sector.seal_proof,
                             )?;
 
+                            let mut new_sector = sector.clone();
+
                             // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
                             if sector.simple_qa_power {
                                 if sector.verified_deal_weight > BigInt::zero() {
-                                    let duration = sector.expiration - sector.activation;
-                                    let verified_deal_space = sector.verified_deal_weight.clone() / duration;
+                                    let old_duration = sector.expiration - sector.activation;
+                                    let deal_space = sector.deal_weight.clone() / old_duration;
+                                    let verified_deal_space = sector.verified_deal_weight.clone() / old_duration;
                                     let expected_verified_deal_space = match claim_space_by_sector.get(&sector.sector_number) {
                                         None => return Err(actor_error!(illegal_argument, "claim missing from declaration for sector {}", sector.sector_number)),
                                         Some(space) => space,
                                     };
                                     if BigInt::from(*expected_verified_deal_space as i64) != verified_deal_space {
-                                        return Err(actor_error!(illegal_argument, "declared verified deal space in claims does not match verified deal space for sector {}", sector.sector_number));
+                                        return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, verified_deal_space, sector.sector_number));
                                     }
+                                    new_sector.expiration = decl.new_expiration;
+                                    // update deal weights to account for new duration 
+                                    new_sector.deal_weight = deal_space * (new_sector.expiration - new_sector.activation);
+                                    new_sector.verified_deal_weight = verified_deal_space * (new_sector.expiration - new_sector.activation);
                                 }
                             } else {
                                 // Remove "spent" deal weights for non simple_qa_power sectors with deal weight > 0
@@ -2663,13 +2658,11 @@ impl Actor {
                                     * (sector.expiration - curr_epoch))
                                     .div_floor(&BigInt::from(sector.expiration - sector.activation));
 
-                                let mut sector = sector.clone();
-                                sector.expiration = decl.new_expiration;
-
-                                sector.deal_weight = new_deal_weight;
-                                sector.verified_deal_weight = new_verified_deal_weight;
+                                new_sector.expiration = decl.new_expiration;
+                                new_sector.deal_weight = new_deal_weight;
+                                new_sector.verified_deal_weight = new_verified_deal_weight;
                             }
-                            Ok(sector.clone())
+                            Ok(new_sector)
                         })
                         .collect::<Result<_, _>>()?;
 
@@ -4967,7 +4960,6 @@ where
         } else {
             ext::market::DealSpaces::default()
         };
-
         valid_pre_commits.push((pre_commit, deal_spaces));
     }
 

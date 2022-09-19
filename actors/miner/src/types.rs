@@ -155,7 +155,8 @@ impl Into<ExpirationExtension> for ExpirationExtension2 {
         for sc in self.sectors_with_claims {
             sectors.set(sc.sector_number)
         }
-        sectors &= self.sectors.validate_mut().unwrap();
+        sectors |= self.sectors.validate_mut().unwrap();
+
         ExpirationExtension {
             deadline: self.deadline,
             partition: self.partition,
