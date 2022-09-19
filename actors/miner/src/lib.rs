@@ -2507,10 +2507,12 @@ impl Actor {
                                 )
                             }
                             ExtensionKind::ExtendCommittment => match &inner.claims {
-                                None => return Err(actor_error!(
+                                None => {
+                                    return Err(actor_error!(
                                     illegal_state,
                                     "extend2 always specifies (potentially empty) claim mapping"
-                                )),
+                                ))
+                                }
                                 Some(claim_space_by_sector) => extend_sector_committment(
                                     rt.policy(),
                                     curr_epoch,
