@@ -230,10 +230,7 @@ impl Harness {
         id: AllocationID,
     ) -> Option<Allocation> {
         let st: State = rt.get_state();
-        let mut allocs =
-            MapMap::from_root(rt.store(), &st.allocations, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load allocations table")
-                .unwrap();
+        let mut allocs = st.load_allocs(rt.store()).unwrap();
         allocs.get(client.id().unwrap(), id).unwrap().cloned()
     }
 

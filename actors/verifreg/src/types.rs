@@ -97,12 +97,25 @@ impl AddrPairKey {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveExpiredAllocationsParams {
+    // Client for which to remove expired allocations.
     pub client: ActorID,
+    // Optional list of allocation IDs to attempt to remove.
+    // Empty means remove all eligible expired allocations.
     pub allocation_ids: Vec<AllocationID>,
 }
 impl Cbor for RemoveExpiredAllocationsParams {}
 
-pub type RemoveExpiredAllocationsReturn = BatchReturn;
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveExpiredAllocationsReturn {
+    // Ids of the allocations that were either specified by the caller or discovered to be expired.
+    pub considered: Vec<AllocationID>,
+    // Results for each processed allocation.
+    pub results: BatchReturn,
+    // The amount of datacap reclaimed for the client.
+    #[serde(with = "bigint_ser")]
+    pub datacap_recovered: DataCap,
+}
+impl Cbor for RemoveExpiredAllocationsReturn {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorAllocationClaim {

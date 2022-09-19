@@ -349,7 +349,8 @@ impl Actor {
         let client = params.client;
         let curr_epoch = rt.curr_epoch();
         let mut ret_gen = BatchReturnGen::new(params.allocation_ids.len());
-        // let mut recovered_datacap = DataCap::zero();
+        let mut considered_ids = params.allocation_ids.clone();
+        let mut recovered_datacap = DataCap::zero();
         let recovered_datacap = rt
             .transaction(|st: &mut State, rt| {
                 let mut allocs = st.load_allocs(rt.store())?;
@@ -363,7 +364,7 @@ impl Actor {
                                     ExitCode::USR_ILLEGAL_STATE,
                                     "failed to parse uint key",
                                 )?;
-                                to_remove.push(id);
+                                considered_ids.push(id);
                             }
                             Ok(())
                         })
@@ -371,6 +372,11 @@ impl Actor {
                             ExitCode::USR_ILLEGAL_STATE,
                             "failed to iterate over allocations",
                         )?;
+                    to_remove = considered_ids.clone();
+                    ret_gen = BatchReturnGen::new(considered_ids.len());
+                    for _ in 0..considered_ids.len() {
+                        ret_gen.add_success();
+                    }
                 }
                 for alloc_id in params.allocation_ids {
                     // Check each specified allocation is expired.
@@ -392,7 +398,6 @@ impl Actor {
                     }
                 }
 
-                let mut recovered_datacap = DataCap::zero();
                 for id in to_remove {
                     let existing = allocs.remove(client, id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -415,7 +420,11 @@ impl Actor {
             )
         })?;
 
-        Ok(ret_gen.gen())
+        Ok(RemoveExpiredAllocationsReturn {
+            considered: considered_ids,
+            results: ret_gen.gen(),
+            datacap_recovered: recovered_datacap,
+        })
     }
 
     // Called by storage provider actor to claim allocations for data provably committed to storage.
