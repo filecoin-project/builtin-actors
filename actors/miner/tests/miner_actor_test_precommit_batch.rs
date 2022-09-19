@@ -402,7 +402,7 @@ mod miner_actor_precommit_batch {
             let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
             let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
             rt.expect_send(
-                *STORAGE_MARKET_ACTOR_ADDR,
+                STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
                 RawBytes::serialize(vdparams).unwrap(),
                 TokenAmount::zero(),
@@ -419,7 +419,7 @@ mod miner_actor_precommit_batch {
             );
             let cron_params = make_deadline_cron_event_params(dlinfo.last());
             rt.expect_send(
-                *STORAGE_POWER_ACTOR_ADDR,
+                STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 RawBytes::serialize(cron_params).unwrap(),
                 TokenAmount::zero(),
