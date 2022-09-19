@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
@@ -136,7 +136,7 @@ fn add_then_terminate(
         deadline,
         15,
         sectors.to_owned(),
-        HashMap::from([(0, bitfield_from_slice(&[1, 3])), (1, bitfield_from_slice(&[6]))]),
+        BTreeMap::from([(0, bitfield_from_slice(&[1, 3])), (1, bitfield_from_slice(&[6]))]),
     )
     .unwrap();
 
@@ -438,7 +438,7 @@ fn terminate_proven_and_faulty() {
         &mut deadline,
         15,
         sectors.to_owned(),
-        HashMap::from([(0, bitfield_from_slice(&[1, 3])), (1, bitfield_from_slice(&[6]))]),
+        BTreeMap::from([(0, bitfield_from_slice(&[1, 3])), (1, bitfield_from_slice(&[6]))]),
     )
     .unwrap();
 
@@ -466,7 +466,7 @@ fn terminate_sectors(
     deadline: &mut Deadline,
     epoch: ChainEpoch,
     sectors: Vec<SectorOnChainInfo>,
-    partition_sectors: HashMap<u64, BitField>,
+    partition_sectors: BTreeMap<u64, BitField>,
 ) -> anyhow::Result<PowerPair> {
     let store = rt.store();
     let sectors_array = sectors_arr(&store, sectors);
@@ -499,7 +499,7 @@ fn terminate_unproven_and_faulty() {
         &mut deadline,
         15,
         sectors.to_owned(),
-        HashMap::from([(0, bitfield_from_slice(&[1, 3])), (1, bitfield_from_slice(&[6]))]),
+        BTreeMap::from([(0, bitfield_from_slice(&[1, 3])), (1, bitfield_from_slice(&[6]))]),
     )
     .unwrap();
 
@@ -529,7 +529,7 @@ fn fails_to_terminate_missing_sector() {
         &mut deadline,
         15,
         sectors,
-        HashMap::from([(0, bitfield_from_slice(&[6]))]),
+        BTreeMap::from([(0, bitfield_from_slice(&[6]))]),
     );
 
     assert!(ret.is_err());
@@ -551,7 +551,7 @@ fn fails_to_terminate_missing_partition() {
         &mut deadline,
         15,
         sectors,
-        HashMap::from([(4, bitfield_from_slice(&[6]))]),
+        BTreeMap::from([(4, bitfield_from_slice(&[6]))]),
     );
 
     assert!(ret.is_err());
@@ -573,7 +573,7 @@ fn fails_to_terminate_already_terminated_sector() {
         &mut deadline,
         15,
         sectors,
-        HashMap::from([(0, bitfield_from_slice(&[1, 2]))]),
+        BTreeMap::from([(0, bitfield_from_slice(&[1, 2]))]),
     );
 
     assert!(ret.is_err());

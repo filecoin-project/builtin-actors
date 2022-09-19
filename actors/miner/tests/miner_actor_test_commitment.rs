@@ -14,7 +14,7 @@ use fvm_shared::sector::{RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
 
 use num_traits::Zero;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 mod util;
 use util::*;
@@ -78,7 +78,7 @@ fn assert_simple_pre_commit(sector_number: SectorNumber, deal_ids: &[DealID]) {
             + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
             + rt.policy.expired_pre_commit_clean_up_delay,
     );
-    assert_eq!(HashMap::from([(expected_precommit_expiration, vec![sector_number])]), expirations);
+    assert_eq!(BTreeMap::from([(expected_precommit_expiration, vec![sector_number])]), expirations);
 }
 
 mod miner_actor_test_commitment {

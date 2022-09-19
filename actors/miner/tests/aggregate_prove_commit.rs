@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::iter::FromIterator;
 
 use fil_actor_miner::{
@@ -61,7 +61,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     rt.set_balance(TokenAmount::from_whole(1000));
 
     let pcc = ProveCommitConfig {
-        deal_weights: HashMap::from_iter(
+        deal_weights: BTreeMap::from_iter(
             precommits.iter().map(|pc| (pc.info.sector_number, deal_weights.clone())),
         ),
         ..Default::default()
@@ -146,7 +146,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     let quantized_expiration = quant.quantize_up(expiration);
 
     let d_queue = actor.collect_deadline_expirations(&rt, &deadline);
-    let mut expected_queue = HashMap::new();
+    let mut expected_queue = BTreeMap::new();
     expected_queue.insert(quantized_expiration, vec![p_idx]);
     assert_eq!(expected_queue, d_queue);
 

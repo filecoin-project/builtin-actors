@@ -14,7 +14,7 @@ use fvm_shared::sector::SectorNumber;
 use num_traits::Zero;
 
 use cid::Cid;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 mod util;
 use util::*;
@@ -139,7 +139,7 @@ fn assert_simple_batch(
             + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
             + rt.policy.expired_pre_commit_clean_up_delay,
     );
-    assert_eq!(HashMap::from([(expected_precommit_expiration, sector_no_as_uints)]), expirations);
+    assert_eq!(BTreeMap::from([(expected_precommit_expiration, sector_no_as_uints)]), expirations);
 }
 
 mod miner_actor_precommit_batch {

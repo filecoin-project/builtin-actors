@@ -13,7 +13,7 @@ use fvm_shared::{
     sector::{StoragePower, MAX_SECTOR_NUMBER},
     smooth::FilterEstimate,
 };
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 mod util;
 
@@ -76,7 +76,7 @@ fn prove_single_sector() {
     rt.set_epoch(prove_commit_epoch);
     rt.balance.replace(TokenAmount::from_whole(1000));
     let pcc = ProveCommitConfig {
-        deal_weights: HashMap::from([(sector_no, deal_weight.clone())]),
+        deal_weights: BTreeMap::from([(sector_no, deal_weight.clone())]),
         ..Default::default()
     };
 
@@ -142,7 +142,7 @@ fn prove_single_sector() {
     let quantized_expiration = quant.quantize_up(precommit.info.expiration);
 
     let d_queue = h.collect_deadline_expirations(&rt, &deadline);
-    assert_eq!(HashMap::from([(quantized_expiration, vec![p_idx])]), d_queue);
+    assert_eq!(BTreeMap::from([(quantized_expiration, vec![p_idx])]), d_queue);
 
     assert_bitfield_equals(&partition.sectors, &[sector_no]);
     assert!(partition.faults.is_empty());
@@ -271,7 +271,7 @@ fn prove_sectors_from_batch_pre_commit() {
     {
         let precommit = &precommits[1];
         let pcc = ProveCommitConfig {
-            deal_weights: HashMap::from([(precommit.info.sector_number, deal_weights.clone())]),
+            deal_weights: BTreeMap::from([(precommit.info.sector_number, deal_weights.clone())]),
             ..Default::default()
         };
         let sector = h
@@ -300,7 +300,7 @@ fn prove_sectors_from_batch_pre_commit() {
     {
         let precommit = &precommits[2];
         let pcc = ProveCommitConfig {
-            deal_weights: HashMap::from([(precommit.info.sector_number, deal_weights)]),
+            deal_weights: BTreeMap::from([(precommit.info.sector_number, deal_weights)]),
             ..Default::default()
         };
         let sector = h
@@ -391,7 +391,7 @@ fn invalid_proof_rejected() {
 
     // Invalid deals (market ActivateDeals aborts)
     let verify_deals_exit =
-        HashMap::from([(precommit.info.sector_number, ExitCode::USR_ILLEGAL_ARGUMENT)]);
+        BTreeMap::from([(precommit.info.sector_number, ExitCode::USR_ILLEGAL_ARGUMENT)]);
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         h.prove_commit_sector_and_confirm(
@@ -529,7 +529,7 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
     h.prove_commit_sector(&mut rt, &pre_commit_b, h.make_prove_commit_params(sector_no_b)).unwrap();
 
     let conf = ProveCommitConfig {
-        verify_deals_exit: HashMap::from([(sector_no_a, ExitCode::USR_ILLEGAL_ARGUMENT)]),
+        verify_deals_exit: BTreeMap::from([(sector_no_a, ExitCode::USR_ILLEGAL_ARGUMENT)]),
         ..Default::default()
     };
     h.confirm_sector_proofs_valid(&mut rt, conf, vec![pre_commit_a, pre_commit_b]).unwrap();

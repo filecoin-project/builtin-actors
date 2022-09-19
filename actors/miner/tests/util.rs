@@ -75,7 +75,7 @@ use multihash::MultihashDigest;
 use fil_actor_miner::testing::{
     check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
 };
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use std::ops::Neg;
 
@@ -1633,12 +1633,12 @@ impl ActorHarness {
         &self,
         rt: &MockRuntime,
         st: &State,
-    ) -> HashMap<ChainEpoch, Vec<u64>> {
+    ) -> BTreeMap<ChainEpoch, Vec<u64>> {
         let quant = st.quant_spec_every_deadline(&rt.policy);
         let queue = BitFieldQueue::new(&rt.store, &st.pre_committed_sectors_cleanup, quant)
             .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))
             .unwrap();
-        let mut expirations: HashMap<ChainEpoch, Vec<u64>> = HashMap::new();
+        let mut expirations: BTreeMap<ChainEpoch, Vec<u64>> = BTreeMap::new();
         queue
             .amt
             .for_each(|epoch, bf| {
@@ -1748,10 +1748,10 @@ impl ActorHarness {
         &self,
         rt: &MockRuntime,
         deadline: &Deadline,
-    ) -> HashMap<ChainEpoch, Vec<u64>> {
+    ) -> BTreeMap<ChainEpoch, Vec<u64>> {
         let queue =
             BitFieldQueue::new(&rt.store, &deadline.expirations_epochs, NO_QUANTIZATION).unwrap();
-        let mut expirations = HashMap::new();
+        let mut expirations = BTreeMap::new();
         queue
             .amt
             .for_each(|epoch, bitfield| {
@@ -1767,10 +1767,10 @@ impl ActorHarness {
         &self,
         rt: &MockRuntime,
         partition: &Partition,
-    ) -> HashMap<ChainEpoch, ExpirationSet> {
+    ) -> BTreeMap<ChainEpoch, ExpirationSet> {
         let queue = ExpirationQueue::new(&rt.store, &partition.expirations_epochs, NO_QUANTIZATION)
             .unwrap();
-        let mut expirations = HashMap::new();
+        let mut expirations = BTreeMap::new();
         queue
             .amt
             .for_each(|epoch, set| {
@@ -2276,14 +2276,14 @@ impl PreCommitConfig {
 
 #[derive(Default, Clone)]
 pub struct ProveCommitConfig {
-    pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
-    pub deal_weights: HashMap<SectorNumber, DealWeights>,
+    pub verify_deals_exit: BTreeMap<SectorNumber, ExitCode>,
+    pub deal_weights: BTreeMap<SectorNumber, DealWeights>,
 }
 
 #[allow(dead_code)]
 impl ProveCommitConfig {
     pub fn empty() -> ProveCommitConfig {
-        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_weights: HashMap::new() }
+        ProveCommitConfig { verify_deals_exit: BTreeMap::new(), deal_weights: BTreeMap::new() }
     }
 }
 

@@ -13,7 +13,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize};
 use num_traits::Zero;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 pub fn check_state_invariants<BS: Blockstore>(
     policy: &Policy,
@@ -602,7 +602,7 @@ impl ExpirationQueueStateSummary {
         sector_size: SectorSize,
         acc: &MessageAccumulator,
     ) -> Self {
-        let mut seen_sectors: HashSet<SectorNumber> = HashSet::new();
+        let mut seen_sectors: BTreeSet<SectorNumber> = BTreeSet::new();
         let mut all_on_time: Vec<BitField> = Vec::new();
         let mut all_early: Vec<BitField> = Vec::new();
         let mut expiration_epochs: Vec<ChainEpoch> = Vec::new();
@@ -703,7 +703,7 @@ fn check_early_termination_queue<BS: Blockstore>(
     terminated: &BitField,
     acc: &MessageAccumulator,
 ) -> usize {
-    let mut seen: HashSet<u64> = HashSet::new();
+    let mut seen: BTreeSet<u64> = BTreeSet::new();
     let mut seen_bitfield = BitField::new();
 
     let iter_result = early_queue.amt.for_each(|epoch, bitfield| {
@@ -802,7 +802,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     let mut partition_count = 0;
 
     // check partitions
-    let mut partitions_with_expirations: HashMap<ChainEpoch, Vec<u64>> = HashMap::new();
+    let mut partitions_with_expirations: BTreeMap<ChainEpoch, Vec<u64>> = BTreeMap::new();
     let mut partitions_with_early_terminations = BitField::new();
     partitions
         .for_each(|index, partition| {

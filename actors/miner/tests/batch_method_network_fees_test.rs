@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
@@ -105,7 +105,7 @@ fn insufficient_funds_for_batch_precommit_network_fee() {
     let state: State = rt.get_state();
     assert!(state.pre_commit_deposits.is_zero());
     let expirations = actor.collect_precommit_expirations(&rt, &state);
-    assert_eq!(HashMap::new(), expirations);
+    assert_eq!(BTreeMap::new(), expirations);
 
     expect_abort_contains_message(
         ExitCode::USR_INSUFFICIENT_FUNDS,
@@ -160,7 +160,7 @@ fn insufficient_funds_for_batch_precommit_in_combination_of_fee_debt_and_network
     let state: State = rt.get_state();
     assert!(state.pre_commit_deposits.is_zero());
     let expirations = actor.collect_precommit_expirations(&rt, &state);
-    assert_eq!(HashMap::new(), expirations);
+    assert_eq!(BTreeMap::new(), expirations);
 
     expect_abort_contains_message(
         ExitCode::USR_INSUFFICIENT_FUNDS,
@@ -220,7 +220,7 @@ fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
     let state: State = rt.get_state();
     assert!(state.pre_commit_deposits.is_zero());
     let expirations = actor.collect_precommit_expirations(&rt, &state);
-    assert_eq!(HashMap::new(), expirations);
+    assert_eq!(BTreeMap::new(), expirations);
 }
 
 #[test]
