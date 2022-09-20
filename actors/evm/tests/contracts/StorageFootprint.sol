@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract StorageCost {
+contract StorageFootprint {
     // Create enough counters that they would not fit in the default HAMT bucket size of 3.
     uint32 counter1;
     uint32 counter2;
