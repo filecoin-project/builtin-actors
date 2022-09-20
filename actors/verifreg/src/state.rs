@@ -198,6 +198,20 @@ impl State {
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush claims table")?;
         Ok(())
     }
+
+    pub fn put_claims<BS: Blockstore, I>(&mut self, store: &BS, claims: I) -> Result<(), ActorError>
+    where
+        I: Iterator<Item = (ClaimID, Claim)>,
+    {
+        let mut st_claims = self.load_claims(store)?;
+        for (id, claim) in claims {
+            st_claims
+                .put(claim.provider, id, claim)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to put claim")?;
+        }
+        self.save_claims(&mut st_claims)?;
+        Ok(())
+    }
 }
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
 pub struct Claim {
@@ -209,9 +223,9 @@ pub struct Claim {
     pub data: Cid,
     // The (padded) size of data (from allocation).
     pub size: PaddedPieceSize,
-    // The min period which the provider must commit to storing data
+    // The min period after term_start which the provider must commit to storing data
     pub term_min: ChainEpoch,
-    // The max period for which provider can earn QA-power for the data
+    // The max period after term_start for which provider can earn QA-power for the data
     pub term_max: ChainEpoch,
     // The epoch at which the (first range of the) piece was committed.
     pub term_start: ChainEpoch,

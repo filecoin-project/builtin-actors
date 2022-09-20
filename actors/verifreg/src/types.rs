@@ -156,6 +156,7 @@ pub type ExtendClaimTermsReturn = BatchReturn;
 // Receiver hook payload
 //
 
+// A request to create an allocation with datacap tokens.
 // See Allocation state for description of field semantics.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct AllocationRequest {
@@ -168,18 +169,33 @@ pub struct AllocationRequest {
 }
 impl Cbor for AllocationRequest {}
 
+// A request to extend the term of an existing claim with datacap tokens.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimExtensionRequest {
+    pub provider: Address,
+    pub claim: ClaimID,
+    pub term_max: ChainEpoch,
+}
+impl Cbor for ClaimExtensionRequest {}
+
 /// Operator-data payload for a datacap token transfer receiver hook specifying an allocation.
 /// The implied client is the sender of the datacap.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct AllocationRequests {
-    pub requests: Vec<AllocationRequest>,
+    pub allocations: Vec<AllocationRequest>,
+    pub extensions: Vec<ClaimExtensionRequest>,
 }
 impl Cbor for AllocationRequests {}
 
 /// Recipient data payload in response to a datacap token transfer.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct AllocationsResponse {
-    pub allocations: Vec<AllocationID>,
+    // Result for each allocation request.
+    pub allocation_results: BatchReturn,
+    // Result for each extension request.
+    pub extension_results: BatchReturn,
+    // IDs of new allocations created.
+    pub new_allocations: Vec<AllocationID>,
 }
 
 impl Cbor for AllocationsResponse {}

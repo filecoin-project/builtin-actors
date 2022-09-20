@@ -17,6 +17,14 @@ pub struct BatchReturn {
 }
 
 impl BatchReturn {
+    pub const fn empty() -> Self {
+        Self { success_count: 0, fail_codes: Vec::new() }
+    }
+
+    pub const fn ok(n: usize) -> Self {
+        Self { success_count: n, fail_codes: Vec::new() }
+    }
+
     pub fn codes(&self) -> Vec<ExitCode> {
         let mut ret = Vec::new();
 
