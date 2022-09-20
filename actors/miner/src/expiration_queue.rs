@@ -175,9 +175,10 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     ) -> anyhow::Result<(BitField, PowerPair, TokenAmount)> {
         let mut total_power = PowerPair::zero();
         let mut total_pledge = TokenAmount::zero();
-        let mut total_sectors = Vec::<BitField>::new();
+        let mut total_sectors = Vec::<u64>::new();
 
         for group in group_new_sectors_by_declared_expiration(sector_size, sectors, self.quant) {
+            total_sectors.extend(&group.sectors);
             let sector_numbers = BitField::try_from_bits(group.sectors)?;
 
             self.add(
@@ -190,12 +191,11 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             )
             .map_err(|e| e.downcast_wrap("failed to record new sector expirations"))?;
 
-            total_sectors.push(sector_numbers);
             total_power += &group.power;
             total_pledge += &group.pledge;
         }
 
-        let sector_numbers = BitField::union(total_sectors.iter());
+        let sector_numbers = BitField::try_from_bits(total_sectors)?;
         Ok((sector_numbers, total_power, total_pledge))
     }
 
