@@ -1,13 +1,38 @@
 use crate::StatusCode;
 use crate::U256;
-use fvm_shared::address::Address as FilecoinAddress;
+use fil_actors_runtime::EAM_ACTOR_ADDR;
+use fvm_shared::address::Address;
 use fvm_shared::ActorID;
+use serde::{Deserialize, Serialize};
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 ///
 /// TODO this type will eventually handle f4 address detection.
-#[derive(PartialEq, Eq, Clone)]
-pub struct EthAddress([u8; 20]);
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub struct EthAddress(pub [u8; 20]);
+
+impl Serialize for EthAddress {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        fvm_ipld_encoding::BytesSer(&self.0).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EthAddress {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+        let addr = fvm_ipld_encoding::BytesDe::deserialize(deserializer)?;
+        addr.0[..]
+            .try_into()
+            .map(EthAddress)
+            .map_err(|_| D::Error::invalid_length(addr.0.len(), &"expected a 20 byte ETH address"))
+    }
+}
 
 impl TryFrom<U256> for EthAddress {
     type Error = StatusCode;
@@ -31,9 +56,21 @@ impl std::fmt::Debug for EthAddress {
     }
 }
 
+impl From<&EthAddress> for Address {
+    fn from(addr: &EthAddress) -> Self {
+        // TODO: handle precompiles?
+        // Maybe implement try?
+        if let Some(addr) = addr.as_id_address() {
+            addr
+        } else {
+            Address::new_delegated(EAM_ACTOR_ADDR.id().unwrap(), addr.as_ref()).unwrap()
+        }
+    }
+}
+
 impl EthAddress {
     /// Expect a Filecoin address type containing an ID address, and return an address in EVM-form.
-    pub fn from_id_address(addr: &FilecoinAddress) -> Option<EthAddress> {
+    pub fn from_id_address(addr: &Address) -> Option<EthAddress> {
         addr.id().ok().map(EthAddress::from_id)
     }
 
@@ -53,11 +90,11 @@ impl EthAddress {
     ///
     /// 0    1-11       12
     /// 0xff \[0x00...] [id address...]
-    pub fn as_id_address(&self) -> Option<FilecoinAddress> {
+    pub fn as_id_address(&self) -> Option<Address> {
         if (self.0[0] != 0xff) || !self.0[1..12].iter().all(|&byte| byte == 0) {
             return None;
         }
-        Some(FilecoinAddress::new_id(u64::from_be_bytes(self.0[12..].try_into().unwrap())))
+        Some(Address::new_id(u64::from_be_bytes(self.0[12..].try_into().unwrap())))
     }
 
     /// Same as as_id_address, but go the extra mile and return the ActorID.

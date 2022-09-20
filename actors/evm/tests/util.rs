@@ -17,7 +17,7 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     rt.expect_validate_caller_any();
     initrt(&mut rt);
 
-    let params = evm::ConstructorParams { bytecode: initcode.into() };
+    let params = evm::ConstructorParams { initcode: initcode.into() };
 
     let result = rt
         .call::<evm::EvmContractActor>(

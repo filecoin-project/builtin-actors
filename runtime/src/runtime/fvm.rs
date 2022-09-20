@@ -174,6 +174,10 @@ where
         fvm::actor::resolve_address(address)
     }
 
+    fn lookup_address(&self, id: ActorID) -> Option<Address> {
+        fvm::actor::lookup_address(id)
+    }
+
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         fvm::actor::get_actor_code_cid(&Address::new_id(*id))
     }

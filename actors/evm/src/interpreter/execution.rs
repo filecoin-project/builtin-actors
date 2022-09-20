@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
 use fvm_shared::address::Address as FilecoinAddress;
+
+use super::address::EthAddress;
 use {
     super::instructions::*,
     super::opcode::OpCode,
@@ -27,10 +29,14 @@ pub struct ExecutionState {
     pub output_data: Bytes,
     /// Indicates whether the contract called SELFDESTRUCT, providing the beneficiary.
     pub selfdestroyed: Option<FilecoinAddress>,
+    /// The EVM address of the caller.
+    pub caller: EthAddress,
+    /// The EVM address of the receiver.
+    pub receiver: EthAddress,
 }
 
 impl ExecutionState {
-    pub fn new(method: u64, input_data: Bytes) -> Self {
+    pub fn new(caller: EthAddress, receiver: EthAddress, method: u64, input_data: Bytes) -> Self {
         Self {
             stack: Stack::default(),
             memory: Memory::default(),
@@ -39,6 +45,8 @@ impl ExecutionState {
             return_data: Default::default(),
             output_data: Bytes::new(),
             selfdestroyed: None,
+            caller,
+            receiver,
         }
     }
 }

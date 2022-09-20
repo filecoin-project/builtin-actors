@@ -851,6 +851,12 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         }
     }
 
+    fn lookup_address(&self, _id: ActorID) -> Option<Address> {
+        self.require_in_call();
+        // TODO: Record ID addresses
+        None
+    }
+
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         self.require_in_call();
         self.actor_code_cids.get(&Address::new_id(*id)).cloned()

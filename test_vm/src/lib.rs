@@ -819,6 +819,10 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         }
     }
 
+    fn lookup_address(&self, id: ActorID) -> Option<Address> {
+        self.v.get_actor(Address::new_id(id)).and_then(|act| act.predictable_address)
+    }
+
     fn send(
         &self,
         to: &Address,

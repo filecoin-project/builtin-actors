@@ -31,10 +31,9 @@ pub fn blockhash<'r, BS: Blockstore, RT: Runtime<BS>>(
 #[inline]
 pub fn caller<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
+    _: &'r System<'r, BS, RT>,
 ) {
-    let id = platform.rt.message().caller().id().unwrap();
-    state.stack.push(EthAddress::from_id(id).as_evm_word())
+    state.stack.push(state.caller.as_evm_word())
 }
 
 #[inline]
