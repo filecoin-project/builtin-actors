@@ -361,6 +361,7 @@ where
             ErrorNumber::IllegalArgument => {
                 ActorError::illegal_argument("failed to create actor".into())
             }
+            ErrorNumber::Forbidden => ActorError::forbidden("actor already exists".into()),
             _ => actor_error!(assertion_failed; "create failed with unknown error: {}", e),
         })
     }

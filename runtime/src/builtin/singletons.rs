@@ -24,6 +24,7 @@ define_singletons! {
     STORAGE_POWER_ACTOR = 4,
     STORAGE_MARKET_ACTOR = 5,
     VERIFIED_REGISTRY_ACTOR = 6,
+    EAM_ACTOR = 10,
     CHAOS_ACTOR = 98,
     BURNT_FUNDS_ACTOR = 99,
 }
