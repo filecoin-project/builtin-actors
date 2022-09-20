@@ -1,6 +1,11 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+// workaround for a compiler bug, see https://github.com/rust-lang/rust/issues/55779
+//
+// This bug appears to have been fixed when compiled normally, but breaks code coverage.
+extern crate serde;
+
 use builtin::HAMT_BIT_WIDTH;
 use cid::Cid;
 use fvm_ipld_amt::Amt;
