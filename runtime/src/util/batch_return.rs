@@ -60,7 +60,7 @@ impl BatchReturnGen {
     }
 
     pub fn gen(&self) -> BatchReturn {
-        assert_eq!(self.expect_count, self.success_count + self.fail_codes.len(), "programmer error, mismatched batch size {} and processed coutn {} batch return must include success/fail for all inputs", self.expect_count, self.success_count + self.fail_codes.len());
+        assert_eq!(self.expect_count, self.success_count + self.fail_codes.len(), "programmer error, mismatched batch size {} and processed count {} batch return must include success/fail for all inputs", self.expect_count, self.success_count + self.fail_codes.len());
         BatchReturn { success_count: self.success_count, fail_codes: self.fail_codes.clone() }
     }
 }
