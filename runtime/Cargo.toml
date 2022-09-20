@@ -14,7 +14,7 @@ fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 serde = { version = "1.0.136", features = ["derive"] }
-lazy_static = "1.4.0"
+lazy_static = { version = "1.4.0", optional = true }
 unsigned-varint = "0.7.1"
 integer-encoding = { version = "3.0.3", default-features = false }
 byteorder = "1.4.3"
@@ -79,4 +79,4 @@ no-provider-deal-collateral = []
 # fake proofs (for testing)
 fake-proofs = []
 
-test_utils = ["hex", "multihash/sha2"]
+test_utils = ["hex", "multihash/sha2", "lazy_static"]
