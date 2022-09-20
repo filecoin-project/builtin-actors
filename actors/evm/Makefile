@@ -5,6 +5,7 @@ TEST_CONTRACTS_HEX = $(TEST_CONTRACTS_SOL:.sol=.hex)
 .PHONY: all
 all: test-contracts
 
+.PHONY: solc
 solc:
 	@if [ -z "$(shell which solc)" ]; then \
 		echo "Please install solc, the Solidity compiler. See https://github.com/crytic/solc-select"; \

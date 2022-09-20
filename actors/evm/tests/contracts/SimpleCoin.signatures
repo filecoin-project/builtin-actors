@@ -1,3 +1,7 @@
+Function signatures:
 f8b2cb4f: getBalance(address)
 7bd703e8: getBalanceInEth(address)
 90b98a11: sendCoin(address,uint256)
+
+Event signatures:
+ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef: Transfer(address,address,uint256)
