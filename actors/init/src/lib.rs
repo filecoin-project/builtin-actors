@@ -1,6 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::iter;
+
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, cbor, ActorContext, ActorError, SYSTEM_ACTOR_ADDR};
@@ -27,8 +29,9 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     Exec = 2,
+    Exec4 = 3,
     #[cfg(feature = "m2-native")]
-    InstallCode = 3,
+    InstallCode = 4,
 }
 
 /// Init actor
@@ -81,7 +84,7 @@ impl Actor {
         log::trace!("robust address: {:?}", &robust_address);
 
         // Allocate an ID for this actor.
-        // Store mapping of pubkey or actor address to actor ID
+        // Store mapping of actor addresses to the actor ID.
         let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
             s.map_address_to_new_id(rt.store(), &robust_address)
                 .context("failed to allocate ID address")
@@ -100,6 +103,58 @@ impl Actor {
         .context("constructor failed")?;
 
         Ok(ExecReturn { id_address: Address::new_id(id_address), robust_address })
+    }
+
+    /// Exec init actor
+    pub fn exec4<BS, RT>(rt: &mut RT, params: Exec4Params) -> Result<Exec4Return, ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        if cfg!(feature = "m2-native") {
+            rt.validate_immediate_caller_accept_any()?;
+        } else {
+            rt.validate_immediate_caller_is(iter::once(&EAM_ACTOR_ADDR))?;
+        }
+
+        // Compute the f4 address.
+        let caller_id = rt.message().caller().id().unwrap();
+        let delegated_address =
+            Address::new_delegated(caller_id, &params.subaddress).map_err(|e| {
+                ActorError::illegal_argument(format!("invalid delegated address: {}", e))
+            })?;
+
+        log::trace!("delegated address: {:?}", &delegated_address);
+
+        // Compute a re-org-stable address.
+        // This address exists for use by messages coming from outside the system, in order to
+        // stably address the newly created actor even if a chain re-org causes it to end up with
+        // a different ID.
+        let robust_address = rt.new_actor_address()?;
+
+        log::trace!("robust address: {:?}", &robust_address);
+
+        // Allocate an ID for this actor.
+        // Store mapping of actor addresses to the actor ID.
+        let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
+            s.map_address_to_f4(rt.store(), &robust_address, &delegated_address).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to allocate ID address")
+            })
+        })?;
+
+        // Create an empty actor
+        rt.create_actor(params.code_cid, id_address)?;
+
+        // Invoke constructor
+        rt.send(
+            &Address::new_id(id_address),
+            METHOD_CONSTRUCTOR,
+            params.constructor_params,
+            rt.message().value_received(),
+        )
+        .map_err(|err| err.wrap("constructor failed"))?;
+
+        Ok(Exec4Return { id_address: Address::new_id(id_address), robust_address })
     }
 
     #[cfg(feature = "m2-native")]
@@ -169,6 +224,10 @@ impl ActorCode for Actor {
             }
             Some(Method::Exec) => {
                 let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::Exec4) => {
+                let res = Self::exec4(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             #[cfg(feature = "m2-native")]

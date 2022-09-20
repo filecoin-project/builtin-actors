@@ -33,8 +33,8 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
+use fvm_shared::address::Address;
 use fvm_shared::address::Payload;
-use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
@@ -575,16 +575,22 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
         };
         // Address does not yet exist, create it
-        let protocol = target.protocol();
-        match protocol {
-            Protocol::Actor | Protocol::ID => {
+        let is_account = match target.payload() {
+            Payload::Secp256k1(_) | Payload::BLS(_) => true,
+            Payload::Delegated(da)
+                // Validate that there's an actor at the target ID (we don't care what is there,
+                // just that something is there).
+                if self.v.get_actor(Address::new_id(da.namespace())).is_some() =>
+            {
+                false
+            }
+            _ => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
-                    format!("cannot create account for address {} type {}", target, protocol),
+                    format!("cannot create account for address {} type {}", target, target.protocol()),
                 ));
             }
-            _ => (),
-        }
+        };
         let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
         let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
         let target_id_addr = Address::new_id(target_id);
@@ -609,13 +615,17 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
             };
-            new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id).unwrap();
-            let res = new_ctx.invoke();
-            let invoc = new_ctx.gather_trace(res);
-            RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
-                subinvocs.push(invoc);
-                subinvocs
-            });
+            if is_account {
+                new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id).unwrap();
+                let res = new_ctx.invoke();
+                let invoc = new_ctx.gather_trace(res);
+                RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
+                    subinvocs.push(invoc);
+                    subinvocs
+                });
+            } else {
+                new_ctx.create_actor(*EMBRYO_ACTOR_CODE_ID, target_id).unwrap();
+            }
         }
 
         Ok((self.v.get_actor(target_id_addr).unwrap(), target_id_addr))
@@ -708,11 +718,16 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
             }
         }
         let addr = Address::new_id(actor_id);
-        if self.v.get_actor(addr).is_some() {
-            return Err(ActorError::unchecked(
-                ExitCode::SYS_ASSERTION_FAILED,
-                "attempt to create new actor at existing address".to_string(),
-            ));
+        match self.v.get_actor(addr) {
+            Some(act) if act.code == *EMBRYO_ACTOR_CODE_ID => (),
+            None => (),
+            _ => {
+                // can happen if an actor is deployed to an f4 address.
+                return Err(ActorError::unchecked(
+                    ExitCode::USR_FORBIDDEN,
+                    "attempt to create new actor at existing address".to_string(),
+                ));
+            }
         }
         let a = actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero());
         self.v.set_actor(addr, a);
