@@ -16,7 +16,6 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
-use itertools::Itertools;
 use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
@@ -584,60 +583,51 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let caller_id = rt.message().caller().id().unwrap();
         let term_limit = rt.policy().maximum_verified_allocation_term;
-
         let mut batch_gen = BatchReturnGen::new(params.terms.len());
         rt.transaction(|st: &mut State, rt| {
             let mut st_claims = st.load_claims(rt.store())?;
-            // Group consecutive term extensions with the same provider so we can batch update
-            // the MapMap with new entries.
-            // This does not re-order the parameters, so that the batch return indices match.
-            // The caller can thus minimise gas consumption by grouping extensions by provider.
-            for (provider, terms) in &params.terms.iter().group_by(|e| e.provider) {
-                let mut provider_new_claims = Vec::<(ClaimID, Claim)>::new();
-                for term in terms {
-                    // Confirm the new term limit is allowed.
-                    if term.term_max > term_limit {
+            for term in params.terms {
+                // Confirm the new term limit is allowed.
+                if term.term_max > term_limit {
+                    batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                    info!(
+                        "term_max {} for claim {} exceeds maximum {}",
+                        term.term_max, term.claim_id, term_limit,
+                    );
+                    continue;
+                }
+
+                let maybe_claim = state::get_claim(&mut st_claims, term.provider, term.claim_id)?;
+                if let Some(claim) = maybe_claim {
+                    // Confirm the caller is the claim's client.
+                    if claim.client != caller_id {
+                        batch_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                        info!(
+                            "client {} for claim {} does not match caller {}",
+                            claim.client, term.claim_id, caller_id,
+                        );
+                        continue;
+                    }
+                    // Confirm the new term limit is no less than the old one.
+                    if term.term_max < claim.term_max {
                         batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
                         info!(
-                            "term_max {} for claim {} exceeds maximum {}",
-                            term.term_max, term.claim_id, term_limit,
+                            "term_max {} for claim {} is less than current {}",
+                            term.term_max, term.claim_id, claim.term_max,
                         );
                         continue;
                     }
 
-                    let maybe_claim = state::get_claim(&mut st_claims, provider, term.claim_id)?;
-                    if let Some(claim) = maybe_claim {
-                        // Confirm the caller is the claim's client.
-                        if claim.client != caller_id {
-                            batch_gen.add_fail(ExitCode::USR_FORBIDDEN);
-                            info!(
-                                "client {} for claim {} does not match caller {}",
-                                claim.client, term.claim_id, caller_id,
-                            );
-                            continue;
-                        }
-                        // Confirm the new term limit is no less than the old one.
-                        if term.term_max < claim.term_max {
-                            batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
-                            info!(
-                                "term_max {} for claim {} is less than current {}",
-                                term.term_max, term.claim_id, claim.term_max,
-                            );
-                            continue;
-                        }
-
-                        let new_claim = Claim { term_max: term.term_max, ..*claim };
-                        provider_new_claims.push((term.claim_id, new_claim));
-                        batch_gen.add_success();
-                    } else {
-                        batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
-                        info!("no claim {} for provider {}", term.claim_id, provider);
-                    }
+                    let new_claim = Claim { term_max: term.term_max, ..*claim };
+                    st_claims.put(term.provider, term.claim_id, new_claim).context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "HAMT put failure storing new claims",
+                    )?;
+                    batch_gen.add_success();
+                } else {
+                    batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                    info!("no claim {} for provider {}", term.claim_id, term.provider);
                 }
-                st_claims.put_many(provider, provider_new_claims.into_iter()).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "HAMT put failure storing new claims",
-                )?;
             }
             st.save_claims(&mut st_claims)?;
             Ok(())
