@@ -391,7 +391,7 @@ impl<'bs> VM<'bs> {
         // make top level context with internal context
         let top = TopCtx {
             originator_stable_addr: from,
-            _originator_call_seq: call_seq,
+            originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
             circ_supply: TokenAmount::from_whole(1_000_000_000),
         };
@@ -490,7 +490,7 @@ impl<'bs> VM<'bs> {
 #[derive(Clone)]
 pub struct TopCtx {
     originator_stable_addr: Address,
-    _originator_call_seq: u64,
+    originator_call_seq: u64,
     new_actor_addr_count: RefCell<u64>,
     circ_supply: TokenAmount,
 }
@@ -877,15 +877,12 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
-        let osa_bytes = self.top.originator_stable_addr.to_bytes();
-        let mut seq_num_bytes = self.top.originator_stable_addr.to_bytes();
-        let cnt = self.top.new_actor_addr_count.take();
-        self.top.new_actor_addr_count.replace(cnt + 1);
-        let mut cnt_bytes = serialize(&cnt, "count failed").unwrap().to_vec();
-        let mut out = osa_bytes;
-        out.append(&mut seq_num_bytes);
-        out.append(&mut cnt_bytes);
-        Ok(Address::new_actor(out.as_slice()))
+        let mut b = self.top.originator_stable_addr.to_bytes();
+        b.extend_from_slice(&self.top.originator_call_seq.to_be_bytes());
+        b.extend_from_slice(
+            &self.top.new_actor_addr_count.replace_with(|old| *old + 1).to_be_bytes(),
+        );
+        Ok(Address::new_actor(&b))
     }
 
     fn delete_actor(&mut self, _beneficiary: &Address) -> Result<(), ActorError> {
