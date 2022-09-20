@@ -96,6 +96,8 @@ lazy_static::lazy_static! {
         map.insert(*PAYCH_ACTOR_CODE_ID, ());
         map.insert(*MULTISIG_ACTOR_CODE_ID, ());
         map.insert(*MINER_ACTOR_CODE_ID, ());
+        map.insert(*EMBRYO_ACTOR_CODE_ID, ());
+        map.insert(*EVM_ACTOR_CODE_ID, ());
         map
     };
 }
