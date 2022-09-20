@@ -1,5 +1,8 @@
 use fil_actor_account::State as AccountState;
-use fil_actors_runtime::test_utils::{make_builtin, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID};
+use fil_actors_runtime::runtime::EMPTY_ARR_CID;
+use fil_actors_runtime::test_utils::{
+    make_builtin, ACCOUNT_ACTOR_CODE_ID, EMBRYO_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID,
+};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -113,6 +116,66 @@ fn test_sent() {
     assert_account_actor(3, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::zero(), addr2, &v, expect_id_addr2);
     v.assert_state_invariants();
+}
+
+fn assert_embryo_actor(exp_bal: TokenAmount, v: &VM, addr: Address) {
+    let act = v.get_actor(addr).unwrap();
+    assert_eq!(EMPTY_ARR_CID, act.head);
+    assert_eq!(*EMBRYO_ACTOR_CODE_ID, act.code);
+    assert_eq!(exp_bal, act.balance);
+}
+
+#[test]
+fn test_sent_f4() {
+    let store = MemoryBlockstore::new();
+    let v = VM::new_with_singletons(&store);
+
+    // send to an f4 actor where the address manager exists.
+    let addr1 = Address::new_delegated(0, &[]).unwrap();
+    assert!(v
+        .apply_message(
+            TEST_FAUCET_ADDR,
+            addr1,
+            TokenAmount::from_atto(42u8),
+            METHOD_SEND,
+            RawBytes::default(),
+        )
+        .unwrap()
+        .code
+        .is_success());
+    let expect_id_addr1 = Address::new_id(FIRST_TEST_USER_ADDR);
+    assert_embryo_actor(TokenAmount::from_atto(42u8), &v, expect_id_addr1);
+
+    // Send to an f4 actor where the previous send created the "manager". Importantly, we don't have to deploy code first.
+    let addr2 = Address::new_delegated(FIRST_TEST_USER_ADDR, &[]).unwrap();
+    assert!(v
+        .apply_message(
+            TEST_FAUCET_ADDR,
+            addr2,
+            TokenAmount::from_atto(2u8),
+            METHOD_SEND,
+            RawBytes::default(),
+        )
+        .unwrap()
+        .code
+        .is_success());
+    let expect_id_addr2 = Address::new_id(FIRST_TEST_USER_ADDR + 1);
+    assert_embryo_actor(TokenAmount::from_atto(2u8), &v, expect_id_addr2);
+
+    // Fail to send to to an f4 actor where the "manager" doesn't exist.
+    let addr2 = Address::new_delegated(FIRST_TEST_USER_ADDR + 2, &[]).unwrap();
+    assert_eq!(
+        v.apply_message(
+            TEST_FAUCET_ADDR,
+            addr2,
+            TokenAmount::from_atto(2u8),
+            METHOD_SEND,
+            RawBytes::default(),
+        )
+        .unwrap()
+        .code,
+        fvm_shared::error::ExitCode::SYS_INVALID_RECEIVER
+    );
 }
 
 #[test]

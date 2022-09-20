@@ -4,10 +4,11 @@
 use cid::Cid;
 use fil_actor_init::testing::check_state_invariants;
 use fil_actor_init::{
-    Actor as InitActor, ConstructorParams, ExecParams, ExecReturn, Method, State,
+    Actor as InitActor, ConstructorParams, Exec4Params, Exec4Return, ExecParams, ExecReturn,
+    Method, State,
 };
 use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ADDR, EAM_ACTOR_ID};
 use fil_actors_runtime::{
     ActorError, Multimap, FIRST_NON_SINGLETON_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
@@ -80,7 +81,6 @@ fn repeated_robust_address() {
 
         // Return should have been successful. Check the returned addresses
         let exec_ret = exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
-        let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
         assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
         assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
         check_state(&rt);
@@ -142,7 +142,6 @@ fn create_2_payment_channels() {
         );
 
         let exec_ret = exec_and_verify(&mut rt, *PAYCH_ACTOR_CODE_ID, &fake_params).unwrap();
-        let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
         assert_eq!(unique_address, exec_ret.robust_address, "Robust Address does not match");
         assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
 
@@ -184,8 +183,6 @@ fn create_storage_miner() {
     );
 
     let exec_ret = exec_and_verify(&mut rt, *MINER_ACTOR_CODE_ID, &fake_params).unwrap();
-
-    let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
     assert_eq!(unique_address, exec_ret.robust_address);
     assert_eq!(expected_id_addr, exec_ret.id_address);
 
@@ -236,7 +233,6 @@ fn create_multisig_actor() {
 
     // Return should have been successful. Check the returned addresses
     let exec_ret = exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
-    let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
     check_state(&rt);
@@ -287,6 +283,51 @@ fn sending_constructor_failure() {
     check_state(&rt);
 }
 
+#[test]
+fn call_exec4() {
+    let mut rt = construct_runtime();
+    construct_and_verify(&mut rt);
+
+    // Assign addresses
+    let unique_address = Address::new_actor(b"test");
+    rt.new_actor_addr = Some(unique_address);
+
+    // Next id
+    let expected_id = 100;
+    let expected_id_addr = Address::new_id(expected_id);
+    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id);
+
+    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
+    // Expect a send to the multisig actor constructor
+    rt.expect_send(
+        expected_id_addr,
+        METHOD_CONSTRUCTOR,
+        RawBytes::serialize(&fake_params).unwrap(),
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
+    let subaddr = b"foobar";
+    let f4_addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
+
+    // Return should have been successful. Check the returned addresses
+    let exec_ret =
+        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
+
+    assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
+    assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
+
+    // Check that we assigned the right f4 address.
+    let init_state: State = rt.get_state();
+    let resolved_id = init_state
+        .resolve_address(rt.store(), &f4_addr)
+        .ok()
+        .flatten()
+        .expect("failed to lookup f4 address");
+    assert_eq!(expected_id_addr, resolved_id, "f4 address not assigned to the right actor");
+}
+
 fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let params = ConstructorParams { network_name: "mock".to_string() };
@@ -312,7 +353,7 @@ fn exec_and_verify<S: Serialize>(
     rt: &mut MockRuntime,
     code_id: Cid,
     params: &S,
-) -> Result<RawBytes, ActorError>
+) -> Result<ExecReturn, ActorError>
 where
     S: Serialize,
 {
@@ -325,5 +366,34 @@ where
 
     rt.verify();
     check_state(rt);
-    ret
+    ret.and_then(|v| v.deserialize().map_err(|e| e.into()))
+}
+
+fn exec4_and_verify<S: Serialize>(
+    rt: &mut MockRuntime,
+    subaddr: &[u8],
+    code_id: Cid,
+    params: &S,
+) -> Result<Exec4Return, ActorError>
+where
+    S: Serialize,
+{
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_ADDR);
+    if cfg!(feature = "m2-native") {
+        rt.expect_validate_caller_any();
+    } else {
+        rt.expect_validate_caller_addr(vec![EAM_ACTOR_ADDR]);
+    }
+    let exec_params = Exec4Params {
+        code_cid: code_id,
+        constructor_params: RawBytes::serialize(params).unwrap(),
+        subaddress: subaddr.to_owned().into(),
+    };
+
+    let ret =
+        rt.call::<InitActor>(Method::Exec4 as u64, &RawBytes::serialize(&exec_params).unwrap());
+
+    rt.verify();
+    check_state(rt);
+    ret.and_then(|v| v.deserialize().map_err(|e| e.into()))
 }

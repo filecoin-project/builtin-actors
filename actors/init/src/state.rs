@@ -5,8 +5,9 @@ use anyhow::anyhow;
 #[cfg(feature = "m2-native")]
 use cid::multihash::Code;
 use cid::Cid;
+use fil_actors_runtime::actor_error;
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
+    make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -45,7 +46,8 @@ impl State {
     /// Allocates a new ID address and stores a mapping of the argument address to it.
     /// Fails if the argument address is already present in the map to facilitate a tombstone
     /// for when the predictable robust address generation is implemented.
-    /// Returns the newly-allocated address.
+    ///
+    /// Returns the newly-allocated actor ID.
     pub fn map_address_to_new_id<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -55,6 +57,48 @@ impl State {
         self.next_id += 1;
 
         let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)?;
+        let is_new = map.set_if_absent(addr.to_bytes().into(), id)?;
+        if !is_new {
+            // this is impossible today as the robust address is a hash of unique inputs
+            // but in close future predictable address generation will make this possible
+            return Err(anyhow!(actor_error!(
+                forbidden,
+                "robust address {} is already allocated in the address map",
+                addr
+            )));
+        }
+        self.address_map = map.flush()?;
+
+        Ok(id)
+    }
+
+    /// Allocates a new ID address and stores a mapping of the argument addresses to it.
+    /// Returns the newly-allocated actor ID.
+    pub fn map_address_to_f4<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        addr: &Address,
+        f4addr: &Address,
+    ) -> anyhow::Result<ActorID>
+    where
+        BS: Blockstore,
+    {
+        let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)?;
+
+        // Assign a new ID address, or use the one currently mapped to the f4 address. We don't
+        // bother checking if the target actor is an embryo here, the FVM will check that when we go to create the actor.
+        let f4addr_key = f4addr.to_bytes().into();
+        let id: u64 = match map.get(&f4addr_key)? {
+            Some(id) => *id,
+            None => {
+                let id = self.next_id;
+                self.next_id += 1;
+                map.set(f4addr_key, id)?;
+                id
+            }
+        };
+
+        // Then go ahead and assign the f2 address.
         let is_new = map.set_if_absent(addr.to_bytes().into(), id)?;
         if !is_new {
             // this is impossible today as the robust address is a hash of unique inputs
