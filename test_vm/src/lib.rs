@@ -661,6 +661,9 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Power => PowerActor::invoke_method(self, self.msg.method, &params),
             Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
             Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
+            Type::Embryo => {
+                Err(ActorError::unhandled_message("embryo actors only handle method 0".into()))
+            }
             Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, &params),
         };
         if res.is_err() {

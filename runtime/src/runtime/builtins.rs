@@ -19,7 +19,8 @@ pub enum Type {
     Multisig = 9,
     Reward = 10,
     VerifiedRegistry = 11,
-    EVM = 12,
+    Embryo = 12,
+    EVM = 13,
 }
 
 impl Type {
@@ -36,6 +37,7 @@ impl Type {
             Type::Multisig => "multisig",
             Type::Reward => "reward",
             Type::VerifiedRegistry => "verifiedregistry",
+            Type::Embryo => "embryo",
             Type::EVM => "evm",
         }
     }

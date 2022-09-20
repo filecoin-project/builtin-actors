@@ -677,6 +677,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_embryo"
+version = "10.0.0-alpha.1"
+dependencies = [
+ "fvm_sdk",
+ "fvm_shared",
+]
+
+[[package]]
 name = "fil_actor_evm"
 version = "10.0.0-alpha.1"
 dependencies = [
@@ -929,6 +937,7 @@ dependencies = [
  "fil_actor_account",
  "fil_actor_bundler",
  "fil_actor_cron",
+ "fil_actor_embryo",
  "fil_actor_evm",
  "fil_actor_init",
  "fil_actor_market",

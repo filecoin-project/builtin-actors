@@ -24,6 +24,7 @@ fil_actor_miner = { version = "10.0.0-alpha.1", path = "./actors/miner", feature
 fil_actor_reward = { version = "10.0.0-alpha.1", path = "./actors/reward", features = ["fil-actor"] }
 fil_actor_system = { version = "10.0.0-alpha.1", path = "./actors/system", features = ["fil-actor"] }
 fil_actor_init = { version = "10.0.0-alpha.1", path = "./actors/init", features = ["fil-actor"] }
+fil_actor_embryo = { version = "10.0.0-alpha.1", path = "./actors/embryo", features = ["fil-actor"] }
 fil_actor_evm = { version = "10.0.0-alpha.1", path = "./actors/evm", features = ["fil-actor"] }
 
 [build-dependencies]
