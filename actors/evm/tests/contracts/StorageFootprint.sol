@@ -46,16 +46,6 @@ contract StorageFootprint {
         }
     }
 
-    // Add the sum of items in a range of `array1` to `counter1`.
-    // Use this to see how much it costs to retrieve varying number of ranges of items from the array.
-    function array1_sum(uint32 k, uint32 n) public {
-        uint32 sum = 0;
-        for (uint32 i = k; i < k + n; i++) {
-            sum += array1[i];
-        }
-        counter1 += sum;
-    }
-
     // Set `n` consecutive keys starting from `k` to the value `v` in the first mapping.
     // Call it with varying number of items to see that for maps batch size doesn't make a difference.
     function mapping1_set(
@@ -80,13 +70,21 @@ contract StorageFootprint {
         }
     }
 
-    // Add the sum of items in a range of `mapping1` to `counter1`.
+    // Sum of items in a range of `array1`.
+    // Use this to see how much it costs to retrieve varying number of ranges of items from the array.
+    function array1_sum(uint32 k, uint32 n) public view returns (uint32 sum) {
+        for (uint32 i = k; i < k + n; i++) {
+            sum += array1[i];
+        }
+        return sum;
+    }
+
+    // Sum the items in a range of `mapping1`.
     // Can be used to contrast with the cost of retrieving similar ranges of items from the array.
-    function mapping1_sum(uint32 k, uint32 n) public {
-        uint32 sum = 0;
+    function mapping1_sum(uint32 k, uint32 n) public view returns (uint32 sum) {
         for (uint32 i = k; i < k + n; i++) {
             sum += mapping1[i];
         }
-        counter1 += sum;
+        return sum;
     }
 }
