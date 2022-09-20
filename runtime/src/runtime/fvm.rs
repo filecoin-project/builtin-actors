@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Error};
-use cid::multihash::{Code, MultihashDigest};
+use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{to_vec, Cbor, CborStore, RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::Address;
@@ -32,13 +32,7 @@ use crate::runtime::{
 };
 use crate::{actor_error, ActorError, Runtime};
 
-lazy_static::lazy_static! {
-    /// Cid of the empty array Cbor bytes (`EMPTY_ARR_BYTES`).
-    pub static ref EMPTY_ARR_CID: Cid = {
-        let empty = to_vec::<[(); 0]>(&[]).unwrap();
-        Cid::new_v1(DAG_CBOR, Code::Blake2b256.digest(&empty))
-    };
-}
+use super::EMPTY_ARR_CID;
 
 /// A runtime that bridges to the FVM environment through the FVM SDK.
 pub struct FvmRuntime<B = ActorBlockstore> {
@@ -239,7 +233,7 @@ where
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
         let root = fvm::sself::root()?;
-        if root != *EMPTY_ARR_CID {
+        if root != EMPTY_ARR_CID {
             return Err(
                 actor_error!(illegal_state; "failed to create state; expected empty array CID, got: {}", root),
             );
