@@ -42,6 +42,9 @@ pub(crate) mod hash_algorithm;
 pub(crate) mod empty;
 pub use empty::EMPTY_ARR_CID;
 
+pub(crate) mod empty;
+pub use empty::EMPTY_ARR_CID;
+
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
 pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
