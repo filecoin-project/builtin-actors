@@ -65,6 +65,7 @@ pub mod verifreg {
 }
 
 pub mod datacap {
+    pub const BALANCE_OF_METHOD: u64 = 13;
     pub const TRANSFER_FROM_METHOD: u64 = 15;
 }
 
