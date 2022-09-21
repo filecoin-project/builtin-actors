@@ -697,7 +697,7 @@ fn extend_after_upgrade() {
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, _) =
         create_miner_and_upgrade_sector(store);
     let sector_number = sector_info.sector_number;
-    let mut legacy_sector = sector_info.clone();
+    let mut legacy_sector = sector_info;
     legacy_sector.simple_qa_power = false;
 
     // TODO change to use extend2
