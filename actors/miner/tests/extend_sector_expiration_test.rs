@@ -376,7 +376,7 @@ fn commit_sector_verified_deals(
     rt: &mut MockRuntime,
 ) -> SectorOnChainInfo {
     h.construct_and_verify(rt);
-    assert!(verified_deals.is_empty());
+    assert!(!verified_deals.is_empty());
     let mut sector_space = 0;
     for d in verified_deals {
         sector_space += d.space.0;
