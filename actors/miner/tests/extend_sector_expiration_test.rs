@@ -654,7 +654,16 @@ fn update_expiration2_failure_cases() {
         };
 
         let res = h.extend_sectors2(&mut rt, params, claims);
-        expect_abort_contains_message(ExitCode::USR_FORBIDDEN, &format!("new expiration {} declared for a sector containing a claim only allowing extension to {}", new_expiration, new_expiration - 1).to_string(), res);
+        expect_abort_contains_message(
+            ExitCode::USR_FORBIDDEN,
+            &format!(
+                "claim only allows extension to {} but declared new expiration is {}",
+                new_expiration - 1,
+                new_expiration
+            )
+            .to_string(),
+            res,
+        );
         // assert sector expiration is set to the new value
         check_for_expiration(
             &mut h,

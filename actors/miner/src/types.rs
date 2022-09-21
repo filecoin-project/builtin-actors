@@ -3,7 +3,6 @@
 
 use super::beneficiary::*;
 use crate::commd::CompactCommD;
-use crate::ValidatedExpirationExtension;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::BitField;
@@ -149,38 +148,23 @@ pub struct ExpirationExtension {
     pub sectors: UnvalidatedBitField,
     pub new_expiration: ChainEpoch,
 }
-#[allow(clippy::too_many_arguments)] // validate mut prevents implementing From
-impl Into<ValidatedExpirationExtension> for ExpirationExtension2 {
-    fn into(self) -> ValidatedExpirationExtension {
-        let mut sectors = BitField::new();
-        for sc in self.sectors_with_claims {
-            sectors.set(sc.sector_number)
-        }
-        sectors |= &self.sectors;
 
-        ValidatedExpirationExtension {
-            deadline: self.deadline,
-            partition: self.partition,
-            sectors,
-            new_expiration: self.new_expiration,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ExtendSectorExpiration2Params {
     pub extensions: Vec<ExpirationExtension2>,
 }
 
 impl Cbor for ExtendSectorExpiration2Params {}
 
-#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorClaim {
     pub sector_number: SectorNumber,
     pub maintain_claims: Vec<ClaimID>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+impl Cbor for SectorClaim {}
+
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ExpirationExtension2 {
     pub deadline: u64,
     pub partition: u64,
@@ -188,6 +172,8 @@ pub struct ExpirationExtension2 {
     pub sectors_with_claims: Vec<SectorClaim>,
     pub new_expiration: ChainEpoch,
 }
+
+impl Cbor for ExpirationExtension2 {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct TerminateSectorsParams {

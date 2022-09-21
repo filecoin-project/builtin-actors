@@ -2245,12 +2245,10 @@ impl Actor {
                                 )
                             }
                             ExtensionKind::ExtendCommittment => match &inner.claims {
-                                None => {
-                                    return Err(actor_error!(
-                                    illegal_state,
+                                None => Err(actor_error!(
+                                    unspecified,
                                     "extend2 always specifies (potentially empty) claim mapping"
-                                ))
-                                }
+                                )),
                                 Some(claim_space_by_sector) => extend_sector_committment(
                                     rt.policy(),
                                     curr_epoch,
@@ -3563,6 +3561,24 @@ pub struct ValidatedExpirationExtension {
     pub new_expiration: ChainEpoch,
 }
 
+#[allow(clippy::too_many_arguments)] // validate mut prevents implementing From
+impl From<ExpirationExtension2> for ValidatedExpirationExtension {
+    fn from(e2: ExpirationExtension2) -> Self {
+        let mut sectors = BitField::new();
+        for sc in e2.sectors_with_claims {
+            sectors.set(sc.sector_number)
+        }
+        sectors |= &e2.sectors;
+
+        Self {
+            deadline: e2.deadline,
+            partition: e2.partition,
+            sectors,
+            new_expiration: e2.new_expiration,
+        }
+    }
+}
+
 fn validate_legacy_extension_declarations(
     extensions: &[ExpirationExtension],
     policy: &Policy,
@@ -3628,20 +3644,20 @@ where
 
         for sc in &decl.sectors_with_claims {
             let claims = get_claims(rt, &sc.maintain_claims)
-                .context(format!("failed to get claims for sector {}", sc.sector_number))?;
+                .with_context(|| format!("failed to get claims for sector {}", sc.sector_number))?;
 
-            for claim in claims {
+            for (i, claim) in claims.iter().enumerate() {
                 // check provider and sector matches
                 if claim.provider != rt.message().receiver().id().unwrap() {
-                    return Err(actor_error!(illegal_argument, "invalid declaration indexing wrong claim: expected provider {} but found {} ", rt.message().receiver().id().unwrap(), claim.provider));
+                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={}, expected claim provider to be {} but found {} ", sc.sector_number, sc.maintain_claims[i], rt.message().receiver().id().unwrap(), claim.provider));
                 }
                 if claim.sector != sc.sector_number {
-                    return Err(actor_error!(illegal_argument, "invalid declaration indexing wrong claim: expected sector {} but found {} ", sc.sector_number, claim.sector));
+                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={} expected claim sector number to be {} but found {} ", sc.sector_number, sc.maintain_claims[i], sc.sector_number, claim.sector));
                 }
 
                 // check expiration does not exceed term max
                 if decl.new_expiration > claim.term_start + claim.term_max {
-                    return Err(actor_error!(forbidden, "new expiration {} declared for a sector containing a claim only allowing extension to {}", decl.new_expiration, claim.term_start + claim.term_max));
+                    return Err(actor_error!(forbidden, "failed to validate declaration sector={}, claim={} claim only allows extension to {} but declared new expiration is {}", sc.sector_number, sc.maintain_claims[i], claim.term_start + claim.term_max, decl.new_expiration));
                 }
 
                 claim_space_by_sector
