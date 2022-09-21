@@ -381,7 +381,7 @@ impl<'bs> VM<'bs> {
         self.store.get_cbor::<C>(&a.head).unwrap()
     }
 
-    pub fn set_state<C, F>(&self, addr: Address, f: F)
+    pub fn mutate_state<C, F>(&self, addr: Address, f: F)
     where
         C: Cbor,
         F: FnOnce(&mut C),

@@ -1771,7 +1771,13 @@ impl Actor {
             // This could make sector maximum lifetime validation more lenient if the maximum sector limit isn't hit first.
             let max_activation = curr_epoch
                 + max_prove_commit_duration(rt.policy(), precommit.seal_proof).unwrap_or_default();
-            validate_expiration(rt, max_activation, precommit.expiration, precommit.seal_proof)?;
+            validate_expiration(
+                rt.policy(),
+                curr_epoch,
+                max_activation,
+                precommit.expiration,
+                precommit.seal_proof,
+            )?;
 
             sectors_deals.push(ext::market::SectorDeals {
                 sector_type: precommit.seal_proof,
@@ -2102,6 +2108,46 @@ impl Actor {
         }
     }
 
+    /// Changes the expiration epoch for a sector to a new, later one.
+    /// The sector must not be terminated or faulty.
+    /// The sector's power is recomputed for the new expiration.
+    /// This method is legacy and should be replaced with calls to extend_sector_expiration2
+    fn extend_sector_expiration<BS, RT>(
+        rt: &mut RT,
+        params: ExtendSectorExpirationParams,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        let extend_expiration_inner =
+            validate_legacy_extension_declarations(&params.extensions, rt.policy())?;
+        Self::extend_sector_expiration_inner(
+            rt,
+            extend_expiration_inner,
+            ExtensionKind::ExtendCommittmentLegacy,
+        )
+    }
+
+    // Up to date version of extend_sector_expiration that correctly handles simple qap sectors
+    // with FIL+ claims. Extension is only allowed if all claim max terms extend past new expiration
+    // or claims are dropped.  Power only changes when claims are dropped.
+    fn extend_sector_expiration2<BS, RT>(
+        rt: &mut RT,
+        params: ExtendSectorExpiration2Params,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        let extend_expiration_inner = validate_extension_declarations(rt, params.extensions)?;
+        Self::extend_sector_expiration_inner(
+            rt,
+            extend_expiration_inner,
+            ExtensionKind::ExtendCommittment,
+        )
+    }
+
     fn extend_sector_expiration_inner<BS, RT>(
         rt: &mut RT,
         inner: ExtendExpirationsInner,
@@ -2313,42 +2359,6 @@ impl Actor {
         // But in case that ever changes, we can do the right thing here.
         notify_pledge_changed(rt, &pledge_delta)?;
         Ok(())
-    }
-
-    /// Changes the expiration epoch for a sector to a new, later one.
-    /// The sector must not be terminated or faulty.
-    /// The sector's power is recomputed for the new expiration.
-    fn extend_sector_expiration2<BS, RT>(
-        rt: &mut RT,
-        mut params: ExtendSectorExpiration2Params,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
-        let extend_expiration_inner = validate_declaration(rt, params.extensions)?;
-        Self::extend_sector_expiration_inner(
-            rt,
-            extend_expiration_inner,
-            ExtensionKind::ExtendCommittment,
-        )
-    }
-
-    fn extend_sector_expiration<BS, RT>(
-        rt: &mut RT,
-        params: ExtendSectorExpirationParams,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
-        let extend_expiration_inner =
-            validate_legacy_extension_declaration(&params.extensions, rt.policy())?;
-        Self::extend_sector_expiration_inner(
-            rt,
-            extend_expiration_inner,
-            ExtensionKind::ExtendCommittmentLegacy,
-        )
     }
 
     /// Marks some sectors as terminated at the present epoch, earlier than their
@@ -3545,23 +3555,18 @@ struct ExtendExpirationsInner {
     claims: Option<BTreeMap<SectorNumber, u64>>,
 }
 
-fn validate_legacy_extension_declaration(
+#[derive(Clone, Debug, PartialEq)]
+pub struct ValidatedExpirationExtension {
+    pub deadline: u64,
+    pub partition: u64,
+    pub sectors: BitField,
+    pub new_expiration: ChainEpoch,
+}
+
+fn validate_legacy_extension_declarations(
     extensions: &[ExpirationExtension],
     policy: &Policy,
 ) -> Result<ExtendExpirationsInner, ActorError> {
-    if extensions.len() as u64 > policy.declarations_max {
-        return Err(actor_error!(
-            illegal_argument,
-            "too many declarations {}, max {}",
-            extensions.len(),
-            policy.declarations_max
-        ));
-    }
-
-    // limit the number of sectors declared at once
-    // https://github.com/filecoin-project/specs-actors/issues/416
-    let mut sector_count: u64 = 0;
-
     let vec_validated = extensions
         .iter()
         .map(|decl| {
@@ -3588,13 +3593,6 @@ fn validate_legacy_extension_declaration(
                 )
             })?;
 
-            match sector_count.checked_add(sectors.len()) {
-                Some(sum) => sector_count = sum,
-                None => {
-                    return Err(actor_error!(illegal_argument, "sector bitfield integer overflow"));
-                }
-            }
-
             Ok(ValidatedExpirationExtension {
                 deadline: decl.deadline,
                 partition: decl.partition,
@@ -3604,19 +3602,10 @@ fn validate_legacy_extension_declaration(
         })
         .collect::<Result<_, _>>()?;
 
-    if sector_count > policy.addressed_sectors_max {
-        return Err(actor_error!(
-            illegal_argument,
-            "too many sectors for declaration {}, max {}",
-            sector_count,
-            policy.addressed_sectors_max
-        ));
-    }
-
     Ok(ExtendExpirationsInner { extensions: vec_validated, claims: None })
 }
 
-fn validate_declaration<BS, RT>(
+fn validate_extension_declarations<BS, RT>(
     rt: &mut RT,
     extensions: Vec<ExpirationExtension2>,
 ) -> Result<ExtendExpirationsInner, ActorError>
@@ -3634,24 +3623,6 @@ where
                 "deadline {} not in range 0..{}",
                 decl.deadline,
                 policy.wpost_period_deadlines
-            ));
-        }
-
-        // Clone to appease borrow checker
-        let mut sectors = match &decl.sectors {
-            UnvalidatedBitField::Validated(bf) => UnvalidatedBitField::Validated(bf.clone()),
-            UnvalidatedBitField::Unvalidated(bytes) => {
-                UnvalidatedBitField::Unvalidated(bytes.clone())
-            }
-        };
-
-        if let Err(e) = sectors.validate() {
-            return Err(actor_error!(
-                illegal_argument,
-                "failed to validate claim free sectors for deadline {}, partition {}: {}",
-                decl.deadline,
-                decl.partition,
-                e
             ));
         }
 
@@ -3693,81 +3664,14 @@ fn extend_sector_committment(
     sector: &SectorOnChainInfo,
     claim_space_by_sector: &BTreeMap<SectorNumber, u64>,
 ) -> Result<SectorOnChainInfo, ActorError> {
-    if !can_extend_seal_proof_type(sector.seal_proof) {
-        return Err(actor_error!(
-            forbidden,
-            "cannot extend expiration for sector {} with unsupported \
-            seal type {:?}",
-            sector.sector_number,
-            sector.seal_proof
-        ));
-    }
-
-    // This can happen if the sector should have already expired, but hasn't
-    // because the end of its deadline hasn't passed yet.
-    if sector.expiration < curr_epoch {
-        return Err(actor_error!(
-            forbidden,
-            "cannot extend expiration for expired sector {} at {}",
-            sector.sector_number,
-            sector.expiration
-        ));
-    }
-
-    if new_expiration < sector.expiration {
-        return Err(actor_error!(
-            illegal_argument,
-            "cannot reduce sector {} expiration to {} from {}",
-            sector.sector_number,
-            new_expiration,
-            sector.expiration
-        ));
-    }
-
-    validate_expiration2(policy, curr_epoch, sector.activation, new_expiration, sector.seal_proof)?;
-
-    let mut new_sector = sector.clone();
+    validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
     if sector.simple_qa_power {
-        if sector.verified_deal_weight > BigInt::zero() {
-            let old_duration = sector.expiration - sector.activation;
-            let deal_space = sector.deal_weight.clone() / old_duration;
-            let verified_deal_space = sector.verified_deal_weight.clone() / old_duration;
-            let expected_verified_deal_space =
-                match claim_space_by_sector.get(&sector.sector_number) {
-                    None => {
-                        return Err(actor_error!(
-                            illegal_argument,
-                            "claim missing from declaration for sector {}",
-                            sector.sector_number
-                        ))
-                    }
-                    Some(space) => space,
-                };
-            if BigInt::from(*expected_verified_deal_space as i64) != verified_deal_space {
-                return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, verified_deal_space, sector.sector_number));
-            }
-            new_sector.expiration = new_expiration;
-            // update deal weights to account for new duration
-            new_sector.deal_weight = deal_space * (new_sector.expiration - new_sector.activation);
-            new_sector.verified_deal_weight =
-                verified_deal_space * (new_sector.expiration - new_sector.activation);
-        }
+        extend_simple_qap_sector(new_expiration, sector, claim_space_by_sector)
     } else {
-        // Remove "spent" deal weights for non simple_qa_power sectors with deal weight > 0
-        let new_deal_weight = (&sector.deal_weight * (sector.expiration - curr_epoch))
-            .div_floor(&BigInt::from(sector.expiration - sector.activation));
-
-        let new_verified_deal_weight = (&sector.verified_deal_weight
-            * (sector.expiration - curr_epoch))
-            .div_floor(&BigInt::from(sector.expiration - sector.activation));
-
-        new_sector.expiration = new_expiration;
-        new_sector.deal_weight = new_deal_weight;
-        new_sector.verified_deal_weight = new_verified_deal_weight;
+        extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
     }
-    Ok(new_sector)
 }
 
 fn extend_sector_committment_legacy(
@@ -3776,15 +3680,7 @@ fn extend_sector_committment_legacy(
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
 ) -> Result<SectorOnChainInfo, ActorError> {
-    if !can_extend_seal_proof_type(sector.seal_proof) {
-        return Err(actor_error!(
-            forbidden,
-            "cannot extend expiration for sector {} with unsupported \
-            seal type {:?}",
-            sector.sector_number,
-            sector.seal_proof
-        ));
-    }
+    validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // it is an error to do legacy sector expiration on simple-qa power sectors with deal weight
     if sector.simple_qa_power
@@ -3796,7 +3692,24 @@ fn extend_sector_committment_legacy(
             sector.sector_number
         ));
     }
+    extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+}
 
+fn validate_extended_expiration(
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
+    new_expiration: ChainEpoch,
+    sector: &SectorOnChainInfo,
+) -> Result<(), ActorError> {
+    if !can_extend_seal_proof_type(sector.seal_proof) {
+        return Err(actor_error!(
+            forbidden,
+            "cannot extend expiration for sector {} with unsupported \
+            seal type {:?}",
+            sector.sector_number,
+            sector.seal_proof
+        ));
+    }
     // This can happen if the sector should have already expired, but hasn't
     // because the end of its deadline hasn't passed yet.
     if sector.expiration < curr_epoch {
@@ -3818,9 +3731,51 @@ fn extend_sector_committment_legacy(
         ));
     }
 
-    validate_expiration2(policy, curr_epoch, sector.activation, new_expiration, sector.seal_proof)?;
+    validate_expiration(policy, curr_epoch, sector.activation, new_expiration, sector.seal_proof)?;
+    Ok(())
+}
 
-    // Remove "spent" deal weights
+fn extend_simple_qap_sector(
+    new_expiration: ChainEpoch,
+    sector: &SectorOnChainInfo,
+    claim_space_by_sector: &BTreeMap<SectorNumber, u64>,
+) -> Result<SectorOnChainInfo, ActorError> {
+    let mut new_sector = sector.clone();
+    if sector.verified_deal_weight > BigInt::zero() {
+        let old_duration = sector.expiration - sector.activation;
+        let deal_space = &sector.deal_weight / old_duration;
+        let verified_deal_space = &sector.verified_deal_weight / old_duration;
+        let expected_verified_deal_space = match claim_space_by_sector.get(&sector.sector_number) {
+            None => {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "claim missing from declaration for sector {}",
+                    sector.sector_number
+                ))
+            }
+            Some(space) => space,
+        };
+        if BigInt::from(*expected_verified_deal_space as i64) != verified_deal_space {
+            return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, verified_deal_space, sector.sector_number));
+        }
+        new_sector.expiration = new_expiration;
+        // update deal weights to account for new duration
+        new_sector.deal_weight = deal_space * (new_sector.expiration - new_sector.activation);
+        new_sector.verified_deal_weight =
+            verified_deal_space * (new_sector.expiration - new_sector.activation);
+    } else {
+        new_sector.expiration = new_expiration
+    }
+    Ok(new_sector)
+}
+
+fn extend_non_simple_qap_sector(
+    new_expiration: ChainEpoch,
+    curr_epoch: ChainEpoch,
+    sector: &SectorOnChainInfo,
+) -> Result<SectorOnChainInfo, ActorError> {
+    let mut new_sector = sector.clone();
+    // Remove "spent" deal weights for non simple_qa_power sectors with deal weight > 0
     let new_deal_weight = (&sector.deal_weight * (sector.expiration - curr_epoch))
         .div_floor(&BigInt::from(sector.expiration - sector.activation));
 
@@ -3828,13 +3783,10 @@ fn extend_sector_committment_legacy(
         * (sector.expiration - curr_epoch))
         .div_floor(&BigInt::from(sector.expiration - sector.activation));
 
-    let mut sector = sector.clone();
-    sector.expiration = new_expiration;
-
-    sector.deal_weight = new_deal_weight;
-    sector.verified_deal_weight = new_verified_deal_weight;
-
-    Ok(sector)
+    new_sector.expiration = new_expiration;
+    new_sector.deal_weight = new_deal_weight;
+    new_sector.verified_deal_weight = new_verified_deal_weight;
+    Ok(new_sector)
 }
 
 // TODO: We're using the current power+epoch reward. Technically, we
@@ -4105,7 +4057,7 @@ where
     Ok(())
 }
 
-fn validate_expiration2(
+fn validate_expiration(
     policy: &Policy,
     curr_epoch: ChainEpoch,
     activation: ChainEpoch,
@@ -4158,70 +4110,6 @@ fn validate_expiration2(
         max_lifetime,
         activation
     ));
-    }
-
-    Ok(())
-}
-
-/// Check expiry is exactly *the epoch before* the start of a proving period.
-fn validate_expiration<BS, RT>(
-    rt: &RT,
-    activation: ChainEpoch,
-    expiration: ChainEpoch,
-    seal_proof: RegisteredSealProof,
-) -> Result<(), ActorError>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
-    let policy = rt.policy();
-
-    // Expiration must be after activation. Check this explicitly to avoid an underflow below.
-    if expiration <= activation {
-        return Err(actor_error!(
-            illegal_argument,
-            "sector expiration {} must be after activation {}",
-            expiration,
-            activation
-        ));
-    }
-
-    // expiration cannot be less than minimum after activation
-    if expiration - activation < policy.min_sector_expiration {
-        return Err(actor_error!(
-            illegal_argument,
-            "invalid expiration {}, total sector lifetime ({}) must exceed {} after activation {}",
-            expiration,
-            expiration - activation,
-            policy.min_sector_expiration,
-            activation
-        ));
-    }
-
-    // expiration cannot exceed MaxSectorExpirationExtension from now
-    if expiration > rt.curr_epoch() + policy.max_sector_expiration_extension {
-        return Err(actor_error!(
-            illegal_argument,
-            "invalid expiration {}, cannot be more than {} past current epoch {}",
-            expiration,
-            policy.max_sector_expiration_extension,
-            rt.curr_epoch()
-        ));
-    }
-
-    // total sector lifetime cannot exceed SectorMaximumLifetime for the sector's seal proof
-    let max_lifetime = seal_proof_sector_maximum_lifetime(seal_proof).ok_or_else(|| {
-        actor_error!(illegal_argument, "unrecognized seal proof type {:?}", seal_proof)
-    })?;
-    if expiration - activation > max_lifetime {
-        return Err(actor_error!(
-            illegal_argument,
-            "invalid expiration {}, total sector lifetime ({}) cannot exceed {} after activation {}",
-            expiration,
-            expiration - activation,
-            max_lifetime,
-            activation
-        ));
     }
 
     Ok(())
@@ -4600,7 +4488,7 @@ where
     };
     let ret_raw = rt.send(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
-        ext::verifreg::GET_CLAIMS as u64,
+        ext::verifreg::GET_CLAIMS_METHOD as u64,
         serialize(&params, "get claims parameters")?,
         TokenAmount::zero(),
     )?;

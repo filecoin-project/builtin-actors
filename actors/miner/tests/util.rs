@@ -32,9 +32,11 @@ use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
-use fil_actor_verifreg::{
-    Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn, Method as VerifregMethod,
+
+use fil_actor_miner::ext::verifreg::{
+    Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn,
 };
+
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::{test_utils::*, BatchReturnGen};
 use fil_actors_runtime::{
@@ -2227,7 +2229,7 @@ impl ActorHarness {
 
                 rt.expect_send(
                     *VERIFIED_REGISTRY_ACTOR_ADDR,
-                    VerifregMethod::GetClaims as u64,
+                    fil_actor_miner::ext::verifreg::GET_CLAIMS_METHOD as u64,
                     RawBytes::serialize(GetClaimsParams {
                         provider: self.receiver.id().unwrap(),
                         claim_ids: sc.maintain_claims.clone(),

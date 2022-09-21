@@ -3,6 +3,7 @@
 
 use super::beneficiary::*;
 use crate::commd::CompactCommD;
+use crate::ValidatedExpirationExtension;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::BitField;
@@ -150,12 +151,12 @@ pub struct ExpirationExtension {
 }
 #[allow(clippy::too_many_arguments)] // validate mut prevents implementing From
 impl Into<ValidatedExpirationExtension> for ExpirationExtension2 {
-    fn into(mut self) -> ValidatedExpirationExtension {
+    fn into(self) -> ValidatedExpirationExtension {
         let mut sectors = BitField::new();
         for sc in self.sectors_with_claims {
             sectors.set(sc.sector_number)
         }
-        sectors |= self.sectors.validate_mut().unwrap();
+        sectors |= &self.sectors;
 
         ValidatedExpirationExtension {
             deadline: self.deadline,
@@ -166,33 +167,25 @@ impl Into<ValidatedExpirationExtension> for ExpirationExtension2 {
     }
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct ExtendSectorExpiration2Params {
     pub extensions: Vec<ExpirationExtension2>,
 }
 
 impl Cbor for ExtendSectorExpiration2Params {}
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorClaim {
     pub sector_number: SectorNumber,
     pub maintain_claims: Vec<ClaimID>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct ExpirationExtension2 {
     pub deadline: u64,
     pub partition: u64,
-    pub sectors: UnvalidatedBitField, // IDs of sectors without FIL+ claims
+    pub sectors: BitField, // IDs of sectors without FIL+ claims
     pub sectors_with_claims: Vec<SectorClaim>,
-    pub new_expiration: ChainEpoch,
-}
-
-#[derive(Clone)]
-pub struct ValidatedExpirationExtension {
-    pub deadline: u64,
-    pub partition: u64,
-    pub sectors: BitField,
     pub new_expiration: ChainEpoch,
 }
 

@@ -176,7 +176,7 @@ fn extend_sector_with_deals() {
     // We do need to set simple_qa_power to false
     sector_info.simple_qa_power = false;
     // Manually craft state to match legacy sectors
-    v.set_state(miner_id, |st: &mut MinerState| {
+    v.mutate_state(miner_id, |st: &mut MinerState| {
         let mut sectors = Sectors::load(&store, &st.sectors).unwrap();
         sectors.store(vec![sector_info.clone()]).unwrap();
         st.sectors = sectors.amt.flush().unwrap();

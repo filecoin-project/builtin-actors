@@ -137,7 +137,7 @@ pub mod reward {
 pub mod verifreg {
     use super::*;
 
-    pub const GET_CLAIMS: u64 = 10;
+    pub const GET_CLAIMS_METHOD: u64 = 10;
 
     pub type ClaimID = u64;
     #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]

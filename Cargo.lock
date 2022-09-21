@@ -664,7 +664,6 @@ dependencies = [
  "fil_actor_market",
  "fil_actor_power",
  "fil_actor_reward",
- "fil_actor_verifreg",
  "fil_actors_runtime",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
