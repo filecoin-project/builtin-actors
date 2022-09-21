@@ -114,6 +114,14 @@ where
         in_map.for_each(f)
     }
 
+    // Puts a key value pair in the MapMap, overwriting any existing value.
+    // Returns the previous value, if any.
+    pub fn put(&mut self, outside_k: K1, inside_k: K2, value: V) -> Result<Option<V>, Error> {
+        let in_map = self.load_inner_map(outside_k)?.1;
+        // defer flushing cached inner map until flush call
+        in_map.set(inside_k.key(), value)
+    }
+
     // Puts a key value pair in the MapMap if it is not already set.  Returns true
     // if key is newly set, false if it was already set.
     pub fn put_if_absent(&mut self, outside_k: K1, inside_k: K2, value: V) -> Result<bool, Error> {
