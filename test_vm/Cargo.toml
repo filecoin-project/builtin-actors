@@ -51,3 +51,4 @@ thiserror = "1.0.30"
 [dev-dependencies]
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false }
+test-case = "2.2.1"

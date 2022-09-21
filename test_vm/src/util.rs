@@ -10,9 +10,10 @@ use fil_actor_market::{
 use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationRequests};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams,
-    Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams,
-    PreCommitSectorParams, ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo,
+    new_deadline_info_from_offset_and_epoch, CompactCommD, Deadline, DeadlineInfo,
+    DeclareFaultsRecoveredParams, Method as MinerMethod, PoStPartition, PowerPair,
+    PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
+    ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitInfo,
     SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
 };
 use fil_actor_multisig::Method as MultisigMethod;
@@ -126,7 +127,7 @@ pub fn create_miner(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn precommit_sectors(
+pub fn precommit_sectors_v2(
     v: &mut VM,
     count: u64,
     batch_size: i64,
@@ -136,6 +137,7 @@ pub fn precommit_sectors(
     sector_number_base: SectorNumber,
     expect_cron_enroll: bool,
     exp: Option<ChainEpoch>,
+    v2: bool,
 ) -> Vec<SectorPreCommitOnChainInfo> {
     let mid = v.normalize_address(&maddr).unwrap();
     let invocs_common = || -> Vec<ExpectInvocation> {
@@ -180,60 +182,137 @@ pub fn precommit_sectors(
     while sector_idx < count {
         let msg_sector_idx_base = sector_idx;
         let mut invocs = invocs_common();
+        if !v2 {
+            let mut param_sectors = Vec::<PreCommitSectorParams>::new();
+            let mut j = 0;
+            while j < batch_size && sector_idx < count {
+                let sector_number = sector_number_base + sector_idx;
+                param_sectors.push(PreCommitSectorParams {
+                    seal_proof,
+                    sector_number,
+                    sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
+                    seal_rand_epoch: v.get_epoch() - 1,
+                    deal_ids: vec![],
+                    expiration,
+                    ..Default::default()
+                });
+                sector_idx += 1;
+                j += 1;
+            }
+            if param_sectors.len() > 1 {
+                invocs.push(invoc_net_fee(aggregate_pre_commit_network_fee(
+                    param_sectors.len() as i64,
+                    &TokenAmount::zero(),
+                )));
+            }
+            if expect_cron_enroll && msg_sector_idx_base == 0 {
+                invocs.push(invoc_first());
+            }
 
-        let mut param_sectors = Vec::<PreCommitSectorParams>::new();
-        let mut j = 0;
-        while j < batch_size && sector_idx < count {
-            let sector_number = sector_number_base + sector_idx;
-            param_sectors.push(PreCommitSectorParams {
-                seal_proof,
-                sector_number,
-                sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
-                seal_rand_epoch: v.get_epoch() - 1,
-                deal_ids: vec![],
-                expiration,
+            apply_ok(
+                v,
+                worker,
+                maddr,
+                TokenAmount::zero(),
+                MinerMethod::PreCommitSectorBatch as u64,
+                PreCommitSectorBatchParams { sectors: param_sectors.clone() },
+            );
+            let expect = ExpectInvocation {
+                to: mid,
+                method: MinerMethod::PreCommitSectorBatch as u64,
+                params: Some(
+                    serialize(
+                        &PreCommitSectorBatchParams { sectors: param_sectors },
+                        "precommit batch params",
+                    )
+                    .unwrap(),
+                ),
+                subinvocs: Some(invocs),
                 ..Default::default()
-            });
-            sector_idx += 1;
-            j += 1;
+            };
+            expect.matches(v.take_invocations().last().unwrap())
+        } else {
+            let mut param_sectors = Vec::<SectorPreCommitInfo>::new();
+            let mut j = 0;
+            while j < batch_size && sector_idx < count {
+                let sector_number = sector_number_base + sector_idx;
+                param_sectors.push(SectorPreCommitInfo {
+                    seal_proof,
+                    sector_number,
+                    sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
+                    seal_rand_epoch: v.get_epoch() - 1,
+                    deal_ids: vec![],
+                    expiration,
+                    unsealed_cid: CompactCommD::new(None),
+                });
+                sector_idx += 1;
+                j += 1;
+            }
+            if param_sectors.len() > 1 {
+                invocs.push(invoc_net_fee(aggregate_pre_commit_network_fee(
+                    param_sectors.len() as i64,
+                    &TokenAmount::zero(),
+                )));
+            }
+            if expect_cron_enroll && msg_sector_idx_base == 0 {
+                invocs.push(invoc_first());
+            }
+
+            apply_ok(
+                v,
+                worker,
+                maddr,
+                TokenAmount::zero(),
+                MinerMethod::PreCommitSectorBatch2 as u64,
+                PreCommitSectorBatchParams2 { sectors: param_sectors.clone() },
+            );
+            let expect = ExpectInvocation {
+                to: mid,
+                method: MinerMethod::PreCommitSectorBatch2 as u64,
+                params: Some(
+                    serialize(
+                        &PreCommitSectorBatchParams2 { sectors: param_sectors },
+                        "precommit batch params",
+                    )
+                    .unwrap(),
+                ),
+                subinvocs: Some(invocs),
+                ..Default::default()
+            };
+            expect.matches(v.take_invocations().last().unwrap())
         }
-        if param_sectors.len() > 1 {
-            invocs.push(invoc_net_fee(aggregate_pre_commit_network_fee(
-                param_sectors.len() as i64,
-                &TokenAmount::zero(),
-            )));
-        }
-        if expect_cron_enroll && msg_sector_idx_base == 0 {
-            invocs.push(invoc_first());
-        }
-        apply_ok(
-            v,
-            worker,
-            maddr,
-            TokenAmount::zero(),
-            MinerMethod::PreCommitSectorBatch as u64,
-            PreCommitSectorBatchParams { sectors: param_sectors.clone() },
-        );
-        let expect = ExpectInvocation {
-            to: mid,
-            method: MinerMethod::PreCommitSectorBatch as u64,
-            params: Some(
-                serialize(
-                    &PreCommitSectorBatchParams { sectors: param_sectors },
-                    "precommit batch params",
-                )
-                .unwrap(),
-            ),
-            subinvocs: Some(invocs),
-            ..Default::default()
-        };
-        expect.matches(v.take_invocations().last().unwrap())
     }
     // extract chain state
     let mstate = v.get_state::<MinerState>(mid).unwrap();
     (0..count)
         .map(|i| mstate.get_precommitted_sector(v.store, sector_number_base + i).unwrap().unwrap())
         .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn precommit_sectors(
+    v: &mut VM,
+    count: u64,
+    batch_size: i64,
+    worker: Address,
+    maddr: Address,
+    seal_proof: RegisteredSealProof,
+    sector_number_base: SectorNumber,
+    expect_cron_enroll: bool,
+    exp: Option<ChainEpoch>,
+) -> Vec<SectorPreCommitOnChainInfo> {
+    precommit_sectors_v2(
+        v,
+        count,
+        batch_size,
+        worker,
+        maddr,
+        seal_proof,
+        sector_number_base,
+        expect_cron_enroll,
+        exp,
+        false,
+    )
 }
 
 pub fn prove_commit_sectors(
