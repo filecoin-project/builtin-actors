@@ -1,10 +1,10 @@
 use fil_actor_cron::Method as CronMethod;
-use fil_actor_market::{Method as MarketMethod};
+use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
     Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
-    ReplicaUpdate, SectorOnChainInfo, State as MinerState, TerminateSectorsParams,
-    TerminationDeclaration, SECTORS_AMT_BITWIDTH, Sectors,
+    ReplicaUpdate, SectorOnChainInfo, Sectors, State as MinerState, TerminateSectorsParams,
+    TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 
 use fil_actors_runtime::test_utils::make_sealed_cid;
