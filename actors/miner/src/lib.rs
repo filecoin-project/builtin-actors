@@ -4509,7 +4509,7 @@ where
         TokenAmount::zero(),
     )?;
     let claims_ret: ext::verifreg::GetClaimsReturn = deserialize(&ret_raw, "get claims return")?;
-    if claims_ret.batch_info.success_count < ids.len() {
+    if (claims_ret.batch_info.success_count as usize) < ids.len() {
         return Err(actor_error!(illegal_argument, "invalid claims"));
     }
     Ok(claims_ret.claims)
