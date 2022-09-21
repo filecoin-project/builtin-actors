@@ -580,7 +580,7 @@ fn update_expiration2_failure_cases() {
         let res = h.extend_sectors2(&mut rt, params, claims);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            &format!("does not match verified deal space"),
+            "does not match verified deal space",
             res,
         );
         // assert sector expiration is same as the old value
@@ -618,7 +618,7 @@ fn update_expiration2_failure_cases() {
         let res = h.extend_sectors2(&mut rt, params, claims);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            &format!("failed to get claims for sector"),
+            "failed to get claims for sector",
             res,
         );
         // assert sector expiration is set to the new value
