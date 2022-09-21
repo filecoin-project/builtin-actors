@@ -5,6 +5,7 @@ use super::beneficiary::*;
 use crate::commd::CompactCommD;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::UnvalidatedBitField;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, BytesDe, Cbor};
@@ -18,6 +19,8 @@ use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
     StoragePower,
 };
+
+use crate::ext::verifreg::ClaimID;
 use fvm_shared::smooth::FilterEstimate;
 
 pub type CronEvent = i64;
@@ -145,6 +148,32 @@ pub struct ExpirationExtension {
     pub sectors: UnvalidatedBitField,
     pub new_expiration: ChainEpoch,
 }
+
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ExtendSectorExpiration2Params {
+    pub extensions: Vec<ExpirationExtension2>,
+}
+
+impl Cbor for ExtendSectorExpiration2Params {}
+
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorClaim {
+    pub sector_number: SectorNumber,
+    pub maintain_claims: Vec<ClaimID>,
+}
+
+impl Cbor for SectorClaim {}
+
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ExpirationExtension2 {
+    pub deadline: u64,
+    pub partition: u64,
+    pub sectors: BitField, // IDs of sectors without FIL+ claims
+    pub sectors_with_claims: Vec<SectorClaim>,
+    pub new_expiration: ChainEpoch,
+}
+
+impl Cbor for ExpirationExtension2 {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct TerminateSectorsParams {

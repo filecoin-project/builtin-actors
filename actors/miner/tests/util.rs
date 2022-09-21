@@ -18,8 +18,8 @@ use fil_actor_miner::{
     CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
     CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
-    ExpirationQueue, ExpirationSet, ExtendSectorExpirationParams, FaultDeclaration,
-    GetBeneficiaryReturn, GetControlAddressesReturn, Method,
+    ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
+    FaultDeclaration, GetBeneficiaryReturn, GetControlAddressesReturn, Method,
     MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
     PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorParams,
     ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
@@ -32,11 +32,17 @@ use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
+
+use fil_actor_miner::ext::verifreg::{
+    Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn,
+};
+
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{test_utils::*, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
@@ -315,6 +321,25 @@ impl ActorHarness {
         deal_ids: Vec<Vec<DealID>>,
         first: bool,
     ) -> Vec<SectorOnChainInfo> {
+        self.commit_and_prove_sectors_with_cfgs(
+            rt,
+            num_sectors,
+            lifetime_periods,
+            deal_ids,
+            first,
+            ProveCommitConfig::empty(),
+        )
+    }
+
+    pub fn commit_and_prove_sectors_with_cfgs(
+        &mut self,
+        rt: &mut MockRuntime,
+        num_sectors: usize,
+        lifetime_periods: u64,
+        deal_ids: Vec<Vec<DealID>>,
+        first: bool,
+        prove_cfg: ProveCommitConfig, // must be same length as num_sectors
+    ) -> Vec<SectorOnChainInfo> {
         let precommit_epoch = rt.epoch;
         let deadline = self.get_deadline_info(rt);
         let expiration =
@@ -354,7 +379,7 @@ impl ActorHarness {
                     rt,
                     &pc,
                     self.make_prove_commit_params(pc.info.sector_number),
-                    ProveCommitConfig::empty(),
+                    prove_cfg.clone(),
                 )
                 .unwrap();
             info.push(sector);
@@ -2168,6 +2193,85 @@ impl ActorHarness {
 
         let ret = rt.call::<Actor>(
             Method::ExtendSectorExpiration as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+
+        rt.verify();
+        Ok(ret)
+    }
+
+    pub fn extend_sectors2(
+        &self,
+        rt: &mut MockRuntime,
+        mut params: ExtendSectorExpiration2Params,
+        expected_claims: HashMap<ClaimID, Result<FILPlusClaim, ActorError>>,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        // TODO handle qa power changes for dropping claims once claim dropping logic is added
+        for extension in params.extensions.iter_mut() {
+            for sc in &extension.sectors_with_claims {
+                // construct expected return value
+                let mut claims = Vec::new();
+                let mut batch_gen = BatchReturnGen::new(sc.maintain_claims.len());
+                for claim_id in &sc.maintain_claims {
+                    match expected_claims.get(&claim_id).unwrap().clone() {
+                        Ok(claim) => {
+                            batch_gen.add_success();
+                            claims.push(claim);
+                        }
+                        Err(ae) => {
+                            batch_gen.add_fail(ae.exit_code());
+                        }
+                    }
+                }
+
+                rt.expect_send(
+                    *VERIFIED_REGISTRY_ACTOR_ADDR,
+                    fil_actor_miner::ext::verifreg::GET_CLAIMS_METHOD as u64,
+                    RawBytes::serialize(GetClaimsParams {
+                        provider: self.receiver.id().unwrap(),
+                        claim_ids: sc.maintain_claims.clone(),
+                    })
+                    .unwrap(),
+                    TokenAmount::zero(),
+                    RawBytes::serialize(GetClaimsReturn { batch_info: batch_gen.gen(), claims })
+                        .unwrap(),
+                    ExitCode::OK,
+                );
+            }
+        }
+
+        // Handle non claim bearing sector extensions
+        let mut qa_delta = BigInt::zero();
+        for extension in params.extensions.iter_mut() {
+            for sector_nr in extension.sectors.validate().unwrap().iter() {
+                let sector = self.get_sector(&rt, sector_nr);
+                let mut new_sector = sector.clone();
+                new_sector.expiration = extension.new_expiration;
+                qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
+                    - qa_power_for_sector(self.sector_size, &sector);
+            }
+        }
+
+        if !qa_delta.is_zero() {
+            let params = UpdateClaimedPowerParams {
+                raw_byte_delta: BigInt::zero(),
+                quality_adjusted_delta: qa_delta,
+            };
+            rt.expect_send(
+                *STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_CLAIMED_POWER_METHOD,
+                RawBytes::serialize(params).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let ret = rt.call::<Actor>(
+            Method::ExtendSectorExpiration2 as u64,
             &RawBytes::serialize(params).unwrap(),
         )?;
 
