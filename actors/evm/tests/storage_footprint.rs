@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use ethers::prelude::abigen;
+use ethers::abi::Detokenize;
+use ethers::prelude::builders::ContractCall;
+use ethers::prelude::{abigen, decode_function_data};
 use ethers::providers::{MockProvider, Provider};
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{expect_empty, MockRuntime, EVM_ACTOR_CODE_ID};
@@ -68,6 +70,27 @@ impl TestEnv {
 
         self.runtime.verify();
     }
+
+    /// Take a function that calls an ABI method to return a `ContractCall`.
+    /// Then, instead of calling the contract on-chain, run it through our
+    /// EVM interpreter in the test runtime. Finally parse the results.
+    pub fn call<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce() -> ContractCall<Provider<MockProvider>, R>,
+        R: Detokenize,
+    {
+        let call = f();
+        let input = call.calldata().expect("Should have calldata.");
+        let input = RawBytes::from(input.to_vec());
+        self.runtime.expect_validate_caller_any();
+
+        let result = self
+            .runtime
+            .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input)
+            .unwrap();
+
+        decode_function_data(&call.function, result.bytes(), false).unwrap()
+    }
 }
 
 impl Default for TestEnv {
@@ -78,7 +101,9 @@ impl Default for TestEnv {
 
 #[test]
 fn basic() {
-    let _ = StorageFootprint::default();
     let mut env = TestEnv::default();
-    env.deploy(include_str!("contracts/StorageFootprint.hex"))
+    env.deploy(include_str!("contracts/StorageFootprint.hex"));
+    let contract = StorageFootprint::default();
+    let sum = env.call(|| contract.array_1_sum(0, 0));
+    assert_eq!(sum, 0)
 }
