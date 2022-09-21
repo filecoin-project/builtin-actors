@@ -376,7 +376,7 @@ fn commit_sector_verified_deals(
     rt: &mut MockRuntime,
 ) -> SectorOnChainInfo {
     h.construct_and_verify(rt);
-    assert!(verified_deals.len() > 0);
+    assert!(verified_deals.is_empty());
     let mut sector_space = 0;
     for d in verified_deals {
         sector_space += d.space.0;
@@ -408,13 +408,13 @@ fn check_for_expiration(
     deadline_index: u64,
     partition_index: u64,
 ) {
-    let new_sector = h.get_sector(&rt, sector_number);
+    let new_sector = h.get_sector(rt, sector_number);
     assert_eq!(expiration, new_sector.expiration);
     let state: State = rt.get_state();
     let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
 
     // assert that new expiration exists
-    let (_, mut partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
+    let (_, mut partition) = h.get_deadline_and_partition(rt, deadline_index, partition_index);
     let expiration_set = partition.pop_expired_sectors(rt.store(), expiration - 1, quant).unwrap();
     assert!(expiration_set.is_empty());
 
@@ -423,7 +423,7 @@ fn check_for_expiration(
     assert_eq!(expiration_set.len(), 1);
     assert!(expiration_set.on_time_sectors.get(sector_number));
 
-    h.check_state(&rt);
+    h.check_state(rt);
 }
 
 fn make_claim(
@@ -580,7 +580,7 @@ fn update_expiration2_failure_cases() {
         let res = h.extend_sectors2(&mut rt, params, claims);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            &format!("does not match verified deal space").to_string(),
+            &format!("does not match verified deal space"),
             res,
         );
         // assert sector expiration is same as the old value
@@ -618,7 +618,7 @@ fn update_expiration2_failure_cases() {
         let res = h.extend_sectors2(&mut rt, params, claims);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            &format!("failed to get claims for sector").to_string(),
+            &format!("failed to get claims for sector"),
             res,
         );
         // assert sector expiration is set to the new value
@@ -660,8 +660,7 @@ fn update_expiration2_failure_cases() {
                 "claim only allows extension to {} but declared new expiration is {}",
                 new_expiration - 1,
                 new_expiration
-            )
-            .to_string(),
+            ),
             res,
         );
         // assert sector expiration is set to the new value
