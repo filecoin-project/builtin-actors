@@ -52,11 +52,14 @@ fn basic() {
 #[test]
 fn measure_array1_push() {
     // Number of items to push at the end of the array at a time.
-    for n in vec![1, 10, 100] {
+    for n in vec![1, 100] {
         let mut env = new_footprint_env();
         // Number of pushes to do on the same array, to see how its size affects the cost.
-        for _i in 1..=100 {
+        for i in 1..=100 {
+            env.runtime().store.clear_stats();
             env.call(|| CONTRACT.array_1_push(n));
+            let stats = env.runtime().store.stats();
+            eprintln!("n={}, i={}, {:?}", n, i, stats);
         }
     }
 }
