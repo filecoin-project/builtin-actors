@@ -381,6 +381,18 @@ impl<'bs> VM<'bs> {
         self.store.get_cbor::<C>(&a.head).unwrap()
     }
 
+    pub fn mutate_state<C, F>(&self, addr: Address, f: F)
+    where
+        C: Cbor,
+        F: FnOnce(&mut C),
+    {
+        let mut a = self.get_actor(addr).unwrap();
+        let mut st = self.store.get_cbor::<C>(&a.head).unwrap().unwrap();
+        f(&mut st);
+        a.head = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
+        self.set_actor(addr, a);
+    }
+
     pub fn get_epoch(&self) -> ChainEpoch {
         self.curr_epoch
     }
