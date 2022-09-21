@@ -12,8 +12,9 @@ use fil_actors_runtime::test_utils::{expect_empty, MockRuntime, EVM_ACTOR_CODE_I
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Default, Debug)]
+#[derive(Copy, Clone, Default, Debug, Serialize, Deserialize)]
 pub struct BlockstoreStats {
     /// Number of calls to `get`.
     pub get_count: usize,

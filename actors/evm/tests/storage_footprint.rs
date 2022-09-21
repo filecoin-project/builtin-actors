@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Write;
 use std::sync::Arc;
 
 use ethers::contract::Lazy;
@@ -7,7 +9,8 @@ use fvm_shared::address::Address;
 
 mod env;
 
-use env::TestEnv;
+use env::{BlockstoreStats, TestEnv};
+use serde_json::json;
 
 // Generate a statically types interface for the contract.
 abigen!(StorageFootprint, "./tests/contracts/StorageFootprint.abi");
@@ -42,6 +45,36 @@ fn new_footprint_env() -> TestEnv {
     env
 }
 
+struct Measurements {
+    scenario: String,
+    values: Vec<serde_json::Value>,
+}
+
+impl Measurements {
+    pub fn new(scenario: String) -> Self {
+        Self { scenario, values: Vec::new() }
+    }
+
+    pub fn record(&mut self, i: usize, stats: BlockstoreStats) {
+        // Not merging `i` into `stats` in JSON so the iteration appear in the left.
+        let value = json!({
+            "i": i,
+            "stats": stats
+        });
+        self.values.push(value);
+    }
+
+    pub fn export(self) -> Result<(), std::io::Error> {
+        let dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let path = format!("{}/tests/measurements/{}.jsonline", dir, self.scenario);
+        let mut output = File::create(path)?;
+        for value in self.values {
+            write!(output, "{}\n", value.to_string())?;
+        }
+        Ok(())
+    }
+}
+
 #[test]
 fn basic() {
     let mut env = new_footprint_env();
@@ -50,16 +83,17 @@ fn basic() {
 }
 
 #[test]
-fn measure_array1_push() {
+fn measure_array_push() {
     // Number of items to push at the end of the array at a time.
     for n in vec![1, 100] {
         let mut env = new_footprint_env();
+        let mut mts = Measurements::new(format!("array_push_n{}", n));
         // Number of pushes to do on the same array, to see how its size affects the cost.
         for i in 1..=100 {
             env.runtime().store.clear_stats();
             env.call(|| CONTRACT.array_1_push(n));
-            let stats = env.runtime().store.stats();
-            eprintln!("n={}, i={}, {:?}", n, i, stats);
+            mts.record(i, env.runtime().store.stats());
         }
+        mts.export().unwrap()
     }
 }

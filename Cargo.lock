@@ -1411,6 +1411,7 @@ dependencies = [
  "num-traits",
  "rlp",
  "serde",
+ "serde_json",
  "serde_tuple",
  "sha3",
  "strum",

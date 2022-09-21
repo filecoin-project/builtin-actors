@@ -52,6 +52,7 @@ fil_actors_runtime = { path = "../../runtime", features = [
 ] }
 etk-asm = "^0.2.1"
 ethers = { version = "0.17.0", features = ["abigen"] }
+serde_json = "1.0"
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]
