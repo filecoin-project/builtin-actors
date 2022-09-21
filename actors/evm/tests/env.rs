@@ -38,9 +38,16 @@ impl TrackingBlockstore {
         self.stats.get()
     }
 
-    /// Reset stats to zero between.
+    /// Reset stats to zero.
     pub fn clear_stats(&self) {
         self.stats.set(BlockstoreStats::default())
+    }
+
+    /// Get the stats, then clear the tracker.
+    pub fn take_stats(&self) -> BlockstoreStats {
+        let stats = self.stats();
+        self.clear_stats();
+        stats
     }
 }
 

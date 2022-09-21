@@ -55,10 +55,11 @@ impl Measurements {
         Self { scenario, values: Vec::new() }
     }
 
-    pub fn record(&mut self, i: usize, stats: BlockstoreStats) {
+    pub fn record(&mut self, series: usize, i: usize, stats: BlockstoreStats) {
         // Not merging `i` into `stats` in JSON so the iteration appear in the left.
         let value = json!({
             "i": i,
+            "series": series,
             "stats": stats
         });
         self.values.push(value);
@@ -82,17 +83,24 @@ fn basic() {
     assert_eq!(sum, 0)
 }
 
+/// Measure the cost of pushing items into dynamic arrays. Run multiple scenarios
+/// with different number of items pushed in one call. First do a number of iterations
+/// with `array1`, then with `array2` to see if the former affects the latter.
 #[test]
 fn measure_array_push() {
+    // Number of pushes to do on the same array, to see how its size affects the cost.
+    let m = 100;
     // Number of items to push at the end of the array at a time.
     for n in vec![1, 100] {
         let mut env = new_footprint_env();
         let mut mts = Measurements::new(format!("array_push_n{}", n));
-        // Number of pushes to do on the same array, to see how its size affects the cost.
-        for i in 1..=100 {
-            env.runtime().store.clear_stats();
+        for i in 1..=m {
             env.call(|| CONTRACT.array_1_push(n));
-            mts.record(i, env.runtime().store.stats());
+            mts.record(1, i, env.runtime().store.take_stats());
+        }
+        for i in 1..=m {
+            env.call(|| CONTRACT.array_2_push(n));
+            mts.record(2, i, env.runtime().store.take_stats());
         }
         mts.export().unwrap()
     }
