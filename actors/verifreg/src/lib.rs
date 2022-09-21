@@ -680,6 +680,8 @@ impl Actor {
         let mut claims = st.load_claims(rt.store())?;
         let mut updated_claims = Vec::<(ClaimID, Claim)>::new();
         for req in &reqs.extensions {
+            // Note: we don't check the client address here, by design.
+            // Any client can spend datacap to extend an existing claim.
             let provider_id = rt
                 .resolve_address(&req.provider)
                 .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
@@ -692,6 +694,8 @@ impl Actor {
             let policy = rt.policy();
 
             validate_claim_extension(req, claim, policy, curr_epoch)?;
+            // The claim's client is not changed to be the address of the token sender.
+            // It remains the original allocation client.
             updated_claims.push((req.claim, Claim { term_max: req.term_max, ..*claim }));
             allocation_total += DataCap::from(claim.size.0);
         }
@@ -706,8 +710,8 @@ impl Actor {
             ));
         }
         // Partial success isn't supported yet, but these results make space for it in the future.
-        let allocation_results = BatchReturn::ok(new_allocs.len());
-        let extension_results = BatchReturn::ok(updated_claims.len());
+        let allocation_results = BatchReturn::ok(new_allocs.len() as u32);
+        let extension_results = BatchReturn::ok(updated_claims.len() as u32);
 
         // Save new allocations and updated claims.
         let ids = rt.transaction(|st: &mut State, rt| {
@@ -1045,6 +1049,8 @@ fn validate_claim_extension(
     // Unlike when the claim client extends term up to the originally-allowed max,
     // allowing extension of expired claims with new datacap could revive a claim arbitrarily
     // far into the future.
+    // A claim can be extended continuously into the future, but once it has expired
+    // it is expired for good.
     let claim_expiration = claim.term_start + claim.term_max;
     if curr_epoch > claim_expiration {
         return Err(actor_error!(

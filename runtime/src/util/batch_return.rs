@@ -21,7 +21,7 @@ impl BatchReturn {
         Self { success_count: 0, fail_codes: Vec::new() }
     }
 
-    pub const fn ok(n: usize) -> Self {
+    pub const fn ok(n: u32) -> Self {
         Self { success_count: n, fail_codes: Vec::new() }
     }
 
