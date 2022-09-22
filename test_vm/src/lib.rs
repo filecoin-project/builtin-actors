@@ -718,9 +718,12 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
             }
         }
         let addr = Address::new_id(actor_id);
-        match self.v.get_actor(addr) {
-            Some(act) if act.code == *EMBRYO_ACTOR_CODE_ID => (),
-            None => (),
+        let actor = match self.v.get_actor(addr) {
+            Some(mut act) if act.code == *EMBRYO_ACTOR_CODE_ID => {
+                act.code = code_id;
+                act
+            }
+            None => actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero()),
             _ => {
                 // can happen if an actor is deployed to an f4 address.
                 return Err(ActorError::unchecked(
@@ -728,9 +731,8 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                     "attempt to create new actor at existing address".to_string(),
                 ));
             }
-        }
-        let a = actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero());
-        self.v.set_actor(addr, a);
+        };
+        self.v.set_actor(addr, actor);
         Ok(())
     }
 
