@@ -61,7 +61,7 @@ pub enum Method {
     ClaimAllocations = 9,
     GetClaims = 10,
     ExtendClaimTerms = 11,
-    RemoveExpireClaims = 12,
+    RemoveExpiredClaims = 12,
     UniversalReceiverHook = UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 }
 
@@ -1150,7 +1150,7 @@ impl ActorCode for Actor {
                 let res = Self::get_claims(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::RemoveExpireClaims) => {
+            Some(Method::RemoveExpiredClaims) => {
                 let res = Self::remove_expired_claims(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }

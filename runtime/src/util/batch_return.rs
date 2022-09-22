@@ -46,14 +46,18 @@ impl BatchReturn {
     }
 
     // Returns a subset of items corresponding to the successful indices.
-    pub fn successes<T: Copy>(&self, items: &Vec<T>) -> Vec<T> {
+    // Panics if `items` is not the same length as this batch return.
+    pub fn successes<T: Copy>(&self, items: &[T]) -> Vec<T> {
+        if items.len() != self.size() {
+            panic!("items length {} does not match batch size {}", items.len(), self.size());
+        }
         let mut ret = Vec::new();
         let mut fail_idx = 0;
-        for idx in 0..self.size() {
+        for (idx, item) in items.iter().enumerate() {
             if fail_idx < self.fail_codes.len() && idx == self.fail_codes[fail_idx].idx as usize {
                 fail_idx += 1;
             } else {
-                ret.push(items[idx])
+                ret.push(*item)
             }
         }
         ret
