@@ -134,6 +134,10 @@ fn measure_mapping_add() {
 fn measure_array_read() {
     let mut env = new_footprint_env();
     env.call(|| CONTRACT.array_1_push(10000));
+
+    let sum = env.call(|| CONTRACT.array_1_sum(0, 10000));
+    assert_eq!(sum, (1 + 10000) * 10000 / 2);
+
     env.runtime().store.clear_stats();
 
     // Number of items to access from the array at a time.
@@ -152,6 +156,10 @@ fn measure_array_read() {
 fn measure_mapping_read() {
     let mut env = new_footprint_env();
     env.call(|| CONTRACT.mapping_1_set(0, 10000, 1));
+
+    let sum = env.call(|| CONTRACT.mapping_1_sum(0, 10000));
+    assert_eq!(sum, 10000);
+
     env.runtime().store.clear_stats();
 
     // Number of items to access from the mapping at a time.
