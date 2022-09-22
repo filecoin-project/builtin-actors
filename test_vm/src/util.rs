@@ -7,7 +7,7 @@ use fil_actor_market::{
     PublishStorageDealsReturn,
 };
 
-use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationsRequest};
+use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationRequests};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams,
@@ -645,8 +645,8 @@ pub fn publish_deal(
         let alloc_expiration =
             min(deal.start_epoch, v.curr_epoch + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
 
-        let alloc_reqs = AllocationsRequest {
-            requests: vec![AllocationRequest {
+        let alloc_reqs = AllocationRequests {
+            allocations: vec![AllocationRequest {
                 provider: miner_id,
                 data: deal.piece_cid,
                 size: deal.piece_size,
@@ -654,6 +654,7 @@ pub fn publish_deal(
                 term_max: deal_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
                 expiration: alloc_expiration,
             }],
+            extensions: vec![],
         };
         expect_publish_invocs.push(ExpectInvocation {
             to: *DATACAP_TOKEN_ACTOR_ADDR,
