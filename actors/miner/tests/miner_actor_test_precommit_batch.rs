@@ -314,10 +314,6 @@ mod miner_actor_precommit_batch {
     #[test_case(false; "v1")]
     #[test_case(true; "v2")]
     fn duplicate_sector_rejects_batch(v2: bool) {
-        // This test does not enumerate all the individual conditions that could cause a single precommit
-        // to be rejected. Those are covered in the PreCommitSector tests, and we know that that
-        // method is implemented in terms of a batch of one.
-
         let period_offset = ChainEpoch::from(100);
 
         let h = ActorHarness::new_with_options(HarnessOptions {
