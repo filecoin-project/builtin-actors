@@ -105,3 +105,27 @@ fn measure_array_push() {
         mts.export().unwrap()
     }
 }
+
+/// Measure the cost of adding items to a mapping. Run multiple scenarios with different
+/// number of items added at the same time. Add to `mapping1` first, then `mapping2`.
+#[test]
+fn measure_mapping_add() {
+    // Number of pushes to do on the same mapping, to see how its size affects the cost.
+    let m = 100;
+    // Number of items to add to the mapping at a time
+    for n in [1, 100] {
+        let mut env = new_footprint_env();
+        let mut mts = Measurements::new(format!("mapping_add_n{}", n));
+        // In this case we always add new keys, never overwrite existing ones, to compare to
+        // the scenario where we were pushing to the end of arrays.
+        for i in 1..=m {
+            env.call(|| CONTRACT.mapping_1_set(i * n, n, i));
+            mts.record(1, i as usize, env.runtime().store.take_stats());
+        }
+        for i in 1..=m {
+            env.call(|| CONTRACT.mapping_2_set(i * n, n, i));
+            mts.record(2, i as usize, env.runtime().store.take_stats());
+        }
+        mts.export().unwrap()
+    }
+}
