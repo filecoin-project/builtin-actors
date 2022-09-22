@@ -95,11 +95,11 @@ fn measure_array_push() {
     for n in [1, 100] {
         let mut env = new_footprint_env();
         let mut mts = Measurements::new(format!("array_push_n{}", n));
-        for i in 1..=NUM_ITER {
+        for i in 0..NUM_ITER {
             env.call(|| CONTRACT.array_1_push(n));
             mts.record(1, i, env.runtime().store.take_stats());
         }
-        for i in 1..=NUM_ITER {
+        for i in 0..NUM_ITER {
             env.call(|| CONTRACT.array_2_push(n));
             mts.record(2, i, env.runtime().store.take_stats());
         }
@@ -117,11 +117,11 @@ fn measure_mapping_add() {
         let mut mts = Measurements::new(format!("mapping_add_n{}", n));
         // In this case we always add new keys, never overwrite existing ones, to compare to
         // the scenario where we were pushing to the end of arrays.
-        for i in 1..=NUM_ITER {
+        for i in 0..NUM_ITER {
             env.call(|| CONTRACT.mapping_1_set(i * n, n, i));
             mts.record(1, i, env.runtime().store.take_stats());
         }
-        for i in 1..=NUM_ITER {
+        for i in 0..NUM_ITER {
             env.call(|| CONTRACT.mapping_2_set(i * n, n, i));
             mts.record(2, i, env.runtime().store.take_stats());
         }
@@ -139,8 +139,8 @@ fn measure_array_read() {
     // Number of items to access from the array at a time.
     for n in [1, 100] {
         let mut mts = Measurements::new(format!("array_read_n{}", n));
-        for i in 1..=NUM_ITER {
-            env.call(|| CONTRACT.array_1_sum((i - 1) * n, n));
+        for i in 0..NUM_ITER {
+            env.call(|| CONTRACT.array_1_sum(i * n, n));
             mts.record(1, i, env.runtime().store.take_stats());
         }
         mts.export().unwrap()
