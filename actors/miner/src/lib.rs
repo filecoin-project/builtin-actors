@@ -4863,12 +4863,10 @@ impl ActorCode for Actor {
                 let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            #[allow(unreachable_code)]
             Some(Method::PreCommitSectorBatch2) => {
                 Self::pre_commit_sector_batch2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            #[allow(unreachable_code)]
             Some(Method::ProveReplicaUpdates2) => {
                 let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
