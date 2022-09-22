@@ -23,7 +23,7 @@ lazy_static! {
 }
 
 /// Reward actor state
-#[derive(Serialize_tuple, Deserialize_tuple, Default)]
+#[derive(Serialize_tuple, Deserialize_tuple, Default, Debug, Clone)]
 pub struct State {
     /// Target CumsumRealized needs to reach for EffectiveNetworkTime to increase
     /// Expressed in byte-epochs.

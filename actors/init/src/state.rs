@@ -14,7 +14,7 @@ use fvm_shared::address::{Address, Protocol};
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 
 /// State is reponsible for creating
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
     pub address_map: Cid,
     pub next_id: ActorID,

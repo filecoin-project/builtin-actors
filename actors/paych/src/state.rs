@@ -12,7 +12,7 @@ use fvm_shared::econ::TokenAmount;
 /// A given payment channel actor is established by `from`
 /// to enable off-chain microtransactions to `to` address
 /// to be reconciled and tallied on chain.
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct State {
     /// Channel owner, who has funded the actor.
     pub from: Address,

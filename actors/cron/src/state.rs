@@ -7,7 +7,7 @@ use fvm_shared::address::Address;
 use fvm_shared::MethodNum;
 
 /// Cron actor state which holds entries to call during epoch tick
-#[derive(Default, Serialize_tuple, Deserialize_tuple)]
+#[derive(Default, Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
     /// Entries is a set of actors (and corresponding methods) to call during EpochTick.
     pub entries: Vec<Entry>,
