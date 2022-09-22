@@ -19,12 +19,12 @@ contract StorageFootprint {
     mapping(uint32 => uint32) mapping2;
 
     // Increment a single counter.
-    function incr_counter1() public {
+    function inc_counter1() public {
         counter1 += 1;
     }
 
     // Increment all counters to see if there is a cost difference compared to incrementing a single one.
-    function incr_counters() public {
+    function inc_counters() public {
         counter1 += 1;
         counter2 += 1;
         counter3 += 1;
