@@ -9,7 +9,7 @@ use fvm_shared::address::Address;
 
 mod env;
 
-use env::{BlockstoreStats, TestEnv};
+use env::{BlockstoreStats, TestContractCall, TestEnv};
 use serde_json::json;
 
 // Generate a statically typed interface for the contract.
@@ -186,6 +186,30 @@ fn measure_incr_one_vs_all() {
         env.call(|| CONTRACT.incr_counters());
         mts.record(2, i, env.runtime().store.take_stats());
     }
+
+    mts.export().unwrap()
+}
+
+/// Meausre the cost of incrementing a single counter after arrays and maps have already
+/// been filled to some extent.
+#[test]
+fn measure_incr_after_fill() {
+    let mut mts = Measurements::new("incr_after_fill".into());
+
+    let mut go = |series, fill: Box<dyn Fn(u32) -> TestContractCall<()>>| {
+        let mut env = new_footprint_env();
+        // Then the single counter, so the read/put bytes already include the other non-zero values.
+        for i in 0..NUM_ITER {
+            env.call(|| fill(i));
+            env.runtime().store.clear_stats();
+
+            env.call(|| CONTRACT.incr_counter_1());
+            mts.record(series, i, env.runtime().store.take_stats());
+        }
+    };
+
+    go(1, Box::new(|_| CONTRACT.array_1_push(10)));
+    go(2, Box::new(|i| CONTRACT.mapping_1_set(i * 10, 10, 1)));
 
     mts.export().unwrap()
 }

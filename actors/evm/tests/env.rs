@@ -76,6 +76,9 @@ impl Blockstore for TrackingBlockstore {
     }
 }
 
+/// Alias for a call we will never send to the blockchain.
+pub type TestContractCall<R> = ContractCall<Provider<MockProvider>, R>;
+
 pub struct TestEnv {
     evm_address: Address,
     runtime: MockRuntime<TrackingBlockstore>,
@@ -121,7 +124,7 @@ impl TestEnv {
     /// EVM interpreter in the test runtime. Finally parse the results.
     pub fn call<F, R>(&mut self, f: F) -> R
     where
-        F: FnOnce() -> ContractCall<Provider<MockProvider>, R>,
+        F: FnOnce() -> TestContractCall<R>,
         R: Detokenize,
     {
         let call = f();
