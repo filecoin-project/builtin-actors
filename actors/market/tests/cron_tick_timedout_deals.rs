@@ -6,7 +6,7 @@ use fil_actor_market::{
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
+use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
@@ -41,7 +41,7 @@ fn timed_out_deal_is_slashed_and_deleted() {
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         deal_proposal.provider_collateral.clone(),
@@ -83,7 +83,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     let client_deal_proposal =
         ClientDealProposal { proposal: deal_proposal2.clone(), client_signature: sig };
     let params = PublishStorageDealsParams { deals: vec![client_deal_proposal] };
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -114,7 +114,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         deal_proposal.provider_collateral.clone(),
@@ -179,7 +179,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
 
     let expected_burn = 3 * &deal1.provider_collateral;
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         expected_burn,

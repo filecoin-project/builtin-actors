@@ -18,7 +18,7 @@ use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier,
+    Verifier, EMPTY_ARR_CID,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
@@ -43,6 +43,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     StoragePower, WindowPoStVerifyInfo,
@@ -66,7 +67,6 @@ pub struct VM<'bs> {
     total_fil: TokenAmount,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
-    empty_obj_cid: Cid,
     network_version: NetworkVersion,
     curr_epoch: ChainEpoch,
     invocations: RefCell<Vec<InvocationTrace>>,
@@ -111,14 +111,12 @@ pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
 impl<'bs> VM<'bs> {
     pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
-        let empty = store.put_cbor(&(), Code::Blake2b256).unwrap();
         VM {
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
             total_fil: TokenAmount::zero(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
-            empty_obj_cid: empty,
             network_version: NetworkVersion::V16,
             curr_epoch: ChainEpoch::zero(),
             invocations: RefCell::new(vec![]),
@@ -139,56 +137,50 @@ impl<'bs> VM<'bs> {
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
-        v.set_actor(*SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value));
+        v.set_actor(SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value));
 
         // init
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
-        v.set_actor(
-            *INIT_ACTOR_ADDR,
-            actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero()),
-        );
+        v.set_actor(INIT_ACTOR_ADDR, actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero()));
 
         // reward
 
         let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
-        v.set_actor(*REWARD_ACTOR_ADDR, actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total));
+        v.set_actor(REWARD_ACTOR_ADDR, actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total));
 
         // cron
         let builtin_entries = vec![
             CronEntry {
-                receiver: *STORAGE_POWER_ACTOR_ADDR,
+                receiver: STORAGE_POWER_ACTOR_ADDR,
                 method_num: MethodPower::OnEpochTickEnd as u64,
             },
             CronEntry {
-                receiver: *STORAGE_MARKET_ACTOR_ADDR,
+                receiver: STORAGE_MARKET_ACTOR_ADDR,
                 method_num: MarketMethod::CronTick as u64,
             },
         ];
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
-        v.set_actor(
-            *CRON_ACTOR_ADDR,
-            actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()),
-        );
+        v.set_actor(CRON_ACTOR_ADDR, actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()));
 
         // power
         let power_head = v.put_store(&PowerState::new(&v.store).unwrap());
         v.set_actor(
-            *STORAGE_POWER_ACTOR_ADDR,
+            STORAGE_POWER_ACTOR_ADDR,
             actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero()),
         );
 
         // market
         let market_head = v.put_store(&MarketState::new(&v.store).unwrap());
         v.set_actor(
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero()),
         );
 
         // verifreg
         // initialize verifreg root signer
         v.apply_message(
-            *INIT_ACTOR_ADDR,
+            INIT_ACTOR_ADDR,
             Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
             TokenAmount::zero(),
             METHOD_SEND,
@@ -211,8 +203,8 @@ impl<'bs> VM<'bs> {
         .unwrap();
         let msig_ctor_ret: ExecReturn = v
             .apply_message(
-                *SYSTEM_ACTOR_ADDR,
-                *INIT_ACTOR_ADDR,
+                SYSTEM_ACTOR_ADDR,
+                INIT_ACTOR_ADDR,
                 TokenAmount::zero(),
                 fil_actor_init::Method::Exec as u64,
                 fil_actor_init::ExecParams {
@@ -229,28 +221,28 @@ impl<'bs> VM<'bs> {
         // verifreg
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
-            *VERIFIED_REGISTRY_ACTOR_ADDR,
+            VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero()),
         );
 
         // datacap
         let datacap_head =
-            v.put_store(&DataCapState::new(&v.store, *VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
+            v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
         v.set_actor(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero()),
         );
 
         // burnt funds
-        let burnt_funds_head = v.put_store(&AccountState { address: *BURNT_FUNDS_ACTOR_ADDR });
+        let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
         v.set_actor(
-            *BURNT_FUNDS_ACTOR_ADDR,
+            BURNT_FUNDS_ACTOR_ADDR,
             actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero()),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
         v.apply_message(
-            *SYSTEM_ACTOR_ADDR,
+            SYSTEM_ACTOR_ADDR,
             Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
             faucet_total,
             METHOD_SEND,
@@ -270,7 +262,6 @@ impl<'bs> VM<'bs> {
             total_fil: self.total_fil,
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
-            empty_obj_cid: self.empty_obj_cid,
             network_version: self.network_version,
             curr_epoch: epoch,
             invocations: RefCell::new(vec![]),
@@ -289,9 +280,9 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn get_network_stats(&self) -> NetworkStats {
-        let power_state = self.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
-        let reward_state = self.get_state::<RewardState>(*REWARD_ACTOR_ADDR).unwrap();
-        let market_state = self.get_state::<MarketState>(*STORAGE_MARKET_ACTOR_ADDR).unwrap();
+        let power_state = self.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
+        let reward_state = self.get_state::<RewardState>(REWARD_ACTOR_ADDR).unwrap();
+        let market_state = self.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
 
         NetworkStats {
             total_raw_byte_power: power_state.total_raw_byte_power,
@@ -368,7 +359,7 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn normalize_address(&self, addr: &Address) -> Option<Address> {
-        let st = self.get_state::<InitState>(*INIT_ACTOR_ADDR).unwrap();
+        let st = self.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
         st.resolve_address::<MemoryBlockstore>(self.store, addr).unwrap()
     }
 
@@ -417,7 +408,7 @@ impl<'bs> VM<'bs> {
         // make top level context with internal context
         let top = TopCtx {
             originator_stable_addr: from,
-            _originator_call_seq: call_seq,
+            originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
             circ_supply: TokenAmount::from_whole(1_000_000_000),
         };
@@ -516,7 +507,7 @@ impl<'bs> VM<'bs> {
 #[derive(Clone)]
 pub struct TopCtx {
     originator_stable_addr: Address,
-    _originator_call_seq: u64,
+    originator_call_seq: u64,
     new_actor_addr_count: RefCell<u64>,
     circ_supply: TokenAmount,
 }
@@ -548,7 +539,10 @@ impl MessageInfo for InvocationCtx<'_, '_> {
     }
 }
 
-pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
+pub const TEST_VM_RAND_ARRAY: [u8; 32] = [
+    1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32,
+];
 pub const TEST_VM_INVALID_POST: &str = "i_am_invalid_post";
 
 pub struct InvocationCtx<'invocation, 'bs> {
@@ -579,15 +573,15 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
             _ => (),
         }
-        let mut st = self.v.get_state::<InitState>(*INIT_ACTOR_ADDR).unwrap();
+        let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
         let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
         let target_id_addr = Address::new_id(target_id);
-        let mut init_actor = self.v.get_actor(*INIT_ACTOR_ADDR).unwrap();
+        let mut init_actor = self.v.get_actor(INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.v.set_actor(*INIT_ACTOR_ADDR, init_actor);
+        self.v.set_actor(INIT_ACTOR_ADDR, init_actor);
 
         let new_actor_msg = InternalMessage {
-            from: *SYSTEM_ACTOR_ADDR,
+            from: SYSTEM_ACTOR_ADDR,
             to: target_id_addr,
             value: TokenAmount::zero(),
             method: METHOD_CONSTRUCTOR,
@@ -708,7 +702,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "attempt to create new actor at existing address".to_string(),
             ));
         }
-        let a = actor(code_id, self.v.empty_obj_cid, 0, TokenAmount::zero());
+        let a = actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero());
         self.v.set_actor(addr, a);
         Ok(())
     }
@@ -842,8 +836,8 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         _personalization: DomainSeparationTag,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
-        Ok(Randomness(TEST_VM_RAND_STRING.as_bytes().into()))
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
     }
 
     fn get_randomness_from_beacon(
@@ -851,8 +845,8 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         _personalization: DomainSeparationTag,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
-        Ok(Randomness(TEST_VM_RAND_STRING.as_bytes().into()))
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
@@ -863,7 +857,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "failed to create state".to_string(),
             )),
             Some(mut act) => {
-                if act.head != self.v.empty_obj_cid {
+                if act.head != EMPTY_ARR_CID {
                     Err(ActorError::unchecked(
                         ExitCode::SYS_ASSERTION_FAILED,
                         "failed to construct state: already initialized".to_string(),
@@ -898,15 +892,12 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
-        let osa_bytes = self.top.originator_stable_addr.to_bytes();
-        let mut seq_num_bytes = self.top.originator_stable_addr.to_bytes();
-        let cnt = self.top.new_actor_addr_count.take();
-        self.top.new_actor_addr_count.replace(cnt + 1);
-        let mut cnt_bytes = serialize(&cnt, "count failed").unwrap().to_vec();
-        let mut out = osa_bytes;
-        out.append(&mut seq_num_bytes);
-        out.append(&mut cnt_bytes);
-        Ok(Address::new_actor(out.as_slice()))
+        let mut b = self.top.originator_stable_addr.to_bytes();
+        b.extend_from_slice(&self.top.originator_call_seq.to_be_bytes());
+        b.extend_from_slice(
+            &self.top.new_actor_addr_count.replace_with(|old| *old + 1).to_be_bytes(),
+        );
+        Ok(Address::new_actor(&b))
     }
 
     fn delete_actor(&mut self, _beneficiary: &Address) -> Result<(), ActorError> {

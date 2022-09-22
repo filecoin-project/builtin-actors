@@ -7,22 +7,9 @@ use std::iter;
 use std::ops::Neg;
 
 use anyhow::{anyhow, Error};
-pub use bitfield_queue::*;
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
-use cid::multihash::Code;
 use cid::Cid;
-pub use deadline_assignment::*;
-pub use deadline_info::*;
-pub use deadline_state::*;
-pub use deadlines::*;
-pub use expiration_queue::*;
-use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
-use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
@@ -30,13 +17,6 @@ use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-// The following errors are particular cases of illegal state.
-// They're not expected to ever happen, but if they do, distinguished codes can help us
-// diagnose the problem.
-
-pub use beneficiary::*;
-use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
-use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::error::*;
 use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
@@ -44,9 +24,27 @@ use fvm_shared::sector::*;
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, info, warn};
-pub use monies::*;
+use multihash::Code::Blake2b256;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
+
+pub use beneficiary::*;
+pub use bitfield_queue::*;
+pub use commd::*;
+pub use deadline_assignment::*;
+pub use deadline_info::*;
+pub use deadline_state::*;
+pub use deadlines::*;
+pub use expiration_queue::*;
+use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
+use fil_actors_runtime::{
+    actor_error, cbor, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
+pub use monies::*;
 pub use partition_state::*;
 pub use policy::*;
 pub use sector_map::*;
@@ -56,8 +54,9 @@ pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
 
-use crate::commd::{is_unsealed_sector, CompactCommD};
-use crate::Code::Blake2b256;
+// The following errors are particular cases of illegal state.
+// They're not expected to ever happen, but if they do, distinguished codes can help us
+// diagnose the problem.
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -141,7 +140,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(&[*INIT_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
         check_control_addresses(rt.policy(), &params.control_addresses)?;
         check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
@@ -551,7 +550,7 @@ impl Actor {
                 params.chain_commit_epoch,
                 &[],
             )?;
-            if comm_rand != params.chain_commit_rand {
+            if Randomness(comm_rand.into()) != params.chain_commit_rand {
                 return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
             }
 
@@ -679,7 +678,7 @@ impl Actor {
     /// and precommit state is removed.
     fn prove_commit_aggregate<BS, RT>(
         rt: &mut RT,
-        mut params: ProveCommitAggregateParams,
+        params: ProveCommitAggregateParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -801,8 +800,8 @@ impl Actor {
 
             let svi = AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
-                randomness: sv_info_randomness,
-                interactive_randomness: sv_info_interactive_randomness,
+                randomness: Randomness(sv_info_randomness.into()),
+                interactive_randomness: Randomness(sv_info_interactive_randomness.into()),
                 sealed_cid: precommit.info.sealed_cid,
                 unsealed_cid,
             };
@@ -2050,7 +2049,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(iter::once(&*STORAGE_POWER_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
         // This should be enforced by the power actor. We log here just in case
         // something goes wrong.
@@ -2229,9 +2228,7 @@ impl Actor {
                         .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
                     let old_sectors = sectors
-                        .load_sector(&mut fvm_ipld_bitfield::UnvalidatedBitField::Validated(
-                            decl.sectors.clone(),
-                        ))
+                        .load_sector(&decl.sectors)
                         .map_err(|e| e.wrap("failed to load sectors"))?;
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
@@ -2820,7 +2817,7 @@ impl Actor {
     /// May not be invoked if the deadline has any un-processed early terminations.
     fn compact_partitions<BS, RT>(
         rt: &mut RT,
-        mut params: CompactPartitionsParams,
+        params: CompactPartitionsParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -2961,7 +2958,7 @@ impl Actor {
     /// 99 can be masked out to collapse these two ranges into one.
     fn compact_sector_numbers<BS, RT>(
         rt: &mut RT,
-        mut params: CompactSectorNumbersParams,
+        params: CompactSectorNumbersParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -3024,7 +3021,7 @@ impl Actor {
         let (pledge_delta_total, to_burn) = rt.transaction(|st: &mut State, rt| {
             let mut pledge_delta_total = TokenAmount::zero();
 
-            rt.validate_immediate_caller_is(std::iter::once(&*REWARD_ACTOR_ADDR))?;
+            rt.validate_immediate_caller_is(std::iter::once(&REWARD_ACTOR_ADDR))?;
 
             let (reward_to_lock, locked_reward_vesting_spec) =
                 locked_reward_from_reward(params.reward);
@@ -3257,6 +3254,15 @@ impl Actor {
                 if info.beneficiary != info.owner {
                     // remaining_quota always zero and positive
                     let remaining_quota = info.beneficiary_term.available(rt.curr_epoch());
+                    if remaining_quota.is_zero() {
+                        return Err(actor_error!(
+                            forbidden,
+                            "beneficiary expiration of epoch {} passed or quota of {} depleted with {} used",
+                            info.beneficiary_term.expiration,
+                            info.beneficiary_term.quota,
+                            info.beneficiary_term.used_quota
+                        ));
+                    }
                     amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
                     if amount_withdrawn.is_positive() {
                         info.beneficiary_term.used_quota += amount_withdrawn;
@@ -3479,7 +3485,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_POWER_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
         let payload: CronEventPayload = from_slice(&params.event_payload).map_err(|e| {
             actor_error!(
@@ -3595,24 +3601,10 @@ fn validate_legacy_extension_declarations(
                 ));
             }
 
-            let sectors = match &decl.sectors {
-                UnvalidatedBitField::Validated(bf) => Ok(bf.clone()),
-                UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes),
-            }
-            .map_err(|e| {
-                actor_error!(
-                    illegal_argument,
-                    "failed to validate sectors for deadline {}, partition {}: {}",
-                    decl.deadline,
-                    decl.partition,
-                    e
-                )
-            })?;
-
             Ok(ValidatedExpirationExtension {
                 deadline: decl.deadline,
                 partition: decl.partition,
-                sectors,
+                sectors: decl.sectors.clone(),
                 new_expiration: decl.new_expiration,
             })
         })
@@ -4245,7 +4237,7 @@ where
 
     // Regenerate challenge randomness, which must match that generated for the proof.
     let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
-    let randomness: PoStRandomness = rt.get_randomness_from_beacon(
+    let randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::WindowedPoStChallengeSeed,
         challenge_epoch,
         &entropy,
@@ -4261,8 +4253,12 @@ where
         .collect();
 
     // get public inputs
-    let pv_info =
-        WindowPoStVerifyInfo { randomness, proofs, challenged_sectors, prover: miner_actor_id };
+    let pv_info = WindowPoStVerifyInfo {
+        randomness: Randomness(randomness.into()),
+        proofs,
+        challenged_sectors,
+        prover: miner_actor_id,
+    };
 
     // verify the post proof
     let result = rt.verify_post(&pv_info);
@@ -4292,12 +4288,12 @@ where
         ));
     };
     let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
-    let randomness: SealRandomness = rt.get_randomness_from_tickets(
+    let randomness = rt.get_randomness_from_tickets(
         DomainSeparationTag::SealRandomness,
         params.seal_rand_epoch,
         &entropy,
     )?;
-    let interactive_randomness: InteractiveSealRandomness = rt.get_randomness_from_beacon(
+    let interactive_randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::InteractiveSealChallengeSeed,
         params.interactive_epoch,
         &entropy,
@@ -4309,9 +4305,9 @@ where
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
         deal_ids: params.deal_ids,
-        interactive_randomness,
+        interactive_randomness: Randomness(interactive_randomness.into()),
         proof: params.proof,
-        randomness,
+        randomness: Randomness(randomness.into()),
         sealed_cid: params.sealed_cid,
         unsealed_cid: commd,
     })
@@ -4596,10 +4592,8 @@ fn validate_fr_declaration_deadline(deadline: &DeadlineInfo) -> anyhow::Result<(
 /// Validates that a partition contains the given sectors.
 fn validate_partition_contains_sectors(
     partition: &Partition,
-    sectors: &mut UnvalidatedBitField,
+    sectors: &BitField,
 ) -> anyhow::Result<()> {
-    let sectors = sectors.validate().map_err(|e| anyhow!("failed to check sectors: {}", e))?;
-
     // Check that the declared sectors are actually assigned to the partition.
     if partition.sectors.contains_all(sectors) {
         Ok(())
@@ -5099,13 +5093,11 @@ impl ActorCode for Actor {
             }
             #[allow(unreachable_code)]
             Some(Method::PreCommitSectorBatch2) => {
-                return Err(actor_error!(unhandled_message, "Invalid method"));
                 Self::pre_commit_sector_batch2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             #[allow(unreachable_code)]
             Some(Method::ProveReplicaUpdates2) => {
-                return Err(actor_error!(unhandled_message, "Invalid method"));
                 let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }

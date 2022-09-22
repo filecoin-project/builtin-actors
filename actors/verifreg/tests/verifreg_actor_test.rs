@@ -44,7 +44,7 @@ mod construction {
     #[test]
     fn construct_with_root_id() {
         let mut rt = new_runtime();
-        let h = Harness { root: *ROOT_ADDR };
+        let h = Harness { root: ROOT_ADDR };
         h.construct_and_verify(&mut rt, &h.root);
         h.check_state(&rt);
     }
@@ -52,7 +52,7 @@ mod construction {
     #[test]
     fn construct_resolves_non_id() {
         let mut rt = new_runtime();
-        let h = Harness { root: *ROOT_ADDR };
+        let h = Harness { root: ROOT_ADDR };
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         rt.id_addresses.insert(root_pubkey, h.root);
         h.construct_and_verify(&mut rt, &root_pubkey);
@@ -64,7 +64,7 @@ mod construction {
         let mut rt = new_runtime();
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
 
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<VerifregActor>(
@@ -155,7 +155,7 @@ mod verifiers {
             ExitCode::OK,
         );
         expect_abort(
-            ExitCode::USR_ILLEGAL_STATE,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_verifier(&mut rt, &verifier_key_address, &allowance),
         );
         h.check_state(&rt);
@@ -332,7 +332,7 @@ mod clients {
         );
 
         expect_abort(
-            ExitCode::USR_ILLEGAL_STATE,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &client, &allowance_client),
         );
         h.check_state(&rt);
@@ -869,8 +869,8 @@ mod datacap {
             .unwrap(),
         };
 
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR); // Wrong caller
-        rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR); // Wrong caller
+        rt.expect_validate_caller_addr(vec![DATACAP_TOKEN_ACTOR_ADDR]);
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "caller address",
@@ -901,8 +901,8 @@ mod datacap {
             payload: serialize(&payload, "payload").unwrap(),
         };
 
-        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
-        rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
+        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, DATACAP_TOKEN_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![DATACAP_TOKEN_ACTOR_ADDR]);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "token receiver expected to",

@@ -4,6 +4,7 @@ use fil_actor_miner as miner;
 use fil_actor_miner::PowerPair;
 use fil_actors_runtime::runtime::DomainSeparationTag;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::CALLER_TYPES_SIGNABLE;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
@@ -125,7 +126,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -146,7 +147,7 @@ fn invalid_submissions() {
             partitions: Vec::new(),
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -174,7 +175,7 @@ fn invalid_submissions() {
             partitions,
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -199,7 +200,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -220,7 +221,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -245,7 +246,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: Vec::new(),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -270,7 +271,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(RegisteredPoStProof::StackedDRGWindow8MiBV1),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -295,7 +296,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(RegisteredPoStProof::StackedDRGWindow64GiBV1),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -322,7 +323,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs,
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -373,7 +374,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge + rt.policy.wpost_proving_period / 2,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -401,7 +402,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge - 1,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -426,7 +427,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: rt.epoch,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -451,14 +452,14 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"boo".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
             &dlinfo,
             vec![sector.clone()],
             params,
-            PoStConfig::with_randomness(Randomness(b"far".to_vec())),
+            PoStConfig::with_randomness(TEST_RANDOMNESS_ARRAY_FROM_TWO.into()),
         );
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -476,7 +477,7 @@ fn invalid_submissions() {
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         h.submit_window_post_raw(
             &mut rt,
@@ -533,7 +534,10 @@ fn duplicate_proof_rejected() {
     // Submit a duplicate proof for the same partition. This will be rejected because after ignoring the
     // already-proven partition, there are no sectors remaining.
     // The skipped fault declared here has no effect.
-    let commit_rand = Randomness(b"chaincommitment".to_vec());
+    let commit_rand = [
+        1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+        25, 26, 27, 28, 29, 30, 31, 32,
+    ];
     let partition =
         miner::PoStPartition { index: pidx, skipped: make_bitfield(&[sector.sector_number]) };
     let params = miner::SubmitWindowedPoStParams {
@@ -541,7 +545,7 @@ fn duplicate_proof_rejected() {
         partitions: vec![partition],
         proofs: make_post_proofs(h.window_post_proof_type),
         chain_commit_epoch: dlinfo.challenge,
-        chain_commit_rand: commit_rand.clone(),
+        chain_commit_rand: Randomness(commit_rand.clone().into()),
     };
 
     h.expect_query_network_info(&mut rt);
@@ -637,7 +641,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
             partitions: post_partitions,
             proofs: make_post_proofs(h.window_post_proof_type),
             chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
             &mut rt,
@@ -808,7 +812,7 @@ fn skipped_faults_adjust_power() {
         partitions: vec![partition],
         proofs: make_post_proofs(h.window_post_proof_type),
         chain_commit_epoch: dlinfo.challenge,
-        chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+        chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
     };
 
     // Now all sectors are faulty so there's nothing to prove.
@@ -873,7 +877,7 @@ fn skipping_all_sectors_in_a_partition_rejected() {
         partitions: vec![partition],
         proofs: make_post_proofs(h.window_post_proof_type),
         chain_commit_epoch: dlinfo.challenge,
-        chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+        chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
     };
     let result =
         h.submit_window_post_raw(&mut rt, &dlinfo, infos.clone(), params, PoStConfig::empty());
@@ -978,7 +982,7 @@ fn skipping_a_fault_from_the_wrong_partition_is_an_error() {
         partitions: vec![partition],
         proofs: make_post_proofs(h.window_post_proof_type),
         chain_commit_epoch: dlinfo.challenge,
-        chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+        chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
     };
     let result = h.submit_window_post_raw(&mut rt, &dlinfo, infos, params, PoStConfig::empty());
     expect_abort_contains_message(
@@ -1027,7 +1031,7 @@ fn cannot_dispute_posts_when_the_challenge_window_is_open() {
     let params = miner::DisputeWindowedPoStParams { deadline: dlinfo.index, post_index: 0 };
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     h.expect_query_network_info(&mut rt);
 
     let result = rt.call::<miner::Actor>(
@@ -1088,7 +1092,7 @@ fn can_dispute_up_till_window_end_but_not_after() {
     // Now try to dispute.
     let params = miner::DisputeWindowedPoStParams { deadline: dlidx, post_index: 0 };
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
     h.expect_query_network_info(&mut rt);
 
@@ -1121,7 +1125,7 @@ fn cant_dispute_up_with_an_invalid_deadline() {
     let params = miner::DisputeWindowedPoStParams { deadline: 50, post_index: 0 };
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
     let result = rt.call::<miner::Actor>(
         miner::Method::DisputeWindowedPoSt as u64,
@@ -1278,7 +1282,7 @@ fn bad_post_fails_when_verified() {
         partitions: vec![partition],
         proofs: make_post_proofs(h.window_post_proof_type),
         chain_commit_epoch: dlinfo.challenge,
-        chain_commit_rand: Randomness(b"chaincommitment".to_vec()),
+        chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
     };
     let result = h.submit_window_post_raw(&mut rt, &dlinfo, infos, params, post_config);
     expect_abort_contains_message(

@@ -20,16 +20,17 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
-use crate::ext::datacap::{DestroyParams, MintParams};
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_map_with_root_and_bitwidth, parse_uint_key, resolve_to_actor_id,
-    ActorDowncast, ActorError, BatchReturn, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
+    ActorDowncast, ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 };
-use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen, DATACAP_TOKEN_ACTOR_ADDR};
+use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
+
+use crate::ext::datacap::{DestroyParams, MintParams};
 
 pub use self::state::Allocation;
 pub use self::state::Claim;
@@ -71,7 +72,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // root should be an ID address
         let id_addr = rt
@@ -99,10 +100,7 @@ impl Actor {
             ));
         }
 
-        let verifier = resolve_to_actor_id(rt, &params.address).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", params.address),
-        )?;
+        let verifier = resolve_to_actor_id(rt, &params.address)?;
 
         let verifier = Address::new_id(verifier);
 
@@ -136,11 +134,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let verifier = resolve_to_actor_id(rt, &verifier_addr).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", verifier_addr),
-        )?;
-
+        let verifier = resolve_to_actor_id(rt, &verifier_addr)?;
         let verifier = Address::new_id(verifier);
 
         let state: State = rt.state()?;
@@ -171,11 +165,7 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_actor_id(rt, &params.address).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", params.address),
-        )?;
-
+        let client = resolve_to_actor_id(rt, &params.address)?;
         let client = Address::new_id(client);
 
         let st: State = rt.state()?;
@@ -216,7 +206,7 @@ impl Actor {
         })?;
 
         // Credit client token allowance.
-        let operators = vec![*STORAGE_MARKET_ACTOR_ADDR];
+        let operators = vec![STORAGE_MARKET_ACTOR_ADDR];
         mint(rt, &client, &params.allowance, operators).context(format!(
             "failed to mint {} data cap to client {}",
             &params.allowance, client
@@ -233,35 +223,13 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove).context_code(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            format!(
-                "failed to resolve client addr {} to ID addr",
-                params.verified_client_to_remove
-            ),
-        )?;
-
+        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove)?;
         let client = Address::new_id(client);
 
-        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier)
-            .context_code(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                format!(
-                    "failed to resolve verifier addr {} to ID addr",
-                    params.verifier_request_1.verifier
-                ),
-            )?;
+        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier)?;
         let verifier_1 = Address::new_id(verifier_1);
 
-        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier)
-            .context_code(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                format!(
-                    "failed to resolve verifier addr {} to ID addr",
-                    params.verifier_request_2.verifier
-                ),
-            )?;
-
+        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier)?;
         let verifier_2 = Address::new_id(verifier_2);
 
         if verifier_1 == verifier_2 {
@@ -642,7 +610,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         // Accept only the data cap token.
-        rt.validate_immediate_caller_is(&[*DATACAP_TOKEN_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_is(&[DATACAP_TOKEN_ACTOR_ADDR])?;
 
         let my_id = rt.message().receiver().id().unwrap();
         let curr_epoch = rt.curr_epoch();

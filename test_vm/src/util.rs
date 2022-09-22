@@ -10,9 +10,10 @@ use fil_actor_market::{
 use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationRequests};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams,
-    Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams,
-    PreCommitSectorParams, ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo,
+    new_deadline_info_from_offset_and_epoch, CompactCommD, Deadline, DeadlineInfo,
+    DeclareFaultsRecoveredParams, Method as MinerMethod, PoStPartition, PowerPair,
+    PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
+    ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitInfo,
     SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
 };
 use fil_actor_multisig::Method as MultisigMethod;
@@ -29,7 +30,7 @@ use fil_fungible_token::receiver::types::{
     FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
 };
 use fil_fungible_token::token::types::TransferFromParams;
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -120,7 +121,7 @@ pub fn create_miner(
     let res: CreateMinerReturn = v
         .apply_message(
             owner,
-            *STORAGE_POWER_ACTOR_ADDR,
+            STORAGE_POWER_ACTOR_ADDR,
             balance,
             PowerMethod::CreateMiner as u64,
             params,
@@ -133,7 +134,7 @@ pub fn create_miner(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn precommit_sectors(
+pub fn precommit_sectors_v2(
     v: &mut VM,
     count: u64,
     batch_size: i64,
@@ -143,17 +144,18 @@ pub fn precommit_sectors(
     sector_number_base: SectorNumber,
     expect_cron_enroll: bool,
     exp: Option<ChainEpoch>,
+    v2: bool,
 ) -> Vec<SectorPreCommitOnChainInfo> {
     let mid = v.normalize_address(&maddr).unwrap();
     let invocs_common = || -> Vec<ExpectInvocation> {
         vec![
             ExpectInvocation {
-                to: *REWARD_ACTOR_ADDR,
+                to: REWARD_ACTOR_ADDR,
                 method: RewardMethod::ThisEpochReward as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::CurrentTotalPower as u64,
                 ..Default::default()
             },
@@ -161,14 +163,14 @@ pub fn precommit_sectors(
     };
     let invoc_first = || -> ExpectInvocation {
         ExpectInvocation {
-            to: *STORAGE_POWER_ACTOR_ADDR,
+            to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::EnrollCronEvent as u64,
             ..Default::default()
         }
     };
     let invoc_net_fee = |fee: TokenAmount| -> ExpectInvocation {
         ExpectInvocation {
-            to: *BURNT_FUNDS_ACTOR_ADDR,
+            to: BURNT_FUNDS_ACTOR_ADDR,
             method: METHOD_SEND,
             value: Some(fee),
             ..Default::default()
@@ -187,60 +189,137 @@ pub fn precommit_sectors(
     while sector_idx < count {
         let msg_sector_idx_base = sector_idx;
         let mut invocs = invocs_common();
+        if !v2 {
+            let mut param_sectors = Vec::<PreCommitSectorParams>::new();
+            let mut j = 0;
+            while j < batch_size && sector_idx < count {
+                let sector_number = sector_number_base + sector_idx;
+                param_sectors.push(PreCommitSectorParams {
+                    seal_proof,
+                    sector_number,
+                    sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
+                    seal_rand_epoch: v.get_epoch() - 1,
+                    deal_ids: vec![],
+                    expiration,
+                    ..Default::default()
+                });
+                sector_idx += 1;
+                j += 1;
+            }
+            if param_sectors.len() > 1 {
+                invocs.push(invoc_net_fee(aggregate_pre_commit_network_fee(
+                    param_sectors.len() as i64,
+                    &TokenAmount::zero(),
+                )));
+            }
+            if expect_cron_enroll && msg_sector_idx_base == 0 {
+                invocs.push(invoc_first());
+            }
 
-        let mut param_sectors = Vec::<PreCommitSectorParams>::new();
-        let mut j = 0;
-        while j < batch_size && sector_idx < count {
-            let sector_number = sector_number_base + sector_idx;
-            param_sectors.push(PreCommitSectorParams {
-                seal_proof,
-                sector_number,
-                sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
-                seal_rand_epoch: v.get_epoch() - 1,
-                deal_ids: vec![],
-                expiration,
+            apply_ok(
+                v,
+                worker,
+                maddr,
+                TokenAmount::zero(),
+                MinerMethod::PreCommitSectorBatch as u64,
+                PreCommitSectorBatchParams { sectors: param_sectors.clone() },
+            );
+            let expect = ExpectInvocation {
+                to: mid,
+                method: MinerMethod::PreCommitSectorBatch as u64,
+                params: Some(
+                    serialize(
+                        &PreCommitSectorBatchParams { sectors: param_sectors },
+                        "precommit batch params",
+                    )
+                    .unwrap(),
+                ),
+                subinvocs: Some(invocs),
                 ..Default::default()
-            });
-            sector_idx += 1;
-            j += 1;
+            };
+            expect.matches(v.take_invocations().last().unwrap())
+        } else {
+            let mut param_sectors = Vec::<SectorPreCommitInfo>::new();
+            let mut j = 0;
+            while j < batch_size && sector_idx < count {
+                let sector_number = sector_number_base + sector_idx;
+                param_sectors.push(SectorPreCommitInfo {
+                    seal_proof,
+                    sector_number,
+                    sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
+                    seal_rand_epoch: v.get_epoch() - 1,
+                    deal_ids: vec![],
+                    expiration,
+                    unsealed_cid: CompactCommD::new(None),
+                });
+                sector_idx += 1;
+                j += 1;
+            }
+            if param_sectors.len() > 1 {
+                invocs.push(invoc_net_fee(aggregate_pre_commit_network_fee(
+                    param_sectors.len() as i64,
+                    &TokenAmount::zero(),
+                )));
+            }
+            if expect_cron_enroll && msg_sector_idx_base == 0 {
+                invocs.push(invoc_first());
+            }
+
+            apply_ok(
+                v,
+                worker,
+                maddr,
+                TokenAmount::zero(),
+                MinerMethod::PreCommitSectorBatch2 as u64,
+                PreCommitSectorBatchParams2 { sectors: param_sectors.clone() },
+            );
+            let expect = ExpectInvocation {
+                to: mid,
+                method: MinerMethod::PreCommitSectorBatch2 as u64,
+                params: Some(
+                    serialize(
+                        &PreCommitSectorBatchParams2 { sectors: param_sectors },
+                        "precommit batch params",
+                    )
+                    .unwrap(),
+                ),
+                subinvocs: Some(invocs),
+                ..Default::default()
+            };
+            expect.matches(v.take_invocations().last().unwrap())
         }
-        if param_sectors.len() > 1 {
-            invocs.push(invoc_net_fee(aggregate_pre_commit_network_fee(
-                param_sectors.len() as i64,
-                &TokenAmount::zero(),
-            )));
-        }
-        if expect_cron_enroll && msg_sector_idx_base == 0 {
-            invocs.push(invoc_first());
-        }
-        apply_ok(
-            v,
-            worker,
-            maddr,
-            TokenAmount::zero(),
-            MinerMethod::PreCommitSectorBatch as u64,
-            PreCommitSectorBatchParams { sectors: param_sectors.clone() },
-        );
-        let expect = ExpectInvocation {
-            to: mid,
-            method: MinerMethod::PreCommitSectorBatch as u64,
-            params: Some(
-                serialize(
-                    &PreCommitSectorBatchParams { sectors: param_sectors },
-                    "precommit batch params",
-                )
-                .unwrap(),
-            ),
-            subinvocs: Some(invocs),
-            ..Default::default()
-        };
-        expect.matches(v.take_invocations().last().unwrap())
     }
     // extract chain state
     let mstate = v.get_state::<MinerState>(mid).unwrap();
     (0..count)
         .map(|i| mstate.get_precommitted_sector(v.store, sector_number_base + i).unwrap().unwrap())
         .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn precommit_sectors(
+    v: &mut VM,
+    count: u64,
+    batch_size: i64,
+    worker: Address,
+    maddr: Address,
+    seal_proof: RegisteredSealProof,
+    sector_number_base: SectorNumber,
+    expect_cron_enroll: bool,
+    exp: Option<ChainEpoch>,
+) -> Vec<SectorPreCommitOnChainInfo> {
+    precommit_sectors_v2(
+        v,
+        count,
+        batch_size,
+        worker,
+        maddr,
+        seal_proof,
+        sector_number_base,
+        expect_cron_enroll,
+        exp,
+        false,
+    )
 }
 
 pub fn prove_commit_sectors(
@@ -280,22 +359,22 @@ pub fn prove_commit_sectors(
             params: Some(prove_commit_aggregate_params_ser),
             subinvocs: Some(vec![
                 ExpectInvocation {
-                    to: *REWARD_ACTOR_ADDR,
+                    to: REWARD_ACTOR_ADDR,
                     method: RewardMethod::ThisEpochReward as u64,
                     ..Default::default()
                 },
                 ExpectInvocation {
-                    to: *STORAGE_POWER_ACTOR_ADDR,
+                    to: STORAGE_POWER_ACTOR_ADDR,
                     method: PowerMethod::CurrentTotalPower as u64,
                     ..Default::default()
                 },
                 ExpectInvocation {
-                    to: *STORAGE_POWER_ACTOR_ADDR,
+                    to: STORAGE_POWER_ACTOR_ADDR,
                     method: PowerMethod::UpdatePledgeTotal as u64,
                     ..Default::default()
                 },
                 ExpectInvocation {
-                    to: *BURNT_FUNDS_ACTOR_ADDR,
+                    to: BURNT_FUNDS_ACTOR_ADDR,
                     method: METHOD_SEND,
                     ..Default::default()
                 },
@@ -369,8 +448,8 @@ where
 
         let res = v
             .apply_message(
-                *SYSTEM_ACTOR_ADDR,
-                *CRON_ACTOR_ADDR,
+                SYSTEM_ACTOR_ADDR,
+                CRON_ACTOR_ADDR,
                 TokenAmount::zero(),
                 CronMethod::EpochTick as u64,
                 RawBytes::default(),
@@ -422,7 +501,7 @@ pub fn sector_info(v: &VM, m: Address, s: SectorNumber) -> SectorOnChainInfo {
 }
 
 pub fn miner_power(v: &VM, m: Address) -> PowerPair {
-    let st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
+    let st = v.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
     let claim = st.get_claim(v.store, &m).unwrap().unwrap();
     PowerPair::new(claim.raw_byte_power, claim.quality_adj_power)
 }
@@ -439,9 +518,7 @@ pub fn declare_recovery(
         recoveries: vec![RecoveryDeclaration {
             deadline,
             partition,
-            sectors: UnvalidatedBitField::Validated(
-                BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            ),
+            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
         }],
     };
 
@@ -465,16 +542,13 @@ pub fn submit_windowed_post(
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
-        partitions: vec![PoStPartition {
-            index: partition_idx,
-            skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new()),
-        }],
+        partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
             proof_bytes: vec![],
         }],
         chain_commit_epoch: dline_info.challenge,
-        chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
+        chain_commit_rand: Randomness(TEST_VM_RAND_ARRAY.into()),
     };
     apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
     let mut subinvocs = None;
@@ -491,7 +565,7 @@ pub fn submit_windowed_post(
             )
             .unwrap();
             subinvocs = Some(vec![ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::UpdateClaimedPower as u64,
                 params: Some(update_power_params),
                 ..Default::default()
@@ -517,16 +591,13 @@ pub fn submit_invalid_post(
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
-        partitions: vec![PoStPartition {
-            index: partition_idx,
-            skipped: fvm_ipld_bitfield::UnvalidatedBitField::Validated(BitField::new()),
-        }],
+        partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
         proofs: vec![PoStProof {
             post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
             proof_bytes: TEST_VM_INVALID_POST.as_bytes().to_vec(),
         }],
         chain_commit_epoch: dline_info.challenge,
-        chain_commit_rand: Randomness(TEST_VM_RAND_STRING.to_owned().into_bytes()),
+        chain_commit_rand: Randomness(TEST_VM_RAND_ARRAY.into()),
     };
     apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
 }
@@ -535,7 +606,7 @@ pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
     let add_verifier_params = VerifierParams { address: verifier, allowance: data_cap };
     // root address is msig, send proposal from root key
     let proposal = ProposeParams {
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         value: TokenAmount::zero(),
         method: VerifregMethod::AddVerifier as u64,
         params: serialize(&add_verifier_params, "verifreg add verifier params").unwrap(),
@@ -553,11 +624,11 @@ pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
         to: TEST_VERIFREG_ROOT_ADDR,
         method: MultisigMethod::Propose as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+            to: VERIFIED_REGISTRY_ACTOR_ADDR,
             method: VerifregMethod::AddVerifier as u64,
             params: Some(serialize(&add_verifier_params, "verifreg add verifier params").unwrap()),
             subinvocs: Some(vec![ExpectInvocation {
-                to: *DATACAP_TOKEN_ACTOR_ADDR,
+                to: DATACAP_TOKEN_ACTOR_ADDR,
                 method: DataCapMethod::BalanceOf as u64,
                 params: Some(serialize(&verifier, "balance of params").unwrap()),
                 code: Some(ExitCode::OK),
@@ -609,7 +680,7 @@ pub fn publish_deal(
     let ret: PublishStorageDealsReturn = apply_ok(
         v,
         worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
         MarketMethod::PublishStorageDeals as u64,
         publish_params,
@@ -624,12 +695,12 @@ pub fn publish_deal(
             ..Default::default()
         },
         ExpectInvocation {
-            to: *REWARD_ACTOR_ADDR,
+            to: REWARD_ACTOR_ADDR,
             method: RewardMethod::ThisEpochReward as u64,
             ..Default::default()
         },
         ExpectInvocation {
-            to: *STORAGE_POWER_ACTOR_ADDR,
+            to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::CurrentTotalPower as u64,
             ..Default::default()
         },
@@ -657,12 +728,12 @@ pub fn publish_deal(
             extensions: vec![],
         };
         expect_publish_invocs.push(ExpectInvocation {
-            to: *DATACAP_TOKEN_ACTOR_ADDR,
+            to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::TransferFrom as u64,
             params: Some(
                 RawBytes::serialize(&TransferFromParams {
                     from: deal_client,
-                    to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
                     amount: token_amount.clone(),
                     operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
                 })
@@ -670,7 +741,7 @@ pub fn publish_deal(
             ),
             code: Some(ExitCode::OK),
             subinvocs: Some(vec![ExpectInvocation {
-                to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+                to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::UniversalReceiverHook as u64,
                 params: Some(
                     RawBytes::serialize(&UniversalReceiverParams {
@@ -694,7 +765,7 @@ pub fn publish_deal(
         })
     }
     ExpectInvocation {
-        to: *STORAGE_MARKET_ACTOR_ADDR,
+        to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,
         subinvocs: Some(expect_publish_invocs),
         ..Default::default()
@@ -704,8 +775,8 @@ pub fn publish_deal(
     ret
 }
 
-pub fn make_bitfield(bits: &[u64]) -> UnvalidatedBitField {
-    UnvalidatedBitField::Validated(BitField::try_from_bits(bits.iter().copied()).unwrap())
+pub fn make_bitfield(bits: &[u64]) -> BitField {
+    BitField::try_from_bits(bits.iter().copied()).unwrap()
 }
 
 pub fn bf_all(bf: BitField) -> Vec<u64> {

@@ -12,7 +12,6 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
-use lazy_static::lazy_static;
 use num_traits::{ToPrimitive, Zero};
 
 use fil_actor_verifreg::testing::check_state_invariants;
@@ -24,6 +23,7 @@ use fil_actor_verifreg::{
     RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, SectorAllocationClaim, State,
 };
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::policy_constants::{
     MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_TERM,
 };
@@ -34,14 +34,12 @@ use fil_actors_runtime::{
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
-lazy_static! {
-    pub static ref ROOT_ADDR: Address = Address::new_id(101);
-}
+pub const ROOT_ADDR: Address = Address::new_id(101);
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
-        receiver: *VERIFIED_REGISTRY_ACTOR_ADDR,
-        caller: *SYSTEM_ACTOR_ADDR,
+        receiver: VERIFIED_REGISTRY_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -54,7 +52,7 @@ pub fn add_miner(rt: &mut MockRuntime, id: ActorID) {
 
 pub fn new_harness() -> (Harness, MockRuntime) {
     let mut rt = new_runtime();
-    let h = Harness { root: *ROOT_ADDR };
+    let h = Harness { root: ROOT_ADDR };
     h.construct_and_verify(&mut rt, &h.root);
     (h, rt)
 }
@@ -65,7 +63,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct_and_verify(&self, rt: &mut MockRuntime, root_param: &Address) {
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
             .call::<VerifregActor>(
                 Method::Constructor as MethodNum,
@@ -103,7 +101,7 @@ impl Harness {
         let verifier_resolved = rt.get_id_address(verifier).unwrap_or(*verifier);
         // Expect checking the verifier's token balance.
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::BalanceOf as MethodNum,
             RawBytes::serialize(&verifier_resolved).unwrap(),
             TokenAmount::zero(),
@@ -178,10 +176,10 @@ impl Harness {
         let mint_params = ext::datacap::MintParams {
             to: client_resolved,
             amount: TokenAmount::from_whole(allowance.to_i64().unwrap()),
-            operators: vec![*STORAGE_MARKET_ACTOR_ADDR],
+            operators: vec![STORAGE_MARKET_ACTOR_ADDR],
         };
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
             RawBytes::serialize(&mint_params).unwrap(),
             TokenAmount::zero(),
@@ -242,11 +240,11 @@ impl Harness {
         claim_allocs: Vec<SectorAllocationClaim>,
         datacap_burnt: u64,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
 
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Burn as MethodNum,
             RawBytes::serialize(&BurnParams {
                 amount: TokenAmount::from_whole(datacap_burnt.to_i64().unwrap()),
@@ -280,7 +278,7 @@ impl Harness {
         rt.expect_validate_caller_any();
 
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Transfer as MethodNum,
             RawBytes::serialize(&TransferParams {
                 to: Address::new_id(client),
@@ -313,13 +311,13 @@ impl Harness {
         expected_extension_results: BatchReturn,
         expected_alloc_ids: Vec<AllocationID>,
     ) -> Result<(), ActorError> {
-        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
+        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, DATACAP_TOKEN_ACTOR_ADDR);
         let params = UniversalReceiverParams {
             type_: FRC46_TOKEN_TYPE,
             payload: serialize(&payload, "payload").unwrap(),
         };
 
-        rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![DATACAP_TOKEN_ACTOR_ADDR]);
         let ret = rt.call::<VerifregActor>(
             Method::UniversalReceiverHook as MethodNum,
             &serialize(&params, "hook params").unwrap(),
