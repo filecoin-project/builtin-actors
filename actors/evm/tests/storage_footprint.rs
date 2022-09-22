@@ -12,7 +12,7 @@ mod env;
 use env::{BlockstoreStats, TestEnv};
 use serde_json::json;
 
-// Generate a statically types interface for the contract.
+// Generate a statically typed interface for the contract.
 abigen!(StorageFootprint, "./tests/contracts/StorageFootprint.abi");
 
 // Alternatively we can generate the ABI code as follows:
@@ -70,7 +70,7 @@ impl Measurements {
         let path = format!("{}/tests/measurements/{}.jsonline", dir, self.scenario);
         let mut output = File::create(path)?;
         for value in self.values {
-            write!(output, "{}\n", value.to_string())?;
+            writeln!(output, "{}", value)?;
         }
         Ok(())
     }
@@ -91,7 +91,7 @@ fn measure_array_push() {
     // Number of pushes to do on the same array, to see how its size affects the cost.
     let m = 100;
     // Number of items to push at the end of the array at a time.
-    for n in vec![1, 100] {
+    for n in [1, 100] {
         let mut env = new_footprint_env();
         let mut mts = Measurements::new(format!("array_push_n{}", n));
         for i in 1..=m {
