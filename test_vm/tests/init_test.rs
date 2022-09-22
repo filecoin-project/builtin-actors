@@ -47,6 +47,9 @@ fn embryo_deploy() {
     let expect_id_addr = Address::new_id(FIRST_TEST_USER_ADDR);
     assert_embryo_actor(TokenAmount::from_atto(42u8), &v, expect_id_addr);
 
+    // Make sure we assigned the right f4 address.
+    assert_eq!(v.normalize_address(&addr).unwrap(), expect_id_addr);
+
     // Deploy a multisig to the embryo.
     let msig_ctor_params = serialize(
         &fil_actor_multisig::ConstructorParams {
@@ -82,6 +85,9 @@ fn embryo_deploy() {
         expect_id_addr, msig_ctor_ret.id_address,
         "expected actor to be deployed over embryo"
     );
+
+    // Make sure we kept the balance.
+    assert_eq!(v.get_actor(expect_id_addr).unwrap().balance, TokenAmount::from_atto(42u8));
 
     // Try to overwrite it.
     let msig_ctor_res = deploy();
