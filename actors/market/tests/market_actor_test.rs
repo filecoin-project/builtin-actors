@@ -13,7 +13,7 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map, SetMultimap,
+    make_empty_map, make_map_with_root_and_bitwidth, ActorError, BatchReturn, Map, SetMultimap,
     BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
@@ -863,8 +863,8 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     );
 
     // Data cap transfer is requested using the resolved address (not that it matters).
-    let alloc_req = ext::verifreg::AllocationsRequest {
-        requests: vec![AllocationRequest {
+    let alloc_req = ext::verifreg::AllocationRequests {
+        allocations: vec![AllocationRequest {
             provider: provider_resolved,
             data: deal.piece_cid,
             size: deal.piece_size,
@@ -872,6 +872,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
             term_max: (deal.end_epoch - deal.start_epoch) + 90 * EPOCHS_IN_DAY,
             expiration: deal.start_epoch,
         }],
+        extensions: vec![],
     };
     let datacap_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
     let transfer_params = TransferFromParams {
@@ -885,7 +886,11 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         to_balance: datacap_amount,
         allowance: TokenAmount::zero(),
         recipient_data: serialize(
-            &AllocationsResponse { allocations: vec![1] },
+            &AllocationsResponse {
+                allocation_results: BatchReturn::ok(1),
+                extension_results: BatchReturn::empty(),
+                new_allocations: vec![1],
+            },
             "allocations response",
         )
         .unwrap(),

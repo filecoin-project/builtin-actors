@@ -27,9 +27,9 @@ use fil_actors_runtime::{
     network::EPOCHS_IN_DAY,
     runtime::{Policy, Runtime},
     test_utils::*,
-    ActorError, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorError, BatchReturn, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::bigint::BigInt;
@@ -491,8 +491,8 @@ pub fn publish_deals(
         if deal.verified_deal {
             // Expect transfer of data cap to the verified registry, with spec for the allocation.
             let curr_epoch = rt.epoch;
-            let alloc_req = ext::verifreg::AllocationsRequest {
-                requests: vec![AllocationRequest {
+            let alloc_req = ext::verifreg::AllocationRequests {
+                allocations: vec![AllocationRequest {
                     provider: deal.provider,
                     data: deal.piece_cid,
                     size: deal.piece_size,
@@ -500,6 +500,7 @@ pub fn publish_deals(
                     term_max: (deal.end_epoch - deal.start_epoch) + 90 * EPOCHS_IN_DAY,
                     expiration: min(deal.start_epoch, curr_epoch + 60 * EPOCHS_IN_DAY),
                 }],
+                extensions: vec![],
             };
             let datacap_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
             let params = TransferFromParams {
@@ -508,7 +509,11 @@ pub fn publish_deals(
                 amount: datacap_amount.clone(),
                 operator_data: serialize(&alloc_req, "allocation requests").unwrap(),
             };
-            let alloc_ids = AllocationsResponse { allocations: vec![alloc_id] };
+            let alloc_ids = AllocationsResponse {
+                allocation_results: BatchReturn::ok(1),
+                extension_results: BatchReturn::empty(),
+                new_allocations: vec![alloc_id],
+            };
             rt.expect_send(
                 *DATACAP_TOKEN_ACTOR_ADDR,
                 ext::datacap::TRANSFER_FROM_METHOD as u64,

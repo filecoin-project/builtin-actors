@@ -379,6 +379,8 @@ impl Actor {
                     .and_then(|ret| datacap_transfer_response(&ret));
                 match alloc_ids {
                     Ok(ids) => {
+                        // Note: when changing this to do anything other than expect complete success,
+                        // inspect the BatchReturn values to determine which deals succeeded and which failed.
                         if ids.len() != 1 {
                             return Err(actor_error!(
                                 unspecified,
@@ -1156,7 +1158,7 @@ fn datacap_transfer_request(
         to: *VERIFIED_REGISTRY_ACTOR_ADDR,
         amount: TokenAmount::from_whole(datacap_required),
         operator_data: serialize(
-            &ext::verifreg::AllocationsRequest { requests: alloc_reqs },
+            &ext::verifreg::AllocationRequests { allocations: alloc_reqs, extensions: vec![] },
             "allocation requests",
         )?,
     })
@@ -1167,7 +1169,7 @@ fn datacap_transfer_response(ret: &RawBytes) -> Result<Vec<AllocationID>, ActorE
     let ret: TransferFromReturn = deserialize(ret, "transfer from response")?;
     let allocs: ext::verifreg::AllocationsResponse =
         deserialize(&ret.recipient_data, "allocations response")?;
-    Ok(allocs.allocations)
+    Ok(allocs.new_allocations)
 }
 
 pub fn gen_rand_next_epoch(
