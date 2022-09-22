@@ -122,12 +122,7 @@ impl TestEnv {
     /// Take a function that calls an ABI method to return a `ContractCall`.
     /// Then, instead of calling the contract on-chain, run it through our
     /// EVM interpreter in the test runtime. Finally parse the results.
-    pub fn call<F, R>(&mut self, f: F) -> R
-    where
-        F: FnOnce() -> TestContractCall<R>,
-        R: Detokenize,
-    {
-        let call = f();
+    pub fn call<R: Detokenize>(&mut self, call: TestContractCall<R>) -> R {
         let input = call.calldata().expect("Should have calldata.");
         let input = RawBytes::from(input.to_vec());
         self.runtime.expect_validate_caller_any();

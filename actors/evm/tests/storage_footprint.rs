@@ -79,7 +79,7 @@ impl Measurements {
 #[test]
 fn basic() {
     let mut env = new_footprint_env();
-    let sum = env.call(|| CONTRACT.array_1_sum(0, 0));
+    let sum = env.call(CONTRACT.array_1_sum(0, 0));
     assert_eq!(sum, 0)
 }
 
@@ -96,11 +96,11 @@ fn measure_array_push() {
         let mut env = new_footprint_env();
         let mut mts = Measurements::new(format!("array_push_n{}", n));
         for i in 0..NUM_ITER {
-            env.call(|| CONTRACT.array_1_push(n));
+            env.call(CONTRACT.array_1_push(n));
             mts.record(1, i, env.runtime().store.take_stats());
         }
         for i in 0..NUM_ITER {
-            env.call(|| CONTRACT.array_2_push(n));
+            env.call(CONTRACT.array_2_push(n));
             mts.record(2, i, env.runtime().store.take_stats());
         }
         mts.export().unwrap()
@@ -118,11 +118,11 @@ fn measure_mapping_add() {
         // In this case we always add new keys, never overwrite existing ones, to compare to
         // the scenario where we were pushing to the end of arrays.
         for i in 0..NUM_ITER {
-            env.call(|| CONTRACT.mapping_1_set(i * n, n, i));
+            env.call(CONTRACT.mapping_1_set(i * n, n, i));
             mts.record(1, i, env.runtime().store.take_stats());
         }
         for i in 0..NUM_ITER {
-            env.call(|| CONTRACT.mapping_2_set(i * n, n, i));
+            env.call(CONTRACT.mapping_2_set(i * n, n, i));
             mts.record(2, i, env.runtime().store.take_stats());
         }
         mts.export().unwrap()
@@ -133,9 +133,9 @@ fn measure_mapping_add() {
 #[test]
 fn measure_array_read() {
     let mut env = new_footprint_env();
-    env.call(|| CONTRACT.array_1_push(10000));
+    env.call(CONTRACT.array_1_push(10000));
 
-    let sum = env.call(|| CONTRACT.array_1_sum(0, 10000));
+    let sum = env.call(CONTRACT.array_1_sum(0, 10000));
     assert_eq!(sum, (1 + 10000) * 10000 / 2);
 
     env.runtime().store.clear_stats();
@@ -144,7 +144,7 @@ fn measure_array_read() {
     for n in [1, 100] {
         let mut mts = Measurements::new(format!("array_read_n{}", n));
         for i in 0..NUM_ITER {
-            env.call(|| CONTRACT.array_1_sum(i * n, n));
+            env.call(CONTRACT.array_1_sum(i * n, n));
             mts.record(1, i, env.runtime().store.take_stats());
         }
         mts.export().unwrap()
@@ -155,9 +155,9 @@ fn measure_array_read() {
 #[test]
 fn measure_mapping_read() {
     let mut env = new_footprint_env();
-    env.call(|| CONTRACT.mapping_1_set(0, 10000, 1));
+    env.call(CONTRACT.mapping_1_set(0, 10000, 1));
 
-    let sum = env.call(|| CONTRACT.mapping_1_sum(0, 10000));
+    let sum = env.call(CONTRACT.mapping_1_sum(0, 10000));
     assert_eq!(sum, 10000);
 
     env.runtime().store.clear_stats();
@@ -166,7 +166,7 @@ fn measure_mapping_read() {
     for n in [1, 100] {
         let mut mts = Measurements::new(format!("mapping_read_n{}", n));
         for i in 0..NUM_ITER {
-            env.call(|| CONTRACT.mapping_1_sum(i * n, n));
+            env.call(CONTRACT.mapping_1_sum(i * n, n));
             mts.record(1, i, env.runtime().store.take_stats());
         }
         mts.export().unwrap()
@@ -181,9 +181,9 @@ fn measure_incr_one_vs_all() {
 
     // Interleave incrementing one and all, otherwise there's really nothing else happening.
     for i in 0..10 {
-        env.call(|| CONTRACT.incr_counter_1());
+        env.call(CONTRACT.incr_counter_1());
         mts.record(1, i, env.runtime().store.take_stats());
-        env.call(|| CONTRACT.incr_counters());
+        env.call(CONTRACT.incr_counters());
         mts.record(2, i, env.runtime().store.take_stats());
     }
 
@@ -200,10 +200,10 @@ fn measure_incr_after_fill() {
         let mut env = new_footprint_env();
         // Then the single counter, so the read/put bytes already include the other non-zero values.
         for i in 0..NUM_ITER {
-            env.call(|| fill(i));
+            env.call(fill(i));
             env.runtime().store.clear_stats();
 
-            env.call(|| CONTRACT.incr_counter_1());
+            env.call(CONTRACT.incr_counter_1());
             mts.record(series, i, env.runtime().store.take_stats());
         }
     };
