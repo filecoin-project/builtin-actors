@@ -1,15 +1,12 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
-use cid::Cid;
-use fil_fungible_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
-use fil_fungible_token::token::types::{TransferFromParams, TransferFromReturn};
+use fil_fungible_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, RawBytes};
@@ -277,7 +274,7 @@ impl Actor {
         for (di, mut deal) in params.deals.into_iter().enumerate() {
             // drop malformed deals
             if let Err(e) = validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
-                info!("invalid deal {}: {}", di, e);
+                info!("invalid deal {}: {}", di, e.msg());
                 continue;
             }
 
@@ -302,34 +299,33 @@ impl Actor {
             };
 
             if deal.proposal.verified_deal {
-                let (mut use_client_datacap, total_client_datacap) =
-                    match all_client_datacap.get(&client_id).cloned() {
-                        None => {
-                            let total_datacap = rt
-                                .send(
-                                    &DATACAP_TOKEN_ACTOR_ADDR,
-                                    ext::datacap::BALANCE_OF_METHOD as u64,
-                                    serialize(
-                                        &Address::new_id(client_id as u64),
-                                        "balance parameters",
-                                    )?,
-                                    TokenAmount::zero(),
-                                )
-                                .and_then(|ret| datacap_balance_response(&ret))
-                                .map_err(|e| actor_error!(not_found; "failed to get datacap {}", e))
-                                .unwrap();
-
-                            (TokenAmount::zero(), total_datacap)
-                        }
-                        Some(client_data) => client_data,
-                    };
-                if use_client_datacap.clone()
-                    + TokenAmount::from_whole(deal.proposal.piece_size.0 as i64)
-                    > total_client_datacap
+                let (mut use_client_datacap, total_client_datacap) = match all_client_datacap
+                    .get(&client_id)
+                    .cloned()
                 {
+                    None => {
+                        let total_datacap = rt
+                            .send(
+                                &DATACAP_TOKEN_ACTOR_ADDR,
+                                ext::datacap::BALANCE_OF_METHOD as u64,
+                                serialize(
+                                    &Address::new_id(client_id as u64),
+                                    "balance parameters",
+                                )?,
+                                TokenAmount::zero(),
+                            )
+                            .and_then(|ret| datacap_balance_response(&ret))
+                            .map_err(|e| actor_error!(not_found; "failed to get datacap {}", e.msg()))?;
+
+                        (TokenAmount::zero(), total_datacap)
+                    }
+                    Some(client_data) => client_data,
+                };
+                let deal_datacap = TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
+                if &use_client_datacap + &deal_datacap > total_client_datacap {
                     continue;
                 }
-                use_client_datacap += TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
+                use_client_datacap += &deal_datacap;
                 all_client_datacap.insert(client_id, (use_client_datacap, total_client_datacap));
             }
 
@@ -373,7 +369,7 @@ impl Actor {
             deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
             let pcid = rt_deal_cid(rt, &deal.proposal).map_err(
-                |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
+                |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e.msg()),
             )?;
 
             // check proposalCids for duplication within message batch
@@ -406,23 +402,26 @@ impl Actor {
         }
 
         let mut allocation_map: BTreeMap<ActorID, Vec<AllocationID>> = BTreeMap::new();
-        for client_datacap in all_client_datacap.iter() {
+        for (action_id, client_datacap) in all_client_datacap.iter() {
             let params = datacap_transfer_request(
-                &Address::new_id(*client_datacap.0 as u64),
-                alloc_reqs.get(client_datacap.0).unwrap().clone(),
+                &Address::new_id(*action_id as u64),
+                alloc_reqs.get(action_id).unwrap().clone(),
             )?;
-            let alloc_ids = rt
+            let mut alloc_ids = match rt
                 .send(
                     &DATACAP_TOKEN_ACTOR_ADDR,
                     ext::datacap::TRANSFER_FROM_METHOD as u64,
                     serialize(&params, "transfer parameters")?,
                     TokenAmount::zero(),
                 )
-                .and_then(|ret| datacap_transfer_response(&ret));
-            allocation_map
-                .entry(*client_datacap.0)
-                .or_default()
-                .append(alloc_ids.unwrap().as_mut());
+                .and_then(|ret| datacap_transfer_response(&ret))
+            {
+                Ok(ids) => ids,
+                Err(e) => {
+                    return Err(actor_error!(illegal_state, "failed transfer datacap: {}", e.msg()));
+                }
+            };
+            allocation_map.entry(*action_id).or_default().append(alloc_ids.as_mut());
         }
 
         let valid_deal_count = valid_input_bf.len();
