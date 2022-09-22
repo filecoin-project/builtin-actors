@@ -37,6 +37,7 @@ pub mod miner {
 pub mod verifreg {
     use super::*;
     use cid::Cid;
+    use fil_actors_runtime::BatchReturn;
     use fvm_shared::clock::ChainEpoch;
     use fvm_shared::piece::PaddedPieceSize;
 
@@ -54,13 +55,26 @@ pub mod verifreg {
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-    pub struct AllocationsRequest {
-        pub requests: Vec<AllocationRequest>,
+    pub struct ClaimExtensionRequest {
+        pub provider: Address,
+        pub claim: ClaimID,
+        pub term_max: ChainEpoch,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct AllocationRequests {
+        pub allocations: Vec<AllocationRequest>,
+        pub extensions: Vec<ClaimExtensionRequest>,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct AllocationsResponse {
-        pub allocations: Vec<AllocationID>,
+        // Result for each allocation request.
+        pub allocation_results: BatchReturn,
+        // Result for each extension request.
+        pub extension_results: BatchReturn,
+        // IDs of new allocations created.
+        pub new_allocations: Vec<AllocationID>,
     }
 }
 

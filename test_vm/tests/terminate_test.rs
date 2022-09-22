@@ -64,7 +64,7 @@ fn terminate_sectors() {
     apply_ok(
         &v,
         verifier,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
         add_client_params,
@@ -75,7 +75,7 @@ fn terminate_sectors() {
     apply_ok(
         &v,
         unverified_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
         MarketMethod::AddBalance as u64,
         unverified_client,
@@ -83,7 +83,7 @@ fn terminate_sectors() {
     apply_ok(
         &v,
         verified_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         collateral,
         MarketMethod::AddBalance as u64,
         verified_client,
@@ -93,7 +93,7 @@ fn terminate_sectors() {
     apply_ok(
         &v,
         worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         miner_collateral.clone(),
         MarketMethod::AddBalance as u64,
         miner_id_addr,
@@ -147,15 +147,15 @@ fn terminate_sectors() {
 
     let res = v
         .apply_message(
-            *SYSTEM_ACTOR_ADDR,
-            *CRON_ACTOR_ADDR,
+            SYSTEM_ACTOR_ADDR,
+            CRON_ACTOR_ADDR,
             TokenAmount::zero(),
             CronMethod::EpochTick as u64,
             RawBytes::default(),
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
-    let st = v.get_state::<MarketState>(*STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let st = v.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_states = DealMetaArray::load(&st.states, v.store).unwrap();
     for id in deal_ids.iter() {
         // deals are pending and don't yet have deal states
@@ -194,8 +194,8 @@ fn terminate_sectors() {
     );
     let res = v
         .apply_message(
-            *SYSTEM_ACTOR_ADDR,
-            *CRON_ACTOR_ADDR,
+            SYSTEM_ACTOR_ADDR,
+            CRON_ACTOR_ADDR,
             TokenAmount::zero(),
             CronMethod::EpochTick as u64,
             RawBytes::default(),
@@ -211,8 +211,8 @@ fn terminate_sectors() {
     let v = v.with_epoch(dline_info.last());
 
     v.apply_message(
-        *SYSTEM_ACTOR_ADDR,
-        *CRON_ACTOR_ADDR,
+        SYSTEM_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
         RawBytes::default(),
@@ -232,7 +232,7 @@ fn terminate_sectors() {
     );
 
     // market cron updates deal states indication deals are no longer pending
-    let st = v.get_state::<MarketState>(*STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let st = v.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_states = DealMetaArray::load(&st.states, v.store).unwrap();
     for id in deal_ids.iter() {
         let state = deal_states.get(*id).unwrap().unwrap();
@@ -260,32 +260,32 @@ fn terminate_sectors() {
         method: MinerMethod::TerminateSectors as u64,
         subinvocs: Some(vec![
             ExpectInvocation {
-                to: *REWARD_ACTOR_ADDR,
+                to: REWARD_ACTOR_ADDR,
                 method: RewardMethod::ThisEpochReward as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::CurrentTotalPower as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *BURNT_FUNDS_ACTOR_ADDR,
+                to: BURNT_FUNDS_ACTOR_ADDR,
                 method: METHOD_SEND,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::UpdatePledgeTotal as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_MARKET_ACTOR_ADDR,
+                to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::OnMinerSectorsTerminate as u64,
                 ..Default::default()
             },
             ExpectInvocation {
-                to: *STORAGE_POWER_ACTOR_ADDR,
+                to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::UpdateClaimedPower as u64,
                 ..Default::default()
             },
@@ -298,7 +298,7 @@ fn terminate_sectors() {
     assert!(miner_balances.initial_pledge.is_zero());
     assert!(miner_balances.pre_commit_deposit.is_zero());
 
-    let pow_st = v.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
+    let pow_st = v.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(0, pow_st.miner_above_min_power_count);
     assert!(pow_st.total_raw_byte_power.is_zero());
     assert!(pow_st.total_quality_adj_power.is_zero());
@@ -308,7 +308,7 @@ fn terminate_sectors() {
 
     // termination slashes deals in market state
     let termination_epoch = v.get_epoch();
-    let st = v.get_state::<MarketState>(*STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let st = v.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_states = DealMetaArray::load(&st.states, v.store).unwrap();
     for id in deal_ids.iter() {
         let state = deal_states.get(*id).unwrap().unwrap();
@@ -328,13 +328,13 @@ fn terminate_sectors() {
     apply_ok(
         &v,
         verified_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
         MarketMethod::WithdrawBalance as u64,
         WithdrawBalanceParams { provider_or_client: verified_client, amount: withdrawal.clone() },
     );
     ExpectInvocation {
-        to: *STORAGE_MARKET_ACTOR_ADDR,
+        to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::WithdrawBalance as u64,
         subinvocs: Some(vec![ExpectInvocation {
             to: verified_client,
@@ -349,7 +349,7 @@ fn terminate_sectors() {
     apply_ok(
         &v,
         worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
         MarketMethod::WithdrawBalance as u64,
         WithdrawBalanceParams { provider_or_client: miner_id_addr, amount: miner_collateral },

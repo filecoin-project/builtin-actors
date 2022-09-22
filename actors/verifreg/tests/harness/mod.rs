@@ -12,36 +12,34 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
-use lazy_static::lazy_static;
 use num_traits::{ToPrimitive, Zero};
 
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
     AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse, Claim,
-    ClaimAllocationsParams, ClaimAllocationsReturn, ClaimID, DataCap, ExtendClaimTermsParams,
-    ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
+    ClaimAllocationsParams, ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap,
+    ExtendClaimTermsParams, ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
     RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, SectorAllocationClaim, State,
 };
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::policy_constants::{
     MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_TERM,
 };
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, AsActorError, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
-lazy_static! {
-    pub static ref ROOT_ADDR: Address = Address::new_id(101);
-}
+pub const ROOT_ADDR: Address = Address::new_id(101);
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
-        receiver: *VERIFIED_REGISTRY_ACTOR_ADDR,
-        caller: *SYSTEM_ACTOR_ADDR,
+        receiver: VERIFIED_REGISTRY_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -54,7 +52,7 @@ pub fn add_miner(rt: &mut MockRuntime, id: ActorID) {
 
 pub fn new_harness() -> (Harness, MockRuntime) {
     let mut rt = new_runtime();
-    let h = Harness { root: *ROOT_ADDR };
+    let h = Harness { root: ROOT_ADDR };
     h.construct_and_verify(&mut rt, &h.root);
     (h, rt)
 }
@@ -65,7 +63,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct_and_verify(&self, rt: &mut MockRuntime, root_param: &Address) {
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
             .call::<VerifregActor>(
                 Method::Constructor as MethodNum,
@@ -103,7 +101,7 @@ impl Harness {
         let verifier_resolved = rt.get_id_address(verifier).unwrap_or(*verifier);
         // Expect checking the verifier's token balance.
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::BalanceOf as MethodNum,
             RawBytes::serialize(&verifier_resolved).unwrap(),
             TokenAmount::zero(),
@@ -178,10 +176,10 @@ impl Harness {
         let mint_params = ext::datacap::MintParams {
             to: client_resolved,
             amount: TokenAmount::from_whole(allowance.to_i64().unwrap()),
-            operators: vec![*STORAGE_MARKET_ACTOR_ADDR],
+            operators: vec![STORAGE_MARKET_ACTOR_ADDR],
         };
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
             RawBytes::serialize(&mint_params).unwrap(),
             TokenAmount::zero(),
@@ -226,27 +224,27 @@ impl Harness {
     pub fn load_alloc(
         &self,
         rt: &mut MockRuntime,
-        client: &Address,
+        client: ActorID,
         id: AllocationID,
     ) -> Option<Allocation> {
         let st: State = rt.get_state();
         let mut allocs = st.load_allocs(rt.store()).unwrap();
-        allocs.get(client.id().unwrap(), id).unwrap().cloned()
+        allocs.get(client, id).unwrap().cloned()
     }
 
     // Invokes the ClaimAllocations actor method
     pub fn claim_allocations(
         &self,
         rt: &mut MockRuntime,
-        provider: Address,
+        provider: ActorID,
         claim_allocs: Vec<SectorAllocationClaim>,
         datacap_burnt: u64,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
-        rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
 
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Burn as MethodNum,
             RawBytes::serialize(&BurnParams {
                 amount: TokenAmount::from_whole(datacap_burnt.to_i64().unwrap()),
@@ -273,17 +271,17 @@ impl Harness {
     pub fn remove_expired_allocations(
         &self,
         rt: &mut MockRuntime,
-        client: &Address,
+        client: ActorID,
         allocation_ids: Vec<AllocationID>,
         expected_datacap: u64,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
         rt.expect_validate_caller_any();
 
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Transfer as MethodNum,
             RawBytes::serialize(&TransferParams {
-                to: *client,
+                to: Address::new_id(client),
                 amount: TokenAmount::from_whole(expected_datacap.to_i64().unwrap()),
                 operator_data: RawBytes::default(),
             })
@@ -293,8 +291,7 @@ impl Harness {
             ExitCode::OK,
         );
 
-        let params =
-            RemoveExpiredAllocationsParams { client: client.id().unwrap(), allocation_ids };
+        let params = RemoveExpiredAllocationsParams { client, allocation_ids };
         let ret = rt
             .call::<VerifregActor>(
                 Method::RemoveExpiredAllocations as MethodNum,
@@ -310,27 +307,35 @@ impl Harness {
         &self,
         rt: &mut MockRuntime,
         payload: FRC46TokenReceived,
+        expected_alloc_results: BatchReturn,
+        expected_extension_results: BatchReturn,
         expected_alloc_ids: Vec<AllocationID>,
     ) -> Result<(), ActorError> {
-        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
+        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, DATACAP_TOKEN_ACTOR_ADDR);
         let params = UniversalReceiverParams {
             type_: FRC46_TOKEN_TYPE,
             payload: serialize(&payload, "payload").unwrap(),
         };
 
-        rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![DATACAP_TOKEN_ACTOR_ADDR]);
         let ret = rt.call::<VerifregActor>(
             Method::UniversalReceiverHook as MethodNum,
             &serialize(&params, "hook params").unwrap(),
         )?;
         assert_eq!(
-            RawBytes::serialize(AllocationsResponse { allocations: expected_alloc_ids }).unwrap(),
+            RawBytes::serialize(AllocationsResponse {
+                allocation_results: expected_alloc_results,
+                extension_results: expected_extension_results,
+                new_allocations: expected_alloc_ids
+            })
+            .unwrap(),
             ret
         );
         rt.verify();
         Ok(())
     }
 
+    // Creates a claim directly in state.
     pub fn create_claim(&self, rt: &mut MockRuntime, claim: &Claim) -> Result<ClaimID, ActorError> {
         let mut st: State = rt.get_state();
         let mut claims = st.load_claims(rt.store()).unwrap();
@@ -381,10 +386,10 @@ impl Harness {
     }
 }
 
-pub fn make_alloc(data_id: &str, client: &Address, provider: &Address, size: u64) -> Allocation {
+pub fn make_alloc(data_id: &str, client: ActorID, provider: ActorID, size: u64) -> Allocation {
     Allocation {
-        client: client.id().unwrap(),
-        provider: provider.id().unwrap(),
+        client,
+        provider,
         data: make_piece_cid(data_id.as_bytes()),
         size: PaddedPieceSize(size),
         term_min: 1000,
@@ -405,6 +410,14 @@ pub fn make_alloc_req(rt: &MockRuntime, provider: ActorID, size: u64) -> Allocat
     }
 }
 
+pub fn make_extension_req(
+    provider: ActorID,
+    claim: ClaimID,
+    term_max: ChainEpoch,
+) -> ClaimExtensionRequest {
+    ClaimExtensionRequest { provider: Address::new_id(provider), claim, term_max }
+}
+
 // Creates the expected allocation from a request.
 pub fn alloc_from_req(client: ActorID, req: &AllocationRequest) -> Allocation {
     Allocation {
@@ -420,7 +433,7 @@ pub fn alloc_from_req(client: ActorID, req: &AllocationRequest) -> Allocation {
 
 pub fn make_claim_req(
     id: AllocationID,
-    alloc: Allocation,
+    alloc: &Allocation,
     sector_id: SectorNumber,
     sector_expiry: ChainEpoch,
 ) -> SectorAllocationClaim {
@@ -437,8 +450,8 @@ pub fn make_claim_req(
 #[allow(clippy::too_many_arguments)]
 pub fn make_claim(
     data_id: &str,
-    client: &Address,
-    provider: &Address,
+    client: ActorID,
+    provider: ActorID,
     size: u64,
     term_min: i64,
     term_max: i64,
@@ -446,8 +459,8 @@ pub fn make_claim(
     sector: u64,
 ) -> Claim {
     Claim {
-        provider: provider.id().unwrap(),
-        client: client.id().unwrap(),
+        provider,
+        client,
         data: make_piece_cid(data_id.as_bytes()),
         size: PaddedPieceSize(size),
         term_min,
@@ -457,18 +470,55 @@ pub fn make_claim(
     }
 }
 
+pub fn claim_from_alloc(alloc: &Allocation, term_start: ChainEpoch, sector: SectorNumber) -> Claim {
+    Claim {
+        provider: alloc.provider,
+        client: alloc.client,
+        data: alloc.data,
+        size: alloc.size,
+        term_min: alloc.term_min,
+        term_max: alloc.term_max,
+        term_start,
+        sector,
+    }
+}
+
 pub fn make_receiver_hook_token_payload(
     client: ActorID,
-    requests: Vec<AllocationRequest>,
+    alloc_requests: Vec<AllocationRequest>,
+    extension_requests: Vec<ClaimExtensionRequest>,
+    datacap_received: u64,
 ) -> FRC46TokenReceived {
-    let total_size: u64 = requests.iter().map(|r| r.size.0).sum();
-    let payload = AllocationRequests { requests };
+    // let total_size: u64 = alloc_requests.iter().map(|r| r.size.0).sum();
+    let payload =
+        AllocationRequests { allocations: alloc_requests, extensions: extension_requests };
     FRC46TokenReceived {
         from: client,
         to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
         operator: client,
-        amount: TokenAmount::from_whole(total_size as i64),
+        amount: TokenAmount::from_whole(datacap_received as i64),
         operator_data: serialize(&payload, "operator data").unwrap(),
         token_data: Default::default(),
     }
+}
+
+pub fn assert_allocation(
+    rt: &MockRuntime,
+    client: ActorID,
+    id: AllocationID,
+    expected: &Allocation,
+) {
+    let st: State = rt.get_state();
+    let store = &rt.store();
+    let mut allocs = st.load_allocs(store).unwrap();
+
+    assert_eq!(expected, allocs.get(client, id).unwrap().unwrap());
+}
+
+pub fn assert_claim(rt: &MockRuntime, provider: ActorID, id: ClaimID, expected: &Claim) {
+    let st: State = rt.get_state();
+    let store = &rt.store();
+    let mut claims = st.load_claims(store).unwrap();
+
+    assert_eq!(expected, claims.get(provider, id).unwrap().unwrap());
 }

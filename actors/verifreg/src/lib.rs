@@ -20,16 +20,17 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
-use crate::ext::datacap::{DestroyParams, MintParams};
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_map_with_root_and_bitwidth, parse_uint_key, resolve_to_actor_id,
-    ActorDowncast, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
+    ActorDowncast, ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 };
-use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen, DATACAP_TOKEN_ACTOR_ADDR};
+use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
+
+use crate::ext::datacap::{DestroyParams, MintParams};
 
 pub use self::state::Allocation;
 pub use self::state::Claim;
@@ -71,7 +72,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // root should be an ID address
         let id_addr = rt
@@ -99,10 +100,7 @@ impl Actor {
             ));
         }
 
-        let verifier = resolve_to_actor_id(rt, &params.address).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", params.address),
-        )?;
+        let verifier = resolve_to_actor_id(rt, &params.address)?;
 
         let verifier = Address::new_id(verifier);
 
@@ -136,11 +134,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let verifier = resolve_to_actor_id(rt, &verifier_addr).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", verifier_addr),
-        )?;
-
+        let verifier = resolve_to_actor_id(rt, &verifier_addr)?;
         let verifier = Address::new_id(verifier);
 
         let state: State = rt.state()?;
@@ -171,11 +165,7 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_actor_id(rt, &params.address).context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            format!("failed to resolve addr {} to ID addr", params.address),
-        )?;
-
+        let client = resolve_to_actor_id(rt, &params.address)?;
         let client = Address::new_id(client);
 
         let st: State = rt.state()?;
@@ -216,7 +206,7 @@ impl Actor {
         })?;
 
         // Credit client token allowance.
-        let operators = vec![*STORAGE_MARKET_ACTOR_ADDR];
+        let operators = vec![STORAGE_MARKET_ACTOR_ADDR];
         mint(rt, &client, &params.allowance, operators).context(format!(
             "failed to mint {} data cap to client {}",
             &params.allowance, client
@@ -233,35 +223,13 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove).context_code(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            format!(
-                "failed to resolve client addr {} to ID addr",
-                params.verified_client_to_remove
-            ),
-        )?;
-
+        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove)?;
         let client = Address::new_id(client);
 
-        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier)
-            .context_code(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                format!(
-                    "failed to resolve verifier addr {} to ID addr",
-                    params.verifier_request_1.verifier
-                ),
-            )?;
+        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier)?;
         let verifier_1 = Address::new_id(verifier_1);
 
-        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier)
-            .context_code(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                format!(
-                    "failed to resolve verifier addr {} to ID addr",
-                    params.verifier_request_2.verifier
-                ),
-            )?;
-
+        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier)?;
         let verifier_2 = Address::new_id(verifier_2);
 
         if verifier_1 == verifier_2 {
@@ -630,6 +598,8 @@ impl Actor {
     // Receives data cap tokens (only) and creates allocations according to one or more
     // allocation requests specified in the transfer's operator data.
     // The token amount received must exactly correspond to the sum of the requested allocation sizes.
+    // This method does not support partial success (yet): all allocations must succeed,
+    // or the transfer will be rejected.
     // Returns the ids of the created allocations.
     pub fn universal_receiver_hook<BS, RT>(
         rt: &mut RT,
@@ -640,7 +610,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         // Accept only the data cap token.
-        rt.validate_immediate_caller_is(&[*DATACAP_TOKEN_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_is(&[DATACAP_TOKEN_ACTOR_ADDR])?;
 
         let my_id = rt.message().receiver().id().unwrap();
         let curr_epoch = rt.curr_epoch();
@@ -651,17 +621,15 @@ impl Actor {
         let client = tokens_received.from;
 
         // Extract and validate allocation request from the operator data.
-        let alloc_reqs = validate_alloc_req(
-            &tokens_received.operator_data,
-            rt.policy(),
-            curr_epoch,
-            &token_datacap,
-        )?;
+        let reqs: AllocationRequests =
+            deserialize(&tokens_received.operator_data, "allocation requests")?;
+        let mut allocation_total = DataCap::zero();
 
         // Construct new allocation records.
-        let mut new_allocs = Vec::with_capacity(alloc_reqs.requests.len());
-        for req in alloc_reqs.requests {
-            // Require the provider to be a miner actor.
+        let mut new_allocs = Vec::with_capacity(reqs.allocations.len());
+        for req in &reqs.allocations {
+            validate_new_allocation(req, rt.policy(), curr_epoch)?;
+            // Require the provider for new allocations to be a miner actor.
             // This doesn't matter much, but is more ergonomic to fail rather than lock up datacap.
             let provider_id = resolve_miner_id(rt, &req.provider)?;
             new_allocs.push(Allocation {
@@ -672,13 +640,55 @@ impl Actor {
                 term_min: req.term_min,
                 term_max: req.term_max,
                 expiration: req.expiration,
-            })
+            });
+            allocation_total += DataCap::from(req.size.0);
         }
-        // Save allocations
+
+        let st: State = rt.state()?;
+        let mut claims = st.load_claims(rt.store())?;
+        let mut updated_claims = Vec::<(ClaimID, Claim)>::new();
+        for req in &reqs.extensions {
+            // Note: we don't check the client address here, by design.
+            // Any client can spend datacap to extend an existing claim.
+            let provider_id = rt
+                .resolve_address(&req.provider)
+                .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                    format!("failed to resolve provider address {}", req.provider)
+                })?;
+            let claim = state::get_claim(&mut claims, provider_id, req.claim)?
+                .with_context_code(ExitCode::USR_NOT_FOUND, || {
+                    format!("no claim {} for provider {}", req.claim, provider_id)
+                })?;
+            let policy = rt.policy();
+
+            validate_claim_extension(req, claim, policy, curr_epoch)?;
+            // The claim's client is not changed to be the address of the token sender.
+            // It remains the original allocation client.
+            updated_claims.push((req.claim, Claim { term_max: req.term_max, ..*claim }));
+            allocation_total += DataCap::from(claim.size.0);
+        }
+
+        // Allocation size must match the tokens received exactly (we don't return change).
+        if allocation_total != token_datacap {
+            return Err(actor_error!(
+                illegal_argument,
+                "total allocation size {} must match data cap amount received {}",
+                allocation_total,
+                token_datacap
+            ));
+        }
+        // Partial success isn't supported yet, but these results make space for it in the future.
+        let allocation_results = BatchReturn::ok(new_allocs.len() as u32);
+        let extension_results = BatchReturn::ok(updated_claims.len() as u32);
+
+        // Save new allocations and updated claims.
         let ids = rt.transaction(|st: &mut State, rt| {
-            st.insert_allocations(rt.store(), client, new_allocs.into_iter())
+            let ids = st.insert_allocations(rt.store(), client, new_allocs.into_iter())?;
+            st.put_claims(rt.store(), updated_claims.into_iter())?;
+            Ok(ids)
         })?;
-        Ok(AllocationsResponse { allocations: ids })
+
+        Ok(AllocationsResponse { allocation_results, extension_results, new_allocations: ids })
     }
 }
 
@@ -908,89 +918,118 @@ fn validate_tokens_received(
     Ok(payload)
 }
 
-// Deserializes and validates a serialized allocation.
-fn validate_alloc_req(
-    serialized: &RawBytes,
+// Validates an allocation request.
+fn validate_new_allocation(
+    req: &AllocationRequest,
     policy: &Policy,
     curr_epoch: ChainEpoch,
-    datacap_amount: &DataCap,
-) -> Result<AllocationRequests, ActorError> {
-    let reqs: AllocationRequests = deserialize(serialized, "allocation requests")?;
-
-    let mut allocation_total = DataCap::zero();
-    for req in &reqs.requests {
-        allocation_total += DataCap::from(req.size.0);
-
-        // Size must be at least the policy minimum.
-        if DataCap::from(req.size.0) < policy.minimum_verified_allocation_size {
-            return Err(actor_error!(
-                illegal_argument,
-                "allocation size {} below minimum {}",
-                req.size.0,
-                policy.minimum_verified_allocation_size
-            ));
-        }
-
-        // Term must be at least the policy minimum.
-        if req.term_min < policy.minimum_verified_allocation_term {
-            return Err(actor_error!(
-                illegal_argument,
-                "allocation term min {} below limit {}",
-                req.term_min,
-                policy.minimum_verified_allocation_term
-            ));
-        }
-        // Term cannot exceed the policy maximum.
-        if req.term_max > policy.maximum_verified_allocation_term {
-            return Err(actor_error!(
-                illegal_argument,
-                "allocation term max {} above limit {}",
-                req.term_max,
-                policy.maximum_verified_allocation_term
-            ));
-        }
-        // Term range must be non-empty.
-        if req.term_min > req.term_max {
-            return Err(actor_error!(
-                illegal_argument,
-                "allocation term min {} exceeds term max {}",
-                req.term_min,
-                req.term_max
-            ));
-        }
-
-        // Allocation must expire in the future.
-        if req.expiration < curr_epoch {
-            return Err(actor_error!(
-                illegal_argument,
-                "allocation expiration epoch {} has passed current epoch {}",
-                req.expiration,
-                curr_epoch
-            ));
-        }
-        // Allocation must expire soon enough.
-        let max_expiration = curr_epoch + policy.maximum_verified_allocation_expiration;
-        if req.expiration > max_expiration {
-            return Err(actor_error!(
-                illegal_argument,
-                "allocation expiration {} exceeds maximum {}",
-                req.expiration,
-                max_expiration
-            ));
-        }
-    }
-
-    // Allocation size must match the tokens received exactly (we can't return change).
-    if &allocation_total != datacap_amount {
+) -> Result<(), ActorError> {
+    // Size must be at least the policy minimum.
+    if DataCap::from(req.size.0) < policy.minimum_verified_allocation_size {
         return Err(actor_error!(
             illegal_argument,
-            "total allocation size {} must match data cap amount received {}",
-            allocation_total,
-            datacap_amount
+            "allocation size {} below minimum {}",
+            req.size.0,
+            policy.minimum_verified_allocation_size
+        ));
+    }
+    // Term must be at least the policy minimum.
+    if req.term_min < policy.minimum_verified_allocation_term {
+        return Err(actor_error!(
+            illegal_argument,
+            "allocation term min {} below limit {}",
+            req.term_min,
+            policy.minimum_verified_allocation_term
+        ));
+    }
+    // Term cannot exceed the policy maximum.
+    if req.term_max > policy.maximum_verified_allocation_term {
+        return Err(actor_error!(
+            illegal_argument,
+            "allocation term max {} above limit {}",
+            req.term_max,
+            policy.maximum_verified_allocation_term
+        ));
+    }
+    // Term range must be non-empty.
+    if req.term_min > req.term_max {
+        return Err(actor_error!(
+            illegal_argument,
+            "allocation term min {} exceeds term max {}",
+            req.term_min,
+            req.term_max
         ));
     }
 
-    Ok(reqs)
+    // Allocation must expire in the future.
+    if req.expiration < curr_epoch {
+        return Err(actor_error!(
+            illegal_argument,
+            "allocation expiration epoch {} has passed current epoch {}",
+            req.expiration,
+            curr_epoch
+        ));
+    }
+    // Allocation must expire soon enough.
+    let max_expiration = curr_epoch + policy.maximum_verified_allocation_expiration;
+    if req.expiration > max_expiration {
+        return Err(actor_error!(
+            illegal_argument,
+            "allocation expiration {} exceeds maximum {}",
+            req.expiration,
+            max_expiration
+        ));
+    }
+    Ok(())
+}
+
+fn validate_claim_extension(
+    req: &ClaimExtensionRequest,
+    claim: &Claim,
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
+) -> Result<(), ActorError> {
+    // The new term max is the policy limit after current epoch (not after the old term max).
+    let term_limit_absolute = curr_epoch + policy.maximum_verified_allocation_term;
+    let term_limit_relative = term_limit_absolute - claim.term_start;
+    if req.term_max > term_limit_relative {
+        return Err(actor_error!(
+            illegal_argument,
+            format!(
+                "term_max {} for claim {} exceeds maximum {} at current epoch {}",
+                req.term_max, req.claim, term_limit_relative, curr_epoch
+            )
+        ));
+    }
+    // The new term max must be larger than the old one.
+    // Cannot reduce term, and cannot spend datacap on a zero increase.
+    // There is no policy on minimum extension duration.
+    if req.term_max <= claim.term_max {
+        return Err(actor_error!(
+            illegal_argument,
+            "term_max {} for claim {} is not larger than existing term max {}",
+            req.term_max,
+            req.claim,
+            claim.term_max
+        ));
+    }
+    // The claim must not have already expired.
+    // Unlike when the claim client extends term up to the originally-allowed max,
+    // allowing extension of expired claims with new datacap could revive a claim arbitrarily
+    // far into the future.
+    // A claim can be extended continuously into the future, but once it has expired
+    // it is expired for good.
+    let claim_expiration = claim.term_start + claim.term_max;
+    if curr_epoch > claim_expiration {
+        return Err(actor_error!(
+            forbidden,
+            "claim {} expired at {}, current epoch {}",
+            req.claim,
+            claim_expiration,
+            curr_epoch
+        ));
+    }
+    Ok(())
 }
 
 // Checks that an address corresponsds to a miner actor.

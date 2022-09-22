@@ -52,7 +52,7 @@ fn create_miner_test() {
     let res = v
         .apply_message(
             owner,
-            *STORAGE_POWER_ACTOR_ADDR,
+            STORAGE_POWER_ACTOR_ADDR,
             TokenAmount::from_atto(1000u32),
             PowerMethod::CreateMiner as u64,
             params.clone(),
@@ -61,14 +61,14 @@ fn create_miner_test() {
 
     let expect = ExpectInvocation {
         // send to power actor
-        to: *STORAGE_POWER_ACTOR_ADDR,
+        to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::CreateMiner as u64,
         params: Some(serialize(&params, "power create miner params").unwrap()),
         ret: Some(res.ret),
         subinvocs: Some(vec![
             // request init actor construct miner
             ExpectInvocation {
-                to: *INIT_ACTOR_ADDR,
+                to: INIT_ACTOR_ADDR,
                 method: InitMethod::Exec as u64,
                 subinvocs: Some(vec![ExpectInvocation {
                     // init then calls miner constructor
@@ -151,8 +151,8 @@ fn test_cron_tick() {
     // run cron and expect a call to miner and a call to update reward actor params
     apply_ok(
         &v,
-        *CRON_ACTOR_ADDR,
-        *STORAGE_POWER_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
+        STORAGE_POWER_ACTOR_ADDR,
         TokenAmount::zero(),
         PowerMethod::OnEpochTickEnd as u64,
         RawBytes::default(),
@@ -161,20 +161,20 @@ fn test_cron_tick() {
     // expect miner call to be missing
     ExpectInvocation {
         // original send to storage power actor
-        to: *STORAGE_POWER_ACTOR_ADDR,
+        to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::OnEpochTickEnd as u64,
         subinvocs: Some(vec![
             // get data from reward actor for any eventual calls to confirmsectorproofsparams
             ExpectInvocation {
-                to: *REWARD_ACTOR_ADDR,
+                to: REWARD_ACTOR_ADDR,
                 method: RewardMethod::ThisEpochReward as u64,
                 ..Default::default()
             },
             // expect call to reward to update kpi
             ExpectInvocation {
-                to: *REWARD_ACTOR_ADDR,
+                to: REWARD_ACTOR_ADDR,
                 method: RewardMethod::UpdateNetworkKPI as u64,
-                from: Some(*STORAGE_POWER_ACTOR_ADDR),
+                from: Some(STORAGE_POWER_ACTOR_ADDR),
                 ..Default::default()
             },
         ]),
@@ -188,8 +188,8 @@ fn test_cron_tick() {
     // run cron and expect a call to miner and a a call to update reward actor params
     apply_ok(
         &v,
-        *CRON_ACTOR_ADDR,
-        *STORAGE_POWER_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
+        STORAGE_POWER_ACTOR_ADDR,
         TokenAmount::zero(),
         PowerMethod::OnEpochTickEnd as u64,
         RawBytes::default(),
@@ -198,7 +198,7 @@ fn test_cron_tick() {
     let sub_invocs = vec![
         // get data from reward and power for any eventual calls to confirmsectorproofsvalid
         ExpectInvocation {
-            to: *REWARD_ACTOR_ADDR,
+            to: REWARD_ACTOR_ADDR,
             method: RewardMethod::ThisEpochReward as u64,
             ..Default::default()
         },
@@ -206,15 +206,15 @@ fn test_cron_tick() {
         ExpectInvocation {
             to: id_addr,
             method: MinerMethod::OnDeferredCronEvent as u64,
-            from: Some(*STORAGE_POWER_ACTOR_ADDR),
+            from: Some(STORAGE_POWER_ACTOR_ADDR),
             value: Some(TokenAmount::zero()),
             ..Default::default()
         },
         // expect call to reward to update kpi
         ExpectInvocation {
-            to: *REWARD_ACTOR_ADDR,
+            to: REWARD_ACTOR_ADDR,
             method: RewardMethod::UpdateNetworkKPI as u64,
-            from: Some(*STORAGE_POWER_ACTOR_ADDR),
+            from: Some(STORAGE_POWER_ACTOR_ADDR),
             ..Default::default()
         },
     ];
@@ -222,7 +222,7 @@ fn test_cron_tick() {
     // expect call to miner
     ExpectInvocation {
         // original send to storage power actor
-        to: *STORAGE_POWER_ACTOR_ADDR,
+        to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::OnEpochTickEnd as u64,
         subinvocs: Some(sub_invocs),
         ..Default::default()

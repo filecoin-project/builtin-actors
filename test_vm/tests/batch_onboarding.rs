@@ -12,9 +12,10 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
+use test_case::test_case;
 use test_vm::util::{
     advance_to_proving_deadline, apply_ok, create_accounts, create_miner,
-    invariant_failure_patterns, precommit_sectors, prove_commit_sectors, submit_windowed_post,
+    invariant_failure_patterns, precommit_sectors_v2, prove_commit_sectors, submit_windowed_post,
 };
 use test_vm::VM;
 
@@ -44,8 +45,9 @@ impl Onboarding {
     }
 }
 
-#[test]
-fn batch_onboarding() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn batch_onboarding(v2: bool) {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
@@ -92,7 +94,7 @@ fn batch_onboarding() {
         v = v.with_epoch(epoch + item.epoch_delay);
 
         if item.pre_commit_sector_count > 0 {
-            let mut new_precommits = precommit_sectors(
+            let mut new_precommits = precommit_sectors_v2(
                 &mut v,
                 item.pre_commit_sector_count,
                 item.pre_commit_batch_size,
@@ -102,6 +104,7 @@ fn batch_onboarding() {
                 next_sector_no,
                 next_sector_no == 0,
                 None,
+                v2,
             );
             precommmits.append(&mut new_precommits);
             next_sector_no += item.pre_commit_sector_count;
@@ -143,8 +146,8 @@ fn batch_onboarding() {
 
     apply_ok(
         &v,
-        *SYSTEM_ACTOR_ADDR,
-        *CRON_ACTOR_ADDR,
+        SYSTEM_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
         RawBytes::default(),

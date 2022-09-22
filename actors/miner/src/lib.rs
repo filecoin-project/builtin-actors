@@ -7,21 +7,9 @@ use std::iter;
 use std::ops::Neg;
 
 use anyhow::{anyhow, Error};
-pub use bitfield_queue::*;
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
-use cid::multihash::Code;
 use cid::Cid;
-pub use deadline_assignment::*;
-pub use deadline_info::*;
-pub use deadline_state::*;
-pub use deadlines::*;
-pub use expiration_queue::*;
-use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
-use fil_actors_runtime::{
-    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-};
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
@@ -29,13 +17,6 @@ use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-// The following errors are particular cases of illegal state.
-// They're not expected to ever happen, but if they do, distinguished codes can help us
-// diagnose the problem.
-
-pub use beneficiary::*;
-use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
-use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::error::*;
 use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
@@ -43,9 +24,27 @@ use fvm_shared::sector::*;
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, info, warn};
-pub use monies::*;
+use multihash::Code::Blake2b256;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
+
+pub use beneficiary::*;
+pub use bitfield_queue::*;
+pub use commd::*;
+pub use deadline_assignment::*;
+pub use deadline_info::*;
+pub use deadline_state::*;
+pub use deadlines::*;
+pub use expiration_queue::*;
+use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
+use fil_actors_runtime::{
+    actor_error, cbor, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
+pub use monies::*;
 pub use partition_state::*;
 pub use policy::*;
 pub use sector_map::*;
@@ -55,8 +54,9 @@ pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
 
-use crate::commd::{is_unsealed_sector, CompactCommD};
-use crate::Code::Blake2b256;
+// The following errors are particular cases of illegal state.
+// They're not expected to ever happen, but if they do, distinguished codes can help us
+// diagnose the problem.
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -122,6 +122,7 @@ pub enum Method {
     ProveReplicaUpdates2 = 29,
     ChangeBeneficiary = 30,
     GetBeneficiary = 31,
+    ExtendSectorExpiration2 = 32,
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -139,7 +140,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(&[*INIT_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
         check_control_addresses(rt.policy(), &params.control_addresses)?;
         check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
@@ -549,7 +550,7 @@ impl Actor {
                 params.chain_commit_epoch,
                 &[],
             )?;
-            if comm_rand != params.chain_commit_rand {
+            if Randomness(comm_rand.into()) != params.chain_commit_rand {
                 return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
             }
 
@@ -677,7 +678,7 @@ impl Actor {
     /// and precommit state is removed.
     fn prove_commit_aggregate<BS, RT>(
         rt: &mut RT,
-        mut params: ProveCommitAggregateParams,
+        params: ProveCommitAggregateParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -799,8 +800,8 @@ impl Actor {
 
             let svi = AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
-                randomness: sv_info_randomness,
-                interactive_randomness: sv_info_interactive_randomness,
+                randomness: Randomness(sv_info_randomness.into()),
+                interactive_randomness: Randomness(sv_info_interactive_randomness.into()),
                 sealed_cid: precommit.info.sealed_cid,
                 unsealed_cid,
             };
@@ -1769,7 +1770,13 @@ impl Actor {
             // This could make sector maximum lifetime validation more lenient if the maximum sector limit isn't hit first.
             let max_activation = curr_epoch
                 + max_prove_commit_duration(rt.policy(), precommit.seal_proof).unwrap_or_default();
-            validate_expiration(rt, max_activation, precommit.expiration, precommit.seal_proof)?;
+            validate_expiration(
+                rt.policy(),
+                curr_epoch,
+                max_activation,
+                precommit.expiration,
+                precommit.seal_proof,
+            )?;
 
             sectors_deals.push(ext::market::SectorDeals {
                 sector_type: precommit.seal_proof,
@@ -2042,7 +2049,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(iter::once(&*STORAGE_POWER_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
         // This should be enforced by the power actor. We log here just in case
         // something goes wrong.
@@ -2103,83 +2110,60 @@ impl Actor {
     /// Changes the expiration epoch for a sector to a new, later one.
     /// The sector must not be terminated or faulty.
     /// The sector's power is recomputed for the new expiration.
+    /// This method is legacy and should be replaced with calls to extend_sector_expiration2
     fn extend_sector_expiration<BS, RT>(
         rt: &mut RT,
-        mut params: ExtendSectorExpirationParams,
+        params: ExtendSectorExpirationParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        {
-            let policy = rt.policy();
-            if params.extensions.len() as u64 > policy.declarations_max {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "too many declarations {}, max {}",
-                    params.extensions.len(),
-                    policy.declarations_max
-                ));
-            }
-        }
+        let extend_expiration_inner =
+            validate_legacy_extension_declarations(&params.extensions, rt.policy())?;
+        Self::extend_sector_expiration_inner(
+            rt,
+            extend_expiration_inner,
+            ExtensionKind::ExtendCommittmentLegacy,
+        )
+    }
 
-        // limit the number of sectors declared at once
-        // https://github.com/filecoin-project/specs-actors/issues/416
-        let mut sector_count: u64 = 0;
+    // Up to date version of extend_sector_expiration that correctly handles simple qap sectors
+    // with FIL+ claims. Extension is only allowed if all claim max terms extend past new expiration
+    // or claims are dropped.  Power only changes when claims are dropped.
+    fn extend_sector_expiration2<BS, RT>(
+        rt: &mut RT,
+        params: ExtendSectorExpiration2Params,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        let extend_expiration_inner = validate_extension_declarations(rt, params.extensions)?;
+        Self::extend_sector_expiration_inner(
+            rt,
+            extend_expiration_inner,
+            ExtensionKind::ExtendCommittment,
+        )
+    }
 
-        for decl in &mut params.extensions {
-            let policy = rt.policy();
-            if decl.deadline >= policy.wpost_period_deadlines {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "deadline {} not in range 0..{}",
-                    decl.deadline,
-                    policy.wpost_period_deadlines
-                ));
-            }
-
-            let sectors = match decl.sectors.validate() {
-                Ok(sectors) => sectors,
-                Err(e) => {
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "failed to validate sectors for deadline {}, partition {}: {}",
-                        decl.deadline,
-                        decl.partition,
-                        e
-                    ));
-                }
-            };
-
-            match sector_count.checked_add(sectors.len()) {
-                Some(sum) => sector_count = sum,
-                None => {
-                    return Err(actor_error!(illegal_argument, "sector bitfield integer overflow"));
-                }
-            }
-        }
-
-        {
-            let policy = rt.policy();
-            if sector_count > policy.addressed_sectors_max {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "too many sectors for declaration {}, max {}",
-                    sector_count,
-                    policy.addressed_sectors_max
-                ));
-            }
-        }
-
+    fn extend_sector_expiration_inner<BS, RT>(
+        rt: &mut RT,
+        inner: ExtendExpirationsInner,
+        kind: ExtensionKind,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
         let curr_epoch = rt.curr_epoch();
 
+        /* Loop over sectors and do extension */
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
-
-            let store = rt.store();
 
             let mut deadlines =
                 state.load_deadlines(rt.store()).map_err(|e| e.wrap("failed to load deadlines"))?;
@@ -2190,8 +2174,7 @@ impl Actor {
                 .take(rt.policy().wpost_period_deadlines as usize)
                 .collect();
             let mut deadlines_to_load = Vec::<u64>::new();
-
-            for decl in params.extensions {
+            for decl in &inner.extensions {
                 // the deadline indices are already checked.
                 let decls = &mut decls_by_deadline[decl.deadline as usize];
                 if decls.is_empty() {
@@ -2210,14 +2193,14 @@ impl Actor {
             for deadline_idx in deadlines_to_load {
                 let policy = rt.policy();
                 let mut deadline =
-                    deadlines.load_deadline(policy, store, deadline_idx).map_err(|e| {
+                    deadlines.load_deadline(policy, rt.store(), deadline_idx).map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             format!("failed to load deadline {}", deadline_idx),
                         )
                     })?;
 
-                let mut partitions = deadline.partitions_amt(store).map_err(|e| {
+                let mut partitions = deadline.partitions_amt(rt.store()).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load partitions for deadline {}", deadline_idx),
@@ -2245,66 +2228,32 @@ impl Actor {
                         .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
                     let old_sectors = sectors
-                        .load_sector(&mut decl.sectors)
+                        .load_sector(&decl.sectors)
                         .map_err(|e| e.wrap("failed to load sectors"))?;
-
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
                         .iter()
-                        .map(|sector| {
-                            if !can_extend_seal_proof_type(sector.seal_proof) {
-                                return Err(actor_error!(
-                                    forbidden,
-                                    "cannot extend expiration for sector {} with unsupported \
-                                    seal type {:?}",
-                                    sector.sector_number,
-                                    sector.seal_proof
-                                ));
-                            }
-
-                            // This can happen if the sector should have already expired, but hasn't
-                            // because the end of its deadline hasn't passed yet.
-                            if sector.expiration < rt.curr_epoch() {
-                                return Err(actor_error!(
-                                    forbidden,
-                                    "cannot extend expiration for expired sector {} at {}",
-                                    sector.sector_number,
-                                    sector.expiration
-                                ));
-                            }
-
-                            if decl.new_expiration < sector.expiration {
-                                return Err(actor_error!(
-                                    illegal_argument,
-                                    "cannot reduce sector {} expiration to {} from {}",
-                                    sector.sector_number,
+                        .map(|sector| match kind {
+                            ExtensionKind::ExtendCommittmentLegacy => {
+                                extend_sector_committment_legacy(
+                                    rt.policy(),
+                                    curr_epoch,
                                     decl.new_expiration,
-                                    sector.expiration
-                                ));
+                                    sector,
+                                )
                             }
-
-                            validate_expiration(
-                                rt,
-                                sector.activation,
-                                decl.new_expiration,
-                                sector.seal_proof,
-                            )?;
-
-                            // Remove "spent" deal weights
-                            let new_deal_weight = (&sector.deal_weight
-                                * (sector.expiration - curr_epoch))
-                                .div_floor(&BigInt::from(sector.expiration - sector.activation));
-
-                            let new_verified_deal_weight = (&sector.verified_deal_weight
-                                * (sector.expiration - curr_epoch))
-                                .div_floor(&BigInt::from(sector.expiration - sector.activation));
-
-                            let mut sector = sector.clone();
-                            sector.expiration = decl.new_expiration;
-
-                            sector.deal_weight = new_deal_weight;
-                            sector.verified_deal_weight = new_verified_deal_weight;
-
-                            Ok(sector)
+                            ExtensionKind::ExtendCommittment => match &inner.claims {
+                                None => Err(actor_error!(
+                                    unspecified,
+                                    "extend2 always specifies (potentially empty) claim mapping"
+                                )),
+                                Some(claim_space_by_sector) => extend_sector_committment(
+                                    rt.policy(),
+                                    curr_epoch,
+                                    decl.new_expiration,
+                                    sector,
+                                    claim_space_by_sector,
+                                ),
+                            },
                         })
                         .collect::<Result<_, _>>()?;
 
@@ -2318,7 +2267,13 @@ impl Actor {
 
                     // Remove old sectors from partition and assign new sectors.
                     let (partition_power_delta, partition_pledge_delta) = partition
-                        .replace_sectors(store, &old_sectors, &new_sectors, info.sector_size, quant)
+                        .replace_sectors(
+                            rt.store(),
+                            &old_sectors,
+                            &new_sectors,
+                            info.sector_size,
+                            quant,
+                        )
                         .map_err(|e| {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
@@ -2359,7 +2314,7 @@ impl Actor {
                 // Record partitions in deadline expiration queue
                 for epoch in epochs_to_reschedule {
                     let p_idxs = partitions_by_new_epoch.get(&epoch).unwrap();
-                    deadline.add_expiration_partitions(store, epoch, p_idxs, quant).map_err(
+                    deadline.add_expiration_partitions(rt.store(), epoch, p_idxs, quant).map_err(
                         |e| {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
@@ -2373,18 +2328,20 @@ impl Actor {
                     )?;
                 }
 
-                deadlines.update_deadline(policy, store, deadline_idx, &deadline).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to save deadline {}", deadline_idx),
-                    )
-                })?;
+                deadlines.update_deadline(policy, rt.store(), deadline_idx, &deadline).map_err(
+                    |e| {
+                        e.downcast_default(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            format!("failed to save deadline {}", deadline_idx),
+                        )
+                    },
+                )?;
             }
 
             state.sectors = sectors.amt.flush().map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save sectors")
             })?;
-            state.save_deadlines(store, deadlines).map_err(|e| {
+            state.save_deadlines(rt.store(), deadlines).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
 
@@ -2860,7 +2817,7 @@ impl Actor {
     /// May not be invoked if the deadline has any un-processed early terminations.
     fn compact_partitions<BS, RT>(
         rt: &mut RT,
-        mut params: CompactPartitionsParams,
+        params: CompactPartitionsParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -3001,7 +2958,7 @@ impl Actor {
     /// 99 can be masked out to collapse these two ranges into one.
     fn compact_sector_numbers<BS, RT>(
         rt: &mut RT,
-        mut params: CompactSectorNumbersParams,
+        params: CompactSectorNumbersParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -3064,7 +3021,7 @@ impl Actor {
         let (pledge_delta_total, to_burn) = rt.transaction(|st: &mut State, rt| {
             let mut pledge_delta_total = TokenAmount::zero();
 
-            rt.validate_immediate_caller_is(std::iter::once(&*REWARD_ACTOR_ADDR))?;
+            rt.validate_immediate_caller_is(std::iter::once(&REWARD_ACTOR_ADDR))?;
 
             let (reward_to_lock, locked_reward_vesting_spec) =
                 locked_reward_from_reward(params.reward);
@@ -3297,6 +3254,15 @@ impl Actor {
                 if info.beneficiary != info.owner {
                     // remaining_quota always zero and positive
                     let remaining_quota = info.beneficiary_term.available(rt.curr_epoch());
+                    if remaining_quota.is_zero() {
+                        return Err(actor_error!(
+                            forbidden,
+                            "beneficiary expiration of epoch {} passed or quota of {} depleted with {} used",
+                            info.beneficiary_term.expiration,
+                            info.beneficiary_term.quota,
+                            info.beneficiary_term.used_quota
+                        ));
+                    }
                     amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
                     if amount_withdrawn.is_positive() {
                         info.beneficiary_term.used_quota += amount_withdrawn;
@@ -3519,7 +3485,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_POWER_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
         let payload: CronEventPayload = from_slice(&params.event_payload).map_err(|e| {
             actor_error!(
@@ -3578,6 +3544,257 @@ pub struct ReplicaUpdateInner {
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
     pub replica_proof: Vec<u8>,
+}
+
+enum ExtensionKind {
+    ExtendCommittmentLegacy, // handle only legacy sectors
+    ExtendCommittment,       // handle both Simple QAP and legacy sectors
+                             // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
+                             // ExtendProofValidity
+}
+
+// ExtendSectorExpiration param
+struct ExtendExpirationsInner {
+    extensions: Vec<ValidatedExpirationExtension>,
+    claims: Option<BTreeMap<SectorNumber, u64>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ValidatedExpirationExtension {
+    pub deadline: u64,
+    pub partition: u64,
+    pub sectors: BitField,
+    pub new_expiration: ChainEpoch,
+}
+
+#[allow(clippy::too_many_arguments)] // validate mut prevents implementing From
+impl From<ExpirationExtension2> for ValidatedExpirationExtension {
+    fn from(e2: ExpirationExtension2) -> Self {
+        let mut sectors = BitField::new();
+        for sc in e2.sectors_with_claims {
+            sectors.set(sc.sector_number)
+        }
+        sectors |= &e2.sectors;
+
+        Self {
+            deadline: e2.deadline,
+            partition: e2.partition,
+            sectors,
+            new_expiration: e2.new_expiration,
+        }
+    }
+}
+
+fn validate_legacy_extension_declarations(
+    extensions: &[ExpirationExtension],
+    policy: &Policy,
+) -> Result<ExtendExpirationsInner, ActorError> {
+    let vec_validated = extensions
+        .iter()
+        .map(|decl| {
+            if decl.deadline >= policy.wpost_period_deadlines {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "deadline {} not in range 0..{}",
+                    decl.deadline,
+                    policy.wpost_period_deadlines
+                ));
+            }
+
+            Ok(ValidatedExpirationExtension {
+                deadline: decl.deadline,
+                partition: decl.partition,
+                sectors: decl.sectors.clone(),
+                new_expiration: decl.new_expiration,
+            })
+        })
+        .collect::<Result<_, _>>()?;
+
+    Ok(ExtendExpirationsInner { extensions: vec_validated, claims: None })
+}
+
+fn validate_extension_declarations<BS, RT>(
+    rt: &mut RT,
+    extensions: Vec<ExpirationExtension2>,
+) -> Result<ExtendExpirationsInner, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    let mut claim_space_by_sector = BTreeMap::<SectorNumber, u64>::new();
+
+    for decl in &extensions {
+        let policy = rt.policy();
+        if decl.deadline >= policy.wpost_period_deadlines {
+            return Err(actor_error!(
+                illegal_argument,
+                "deadline {} not in range 0..{}",
+                decl.deadline,
+                policy.wpost_period_deadlines
+            ));
+        }
+
+        for sc in &decl.sectors_with_claims {
+            let claims = get_claims(rt, &sc.maintain_claims)
+                .with_context(|| format!("failed to get claims for sector {}", sc.sector_number))?;
+
+            for (i, claim) in claims.iter().enumerate() {
+                // check provider and sector matches
+                if claim.provider != rt.message().receiver().id().unwrap() {
+                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={}, expected claim provider to be {} but found {} ", sc.sector_number, sc.maintain_claims[i], rt.message().receiver().id().unwrap(), claim.provider));
+                }
+                if claim.sector != sc.sector_number {
+                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={} expected claim sector number to be {} but found {} ", sc.sector_number, sc.maintain_claims[i], sc.sector_number, claim.sector));
+                }
+
+                // check expiration does not exceed term max
+                if decl.new_expiration > claim.term_start + claim.term_max {
+                    return Err(actor_error!(forbidden, "failed to validate declaration sector={}, claim={} claim only allows extension to {} but declared new expiration is {}", sc.sector_number, sc.maintain_claims[i], claim.term_start + claim.term_max, decl.new_expiration));
+                }
+
+                claim_space_by_sector
+                    .entry(sc.sector_number)
+                    .and_modify(|size| *size += claim.size.0)
+                    .or_insert(claim.size.0);
+            }
+        }
+    }
+    Ok(ExtendExpirationsInner {
+        extensions: extensions.into_iter().map(|e2| e2.into()).collect(),
+        claims: Some(claim_space_by_sector),
+    })
+}
+
+fn extend_sector_committment(
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
+    new_expiration: ChainEpoch,
+    sector: &SectorOnChainInfo,
+    claim_space_by_sector: &BTreeMap<SectorNumber, u64>,
+) -> Result<SectorOnChainInfo, ActorError> {
+    validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
+
+    // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
+    if sector.simple_qa_power {
+        extend_simple_qap_sector(new_expiration, sector, claim_space_by_sector)
+    } else {
+        extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+    }
+}
+
+fn extend_sector_committment_legacy(
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
+    new_expiration: ChainEpoch,
+    sector: &SectorOnChainInfo,
+) -> Result<SectorOnChainInfo, ActorError> {
+    validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
+
+    // it is an error to do legacy sector expiration on simple-qa power sectors with deal weight
+    if sector.simple_qa_power
+        && (sector.verified_deal_weight > BigInt::zero() || sector.deal_weight > BigInt::zero())
+    {
+        return Err(actor_error!(
+            forbidden,
+            "cannot use legacy sector extension for simple qa power with deal weight {}",
+            sector.sector_number
+        ));
+    }
+    extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+}
+
+fn validate_extended_expiration(
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
+    new_expiration: ChainEpoch,
+    sector: &SectorOnChainInfo,
+) -> Result<(), ActorError> {
+    if !can_extend_seal_proof_type(sector.seal_proof) {
+        return Err(actor_error!(
+            forbidden,
+            "cannot extend expiration for sector {} with unsupported \
+            seal type {:?}",
+            sector.sector_number,
+            sector.seal_proof
+        ));
+    }
+    // This can happen if the sector should have already expired, but hasn't
+    // because the end of its deadline hasn't passed yet.
+    if sector.expiration < curr_epoch {
+        return Err(actor_error!(
+            forbidden,
+            "cannot extend expiration for expired sector {} at {}",
+            sector.sector_number,
+            sector.expiration
+        ));
+    }
+
+    if new_expiration < sector.expiration {
+        return Err(actor_error!(
+            illegal_argument,
+            "cannot reduce sector {} expiration to {} from {}",
+            sector.sector_number,
+            new_expiration,
+            sector.expiration
+        ));
+    }
+
+    validate_expiration(policy, curr_epoch, sector.activation, new_expiration, sector.seal_proof)?;
+    Ok(())
+}
+
+fn extend_simple_qap_sector(
+    new_expiration: ChainEpoch,
+    sector: &SectorOnChainInfo,
+    claim_space_by_sector: &BTreeMap<SectorNumber, u64>,
+) -> Result<SectorOnChainInfo, ActorError> {
+    let mut new_sector = sector.clone();
+    if sector.verified_deal_weight > BigInt::zero() {
+        let old_duration = sector.expiration - sector.activation;
+        let deal_space = &sector.deal_weight / old_duration;
+        let verified_deal_space = &sector.verified_deal_weight / old_duration;
+        let expected_verified_deal_space = match claim_space_by_sector.get(&sector.sector_number) {
+            None => {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "claim missing from declaration for sector {}",
+                    sector.sector_number
+                ))
+            }
+            Some(space) => space,
+        };
+        if BigInt::from(*expected_verified_deal_space as i64) != verified_deal_space {
+            return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, verified_deal_space, sector.sector_number));
+        }
+        new_sector.expiration = new_expiration;
+        // update deal weights to account for new duration
+        new_sector.deal_weight = deal_space * (new_sector.expiration - new_sector.activation);
+        new_sector.verified_deal_weight =
+            verified_deal_space * (new_sector.expiration - new_sector.activation);
+    } else {
+        new_sector.expiration = new_expiration
+    }
+    Ok(new_sector)
+}
+
+fn extend_non_simple_qap_sector(
+    new_expiration: ChainEpoch,
+    curr_epoch: ChainEpoch,
+    sector: &SectorOnChainInfo,
+) -> Result<SectorOnChainInfo, ActorError> {
+    let mut new_sector = sector.clone();
+    // Remove "spent" deal weights for non simple_qa_power sectors with deal weight > 0
+    let new_deal_weight = (&sector.deal_weight * (sector.expiration - curr_epoch))
+        .div_floor(&BigInt::from(sector.expiration - sector.activation));
+
+    let new_verified_deal_weight = (&sector.verified_deal_weight
+        * (sector.expiration - curr_epoch))
+        .div_floor(&BigInt::from(sector.expiration - sector.activation));
+
+    new_sector.expiration = new_expiration;
+    new_sector.deal_weight = new_deal_weight;
+    new_sector.verified_deal_weight = new_verified_deal_weight;
+    Ok(new_sector)
 }
 
 // TODO: We're using the current power+epoch reward. Technically, we
@@ -3848,19 +4065,13 @@ where
     Ok(())
 }
 
-/// Check expiry is exactly *the epoch before* the start of a proving period.
-fn validate_expiration<BS, RT>(
-    rt: &RT,
+fn validate_expiration(
+    policy: &Policy,
+    curr_epoch: ChainEpoch,
     activation: ChainEpoch,
     expiration: ChainEpoch,
     seal_proof: RegisteredSealProof,
-) -> Result<(), ActorError>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
-    let policy = rt.policy();
-
+) -> Result<(), ActorError> {
     // Expiration must be after activation. Check this explicitly to avoid an underflow below.
     if expiration <= activation {
         return Err(actor_error!(
@@ -3884,13 +4095,13 @@ where
     }
 
     // expiration cannot exceed MaxSectorExpirationExtension from now
-    if expiration > rt.curr_epoch() + policy.max_sector_expiration_extension {
+    if expiration > curr_epoch + policy.max_sector_expiration_extension {
         return Err(actor_error!(
             illegal_argument,
             "invalid expiration {}, cannot be more than {} past current epoch {}",
             expiration,
             policy.max_sector_expiration_extension,
-            rt.curr_epoch()
+            curr_epoch
         ));
     }
 
@@ -3900,13 +4111,13 @@ where
     })?;
     if expiration - activation > max_lifetime {
         return Err(actor_error!(
-            illegal_argument,
-            "invalid expiration {}, total sector lifetime ({}) cannot exceed {} after activation {}",
-            expiration,
-            expiration - activation,
-            max_lifetime,
-            activation
-        ));
+        illegal_argument,
+        "invalid expiration {}, total sector lifetime ({}) cannot exceed {} after activation {}",
+        expiration,
+        expiration - activation,
+        max_lifetime,
+        activation
+    ));
     }
 
     Ok(())
@@ -4026,7 +4237,7 @@ where
 
     // Regenerate challenge randomness, which must match that generated for the proof.
     let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
-    let randomness: PoStRandomness = rt.get_randomness_from_beacon(
+    let randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::WindowedPoStChallengeSeed,
         challenge_epoch,
         &entropy,
@@ -4042,8 +4253,12 @@ where
         .collect();
 
     // get public inputs
-    let pv_info =
-        WindowPoStVerifyInfo { randomness, proofs, challenged_sectors, prover: miner_actor_id };
+    let pv_info = WindowPoStVerifyInfo {
+        randomness: Randomness(randomness.into()),
+        proofs,
+        challenged_sectors,
+        prover: miner_actor_id,
+    };
 
     // verify the post proof
     let result = rt.verify_post(&pv_info);
@@ -4073,12 +4288,12 @@ where
         ));
     };
     let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
-    let randomness: SealRandomness = rt.get_randomness_from_tickets(
+    let randomness = rt.get_randomness_from_tickets(
         DomainSeparationTag::SealRandomness,
         params.seal_rand_epoch,
         &entropy,
     )?;
-    let interactive_randomness: InteractiveSealRandomness = rt.get_randomness_from_beacon(
+    let interactive_randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::InteractiveSealChallengeSeed,
         params.interactive_epoch,
         &entropy,
@@ -4090,9 +4305,9 @@ where
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
         deal_ids: params.deal_ids,
-        interactive_randomness,
+        interactive_randomness: Randomness(interactive_randomness.into()),
         proof: params.proof,
-        randomness,
+        randomness: Randomness(randomness.into()),
         sealed_cid: params.sealed_cid,
         unsealed_cid: commd,
     })
@@ -4271,6 +4486,31 @@ where
     Ok(())
 }
 
+fn get_claims<BS, RT>(
+    rt: &mut RT,
+    ids: &Vec<ext::verifreg::ClaimID>,
+) -> Result<Vec<ext::verifreg::Claim>, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    let params = ext::verifreg::GetClaimsParams {
+        provider: rt.message().receiver().id().unwrap(),
+        claim_ids: ids.clone(),
+    };
+    let ret_raw = rt.send(
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        ext::verifreg::GET_CLAIMS_METHOD as u64,
+        serialize(&params, "get claims parameters")?,
+        TokenAmount::zero(),
+    )?;
+    let claims_ret: ext::verifreg::GetClaimsReturn = deserialize(&ret_raw, "get claims return")?;
+    if (claims_ret.batch_info.success_count as usize) < ids.len() {
+        return Err(actor_error!(illegal_argument, "invalid claims"));
+    }
+    Ok(claims_ret.claims)
+}
+
 /// Assigns proving period offset randomly in the range [0, WPoStProvingPeriod) by hashing
 /// the actor's address and current epoch.
 fn assign_proving_period_offset(
@@ -4352,10 +4592,8 @@ fn validate_fr_declaration_deadline(deadline: &DeadlineInfo) -> anyhow::Result<(
 /// Validates that a partition contains the given sectors.
 fn validate_partition_contains_sectors(
     partition: &Partition,
-    sectors: &mut UnvalidatedBitField,
+    sectors: &BitField,
 ) -> anyhow::Result<()> {
-    let sectors = sectors.validate().map_err(|e| anyhow!("failed to check sectors: {}", e))?;
-
     // Check that the declared sectors are actually assigned to the partition.
     if partition.sectors.contains_all(sectors) {
         Ok(())
@@ -4577,7 +4815,6 @@ where
         } else {
             ext::market::DealSpaces::default()
         };
-
         valid_pre_commits.push((pre_commit, deal_spaces));
     }
 
@@ -4856,13 +5093,11 @@ impl ActorCode for Actor {
             }
             #[allow(unreachable_code)]
             Some(Method::PreCommitSectorBatch2) => {
-                return Err(actor_error!(unhandled_message, "Invalid method"));
                 Self::pre_commit_sector_batch2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             #[allow(unreachable_code)]
             Some(Method::ProveReplicaUpdates2) => {
-                return Err(actor_error!(unhandled_message, "Invalid method"));
                 let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
@@ -4873,6 +5108,10 @@ impl ActorCode for Actor {
             Some(Method::GetBeneficiary) => {
                 let res = Self::get_beneficiary(rt)?;
                 Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::ExtendSectorExpiration2) => {
+                Self::extend_sector_expiration2(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
         }

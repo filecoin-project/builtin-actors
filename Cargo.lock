@@ -679,6 +679,7 @@ dependencies = [
  "num-traits",
  "rand",
  "serde",
+ "test-case",
 ]
 
 [[package]]
@@ -815,6 +816,7 @@ dependencies = [
  "multihash",
  "num-derive",
  "num-traits",
+ "paste",
  "rand",
  "regex",
  "serde",
@@ -1069,9 +1071,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_bitfield"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af1587207c7455ea70a762d4360f502b6728ea6e2dfbec2b66b6d4d943ee29ae"
+checksum = "97dfb38431e301bf063a412f870a3d9ebb541d581d1884f95e921f5ea823d29d"
 dependencies = [
  "cs_serde_bytes",
  "fvm_ipld_encoding",
@@ -1147,9 +1149,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "2.0.0-alpha.4"
+version = "2.0.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d487a6a8d4397616daacab63e24c3432b4da83f7c589522d06747a78eb4f548e"
+checksum = "10bcff8770912a1b7a3019eefd1511db11c150b6951633afa11d174d68254003"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -1162,9 +1164,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "2.0.0-alpha.3"
+version = "2.0.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42d46c69de1e45a25f101efbd7017a0cca932c96797bf7a1089ed7c2239d8338"
+checksum = "c6c411761095958091282ca45aa1c3febc044ad25603609617abc2fd8cc44efa"
 dependencies = [
  "anyhow",
  "blake2b_simd",
@@ -1520,6 +1522,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "427c3892f9e783d91cc128285287e70a59e206ca452770ece88a76f7a3eddd72"
 
 [[package]]
+name = "paste"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1de2e551fb905ac83f73f7aedf2f0cb4a0da7e35efa24a202a936269f1f18e1"
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1844,6 +1852,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-case"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07aea929e9488998b64adc414c29fe5620398f01c2e3f58164122b17e567a6d5"
+dependencies = [
+ "test-case-macros",
+]
+
+[[package]]
+name = "test-case-macros"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c95968eedc6fc4f5c21920e0f4264f78ec5e4c56bb394f319becc1a5830b3e54"
+dependencies = [
+ "cfg-if",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "test_vm"
 version = "9.0.0-alpha.1"
 dependencies = [
@@ -1882,6 +1912,7 @@ dependencies = [
  "rand_chacha",
  "regex",
  "serde",
+ "test-case",
  "thiserror",
 ]
 

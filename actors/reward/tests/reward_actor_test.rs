@@ -89,7 +89,7 @@ mod test_award_block_reward {
         let mut rt = construct_and_verify(&StoragePower::default());
 
         rt.set_balance(TokenAmount::from_atto(9));
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         assert_eq!(
             ExitCode::USR_ILLEGAL_STATE,
             award_block_reward(
@@ -109,7 +109,7 @@ mod test_award_block_reward {
     fn rejects_negative_penalty_or_reward() {
         let mut rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from_whole(1));
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
         let reward_penalty_pairs = [(-1, 0), (0, -1)];
 
@@ -136,7 +136,7 @@ mod test_award_block_reward {
         let mut rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from_whole(1));
 
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         assert!(award_block_reward(
             &mut rt,
             *WINNER,
@@ -153,7 +153,7 @@ mod test_award_block_reward {
     fn pays_reward_and_tracks_penalty() {
         let mut rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from_whole(1_000_000_000));
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let penalty: TokenAmount = TokenAmount::from_atto(100);
         let gas_reward: TokenAmount = TokenAmount::from_atto(200);
         let expected_reward: TokenAmount =
@@ -191,7 +191,7 @@ mod test_award_block_reward {
         let small_reward = TokenAmount::from_atto(300);
         let penalty = TokenAmount::from_atto(100);
         rt.set_balance(small_reward.clone());
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
         let miner_penalty = PENALTY_MULTIPLIER * &penalty;
         let params = RawBytes::serialize(&ext::miner::ApplyRewardParams {
@@ -263,7 +263,7 @@ mod test_award_block_reward {
         // enough balance to pay 3 full rewards and one partial
         rt.set_balance(TokenAmount::from_atto(3500));
 
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let expected_reward = TokenAmount::from_atto(1000);
         let miner_penalty = TokenAmount::zero();
         let params = RawBytes::serialize(&ext::miner::ApplyRewardParams {
@@ -280,7 +280,7 @@ mod test_award_block_reward {
             ExitCode::USR_FORBIDDEN,
         );
         rt.expect_send(
-            *BURNT_FUNDS_ACTOR_ADDR,
+            BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
             RawBytes::default(),
             expected_reward,
@@ -335,12 +335,12 @@ fn test_successive_kpi_updates() {
 
 fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
     let mut rt = MockRuntime {
-        receiver: *REWARD_ACTOR_ADDR,
-        caller: *SYSTEM_ACTOR_ADDR,
+        receiver: REWARD_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     };
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt
         .call::<RewardActor>(
             METHOD_CONSTRUCTOR,
@@ -361,7 +361,7 @@ fn award_block_reward(
     win_count: i64,
     expected_payment: TokenAmount,
 ) -> Result<RawBytes, ActorError> {
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let miner_penalty = &penalty * PENALTY_MULTIPLIER;
     rt.expect_send(
         miner,
@@ -378,7 +378,7 @@ fn award_block_reward(
 
     if penalty.is_positive() {
         rt.expect_send(
-            *BURNT_FUNDS_ACTOR_ADDR,
+            BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
             RawBytes::default(),
             expected_payment,
@@ -407,8 +407,8 @@ fn this_epoch_reward(rt: &mut MockRuntime) -> ThisEpochRewardReturn {
 }
 
 fn update_network_kpi(rt: &mut MockRuntime, curr_raw_power: &StoragePower) {
-    rt.set_caller(*POWER_ACTOR_CODE_ID, *STORAGE_POWER_ACTOR_ADDR);
-    rt.expect_validate_caller_addr(vec![*STORAGE_POWER_ACTOR_ADDR]);
+    rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
+    rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
 
     let params = &RawBytes::serialize(BigIntSer(curr_raw_power)).unwrap();
     assert!(rt.call::<RewardActor>(Method::UpdateNetworkKPI as u64, params).is_ok());

@@ -2,7 +2,7 @@ use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     max_prove_commit_duration, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MinerMethod, PowerPair, PreCommitSectorParams, ProveCommitSectorParams,
+    Method as MinerMethod, PowerPair, PreCommitSectorParams, ProveCommitSectorParams, Sectors,
     State as MinerState,
 };
 use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
@@ -65,7 +65,7 @@ fn extend_sector_with_deals() {
     apply_ok(
         &v,
         verifier,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
         add_client_params,
@@ -76,7 +76,7 @@ fn extend_sector_with_deals() {
     apply_ok(
         &v,
         verified_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
         MarketMethod::AddBalance as u64,
         verified_client,
@@ -85,7 +85,7 @@ fn extend_sector_with_deals() {
     apply_ok(
         &v,
         worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         collateral,
         MarketMethod::AddBalance as u64,
         miner_id,
@@ -153,8 +153,8 @@ fn extend_sector_with_deals() {
     // In the same epoch, trigger cron to validate prove commit
     apply_ok(
         &v,
-        *SYSTEM_ACTOR_ADDR,
-        *CRON_ACTOR_ADDR,
+        SYSTEM_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
         RawBytes::default(),
@@ -170,6 +170,17 @@ fn extend_sector_with_deals() {
         DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30)),
         sector_info.verified_deal_weight
     ); // (180 days *2880 epochs per day) * 32 GiB
+
+    // Note: we don't need to explicitly set verified weight using the legacy method
+    // because legacy and simple qa power deal weight calculations line up for fully packed sectors
+    // We do need to set simple_qa_power to false
+    sector_info.simple_qa_power = false;
+    // Manually craft state to match legacy sectors
+    v.mutate_state(miner_id, |st: &mut MinerState| {
+        let mut sectors = Sectors::load(&store, &st.sectors).unwrap();
+        sectors.store(vec![sector_info.clone()]).unwrap();
+        st.sectors = sectors.amt.flush().unwrap();
+    });
 
     let initial_verified_deal_weight = sector_info.verified_deal_weight;
     let initial_deal_weight = sector_info.deal_weight;
@@ -216,9 +227,7 @@ fn extend_sector_with_deals() {
         extensions: vec![ExpirationExtension {
             deadline: deadline_info.index,
             partition: partition_index,
-            sectors: fvm_ipld_bitfield::UnvalidatedBitField::Validated(
-                BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            ),
+            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
             new_expiration: deal_start + 2 * 180 * EPOCHS_IN_DAY,
         }],
     };
@@ -242,7 +251,7 @@ fn extend_sector_with_deals() {
         to: miner_id,
         method: MinerMethod::ExtendSectorExpiration as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            to: *STORAGE_POWER_ACTOR_ADDR,
+            to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::UpdateClaimedPower as u64,
             params: Some(expected_update_claimed_power_params_ser),
             ..Default::default()
@@ -268,9 +277,7 @@ fn extend_sector_with_deals() {
         extensions: vec![ExpirationExtension {
             deadline: deadline_info.index,
             partition: partition_index,
-            sectors: fvm_ipld_bitfield::UnvalidatedBitField::Validated(
-                BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            ),
+            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
             new_expiration: deal_start + 3 * 180 * EPOCHS_IN_DAY,
         }],
     };
@@ -295,7 +302,7 @@ fn extend_sector_with_deals() {
         to: miner_id,
         method: MinerMethod::ExtendSectorExpiration as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            to: *STORAGE_POWER_ACTOR_ADDR,
+            to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::UpdateClaimedPower as u64,
             params: Some(expected_update_claimed_power_params_ser),
             ..Default::default()

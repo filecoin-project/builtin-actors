@@ -1,12 +1,16 @@
 use cid::Cid;
+use fil_actors_runtime::BatchReturn;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::ActorID;
 
 pub mod account {
     pub const PUBKEY_ADDRESS_METHOD: u64 = 2;
@@ -131,5 +135,39 @@ pub mod reward {
 }
 
 pub mod verifreg {
+    use super::*;
+
+    pub const GET_CLAIMS_METHOD: u64 = 10;
+
     pub type ClaimID = u64;
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
+    pub struct Claim {
+        // The provider storing the data (from allocation).
+        pub provider: ActorID,
+        // The client which allocated the DataCap (from allocation).
+        pub client: ActorID,
+        // Identifier of the data committed (from allocation).
+        pub data: Cid,
+        // The (padded) size of data (from allocation).
+        pub size: PaddedPieceSize,
+        // The min period which the provider must commit to storing data
+        pub term_min: ChainEpoch,
+        // The max period for which provider can earn QA-power for the data
+        pub term_max: ChainEpoch,
+        // The epoch at which the (first range of the) piece was committed.
+        pub term_start: ChainEpoch,
+        // ID of the provider's sector in which the data is committed.
+        pub sector: SectorNumber,
+    }
+    #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+    pub struct GetClaimsParams {
+        pub provider: ActorID,
+        pub claim_ids: Vec<ClaimID>,
+    }
+    #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+
+    pub struct GetClaimsReturn {
+        pub batch_info: BatchReturn,
+        pub claims: Vec<Claim>,
+    }
 }

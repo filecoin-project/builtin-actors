@@ -10,11 +10,11 @@ use fil_actor_market::{
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::{Policy, Runtime};
+use fil_actors_runtime::runtime::{builtins::Type, Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map, SetMultimap,
-    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    make_empty_map, make_map_with_root_and_bitwidth, ActorError, BatchReturn, Map, SetMultimap,
+    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_fungible_token::token::types::{TransferFromParams, TransferFromReturn};
@@ -53,12 +53,12 @@ fn test_remove_all_error() {
 fn simple_construction() {
     let mut rt = MockRuntime {
         receiver: Address::new_id(100),
-        caller: *SYSTEM_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         ..Default::default()
     };
 
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
     assert_eq!(
         RawBytes::default(),
@@ -194,7 +194,7 @@ fn adds_to_provider_escrow_funds() {
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
             rt.set_value(TokenAmount::from_atto(tc.delta));
-            rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+            rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
             expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
             assert_eq!(
@@ -371,7 +371,7 @@ fn fails_unless_called_by_an_account_actor() {
     let mut rt = setup();
 
     rt.set_value(TokenAmount::from_atto(10));
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     assert_eq!(
@@ -406,7 +406,7 @@ fn adds_to_non_provider_funds() {
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
             rt.set_value(TokenAmount::from_atto(tc.delta));
-            rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+            rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
             assert_eq!(
                 RawBytes::default(),
@@ -751,7 +751,7 @@ fn deal_expires() {
 
     rt.set_epoch(start_epoch + EPOCHS_IN_DAY + 1);
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         deal.provider_collateral,
@@ -817,7 +817,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     // add funds for provider using it's BLS address -> will be resolved and persisted
     rt.value_received = deal.provider_collateral.clone();
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
 
     assert_eq!(
@@ -834,7 +834,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
 
     // publish deal using the BLS addresses
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
     expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
@@ -863,8 +863,8 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     );
 
     // Data cap transfer is requested using the resolved address (not that it matters).
-    let alloc_req = ext::verifreg::AllocationsRequest {
-        requests: vec![AllocationRequest {
+    let alloc_req = ext::verifreg::AllocationRequests {
+        allocations: vec![AllocationRequest {
             provider: provider_resolved,
             data: deal.piece_cid,
             size: deal.piece_size,
@@ -872,11 +872,12 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
             term_max: (deal.end_epoch - deal.start_epoch) + 90 * EPOCHS_IN_DAY,
             expiration: deal.start_epoch,
         }],
+        extensions: vec![],
     };
     let datacap_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
     let transfer_params = TransferFromParams {
         from: client_resolved,
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         amount: datacap_amount.clone(),
         operator_data: serialize(&alloc_req, "allocation requests").unwrap(),
     };
@@ -885,13 +886,17 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         to_balance: datacap_amount,
         allowance: TokenAmount::zero(),
         recipient_data: serialize(
-            &AllocationsResponse { allocations: vec![1] },
+            &AllocationsResponse {
+                allocation_results: BatchReturn::ok(1),
+                extension_results: BatchReturn::empty(),
+                new_allocations: vec![1],
+            },
             "allocations response",
         )
         .unwrap(),
     };
     rt.expect_send(
-        *DATACAP_TOKEN_ACTOR_ADDR,
+        DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::TRANSFER_FROM_METHOD as u64,
         serialize(&transfer_params, "transfer from params").unwrap(),
         TokenAmount::zero(),
@@ -1338,7 +1343,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
 
     // cron tick will slash deal1 and make payment for deal2
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         d1.provider_collateral.clone(),
@@ -1381,7 +1386,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
     let params = PublishStorageDealsParams {
         deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig }],
     };
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -1427,7 +1432,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
         end_epoch,
     );
 
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     rt.set_epoch(start_epoch + 1);
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
@@ -1454,7 +1459,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
         end_epoch,
     );
 
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry: end_epoch - 1 };
     expect_abort(
@@ -1491,7 +1496,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
         end_epoch + 1,
     );
 
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = ActivateDealsParams { deal_ids: vec![deal_id1, deal_id2], sector_expiry };
     expect_abort(
@@ -1581,7 +1586,7 @@ fn locked_fund_tracking_states() {
     let curr = process_epoch(start_epoch, deal_id3);
     rt.set_epoch(curr);
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         d3.provider_collateral.clone(),
@@ -1622,7 +1627,7 @@ fn locked_fund_tracking_states() {
     clc = TokenAmount::zero();
     plc = TokenAmount::zero();
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         d1.provider_collateral,
@@ -1749,7 +1754,7 @@ fn insufficient_client_balance_in_a_batch() {
         deal1.provider_balance_requirement().add(deal2.provider_balance_requirement());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.set_value(provider_funds);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
     assert_eq!(
@@ -1781,7 +1786,7 @@ fn insufficient_client_balance_in_a_batch() {
         ],
     };
 
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
 
@@ -1862,7 +1867,7 @@ fn insufficient_provider_balance_in_a_batch() {
     // Provider has enough for only the second deal
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.set_value(deal2.provider_balance_requirement().clone());
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).clone());
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
     assert_eq!(
@@ -1898,7 +1903,7 @@ fn insufficient_provider_balance_in_a_batch() {
         ],
     };
 
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
 

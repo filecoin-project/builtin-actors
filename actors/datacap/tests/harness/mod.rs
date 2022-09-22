@@ -21,8 +21,8 @@ use fil_actors_runtime::{
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
-        receiver: *DATACAP_TOKEN_ACTOR_ADDR,
-        caller: *SYSTEM_ACTOR_ADDR,
+        receiver: DATACAP_TOKEN_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -31,7 +31,7 @@ pub fn new_runtime() -> MockRuntime {
 #[allow(dead_code)]
 pub fn new_harness() -> (Harness, MockRuntime) {
     let mut rt = new_runtime();
-    let h = Harness { registry: *VERIFIED_REGISTRY_ACTOR_ADDR };
+    let h = Harness { registry: VERIFIED_REGISTRY_ACTOR_ADDR };
     h.construct_and_verify(&mut rt, &h.registry);
     (h, rt)
 }
@@ -42,7 +42,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct_and_verify(&self, rt: &mut MockRuntime, registry: &Address) {
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
             .call::<DataCapActor>(
                 Method::Constructor as MethodNum,
@@ -64,7 +64,7 @@ impl Harness {
         amount: &TokenAmount,
         operators: Vec<Address>,
     ) -> Result<MintReturn, ActorError> {
-        rt.expect_validate_caller_addr(vec![*VERIFIED_REGISTRY_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![VERIFIED_REGISTRY_ACTOR_ADDR]);
 
         // Expect the token receiver hook to be called.
         let hook_params = UniversalReceiverParams {
@@ -92,7 +92,7 @@ impl Harness {
         );
 
         let params = MintParams { to: *to, amount: amount.clone(), operators };
-        rt.set_caller(*VERIFREG_ACTOR_CODE_ID, *VERIFIED_REGISTRY_ACTOR_ADDR);
+        rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret =
             rt.call::<DataCapActor>(Method::Mint as MethodNum, &serialize(&params, "params")?)?;
 

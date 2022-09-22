@@ -18,11 +18,11 @@ fn construction() {
     fn construct(addr: Address, exit_code: ExitCode) {
         let mut rt = MockRuntime {
             receiver: Address::new_id(100),
-            caller: *SYSTEM_ACTOR_ADDR,
+            caller: SYSTEM_ACTOR_ADDR,
             caller_type: *SYSTEM_ACTOR_CODE_ID,
             ..Default::default()
         };
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
         if exit_code.is_success() {
             rt.call::<AccountActor>(
@@ -61,11 +61,11 @@ fn construction() {
 fn token_receiver() {
     let mut rt = MockRuntime {
         receiver: Address::new_id(100),
-        caller: *SYSTEM_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     };
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
     let param = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
     rt.call::<AccountActor>(
@@ -93,13 +93,13 @@ fn check_state(rt: &MockRuntime) {
 fn authenticate_message() {
     let mut rt = MockRuntime {
         receiver: Address::new_id(100),
-        caller: *SYSTEM_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     };
 
     let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
     rt.call::<AccountActor>(1, &RawBytes::serialize(addr).unwrap()).unwrap();
 

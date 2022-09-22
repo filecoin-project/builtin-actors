@@ -142,7 +142,7 @@ fn successfully_withdraw_limited_to_quota() {
 }
 
 #[test]
-fn allow_withdraw_but_no_send_when_beneficiary_not_efficient() {
+fn withdraw_fail_when_beneficiary_expired() {
     let mut h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
@@ -159,8 +159,9 @@ fn allow_withdraw_but_no_send_when_beneficiary_not_efficient() {
     let info = h.get_info(&rt);
     assert_eq!(PERIOD_OFFSET - 10, info.beneficiary_term.expiration);
     rt.set_epoch(100);
-    h.withdraw_funds(&mut rt, h.beneficiary, quota, &TokenAmount::zero(), &TokenAmount::zero())
-        .unwrap();
+    let ret =
+        h.withdraw_funds(&mut rt, h.beneficiary, quota, &TokenAmount::zero(), &TokenAmount::zero());
+    expect_abort_contains_message(ExitCode::USR_FORBIDDEN, "beneficiary expiration of epoch", ret);
     h.check_state(&rt);
 }
 

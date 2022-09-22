@@ -5,8 +5,8 @@ use fil_actor_multisig::{
 };
 use fil_actor_multisig::{ChangeNumApprovalsThresholdParams, LockBalanceParams};
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actors_runtime::{make_map_with_root, ActorError};
+use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
@@ -38,8 +38,8 @@ impl ActorHarness {
             unlock_duration,
             start_epoch,
         };
-        rt.set_caller(*INIT_ACTOR_CODE_ID, *INIT_ACTOR_ADDR);
-        rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         let result = rt
             .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
             .unwrap();
@@ -125,7 +125,7 @@ impl ActorHarness {
         method: MethodNum,
         params: RawBytes,
     ) -> Result<RawBytes, ActorError> {
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
         let propose_params = ProposeParams { to, value, method, params };
         let ret =
             rt.call::<Actor>(Method::Propose as u64, &RawBytes::serialize(propose_params).unwrap());
@@ -139,7 +139,7 @@ impl ActorHarness {
         txn_id: TxnID,
         proposal_hash: [u8; 32],
     ) -> Result<RawBytes, ActorError> {
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
         let approve_params =
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
         let ret =
@@ -154,7 +154,7 @@ impl ActorHarness {
         txn_id: TxnID,
         proposal_hash: [u8; 32],
     ) -> Result<RawBytes, ActorError> {
-        rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
         let cancel_params =
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
         let ret =

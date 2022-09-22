@@ -1,6 +1,5 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
-use anyhow::anyhow;
 use cid::{multihash, Cid};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -12,12 +11,10 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR};
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
-
-// * Updated to specs-actors commit: 845089a6d2580e46055c24415a6c32ee688e5186 (v3.0.0)
 
 /// System actor methods.
 #[derive(FromPrimitive)]
@@ -35,10 +32,10 @@ pub struct State {
 impl Cbor for State {}
 
 impl State {
-    pub fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<Self> {
+    pub fn new<BS: Blockstore>(store: &BS) -> Result<Self, ActorError> {
         let c = store
             .put_cbor(&Vec::<(String, Cid)>::new(), multihash::Code::Blake2b256)
-            .map_err(|e| anyhow!("failed to put system state to store: {}", e))?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store system state")?;
         Ok(Self { builtin_actors: c })
     }
 
@@ -63,11 +60,9 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
-        let state = State::new(rt.store()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
-        })?;
+        let state = State::new(rt.store()).context("failed to construct state")?;
         rt.create(&state)?;
         Ok(())
     }
@@ -105,8 +100,8 @@ mod tests {
 
     pub fn new_runtime() -> MockRuntime {
         MockRuntime {
-            receiver: *SYSTEM_ACTOR_ADDR,
-            caller: *SYSTEM_ACTOR_ADDR,
+            receiver: SYSTEM_ACTOR_ADDR,
+            caller: SYSTEM_ACTOR_ADDR,
             caller_type: *SYSTEM_ACTOR_CODE_ID,
             ..Default::default()
         }
@@ -115,8 +110,8 @@ mod tests {
     #[test]
     fn construct_with_root_id() {
         let mut rt = new_runtime();
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
-        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, *SYSTEM_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.call::<Actor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
 
         let state: State = rt.get_state();

@@ -4,6 +4,7 @@
 use core::fmt;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::rc::Rc;
 
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
@@ -20,7 +21,7 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, RegisteredSealProof,
     ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
@@ -40,7 +41,7 @@ use crate::runtime::{
 };
 use crate::{actor_error, ActorError};
 
-lazy_static! {
+lazy_static::lazy_static! {
     pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/system");
     pub static ref INIT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/init");
     pub static ref CRON_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/cron");
@@ -85,8 +86,6 @@ lazy_static! {
     ]
     .into_iter()
     .collect();
-    pub static ref CALLER_TYPES_SIGNABLE: Vec<Cid> =
-        vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID];
     pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {
         let mut map = BTreeMap::new();
         map.insert(*ACCOUNT_ACTOR_CODE_ID, ());
@@ -125,7 +124,7 @@ pub struct MockRuntime {
 
     // VM Impl
     pub in_call: bool,
-    pub store: MemoryBlockstore,
+    pub store: Rc<MemoryBlockstore>,
     pub in_transaction: bool,
 
     // Expectations
@@ -141,7 +140,7 @@ pub struct MockRuntime {
 pub struct Expectations {
     pub expect_validate_caller_any: bool,
     pub expect_validate_caller_addr: Option<Vec<Address>>,
-    pub expect_validate_caller_type: Option<Vec<Cid>>,
+    pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
     pub expect_delete_actor: Option<Address>,
@@ -336,7 +335,7 @@ pub struct ExpectRandomness {
     tag: DomainSeparationTag,
     epoch: ChainEpoch,
     entropy: Vec<u8>,
-    out: Randomness,
+    out: [u8; RANDOMNESS_LENGTH],
 }
 
 #[derive(Debug)]
@@ -513,7 +512,7 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
-    pub fn expect_validate_caller_type(&mut self, types: Vec<Cid>) {
+    pub fn expect_validate_caller_type(&mut self, types: Vec<Type>) {
         assert!(!types.is_empty(), "addrs must be non-empty");
         self.expectations.borrow_mut().expect_validate_caller_type = Some(types);
     }
@@ -591,7 +590,7 @@ impl MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
-        out: Randomness,
+        out: [u8; RANDOMNESS_LENGTH],
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_tickets.push_back(a);
@@ -603,7 +602,7 @@ impl MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
-        out: Randomness,
+        out: [u8; RANDOMNESS_LENGTH],
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_beacon.push_back(a);
@@ -668,7 +667,7 @@ impl MessageInfo for MockRuntime {
     }
 }
 
-impl Runtime<MemoryBlockstore> for MockRuntime {
+impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
     fn network_version(&self) -> NetworkVersion {
         self.network_version
     }
@@ -736,14 +735,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             "unexpected validate caller code"
         );
 
-        let find_by_type = |typ| {
-            (*ACTOR_TYPES)
-                .iter()
-                .find_map(|(cid, t)| if t == typ { Some(cid) } else { None })
-                .cloned()
-                .unwrap()
-        };
-        let types: Vec<Cid> = types.into_iter().map(find_by_type).collect();
+        let types: Vec<Type> = types.into_iter().copied().collect();
         let expected_caller_type =
             self.expectations.borrow_mut().expect_validate_caller_type.clone().unwrap();
         assert_eq!(
@@ -752,8 +744,9 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             types, expected_caller_type,
         );
 
+        let call_type = self.resolve_builtin_actor_type(&self.caller_type).unwrap();
         for expected in &types {
-            if &self.caller_type == expected {
+            if &call_type == expected {
                 self.expectations.borrow_mut().expect_validate_caller_type = None;
                 return Ok(());
             }
@@ -796,7 +789,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         let expected = self
             .expectations
             .borrow_mut()
@@ -829,7 +822,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         let expected = self
             .expectations
             .borrow_mut()
@@ -887,7 +880,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         ret
     }
 
-    fn store(&self) -> &MemoryBlockstore {
+    fn store(&self) -> &Rc<MemoryBlockstore> {
         &self.store
     }
 

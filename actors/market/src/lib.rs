@@ -7,6 +7,9 @@ use fil_fungible_token::token::types::{BalanceReturn, TransferFromParams, Transf
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet};
 
+use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
+use cid::Cid;
+use fil_fungible_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, RawBytes};
@@ -26,7 +29,6 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
-use crate::ext::verifreg::{AllocationID, AllocationRequest};
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
@@ -35,6 +37,8 @@ use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+
+use crate::ext::verifreg::{AllocationID, AllocationRequest};
 
 pub use self::deal::*;
 use self::policy::*;
@@ -81,7 +85,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st = State::new(rt.store()).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create market state")
@@ -386,6 +390,7 @@ impl Actor {
                 info!("invalid deal {}: cannot publish duplicate deal proposal", di);
                 continue;
             }
+
             total_provider_lockup = provider_lockup;
             total_client_lockup.insert(client_id, client_lockup);
             proposal_cid_lookup.insert(pcid);
@@ -798,7 +803,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*CRON_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
         let mut amount_slashed = TokenAmount::zero();
         let curr_epoch = rt.curr_epoch();
@@ -1165,13 +1170,13 @@ fn datacap_transfer_request(
     client: &Address,
     alloc_reqs: Vec<AllocationRequest>,
 ) -> Result<TransferFromParams, ActorError> {
-    let datacap_required = alloc_reqs.iter().map(|it| it.size.0 as i64).sum();
+    let datacap_required: u64 = alloc_reqs.iter().map(|it| it.size.0).sum();
     Ok(TransferFromParams {
         from: *client,
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         amount: TokenAmount::from_whole(datacap_required),
         operator_data: serialize(
-            &ext::verifreg::AllocationsRequest { requests: alloc_reqs },
+            &ext::verifreg::AllocationRequests { allocations: alloc_reqs, extensions: vec![] },
             "allocation requests",
         )?,
     })
@@ -1182,7 +1187,7 @@ fn datacap_transfer_response(ret: &RawBytes) -> Result<Vec<AllocationID>, ActorE
     let ret: TransferFromReturn = deserialize(ret, "transfer from response")?;
     let allocs: ext::verifreg::AllocationsResponse =
         deserialize(&ret.recipient_data, "allocations response")?;
-    Ok(allocs.allocations)
+    Ok(allocs.new_allocations)
 }
 
 // Parses datacap balance
