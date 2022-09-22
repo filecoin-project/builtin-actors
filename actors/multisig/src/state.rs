@@ -20,7 +20,7 @@ use super::TxnID;
 use crate::make_map_with_root;
 
 /// Multisig actor state
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
     pub signers: Vec<Address>,
     pub num_approvals_threshold: u64,

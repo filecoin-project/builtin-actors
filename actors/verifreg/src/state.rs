@@ -21,7 +21,7 @@ use fil_actors_runtime::{
 use crate::DataCap;
 use crate::{AllocationID, ClaimID};
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone)]
 pub struct State {
     pub root_key: Address,
     // Maps verifier addresses to data cap minting allowance (in bytes).

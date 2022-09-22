@@ -26,7 +26,7 @@ use super::types::*;
 use super::{DealProposal, DealState};
 
 /// Market actor state
-#[derive(Clone, Default, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Default, Serialize_tuple, Deserialize_tuple, Debug)]
 pub struct State {
     /// Proposals are deals that have been proposed and not yet cleaned up after expiry or termination.
     /// Array<DealID, DealProposal>
