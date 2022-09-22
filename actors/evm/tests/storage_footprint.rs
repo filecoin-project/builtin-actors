@@ -172,3 +172,20 @@ fn measure_mapping_read() {
         mts.export().unwrap()
     }
 }
+
+/// Meausre the cost of accessing one storage variable vs multiple.
+#[test]
+fn measure_incr_one_vs_all() {
+    let mut env = new_footprint_env();
+    let mut mts = Measurements::new("incr_one_vs_all".into());
+
+    // Interleave incrementing one and all, otherwise there's really nothing else happening.
+    for i in 0..10 {
+        env.call(|| CONTRACT.incr_counter_1());
+        mts.record(1, i, env.runtime().store.take_stats());
+        env.call(|| CONTRACT.incr_counters());
+        mts.record(2, i, env.runtime().store.take_stats());
+    }
+
+    mts.export().unwrap()
+}
