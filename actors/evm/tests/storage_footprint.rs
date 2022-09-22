@@ -129,7 +129,7 @@ fn measure_mapping_add() {
     }
 }
 
-/// Fill the array with 10,000 items, then read varying number of consecutive entries from it.
+/// Fill an array with 10,000 items, then read varying number of consecutive entries from it.
 #[test]
 fn measure_array_read() {
     let mut env = new_footprint_env();
@@ -141,6 +141,24 @@ fn measure_array_read() {
         let mut mts = Measurements::new(format!("array_read_n{}", n));
         for i in 0..NUM_ITER {
             env.call(|| CONTRACT.array_1_sum(i * n, n));
+            mts.record(1, i, env.runtime().store.take_stats());
+        }
+        mts.export().unwrap()
+    }
+}
+
+/// Fill a mapping with 10,000 items, then read varying number of consecutive entries from it.
+#[test]
+fn measure_mapping_read() {
+    let mut env = new_footprint_env();
+    env.call(|| CONTRACT.mapping_1_set(0, 10000, 1));
+    env.runtime().store.clear_stats();
+
+    // Number of items to access from the mapping at a time.
+    for n in [1, 100] {
+        let mut mts = Measurements::new(format!("mapping_read_n{}", n));
+        for i in 0..NUM_ITER {
+            env.call(|| CONTRACT.mapping_1_sum(i * n, n));
             mts.record(1, i, env.runtime().store.take_stats());
         }
         mts.export().unwrap()
