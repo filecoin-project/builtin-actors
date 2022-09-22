@@ -7,7 +7,9 @@ use fil_actor_market::{
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+use fil_actors_runtime::{
+    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
@@ -16,9 +18,11 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::METHOD_SEND;
 
+use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use num_traits::Zero;
 
 mod harness;
+
 use harness::*;
 
 const START_EPOCH: ChainEpoch = 50;
@@ -41,7 +45,7 @@ fn timed_out_deal_is_slashed_and_deleted() {
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         deal_proposal.provider_collateral.clone(),
@@ -79,20 +83,29 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         END_EPOCH,
     );
     let buf = RawBytes::serialize(deal_proposal2.clone()).expect("failed to marshal deal proposal");
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let sig = Signature::new_bls(buf.to_vec());
     let client_deal_proposal =
-        ClientDealProposal { proposal: deal_proposal2.clone(), client_signature: sig.clone() };
+        ClientDealProposal { proposal: deal_proposal2.clone(), client_signature: sig };
     let params = PublishStorageDealsParams { deals: vec![client_deal_proposal] };
-    rt.expect_validate_caller_type(vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: deal_proposal2.client,
-        plaintext: buf.to_vec(),
-        result: Ok(()),
-    });
+    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf.to_vec(),
+        message: buf.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal_proposal2.client,
+        AUTHENTICATE_MESSAGE_METHOD,
+        auth_param,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
@@ -105,7 +118,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         deal_proposal.provider_collateral.clone(),
@@ -178,7 +191,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted_and_sent_to_the_registry_act
     };
 
     rt.expect_send(
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::RESTORE_BYTES_METHOD as u64,
         RawBytes::serialize(param1).unwrap(),
         TokenAmount::zero(),
@@ -186,7 +199,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted_and_sent_to_the_registry_act
         ExitCode::OK,
     );
     rt.expect_send(
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::RESTORE_BYTES_METHOD as u64,
         RawBytes::serialize(param2).unwrap(),
         TokenAmount::zero(),
@@ -196,7 +209,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted_and_sent_to_the_registry_act
 
     let expected_burn = 3 * &deal1.provider_collateral;
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         expected_burn,

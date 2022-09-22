@@ -6,7 +6,6 @@ use fil_actors_runtime::DealWeight;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{BytesSer, Cbor};
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_UNSEALED, SHA2_256_TRUNC254_PADDED};
 use fvm_shared::crypto::signature::Signature;
@@ -25,7 +24,7 @@ pub fn is_piece_cid(c: &Cid) -> bool {
         && c.hash().size() == 32
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Label {
     String(String),
     Bytes(Vec<u8>),
@@ -66,6 +65,22 @@ impl<'de> Deserialize<'de> for Label {
     }
 }
 
+impl Label {
+    pub fn len(&self) -> usize {
+        match self {
+            Label::String(s) => s.len(),
+            Label::Bytes(b) => b.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Label::String(s) => s.is_empty(),
+            Label::Bytes(b) => b.is_empty(),
+        }
+    }
+}
+
 /// Note: Deal Collateral is only released and returned to clients and miners
 /// when the storage deal stops counting towards power. In the current iteration,
 /// it will be released when the sector containing the storage deals expires,
@@ -74,7 +89,7 @@ impl<'de> Deserialize<'de> for Label {
 /// minimal deals that last for a long time.
 /// Note: ClientCollateralPerEpoch may not be needed and removed pending future confirmation.
 /// There will be a Minimum value for both client and provider deal collateral.
-#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct DealProposal {
     pub piece_cid: Cid,
     pub piece_size: PaddedPieceSize,
@@ -84,7 +99,7 @@ pub struct DealProposal {
 
     /// Arbitrary client chosen label to apply to the deal
     // ! This is the field that requires unsafe unchecked utf8 deserialization
-    pub label: String,
+    pub label: Label,
 
     // Nominal start epoch. Deal payment is linear between StartEpoch and EndEpoch,
     // with total amount StoragePricePerEpoch * (EndEpoch - StartEpoch).
@@ -92,12 +107,9 @@ pub struct DealProposal {
     // otherwise it is invalid.
     pub start_epoch: ChainEpoch,
     pub end_epoch: ChainEpoch,
-    #[serde(with = "bigint_ser")]
     pub storage_price_per_epoch: TokenAmount,
 
-    #[serde(with = "bigint_ser")]
     pub provider_collateral: TokenAmount,
-    #[serde(with = "bigint_ser")]
     pub client_collateral: TokenAmount,
 }
 
@@ -123,7 +135,7 @@ impl DealProposal {
 }
 
 /// ClientDealProposal is a DealProposal signed by a client
-#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClientDealProposal {
     pub proposal: DealProposal,
     pub client_signature: Signature,
@@ -131,9 +143,12 @@ pub struct ClientDealProposal {
 
 impl Cbor for ClientDealProposal {}
 
-#[derive(Clone, Debug, PartialEq, Copy, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy, Serialize_tuple, Deserialize_tuple)]
 pub struct DealState {
-    pub sector_start_epoch: ChainEpoch, // -1 if not yet included in proven sector
-    pub last_updated_epoch: ChainEpoch, // -1 if deal state never updated
-    pub slash_epoch: ChainEpoch,        // -1 if deal never slashed
+    // -1 if not yet included in proven sector
+    pub sector_start_epoch: ChainEpoch,
+    // -1 if deal state never updated
+    pub last_updated_epoch: ChainEpoch,
+    // -1 if deal never slashed
+    pub slash_epoch: ChainEpoch,
 }

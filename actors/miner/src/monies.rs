@@ -5,18 +5,17 @@ use std::cmp::{self, max};
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
-use fvm_shared::bigint::num_integer::div_floor;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::math::PRECISION;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::{self, FilterEstimate};
-use fvm_shared::FILECOIN_PRECISION;
 use lazy_static::lazy_static;
 use num_traits::Zero;
 
 use super::{VestSpec, REWARD_VESTING_SPEC};
+use crate::detail::*;
 
 /// Projection period of expected sector block reward for deposit required to pre-commit a sector.
 /// This deposit is lost if the pre-commitment is not timely followed up by a commitment proof.
@@ -24,37 +23,35 @@ const PRE_COMMIT_DEPOSIT_FACTOR: u64 = 20;
 
 /// Projection period of expected sector block rewards for storage pledge required to commit a sector.
 /// This pledge is lost if a sector is terminated before its full committed lifetime.
-const INITIAL_PLEDGE_FACTOR: u64 = 20;
+pub const INITIAL_PLEDGE_FACTOR: u64 = 20;
 
 pub const PRE_COMMIT_DEPOSIT_PROJECTION_PERIOD: i64 =
     (PRE_COMMIT_DEPOSIT_FACTOR as ChainEpoch) * EPOCHS_IN_DAY;
 pub const INITIAL_PLEDGE_PROJECTION_PERIOD: i64 =
     (INITIAL_PLEDGE_FACTOR as ChainEpoch) * EPOCHS_IN_DAY;
 
+const LOCK_TARGET_FACTOR_NUM: u32 = 3;
+const LOCK_TARGET_FACTOR_DENOM: u32 = 10;
+
+pub const TERMINATION_REWARD_FACTOR_NUM: u32 = 1;
+pub const TERMINATION_REWARD_FACTOR_DENOM: u32 = 2;
+
+// * go impl has 75/100 but this is just simplified
+const LOCKED_REWARD_FACTOR_NUM: u32 = 3;
+const LOCKED_REWARD_FACTOR_DENOM: u32 = 4;
+
 lazy_static! {
-    static ref LOCK_TARGET_FACTOR_NUM: BigInt = BigInt::from(3);
-    static ref LOCK_TARGET_FACTOR_DENOM: BigInt = BigInt::from(10);
-
-    static ref TERMINATION_REWARD_FACTOR_NUM: BigInt = BigInt::from(1);
-    static ref TERMINATION_REWARD_FACTOR_DENOM: BigInt = BigInt::from(2);
-
-    // * go impl has 75/100 but this is just simplified
-    static ref LOCKED_REWARD_FACTOR_NUM: BigInt = BigInt::from(3);
-    static ref LOCKED_REWARD_FACTOR_DENOM: BigInt = BigInt::from(4);
-
     /// Cap on initial pledge requirement for sectors during the Space Race network.
     /// The target is 1 FIL (10**18 attoFIL) per 32GiB.
     /// This does not divide evenly, so the result is fractionally smaller.
-    static ref INITIAL_PLEDGE_MAX_PER_BYTE: BigInt =
-        BigInt::from(10_u64.pow(18) / (32 << 30));
+    static ref INITIAL_PLEDGE_MAX_PER_BYTE: TokenAmount =
+        TokenAmount::from_whole(1).div_floor(32i64 << 30);
 
     /// Base reward for successfully disputing a window posts proofs.
-    pub static ref BASE_REWARD_FOR_DISPUTED_WINDOW_POST: BigInt =
-        BigInt::from(4 * FILECOIN_PRECISION);
+    pub static ref BASE_REWARD_FOR_DISPUTED_WINDOW_POST: TokenAmount = TokenAmount::from_whole(4);
 
     /// Base penalty for a successful disputed window post proof.
-    pub static ref BASE_PENALTY_FOR_DISPUTED_WINDOW_POST: BigInt =
-        BigInt::from(FILECOIN_PRECISION) * 20;
+    pub static ref BASE_PENALTY_FOR_DISPUTED_WINDOW_POST: TokenAmount = TokenAmount::from_whole(20);
 }
 // FF + 2BR
 const INVALID_WINDOW_POST_PROJECTION_PERIOD: ChainEpoch =
@@ -92,7 +89,7 @@ pub fn expected_reward_for_power(
     let network_qa_power_smoothed = network_qa_power_estimate.estimate();
 
     if network_qa_power_smoothed.is_zero() {
-        return reward_estimate.estimate();
+        return TokenAmount::from_atto(reward_estimate.estimate());
     }
 
     let expected_reward_for_proving_period = smooth::extrapolated_cum_sum_of_ratio(
@@ -102,28 +99,36 @@ pub fn expected_reward_for_power(
         network_qa_power_estimate,
     );
     let br128 = qa_sector_power * expected_reward_for_proving_period; // Q.0 * Q.128 => Q.128
-    std::cmp::max(br128 >> PRECISION, Default::default())
+    TokenAmount::from_atto(std::cmp::max(br128 >> PRECISION, Default::default()))
 }
 
-// BR but zero values are clamped at 1 attofil
-// Some uses of BR (PCD, IP) require a strictly positive value for BR derived values so
-// accounting variables can be used as succinct indicators of miner activity.
-fn expected_reward_for_power_clamped_at_atto_fil(
-    reward_estimate: &FilterEstimate,
-    network_qa_power_estimate: &FilterEstimate,
-    qa_sector_power: &StoragePower,
-    projection_duration: ChainEpoch,
-) -> TokenAmount {
-    let br = expected_reward_for_power(
-        reward_estimate,
-        network_qa_power_estimate,
-        qa_sector_power,
-        projection_duration,
-    );
-    if br.le(&TokenAmount::from(0)) {
-        1.into()
-    } else {
-        br
+pub mod detail {
+    use super::*;
+
+    lazy_static! {
+        pub static ref BATCH_BALANCER: TokenAmount = TokenAmount::from_nano(5);
+    }
+
+    // BR but zero values are clamped at 1 attofil
+    // Some uses of BR (PCD, IP) require a strictly positive value for BR derived values so
+    // accounting variables can be used as succinct indicators of miner activity.
+    pub fn expected_reward_for_power_clamped_at_atto_fil(
+        reward_estimate: &FilterEstimate,
+        network_qa_power_estimate: &FilterEstimate,
+        qa_sector_power: &StoragePower,
+        projection_duration: ChainEpoch,
+    ) -> TokenAmount {
+        let br = expected_reward_for_power(
+            reward_estimate,
+            network_qa_power_estimate,
+            qa_sector_power,
+            projection_duration,
+        );
+        if br.le(&TokenAmount::zero()) {
+            TokenAmount::from_atto(1)
+        } else {
+            br
+        }
     }
 }
 
@@ -191,8 +196,8 @@ pub fn pledge_penalty_for_termination(
 
     expected_reward += replaced_day_reward * relevant_replaced_age;
 
-    let penalized_reward = expected_reward * &*TERMINATION_REWARD_FACTOR_NUM;
-    let penalized_reward = penalized_reward / &*TERMINATION_REWARD_FACTOR_DENOM;
+    let penalized_reward = expected_reward * TERMINATION_REWARD_FACTOR_NUM;
+    let penalized_reward = penalized_reward.div_floor(TERMINATION_REWARD_FACTOR_DENOM);
 
     cmp::max(
         pledge_penalty_for_termination_lower_bound(
@@ -200,7 +205,7 @@ pub fn pledge_penalty_for_termination(
             network_qa_power_estimate,
             qa_sector_power,
         ),
-        twenty_day_reward_at_activation + (penalized_reward / EPOCHS_IN_DAY),
+        twenty_day_reward_at_activation + (penalized_reward.div_floor(EPOCHS_IN_DAY)),
     )
 }
 
@@ -258,37 +263,37 @@ pub fn initial_pledge_for_power(
         INITIAL_PLEDGE_PROJECTION_PERIOD,
     );
 
-    let lock_target_num = &*LOCK_TARGET_FACTOR_NUM * circulating_supply;
-    let lock_target_denom = &*LOCK_TARGET_FACTOR_DENOM;
+    let lock_target_num = circulating_supply.atto() * LOCK_TARGET_FACTOR_NUM;
+    let lock_target_denom = LOCK_TARGET_FACTOR_DENOM;
     let pledge_share_num = qa_power;
     let network_qa_power = network_qa_power_estimate.estimate();
     let pledge_share_denom = cmp::max(cmp::max(&network_qa_power, baseline_power), qa_power);
-    let additional_ip_num: TokenAmount = lock_target_num * pledge_share_num;
-    let additional_ip_denom = lock_target_denom * pledge_share_denom;
+    let additional_ip_num = lock_target_num * pledge_share_num;
+    let additional_ip_denom = pledge_share_denom * lock_target_denom;
     let additional_ip = additional_ip_num.div_floor(&additional_ip_denom);
 
-    let nominal_pledge = ip_base + additional_ip;
-    let pledge_cap = &*INITIAL_PLEDGE_MAX_PER_BYTE * qa_power;
+    let nominal_pledge = ip_base + TokenAmount::from_atto(additional_ip);
+    let pledge_cap = TokenAmount::from_atto(INITIAL_PLEDGE_MAX_PER_BYTE.atto() * qa_power);
 
     cmp::min(nominal_pledge, pledge_cap)
 }
 
 pub fn consensus_fault_penalty(this_epoch_reward: TokenAmount) -> TokenAmount {
-    (this_epoch_reward * CONSENSUS_FAULT_FACTOR)
-        .div_floor(&TokenAmount::from(EXPECTED_LEADERS_PER_EPOCH))
+    (this_epoch_reward * CONSENSUS_FAULT_FACTOR).div_floor(EXPECTED_LEADERS_PER_EPOCH)
 }
 
 /// Returns the amount of a reward to vest, and the vesting schedule, for a reward amount.
 pub fn locked_reward_from_reward(reward: TokenAmount) -> (TokenAmount, &'static VestSpec) {
-    let lock_amount = (reward * &*LOCKED_REWARD_FACTOR_NUM).div_floor(&*LOCKED_REWARD_FACTOR_DENOM);
+    let lock_amount = (reward * LOCKED_REWARD_FACTOR_NUM).div_floor(LOCKED_REWARD_FACTOR_DENOM);
     (lock_amount, &REWARD_VESTING_SPEC)
 }
 
+const BATCH_DISCOUNT_NUM: u32 = 1;
+const BATCH_DISCOUNT_DENOM: u32 = 20;
+
 lazy_static! {
     static ref ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE: BigInt = BigInt::from(49299973);
-    static ref ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE: BigInt = BigInt::from(16433324);    static ref BATCH_DISCOUNT_NUM: BigInt = BigInt::from(1);
-    static ref BATCH_DISCOUNT_DENOM: BigInt = BigInt::from(20);
-    static ref BATCH_BALANCER: BigInt = BigInt::from(1_000_000_000) * BigInt::from(5); // 5 * 1 nanoFIL
+    static ref ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE: BigInt = BigInt::from(16433324);
 }
 
 pub fn aggregate_prove_commit_network_fee(
@@ -311,6 +316,6 @@ pub fn aggregate_network_fee(
     base_fee: &TokenAmount,
 ) -> TokenAmount {
     let effective_gas_fee = max(base_fee, &*BATCH_BALANCER);
-    let network_fee_num = effective_gas_fee * gas_usage * aggregate_size * &*BATCH_DISCOUNT_NUM;
-    div_floor(network_fee_num, BATCH_DISCOUNT_DENOM.clone())
+    let network_fee_num = effective_gas_fee * gas_usage * aggregate_size * BATCH_DISCOUNT_NUM;
+    network_fee_num.div_floor(BATCH_DISCOUNT_DENOM)
 }

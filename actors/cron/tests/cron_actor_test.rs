@@ -1,17 +1,25 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actor_cron::testing::check_state_invariants;
 use fil_actor_cron::{Actor as CronActor, ConstructorParams, Entry, State};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use num_traits::Zero;
+
+fn check_state(rt: &MockRuntime) {
+    let (_, acc) = check_state_invariants(&rt.get_state());
+    acc.assert_empty();
+}
 
 fn construct_runtime() -> MockRuntime {
     MockRuntime {
         receiver: Address::new_id(100),
-        caller: *SYSTEM_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -24,6 +32,7 @@ fn construct_with_empty_entries() {
     let state: State = rt.get_state();
 
     assert_eq!(state.entries, vec![]);
+    check_state(&rt);
 }
 
 #[test]
@@ -42,6 +51,7 @@ fn construct_with_entries() {
     let state: State = rt.get_state();
 
     assert_eq!(state.entries, params.entries);
+    check_state(&rt);
 }
 
 #[test]
@@ -71,7 +81,7 @@ fn epoch_tick_with_entries() {
         entry1.receiver,
         entry1.method_num,
         RawBytes::default(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -79,7 +89,7 @@ fn epoch_tick_with_entries() {
         entry2.receiver,
         entry2.method_num,
         RawBytes::default(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -87,7 +97,7 @@ fn epoch_tick_with_entries() {
         entry3.receiver,
         entry3.method_num,
         RawBytes::default(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -95,7 +105,7 @@ fn epoch_tick_with_entries() {
         entry4.receiver,
         entry4.method_num,
         RawBytes::default(),
-        0u8.into(),
+        TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
     );
@@ -104,15 +114,16 @@ fn epoch_tick_with_entries() {
 }
 
 fn construct_and_verify(rt: &mut MockRuntime, params: &ConstructorParams) {
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt.call::<CronActor>(1, &RawBytes::serialize(&params).unwrap()).unwrap();
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
 }
 
 fn epoch_tick_and_verify(rt: &mut MockRuntime) {
-    rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt.call::<CronActor>(2, &RawBytes::default()).unwrap();
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
+    check_state(rt);
 }

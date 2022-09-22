@@ -8,14 +8,14 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
-use fvm_shared::bigint::{Integer, Sign};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, warn};
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed};
+use num_traits::FromPrimitive;
 
 pub use self::logic::*;
 pub use self::state::{Reward, State, VestingFunction};
@@ -27,6 +27,7 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub(crate) mod expneg;
 mod logic;
 mod state;
+pub mod testing;
 mod types;
 
 // only exported for tests
@@ -35,7 +36,7 @@ pub mod ext;
 
 // * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)
 
-/// PenaltyMultiplier is the factor miner penaltys are scaled up by
+/// PenaltyMultiplier is the factor miner penalties are scaled up by
 pub const PENALTY_MULTIPLIER: u64 = 3;
 
 /// Reward actor methods available
@@ -60,7 +61,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         if let Some(power) = curr_realized_power {
             rt.create(&State::new(power))?;
@@ -88,12 +89,12 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         let prior_balance = rt.current_balance();
-        if params.penalty.sign() == Sign::Minus {
+        if params.penalty.is_negative() {
             return Err(actor_error!(illegal_argument, "negative penalty {}", params.penalty));
         }
-        if params.gas_reward.sign() == Sign::Minus {
+        if params.gas_reward.is_negative() {
             return Err(actor_error!(
                 illegal_argument,
                 "negative gas reward {}",
@@ -112,15 +113,15 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "invalid win count {}", params.win_count));
         }
 
-        let miner_addr = rt
+        let miner_id = rt
             .resolve_address(&params.miner)
             .ok_or_else(|| actor_error!(not_found, "failed to resolve given owner address"))?;
 
         let penalty: TokenAmount = &params.penalty * PENALTY_MULTIPLIER;
 
         let total_reward = rt.transaction(|st: &mut State, rt| {
-            let mut block_reward: TokenAmount = (&st.this_epoch_reward * params.win_count)
-                .div_floor(&TokenAmount::from(EXPECTED_LEADERS_PER_EPOCH));
+            let mut block_reward: TokenAmount =
+                (&st.this_epoch_reward * params.win_count).div_floor(EXPECTED_LEADERS_PER_EPOCH);
             let mut total_reward = &params.gas_reward + &block_reward;
             let curr_balance = rt.current_balance();
             if total_reward > curr_balance {
@@ -157,7 +158,7 @@ impl Actor {
         // if this fails, we can assume the miner is responsible and avoid failing here.
         let reward_params = ext::miner::ApplyRewardParams { reward: total_reward.clone(), penalty };
         let res = rt.send(
-            miner_addr,
+            &Address::new_id(miner_id),
             ext::miner::APPLY_REWARDS_METHOD,
             RawBytes::serialize(&reward_params)?,
             total_reward.clone(),
@@ -169,7 +170,7 @@ impl Actor {
                 e.exit_code()
             );
             let res =
-                rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), total_reward);
+                rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), total_reward);
             if let Err(e) = res {
                 error!(
                     "failed to send unsent reward to the burnt funds actor, code: {:?}",
@@ -208,7 +209,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_POWER_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
         let curr_realized_power = curr_realized_power
             .ok_or_else(|| actor_error!(illegal_argument, "argument cannot be None"))?;
 

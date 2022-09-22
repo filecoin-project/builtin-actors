@@ -17,6 +17,10 @@ inputs:
   save_cache:
     description: Whether to save the SSCACHE
     required: false
+  cache_name:
+    description: The name of the cache to save/restore
+    required: true
+    default: v2-test
 
 runs:
   using: composite
@@ -37,7 +41,7 @@ runs:
       CACHE_SKIP_SAVE: ${{ inputs.save_cache == '' || inputs.save_cache == 'false' }}
     with:
       version: v0.2.15
-      shared-key: v1  # change this to invalidate sccache for this job
+      shared-key: ${{ inputs.cache_name }}  # change this to invalidate sccache for this job
   - name: Running ${{ inputs.command }}
     uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
     env:

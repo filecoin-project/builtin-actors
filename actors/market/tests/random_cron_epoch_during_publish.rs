@@ -10,8 +10,6 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
-use num_traits::Zero;
-
 mod harness;
 use harness::*;
 
@@ -179,7 +177,7 @@ fn cron_processing_of_deal_after_missed_activation_should_fail_and_slash() {
 
     // FIXME: cron_tick calls 'VERIFIED_REGISTRY_ACTOR_ADDR' with the 'USE_BYTES_METHOD' method.
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
         deal_proposal.provider_collateral.clone(),

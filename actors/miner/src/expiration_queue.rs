@@ -12,7 +12,7 @@ use fvm_ipld_amt::{Error as AmtError, ValueMut};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::bigint::bigint_ser;
+
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
@@ -38,7 +38,6 @@ pub struct ExpirationSet {
     /// Sectors expiring "early" due to being faulty for too long
     pub early_sectors: BitField,
     /// Pledge total for the on-time sectors
-    #[serde(with = "bigint_ser")]
     pub on_time_pledge: TokenAmount,
     /// Power that is currently active (not faulty)
     pub active_power: PowerPair,
@@ -947,3 +946,6 @@ fn check_no_early_sectors(set: &BTreeSet<u64>, es: &ExpirationSet) -> anyhow::Re
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

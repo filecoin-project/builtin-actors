@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// "Deadline" refers to the window during which proofs may be submitted.
 /// Windows are non-overlapping ranges [Open, Close), but the challenge epoch for a window occurs
 /// before the window opens.
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Copy, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq, Copy, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeadlineInfo {
     /// Epoch at which this info was calculated.

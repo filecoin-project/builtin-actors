@@ -87,13 +87,16 @@ pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<
     }
 }
 
+/// minimum number of epochs past the current epoch a sector may be set to expire
+pub const MIN_SECTOR_EXPIRATION: i64 = 180 * EPOCHS_IN_DAY;
+
 /// DealWeight and VerifiedDealWeight are spacetime occupied by regular deals and verified deals in a sector.
 /// Sum of DealWeight and VerifiedDealWeight should be less than or equal to total SpaceTime of a sector.
 /// Sectors full of VerifiedDeals will have a SectorQuality of VerifiedDealWeightMultiplier/QualityBaseMultiplier.
 /// Sectors full of Deals will have a SectorQuality of DealWeightMultiplier/QualityBaseMultiplier.
 /// Sectors with neither will have a SectorQuality of QualityBaseMultiplier/QualityBaseMultiplier.
 /// SectorQuality of a sector is a weighted average of multipliers based on their proportions.
-fn quality_for_weight(
+pub fn quality_for_weight(
     size: SectorSize,
     duration: ChainEpoch,
     deal_weight: &DealWeight,
@@ -113,6 +116,12 @@ fn quality_for_weight(
 
     scaled_up_weighted_sum_space_time
         .div_floor(&sector_space_time)
+        .div_floor(&QUALITY_BASE_MULTIPLIER)
+}
+
+/// Returns maximum achievable QA power.
+pub fn qa_power_max(size: SectorSize) -> StoragePower {
+    (BigInt::from(size as u64) * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER)
         .div_floor(&QUALITY_BASE_MULTIPLIER)
 }
 
@@ -137,12 +146,17 @@ pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> Stor
 pub fn sector_deals_max(policy: &Policy, size: SectorSize) -> u64 {
     cmp::max(256, size as u64 / policy.deal_limit_denominator)
 }
+
 /// Specification for a linear vesting schedule.
 pub struct VestSpec {
-    pub initial_delay: ChainEpoch, // Delay before any amount starts vesting.
-    pub vest_period: ChainEpoch, // Period over which the total should vest, after the initial delay.
-    pub step_duration: ChainEpoch, // Duration between successive incremental vests (independent of vesting period).
-    pub quantization: ChainEpoch, // Maximum precision of vesting table (limits cardinality of table).
+    /// Delay before any amount starts vesting.
+    pub initial_delay: ChainEpoch,
+    /// Period over which the total should vest, after the initial delay.
+    pub vest_period: ChainEpoch,
+    /// Duration between successive incremental vests (independent of vesting period).
+    pub step_duration: ChainEpoch,
+    /// Maximum precision of vesting table (limits cardinality of table).
+    pub quantization: ChainEpoch,
 }
 
 pub const REWARD_VESTING_SPEC: VestSpec = VestSpec {
@@ -154,13 +168,10 @@ pub const REWARD_VESTING_SPEC: VestSpec = VestSpec {
 
 // Default share of block reward allocated as reward to the consensus fault reporter.
 // Applied as epochReward / (expectedLeadersPerEpoch * consensusFaultReporterDefaultShare)
-pub const CONSENSUS_FAULT_REPORTER_DEFAULT_SHARE: i64 = 4;
+pub const CONSENSUS_FAULT_REPORTER_DEFAULT_SHARE: u64 = 4;
 
 pub fn reward_for_consensus_slash_report(epoch_reward: &TokenAmount) -> TokenAmount {
-    epoch_reward.div_floor(
-        &(BigInt::from(EXPECTED_LEADERS_PER_EPOCH)
-            * BigInt::from(CONSENSUS_FAULT_REPORTER_DEFAULT_SHARE)),
-    )
+    epoch_reward.div_floor(EXPECTED_LEADERS_PER_EPOCH * CONSENSUS_FAULT_REPORTER_DEFAULT_SHARE)
 }
 
 // The reward given for successfully disputing a window post.

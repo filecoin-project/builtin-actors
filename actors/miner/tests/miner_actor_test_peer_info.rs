@@ -12,7 +12,7 @@ fn test_can_set_peer_id() {
     h.construct_and_verify(&mut rt);
     h.set_peer_id(&mut rt, vec![1, 2, 3]);
 
-    util::check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -23,7 +23,7 @@ fn test_can_clear_peer_id() {
     h.construct_and_verify(&mut rt);
     h.set_peer_id(&mut rt, vec![]);
 
-    util::check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn test_cant_set_large_peer_id() {
     h.construct_and_verify(&mut rt);
     h.set_peer_id_fail(&mut rt, peer_id);
 
-    util::check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn can_set_multiaddrs() {
     h.construct_and_verify(&mut rt);
     h.set_multiaddr(&mut rt, vec![BytesDe(vec![1, 3, 3, 7])]);
 
-    util::check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn can_set_multiple_multiaddrs() {
     h.construct_and_verify(&mut rt);
     h.set_multiaddr(&mut rt, vec![BytesDe(vec![1, 3, 3, 7]), BytesDe(vec![2, 4, 4, 8])]);
 
-    util::check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn can_set_clear_multiaddrs() {
     h.construct_and_verify(&mut rt);
     h.set_multiaddr(&mut rt, vec![]);
 
-    util::check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -79,7 +79,7 @@ fn cant_set_empty_multiaddrs() {
     h.construct_and_verify(&mut rt);
     h.set_multiaddr_fail(&mut rt, vec![BytesDe(vec![])]);
 
-    util::check_state_invariants(&rt);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -107,5 +107,5 @@ fn cant_set_large_multiaddrs() {
     h.construct_and_verify(&mut rt);
     h.set_multiaddr_fail(&mut rt, maddrs);
 
-    util::check_state_invariants(&rt);
+    h.check_state(&rt);
 }

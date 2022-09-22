@@ -7,21 +7,24 @@ use std::collections::HashMap;
 use anyhow::anyhow;
 use cid::Cid;
 use derive_builder::Builder;
+use fil_actor_paych::testing::check_state_invariants;
 use fil_actor_paych::{
     Actor as PaychActor, ConstructorParams, LaneState, Merge, Method, ModVerifyParams,
     SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE, SETTLE_DELAY,
 };
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_CONSTRUCTOR;
+use num_traits::Zero;
 
 const PAYCH_ID: u64 = 100;
 const PAYER_ID: u64 = 102;
@@ -31,7 +34,7 @@ struct LaneParams {
     epoch_num: ChainEpoch,
     from: Address,
     to: Address,
-    amt: BigInt,
+    amt: TokenAmount,
     lane: u64,
     nonce: u64,
 }
@@ -59,9 +62,16 @@ fn get_lane_state(rt: &MockRuntime, cid: &Cid, lane: u64) -> LaneState {
     arr.get(lane).unwrap().unwrap().clone()
 }
 
+fn check_state(rt: &MockRuntime) {
+    let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), &rt.get_balance());
+    acc.assert_empty();
+}
+
 mod paych_constructor {
+    use fil_actors_runtime::runtime::builtins::Type;
     use fvm_shared::METHOD_CONSTRUCTOR;
     use fvm_shared::METHOD_SEND;
+    use num_traits::Zero;
 
     use super::*;
 
@@ -92,12 +102,13 @@ mod paych_constructor {
         let mut rt = construct_runtime();
         rt.actor_code_cids.insert(caller_addr, *ACCOUNT_ACTOR_CODE_ID);
         construct_and_verify(&mut rt, Address::new_id(TEST_PAYER_ADDR), caller_addr);
+        check_state(&rt);
     }
 
     #[test]
     fn actor_doesnt_exist_test() {
         let mut rt = construct_runtime();
-        rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams {
             to: Address::new_id(TEST_PAYCH_ADDR),
             from: Address::new_id(TEST_PAYER_ADDR),
@@ -125,6 +136,7 @@ mod paych_constructor {
         rt.id_addresses.insert(payee_non_id, payee_addr);
 
         construct_and_verify(&mut rt, payer_non_id, payee_non_id);
+        check_state(&rt);
     }
 
     #[test]
@@ -175,7 +187,7 @@ mod paych_constructor {
                 ..Default::default()
             };
 
-            rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+            rt.expect_validate_caller_type(vec![Type::Init]);
             let params = ConstructorParams { to: test_case.to_addr, from: test_case.from_addr };
             expect_abort(
                 &mut rt,
@@ -209,18 +221,18 @@ mod paych_constructor {
             non_id_addr,
             METHOD_SEND,
             Default::default(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             Default::default(),
             ExitCode::OK,
         );
 
-        rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams { from: non_id_addr, to: to_addr };
         expect_abort(
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(&params).unwrap(),
-            ExitCode::USR_ILLEGAL_STATE,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
         );
     }
 
@@ -246,18 +258,18 @@ mod paych_constructor {
             non_id_addr,
             METHOD_SEND,
             Default::default(),
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             Default::default(),
             ExitCode::OK,
         );
 
-        rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams { from: from_addr, to: non_id_addr };
         expect_abort(
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(&params).unwrap(),
-            ExitCode::USR_ILLEGAL_STATE,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
         );
     }
 }
@@ -302,6 +314,7 @@ mod create_lane_tests {
         #[builder(default = "ExitCode::USR_ILLEGAL_ARGUMENT")]
         exp_exit_code: ExitCode,
     }
+
     impl TestCase {
         pub fn builder() -> TestCaseBuilder {
             TestCaseBuilder::default()
@@ -314,7 +327,7 @@ mod create_lane_tests {
         let paych_addr = Address::new_id(PAYCH_ADDR);
         let payer_addr = Address::new_id(PAYER_ADDR);
         let payee_addr = Address::new_id(PAYEE_ADDR);
-        let paych_balance = TokenAmount::from(PAYCH_BALANCE);
+        let paych_balance = TokenAmount::from_atto(PAYCH_BALANCE);
         let paych_non_id = Address::new_bls(&[201; fvm_shared::address::BLS_PUB_LEN]).unwrap();
         let sig = Option::Some(Signature::new_bls("doesn't matter".as_bytes().to_vec()));
 
@@ -389,13 +402,6 @@ mod create_lane_tests {
                 .verify_sig(false)
                 .build()
                 .unwrap(),
-            // TODO this should fail with byte array max from cbor gen (pre image serialization)
-            // TestCase::builder()
-            //     .desc("Fails if signing fails".to_string())
-            //     .sig(sig.clone())
-            //     .secret_preimage(vec![0; 2 << 21])
-            //     .build()
-            //     .unwrap(),
         ];
 
         for test_case in test_cases {
@@ -425,7 +431,7 @@ mod create_lane_tests {
                 secret_pre_image: test_case.secret_preimage.clone(),
                 lane: test_case.lane,
                 nonce: test_case.nonce,
-                amount: BigInt::from(test_case.amt),
+                amount: TokenAmount::from_atto(test_case.amt),
                 signature: test_case.sig.clone(),
                 channel_addr: test_case.payment_channel,
                 extra: Default::default(),
@@ -462,6 +468,7 @@ mod create_lane_tests {
                 let ls = l_states.get(sv.lane).unwrap().unwrap();
                 assert_eq!(sv.amount, ls.redeemed);
                 assert_eq!(sv.nonce, ls.nonce);
+                check_state(&rt);
             } else {
                 expect_abort(
                     &mut rt,
@@ -488,7 +495,7 @@ mod update_channel_state_redeem {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, payee_addr);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
-        sv.amount = BigInt::from(9);
+        sv.amount = TokenAmount::from_atto(9);
 
         let payer_addr = Address::new_id(PAYER_ID);
 
@@ -506,11 +513,11 @@ mod update_channel_state_redeem {
         );
 
         rt.verify();
-        let exp_ls = LaneState { redeemed: BigInt::from(9), nonce: 2 };
+        let exp_ls = LaneState { redeemed: TokenAmount::from_atto(9), nonce: 2 };
         let exp_state = PState {
             from: state.from,
             to: state.to,
-            to_send: TokenAmount::from(9),
+            to_send: TokenAmount::from_atto(9),
             settling_at: state.settling_at,
             min_settle_height: state.min_settle_height,
             lane_states: construct_lane_state_amt(&rt, vec![exp_ls]),
@@ -528,7 +535,7 @@ mod update_channel_state_redeem {
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
         let initial_amount = state.to_send;
-        sv.amount = BigInt::from(9);
+        sv.amount = TokenAmount::from_atto(9);
         sv.lane = 1;
 
         let ls_to_update: LaneState = get_lane_state(&rt, &state.lane_states, sv.lane);
@@ -558,6 +565,7 @@ mod update_channel_state_redeem {
         assert_eq!(exp_send, state.to_send);
         assert_eq!(sv.amount, ls_updated.redeemed);
         assert_eq!(sv.nonce, ls_updated.nonce);
+        check_state(&rt);
     }
 
     #[test]
@@ -569,7 +577,7 @@ mod update_channel_state_redeem {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, payee_addr);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
-        sv.amount = BigInt::from(9);
+        sv.amount = TokenAmount::from_atto(9);
         sv.nonce = 1;
 
         let payer_addr = Address::new_id(PAYER_ID);
@@ -589,6 +597,7 @@ mod update_channel_state_redeem {
         );
 
         rt.verify();
+        check_state(&rt);
     }
 }
 
@@ -705,7 +714,7 @@ mod merge_tests {
             let num_lanes = 2;
             let (mut rt, mut sv, state) = construct_runtime(num_lanes);
 
-            rt.set_balance(TokenAmount::from(tc.balance as u64));
+            rt.set_balance(TokenAmount::from_atto(tc.balance));
 
             sv.lane = 0;
             sv.nonce = tc.voucher;
@@ -735,7 +744,7 @@ mod merge_tests {
 
         sv.lane = MAX_LANE + 1;
         sv.nonce += 1;
-        sv.amount = BigInt::from(100);
+        sv.amount = TokenAmount::from_atto(100);
         failure_end(&mut rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
     }
 }
@@ -769,12 +778,13 @@ mod update_channel_state_extra {
             other_addr,
             Method::UpdateChannelState as u64,
             fake_params,
-            TokenAmount::from(0u8),
+            TokenAmount::zero(),
             RawBytes::default(),
             exit_code,
         );
         (rt, sv)
     }
+
     #[test]
     fn extra_call_succeed() {
         let (mut rt, sv) = construct_runtime(ExitCode::OK);
@@ -784,6 +794,7 @@ mod update_channel_state_extra {
             &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
         );
         rt.verify();
+        check_state(&rt);
     }
 
     #[test]
@@ -796,6 +807,7 @@ mod update_channel_state_extra {
             ExitCode::USR_UNSPECIFIED,
         );
         rt.verify();
+        check_state(&rt);
     }
 }
 
@@ -848,6 +860,7 @@ fn update_channel_settling() {
         assert_eq!(tc.exp_settling_at, new_state.settling_at);
         assert_eq!(tc.exp_min_settle_height, new_state.min_settle_height);
         ucp.sv.nonce += 1;
+        check_state(&rt);
     }
 }
 
@@ -872,6 +885,7 @@ mod secret_preimage {
         call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(ucp).unwrap());
 
         rt.verify();
+        check_state(&rt);
     }
 
     #[test]
@@ -900,6 +914,7 @@ mod secret_preimage {
         );
 
         rt.verify();
+        check_state(&rt);
     }
 }
 
@@ -907,6 +922,7 @@ mod actor_settle {
     use super::*;
 
     const EP: i64 = 10;
+
     #[test]
     fn adjust_settling_at() {
         let (mut rt, _sv) = require_create_channel_with_lanes(1);
@@ -921,6 +937,7 @@ mod actor_settle {
         state = rt.get_state();
         assert_eq!(state.settling_at, exp_settling_at);
         assert_eq!(state.min_settle_height, 0);
+        check_state(&rt);
     }
 
     #[test]
@@ -970,6 +987,7 @@ mod actor_settle {
 
         state = rt.get_state();
         assert_eq!(state.settling_at, ucp.sv.min_settle_height);
+        check_state(&rt);
     }
 
     #[test]
@@ -1041,6 +1059,7 @@ mod actor_collect {
         rt.expect_delete_actor(st.from);
         let res = call(&mut rt, Method::Collect as u64, &Default::default());
         assert_eq!(res, RawBytes::default());
+        check_state(&rt);
     }
 
     #[test]
@@ -1099,6 +1118,7 @@ mod actor_collect {
                 &RawBytes::default(),
                 tc.exp_collect_exit,
             );
+            check_state(&rt);
         }
     }
 }
@@ -1107,8 +1127,8 @@ fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouc
     let paych_addr = Address::new_id(100);
     let payer_addr = Address::new_id(PAYER_ID);
     let payee_addr = Address::new_id(PAYEE_ID);
-    let balance = TokenAmount::from(100_000);
-    let received = TokenAmount::from(0);
+    let balance = TokenAmount::from_atto(100_000);
+    let received = TokenAmount::zero();
     let curr_epoch = 2;
 
     let mut actor_code_cids = HashMap::default();
@@ -1117,7 +1137,7 @@ fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouc
 
     let mut rt = MockRuntime {
         receiver: paych_addr,
-        caller: *INIT_ACTOR_ADDR,
+        caller: INIT_ACTOR_ADDR,
         caller_type: *INIT_ACTOR_CODE_ID,
         actor_code_cids,
         value_received: received,
@@ -1134,7 +1154,7 @@ fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouc
             epoch_num: curr_epoch,
             from: payer_addr,
             to: payee_addr,
-            amt: (BigInt::from(i) + 1),
+            amt: (TokenAmount::from_atto(i + 1)),
             lane: i as u64,
             nonce: i + 1,
         };
@@ -1181,7 +1201,7 @@ fn require_add_new_lane(rt: &mut MockRuntime, param: LaneParams) -> SignedVouche
 
 fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address) {
     let params = ConstructorParams { from: sender, to: receiver };
-    rt.expect_validate_caller_type(vec![*INIT_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Init]);
     call(rt, METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap());
     rt.verify();
     let sender_id = rt.id_addresses.get(&sender).unwrap_or(&sender);
@@ -1210,6 +1230,7 @@ fn verify_state(rt: &MockRuntime, exp_lanes: Option<u64>, expected_state: PState
     } else {
         assert_lane_states_length(rt, &state.lane_states, 0);
     }
+    check_state(rt);
 }
 
 fn assert_lane_states_length(rt: &MockRuntime, cid: &Cid, l: u64) {

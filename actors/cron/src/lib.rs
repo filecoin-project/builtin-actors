@@ -10,11 +10,12 @@ use fvm_shared::econ::TokenAmount;
 
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, Zero};
 
 pub use self::state::{Entry, State};
 
 mod state;
+pub mod testing;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -46,7 +47,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         rt.create(&State { entries: params.entries })?;
         Ok(())
     }
@@ -58,16 +59,16 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st: State = rt.state()?;
         for entry in st.entries {
             // Intentionally ignore any error when calling cron methods
             let res = rt.send(
-                entry.receiver,
+                &entry.receiver,
                 entry.method_num,
                 RawBytes::default(),
-                TokenAmount::from(0u8),
+                TokenAmount::zero(),
             );
             if let Err(e) = res {
                 log::error!(

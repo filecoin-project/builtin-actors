@@ -5,16 +5,16 @@ use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::econ::TokenAmount;
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 
 use fil_actors_runtime::{make_empty_map, make_map_with_root_and_bitwidth, Map};
 
 pub const BALANCE_TABLE_BITWIDTH: u32 = 6;
 
 /// Balance table which handles getting and updating token balances specifically
-pub struct BalanceTable<'a, BS>(Map<'a, BS, BigIntDe>);
+pub struct BalanceTable<'a, BS>(pub Map<'a, BS, TokenAmount>);
+
 impl<'a, BS> BalanceTable<'a, BS>
 where
     BS: Blockstore,
@@ -37,9 +37,9 @@ where
     /// Gets token amount for given address in balance table
     pub fn get(&self, key: &Address) -> Result<TokenAmount, HamtError> {
         if let Some(v) = self.0.get(&key.to_bytes())? {
-            Ok(v.0.clone())
+            Ok(v.clone())
         } else {
-            Ok(0.into())
+            Ok(TokenAmount::zero())
         }
     }
 
@@ -53,7 +53,7 @@ where
             self.0.delete(&key.to_bytes())?;
             Ok(())
         } else {
-            self.0.set(key.to_bytes().into(), BigIntDe(sum))?;
+            self.0.set(key.to_bytes().into(), sum)?;
             Ok(())
         }
     }
@@ -92,10 +92,10 @@ where
     /// Returns total balance held by this balance table
     #[allow(dead_code)]
     pub fn total(&self) -> Result<TokenAmount, HamtError> {
-        let mut total = TokenAmount::default();
+        let mut total = TokenAmount::zero();
 
-        self.0.for_each(|_, v: &BigIntDe| {
-            total += &v.0;
+        self.0.for_each(|_, v: &TokenAmount| {
+            total += v;
             Ok(())
         })?;
 
@@ -118,7 +118,7 @@ mod tests {
         let store = MemoryBlockstore::default();
         let mut bt = BalanceTable::new(&store);
 
-        assert_eq!(bt.total().unwrap(), TokenAmount::from(0u8));
+        assert!(bt.total().unwrap().is_zero());
 
         struct TotalTestCase<'a> {
             amount: u64,
@@ -133,9 +133,9 @@ mod tests {
         ];
 
         for t in cases.iter() {
-            bt.add(t.addr, &TokenAmount::from(t.amount)).unwrap();
+            bt.add(t.addr, &TokenAmount::from_atto(t.amount)).unwrap();
 
-            assert_eq!(bt.total().unwrap(), TokenAmount::from(t.total));
+            assert_eq!(bt.total().unwrap(), TokenAmount::from_atto(t.total));
         }
     }
 
@@ -145,29 +145,37 @@ mod tests {
         let store = MemoryBlockstore::default();
         let mut bt = BalanceTable::new(&store);
 
-        bt.add(&addr, &TokenAmount::from(80u8)).unwrap();
-        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from(80u8));
+        bt.add(&addr, &TokenAmount::from_atto(80u8)).unwrap();
+        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from_atto(80u8));
         // Test subtracting past minimum only subtracts correct amount
         assert_eq!(
-            bt.subtract_with_minimum(&addr, &TokenAmount::from(20u8), &TokenAmount::from(70u8))
-                .unwrap(),
-            TokenAmount::from(10u8)
+            bt.subtract_with_minimum(
+                &addr,
+                &TokenAmount::from_atto(20u8),
+                &TokenAmount::from_atto(70u8)
+            )
+            .unwrap(),
+            TokenAmount::from_atto(10u8)
         );
-        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from(70u8));
+        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from_atto(70u8));
 
         // Test subtracting to limit
         assert_eq!(
-            bt.subtract_with_minimum(&addr, &TokenAmount::from(10u8), &TokenAmount::from(60u8))
-                .unwrap(),
-            TokenAmount::from(10u8)
+            bt.subtract_with_minimum(
+                &addr,
+                &TokenAmount::from_atto(10u8),
+                &TokenAmount::from_atto(60u8)
+            )
+            .unwrap(),
+            TokenAmount::from_atto(10u8)
         );
-        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from(60u8));
+        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from_atto(60u8));
 
         // Test must subtract success
-        bt.must_subtract(&addr, &TokenAmount::from(10u8)).unwrap();
-        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from(50u8));
+        bt.must_subtract(&addr, &TokenAmount::from_atto(10u8)).unwrap();
+        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from_atto(50u8));
 
         // Test subtracting more than available
-        assert!(bt.must_subtract(&addr, &TokenAmount::from(100u8)).is_err());
+        assert!(bt.must_subtract(&addr, &TokenAmount::from_atto(100u8)).is_err());
     }
 }

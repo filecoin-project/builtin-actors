@@ -13,6 +13,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorSize};
 
 use cid::Cid;
+use num_traits::Zero;
 
 mod util;
 
@@ -33,7 +34,7 @@ fn prepare_env() -> TestEnv {
         receiver: Address::new_id(1000),
         owner: Address::new_id(100),
         worker: Address::new_id(101),
-        worker_key: util::new_bls_addr(0),
+        worker_key: new_bls_addr(0),
         control_addrs: vec![Address::new_id(999), Address::new_id(998)],
         peer_id: vec![1, 2, 3],
         multiaddrs: vec![BytesDe(vec![1, 2, 3])],
@@ -46,7 +47,7 @@ fn prepare_env() -> TestEnv {
     env.rt.actor_code_cids.insert(env.control_addrs[0], *ACCOUNT_ACTOR_CODE_ID);
     env.rt.actor_code_cids.insert(env.control_addrs[1], *ACCOUNT_ACTOR_CODE_ID);
     env.rt.hash_func = Box::new(blake2b_256);
-    env.rt.caller = *INIT_ACTOR_ADDR;
+    env.rt.caller = INIT_ACTOR_ADDR;
     env.rt.caller_type = *INIT_ACTOR_CODE_ID;
     env
 }
@@ -67,12 +68,12 @@ fn simple_construction() {
     let mut env = prepare_env();
     let params = constructor_params(&env);
 
-    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
     env.rt.expect_send(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
         RawBytes::default(),
-        TokenAmount::from(0),
+        TokenAmount::zero(),
         RawBytes::serialize(env.worker_key).unwrap(),
         ExitCode::OK,
     );
@@ -96,8 +97,8 @@ fn simple_construction() {
     assert_eq!(SectorSize::_32GiB, info.sector_size);
     assert_eq!(2349, info.window_post_partition_sectors);
 
-    assert_eq!(TokenAmount::from(0), state.pre_commit_deposits);
-    assert_eq!(TokenAmount::from(0), state.locked_funds);
+    assert_eq!(TokenAmount::zero(), state.pre_commit_deposits);
+    assert_eq!(TokenAmount::zero(), state.locked_funds);
     assert_ne!(Cid::default(), state.pre_committed_sectors);
     assert_ne!(Cid::default(), state.sectors);
 
@@ -121,16 +122,16 @@ fn simple_construction() {
 
     assert!(state.early_terminations.is_empty());
 
-    util::check_state_invariants(&env.rt);
+    util::check_state_invariants_from_mock_runtime(&env.rt);
 }
 
 #[test]
 fn control_addresses_are_resolved_during_construction() {
     let mut env = prepare_env();
 
-    let control1 = util::new_bls_addr(1);
+    let control1 = new_bls_addr(1);
     let control1id = Address::new_id(555);
-    let control2 = util::new_bls_addr(2);
+    let control2 = new_bls_addr(2);
     let control2id = Address::new_id(655);
 
     env.control_addrs = vec![control1, control2];
@@ -140,12 +141,12 @@ fn control_addresses_are_resolved_during_construction() {
     env.rt.id_addresses.insert(control2, control2id);
 
     let params = constructor_params(&env);
-    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
     env.rt.expect_send(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
         RawBytes::default(),
-        TokenAmount::from(0),
+        TokenAmount::zero(),
         RawBytes::serialize(env.worker_key).unwrap(),
         ExitCode::OK,
     );
@@ -174,12 +175,12 @@ fn fails_if_control_address_is_not_an_account_actor() {
     env.rt.actor_code_cids.insert(control1, *PAYCH_ACTOR_CODE_ID);
 
     let params = constructor_params(&env);
-    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
     env.rt.expect_send(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
         RawBytes::default(),
-        TokenAmount::from(0),
+        TokenAmount::zero(),
         RawBytes::serialize(env.worker_key).unwrap(),
         ExitCode::OK,
     );
@@ -198,7 +199,7 @@ fn test_construct_with_invalid_peer_id() {
     env.peer_id = vec![0; env.rt.policy.max_peer_id_length + 1];
 
     let params = constructor_params(&env);
-    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env
         .rt
@@ -217,7 +218,7 @@ fn fails_if_control_addresses_exceeds_maximum_length() {
     }
 
     let params = constructor_params(&env);
-    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env
         .rt
@@ -236,7 +237,7 @@ fn test_construct_with_large_multiaddr() {
     }
 
     let params = constructor_params(&env);
-    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env
         .rt
@@ -254,7 +255,7 @@ fn test_construct_with_empty_multiaddr() {
     env.multiaddrs.push(BytesDe(vec![1]));
 
     let params = constructor_params(&env);
-    env.rt.expect_validate_caller_addr(vec![*INIT_ACTOR_ADDR]);
+    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env
         .rt

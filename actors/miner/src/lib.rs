@@ -11,32 +11,33 @@ pub use bitfield_queue::*;
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::multihash::Code;
 use cid::Cid;
+pub use commd::*;
 pub use deadline_assignment::*;
 pub use deadline_info::*;
 pub use deadline_state::*;
 pub use deadlines::*;
 pub use expiration_queue::*;
-use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
+use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
-use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::randomness::DomainSeparationTag::WindowedPoStChallengeSeed;
-use fvm_shared::crypto::randomness::*;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
+
+use crate::Code::Blake2b256;
+pub use beneficiary::*;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
-use fvm_shared::actor::builtin::{Type, CALLER_TYPES_SIGNABLE};
+use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::error::*;
 use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
@@ -46,7 +47,7 @@ use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, info, warn};
 pub use monies::*;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed, Zero};
+use num_traits::{FromPrimitive, Zero};
 pub use partition_state::*;
 pub use policy::*;
 pub use sector_map::*;
@@ -56,12 +57,12 @@ pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
 
-use crate::Code::Blake2b256;
-
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+mod beneficiary;
 mod bitfield_queue;
+mod commd;
 mod deadline_assignment;
 mod deadline_info;
 mod deadline_state;
@@ -76,6 +77,7 @@ mod sector_map;
 mod sectors;
 mod state;
 mod termination;
+pub mod testing;
 mod types;
 mod vesting_state;
 
@@ -115,6 +117,10 @@ pub enum Method {
     PreCommitSectorBatch = 25,
     ProveCommitAggregate = 26,
     ProveReplicaUpdates = 27,
+    PreCommitSectorBatch2 = 28,
+    ProveReplicaUpdates2 = 29,
+    ChangeBeneficiary = 30,
+    GetBeneficiary = 31,
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -132,7 +138,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(&[*INIT_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
         check_control_addresses(rt.policy(), &params.control_addresses)?;
         check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
@@ -311,6 +317,15 @@ impl Actor {
                         new_address
                     ));
                 }
+
+                // Change beneficiary address to new owner if current beneficiary address equal to old owner address
+                if info.beneficiary == info.owner {
+                    info.beneficiary = pending_address;
+                }
+                // Cancel pending beneficiary term change when the owner changes
+                info.pending_beneficiary_term = None;
+
+                // Set the new owner address
                 info.owner = pending_address;
             }
 
@@ -481,7 +496,6 @@ impl Actor {
                     submission_partition_limit
                 ));
             }
-
             let current_deadline = state.deadline_info(rt.policy(), current_epoch);
 
             // Check that the miner state indicates that the current proving deadline has started.
@@ -534,7 +548,7 @@ impl Actor {
                 params.chain_commit_epoch,
                 &[],
             )?;
-            if comm_rand != params.chain_commit_rand {
+            if Randomness(comm_rand.into()) != params.chain_commit_rand {
                 return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
             }
 
@@ -595,7 +609,6 @@ impl Actor {
                     "cannot prove partitions with no active sectors"
                 ));
             }
-
             // If we're not recovering power, record the proof for optimistic verification.
             if post_result.recovered_power.is_zero() {
                 deadline
@@ -618,8 +631,16 @@ impl Actor {
                             "failed to load sectors for post verification",
                         )
                     })?;
-                verify_windowed_post(rt, current_deadline.challenge, &sector_infos, params.proofs)
-                    .map_err(|e| e.wrap("window post failed"))?;
+                if !verify_windowed_post(
+                    rt,
+                    current_deadline.challenge,
+                    &sector_infos,
+                    params.proofs,
+                )
+                .map_err(|e| e.wrap("window post failed"))?
+                {
+                    return Err(actor_error!(illegal_argument, "invalid post was submitted"));
+                }
             }
 
             let deadline_idx = params.deadline;
@@ -655,7 +676,7 @@ impl Actor {
     /// and precommit state is removed.
     fn prove_commit_aggregate<BS, RT>(
         rt: &mut RT,
-        mut params: ProveCommitAggregateParams,
+        params: ProveCommitAggregateParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -704,8 +725,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get precommits")
             })?;
 
-        // compute data commitments and validate each precommit
-        let mut compute_data_commitments_inputs = Vec::with_capacity(precommits.len());
+        // validate each precommit
         let mut precommits_to_confirm = Vec::new();
         for (i, precommit) in precommits.iter().enumerate() {
             let msd = max_prove_commit_duration(rt.policy(), precommit.info.seal_proof)
@@ -739,15 +759,8 @@ impl Actor {
                     ));
                 }
             }
-
-            compute_data_commitments_inputs.push(ext::market::SectorDataSpec {
-                deal_ids: precommit.info.deal_ids.clone(),
-                sector_type: precommit.info.seal_proof,
-            });
         }
-
-        let comm_ds = request_unsealed_sector_cids(rt, &compute_data_commitments_inputs)?;
-        let mut svis = Vec::new();
+        let mut svis = Vec::with_capacity(precommits.len());
         let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
             *i
         } else {
@@ -760,7 +773,7 @@ impl Actor {
         let receiver_bytes =
             serialize_vec(&rt.message().receiver(), "address for seal verification challenge")?;
 
-        for (i, precommit) in precommits.iter().enumerate() {
+        for precommit in precommits.iter() {
             let interactive_epoch =
                 precommit.pre_commit_epoch + rt.policy().pre_commit_challenge_delay;
             if rt.curr_epoch() <= interactive_epoch {
@@ -780,12 +793,15 @@ impl Actor {
                 interactive_epoch,
                 &receiver_bytes,
             )?;
+
+            let unsealed_cid = precommit.info.unsealed_cid.get_cid(precommit.info.seal_proof)?;
+
             let svi = AggregateSealVerifyInfo {
                 sector_number: precommit.info.sector_number,
-                randomness: sv_info_randomness,
-                interactive_randomness: sv_info_interactive_randomness,
+                randomness: Randomness(sv_info_randomness.into()),
+                interactive_randomness: Randomness(sv_info_interactive_randomness.into()),
                 sealed_cid: precommit.info.sealed_cid,
-                unsealed_cid: comm_ds[i],
+                unsealed_cid,
             };
             svis.push(svi);
         }
@@ -800,7 +816,7 @@ impl Actor {
         rt.verify_aggregate_seals(&AggregateSealVerifyProofAndInfos {
             miner: miner_actor_id,
             seal_proof,
-            aggregate_proof: RegisteredAggregateProof::SnarkPackV1,
+            aggregate_proof: RegisteredAggregateProof::SnarkPackV2,
             proof: params.aggregate_proof,
             infos: svis,
         })
@@ -849,13 +865,68 @@ impl Actor {
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
+        // In this entry point, the unsealed CID is computed from deals via the market actor.
+        // A future entry point will take the unsealed CID as parameter
+        let updates = params
+            .updates
+            .into_iter()
+            .map(|ru| ReplicaUpdateInner {
+                sector_number: ru.sector_number,
+                deadline: ru.deadline,
+                partition: ru.partition,
+                new_sealed_cid: ru.new_sealed_cid,
+                new_unsealed_cid: None,
+                deals: ru.deals,
+                update_proof_type: ru.update_proof_type,
+                replica_proof: ru.replica_proof,
+            })
+            .collect();
+        Self::prove_replica_updates_inner(rt, updates)
+    }
+
+    fn prove_replica_updates2<BS, RT>(
+        rt: &mut RT,
+        params: ProveReplicaUpdatesParams2,
+    ) -> Result<BitField, ActorError>
+    where
+        // + Clone because we messed up and need to keep a copy around between transactions.
+        // https://github.com/filecoin-project/builtin-actors/issues/133
+        BS: Blockstore + Clone,
+        RT: Runtime<BS>,
+    {
+        let updates = params
+            .updates
+            .into_iter()
+            .map(|ru| ReplicaUpdateInner {
+                sector_number: ru.sector_number,
+                deadline: ru.deadline,
+                partition: ru.partition,
+                new_sealed_cid: ru.new_sealed_cid,
+                new_unsealed_cid: Some(ru.new_unsealed_cid),
+                deals: ru.deals,
+                update_proof_type: ru.update_proof_type,
+                replica_proof: ru.replica_proof,
+            })
+            .collect();
+        Self::prove_replica_updates_inner(rt, updates)
+    }
+    fn prove_replica_updates_inner<BS, RT>(
+        rt: &mut RT,
+        updates: Vec<ReplicaUpdateInner>,
+    ) -> Result<BitField, ActorError>
+    where
+        // + Clone because we messed up and need to keep a copy around between transactions.
+        // https://github.com/filecoin-project/builtin-actors/issues/133
+        BS: Blockstore + Clone,
+        RT: Runtime<BS>,
+    {
         // Validate inputs
 
-        if params.updates.len() > rt.policy().prove_replica_updates_max_size {
+        if updates.len() > rt.policy().prove_replica_updates_max_size {
             return Err(actor_error!(
                 illegal_argument,
                 "too many updates ({} > {})",
-                params.updates.len(),
+                updates.len(),
                 rt.policy().prove_replica_updates_max_size
             ));
         }
@@ -876,15 +947,16 @@ impl Actor {
         let mut pledge_delta = TokenAmount::zero();
 
         struct UpdateAndSectorInfo<'a> {
-            update: &'a ReplicaUpdate,
+            update: &'a ReplicaUpdateInner,
             sector_info: SectorOnChainInfo,
+            deal_weights: ext::market::DealWeights,
         }
 
         let mut sectors_deals = Vec::<ext::market::SectorDeals>::new();
         let mut sectors_data_spec = Vec::<ext::market::SectorDataSpec>::new();
         let mut validated_updates = Vec::<UpdateAndSectorInfo>::new();
         let mut sector_numbers = BitField::new();
-        for update in params.updates.iter() {
+        for update in updates.iter() {
             let set = sector_numbers.get(update.sector_number);
             if set {
                 info!("duplicate sector being updated {}, skipping", update.sector_number,);
@@ -979,7 +1051,7 @@ impl Actor {
             }
 
             let res = rt.send(
-                *STORAGE_MARKET_ACTOR_ADDR,
+                &STORAGE_MARKET_ACTOR_ADDR,
                 ext::market::ACTIVATE_DEALS_METHOD,
                 RawBytes::serialize(ext::market::ActivateDealsParams {
                     deal_ids: update.deals.clone(),
@@ -987,20 +1059,28 @@ impl Actor {
                 })?,
                 TokenAmount::zero(),
             );
-
-            if res.is_err() {
+            let weights = if let Ok(res) = res {
+                // Erroring in this case as it means something went really wrong
+                let activate_ret: ext::market::ActivateDealsResult = res.deserialize()?;
+                activate_ret.weights
+            } else {
                 info!(
                     "failed to activate deals on sector {0}, skipping sector {0}",
                     update.sector_number,
                 );
                 continue;
-            }
+            };
 
             let expiration = sector_info.expiration;
             let seal_proof = sector_info.seal_proof;
-            validated_updates.push(UpdateAndSectorInfo { update, sector_info });
+            validated_updates.push(UpdateAndSectorInfo {
+                update,
+                sector_info,
+                deal_weights: weights,
+            });
 
             sectors_deals.push(ext::market::SectorDeals {
+                sector_type: seal_proof,
                 deal_ids: update.deals.clone(),
                 sector_expiry: expiration,
             });
@@ -1016,37 +1096,38 @@ impl Actor {
 
         // Errors past this point cause the prove_replica_updates call to fail (no more skipping sectors)
 
-        let deal_weights = request_deal_weights(rt, &sectors_deals)?;
-        if deal_weights.sectors.len() != validated_updates.len() {
+        let deal_data = request_deal_data(rt, &sectors_deals)?;
+        if deal_data.sectors.len() != validated_updates.len() {
             return Err(actor_error!(
                 illegal_state,
                 "deal weight request returned {} records, expected {}",
-                deal_weights.sectors.len(),
-                validated_updates.len()
-            ));
-        }
-
-        let unsealed_sector_cids = request_unsealed_sector_cids(rt, &sectors_data_spec)?;
-        if unsealed_sector_cids.len() != validated_updates.len() {
-            return Err(actor_error!(
-                illegal_state,
-                "unsealed sector cid request returned {} records, expected {}",
-                unsealed_sector_cids.len(),
+                deal_data.sectors.len(),
                 validated_updates.len()
             ));
         }
 
         struct UpdateWithDetails<'a> {
-            update: &'a ReplicaUpdate,
+            update: &'a ReplicaUpdateInner,
             sector_info: &'a SectorOnChainInfo,
-            deal_weight: &'a ext::market::SectorWeights,
-            unsealed_cid: Cid,
+            deal_weights: &'a ext::market::DealWeights,
+            full_unsealed_cid: Cid,
         }
 
         // Group declarations by deadline
         let mut decls_by_deadline = BTreeMap::<u64, Vec<UpdateWithDetails>>::new();
         let mut deadlines_to_load = Vec::<u64>::new();
-        for (i, with_sector_info) in validated_updates.iter().enumerate() {
+        for (with_sector_info, deal_data) in validated_updates.iter().zip(deal_data.sectors.iter())
+        {
+            let computed_commd = CompactCommD::new(deal_data.commd)
+                .get_cid(with_sector_info.sector_info.seal_proof)?;
+            if let Some(ref declared_commd) = with_sector_info.update.new_unsealed_cid {
+                if !declared_commd.eq(&computed_commd) {
+                    info!(
+                        "unsealed CID does not match with deals: expected {}, got {}, sector: {}",
+                        computed_commd, declared_commd, with_sector_info.update.sector_number
+                    );
+                }
+            }
             let dl = with_sector_info.update.deadline;
             if !decls_by_deadline.contains_key(&dl) {
                 deadlines_to_load.push(dl);
@@ -1055,8 +1136,8 @@ impl Actor {
             decls_by_deadline.entry(dl).or_default().push(UpdateWithDetails {
                 update: with_sector_info.update,
                 sector_info: &with_sector_info.sector_info,
-                deal_weight: &deal_weights.sectors[i],
-                unsealed_cid: unsealed_sector_cids[i],
+                deal_weights: &with_sector_info.deal_weights,
+                full_unsealed_cid: computed_commd,
             });
         }
 
@@ -1068,10 +1149,10 @@ impl Actor {
             let mut deadlines = state
                 .load_deadlines(rt.store())?;
 
-            let mut new_sectors = vec![SectorOnChainInfo::default()];
+            let mut new_sectors = Vec::with_capacity(validated_updates.len());
             for &dl_idx in deadlines_to_load.iter() {
                 let mut deadline = deadlines
-                    .load_deadline(rt.policy(),rt.store(), dl_idx)
+                    .load_deadline(rt.policy(), rt.store(), dl_idx)
                     .map_err(|e|
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
@@ -1088,7 +1169,7 @@ impl Actor {
                         )
                     )?;
 
-                let quant = state.quant_spec_for_deadline(rt.policy(),dl_idx);
+                let quant = state.quant_spec_for_deadline(rt.policy(), dl_idx);
 
                 for with_details in &decls_by_deadline[&dl_idx] {
                     let update_proof_type = with_details.sector_info.seal_proof
@@ -1111,7 +1192,7 @@ impl Actor {
                             update_proof_type,
                             new_sealed_cid: with_details.update.new_sealed_cid,
                             old_sealed_cid: with_details.sector_info.sealed_cid,
-                            new_unsealed_cid: with_details.unsealed_cid,
+                            new_unsealed_cid: with_details.full_unsealed_cid,
                             proof: with_details.update.replica_proof.clone(),
                         }
                     )
@@ -1134,8 +1215,8 @@ impl Actor {
                     new_sector_info.deal_ids = with_details.update.deals.clone();
                     new_sector_info.activation = rt.curr_epoch();
 
-                    new_sector_info.deal_weight = with_details.deal_weight.deal_weight.clone();
-                    new_sector_info.verified_deal_weight = with_details.deal_weight.verified_deal_weight.clone();
+                    new_sector_info.deal_weight = with_details.deal_weights.deal_weight.clone();
+                    new_sector_info.verified_deal_weight = with_details.deal_weights.verified_deal_weight.clone();
 
                     // compute initial pledge
                     let duration = with_details.sector_info.expiration - rt.curr_epoch();
@@ -1290,7 +1371,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
 
-            BitField::try_from_bits(succeeded).map_err(|_|{
+            BitField::try_from_bits(succeeded).map_err(|_| {
                 actor_error!(illegal_argument; "invalid sector number")
             })
         })?;
@@ -1500,7 +1581,8 @@ impl Actor {
 
         request_update_power(rt, power_delta)?;
         if !to_reward.is_zero() {
-            if let Err(e) = rt.send(reporter, METHOD_SEND, RawBytes::default(), to_reward.clone()) {
+            if let Err(e) = rt.send(&reporter, METHOD_SEND, RawBytes::default(), to_reward.clone())
+            {
                 error!("failed to send reward: {}", e);
                 to_burn += to_reward;
             }
@@ -1516,7 +1598,6 @@ impl Actor {
 
     /// Pledges to seal and commit a single sector.
     /// See PreCommitSectorBatch for details.
-    /// This method may be deprecated and removed in the future
     fn pre_commit_sector<BS, RT>(
         rt: &mut RT,
         params: PreCommitSectorParams,
@@ -1545,25 +1626,95 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        let sectors = params
+            .sectors
+            .into_iter()
+            .map(|spci| {
+                if spci.replace_capacity {
+                    Err(actor_error!(
+                        forbidden,
+                        "cc upgrade through precommit discontinued, use ProveReplicaUpdate"
+                    ))
+                } else {
+                    Ok(SectorPreCommitInfoInner {
+                        seal_proof: spci.seal_proof,
+                        sector_number: spci.sector_number,
+                        sealed_cid: spci.sealed_cid,
+                        seal_rand_epoch: spci.seal_rand_epoch,
+                        deal_ids: spci.deal_ids,
+                        expiration: spci.expiration,
+                        // This entry point computes the unsealed CID from deals via the market.
+                        // A future one will accept it directly as a parameter.
+                        unsealed_cid: None,
+                    })
+                }
+            })
+            .collect::<Result<_, _>>()?;
+        Self::pre_commit_sector_batch_inner(rt, sectors)
+    }
+
+    /// Pledges the miner to seal and commit some new sectors.
+    /// The caller specifies sector numbers, sealed sector CIDs, unsealed sector CID, seal randomness epoch, expiration, and the IDs
+    /// of any storage deals contained in the sector data. The storage deal proposals must be already submitted
+    /// to the storage market actor.
+    /// This method calculates the sector's power, locks a pre-commit deposit for the sector, stores information about the
+    /// sector in state and waits for it to be proven or expire.
+    fn pre_commit_sector_batch2<BS, RT>(
+        rt: &mut RT,
+        params: PreCommitSectorBatchParams2,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        Self::pre_commit_sector_batch_inner(
+            rt,
+            params
+                .sectors
+                .into_iter()
+                .map(|spci| SectorPreCommitInfoInner {
+                    seal_proof: spci.seal_proof,
+                    sector_number: spci.sector_number,
+                    sealed_cid: spci.sealed_cid,
+                    seal_rand_epoch: spci.seal_rand_epoch,
+                    deal_ids: spci.deal_ids,
+                    expiration: spci.expiration,
+
+                    unsealed_cid: Some(spci.unsealed_cid),
+                })
+                .collect(),
+        )
+    }
+
+    /// This function combines old and new flows for PreCommit with use Option<CommpactCommD>
+    /// The old PreCommits will call this with None, new ones with Some(CompactCommD).
+    fn pre_commit_sector_batch_inner<BS, RT>(
+        rt: &mut RT,
+        sectors: Vec<SectorPreCommitInfoInner>,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
         let curr_epoch = rt.curr_epoch();
         {
             let policy = rt.policy();
-            if params.sectors.is_empty() {
+            if sectors.is_empty() {
                 return Err(actor_error!(illegal_argument, "batch empty"));
-            } else if params.sectors.len() > policy.pre_commit_sector_batch_max_size {
+            } else if sectors.len() > policy.pre_commit_sector_batch_max_size {
                 return Err(actor_error!(
                     illegal_argument,
                     "batch of {} too large, max {}",
-                    params.sectors.len(),
+                    sectors.len(),
                     policy.pre_commit_sector_batch_max_size
                 ));
             }
         }
         // Check per-sector preconditions before opening state transaction or sending other messages.
         let challenge_earliest = curr_epoch - rt.policy().max_pre_commit_randomness_lookback;
-        let mut sectors_deals = Vec::with_capacity(params.sectors.len());
+        let mut sectors_deals = Vec::with_capacity(sectors.len());
         let mut sector_numbers = BitField::new();
-        for precommit in params.sectors.iter() {
+        for precommit in sectors.iter() {
             let set = sector_numbers.get(precommit.sector_number);
             if set {
                 return Err(actor_error!(
@@ -1572,19 +1723,20 @@ impl Actor {
                     precommit.sector_number
                 ));
             }
-            if precommit.sector_number > MAX_SECTOR_NUMBER {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "sector number {} out of range 0..(2^63-1)",
-                    precommit.sector_number
-                ));
-            }
             sector_numbers.set(precommit.sector_number);
+
             if !can_pre_commit_seal_proof(rt.policy(), precommit.seal_proof) {
                 return Err(actor_error!(
                     illegal_argument,
                     "unsupported seal proof type {}",
                     i64::from(precommit.seal_proof)
+                ));
+            }
+            if precommit.sector_number > MAX_SECTOR_NUMBER {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "sector number {} out of range 0..(2^63-1)",
+                    precommit.sector_number
                 ));
             }
             // Skip checking if CID is defined because it cannot be so in Rust
@@ -1609,20 +1761,20 @@ impl Actor {
                 ));
             }
 
+            if let Some(ref commd) = precommit.unsealed_cid.as_ref().and_then(|c| c.0) {
+                if !is_unsealed_sector(commd) {
+                    return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
+                }
+            }
+
             // Require sector lifetime meets minimum by assuming activation happens at last epoch permitted for seal proof.
             // This could make sector maximum lifetime validation more lenient if the maximum sector limit isn't hit first.
             let max_activation = curr_epoch
                 + max_prove_commit_duration(rt.policy(), precommit.seal_proof).unwrap_or_default();
             validate_expiration(rt, max_activation, precommit.expiration, precommit.seal_proof)?;
 
-            if precommit.replace_capacity {
-                return Err(actor_error!(
-                    forbidden,
-                    "cc upgrade through precommit discontinued, use ProveReplicaUpdate"
-                ));
-            }
-
             sectors_deals.push(ext::market::SectorDeals {
+                sector_type: precommit.seal_proof,
                 sector_expiry: precommit.expiration,
                 deal_ids: precommit.deal_ids.clone(),
             })
@@ -1630,21 +1782,21 @@ impl Actor {
         // gather information from other actors
         let reward_stats = request_current_epoch_block_reward(rt)?;
         let power_total = request_current_total_power(rt)?;
-        let deal_weights = request_deal_weights(rt, &sectors_deals)?;
-        if deal_weights.sectors.len() != params.sectors.len() {
+        let deal_data_vec = request_deal_data(rt, &sectors_deals)?;
+        if deal_data_vec.sectors.len() != sectors.len() {
             return Err(actor_error!(
                 illegal_state,
                 "deal weight request returned {} records, expected {}",
-                deal_weights.sectors.len(),
-                params.sectors.len()
+                deal_data_vec.sectors.len(),
+                sectors.len()
             ));
         }
-        let mut fee_to_burn = TokenAmount::from(0_u32);
+        let mut fee_to_burn = TokenAmount::zero();
         let mut needs_cron = false;
         rt.transaction(|state: &mut State, rt| {
             // Aggregate fee applies only when batching.
-            if params.sectors.len() > 1 {
-                let aggregate_fee = aggregate_pre_commit_network_fee(params.sectors.len() as i64, &rt.base_fee());
+            if sectors.len() > 1 {
+                let aggregate_fee = aggregate_pre_commit_network_fee(sectors.len() as i64, &rt.base_fee());
                 // AggregateFee applied to fee debt to consolidate burn with outstanding debts
                 state.apply_penalty(&aggregate_fee)
                     .map_err(|e| {
@@ -1681,12 +1833,15 @@ impl Actor {
                 return Err(actor_error!(forbidden, "pre-commit not allowed during active consensus fault"));
             }
 
-            let mut chain_infos = Vec::with_capacity(params.sectors.len());
-            let mut total_deposit_required = BigInt::zero();
-            let mut clean_up_events = Vec::with_capacity(params.sectors.len());
+            let mut chain_infos = Vec::with_capacity(sectors.len());
+            let mut total_deposit_required = TokenAmount::zero();
+            let mut clean_up_events = Vec::with_capacity(sectors.len());
             let deal_count_max = sector_deals_max(rt.policy(), info.sector_size);
 
-            for (i, precommit) in params.sectors.iter().enumerate() {
+            let sector_weight_for_deposit = qa_power_max(info.sector_size);
+            let deposit_req = pre_commit_deposit_for_power(&reward_stats.this_epoch_reward_smoothed, &power_total.quality_adj_power_smoothed, &sector_weight_for_deposit);
+
+            for (i, precommit) in sectors.into_iter().enumerate() {
                 // Sector must have the same Window PoSt proof type as the miner's recorded seal type.
                 let sector_wpost_proof = precommit.seal_proof
                     .registered_window_post_proof()
@@ -1703,36 +1858,48 @@ impl Actor {
                     return Err(actor_error!(illegal_argument, "too many deals for sector {} > {}", precommit.deal_ids.len(), deal_count_max));
                 }
 
-                // Ensure total deal space does not exceed sector size.
-                let deal_weight = &deal_weights.sectors[i];
-                if deal_weight.deal_space > info.sector_size as u64 {
-                    return Err(actor_error!(illegal_argument, "deals too large to fit in sector {} > {}", deal_weight.deal_space, info.sector_size));
+                let deal_data = &deal_data_vec.sectors[i];
+
+                // 1. verify that precommit.unsealed_cid is correct
+                // 2. create a new on_chain_precommit
+
+                let commd = match precommit.unsealed_cid {
+                    // if the CommD is unknown, use CommD computed by the market
+                    None => CompactCommD::new(deal_data.commd),
+                    Some(x) => x,
+                };
+                if commd.0 != deal_data.commd {
+                    return Err(actor_error!(illegal_argument, "computed {:?} and passed {:?} CommDs not equal",
+                            deal_data.commd, commd));
                 }
-                if precommit.replace_capacity {
-                    validate_replace_sector(rt.policy(), state, store, precommit)?
-                }
-                // Estimate the sector weight using the current epoch as an estimate for activation,
-                // and compute the pre-commit deposit using that weight.
-                // The sector's power will be recalculated when it's proven.
-                let duration = precommit.expiration - curr_epoch;
-                let sector_weight = qa_power_for_weight(info.sector_size, duration, &deal_weight.deal_weight, &deal_weight.verified_deal_weight);
-                let deposit_req = pre_commit_deposit_for_power(&reward_stats.this_epoch_reward_smoothed, &power_total.quality_adj_power_smoothed, &sector_weight);
+
+
+                let on_chain_precommit = SectorPreCommitInfo {
+                    seal_proof: precommit.seal_proof,
+                    sector_number: precommit.sector_number,
+                    sealed_cid: precommit.sealed_cid,
+                    seal_rand_epoch: precommit.seal_rand_epoch,
+                    deal_ids: precommit.deal_ids,
+                    expiration: precommit.expiration,
+                    unsealed_cid: commd,
+                };
+
                 // Build on-chain record.
                 chain_infos.push(SectorPreCommitOnChainInfo {
-                    info: precommit.clone(),
+                    info: on_chain_precommit,
                     pre_commit_deposit: deposit_req.clone(),
                     pre_commit_epoch: curr_epoch,
-                    deal_weight: deal_weight.deal_weight.clone(),
-                    verified_deal_weight: deal_weight.verified_deal_weight.clone(),
                 });
-                total_deposit_required += deposit_req;
+
+                total_deposit_required += &deposit_req;
 
                 // Calculate pre-commit cleanup
-                let msd = max_prove_commit_duration(rt.policy(), precommit.seal_proof)
-                .ok_or_else(|| actor_error!(illegal_argument, "no max seal duration set for proof type: {}", i64::from(precommit.seal_proof)))?;
+                let seal_proof = precommit.seal_proof;
+                let msd = max_prove_commit_duration(rt.policy(), seal_proof)
+                    .ok_or_else(|| actor_error!(illegal_argument, "no max seal duration set for proof type: {}", i64::from(seal_proof)))?;
                 // PreCommitCleanUpDelay > 0 here is critical for the batch verification of proofs. Without it, if a proof arrived exactly on the
-			    // due epoch, ProveCommitSector would accept it, then the expiry event would remove it, and then
-			    // ConfirmSectorProofsValid would fail to find it.
+                // due epoch, ProveCommitSector would accept it, then the expiry event would remove it, and then
+                // ConfirmSectorProofsValid would fail to find it.
                 let clean_up_bound = curr_epoch + msd + rt.policy().expired_pre_commit_clean_up_delay;
                 clean_up_events.push((clean_up_bound, precommit.sector_number));
             }
@@ -1856,13 +2023,14 @@ impl Actor {
                 sector_num: precommit.info.sector_number,
                 registered_seal_proof: precommit.info.seal_proof,
             },
+            precommit.info.unsealed_cid,
         )?;
 
         rt.send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
             RawBytes::serialize(&svi)?,
-            BigInt::zero(),
+            TokenAmount::zero(),
         )?;
 
         Ok(())
@@ -1876,7 +2044,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(iter::once(&*STORAGE_POWER_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
         // This should be enforced by the power actor. We log here just in case
         // something goes wrong.
@@ -2079,7 +2247,7 @@ impl Actor {
                         .ok_or_else(|| actor_error!(not_found, "no such partition {:?}", key))?;
 
                     let old_sectors = sectors
-                        .load_sector(&mut decl.sectors)
+                        .load_sector(&decl.sectors)
                         .map_err(|e| e.wrap("failed to load sectors"))?;
 
                     let new_sectors: Vec<SectorOnChainInfo> = old_sectors
@@ -2694,7 +2862,7 @@ impl Actor {
     /// May not be invoked if the deadline has any un-processed early terminations.
     fn compact_partitions<BS, RT>(
         rt: &mut RT,
-        mut params: CompactPartitionsParams,
+        params: CompactPartitionsParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -2835,7 +3003,7 @@ impl Actor {
     /// 99 can be masked out to collapse these two ranges into one.
     fn compact_sector_numbers<BS, RT>(
         rt: &mut RT,
-        mut params: CompactSectorNumbersParams,
+        params: CompactSectorNumbersParams,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -2898,7 +3066,7 @@ impl Actor {
         let (pledge_delta_total, to_burn) = rt.transaction(|st: &mut State, rt| {
             let mut pledge_delta_total = TokenAmount::zero();
 
-            rt.validate_immediate_caller_is(std::iter::once(&*REWARD_ACTOR_ADDR))?;
+            rt.validate_immediate_caller_is(std::iter::once(&REWARD_ACTOR_ADDR))?;
 
             let (reward_to_lock, locked_reward_vesting_spec) =
                 locked_reward_from_reward(params.reward);
@@ -3001,11 +3169,12 @@ impl Actor {
 
         // The policy amounts we should burn and send to reporter
         // These may differ from actual funds send when miner goes into fee debt
-        let this_epoch_reward = reward_stats.this_epoch_reward_smoothed.estimate();
+        let this_epoch_reward =
+            TokenAmount::from_atto(reward_stats.this_epoch_reward_smoothed.estimate());
         let fault_penalty = consensus_fault_penalty(this_epoch_reward.clone());
         let slasher_reward = reward_for_consensus_slash_report(&this_epoch_reward);
 
-        let mut pledge_delta = TokenAmount::from(0);
+        let mut pledge_delta = TokenAmount::zero();
 
         let (burn_amount, reward_amount) = rt.transaction(|st: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), st)?;
@@ -3052,7 +3221,7 @@ impl Actor {
             Ok((burn_amount, reward_amount))
         })?;
 
-        if let Err(e) = rt.send(reporter, METHOD_SEND, RawBytes::default(), reward_amount) {
+        if let Err(e) = rt.send(&reporter, METHOD_SEND, RawBytes::default(), reward_amount) {
             error!("failed to send reward: {}", e);
         }
 
@@ -3080,13 +3249,13 @@ impl Actor {
             ));
         }
 
-        let (info, newly_vested, fee_to_burn, available_balance, state) =
+        let (info, amount_withdrawn, newly_vested, fee_to_burn, state) =
             rt.transaction(|state: &mut State, rt| {
-                let info = get_miner_info(rt.store(), state)?;
+                let mut info = get_miner_info(rt.store(), state)?;
 
                 // Only the owner is allowed to withdraw the balance as it belongs to/is controlled by the owner
                 // and not the worker.
-                rt.validate_immediate_caller_is(&[info.owner])?;
+                rt.validate_immediate_caller_is(&[info.owner, info.beneficiary])?;
 
                 // Ensure we don't have any pending terminations.
                 if !state.early_terminations.is_empty() {
@@ -3118,36 +3287,206 @@ impl Actor {
                 // Verify unlocked funds cover both InitialPledgeRequirement and FeeDebt
                 // and repay fee debt now.
                 let fee_to_burn = repay_debts_or_abort(rt, state)?;
-
-                Ok((info, newly_vested, fee_to_burn, available_balance, state.clone()))
+                let mut amount_withdrawn =
+                    std::cmp::min(&available_balance, &params.amount_requested);
+                if amount_withdrawn.is_negative() {
+                    return Err(actor_error!(
+                        illegal_state,
+                        "negative amount to withdraw: {}",
+                        amount_withdrawn
+                    ));
+                }
+                if info.beneficiary != info.owner {
+                    // remaining_quota always zero and positive
+                    let remaining_quota = info.beneficiary_term.available(rt.curr_epoch());
+                    if remaining_quota.is_zero() {
+                        return Err(actor_error!(
+                            forbidden,
+                            "beneficiary expiration of epoch {} passed or quota of {} depleted with {} used",
+                            info.beneficiary_term.expiration,
+                            info.beneficiary_term.quota,
+                            info.beneficiary_term.used_quota
+                        ));
+                    }
+                    amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
+                    if amount_withdrawn.is_positive() {
+                        info.beneficiary_term.used_quota += amount_withdrawn;
+                        state.save_info(rt.store(), &info).map_err(|e| {
+                            e.downcast_default(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "failed to save miner info",
+                            )
+                        })?;
+                    }
+                    Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
+                } else {
+                    Ok((info, amount_withdrawn.clone(), newly_vested, fee_to_burn, state.clone()))
+                }
             })?;
 
-        let amount_withdrawn = std::cmp::min(&available_balance, &params.amount_requested);
-        if amount_withdrawn.is_negative() {
-            return Err(actor_error!(
-                illegal_state,
-                "negative amount to withdraw: {}",
-                amount_withdrawn
-            ));
-        }
-        if amount_withdrawn > &available_balance {
-            return Err(actor_error!(
-                illegal_state,
-                "amount to withdraw {} < available {}",
-                amount_withdrawn,
-                available_balance
-            ));
-        }
-
         if amount_withdrawn.is_positive() {
-            rt.send(info.owner, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
+            rt.send(&info.beneficiary, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
         }
 
         burn_funds(rt, fee_to_burn)?;
         notify_pledge_changed(rt, &newly_vested.neg())?;
 
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
-        Ok(WithdrawBalanceReturn { amount_withdrawn: amount_withdrawn.clone() })
+        Ok(WithdrawBalanceReturn { amount_withdrawn })
+    }
+
+    /// Proposes or confirms a change of beneficiary address.
+    /// A proposal must be submitted by the owner, and takes effect after approval of both the proposed beneficiary and current beneficiary,
+    /// if applicable, any current beneficiary that has time and quota remaining.
+    //// See FIP-0029, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0029.md
+    fn change_beneficiary<BS, RT>(
+        rt: &mut RT,
+        params: ChangeBeneficiaryParams,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        let caller = rt.message().caller();
+        let new_beneficiary =
+            Address::new_id(rt.resolve_address(&params.new_beneficiary).ok_or_else(|| {
+                actor_error!(
+                    illegal_argument,
+                    "unable to resolve address: {}",
+                    params.new_beneficiary
+                )
+            })?);
+
+        rt.transaction(|state: &mut State, rt| {
+            let mut info = get_miner_info(rt.store(), state)?;
+            if caller == info.owner {
+                // This is a ChangeBeneficiary proposal when the caller is Owner
+                if new_beneficiary != info.owner {
+                    // When beneficiary is not owner, just check quota in params,
+                    // Expiration maybe an expiration value, but wouldn't cause problem, just the new beneficiary never get any benefit
+                    if !params.new_quota.is_positive() {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "beneficial quota {} must bigger than zero",
+                            params.new_quota
+                        ));
+                    }
+                } else {
+                    // Expiration/quota must set to 0 while change beneficiary to owner
+                    if !params.new_quota.is_zero() {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "owner beneficial quota {} must be zero",
+                            params.new_quota
+                        ));
+                    }
+
+                    if params.new_expiration != 0 {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "owner beneficial expiration {} must be zero",
+                            params.new_expiration
+                        ));
+                    }
+                }
+
+                let mut pending_beneficiary_term = PendingBeneficiaryChange::new(
+                    new_beneficiary,
+                    params.new_quota,
+                    params.new_expiration,
+                );
+                if info.beneficiary_term.available(rt.curr_epoch()).is_zero() {
+                    // Set current beneficiary to approved when current beneficiary is not effective
+                    pending_beneficiary_term.approved_by_beneficiary = true;
+                }
+                info.pending_beneficiary_term = Some(pending_beneficiary_term);
+            } else if let Some(pending_term) = &info.pending_beneficiary_term {
+                if caller != info.beneficiary && caller != pending_term.new_beneficiary {
+                    return Err(actor_error!(
+                        forbidden,
+                        "message caller {} is neither proposal beneficiary{} nor current beneficiary{}",
+                        caller,
+                        params.new_beneficiary,
+                        info.beneficiary
+                    ));
+                }
+
+                if pending_term.new_beneficiary != new_beneficiary {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "new beneficiary address must be equal expect {}, but got {}",
+                        pending_term.new_beneficiary,
+                        params.new_beneficiary
+                    ));
+                }
+                if pending_term.new_quota != params.new_quota {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "new beneficiary quota must be equal expect {}, but got {}",
+                        pending_term.new_quota,
+                        params.new_quota
+                    ));
+                }
+                if pending_term.new_expiration != params.new_expiration {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "new beneficiary expire date must be equal expect {}, but got {}",
+                        pending_term.new_expiration,
+                        params.new_expiration
+                    ));
+                }
+            } else {
+                return Err(actor_error!(forbidden, "No changeBeneficiary proposal exists"));
+            }
+
+            if let Some(pending_term) = info.pending_beneficiary_term.as_mut() {
+                if caller == info.beneficiary {
+                    pending_term.approved_by_beneficiary = true
+                }
+
+                if caller == new_beneficiary {
+                    pending_term.approved_by_nominee = true
+                }
+
+                if pending_term.approved_by_beneficiary && pending_term.approved_by_nominee {
+                    //approved by both beneficiary and nominee
+                    if new_beneficiary != info.beneficiary {
+                        //if beneficiary changes, reset used_quota to zero
+                        info.beneficiary_term.used_quota = TokenAmount::zero();
+                    }
+                    info.beneficiary = new_beneficiary;
+                    info.beneficiary_term.quota = pending_term.new_quota.clone();
+                    info.beneficiary_term.expiration = pending_term.new_expiration;
+                    // clear the pending proposal
+                    info.pending_beneficiary_term = None;
+                }
+            }
+
+            state.save_info(rt.store(), &info).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
+            })?;
+            Ok(())
+        })
+    }
+
+    // GetBeneficiary retrieves the currently active and proposed beneficiary information.
+    // This method is for use by other actors (such as those acting as beneficiaries),
+    // and to abstract the state representation for clients.
+    fn get_beneficiary<BS, RT>(rt: &mut RT) -> Result<GetBeneficiaryReturn, ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_accept_any()?;
+        let info = rt.transaction(|state: &mut State, rt| get_miner_info(rt.store(), state))?;
+
+        Ok(GetBeneficiaryReturn {
+            active: ActiveBeneficiary {
+                beneficiary: info.beneficiary,
+                term: info.beneficiary_term,
+            },
+            proposed: info.pending_beneficiary_term,
+        })
     }
 
     fn repay_debt<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
@@ -3191,7 +3530,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(std::iter::once(&*STORAGE_POWER_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
         let payload: CronEventPayload = from_slice(&params.event_payload).map_err(|e| {
             actor_error!(
@@ -3223,6 +3562,33 @@ impl Actor {
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
         Ok(())
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct SectorPreCommitInfoInner {
+    pub seal_proof: RegisteredSealProof,
+    pub sector_number: SectorNumber,
+    /// CommR
+    pub sealed_cid: Cid,
+    pub seal_rand_epoch: ChainEpoch,
+    pub deal_ids: Vec<DealID>,
+    pub expiration: ChainEpoch,
+    /// CommD
+    pub unsealed_cid: Option<CompactCommD>,
+}
+
+/// ReplicaUpdate param with Option<Cid> for CommD
+/// None means unknown
+pub struct ReplicaUpdateInner {
+    pub sector_number: SectorNumber,
+    pub deadline: u64,
+    pub partition: u64,
+    pub new_sealed_cid: Cid,
+    /// None means unknown
+    pub new_unsealed_cid: Option<Cid>,
+    pub deals: Vec<DealID>,
+    pub update_proof_type: RegisteredUpdateProof,
+    pub replica_proof: Vec<u8>,
 }
 
 // TODO: We're using the current power+epoch reward. Technically, we
@@ -3396,7 +3762,6 @@ where
                     "failed to expire pre-committed sectors",
                 )
             })?;
-
         state
             .apply_penalty(&deposit_to_burn)
             .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
@@ -3558,94 +3923,6 @@ where
     Ok(())
 }
 
-fn validate_replace_sector<BS>(
-    policy: &Policy,
-    state: &State,
-    store: &BS,
-    params: &SectorPreCommitInfo,
-) -> Result<(), ActorError>
-where
-    BS: Blockstore,
-{
-    let replace_sector = state
-        .get_sector(store, params.replace_sector_number)
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to load sector {}", params.replace_sector_number),
-            )
-        })?
-        .ok_or_else(|| {
-            actor_error!(not_found, "no such sector {} to replace", params.replace_sector_number)
-        })?;
-
-    if !replace_sector.deal_ids.is_empty() {
-        return Err(actor_error!(
-            illegal_argument,
-            "cannot replace sector {} which has deals",
-            params.replace_sector_number
-        ));
-    }
-
-    // From network version 7, the new sector's seal type must have the same Window PoSt proof type as the one
-    // being replaced, rather than be exactly the same seal type.
-    // This permits replacing sectors with V1 seal types with V1_1 seal types.
-    let replace_w_post_proof =
-        replace_sector.seal_proof.registered_window_post_proof().map_err(|e| {
-            actor_error!(
-                illegal_state,
-                "failed to lookup Window PoSt proof type for sector seal proof {:?}: {}",
-                replace_sector.seal_proof,
-                e
-            )
-        })?;
-    let new_w_post_proof = params.seal_proof.registered_window_post_proof().map_err(|e| {
-        actor_error!(
-            illegal_argument,
-            "failed to lookup Window PoSt proof type for new seal proof {:?}: {}",
-            replace_sector.seal_proof,
-            e
-        )
-    })?;
-
-    if replace_w_post_proof != new_w_post_proof {
-        return Err(actor_error!(
-                illegal_argument,
-                "new sector window PoSt proof type {:?} must match replaced proof type {:?} (seal proof type {:?})",
-                replace_w_post_proof,
-                new_w_post_proof,
-                params.seal_proof
-            ));
-    }
-
-    if params.expiration < replace_sector.expiration {
-        return Err(actor_error!(
-            illegal_argument,
-            "cannot replace sector {} expiration {} with sooner expiration {}",
-            params.replace_sector_number,
-            replace_sector.expiration,
-            params.expiration
-        ));
-    }
-
-    state
-        .check_sector_health(
-            policy,
-            store,
-            params.replace_sector_deadline,
-            params.replace_sector_partition,
-            params.replace_sector_number,
-        )
-        .map_err(|e| {
-            e.downcast_default(
-                ExitCode::USR_ILLEGAL_STATE,
-                format!("failed to replace sector {}", params.replace_sector_number),
-            )
-        })?;
-
-    Ok(())
-}
-
 fn enroll_cron_event<BS, RT>(
     rt: &mut RT,
     event_epoch: ChainEpoch,
@@ -3659,7 +3936,7 @@ where
     let ser_params =
         serialize(&ext::power::EnrollCronEventParams { event_epoch, payload }, "cron params")?;
     rt.send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
         ext::power::ENROLL_CRON_EVENT_METHOD,
         ser_params,
         TokenAmount::zero(),
@@ -3680,7 +3957,7 @@ where
     let delta_clone = delta.clone();
 
     rt.send(
-        *STORAGE_POWER_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
         ext::power::UPDATE_CLAIMED_POWER_METHOD,
         RawBytes::serialize(ext::power::UpdateClaimedPowerParams {
             raw_byte_delta: delta.raw,
@@ -3706,7 +3983,7 @@ where
 
     for chunk in deal_ids.chunks(MAX_LENGTH) {
         rt.send(
-            *STORAGE_MARKET_ACTOR_ADDR,
+            &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
             RawBytes::serialize(ext::market::OnMinerSectorsTerminateParamsRef {
                 epoch,
@@ -3760,8 +4037,11 @@ where
 
     // Regenerate challenge randomness, which must match that generated for the proof.
     let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
-    let randomness: PoStRandomness =
-        rt.get_randomness_from_beacon(WindowedPoStChallengeSeed, challenge_epoch, &entropy)?;
+    let randomness = rt.get_randomness_from_beacon(
+        DomainSeparationTag::WindowedPoStChallengeSeed,
+        challenge_epoch,
+        &entropy,
+    )?;
 
     let challenged_sectors = sectors
         .iter()
@@ -3773,8 +4053,12 @@ where
         .collect();
 
     // get public inputs
-    let pv_info =
-        WindowPoStVerifyInfo { randomness, proofs, challenged_sectors, prover: miner_actor_id };
+    let pv_info = WindowPoStVerifyInfo {
+        randomness: Randomness(randomness.into()),
+        proofs,
+        challenged_sectors,
+        prover: miner_actor_id,
+    };
 
     // verify the post proof
     let result = rt.verify_post(&pv_info);
@@ -3784,6 +4068,7 @@ where
 fn get_verify_info<BS, RT>(
     rt: &mut RT,
     params: SealVerifyParams,
+    unsealed_cid: CompactCommD,
 ) -> Result<SealVerifyInfo, ActorError>
 where
     BS: Blockstore,
@@ -3792,14 +4077,6 @@ where
     if rt.curr_epoch() <= params.interactive_epoch {
         return Err(actor_error!(forbidden, "too early to prove sector"));
     }
-
-    let commds = request_unsealed_sector_cids(
-        rt,
-        &[ext::market::SectorDataSpec {
-            deal_ids: params.deal_ids.clone(),
-            sector_type: params.registered_seal_proof,
-        }],
-    )?;
 
     let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
         *i
@@ -3811,62 +4088,32 @@ where
         ));
     };
     let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
-    let randomness: SealRandomness = rt.get_randomness_from_tickets(
+    let randomness = rt.get_randomness_from_tickets(
         DomainSeparationTag::SealRandomness,
         params.seal_rand_epoch,
         &entropy,
     )?;
-    let interactive_randomness: InteractiveSealRandomness = rt.get_randomness_from_beacon(
+    let interactive_randomness = rt.get_randomness_from_beacon(
         DomainSeparationTag::InteractiveSealChallengeSeed,
         params.interactive_epoch,
         &entropy,
     )?;
 
+    let commd = unsealed_cid.get_cid(params.registered_seal_proof)?;
+
     Ok(SealVerifyInfo {
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
         deal_ids: params.deal_ids,
-        interactive_randomness,
+        interactive_randomness: Randomness(interactive_randomness.into()),
         proof: params.proof,
-        randomness,
+        randomness: Randomness(randomness.into()),
         sealed_cid: params.sealed_cid,
-        unsealed_cid: commds[0],
+        unsealed_cid: commd,
     })
 }
 
-/// Requests the storage market actor compute the unsealed sector CID from a sector's deals.
-fn request_unsealed_sector_cids<BS, RT>(
-    rt: &mut RT,
-    data_commitment_inputs: &[ext::market::SectorDataSpec],
-) -> Result<Vec<Cid>, ActorError>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
-    if data_commitment_inputs.is_empty() {
-        return Ok(vec![]);
-    }
-    let ret: ext::market::ComputeDataCommitmentReturn = rt
-        .send(
-            *STORAGE_MARKET_ACTOR_ADDR,
-            ext::market::COMPUTE_DATA_COMMITMENT_METHOD,
-            RawBytes::serialize(ext::market::ComputeDataCommitmentParamsRef {
-                inputs: data_commitment_inputs,
-            })?,
-            TokenAmount::zero(),
-        )?
-        .deserialize()?;
-    if data_commitment_inputs.len() != ret.commds.len() {
-        return Err(actor_error!(illegal_state,
-            "number of data commitments computed {} does not match number of data commitment inputs {}",
-            ret.commds.len(), data_commitment_inputs.len()
-        ));
-    }
-
-    Ok(ret.commds)
-}
-
-fn request_deal_weights<BS, RT>(
+fn request_deal_data<BS, RT>(
     rt: &mut RT,
     sectors: &[ext::market::SectorDeals],
 ) -> Result<ext::market::VerifyDealsForActivationReturn, ActorError>
@@ -3880,20 +4127,13 @@ where
         deal_count += sector.deal_ids.len();
     }
     if deal_count == 0 {
-        let mut empty_result = ext::market::VerifyDealsForActivationReturn {
-            sectors: Vec::with_capacity(sectors.len()),
-        };
-        for _ in 0..sectors.len() {
-            empty_result.sectors.push(ext::market::SectorWeights {
-                deal_space: 0,
-                deal_weight: 0.into(),
-                verified_deal_weight: 0.into(),
-            });
-        }
-        return Ok(empty_result);
+        return Ok(ext::market::VerifyDealsForActivationReturn {
+            sectors: vec![Default::default(); sectors.len()],
+        });
     }
+
     let serialized = rt.send(
-        *STORAGE_MARKET_ACTOR_ADDR,
+        &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
         RawBytes::serialize(ext::market::VerifyDealsForActivationParamsRef { sectors })?,
         TokenAmount::zero(),
@@ -3913,7 +4153,7 @@ where
 {
     let ret = rt
         .send(
-            *REWARD_ACTOR_ADDR,
+            &REWARD_ACTOR_ADDR,
             ext::reward::THIS_EPOCH_REWARD_METHOD,
             Default::default(),
             TokenAmount::zero(),
@@ -3934,7 +4174,7 @@ where
 {
     let ret = rt
         .send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::CURRENT_TOTAL_POWER_METHOD,
             Default::default(),
             TokenAmount::zero(),
@@ -3962,7 +4202,7 @@ where
     let is_principal = rt
         .resolve_builtin_actor_type(&owner_code)
         .as_ref()
-        .map(Type::is_principal)
+        .map(|t| CALLER_TYPES_SIGNABLE.contains(t))
         .unwrap_or(false);
 
     if !is_principal {
@@ -3973,7 +4213,7 @@ where
         ));
     }
 
-    Ok(resolved)
+    Ok(Address::new_id(resolved))
 }
 
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
@@ -4000,7 +4240,7 @@ where
 
     if raw.protocol() != Protocol::BLS {
         let ret = rt.send(
-            resolved,
+            &Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
             RawBytes::default(),
             TokenAmount::zero(),
@@ -4015,7 +4255,7 @@ where
             ));
         }
     }
-    Ok(resolved)
+    Ok(Address::new_id(resolved))
 }
 
 fn burn_funds<BS, RT>(rt: &mut RT, amount: TokenAmount) -> Result<(), ActorError>
@@ -4025,21 +4265,21 @@ where
 {
     log::debug!("storage provder {} burning {}", rt.message().receiver(), amount);
     if amount.is_positive() {
-        rt.send(*BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount)?;
+        rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount)?;
     }
     Ok(())
 }
 
-fn notify_pledge_changed<BS, RT>(rt: &mut RT, pledge_delta: &BigInt) -> Result<(), ActorError>
+fn notify_pledge_changed<BS, RT>(rt: &mut RT, pledge_delta: &TokenAmount) -> Result<(), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
     if !pledge_delta.is_zero() {
         rt.send(
-            *STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
-            RawBytes::serialize(BigIntSer(pledge_delta))?,
+            RawBytes::serialize(pledge_delta)?,
             TokenAmount::zero(),
         )?;
     }
@@ -4127,10 +4367,8 @@ fn validate_fr_declaration_deadline(deadline: &DeadlineInfo) -> anyhow::Result<(
 /// Validates that a partition contains the given sectors.
 fn validate_partition_contains_sectors(
     partition: &Partition,
-    sectors: &mut UnvalidatedBitField,
+    sectors: &BitField,
 ) -> anyhow::Result<()> {
-    let sectors = sectors.validate().map_err(|e| anyhow!("failed to check sectors: {}", e))?;
-
     // Check that the declared sectors are actually assigned to the partition.
     if partition.sectors.contains_all(sectors) {
         Ok(())
@@ -4321,13 +4559,13 @@ where
     // a constant number of them.
     let activation = rt.curr_epoch();
     // Pre-commits for new sectors.
-    let mut valid_pre_commits = Vec::<SectorPreCommitOnChainInfo>::new();
+    let mut valid_pre_commits = Vec::default();
 
     for pre_commit in pre_commits {
-        if !pre_commit.info.deal_ids.is_empty() {
+        let deal_weights = if !pre_commit.info.deal_ids.is_empty() {
             // Check (and activate) storage deals associated to sector. Abort if checks failed.
             let res = rt.send(
-                *STORAGE_MARKET_ACTOR_ADDR,
+                &STORAGE_MARKET_ACTOR_ADDR,
                 ext::market::ACTIVATE_DEALS_METHOD,
                 RawBytes::serialize(ext::market::ActivateDealsParams {
                     deal_ids: pre_commit.info.deal_ids.clone(),
@@ -4335,18 +4573,25 @@ where
                 })?,
                 TokenAmount::zero(),
             );
-
-            if let Err(e) = res {
-                info!(
-                    "failed to activate deals on sector {}, dropping from prove commit set: {}",
-                    pre_commit.info.sector_number,
-                    e.msg()
-                );
-                continue;
+            match res {
+                Ok(res) => {
+                    let activate_res: ext::market::ActivateDealsResult = res.deserialize()?;
+                    activate_res.weights
+                }
+                Err(e) => {
+                    info!(
+                        "failed to activate deals on sector {}, dropping from prove commit set: {}",
+                        pre_commit.info.sector_number,
+                        e.msg()
+                    );
+                    continue;
+                }
             }
-        }
+        } else {
+            ext::market::DealWeights::default()
+        };
 
-        valid_pre_commits.push(pre_commit);
+        valid_pre_commits.push((pre_commit, deal_weights));
     }
 
     // When all prove commits have failed abort early
@@ -4364,7 +4609,7 @@ where
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
-        for pre_commit in valid_pre_commits {
+        for (pre_commit, deal_weights) in valid_pre_commits {
             // compute initial pledge
             let duration = pre_commit.info.expiration - activation;
 
@@ -4380,8 +4625,8 @@ where
             let power = qa_power_for_weight(
                 info.sector_size,
                 duration,
-                &pre_commit.deal_weight,
-                &pre_commit.verified_deal_weight,
+                &deal_weights.deal_weight,
+                &deal_weights.verified_deal_weight,
             );
 
             let day_reward = expected_reward_for_power(
@@ -4419,8 +4664,8 @@ where
                 deal_ids: pre_commit.info.deal_ids,
                 expiration: pre_commit.info.expiration,
                 activation,
-                deal_weight: pre_commit.deal_weight,
-                verified_deal_weight: pre_commit.verified_deal_weight,
+                deal_weight: deal_weights.deal_weight,
+                verified_deal_weight: deal_weights.verified_deal_weight,
                 initial_pledge,
                 expected_day_reward: day_reward,
                 expected_storage_pledge: storage_pledge,
@@ -4618,7 +4863,28 @@ impl ActorCode for Actor {
                 let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
+            #[allow(unreachable_code)]
+            Some(Method::PreCommitSectorBatch2) => {
+                Self::pre_commit_sector_batch2(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            #[allow(unreachable_code)]
+            Some(Method::ProveReplicaUpdates2) => {
+                let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::ChangeBeneficiary) => {
+                Self::change_beneficiary(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::GetBeneficiary) => {
+                let res = Self::get_beneficiary(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
         }
     }
 }
+
+#[cfg(test)]
+mod internal_tests;
