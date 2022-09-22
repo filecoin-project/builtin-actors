@@ -55,7 +55,7 @@ impl Measurements {
         Self { scenario, values: Vec::new() }
     }
 
-    pub fn record(&mut self, series: usize, i: usize, stats: BlockstoreStats) {
+    pub fn record(&mut self, series: u8, i: u32, stats: BlockstoreStats) {
         // Not merging `i` into `stats` in JSON so the iteration appear in the left.
         let value = json!({
             "i": i,
@@ -83,22 +83,23 @@ fn basic() {
     assert_eq!(sum, 0)
 }
 
+/// Number of iterations to do in a scenario, ie. the number of observations along the X axis.
+const NUM_ITER: u32 = 100;
+
 /// Measure the cost of pushing items into dynamic arrays. Run multiple scenarios
 /// with different number of items pushed in one call. First do a number of iterations
 /// with `array1`, then with `array2` to see if the former affects the latter.
 #[test]
 fn measure_array_push() {
-    // Number of pushes to do on the same array, to see how its size affects the cost.
-    let m = 100;
     // Number of items to push at the end of the array at a time.
     for n in [1, 100] {
         let mut env = new_footprint_env();
         let mut mts = Measurements::new(format!("array_push_n{}", n));
-        for i in 1..=m {
+        for i in 1..=NUM_ITER {
             env.call(|| CONTRACT.array_1_push(n));
             mts.record(1, i, env.runtime().store.take_stats());
         }
-        for i in 1..=m {
+        for i in 1..=NUM_ITER {
             env.call(|| CONTRACT.array_2_push(n));
             mts.record(2, i, env.runtime().store.take_stats());
         }
@@ -110,21 +111,37 @@ fn measure_array_push() {
 /// number of items added at the same time. Add to `mapping1` first, then `mapping2`.
 #[test]
 fn measure_mapping_add() {
-    // Number of pushes to do on the same mapping, to see how its size affects the cost.
-    let m = 100;
     // Number of items to add to the mapping at a time
     for n in [1, 100] {
         let mut env = new_footprint_env();
         let mut mts = Measurements::new(format!("mapping_add_n{}", n));
         // In this case we always add new keys, never overwrite existing ones, to compare to
         // the scenario where we were pushing to the end of arrays.
-        for i in 1..=m {
+        for i in 1..=NUM_ITER {
             env.call(|| CONTRACT.mapping_1_set(i * n, n, i));
-            mts.record(1, i as usize, env.runtime().store.take_stats());
+            mts.record(1, i, env.runtime().store.take_stats());
         }
-        for i in 1..=m {
+        for i in 1..=NUM_ITER {
             env.call(|| CONTRACT.mapping_2_set(i * n, n, i));
-            mts.record(2, i as usize, env.runtime().store.take_stats());
+            mts.record(2, i, env.runtime().store.take_stats());
+        }
+        mts.export().unwrap()
+    }
+}
+
+/// Fill the array with 10,000 items, then read varying number of consecutive entries from it.
+#[test]
+fn measure_array_read() {
+    let mut env = new_footprint_env();
+    env.call(|| CONTRACT.array_1_push(10000));
+    env.runtime().store.clear_stats();
+
+    // Number of items to access from the array at a time.
+    for n in [1, 100] {
+        let mut mts = Measurements::new(format!("array_read_n{}", n));
+        for i in 1..=NUM_ITER {
+            env.call(|| CONTRACT.array_1_sum((i - 1) * n, n));
+            mts.record(1, i, env.runtime().store.take_stats());
         }
         mts.export().unwrap()
     }
