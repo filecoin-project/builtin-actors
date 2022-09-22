@@ -129,6 +129,27 @@ fn measure_mapping_add() {
     }
 }
 
+/// Measure the cost of overwriting existing mapping keys.
+/// Fill a mapping with 1000 items, then overwrite 10 at a time.
+/// Next, loop through them again but overwrite with the same value.
+#[test]
+fn measure_mapping_overwrite() {
+    let n = 10;
+    let mut env = new_footprint_env();
+    let mut mts = Measurements::new("mapping_overwrite".into());
+    env.call(CONTRACT.mapping_1_set(0, 1000, 1));
+    env.runtime().store.clear_stats();
+
+    for s in [1, 2] {
+        for i in 0..NUM_ITER {
+            env.call(CONTRACT.mapping_1_set(i * n, n, 2));
+            mts.record(s, i, env.runtime().store.take_stats());
+        }
+    }
+
+    mts.export().unwrap()
+}
+
 /// Fill an array with 10,000 items, then read varying number of consecutive entries from it.
 #[test]
 fn measure_array_read() {
