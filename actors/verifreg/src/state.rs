@@ -9,7 +9,7 @@ use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::HAMT_BIT_WIDTH;
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone)]
 pub struct State {
     pub root_key: Address,
     pub verifiers: Cid,
