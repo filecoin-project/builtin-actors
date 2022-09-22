@@ -299,31 +299,20 @@ impl Actor {
             };
 
             if deal.proposal.verified_deal {
-                let (mut use_client_datacap, total_client_datacap) = match all_client_datacap
-                    .get(&client_id)
-                    .cloned()
-                {
-                    None => {
-                        let total_datacap = rt
-                            .send(
-                                &DATACAP_TOKEN_ACTOR_ADDR,
-                                ext::datacap::BALANCE_OF_METHOD as u64,
-                                serialize(
-                                    &Address::new_id(client_id as u64),
-                                    "balance parameters",
-                                )?,
-                                TokenAmount::zero(),
-                            )
-                            .and_then(|ret| datacap_balance_response(&ret))
+                let (mut use_client_datacap, total_client_datacap) =
+                    match all_client_datacap.get(&client_id).cloned() {
+                        None => {
+                            let total_datacap = balance_of(rt, &Address::new_id(client_id as u64))
                             .map_err(
                                 |e| actor_error!(not_found; "failed to get datacap {}", e.msg()),
                             )?;
 
-                        (TokenAmount::zero(), total_datacap)
-                    }
-                    Some(client_data) => client_data,
-                };
-                let piece_datacap_required = TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
+                            (TokenAmount::zero(), total_datacap)
+                        }
+                        Some(client_data) => client_data,
+                    };
+                let piece_datacap_required =
+                    TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
                 if &use_client_datacap + &piece_datacap_required > total_client_datacap {
                     continue;
                 }
@@ -404,20 +393,12 @@ impl Actor {
         }
 
         let mut allocation_map: BTreeMap<ActorID, Vec<AllocationID>> = BTreeMap::new();
-        for (action_id, client_datacap) in all_client_datacap.iter() {
+        for (action_id, _client_datacap) in all_client_datacap.iter() {
             let params = datacap_transfer_request(
                 &Address::new_id(*action_id as u64),
                 alloc_reqs.get(action_id).unwrap().clone(),
             )?;
-            let mut alloc_ids = match rt
-                .send(
-                    &DATACAP_TOKEN_ACTOR_ADDR,
-                    ext::datacap::TRANSFER_FROM_METHOD as u64,
-                    serialize(&params, "transfer parameters")?,
-                    TokenAmount::zero(),
-                )
-                .and_then(|ret| datacap_transfer_response(&ret))
-            {
+            let mut alloc_ids = match transfer_from(rt, params) {
                 Ok(ids) => ids,
                 Err(e) => {
                     return Err(actor_error!(
@@ -1185,6 +1166,44 @@ fn datacap_transfer_request(
             "allocation requests",
         )?,
     })
+}
+
+// Invokes transfer on a data cap token actor for whole units of data cap.
+fn transfer_from<BS, RT>(
+    rt: &RT,
+    params: TransferFromParams,
+) -> Result<Vec<AllocationID>, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    let ret = rt
+        .send(
+            &DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::TRANSFER_FROM_METHOD as u64,
+            serialize(&params, "transfer params")?,
+            TokenAmount::zero(),
+        )
+        .context(format!("failed to send transfer to datacap {:?}", params))?;
+    Ok(datacap_transfer_response(&ret)?)
+}
+
+// Invokes BalanceOf on the data cap token actor, and converts the result to whole units of data cap.
+fn balance_of<BS, RT>(rt: &RT, owner: &Address) -> Result<TokenAmount, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    let params = serialize(owner, "owner address")?;
+    let ret = rt
+        .send(
+            &DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::BALANCE_OF_METHOD as u64,
+            params,
+            TokenAmount::zero(),
+        )
+        .context(format!("failed to query datacap balance of {}", owner))?;
+    Ok(deserialize(&ret, "balance result")?)
 }
 
 // Parses allocation IDs from a TransferFromReturn
