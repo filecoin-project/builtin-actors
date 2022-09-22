@@ -315,17 +315,19 @@ impl Actor {
                                 TokenAmount::zero(),
                             )
                             .and_then(|ret| datacap_balance_response(&ret))
-                            .map_err(|e| actor_error!(not_found; "failed to get datacap {}", e.msg()))?;
+                            .map_err(
+                                |e| actor_error!(not_found; "failed to get datacap {}", e.msg()),
+                            )?;
 
                         (TokenAmount::zero(), total_datacap)
                     }
                     Some(client_data) => client_data,
                 };
-                let deal_datacap = TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
-                if &use_client_datacap + &deal_datacap > total_client_datacap {
+                let piece_datacap_required = TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
+                if &use_client_datacap + &piece_datacap_required > total_client_datacap {
                     continue;
                 }
-                use_client_datacap += &deal_datacap;
+                use_client_datacap += &piece_datacap_required;
                 all_client_datacap.insert(client_id, (use_client_datacap, total_client_datacap));
             }
 
@@ -418,7 +420,11 @@ impl Actor {
             {
                 Ok(ids) => ids,
                 Err(e) => {
-                    return Err(actor_error!(illegal_state, "failed transfer datacap: {}", e.msg()));
+                    return Err(actor_error!(
+                        illegal_state,
+                        "failed transfer datacap: {}",
+                        e.msg()
+                    ));
                 }
             };
             allocation_map.entry(*action_id).or_default().append(alloc_ids.as_mut());
