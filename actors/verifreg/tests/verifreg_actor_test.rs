@@ -459,15 +459,22 @@ mod claims {
         let state_with_allocs: State = rt.get_state();
 
         // Can't remove allocations that aren't expired
-        let ret = h.remove_expired_allocations(&mut rt, CLIENT1, vec![1, 2], 0).unwrap();
+        let ret = h.remove_expired_allocations(&mut rt, CLIENT1, vec![id1, id2], 0).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN], ret.results.codes());
+        assert_eq!(DataCap::zero(), ret.datacap_recovered);
+
+        // Can't remove with wrong client ID
+        rt.set_epoch(200);
+        let ret = h.remove_expired_allocations(&mut rt, CLIENT2, vec![id1, id2], 0).unwrap();
+        assert_eq!(vec![1, 2], ret.considered);
+        assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::USR_NOT_FOUND], ret.results.codes());
         assert_eq!(DataCap::zero(), ret.datacap_recovered);
 
         // Remove the first alloc, which expired.
         rt.set_epoch(100);
         let ret =
-            h.remove_expired_allocations(&mut rt, CLIENT1, vec![1, 2], alloc1.size.0).unwrap();
+            h.remove_expired_allocations(&mut rt, CLIENT1, vec![id1, id2], alloc1.size.0).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::USR_FORBIDDEN], ret.results.codes());
         assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
@@ -475,21 +482,22 @@ mod claims {
         // Remove the second alloc (the first is no longer found).
         rt.set_epoch(200);
         let ret =
-            h.remove_expired_allocations(&mut rt, CLIENT1, vec![1, 2], alloc2.size.0).unwrap();
+            h.remove_expired_allocations(&mut rt, CLIENT1, vec![id1, id2], alloc2.size.0).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(alloc2.size.0), ret.datacap_recovered);
 
         // Reset state and show we can remove two at once.
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&mut rt, CLIENT1, vec![1, 2], total_size).unwrap();
+        let ret =
+            h.remove_expired_allocations(&mut rt, CLIENT1, vec![id1, id2], total_size).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(total_size), ret.datacap_recovered);
 
         // Reset state and show that only what was asked for is removed.
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&mut rt, CLIENT1, vec![1], alloc1.size.0).unwrap();
+        let ret = h.remove_expired_allocations(&mut rt, CLIENT1, vec![id1], alloc1.size.0).unwrap();
         assert_eq!(vec![1], ret.considered);
         assert_eq!(vec![ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
@@ -713,6 +721,79 @@ mod claims {
             assert_eq!(ret.codes(), vec![ExitCode::OK]);
             rt.verify()
         }
+    }
+
+    #[test]
+    fn expire_claims() {
+        let (h, mut rt) = new_harness();
+        let term_start = 0;
+        let term_min = MINIMUM_VERIFIED_ALLOCATION_TERM;
+        let sector = 0;
+
+        // expires at term_start + term_min + 100
+        let claim1 = make_claim(
+            "1",
+            CLIENT1,
+            PROVIDER1,
+            ALLOC_SIZE,
+            term_min,
+            term_min + 100,
+            term_start,
+            sector,
+        );
+        // expires at term_start + 200 + term_min (i.e. 100 epochs later)
+        let claim2 = make_claim(
+            "2",
+            CLIENT1,
+            PROVIDER1,
+            ALLOC_SIZE * 2,
+            term_min,
+            term_min,
+            term_start + 200,
+            sector,
+        );
+
+        let id1 = h.create_claim(&mut rt, &claim1).unwrap();
+        let id2 = h.create_claim(&mut rt, &claim2).unwrap();
+        let state_with_allocs: State = rt.get_state();
+
+        // Removal of expired claims shares most of its implementation with removing expired allocations.
+        // The full test suite is not duplicated here,   simple ones to ensure that the expiration
+        // is correctly computed.
+
+        // None expired yet
+        rt.set_epoch(term_start + term_min + 99);
+        let ret = h.remove_expired_claims(&mut rt, PROVIDER1, vec![id1, id2]).unwrap();
+        assert_eq!(vec![1, 2], ret.considered);
+        assert_eq!(vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN], ret.results.codes());
+
+        // One expired
+        rt.set_epoch(term_start + term_min + 100);
+        let ret = h.remove_expired_claims(&mut rt, PROVIDER1, vec![id1, id2]).unwrap();
+        assert_eq!(vec![1, 2], ret.considered);
+        assert_eq!(vec![ExitCode::OK, ExitCode::USR_FORBIDDEN], ret.results.codes());
+
+        // Both now expired
+        rt.set_epoch(term_start + term_min + 200);
+        let ret = h.remove_expired_claims(&mut rt, PROVIDER1, vec![id1, id2]).unwrap();
+        assert_eq!(vec![1, 2], ret.considered);
+        assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::OK], ret.results.codes());
+
+        // Reset state, and show that specifying none removes only expired allocations
+        rt.set_epoch(term_start + term_min);
+        rt.replace_state(&state_with_allocs);
+        let ret = h.remove_expired_claims(&mut rt, PROVIDER1, vec![]).unwrap();
+        assert_eq!(Vec::<AllocationID>::new(), ret.considered);
+        assert_eq!(Vec::<ExitCode>::new(), ret.results.codes());
+        assert!(h.load_claim(&mut rt, PROVIDER1, id1).is_some());
+        assert!(h.load_claim(&mut rt, PROVIDER1, id2).is_some());
+
+        rt.set_epoch(term_start + term_min + 200);
+        let ret = h.remove_expired_claims(&mut rt, PROVIDER1, vec![]).unwrap();
+        assert_eq!(vec![1, 2], ret.considered);
+        assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
+        assert!(h.load_claim(&mut rt, PROVIDER1, id1).is_none()); // removed
+        assert!(h.load_claim(&mut rt, PROVIDER1, id2).is_none()); // removed
     }
 }
 

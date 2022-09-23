@@ -197,20 +197,37 @@ pub struct AllocationsResponse {
     // IDs of new allocations created.
     pub new_allocations: Vec<AllocationID>,
 }
-
 impl Cbor for AllocationsResponse {}
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
-
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetClaimsParams {
     pub provider: ActorID,
     pub claim_ids: Vec<ClaimID>,
 }
-
 impl Cbor for GetClaimsParams {}
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetClaimsReturn {
     pub batch_info: BatchReturn,
     pub claims: Vec<Claim>,
 }
+impl Cbor for GetClaimsReturn {}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveExpiredClaimsParams {
+    // Provider to clean up (need not be the caller)
+    pub provider: ActorID,
+    // Optional list of claim IDs to attempt to remove.
+    // Empty means remove all eligible expired claims.
+    pub claim_ids: Vec<ClaimID>,
+}
+impl Cbor for RemoveExpiredClaimsParams {}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveExpiredClaimsReturn {
+    // Ids of the claims that were either specified by the caller or discovered to be expired.
+    pub considered: Vec<AllocationID>,
+    // Results for each processed claim.
+    pub results: BatchReturn,
+}
+impl Cbor for RemoveExpiredClaimsReturn {}
