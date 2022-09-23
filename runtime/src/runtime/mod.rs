@@ -29,6 +29,7 @@ use crate::ActorError;
 
 mod actor_code;
 pub mod builtins;
+pub mod chainid;
 pub mod policy;
 mod randomness;
 
@@ -49,6 +50,9 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// Information related to the current message being executed.
     fn message(&self) -> &dyn MessageInfo;
 
+    /// Information related to the current execution environment
+    fn environment(&self) -> &dyn Environment;
+
     /// The current chain epoch number. The genesis block has epoch zero.
     fn curr_epoch(&self) -> ChainEpoch;
 
@@ -64,6 +68,9 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
 
     /// The balance of the receiver.
     fn current_balance(&self) -> TokenAmount;
+
+    /// The balance of an address.
+    fn actor_balance(&self, address: &Address) -> TokenAmount;
 
     /// Resolves an address of any protocol to an ID address (via the Init actor's table).
     /// This allows resolution of externally-provided SECP, BLS, or actor addresses to the canonical form.
@@ -167,6 +174,23 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     fn charge_gas(&mut self, name: &'static str, compute: i64);
 
     fn base_fee(&self) -> TokenAmount;
+
+    fn gas_available(&self) -> u64;
+}
+
+/// Information related to the current execution environment
+pub trait Environment {
+    /// The current epoch's timestamp, as UNIX seconds
+    fn timestamp(&self) -> u64;
+
+    /// The hash of on of the last 256 blocks
+    fn blockhash(&self, block: u8) -> [u8; 32];
+
+    /// The current execution gas limit
+    fn gas_limit(&self) -> u64;
+
+    /// The current execution gas price (base fee + premium)
+    fn gas_price(&self) -> u64;
 }
 
 /// Message information available to the actor about executing message.

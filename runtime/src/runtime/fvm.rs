@@ -27,8 +27,8 @@ use sha2::{Digest, Sha256};
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::builtins::Type;
 use crate::runtime::{
-    ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
-    Verifier,
+    ActorCode, ConsensusFault, DomainSeparationTag, Environment, MessageInfo, Policy, Primitives,
+    RuntimePolicy, Verifier,
 };
 use crate::{actor_error, ActorError, Runtime};
 
@@ -95,6 +95,26 @@ impl MessageInfo for FvmMessage {
     }
 }
 
+struct FvmEnvironment;
+
+impl Environment for FvmEnvironment {
+    fn timestamp(&self) -> u64 {
+        fvm::env::timestamp()
+    }
+
+    fn blockhash(&self, block: u8) -> [u8; 32] {
+        fvm::env::blockhash(block)
+    }
+
+    fn gas_limit(&self) -> u64 {
+        fvm::env::gas_limit()
+    }
+
+    fn gas_price(&self) -> u64 {
+        fvm::env::gas_price()
+    }
+}
+
 impl<B> Runtime<B> for FvmRuntime<B>
 where
     B: Blockstore,
@@ -105,6 +125,10 @@ where
 
     fn message(&self) -> &dyn MessageInfo {
         &FvmMessage
+    }
+
+    fn environment(&self) -> &dyn Environment {
+        &FvmEnvironment
     }
 
     fn curr_epoch(&self) -> ChainEpoch {
@@ -156,6 +180,10 @@ where
 
     fn current_balance(&self) -> TokenAmount {
         fvm::sself::current_balance()
+    }
+
+    fn actor_balance(&self, address: &Address) -> TokenAmount {
+        fvm::actor::actor_balance(address)
     }
 
     fn resolve_address(&self, address: &Address) -> Option<ActorID> {
@@ -385,6 +413,10 @@ where
 
     fn base_fee(&self) -> TokenAmount {
         fvm::network::base_fee()
+    }
+
+    fn gas_available(&self) -> u64 {
+        fvm::gas::available()
     }
 }
 

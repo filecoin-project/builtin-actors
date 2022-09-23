@@ -39,8 +39,8 @@ use rand::prelude::*;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{
-    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier,
+    ActorCode, DomainSeparationTag, Environment, MessageInfo, Policy, Primitives, Runtime,
+    RuntimePolicy, Verifier,
 };
 use crate::{actor_error, ActorError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
@@ -709,6 +709,11 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         self
     }
 
+    fn environment(&self) -> &dyn Environment {
+        self.require_in_call();
+        self
+    }
+
     fn curr_epoch(&self) -> ChainEpoch {
         self.require_in_call();
         self.epoch
@@ -792,6 +797,10 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
     fn current_balance(&self) -> TokenAmount {
         self.require_in_call();
         self.balance.borrow().clone()
+    }
+
+    fn actor_balance(&self, _adrress: &Address) -> TokenAmount {
+        todo!()
     }
 
     fn resolve_address(&self, address: &Address) -> Option<ActorID> {
@@ -1039,6 +1048,10 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
 
     fn base_fee(&self) -> TokenAmount {
         self.base_fee.clone()
+    }
+
+    fn gas_available(&self) -> u64 {
+        todo!()
     }
 }
 
