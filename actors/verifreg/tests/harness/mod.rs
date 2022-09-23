@@ -20,7 +20,8 @@ use fil_actor_verifreg::{
     AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse, Claim,
     ClaimAllocationsParams, ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap,
     ExtendClaimTermsParams, ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
-    RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, SectorAllocationClaim, State,
+    RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RemoveExpiredClaimsParams,
+    RemoveExpiredClaimsReturn, SectorAllocationClaim, State,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -301,6 +302,38 @@ impl Harness {
             .expect("failed to deserialize remove expired allocations return");
         rt.verify();
         Ok(ret)
+    }
+
+    // Invokes the RemoveExpiredClaims actor method.
+    pub fn remove_expired_claims(
+        &self,
+        rt: &mut MockRuntime,
+        provider: ActorID,
+        claim_ids: Vec<ClaimID>,
+    ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
+        rt.expect_validate_caller_any();
+
+        let params = RemoveExpiredClaimsParams { provider, claim_ids };
+        let ret = rt
+            .call::<VerifregActor>(
+                Method::RemoveExpiredClaims as MethodNum,
+                &RawBytes::serialize(params).unwrap(),
+            )?
+            .deserialize()
+            .expect("failed to deserialize remove expired claims return");
+        rt.verify();
+        Ok(ret)
+    }
+
+    pub fn load_claim(
+        &self,
+        rt: &mut MockRuntime,
+        provider: ActorID,
+        id: ClaimID,
+    ) -> Option<Claim> {
+        let st: State = rt.get_state();
+        let mut claims = st.load_claims(rt.store()).unwrap();
+        claims.get(provider, id).unwrap().cloned()
     }
 
     pub fn receive_tokens(

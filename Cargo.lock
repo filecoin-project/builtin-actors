@@ -880,7 +880,7 @@ dependencies = [
 [[package]]
 name = "fil_fungible_token"
 version = "0.1.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
+source = "git+https://github.com/arajasek/filecoin?branch=asr/fix-map-key#66522504183462607dc496ce0b873973fcbf02f4"
 dependencies = [
  "anyhow",
  "cid",
@@ -891,6 +891,7 @@ dependencies = [
  "fvm_ipld_hamt",
  "fvm_sdk",
  "fvm_shared",
+ "integer-encoding",
  "num-traits",
  "serde",
  "serde_tuple",
@@ -916,7 +917,7 @@ dependencies = [
 [[package]]
 name = "frc42_dispatch"
 version = "0.3.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
+source = "git+https://github.com/arajasek/filecoin?branch=asr/fix-map-key#66522504183462607dc496ce0b873973fcbf02f4"
 dependencies = [
  "frc42_hasher",
  "frc42_macros",
@@ -929,7 +930,7 @@ dependencies = [
 [[package]]
 name = "frc42_hasher"
 version = "0.2.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
+source = "git+https://github.com/arajasek/filecoin?branch=asr/fix-map-key#66522504183462607dc496ce0b873973fcbf02f4"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
@@ -939,7 +940,7 @@ dependencies = [
 [[package]]
 name = "frc42_macros"
 version = "0.2.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
+source = "git+https://github.com/arajasek/filecoin?branch=asr/fix-map-key#66522504183462607dc496ce0b873973fcbf02f4"
 dependencies = [
  "blake2b_simd",
  "frc42_hasher",
