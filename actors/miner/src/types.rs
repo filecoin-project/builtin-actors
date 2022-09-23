@@ -270,12 +270,14 @@ impl Cbor for PreCommitSectorParams {}
 pub struct PreCommitSectorBatchParams {
     pub sectors: Vec<PreCommitSectorParams>,
 }
+impl Cbor for PreCommitSectorBatchParams {}
+
 #[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct PreCommitSectorBatchParams2 {
     pub sectors: Vec<SectorPreCommitInfo>,
 }
 
-impl Cbor for PreCommitSectorBatchParams {}
+impl Cbor for PreCommitSectorBatchParams2 {}
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorPreCommitInfo {

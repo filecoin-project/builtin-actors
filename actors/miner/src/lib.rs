@@ -11,6 +11,7 @@ pub use bitfield_queue::*;
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::multihash::Code;
 use cid::Cid;
+pub use commd::*;
 pub use deadline_assignment::*;
 pub use deadline_info::*;
 pub use deadline_state::*;
@@ -33,6 +34,7 @@ use fvm_shared::econ::TokenAmount;
 // They're not expected to ever happen, but if they do, distinguished codes can help us
 // diagnose the problem.
 
+use crate::Code::Blake2b256;
 pub use beneficiary::*;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
@@ -54,9 +56,6 @@ pub use state::*;
 pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
-
-use crate::commd::{is_unsealed_sector, CompactCommD};
-use crate::Code::Blake2b256;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -4864,15 +4863,11 @@ impl ActorCode for Actor {
                 let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            #[allow(unreachable_code)]
             Some(Method::PreCommitSectorBatch2) => {
-                return Err(actor_error!(unhandled_message, "Invalid method"));
                 Self::pre_commit_sector_batch2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            #[allow(unreachable_code)]
             Some(Method::ProveReplicaUpdates2) => {
-                return Err(actor_error!(unhandled_message, "Invalid method"));
                 let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }

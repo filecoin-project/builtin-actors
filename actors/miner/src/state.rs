@@ -47,7 +47,7 @@ pub const SECTORS_AMT_BITWIDTH: u32 = 5;
 /// that limits a miner actor's behavior (i.e. no balance withdrawals)
 /// Excess balance as computed by st.GetAvailableBalance will be
 /// withdrawable or usable for pre-commit deposit or pledge lock-up.
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
     /// Contains static info about this miner
     pub info: Cid,
