@@ -24,9 +24,9 @@ use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, parse_uint_key, resolve_to_actor_id,
-    ActorDowncast, ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
+    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
+    ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 
@@ -40,6 +40,7 @@ pub use self::types::*;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+pub mod expiration;
 pub mod ext;
 pub mod state;
 pub mod testing;
@@ -60,6 +61,7 @@ pub enum Method {
     ClaimAllocations = 9,
     GetClaims = 10,
     ExtendClaimTerms = 11,
+    RemoveExpiredClaims = 12,
     UniversalReceiverHook = UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
 }
 
@@ -313,60 +315,33 @@ impl Actor {
     {
         // Since the allocations are expired, this is safe to be called by anyone.
         rt.validate_immediate_caller_accept_any()?;
-        let client = params.client;
         let curr_epoch = rt.curr_epoch();
-        let mut ret_gen = BatchReturnGen::new(params.allocation_ids.len());
-        let mut considered_ids = params.allocation_ids.clone();
+        let mut batch_ret = BatchReturn::empty();
+        let mut considered = Vec::<ClaimID>::new();
         let mut recovered_datacap = DataCap::zero();
         let recovered_datacap = rt
             .transaction(|st: &mut State, rt| {
                 let mut allocs = st.load_allocs(rt.store())?;
-                let mut to_remove = Vec::<AllocationID>::new();
+
+                let to_remove: Vec<AllocationID>;
                 if params.allocation_ids.is_empty() {
                     // Find all expired allocations for the client.
-                    allocs
-                        .for_each(params.client, |key, alloc| {
-                            if alloc.expiration <= curr_epoch {
-                                let id = parse_uint_key(key).context_code(
-                                    ExitCode::USR_ILLEGAL_STATE,
-                                    "failed to parse uint key",
-                                )?;
-                                considered_ids.push(id);
-                            }
-                            Ok(())
-                        })
-                        .context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to iterate over allocations",
-                        )?;
-                    to_remove = considered_ids.clone();
-                    ret_gen = BatchReturnGen::new(considered_ids.len());
-                    for _ in 0..considered_ids.len() {
-                        ret_gen.add_success();
-                    }
-                }
-                for alloc_id in params.allocation_ids {
-                    // Check each specified allocation is expired.
-                    let maybe_alloc = state::get_allocation(&mut allocs, client, alloc_id)?;
-                    if let Some(alloc) = maybe_alloc {
-                        if alloc.expiration <= curr_epoch {
-                            to_remove.push(alloc_id);
-                            ret_gen.add_success();
-                        } else {
-                            ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
-                            info!("cannot revoke allocation {} that has not expired", alloc_id);
-                        }
-                    } else {
-                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
-                        info!(
-                            "claim references allocation id {} that does not belong to client {}",
-                            alloc_id, client,
-                        );
-                    }
+                    considered = expiration::find_expired(&mut allocs, params.client, curr_epoch)?;
+                    batch_ret = BatchReturn::ok(considered.len() as u32);
+                    to_remove = considered.clone();
+                } else {
+                    considered = params.allocation_ids.clone();
+                    batch_ret = expiration::check_expired(
+                        &mut allocs,
+                        &params.allocation_ids,
+                        params.client,
+                        curr_epoch,
+                    )?;
+                    to_remove = batch_ret.successes(&params.allocation_ids);
                 }
 
                 for id in to_remove {
-                    let existing = allocs.remove(client, id).context_code(
+                    let existing = allocs.remove(params.client, id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to remove allocation {}", id),
                     )?;
@@ -380,16 +355,16 @@ impl Actor {
             .context("state transaction failed")?;
 
         // Transfer the recovered datacap back to the client.
-        transfer(rt, client, &recovered_datacap).with_context(|| {
+        transfer(rt, params.client, &recovered_datacap).with_context(|| {
             format!(
                 "failed to transfer recovered datacap {} back to client {}",
-                &recovered_datacap, client
+                &recovered_datacap, params.client
             )
         })?;
 
         Ok(RemoveExpiredAllocationsReturn {
-            considered: considered_ids,
-            results: ret_gen.gen(),
+            considered,
+            results: batch_ret,
             datacap_recovered: recovered_datacap,
         })
     }
@@ -593,6 +568,55 @@ impl Actor {
         })
         .context("state transaction failed")?;
         Ok(batch_gen.gen())
+    }
+
+    // A claim may be removed after its maximum term has elapsed (by anyone).
+    // If no claims are specified, all eligible claims are removed.
+    pub fn remove_expired_claims<BS, RT>(
+        rt: &mut RT,
+        params: RemoveExpiredClaimsParams,
+    ) -> Result<RemoveExpiredClaimsReturn, ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        // Since the claims are expired, this is safe to be called by anyone.
+        rt.validate_immediate_caller_accept_any()?;
+        let curr_epoch = rt.curr_epoch();
+        let mut batch_ret = BatchReturn::empty();
+        let mut considered = Vec::<ClaimID>::new();
+        rt.transaction(|st: &mut State, rt| {
+            let mut claims = st.load_claims(rt.store())?;
+            let to_remove: Vec<ClaimID>;
+            if params.claim_ids.is_empty() {
+                // Find all expired claims for the provider.
+                considered = expiration::find_expired(&mut claims, params.provider, curr_epoch)?;
+                batch_ret = BatchReturn::ok(considered.len() as u32);
+                to_remove = considered.clone();
+            } else {
+                considered = params.claim_ids.clone();
+                batch_ret = expiration::check_expired(
+                    &mut claims,
+                    &params.claim_ids,
+                    params.provider,
+                    curr_epoch,
+                )?;
+                to_remove = batch_ret.successes(&params.claim_ids);
+            }
+
+            for id in to_remove {
+                claims.remove(params.provider, id).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to remove claim {}", id),
+                )?;
+            }
+
+            st.save_claims(&mut claims)?;
+            Ok(())
+        })
+        .context("state transaction failed")?;
+
+        Ok(RemoveExpiredClaimsReturn { considered, results: batch_ret })
     }
 
     // Receives data cap tokens (only) and creates allocations according to one or more
@@ -1122,12 +1146,16 @@ impl ActorCode for Actor {
                 let res = Self::extend_claim_terms(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::UniversalReceiverHook) => {
-                let res = Self::universal_receiver_hook(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
             Some(Method::GetClaims) => {
                 let res = Self::get_claims(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::RemoveExpiredClaims) => {
+                let res = Self::remove_expired_claims(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::UniversalReceiverHook) => {
+                let res = Self::universal_receiver_hook(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

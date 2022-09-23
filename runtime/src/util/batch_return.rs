@@ -25,6 +25,11 @@ impl BatchReturn {
         Self { success_count: n, fail_codes: Vec::new() }
     }
 
+    pub fn size(&self) -> usize {
+        self.success_count as usize + self.fail_codes.len()
+    }
+
+    // Returns a vector of exit codes for each item (including successes).
     pub fn codes(&self) -> Vec<ExitCode> {
         let mut ret = Vec::new();
 
@@ -34,9 +39,26 @@ impl BatchReturn {
             }
             ret.push(fail.code)
         }
-        let batch_size = self.success_count as usize + self.fail_codes.len();
-        for _ in ret.len()..batch_size {
+        for _ in ret.len()..self.size() {
             ret.push(ExitCode::OK)
+        }
+        ret
+    }
+
+    // Returns a subset of items corresponding to the successful indices.
+    // Panics if `items` is not the same length as this batch return.
+    pub fn successes<T: Copy>(&self, items: &[T]) -> Vec<T> {
+        if items.len() != self.size() {
+            panic!("items length {} does not match batch size {}", items.len(), self.size());
+        }
+        let mut ret = Vec::new();
+        let mut fail_idx = 0;
+        for (idx, item) in items.iter().enumerate() {
+            if fail_idx < self.fail_codes.len() && idx == self.fail_codes[fail_idx].idx as usize {
+                fail_idx += 1;
+            } else {
+                ret.push(*item)
+            }
         }
         ret
     }
