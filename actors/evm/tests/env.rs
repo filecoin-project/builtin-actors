@@ -1,7 +1,3 @@
-use std::cell::Cell;
-
-use anyhow::Result;
-use cid::Cid;
 use ethers::{
     abi::Detokenize,
     prelude::{builders::ContractCall, decode_function_data},
@@ -9,90 +5,32 @@ use ethers::{
 };
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{expect_empty, MockRuntime, EVM_ACTOR_CODE_ID};
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::tracking::{BSStats, TrackingBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use serde::{Deserialize, Serialize};
-
-#[derive(Copy, Clone, Default, Debug, Serialize, Deserialize)]
-pub struct BlockstoreStats {
-    /// Number of calls to `get`.
-    pub get_count: usize,
-    /// Number of calls to `put`.
-    pub put_count: usize,
-    /// Total bytes read by `get`.
-    pub get_bytes: usize,
-    /// Total bytes written by `put`.
-    pub put_bytes: usize,
-}
-
-#[derive(Default)]
-pub struct TrackingBlockstore {
-    store: MemoryBlockstore,
-    stats: Cell<BlockstoreStats>,
-}
-
-impl TrackingBlockstore {
-    /// Current snapshot of the stats.
-    pub fn stats(&self) -> BlockstoreStats {
-        self.stats.get()
-    }
-
-    /// Reset stats to zero.
-    pub fn clear_stats(&self) {
-        self.stats.set(BlockstoreStats::default())
-    }
-
-    /// Get the stats, then clear the tracker.
-    pub fn take_stats(&self) -> BlockstoreStats {
-        let stats = self.stats();
-        self.clear_stats();
-        stats
-    }
-}
-
-impl Blockstore for TrackingBlockstore {
-    fn has(&self, k: &Cid) -> Result<bool> {
-        self.store.has(k)
-    }
-
-    fn get(&self, k: &Cid) -> Result<Option<Vec<u8>>> {
-        let mut stats = self.stats.get();
-        stats.get_count += 1;
-        let block = self.store.get(k)?;
-        if let Some(block) = &block {
-            stats.get_bytes += block.len();
-        }
-        self.stats.set(stats);
-        Ok(block)
-    }
-
-    fn put_keyed(&self, k: &Cid, block: &[u8]) -> Result<()> {
-        let mut stats = self.stats.get();
-        stats.put_count += 1;
-        stats.put_bytes += block.len();
-        self.stats.set(stats);
-        self.store.put_keyed(k, block)
-    }
-}
 
 /// Alias for a call we will never send to the blockchain.
 pub type TestContractCall<R> = ContractCall<Provider<MockProvider>, R>;
 
 pub struct TestEnv {
     evm_address: Address,
-    runtime: MockRuntime<TrackingBlockstore>,
+    pub runtime: MockRuntime<TrackingBlockstore<MemoryBlockstore>>,
 }
 
 impl TestEnv {
-    pub fn runtime(&self) -> &MockRuntime<TrackingBlockstore> {
-        &self.runtime
+    pub fn take_store_stats(&mut self) -> BSStats {
+        self.runtime.store.stats.take()
+    }
+
+    pub fn clear_store_stats(&mut self) {
+        self.take_store_stats();
     }
 
     /// Create a new test environment where the EVM actor code is already
     /// loaded under an actor address.
     pub fn new(evm_address: Address) -> Self {
-        let mut runtime = MockRuntime::new(TrackingBlockstore::default());
+        let mut runtime = MockRuntime::new(TrackingBlockstore::new(MemoryBlockstore::new()));
 
         runtime.actor_code_cids.insert(evm_address, *EVM_ACTOR_CODE_ID);
 

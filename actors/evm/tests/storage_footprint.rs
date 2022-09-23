@@ -5,11 +5,12 @@ use std::sync::Arc;
 use ethers::contract::Lazy;
 use ethers::prelude::abigen;
 use ethers::providers::{MockProvider, Provider};
+use fvm_ipld_blockstore::tracking::BSStats as BlockstoreStats;
 use fvm_shared::address::Address;
 
 mod env;
 
-use env::{BlockstoreStats, TestContractCall, TestEnv};
+use env::{TestContractCall, TestEnv};
 use serde_json::json;
 
 // Generate a statically typed interface for the contract.
@@ -60,7 +61,12 @@ impl Measurements {
         let value = json!({
             "i": i,
             "series": series,
-            "stats": stats
+            "stats": {
+                "get_count": stats.r,
+                "get_bytes": stats.br,
+                "put_count": stats.w,
+                "put_bytes": stats.bw,
+            }
         });
         self.values.push(value);
     }
@@ -97,11 +103,11 @@ fn measure_array_push() {
         let mut mts = Measurements::new(format!("array_push_n{}", n));
         for i in 0..NUM_ITER {
             env.call(CONTRACT.array_1_push(n));
-            mts.record(1, i, env.runtime().store.take_stats());
+            mts.record(1, i, env.take_store_stats());
         }
         for i in 0..NUM_ITER {
             env.call(CONTRACT.array_2_push(n));
-            mts.record(2, i, env.runtime().store.take_stats());
+            mts.record(2, i, env.take_store_stats());
         }
         mts.export().unwrap()
     }
@@ -119,11 +125,11 @@ fn measure_mapping_add() {
         // the scenario where we were pushing to the end of arrays.
         for i in 0..NUM_ITER {
             env.call(CONTRACT.mapping_1_set(i * n, n, i));
-            mts.record(1, i, env.runtime().store.take_stats());
+            mts.record(1, i, env.take_store_stats());
         }
         for i in 0..NUM_ITER {
             env.call(CONTRACT.mapping_2_set(i * n, n, i));
-            mts.record(2, i, env.runtime().store.take_stats());
+            mts.record(2, i, env.take_store_stats());
         }
         mts.export().unwrap()
     }
@@ -138,12 +144,12 @@ fn measure_mapping_overwrite() {
     let mut env = new_footprint_env();
     let mut mts = Measurements::new("mapping_overwrite".into());
     env.call(CONTRACT.mapping_1_set(0, 1000, 1));
-    env.runtime().store.clear_stats();
+    env.clear_store_stats();
 
     for s in [1, 2] {
         for i in 0..NUM_ITER {
             env.call(CONTRACT.mapping_1_set(i * n, n, 2));
-            mts.record(s, i, env.runtime().store.take_stats());
+            mts.record(s, i, env.take_store_stats());
         }
     }
 
@@ -159,14 +165,14 @@ fn measure_array_read() {
     let sum = env.call(CONTRACT.array_1_sum(0, 10000));
     assert_eq!(sum, (1 + 10000) * 10000 / 2);
 
-    env.runtime().store.clear_stats();
+    env.clear_store_stats();
 
     // Number of items to access from the array at a time.
     for n in [1, 100] {
         let mut mts = Measurements::new(format!("array_read_n{}", n));
         for i in 0..NUM_ITER {
             env.call(CONTRACT.array_1_sum(i * n, n));
-            mts.record(1, i, env.runtime().store.take_stats());
+            mts.record(1, i, env.take_store_stats());
         }
         mts.export().unwrap()
     }
@@ -181,14 +187,14 @@ fn measure_mapping_read() {
     let sum = env.call(CONTRACT.mapping_1_sum(0, 10000));
     assert_eq!(sum, 10000);
 
-    env.runtime().store.clear_stats();
+    env.clear_store_stats();
 
     // Number of items to access from the mapping at a time.
     for n in [1, 100] {
         let mut mts = Measurements::new(format!("mapping_read_n{}", n));
         for i in 0..NUM_ITER {
             env.call(CONTRACT.mapping_1_sum(i * n, n));
-            mts.record(1, i, env.runtime().store.take_stats());
+            mts.record(1, i, env.take_store_stats());
         }
         mts.export().unwrap()
     }
@@ -203,9 +209,9 @@ fn measure_inc_one_vs_all() {
     // Interleave incrementing one and all, otherwise there's really nothing else happening.
     for i in 0..10 {
         env.call(CONTRACT.inc_counter_1());
-        mts.record(1, i, env.runtime().store.take_stats());
+        mts.record(1, i, env.take_store_stats());
         env.call(CONTRACT.inc_counters());
-        mts.record(2, i, env.runtime().store.take_stats());
+        mts.record(2, i, env.take_store_stats());
     }
 
     mts.export().unwrap()
@@ -222,10 +228,10 @@ fn measure_inc_after_fill() {
         // Then the single counter, so the read/put bytes already include the other non-zero values.
         for i in 0..NUM_ITER {
             env.call(fill(i));
-            env.runtime().store.clear_stats();
+            env.clear_store_stats();
 
             env.call(CONTRACT.inc_counter_1());
-            mts.record(series, i, env.runtime().store.take_stats());
+            mts.record(series, i, env.take_store_stats());
         }
     };
 
