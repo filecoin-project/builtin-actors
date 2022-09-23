@@ -9,6 +9,10 @@ MEASUREMENTS_PNG  = $(MEASUREMENTS_JSON:.jsonline=.png)
 .PHONY: all
 all: test-contracts
 
+# Run storage footprint tests.
+measure-storage-footprint:
+	cargo test --test storage_footprint
+
 
 # Compile all Solidity test contracts.
 # This could also be achieved with https://docs.rs/ethers/latest/ethers/solc/
