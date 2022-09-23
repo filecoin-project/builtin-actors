@@ -104,6 +104,7 @@ fn invalid_submissions() {
 
     let mut h = ActorHarness::new(period_offset);
     let mut rt = h.new_runtime();
+
     rt.epoch = precommit_epoch;
     rt.balance.replace(BIG_BALANCE.clone());
 
@@ -500,6 +501,7 @@ fn duplicate_proof_rejected() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
+
     rt.epoch = precommit_epoch;
     rt.balance.replace(BIG_BALANCE.clone());
 
@@ -585,6 +587,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
+
     rt.epoch = precommit_epoch;
     rt.balance.replace(BIG_BALANCE.clone());
 
@@ -762,6 +765,7 @@ fn skipped_faults_adjust_power() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
+
     rt.epoch = precommit_epoch;
     rt.balance.replace(BIG_BALANCE.clone());
 
@@ -1290,6 +1294,6 @@ fn bad_post_fails_when_verified() {
         "invalid post was submitted",
         result,
     );
-
+    rt.reset();
     h.check_state(&rt);
 }

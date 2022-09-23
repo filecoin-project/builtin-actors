@@ -769,6 +769,7 @@ fn update_expiration_legacy_fails_on_new_sector_with_deals() {
         "cannot use legacy sector extension for simple qa power with deal weight",
         h.extend_sectors(&mut rt, params),
     );
+    rt.reset();
     check_for_expiration(
         &mut h,
         &mut rt,
