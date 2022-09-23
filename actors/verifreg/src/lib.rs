@@ -1,11 +1,9 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_fungible_token::receiver::types::{
-    FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
-};
-use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
-use fil_fungible_token::token::TOKEN_PRECISION;
+use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
+use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use frc46_token::token::TOKEN_PRECISION;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
@@ -26,7 +24,7 @@ use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
     ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
+    SYSTEM_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 
@@ -62,7 +60,7 @@ pub enum Method {
     GetClaims = 10,
     ExtendClaimTerms = 11,
     RemoveExpiredClaims = 12,
-    UniversalReceiverHook = UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
+    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 pub struct Actor;

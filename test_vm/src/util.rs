@@ -26,10 +26,8 @@ use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
 use fil_actors_runtime::runtime::policy_constants::{
     MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
-use fil_fungible_token::receiver::types::{
-    FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
-};
-use fil_fungible_token::token::types::TransferFromParams;
+use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
+use frc46_token::token::types::TransferFromParams;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};

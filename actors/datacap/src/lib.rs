@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
-use fil_fungible_token::runtime::messaging::{Messaging, MessagingError};
-use fil_fungible_token::token::types::{
+use frc46_token::runtime::messaging::{Messaging, MessagingError};
+use frc46_token::token::types::{
     BurnFromParams, BurnFromReturn, BurnParams, BurnReturn, DecreaseAllowanceParams,
     GetAllowanceParams, IncreaseAllowanceParams, MintReturn, RevokeAllowanceParams,
     TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
 };
-use fil_fungible_token::token::{Token, TokenError, TOKEN_PRECISION};
+use frc46_token::token::{Token, TokenError, TOKEN_PRECISION};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -173,10 +173,9 @@ impl Actor {
                     .actor_result();
 
                 // Set allowance for any specified operators.
-                // TODO: use set_allowance when supported by the token library
                 for delegate in &params.operators {
                     token
-                        .increase_allowance(&params.to, delegate, &INFINITE_ALLOWANCE)
+                        .set_allowance(&params.to, delegate, &INFINITE_ALLOWANCE)
                         .actor_result()?;
                 }
 
@@ -434,7 +433,7 @@ where
         method: MethodNum,
         params: &RawBytes,
         value: &TokenAmount,
-    ) -> fil_fungible_token::runtime::messaging::Result<Receipt> {
+    ) -> frc46_token::runtime::messaging::Result<Receipt> {
         // The Runtime discards some of the information from the syscall :-(
         let fake_gas_used = 0;
         let fake_syscall_error_number = ErrorNumber::NotFound;
@@ -448,17 +447,14 @@ where
             .map_err(|_| MessagingError::Syscall(fake_syscall_error_number))
     }
 
-    fn resolve_id(
-        &self,
-        address: &Address,
-    ) -> fil_fungible_token::runtime::messaging::Result<ActorID> {
+    fn resolve_id(&self, address: &Address) -> frc46_token::runtime::messaging::Result<ActorID> {
         self.rt.resolve_address(address).ok_or(MessagingError::AddressNotInitialized(*address))
     }
 
     fn initialize_account(
         &self,
         address: &Address,
-    ) -> fil_fungible_token::runtime::messaging::Result<ActorID> {
+    ) -> frc46_token::runtime::messaging::Result<ActorID> {
         let fake_syscall_error_number = ErrorNumber::NotFound;
         if self.rt.send(address, METHOD_SEND, Default::default(), TokenAmount::zero()).is_err() {
             return Err(MessagingError::Syscall(fake_syscall_error_number));

@@ -550,6 +550,7 @@ version = "9.0.0-alpha.1"
 dependencies = [
  "anyhow",
  "fil_actors_runtime",
+ "frc42_dispatch 1.0.0",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -597,7 +598,8 @@ version = "9.0.0-alpha.1"
 dependencies = [
  "cid",
  "fil_actors_runtime",
- "fil_fungible_token",
+ "frc42_dispatch 1.0.0",
+ "frc46_token",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -635,7 +637,7 @@ dependencies = [
  "fil_actor_reward",
  "fil_actor_verifreg",
  "fil_actors_runtime",
- "fil_fungible_token",
+ "frc46_token",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
@@ -689,6 +691,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
+ "frc42_dispatch 1.0.0",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -777,7 +780,8 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
- "fil_fungible_token",
+ "frc42_dispatch 1.0.0",
+ "frc46_token",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -878,26 +882,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fil_fungible_token"
-version = "0.1.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
-dependencies = [
- "anyhow",
- "cid",
- "frc42_dispatch",
- "fvm_ipld_amt",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "fvm_ipld_hamt",
- "fvm_sdk",
- "fvm_shared",
- "num-traits",
- "serde",
- "serde_tuple",
- "thiserror",
-]
-
-[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -916,10 +900,25 @@ dependencies = [
 [[package]]
 name = "frc42_dispatch"
 version = "0.3.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7194786fb4bdab4eddeb05531805c103d3cd155630232089b03a241a665398ad"
 dependencies = [
- "frc42_hasher",
- "frc42_macros",
+ "frc42_hasher 0.2.0",
+ "frc42_macros 0.2.0",
+ "fvm_ipld_encoding",
+ "fvm_sdk",
+ "fvm_shared",
+ "thiserror",
+]
+
+[[package]]
+name = "frc42_dispatch"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a14895265f48c04193451b8a6810d58026f0ec603c47a7e52d94a3a3b5433bf"
+dependencies = [
+ "frc42_hasher 1.0.0",
+ "frc42_macros 1.0.0",
  "fvm_ipld_encoding",
  "fvm_sdk",
  "fvm_shared",
@@ -929,7 +928,19 @@ dependencies = [
 [[package]]
 name = "frc42_hasher"
 version = "0.2.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3076a35cd690f07bc7b8290a1bec0d3be986eea36d8116b6c722fe32f56a1394"
+dependencies = [
+ "fvm_sdk",
+ "fvm_shared",
+ "thiserror",
+]
+
+[[package]]
+name = "frc42_hasher"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13d43157d57ad21c9188be8edd0fad9ec720aa9735b256b41a188119917b3c77"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
@@ -939,13 +950,48 @@ dependencies = [
 [[package]]
 name = "frc42_macros"
 version = "0.2.0"
-source = "git+https://github.com/helix-onchain/filecoin?rev=39320534b8e992b9c5e53e15641ea4c9c113ed3e#39320534b8e992b9c5e53e15641ea4c9c113ed3e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25c32b391808b1db41f37726a337da83823d7e85ef3faf29af06c0ddc0dc4ee9"
 dependencies = [
  "blake2b_simd",
- "frc42_hasher",
+ "frc42_hasher 0.2.0",
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "frc42_macros"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c343356c3652593452cc1cfe95535a915261342e2a4c13bb8388ca29b259a400"
+dependencies = [
+ "blake2b_simd",
+ "frc42_hasher 1.0.0",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "frc46_token"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38cd57d1fa4f15070217752c49ac0179b67ece5136a7e29205c0dfe0c40f8901"
+dependencies = [
+ "anyhow",
+ "cid",
+ "frc42_dispatch 0.3.0",
+ "fvm_ipld_amt",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_sdk",
+ "fvm_shared",
+ "num-traits",
+ "serde",
+ "serde_tuple",
+ "thiserror",
 ]
 
 [[package]]
@@ -1895,7 +1941,7 @@ dependencies = [
  "fil_actor_verifreg",
  "fil_actors_runtime",
  "fil_builtin_actors_state",
- "fil_fungible_token",
+ "frc46_token",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",

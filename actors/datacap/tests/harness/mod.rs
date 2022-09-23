@@ -1,7 +1,5 @@
-use fil_fungible_token::receiver::types::{
-    FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
-};
-use fil_fungible_token::token::types::MintReturn;
+use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
+use frc46_token::token::types::MintReturn;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -15,8 +13,7 @@ use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    ActorError, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorError, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 pub fn new_runtime() -> MockRuntime {
@@ -84,7 +81,7 @@ impl Harness {
         // UniversalReceiverParams
         rt.expect_send(
             *to,
-            UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
+            frc42_dispatch::method_hash!("Receive"),
             serialize(&hook_params, "hook params")?,
             TokenAmount::zero(),
             RawBytes::default(),
