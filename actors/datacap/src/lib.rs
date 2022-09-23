@@ -109,6 +109,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
         let token = as_token(&mut st, &msg);
@@ -121,6 +122,7 @@ impl Actor {
         RT: Runtime<BS>,
     {
         // NOTE: mutability and method caller here are awkward for a read-only call
+        rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
         let token = as_token(&mut st, &msg);
@@ -135,6 +137,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = Messenger { rt, dummy: Default::default() };
         let token = as_token(&mut st, &msg);
