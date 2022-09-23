@@ -2,15 +2,13 @@ TEST_CONTRACTS_DIR = tests/contracts
 TEST_CONTRACTS_SOL = $(shell find $(TEST_CONTRACTS_DIR) -type f -name "*.sol")
 TEST_CONTRACTS_HEX = $(TEST_CONTRACTS_SOL:.sol=.hex)
 
+MEASUREMENTS_DIR  = tests/measurements
+MEASUREMENTS_JSON = $(shell find $(MEASUREMENTS_DIR) -type f -name "*.jsonline")
+MEASUREMENTS_PNG  = $(MEASUREMENTS_JSON:.jsonline=.png)
+
 .PHONY: all
 all: test-contracts
 
-.PHONY: solc
-solc:
-	@if [ -z "$(shell which solc)" ]; then \
-		echo "Please install solc, the Solidity compiler. See https://github.com/crytic/solc-select"; \
-		exit 1; \
-	fi
 
 # Compile all Solidity test contracts.
 # This could also be achieved with https://docs.rs/ethers/latest/ethers/solc/
@@ -23,3 +21,54 @@ $(TEST_CONTRACTS_DIR)/%.hex: $(TEST_CONTRACTS_DIR)/%.sol | solc
 	@# We could use just the .bin files in the test, but this is a way to stick to the existing pattern.
 	solc --bin $< | tail -n +4 | tr -d '\n' > $@
 	solc --bin --abi --storage-layout --hashes --overwrite $< -o $(TEST_CONTRACTS_DIR)
+
+
+# Render measurement charts.
+.PHONY: plot-measurements
+plot-measurements: $(MEASUREMENTS_PNG)
+
+# Render a specfic plot if the data changed.
+$(MEASUREMENTS_DIR)/%.png: $(MEASUREMENTS_DIR)/%.jsonline $(MEASUREMENTS_DIR)/storage-footprint.plt | jq gnuplot
+
+	@# Separate the two series (the current max) with newlines for gnuplot
+	@# Ignoring warnings from gnuplot because sometimes we only have 1 series.
+
+	cd $(MEASUREMENTS_DIR) && \
+	rm -f $*.dat && \
+	for S in 1 2; do \
+		cat $*.jsonline \
+			| jq -r "select(.series == $$S) | [.series, .i, .stats.get_count, .stats.get_bytes, .stats.put_count, .stats.put_bytes] | @tsv" \
+			>> $*.dat && \
+		echo "\n" >> $*.dat; \
+	done && \
+	gnuplot \
+		-e "scenario='$(shell echo $* | tr _ - )'" \
+		-e "filein='$*.dat'" \
+		-e "fileout='$*.png'" \
+		storage-footprint.plt \
+		2>/dev/null && \
+	rm $*.dat
+
+
+# Requirements checks.
+
+.PHONY: solc
+solc:
+	@if [ -z "$(shell which solc)" ]; then \
+		echo "Please install solc, the Solidity compiler. See https://github.com/crytic/solc-select"; \
+		exit 1; \
+	fi
+
+.PHONY: gnuplot
+gnuplot:
+	@if [ -z "$(shell which gnuplot)" ]; then \
+		echo "Please install gnuplot. See http://www.gnuplot.info/"; \
+		exit 1; \
+	fi
+
+.PHONY: jq
+jq:
+	@if [ -z "$(shell which gnuplot)" ]; then \
+		echo "Please install jq. See https://stedolan.github.io/jq/"; \
+		exit 1; \
+	fi
