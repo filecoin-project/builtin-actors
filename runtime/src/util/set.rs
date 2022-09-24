@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_hamt::Error;
+use fvm_ipld_hamt::{Error, HashAlgorithm};
 use fvm_shared::HAMT_BIT_WIDTH;
 
 use crate::{make_empty_map, make_map_with_root, BytesKey, Map};
@@ -45,22 +45,26 @@ where
 
     /// Adds key to the set.
     #[inline]
-    pub fn put(&mut self, key: BytesKey) -> Result<(), Error> {
+    pub fn put(&mut self, key: BytesKey, hash_algo: &dyn HashAlgorithm) -> Result<(), Error> {
         // Set hamt node to array root
-        self.0.set(key, ())?;
+        self.0.set(key, (), hash_algo)?;
         Ok(())
     }
 
     /// Checks if key exists in the set.
     #[inline]
-    pub fn has(&self, key: &[u8]) -> Result<bool, Error> {
-        self.0.contains_key(key)
+    pub fn has(&self, key: &[u8], hash_algo: &dyn HashAlgorithm) -> Result<bool, Error> {
+        self.0.contains_key(key, hash_algo)
     }
 
     /// Deletes key from set.
     #[inline]
-    pub fn delete(&mut self, key: &[u8]) -> Result<Option<()>, Error> {
-        match self.0.delete(key)? {
+    pub fn delete(
+        &mut self,
+        key: &[u8],
+        hash_algo: &dyn HashAlgorithm,
+    ) -> Result<Option<()>, Error> {
+        match self.0.delete(key, hash_algo)? {
             Some(_) => Ok(Some(())),
             None => Ok(None),
         }

@@ -15,56 +15,61 @@ use state_harness::*;
 fn put_get_and_delete() {
     let mut h = StateHarness::new(0);
 
+    let rt = h.new_runtime();
+
     let pc1 =
         new_pre_commit_on_chain(1, make_sealed_cid("1".as_bytes()), TokenAmount::from_atto(1), 1);
-    h.put_precommitted_sectors(vec![pc1.clone()]).unwrap();
-    assert_eq!(pc1, h.get_precommit(1));
+    h.put_precommitted_sectors(&rt, vec![pc1.clone()]).unwrap();
+    assert_eq!(pc1, h.get_precommit(&rt, 1));
 
     let pc2 =
         new_pre_commit_on_chain(2, make_sealed_cid("2".as_bytes()), TokenAmount::from_atto(1), 1);
-    h.put_precommitted_sectors(vec![pc2.clone()]).unwrap();
-    assert_eq!(pc2, h.get_precommit(2));
+    h.put_precommitted_sectors(&rt, vec![pc2.clone()]).unwrap();
+    assert_eq!(pc2, h.get_precommit(&rt, 2));
 
     let pc3 =
         new_pre_commit_on_chain(3, make_sealed_cid("2".as_bytes()), TokenAmount::from_atto(1), 1);
     let pc4 =
         new_pre_commit_on_chain(4, make_sealed_cid("2".as_bytes()), TokenAmount::from_atto(1), 1);
-    h.put_precommitted_sectors(vec![pc3.clone(), pc4.clone()]).unwrap();
-    assert_eq!(pc3, h.get_precommit(3));
-    assert_eq!(pc4, h.get_precommit(4));
+    h.put_precommitted_sectors(&rt, vec![pc3.clone(), pc4.clone()]).unwrap();
+    assert_eq!(pc3, h.get_precommit(&rt, 3));
+    assert_eq!(pc4, h.get_precommit(&rt, 4));
 
-    h.delete_precommitted_sectors(&[1]).unwrap();
-    assert!(!h.has_precommit(1));
-    assert!(h.has_precommit(2));
+    h.delete_precommitted_sectors(&rt, &[1]).unwrap();
+    assert!(!h.has_precommit(&rt, 1));
+    assert!(h.has_precommit(&rt, 2));
 }
 
 #[test]
 fn delete_nonexistent_value_returns_an_error() {
     let mut h = StateHarness::new(0);
-    assert!(h.delete_precommitted_sectors(&[1]).is_err());
+    let rt = h.new_runtime();
+    assert!(h.delete_precommitted_sectors(&rt, &[1]).is_err());
 }
 
 #[test]
 fn has_nonexistent_value_returns_false() {
     let h = StateHarness::new(0);
-    assert!(!h.has_precommit(1));
+    let rt = h.new_runtime();
+    assert!(!h.has_precommit(&rt, 1));
 }
 
 #[test]
 fn duplicate_put_rejected() {
     let mut h = StateHarness::new(0);
+    let rt = h.new_runtime();
 
     let pc1 =
         new_pre_commit_on_chain(1, make_sealed_cid("1".as_bytes()), TokenAmount::from_atto(1), 1);
 
     // In sequence
-    assert!(h.put_precommitted_sectors(vec![pc1.clone()]).is_ok());
-    assert!(h.put_precommitted_sectors(vec![pc1]).is_err());
+    assert!(h.put_precommitted_sectors(&rt, vec![pc1.clone()]).is_ok());
+    assert!(h.put_precommitted_sectors(&rt, vec![pc1]).is_err());
 
     // In batch
     let pc2 =
         new_pre_commit_on_chain(2, make_sealed_cid("2".as_bytes()), TokenAmount::from_atto(1), 1);
-    assert!(h.put_precommitted_sectors(vec![pc2.clone(), pc2]).is_err());
+    assert!(h.put_precommitted_sectors(&rt, vec![pc2.clone(), pc2]).is_err());
 }
 
 fn new_pre_commit_on_chain(

@@ -24,12 +24,20 @@ pub enum StorageStatus {
 
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
-pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
+pub struct System<'r, BS, RT>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
     pub rt: &'r mut RT,
     state: &'r mut Hamt<BS, U256, U256>,
 }
 
-impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
+impl<'r, BS, RT> System<'r, BS, RT>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
     pub fn new(rt: &'r mut RT, state: &'r mut Hamt<BS, U256, U256>) -> anyhow::Result<Self> {
         Ok(Self { rt, state })
     }
@@ -49,7 +57,11 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         let mut key_bytes = [0u8; 32];
         key.to_big_endian(&mut key_bytes);
 
-        Ok(self.state.get(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?.cloned())
+        Ok(self
+            .state
+            .get::<_>(&key, self.rt)
+            .map_err(|e| StatusCode::InternalError(e.to_string()))?
+            .cloned())
     }
 
     /// Set value of a storage key.
@@ -61,18 +73,23 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         let mut key_bytes = [0u8; 32];
         key.to_big_endian(&mut key_bytes);
 
-        let prev_value =
-            self.state.get(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?.cloned();
+        let prev_value = self
+            .state
+            .get::<_>(&key, self.rt)
+            .map_err(|e| StatusCode::InternalError(e.to_string()))?
+            .cloned();
 
         let mut storage_status =
             if prev_value == value { StorageStatus::Unchanged } else { StorageStatus::Modified };
 
         if value.is_none() {
-            self.state.delete(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?;
+            self.state
+                .delete::<_>(&key, self.rt)
+                .map_err(|e| StatusCode::InternalError(e.to_string()))?;
             storage_status = StorageStatus::Deleted;
         } else {
             self.state
-                .set(key, value.unwrap())
+                .set(key, value.unwrap(), self.rt)
                 .map_err(|e| StatusCode::InternalError(e.to_string()))?;
         }
 

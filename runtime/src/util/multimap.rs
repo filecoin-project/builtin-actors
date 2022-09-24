@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_hamt::Error;
+use fvm_ipld_hamt::{Error, HashAlgorithm};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -40,13 +40,18 @@ where
     }
 
     /// Adds a value for a key.
-    pub fn add<V>(&mut self, key: BytesKey, value: V) -> Result<(), Error>
+    pub fn add<V>(
+        &mut self,
+        key: BytesKey,
+        value: V,
+        hash_algo: &dyn HashAlgorithm,
+    ) -> Result<(), Error>
     where
         V: Serialize + DeserializeOwned,
     {
         // Get construct amt from retrieved cid or create new
         let mut arr = self
-            .get::<V>(&key)?
+            .get::<V>(&key, hash_algo)?
             .unwrap_or_else(|| Array::new_with_bit_width(self.0.store(), self.1));
 
         // Set value at next index
@@ -56,17 +61,21 @@ where
         let new_root = arr.flush().map_err(|e| anyhow::anyhow!(e))?;
 
         // Set hamt node to array root
-        self.0.set(key, new_root)?;
+        self.0.set(key, new_root, hash_algo)?;
         Ok(())
     }
 
     /// Gets the Array of value type `V` using the multimap store.
     #[inline]
-    pub fn get<V>(&self, key: &[u8]) -> Result<Option<Array<'a, V, BS>>, Error>
+    pub fn get<V>(
+        &self,
+        key: &[u8],
+        hash_algo: &dyn HashAlgorithm,
+    ) -> Result<Option<Array<'a, V, BS>>, Error>
     where
         V: DeserializeOwned + Serialize,
     {
-        match self.0.get(key)? {
+        match self.0.get::<_>(key, hash_algo)? {
             Some(cid) => {
                 Ok(Some(Array::load(cid, *self.0.store()).map_err(|e| anyhow::anyhow!(e))?))
             }
@@ -76,23 +85,27 @@ where
 
     /// Removes all values for a key.
     #[inline]
-    pub fn remove_all(&mut self, key: &[u8]) -> Result<(), Error> {
+    pub fn remove_all(&mut self, key: &[u8], hash_algo: &dyn HashAlgorithm) -> Result<(), Error> {
         // Remove entry from table
-        self.0.delete(key)?.ok_or("failed to delete from multimap")?;
+        self.0.delete::<_>(key, hash_algo)?.ok_or("failed to delete from multimap")?;
 
         Ok(())
     }
 
     /// Iterates through all values in the array at a given key.
-    pub fn for_each<F, V>(&self, key: &[u8], f: F) -> Result<(), Error>
+    pub fn for_each<F, V>(
+        &self,
+        key: &[u8],
+        f: F,
+        hash_algo: &dyn HashAlgorithm,
+    ) -> Result<(), Error>
     where
         V: Serialize + DeserializeOwned,
         F: FnMut(u64, &V) -> anyhow::Result<()>,
     {
-        if let Some(amt) = self.get::<V>(key)? {
+        if let Some(amt) = self.get::<V>(key, hash_algo)? {
             amt.for_each(f).map_err(|e| anyhow::anyhow!(e))?;
         }
-
         Ok(())
     }
 

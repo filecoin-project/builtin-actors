@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_hamt::Error as HamtError;
+use fvm_ipld_hamt::{Error as HamtError, HashAlgorithm};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
@@ -35,8 +35,12 @@ where
     }
 
     /// Gets token amount for given address in balance table
-    pub fn get(&self, key: &Address) -> Result<TokenAmount, HamtError> {
-        if let Some(v) = self.0.get(&key.to_bytes())? {
+    pub fn get(
+        &self,
+        key: &Address,
+        hash_algo: &dyn HashAlgorithm,
+    ) -> Result<TokenAmount, HamtError> {
+        if let Some(v) = self.0.get(&key.to_bytes(), hash_algo)? {
             Ok(v.clone())
         } else {
             Ok(TokenAmount::zero())
@@ -44,16 +48,21 @@ where
     }
 
     /// Adds token amount to previously initialized account.
-    pub fn add(&mut self, key: &Address, value: &TokenAmount) -> Result<(), HamtError> {
-        let prev = self.get(key)?;
+    pub fn add(
+        &mut self,
+        key: &Address,
+        value: &TokenAmount,
+        hash_algo: &dyn HashAlgorithm,
+    ) -> Result<(), HamtError> {
+        let prev = self.get(key, hash_algo)?;
         let sum = &prev + value;
         if sum.is_negative() {
             Err(format!("New balance in table cannot be negative: {}", sum).into())
         } else if sum.is_zero() && !prev.is_zero() {
-            self.0.delete(&key.to_bytes())?;
+            self.0.delete(&key.to_bytes(), hash_algo)?;
             Ok(())
         } else {
-            self.0.set(key.to_bytes().into(), sum)?;
+            self.0.set(key.to_bytes().into(), sum, hash_algo)?;
             Ok(())
         }
     }
@@ -66,26 +75,32 @@ where
         key: &Address,
         req: &TokenAmount,
         floor: &TokenAmount,
+        hash_algo: &dyn HashAlgorithm,
     ) -> Result<TokenAmount, HamtError> {
-        let prev = self.get(key)?;
+        let prev = self.get(key, hash_algo)?;
         let available = std::cmp::max(TokenAmount::zero(), prev - floor);
         let sub: TokenAmount = std::cmp::min(&available, req).clone();
 
         if sub.is_positive() {
-            self.add(key, &-sub.clone())?;
+            self.add(key, &-sub.clone(), hash_algo)?;
         }
 
         Ok(sub)
     }
 
     /// Subtracts value from a balance, and errors if full amount was not substracted.
-    pub fn must_subtract(&mut self, key: &Address, req: &TokenAmount) -> Result<(), HamtError> {
-        let prev = self.get(key)?;
+    pub fn must_subtract(
+        &mut self,
+        key: &Address,
+        req: &TokenAmount,
+        hash_algo: &dyn HashAlgorithm,
+    ) -> Result<(), HamtError> {
+        let prev = self.get(key, hash_algo)?;
 
         if req > &prev {
             Err("couldn't subtract the requested amount".into())
         } else {
-            self.add(key, &-req)
+            self.add(key, &-req, hash_algo)
         }
     }
 
@@ -105,6 +120,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use fil_actors_runtime::test_utils::*;
+    use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
     use fvm_ipld_blockstore::MemoryBlockstore;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
@@ -117,6 +134,13 @@ mod tests {
         let addr2 = Address::new_id(101);
         let store = MemoryBlockstore::default();
         let mut bt = BalanceTable::new(&store);
+
+        let rt = MockRuntime {
+            receiver: Address::new_id(100),
+            caller: *SYSTEM_ACTOR_ADDR,
+            caller_type: *INIT_ACTOR_CODE_ID,
+            ..Default::default()
+        };
 
         assert!(bt.total().unwrap().is_zero());
 
@@ -133,7 +157,7 @@ mod tests {
         ];
 
         for t in cases.iter() {
-            bt.add(t.addr, &TokenAmount::from_atto(t.amount)).unwrap();
+            bt.add(t.addr, &TokenAmount::from_atto(t.amount), &rt).unwrap();
 
             assert_eq!(bt.total().unwrap(), TokenAmount::from_atto(t.total));
         }
@@ -145,37 +169,46 @@ mod tests {
         let store = MemoryBlockstore::default();
         let mut bt = BalanceTable::new(&store);
 
-        bt.add(&addr, &TokenAmount::from_atto(80u8)).unwrap();
-        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from_atto(80u8));
+        let rt = MockRuntime {
+            receiver: Address::new_id(100),
+            caller: *SYSTEM_ACTOR_ADDR,
+            caller_type: *INIT_ACTOR_CODE_ID,
+            ..Default::default()
+        };
+
+        bt.add(&addr, &TokenAmount::from_atto(80u8), &rt).unwrap();
+        assert_eq!(bt.get(&addr, &rt).unwrap(), TokenAmount::from_atto(80u8));
         // Test subtracting past minimum only subtracts correct amount
         assert_eq!(
             bt.subtract_with_minimum(
                 &addr,
                 &TokenAmount::from_atto(20u8),
-                &TokenAmount::from_atto(70u8)
+                &TokenAmount::from_atto(70u8),
+                &rt,
             )
             .unwrap(),
             TokenAmount::from_atto(10u8)
         );
-        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from_atto(70u8));
+        assert_eq!(bt.get(&addr, &rt).unwrap(), TokenAmount::from_atto(70u8));
 
         // Test subtracting to limit
         assert_eq!(
             bt.subtract_with_minimum(
                 &addr,
                 &TokenAmount::from_atto(10u8),
-                &TokenAmount::from_atto(60u8)
+                &TokenAmount::from_atto(60u8),
+                &rt,
             )
             .unwrap(),
             TokenAmount::from_atto(10u8)
         );
-        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from_atto(60u8));
+        assert_eq!(bt.get(&addr, &rt).unwrap(), TokenAmount::from_atto(60u8));
 
         // Test must subtract success
-        bt.must_subtract(&addr, &TokenAmount::from_atto(10u8)).unwrap();
-        assert_eq!(bt.get(&addr).unwrap(), TokenAmount::from_atto(50u8));
+        bt.must_subtract(&addr, &TokenAmount::from_atto(10u8), &rt).unwrap();
+        assert_eq!(bt.get(&addr, &rt).unwrap(), TokenAmount::from_atto(50u8));
 
         // Test subtracting more than available
-        assert!(bt.must_subtract(&addr, &TokenAmount::from_atto(100u8)).is_err());
+        assert!(bt.must_subtract(&addr, &TokenAmount::from_atto(100u8), &rt).is_err());
     }
 }

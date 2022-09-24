@@ -653,7 +653,7 @@ impl ActorHarness {
 
     pub fn has_precommit(&self, rt: &MockRuntime, sector_number: SectorNumber) -> bool {
         let state = self.get_state(rt);
-        state.get_precommitted_sector(&rt.store, sector_number).unwrap().is_some()
+        state.get_precommitted_sector(&rt.store, sector_number, rt).unwrap().is_some()
     }
 
     pub fn get_precommit(
@@ -662,7 +662,7 @@ impl ActorHarness {
         sector_number: SectorNumber,
     ) -> SectorPreCommitOnChainInfo {
         let state = self.get_state(rt);
-        state.get_precommitted_sector(&rt.store, sector_number).unwrap().unwrap()
+        state.get_precommitted_sector(&rt.store, sector_number, rt).unwrap().unwrap()
     }
 
     pub fn expect_query_network_info(&self, rt: &mut MockRuntime) {

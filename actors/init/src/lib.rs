@@ -87,7 +87,7 @@ impl Actor {
         // Allocate an ID for this actor.
         // Store mapping of pubkey or actor address to actor ID
         let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
-            s.map_address_to_new_id(rt.store(), &robust_address).map_err(|e| {
+            s.map_address_to_new_id(rt.store(), &robust_address, rt).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to allocate ID address")
             })
         })?;

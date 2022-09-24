@@ -43,7 +43,7 @@ fn test_remove_all_error() {
     let market_actor = Address::new_id(100);
     let rt = MockRuntime { receiver: market_actor, ..Default::default() };
 
-    SetMultimap::new(&rt.store()).remove_all(42).expect("expected no error");
+    SetMultimap::new(&rt.store()).remove_all(42, &rt).expect("expected no error");
 }
 
 // TODO add array stuff
@@ -607,15 +607,15 @@ fn deal_starts_on_day_boundary() {
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in deal_updates_interval..(2 * deal_updates_interval) {
-        assert_n_good_deals(&dobe, e, 3);
+        assert_n_good_deals(&rt, &dobe, e, 3);
     }
 
     // DOBE has no deals scheduled in the previous or next day
     for e in 0..deal_updates_interval {
-        assert_n_good_deals(&dobe, e, 0);
+        assert_n_good_deals(&rt, &dobe, e, 0);
     }
     for e in (2 * deal_updates_interval)..(3 * deal_updates_interval) {
-        assert_n_good_deals(&dobe, e, 0);
+        assert_n_good_deals(&rt, &dobe, e, 0);
     }
 }
 
@@ -646,11 +646,11 @@ fn deal_starts_partway_through_day() {
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in 2880..(2880 + start_epoch) {
-        assert_n_good_deals(&dobe, e, 1);
+        assert_n_good_deals(&rt, &dobe, e, 1);
     }
     // Nothing scheduled between 0 and 2880
     for e in 0..2880 {
-        assert_n_good_deals(&dobe, e, 0);
+        assert_n_good_deals(&rt, &dobe, e, 0);
     }
 
     // Now add another 500 deals
@@ -671,7 +671,7 @@ fn deal_starts_partway_through_day() {
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in start_epoch..(start_epoch + 500) {
-        assert_n_good_deals(&dobe, e, 1);
+        assert_n_good_deals(&rt, &dobe, e, 1);
     }
 }
 

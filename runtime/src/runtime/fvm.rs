@@ -14,6 +14,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
+use fvm_shared::runtime::traits::{Hash, HashAlgorithm, HashedKey};
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
@@ -30,6 +31,9 @@ use crate::runtime::{
     ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
     Verifier,
 };
+
+use crate::runtime::hash_algorithm::RuntimeHasherWrapper;
+
 use crate::{actor_error, ActorError, Runtime};
 
 lazy_static! {
@@ -565,6 +569,32 @@ where
     }
 }
 
+impl<B> FvmRuntime<B>
+where
+    B: Blockstore,
+{
+    fn hash_finalize(&self, hash_proc_buff: &[u8]) -> HashedKey {
+        let mut rval: HashedKey = Default::default();
+
+        rval.copy_from_slice(
+            &self.hash(fvm_shared::crypto::hash::SupportedHashes::Sha2_256, hash_proc_buff),
+        );
+
+        rval
+    }
+}
+
+impl<B> HashAlgorithm for FvmRuntime<B>
+where
+    B: Blockstore,
+{
+    fn rt_hash(&self, key: &dyn Hash) -> HashedKey {
+        let mut hasher = RuntimeHasherWrapper::default();
+        key.hash(&mut hasher);
+        self.hash_finalize(&hasher.0)
+    }
+}
+
 /// A convenience function that built-in actors can delegate their execution to.
 ///
 /// The trampoline takes care of boilerplate:
@@ -591,6 +621,7 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
 
     // Construct a new runtime.
     let mut rt = FvmRuntime::default();
+
     // Invoke the method, aborting if the actor returns an errored exit code.
     let ret = C::invoke_method(&mut rt, method, &params)
         .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));

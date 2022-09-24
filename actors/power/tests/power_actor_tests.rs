@@ -1343,7 +1343,7 @@ mod submit_porep_for_bulk_verify_tests {
             PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
         )
         .unwrap();
-        let arr = mmap.get::<SealVerifyInfo>(&MINER.to_bytes()).unwrap();
+        let arr = mmap.get::<SealVerifyInfo>(&MINER.to_bytes(), &rt).unwrap();
         let found = arr.unwrap();
         assert_eq!(1_u64, found.count());
         let sealed_cid = found.get(0).unwrap().unwrap().sealed_cid;

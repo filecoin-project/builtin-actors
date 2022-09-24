@@ -107,7 +107,7 @@ fn prove_single_sector() {
 
     // expect precommit to have been removed
     let st = h.get_state(&rt);
-    let found = st.get_precommitted_sector(&rt.store, sector_no).unwrap();
+    let found = st.get_precommitted_sector(&rt.store, sector_no, &rt).unwrap();
     assert!(found.is_none());
 
     // expect deposit to have been transferred to initial pledges

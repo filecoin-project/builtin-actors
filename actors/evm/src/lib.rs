@@ -14,7 +14,7 @@ use {
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::tuple::*,
     fvm_ipld_encoding::RawBytes,
-    fvm_ipld_hamt::Hamt,
+    fvm_ipld_hamt::{Hamt},
     fvm_shared::error::*,
     fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
     num_derive::FromPrimitive,
@@ -112,7 +112,10 @@ impl EvmContractActor {
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             Err(e)
         } else {
-            Err(ActorError::unspecified("EVM constructor failed".to_string()))
+            Err(ActorError::unspecified(format!(
+                "EVM constructor failed: {}",
+                exec_status.status_code
+            )))
         }
     }
 

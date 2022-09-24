@@ -704,7 +704,7 @@ impl Actor {
         )?;
         let store = rt.store();
         let precommits =
-            state.get_all_precommitted_sectors(store, sector_numbers).map_err(|e| {
+            state.get_all_precommitted_sectors(store, sector_numbers, rt).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get precommits")
             })?;
 
@@ -1755,7 +1755,7 @@ impl Actor {
                 .map_err(|e|
                     e.wrap("failed to allocate sector numbers")
                 )?;
-            state.put_precommitted_sectors(store, chain_infos)
+            state.put_precommitted_sectors(store, chain_infos, rt)
                 .map_err(|e|
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to write pre-committed sectors")
                 )?;
@@ -1803,7 +1803,7 @@ impl Actor {
 
         let st: State = rt.state()?;
         let precommit = st
-            .get_precommitted_sector(rt.store(), sector_number)
+            .get_precommitted_sector(rt.store(), sector_number, rt)
             .map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -1895,7 +1895,7 @@ impl Actor {
         let store = rt.store();
         // This skips missing pre-commits.
         let precommited_sectors =
-            st.find_precommitted_sectors(store, &params.sectors).map_err(|e| {
+            st.find_precommitted_sectors(store, &params.sectors, rt).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to load pre-committed sectors",
@@ -3394,7 +3394,7 @@ where
         process_pending_worker(&mut info, rt, state)?;
 
         let deposit_to_burn = state
-            .cleanup_expired_pre_commits(policy, rt.store(), rt.curr_epoch())
+            .cleanup_expired_pre_commits(policy, rt.store(), rt.curr_epoch(), rt)
             .map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -4356,7 +4356,7 @@ where
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to put new sectors")
         })?;
 
-        state.delete_precommitted_sectors(store, &new_sector_numbers).map_err(|e| {
+        state.delete_precommitted_sectors(store, &new_sector_numbers, rt).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete precommited sectors")
         })?;
 

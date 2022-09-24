@@ -131,6 +131,7 @@ impl Actor {
                     quality_adj_power: Default::default(),
                     raw_byte_power: Default::default(),
                 },
+                rt,
             )
             .map_err(|e| {
                 e.downcast_default(
@@ -182,6 +183,7 @@ impl Actor {
                 &miner_addr,
                 &params.raw_byte_delta,
                 &params.quality_adjusted_delta,
+                rt,
             )
             .map_err(|e| {
                 e.downcast_default(
@@ -232,9 +234,9 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load cron events")
             })?;
 
-            st.append_cron_event(&mut events, params.event_epoch, miner_event).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to enroll cron event")
-            })?;
+            st.append_cron_event(&mut events, params.event_epoch, miner_event, rt).map_err(
+                |e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to enroll cron event"),
+            )?;
 
             st.cron_event_queue = events.root().map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush cron events")
@@ -296,7 +298,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         rt.transaction(|st: &mut State, rt| {
-            st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;
+            st.validate_miner_has_claim(rt.store(), &rt.message().caller(), rt)?;
             st.add_pledge_total(pledge_delta);
             if st.total_pledge_collateral.is_negative() {
                 return Err(actor_error!(
@@ -320,7 +322,7 @@ impl Actor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         rt.transaction(|st: &mut State, rt| {
-            st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;
+            st.validate_miner_has_claim(rt.store(), &rt.message().caller(), rt)?;
 
             let mut mmap = if let Some(ref batch) = st.proof_validation_batch {
                 Multimap::from_root(
@@ -340,7 +342,7 @@ impl Actor {
                 Multimap::new(rt.store(), HAMT_BIT_WIDTH, PROOF_VALIDATION_BATCH_AMT_BITWIDTH)
             };
             let miner_addr = rt.message().caller();
-            let arr = mmap.get::<SealVerifyInfo>(&miner_addr.to_bytes()).map_err(|e| {
+            let arr = mmap.get::<SealVerifyInfo>(&miner_addr.to_bytes(), rt).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to get seal verify infos at addr {}", miner_addr),
@@ -358,7 +360,7 @@ impl Actor {
                 }
             }
 
-            mmap.add(miner_addr.to_bytes().into(), seal_info).map_err(|e| {
+            mmap.add(miner_addr.to_bytes().into(), seal_info, rt).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to insert proof into set")
             })?;
 
@@ -445,7 +447,7 @@ impl Actor {
                         }
                     };
 
-                    let contains_claim = match claims.contains_key(&addr.to_bytes()) {
+                    let contains_claim = match claims.contains_key(&addr.to_bytes(), rt) {
                         Ok(contains_claim) => contains_claim,
                         Err(e) => return Err(anyhow!("failed to look up clain: {}", e)),
                     };
@@ -558,7 +560,7 @@ impl Actor {
                         e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
                     })?;
             for epoch in st.first_cron_epoch..=rt_epoch {
-                let epoch_events = load_cron_events(&events, epoch).map_err(|e| {
+                let epoch_events = load_cron_events(&events, epoch, rt).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load cron events at {}", epoch),
@@ -571,7 +573,7 @@ impl Actor {
 
                 for evt in epoch_events.into_iter() {
                     let miner_has_claim =
-                        claims.contains_key(&evt.miner_addr.to_bytes()).map_err(|e| {
+                        claims.contains_key(&evt.miner_addr.to_bytes(), rt).map_err(|e| {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
                                 "failed to look up claim",
@@ -584,7 +586,7 @@ impl Actor {
                     cron_events.push(evt);
                 }
 
-                events.remove_all(&epoch_key(epoch)).map_err(|e| {
+                events.remove_all(&epoch_key(epoch), rt).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to clear cron events at {}", epoch),
@@ -633,7 +635,7 @@ impl Actor {
 
                 // Remove power and leave miner frozen
                 for miner_addr in failed_miner_crons {
-                    if let Err(e) = st.delete_claim(rt.policy(), &mut claims, &miner_addr) {
+                    if let Err(e) = st.delete_claim(rt.policy(), &mut claims, &miner_addr, rt) {
                         error!(
                             "failed to delete claim for miner {} after\
                             failing on deferred cron event: {}",

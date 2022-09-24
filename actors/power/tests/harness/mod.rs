@@ -222,7 +222,7 @@ impl Harness {
         let st: State = rt.get_state();
         let claims =
             make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).unwrap();
-        claims.get(&miner.to_bytes()).unwrap().cloned()
+        claims.get(&miner.to_bytes(), rt).unwrap().cloned()
     }
 
     pub fn delete_claim(&mut self, rt: &mut MockRuntime, miner: &Address) {
@@ -231,7 +231,7 @@ impl Harness {
         let mut claims =
             make_map_with_root_and_bitwidth::<_, Claim>(&state.claims, rt.store(), HAMT_BIT_WIDTH)
                 .unwrap();
-        claims.delete(&miner.to_bytes()).expect("Failed to delete claim");
+        claims.delete(&miner.to_bytes(), rt).expect("Failed to delete claim");
         state.claims = claims.flush().unwrap();
 
         rt.replace_state(&state);
@@ -268,10 +268,14 @@ impl Harness {
 
         let mut events: Vec<CronEvent> = Vec::new();
         events_map
-            .for_each::<_, CronEvent>(&epoch_key(epoch), |_, v| {
-                events.push(v.to_owned());
-                Ok(())
-            })
+            .for_each::<_, CronEvent>(
+                &epoch_key(epoch),
+                |_, v| {
+                    events.push(v.to_owned());
+                    Ok(())
+                },
+                rt,
+            )
             .unwrap();
 
         events

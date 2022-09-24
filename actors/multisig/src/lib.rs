@@ -168,7 +168,7 @@ impl Actor {
                 approved: Vec::new(),
             };
 
-            ptx.set(t_id.key(), txn.clone()).map_err(|e| {
+            ptx.set(t_id.key(), txn.clone(), rt).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to put transaction for propose",
@@ -253,7 +253,7 @@ impl Actor {
                 })?;
 
             let (_, tx) = ptx
-                .delete(&params.id.key())
+                .delete(&params.id.key(), rt)
                 .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -374,12 +374,14 @@ impl Actor {
             }
 
             // Remove approvals from removed signer
-            st.purge_approvals(rt.store(), &Address::new_id(resolved_old_signer)).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to purge approvals of removed signer",
-                )
-            })?;
+            st.purge_approvals(rt.store(), &Address::new_id(resolved_old_signer), rt).map_err(
+                |e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to purge approvals of removed signer",
+                    )
+                },
+            )?;
             st.signers.retain(|s| s != &Address::new_id(resolved_old_signer));
 
             Ok(())
@@ -424,7 +426,7 @@ impl Actor {
             // Add new signer
             st.signers.push(Address::new_id(to_resolved));
 
-            st.purge_approvals(rt.store(), &Address::new_id(from_resolved)).map_err(|e| {
+            st.purge_approvals(rt.store(), &Address::new_id(from_resolved), rt).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to purge approvals of removed signer",
@@ -520,7 +522,7 @@ impl Actor {
             // update approved on the transaction
             txn.approved.push(rt.message().caller());
 
-            ptx.set(tx_id.key(), txn.clone()).map_err(|e| {
+            ptx.set(tx_id.key(), txn.clone(), rt).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to put transaction {} for approval", tx_id.0),
@@ -580,7 +582,7 @@ where
                     )
                 })?;
 
-            ptx.delete(&txn_id.key()).map_err(|e| {
+            ptx.delete(&txn_id.key(), rt).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to delete transaction for cleanup",
@@ -611,7 +613,7 @@ where
     RT: Runtime<BS>,
 {
     let txn = ptx
-        .get(&txn_id.key())
+        .get(&txn_id.key(), rt)
         .map_err(|e| {
             e.downcast_default(
                 ExitCode::USR_ILLEGAL_STATE,

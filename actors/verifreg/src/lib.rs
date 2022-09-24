@@ -113,7 +113,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load verified clients")
             })?;
 
-            let found = verified_clients.contains_key(&verifier.to_bytes()).map_err(|e| {
+            let found = verified_clients.contains_key(&verifier.to_bytes(), rt).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to get client state for {}", verifier),
@@ -127,9 +127,11 @@ impl Actor {
                 ));
             }
 
-            verifiers.set(verifier.to_bytes().into(), BigIntDe(params.allowance.clone())).map_err(
-                |e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add verifier"),
-            )?;
+            verifiers
+                .set(verifier.to_bytes().into(), BigIntDe(params.allowance.clone()), rt)
+                .map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add verifier")
+                })?;
             st.verifiers = verifiers.flush().map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verifiers")
             })?;
@@ -167,7 +169,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load verified clients")
             })?;
             verifiers
-                .delete(&verifier.to_bytes())
+                .delete(&verifier.to_bytes(), rt)
                 .map_err(|e| {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to remove verifier")
                 })?
@@ -239,7 +241,7 @@ impl Actor {
             // Validate caller is one of the verifiers.
             let verifier = rt.message().caller();
             let BigIntDe(verifier_cap) = verifiers
-                .get(&verifier.to_bytes())
+                .get(&verifier.to_bytes(), rt)
                 .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -249,7 +251,7 @@ impl Actor {
                 .ok_or_else(|| actor_error!(not_found, format!("no such Verifier {}", verifier)))?;
 
             // Validate client to be added isn't a verifier
-            let found = verifiers.contains_key(&client.to_bytes()).map_err(|e| {
+            let found = verifiers.contains_key(&client.to_bytes(), rt).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier")
             })?;
             if found {
@@ -271,14 +273,16 @@ impl Actor {
             }
             let new_verifier_cap = verifier_cap - &params.allowance;
 
-            verifiers.set(verifier.to_bytes().into(), BigIntDe(new_verifier_cap)).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("Failed to update new verifier cap for {}", verifier),
-                )
-            })?;
+            verifiers.set(verifier.to_bytes().into(), BigIntDe(new_verifier_cap), rt).map_err(
+                |e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("Failed to update new verifier cap for {}", verifier),
+                    )
+                },
+            )?;
 
-            let client_cap = verified_clients.get(&client.to_bytes()).map_err(|e| {
+            let client_cap = verified_clients.get(&client.to_bytes(), rt).map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("Failed to get verified client {}", client),
@@ -292,8 +296,9 @@ impl Actor {
                 params.allowance
             };
 
-            verified_clients.set(client.to_bytes().into(), BigIntDe(client_cap.clone())).map_err(
-                |e| {
+            verified_clients
+                .set(client.to_bytes().into(), BigIntDe(client_cap.clone()), rt)
+                .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!(
@@ -301,8 +306,7 @@ impl Actor {
                             client, client_cap,
                         ),
                     )
-                },
-            )?;
+                })?;
 
             st.verifiers = verifiers.flush().map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verifiers")
@@ -355,7 +359,7 @@ impl Actor {
                 })?;
 
             let BigIntDe(vc_cap) = verified_clients
-                .get(&client.to_bytes())
+                .get(&client.to_bytes(), rt)
                 .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -387,7 +391,7 @@ impl Actor {
                 // Delete entry if remaining DataCap is less than MinVerifiedDealSize.
                 // Will be restored later if the deal did not get activated with a ProvenSector.
                 verified_clients
-                    .delete(&client.to_bytes())
+                    .delete(&client.to_bytes(), rt)
                     .map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
@@ -402,7 +406,7 @@ impl Actor {
                         )
                     })?;
             } else {
-                verified_clients.set(client.to_bytes().into(), BigIntDe(new_vc_cap)).map_err(
+                verified_clients.set(client.to_bytes().into(), BigIntDe(new_vc_cap), rt).map_err(
                     |e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
@@ -470,7 +474,7 @@ impl Actor {
             })?;
 
             // validate we are NOT attempting to do this for a verifier
-            let found = verifiers.contains_key(&client.to_bytes()).map_err(|e| {
+            let found = verifiers.contains_key(&client.to_bytes(), rt).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier")
             })?;
             if found {
@@ -483,7 +487,7 @@ impl Actor {
 
             // Get existing cap
             let BigIntDe(vc_cap) = verified_clients
-                .get(&client.to_bytes())
+                .get(&client.to_bytes(), rt)
                 .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -495,12 +499,14 @@ impl Actor {
 
             // Update to new cap
             let new_vc_cap = vc_cap + &params.deal_size;
-            verified_clients.set(client.to_bytes().into(), BigIntDe(new_vc_cap)).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("Failed to put verified client {}", client),
-                )
-            })?;
+            verified_clients.set(client.to_bytes().into(), BigIntDe(new_vc_cap), rt).map_err(
+                |e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("Failed to put verified client {}", client),
+                    )
+                },
+            )?;
 
             st.verified_clients = verified_clients.flush().map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verified clients")
@@ -578,7 +584,7 @@ impl Actor {
 
             // check that `client` is currently a verified client
             let is_verified_client = verified_clients
-                .get(&client.to_bytes())
+                .get(&client.to_bytes(), rt)
                 .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -592,7 +598,7 @@ impl Actor {
 
             // get existing cap allocated to client
             let BigIntDe(previous_data_cap) = verified_clients
-                .get(&client.to_bytes())
+                .get(&client.to_bytes(), rt)
                 .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -625,8 +631,8 @@ impl Actor {
                 )
             })?;
 
-            let verifier_1_id = use_proposal_id(&mut proposal_ids, verifier_1, client)?;
-            let verifier_2_id = use_proposal_id(&mut proposal_ids, verifier_2, client)?;
+            let verifier_1_id = use_proposal_id(rt, &mut proposal_ids, verifier_1, client)?;
+            let verifier_2_id = use_proposal_id(rt, &mut proposal_ids, verifier_2, client)?;
 
             remove_data_cap_request_is_valid(
                 rt,
@@ -646,7 +652,7 @@ impl Actor {
             let new_data_cap = &previous_data_cap - &params.data_cap_amount_to_remove;
             if new_data_cap <= Zero::zero() {
                 // no DataCap remaining, delete verified client
-                verified_clients.delete(&client.to_bytes()).map_err(|e| {
+                verified_clients.delete(&client.to_bytes(), rt).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to delete verified client {}", &client),
@@ -656,7 +662,7 @@ impl Actor {
             } else {
                 // update DataCap amount after removal
                 verified_clients
-                    .set(BytesKey::from(client.to_bytes()), BigIntDe(new_data_cap))
+                    .set(BytesKey::from(client.to_bytes()), BigIntDe(new_data_cap), rt)
                     .map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
@@ -704,23 +710,25 @@ where
 
     // check that the `address` is currently a verified client
     let found = verifiers
-        .contains_key(&address.to_bytes())
+        .contains_key(&address.to_bytes(), rt)
         .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier"))?;
 
     Ok(found)
 }
 
-fn use_proposal_id<BS>(
+fn use_proposal_id<BS, RT>(
+    rt: &RT,
     proposal_ids: &mut Map<BS, RemoveDataCapProposalID>,
     verifier: Address,
     client: Address,
 ) -> Result<RemoveDataCapProposalID, ActorError>
 where
     BS: Blockstore,
+    RT: Runtime<BS>,
 {
     let key = AddrPairKey::new(verifier, client);
 
-    let maybe_id = proposal_ids.get(&key.to_bytes()).map_err(|e| {
+    let maybe_id = proposal_ids.get(&key.to_bytes(), rt).map_err(|e| {
         actor_error!(
             illegal_state,
             "failed to get proposal id for verifier {} and client {}: {}",
@@ -737,7 +745,7 @@ where
     };
 
     let next_id = RemoveDataCapProposalID(curr_id.0 + 1);
-    proposal_ids.set(BytesKey::from(key.to_bytes()), next_id).map_err(|e| {
+    proposal_ids.set(BytesKey::from(key.to_bytes()), next_id, rt).map_err(|e| {
         actor_error!(
             illegal_state,
             "failed to update proposal id for verifier {} and client {}: {}",

@@ -13,7 +13,7 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, RawBytes};
-use fvm_ipld_hamt::BytesKey;
+use fvm_ipld_hamt::{BytesKey, HashAlgorithm};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -104,11 +104,12 @@ impl State {
         policy: &Policy,
         s: &BS,
         miner: &Address,
+        hash_algo: &dyn HashAlgorithm,
     ) -> anyhow::Result<bool> {
         let claims = make_map_with_root_and_bitwidth(&self.claims, s, HAMT_BIT_WIDTH)?;
 
-        let claim =
-            get_claim(&claims, miner)?.ok_or_else(|| anyhow!("no claim for actor: {}", miner))?;
+        let claim = get_claim(&claims, miner, hash_algo)?
+            .ok_or_else(|| anyhow!("no claim for actor: {}", miner))?;
 
         let miner_nominal_power = &claim.raw_byte_power;
         let miner_min_power = consensus_miner_min_power(policy, claim.window_post_proof_type)
@@ -130,9 +131,10 @@ impl State {
         &self,
         s: &BS,
         miner: &Address,
+        hash_algo: &dyn HashAlgorithm,
     ) -> anyhow::Result<Option<Claim>> {
         let claims = make_map_with_root(&self.claims, s)?;
-        get_claim(&claims, miner).map(|s| s.cloned())
+        get_claim(&claims, miner, hash_algo).map(|s| s.cloned())
     }
 
     pub(super) fn add_to_claim<BS: Blockstore>(
@@ -142,8 +144,9 @@ impl State {
         miner: &Address,
         power: &StoragePower,
         qa_power: &StoragePower,
+        hash_algo: &dyn HashAlgorithm,
     ) -> anyhow::Result<()> {
-        let old_claim = get_claim(claims, miner)?
+        let old_claim = get_claim(claims, miner, hash_algo)?
             .ok_or_else(|| actor_error!(not_found, "no claim for actor {}", miner))?;
 
         self.total_qa_bytes_committed += qa_power;
@@ -204,7 +207,7 @@ impl State {
             )));
         }
 
-        set_claim(claims, miner, new_claim)
+        set_claim(claims, miner, new_claim, hash_algo)
     }
 
     pub(super) fn add_pledge_total(&mut self, amount: TokenAmount) {
@@ -216,12 +219,13 @@ impl State {
         events: &mut Multimap<BS>,
         epoch: ChainEpoch,
         event: CronEvent,
+        hash_algo: &dyn HashAlgorithm,
     ) -> anyhow::Result<()> {
         if epoch < self.first_cron_epoch {
             self.first_cron_epoch = epoch;
         }
 
-        events.add(epoch_key(epoch), event).map_err(|e| {
+        events.add(epoch_key(epoch), event, hash_algo).map_err(|e| {
             e.downcast_wrap(format!("failed to store cron event at epoch {}", epoch))
         })?;
         Ok(())
@@ -265,6 +269,7 @@ impl State {
         &self,
         store: &BS,
         miner_addr: &Address,
+        hash_algo: &dyn HashAlgorithm,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -273,7 +278,7 @@ impl State {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
         })?;
 
-        if !claims.contains_key(&miner_addr.to_bytes()).map_err(|e| {
+        if !claims.contains_key(&miner_addr.to_bytes(), hash_algo).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to look up claim")
         })? {
             return Err(actor_error!(
@@ -289,6 +294,7 @@ impl State {
         &self,
         store: &BS,
         miner: &Address,
+        hash_algo: &dyn HashAlgorithm,
     ) -> anyhow::Result<Option<Claim>> {
         let claims =
             make_map_with_root_and_bitwidth::<_, Claim>(&self.claims, store, HAMT_BIT_WIDTH)
@@ -296,7 +302,7 @@ impl State {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load claims")
                 })?;
 
-        let claim = get_claim(&claims, miner)?;
+        let claim = get_claim(&claims, miner, hash_algo)?;
         Ok(claim.cloned())
     }
 
@@ -305,21 +311,23 @@ impl State {
         policy: &Policy,
         claims: &mut Map<BS, Claim>,
         miner: &Address,
+        hash_algo: &dyn HashAlgorithm,
     ) -> anyhow::Result<()> {
-        let (rbp, qap) =
-            match get_claim(claims, miner).map_err(|e| e.downcast_wrap("failed to get claim"))? {
-                None => {
-                    return Ok(());
-                }
-                Some(claim) => (claim.raw_byte_power.clone(), claim.quality_adj_power.clone()),
-            };
+        let (rbp, qap) = match get_claim(claims, miner, hash_algo)
+            .map_err(|e| e.downcast_wrap("failed to get claim"))?
+        {
+            None => {
+                return Ok(());
+            }
+            Some(claim) => (claim.raw_byte_power.clone(), claim.quality_adj_power.clone()),
+        };
 
         // Subtract from stats to remove power
-        self.add_to_claim(policy, claims, miner, &rbp.neg(), &qap.neg())
+        self.add_to_claim(policy, claims, miner, &rbp.neg(), &qap.neg(), hash_algo)
             .map_err(|e| e.downcast_wrap("failed to subtract miner power before deleting claim"))?;
 
         claims
-            .delete(&miner.to_bytes())
+            .delete(&miner.to_bytes(), hash_algo)
             .map_err(|e| e.downcast_wrap(format!("failed to delete claim for address {}", miner)))?
             .ok_or_else(|| anyhow!("failed to delete claim for address: doesn't exist"))?;
         Ok(())
@@ -329,13 +337,18 @@ impl State {
 pub(super) fn load_cron_events<BS: Blockstore>(
     mmap: &Multimap<BS>,
     epoch: ChainEpoch,
+    hash_algo: &dyn HashAlgorithm,
 ) -> anyhow::Result<Vec<CronEvent>> {
     let mut events = Vec::new();
 
-    mmap.for_each(&epoch_key(epoch), |_, v: &CronEvent| {
-        events.push(v.clone());
-        Ok(())
-    })?;
+    mmap.for_each(
+        &epoch_key(epoch),
+        |_, v: &CronEvent| {
+            events.push(v.clone());
+            Ok(())
+        },
+        hash_algo,
+    )?;
 
     Ok(events)
 }
@@ -344,9 +357,10 @@ pub(super) fn load_cron_events<BS: Blockstore>(
 fn get_claim<'m, BS: Blockstore>(
     claims: &'m Map<BS, Claim>,
     a: &Address,
+    hash_algo: &dyn HashAlgorithm,
 ) -> anyhow::Result<Option<&'m Claim>> {
     claims
-        .get(&a.to_bytes())
+        .get(&a.to_bytes(), hash_algo)
         .map_err(|e| e.downcast_wrap(format!("failed to get claim for address {}", a)))
 }
 
@@ -354,6 +368,7 @@ pub fn set_claim<BS: Blockstore>(
     claims: &mut Map<BS, Claim>,
     a: &Address,
     claim: Claim,
+    hash_algo: &dyn HashAlgorithm,
 ) -> anyhow::Result<()> {
     if claim.raw_byte_power.is_negative() {
         return Err(anyhow!(actor_error!(
@@ -371,7 +386,7 @@ pub fn set_claim<BS: Blockstore>(
     }
 
     claims
-        .set(a.to_bytes().into(), claim)
+        .set(a.to_bytes().into(), claim, hash_algo)
         .map_err(|e| e.downcast_wrap(format!("failed to set claim for address {}", a)))?;
     Ok(())
 }

@@ -61,27 +61,33 @@ impl StateHarness {
     #[allow(dead_code)]
     pub fn put_precommitted_sectors(
         &mut self,
+        rt: &MockRuntime,
         precommits: Vec<SectorPreCommitOnChainInfo>,
     ) -> anyhow::Result<()> {
-        self.st.put_precommitted_sectors(&self.store, precommits)
+        self.st.put_precommitted_sectors(&self.store, precommits, rt)
     }
 
     #[allow(dead_code)]
     pub fn delete_precommitted_sectors(
         &mut self,
+        rt: &MockRuntime,
         sector_nums: &[SectorNumber],
     ) -> Result<(), HamtError> {
-        self.st.delete_precommitted_sectors(&self.store, sector_nums)
+        self.st.delete_precommitted_sectors(&self.store, sector_nums, rt)
     }
 
     #[allow(dead_code)]
-    pub fn get_precommit(&self, sector_number: SectorNumber) -> SectorPreCommitOnChainInfo {
-        self.st.get_precommitted_sector(&self.store, sector_number).unwrap().unwrap()
+    pub fn get_precommit(
+        &self,
+        rt: &MockRuntime,
+        sector_number: SectorNumber,
+    ) -> SectorPreCommitOnChainInfo {
+        self.st.get_precommitted_sector(&self.store, sector_number, rt).unwrap().unwrap()
     }
 
     #[allow(dead_code)]
-    pub fn has_precommit(&self, sector_number: SectorNumber) -> bool {
-        self.st.get_precommitted_sector(&self.store, sector_number).unwrap().is_some()
+    pub fn has_precommit(&self, rt: &MockRuntime, sector_number: SectorNumber) -> bool {
+        self.st.get_precommitted_sector(&self.store, sector_number, rt).unwrap().is_some()
     }
 
     #[allow(dead_code)]

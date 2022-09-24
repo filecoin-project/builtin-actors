@@ -148,7 +148,7 @@ fn create_2_payment_channels() {
 
         let state: State = rt.get_state();
         let returned_address = state
-            .resolve_address(&rt.store, &unique_address)
+            .resolve_address(&rt.store, &unique_address, &rt)
             .expect("Resolve should not error")
             .expect("Address should be able to be resolved");
 
@@ -192,7 +192,7 @@ fn create_storage_miner() {
     // Address should be resolved
     let state: State = rt.get_state();
     let returned_address = state
-        .resolve_address(&rt.store, &unique_address)
+        .resolve_address(&rt.store, &unique_address, &rt)
         .expect("Resolve should not error")
         .expect("Address should be able to be resolved");
     assert_eq!(expected_id_addr, returned_address);
@@ -200,7 +200,7 @@ fn create_storage_miner() {
     // Should return error since the address of flurbo is unknown
     let unknown_addr = Address::new_actor(b"flurbo");
 
-    let returned_address = state.resolve_address(&rt.store, &unknown_addr).unwrap();
+    let returned_address = state.resolve_address(&rt.store, &unknown_addr, &rt).unwrap();
     assert_eq!(returned_address, None, "Addresses should have not been found");
     check_state(&rt);
 }
@@ -282,7 +282,7 @@ fn sending_constructor_failure() {
 
     let state: State = rt.get_state();
 
-    let returned_address = state.resolve_address(&rt.store, &unique_address).unwrap();
+    let returned_address = state.resolve_address(&rt.store, &unique_address, &rt).unwrap();
     assert_eq!(returned_address, None, "Addresses should have not been found");
     check_state(&rt);
 }

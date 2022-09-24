@@ -42,8 +42,13 @@ use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier,
 };
+
+use crate::runtime::hash_algorithm::RuntimeHasherWrapper;
+
 use crate::{actor_error, ActorError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
+
+use fvm_ipld_hamt::{Hash, HashAlgorithm, HashedKey};
 
 lazy_static! {
     pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/system");
@@ -1339,4 +1344,24 @@ pub fn new_bls_addr(s: u8) -> Address {
     let mut key = [0u8; 48];
     rng.fill_bytes(&mut key);
     Address::new_bls(&key).unwrap()
+}
+
+impl MockRuntime {
+    fn hash_finalize(&self, hash_proc_buff: &[u8]) -> HashedKey {
+        let mut rval: HashedKey = Default::default();
+
+        rval.copy_from_slice(
+            &self.hash(fvm_shared::crypto::hash::SupportedHashes::Sha2_256, hash_proc_buff),
+        );
+
+        rval
+    }
+}
+
+impl HashAlgorithm for MockRuntime {
+    fn rt_hash(&self, key: &dyn Hash) -> HashedKey {
+        let mut hasher = RuntimeHasherWrapper::default();
+        key.hash(&mut hasher);
+        self.hash_finalize(&hasher.0)
+    }
 }

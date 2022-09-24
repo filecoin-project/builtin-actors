@@ -5,7 +5,7 @@
 
 use {
     fvm_shared::bigint::BigInt, fvm_shared::econ::TokenAmount, impl_serde::impl_uint_serde,
-    std::cmp::Ordering, uint::construct_uint,
+    std::cmp::Ordering, std::hash::Hasher, uint::construct_uint,
 };
 
 construct_uint! { pub struct U256(4); } // ethereum word size
@@ -35,7 +35,7 @@ impl_uint_serde!(U512, 8);
 macro_rules! impl_hamt_hash {
     ($type:ident) => {
         impl fvm_ipld_hamt::Hash for $type {
-            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            fn hash(&self, state: &mut dyn Hasher) {
                 self.0.hash(state);
             }
         }

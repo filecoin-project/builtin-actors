@@ -11,6 +11,7 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
+use fvm_ipld_hamt::HashAlgorithm;
 use fvm_shared::address::Address;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
@@ -345,6 +346,7 @@ where
         state: &DealState,
         deal: &DealProposal,
         epoch: ChainEpoch,
+        hash_algo: &dyn HashAlgorithm,
     ) -> Result<(TokenAmount, ChainEpoch, bool), ActorError> {
         let ever_updated = state.last_updated_epoch != EPOCH_UNDEFINED;
         let ever_slashed = state.slash_epoch != EPOCH_UNDEFINED;
@@ -395,7 +397,7 @@ where
 
         let total_payment = &deal.storage_price_per_epoch * num_epochs_elapsed;
         if total_payment.is_positive() {
-            self.transfer_balance(&deal.client, &deal.provider, &total_payment)?;
+            self.transfer_balance(&deal.client, &deal.provider, &total_payment, hash_algo)?;
         }
 
         if ever_slashed {
@@ -403,33 +405,43 @@ where
             let payment_remaining = deal_get_payment_remaining(deal, state.slash_epoch)?;
 
             // Unlock remaining storage fee
-            self.unlock_balance(&deal.client, &payment_remaining, Reason::ClientStorageFee)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to unlock remaining client storage fee",
-                    )
-                })?;
+            self.unlock_balance(
+                &deal.client,
+                &payment_remaining,
+                Reason::ClientStorageFee,
+                hash_algo,
+            )
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to unlock remaining client storage fee",
+                )
+            })?;
 
             // Unlock client collateral
-            self.unlock_balance(&deal.client, &deal.client_collateral, Reason::ClientCollateral)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to unlock client collateral",
-                    )
-                })?;
+            self.unlock_balance(
+                &deal.client,
+                &deal.client_collateral,
+                Reason::ClientCollateral,
+                hash_algo,
+            )
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to unlock client collateral",
+                )
+            })?;
 
             // slash provider collateral
             let slashed = deal.provider_collateral.clone();
-            self.slash_balance(&deal.provider, &slashed, Reason::ProviderCollateral)
+            self.slash_balance(&deal.provider, &slashed, Reason::ProviderCollateral, hash_algo)
                 .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "slashing balance"))?;
 
             return Ok((slashed, EPOCH_UNDEFINED, true));
         }
 
         if epoch >= deal.end_epoch {
-            self.process_deal_expired(deal, state)?;
+            self.process_deal_expired(deal, state, hash_algo)?;
             return Ok((TokenAmount::zero(), EPOCH_UNDEFINED, true));
         }
 
@@ -447,38 +459,49 @@ where
     pub(super) fn process_deal_init_timed_out(
         &mut self,
         deal: &DealProposal,
+        hash_algo: &dyn HashAlgorithm,
     ) -> Result<TokenAmount, ActorError> {
-        self.unlock_balance(&deal.client, &deal.total_storage_fee(), Reason::ClientStorageFee)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failure unlocking client storage fee",
-                )
-            })?;
+        self.unlock_balance(
+            &deal.client,
+            &deal.total_storage_fee(),
+            Reason::ClientStorageFee,
+            hash_algo,
+        )
+        .map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failure unlocking client storage fee")
+        })?;
 
-        self.unlock_balance(&deal.client, &deal.client_collateral, Reason::ClientCollateral)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failure unlocking client collateral",
-                )
-            })?;
+        self.unlock_balance(
+            &deal.client,
+            &deal.client_collateral,
+            Reason::ClientCollateral,
+            hash_algo,
+        )
+        .map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failure unlocking client collateral")
+        })?;
 
         let amount_slashed =
             collateral_penalty_for_deal_activation_missed(deal.provider_collateral.clone());
         let amount_remaining = deal.provider_balance_requirement() - &amount_slashed;
 
-        self.slash_balance(&deal.provider, &amount_slashed, Reason::ProviderCollateral).map_err(
-            |e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to slash balance"),
-        )?;
-
-        self.unlock_balance(&deal.provider, &amount_remaining, Reason::ProviderCollateral)
+        self.slash_balance(&deal.provider, &amount_slashed, Reason::ProviderCollateral, hash_algo)
             .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to unlock deal provider balance",
-                )
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to slash balance")
             })?;
+
+        self.unlock_balance(
+            &deal.provider,
+            &amount_remaining,
+            Reason::ProviderCollateral,
+            hash_algo,
+        )
+        .map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to unlock deal provider balance",
+            )
+        })?;
 
         Ok(amount_slashed)
     }
@@ -488,6 +511,7 @@ where
         &mut self,
         deal: &DealProposal,
         state: &DealState,
+        hash_algo: &dyn HashAlgorithm,
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -496,21 +520,28 @@ where
             return Err(actor_error!(illegal_state, "start sector epoch undefined"));
         }
 
-        self.unlock_balance(&deal.provider, &deal.provider_collateral, Reason::ProviderCollateral)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed unlocking deal provider balance",
-                )
-            })?;
+        self.unlock_balance(
+            &deal.provider,
+            &deal.provider_collateral,
+            Reason::ProviderCollateral,
+            hash_algo,
+        )
+        .map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed unlocking deal provider balance",
+            )
+        })?;
 
-        self.unlock_balance(&deal.client, &deal.client_collateral, Reason::ClientCollateral)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed unlocking deal client balance",
-                )
-            })?;
+        self.unlock_balance(
+            &deal.client,
+            &deal.client_collateral,
+            Reason::ClientCollateral,
+            hash_algo,
+        )
+        .map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed unlocking deal client balance")
+        })?;
 
         Ok(())
     }
@@ -526,13 +557,16 @@ where
         &self,
         addr: Address,
         amount_to_lock: &TokenAmount,
+        hash_algo: &dyn HashAlgorithm,
     ) -> anyhow::Result<bool> {
-        let prev_locked = self.locked_table.as_ref().unwrap().get(&addr).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
-        })?;
-        let escrow_balance = self.escrow_table.as_ref().unwrap().get(&addr).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")
-        })?;
+        let prev_locked =
+            self.locked_table.as_ref().unwrap().get(&addr, hash_algo).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
+            })?;
+        let escrow_balance =
+            self.escrow_table.as_ref().unwrap().get(&addr, hash_algo).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")
+            })?;
         Ok((prev_locked + amount_to_lock) <= escrow_balance)
     }
 
@@ -540,18 +574,21 @@ where
         &mut self,
         addr: &Address,
         amount: &TokenAmount,
+        hash_algo: &dyn HashAlgorithm,
     ) -> Result<(), ActorError> {
         if amount.is_negative() {
             return Err(actor_error!(illegal_state, "cannot lock negative amount {}", amount));
         }
 
-        let prev_locked = self.locked_table.as_ref().unwrap().get(addr).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
-        })?;
+        let prev_locked =
+            self.locked_table.as_ref().unwrap().get(addr, hash_algo).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
+            })?;
 
-        let escrow_balance = self.escrow_table.as_ref().unwrap().get(addr).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")
-        })?;
+        let escrow_balance =
+            self.escrow_table.as_ref().unwrap().get(addr, hash_algo).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")
+            })?;
 
         if &prev_locked + amount > escrow_balance {
             return Err(actor_error!(insufficient_funds;
@@ -560,7 +597,7 @@ where
                     addr, escrow_balance, prev_locked, amount));
         }
 
-        self.locked_table.as_mut().unwrap().add(addr, amount).map_err(|e| {
+        self.locked_table.as_mut().unwrap().add(addr, amount, hash_algo).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add locked balance")
         })?;
         Ok(())
@@ -569,11 +606,16 @@ where
     pub(super) fn lock_client_and_provider_balances(
         &mut self,
         proposal: &DealProposal,
+        hash_algo: &dyn HashAlgorithm,
     ) -> Result<(), ActorError> {
-        self.maybe_lock_balance(&proposal.client, &proposal.client_balance_requirement())
-            .map_err(|e| e.wrap("failed to lock client funds"))?;
+        self.maybe_lock_balance(
+            &proposal.client,
+            &proposal.client_balance_requirement(),
+            hash_algo,
+        )
+        .map_err(|e| e.wrap("failed to lock client funds"))?;
 
-        self.maybe_lock_balance(&proposal.provider, &proposal.provider_collateral)
+        self.maybe_lock_balance(&proposal.provider, &proposal.provider_collateral, hash_algo)
             .map_err(|e| e.wrap("failed to lock provider funds"))?;
 
         if let Some(v) = self.total_client_locked_collateral.as_mut() {
@@ -593,11 +635,12 @@ where
         addr: &Address,
         amount: &TokenAmount,
         lock_reason: Reason,
+        hash_algo: &dyn HashAlgorithm,
     ) -> anyhow::Result<()> {
         if amount.is_negative() {
             return Err(actor_error!(illegal_state, "unlock negative amount: {}", amount).into());
         }
-        self.locked_table.as_mut().unwrap().must_subtract(addr, amount)?;
+        self.locked_table.as_mut().unwrap().must_subtract(addr, amount, hash_algo)?;
 
         match lock_reason {
             Reason::ClientCollateral => self.total_client_locked_collateral.as_mut().map(|v| {
@@ -620,6 +663,7 @@ where
         from_addr: &Address,
         to_addr: &Address,
         amount: &TokenAmount,
+        hash_algo: &dyn HashAlgorithm,
     ) -> Result<(), ActorError> {
         if amount.is_negative() {
             return Err(actor_error!(illegal_state, "transfer negative amount: {}", amount));
@@ -629,17 +673,17 @@ where
         self.escrow_table
             .as_mut()
             .unwrap()
-            .must_subtract(from_addr, amount)
+            .must_subtract(from_addr, amount, hash_algo)
             .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "subtract from escrow"))?;
 
-        self.unlock_balance(from_addr, amount, Reason::ClientStorageFee)
+        self.unlock_balance(from_addr, amount, Reason::ClientStorageFee, hash_algo)
             .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "subtract from locked"))?;
 
         // Add subtracted amount to the recipient
         self.escrow_table
             .as_mut()
             .unwrap()
-            .add(to_addr, amount)
+            .add(to_addr, amount, hash_algo)
             .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "add to escrow"))?;
 
         Ok(())
@@ -650,13 +694,14 @@ where
         addr: &Address,
         amount: &TokenAmount,
         lock_reason: Reason,
+        hash_algo: &dyn HashAlgorithm,
     ) -> anyhow::Result<()> {
         if amount.is_negative() {
             return Err(actor_error!(illegal_state, "negative amount to slash: {}", amount).into());
         }
 
         // Subtract from locked and escrow tables
-        self.escrow_table.as_mut().unwrap().must_subtract(addr, amount)?;
-        self.unlock_balance(addr, amount, lock_reason)
+        self.escrow_table.as_mut().unwrap().must_subtract(addr, amount, hash_algo)?;
+        self.unlock_balance(addr, amount, lock_reason, hash_algo)
     }
 }

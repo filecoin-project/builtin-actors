@@ -9,6 +9,7 @@ use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, parse_uint_key, MessageAccumulator, SetMultimap,
 };
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_hamt::HashAlgorithm;
 use fvm_shared::{
     address::{Address, Protocol},
     clock::{ChainEpoch, EPOCH_UNDEFINED},
@@ -59,6 +60,7 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
     store: &BS,
     balance: &TokenAmount,
     current_epoch: ChainEpoch,
+    hash_algo: &dyn HashAlgorithm,
 ) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
 
@@ -218,7 +220,7 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
                 locked_total += locked_amount;
 
                 // every entry in locked table should have a corresponding entry in escrow table that is at least as high
-                let escrow_amount = &escrow_table.get(&address)?;
+                let escrow_amount = &escrow_table.get(&address, hash_algo)?;
                 acc.require(escrow_amount >= locked_amount, format!("locked funds for {address}, {locked_amount}, greater than escrow amount, {escrow_amount}"));
 
                 lock_table_count += 1;
@@ -269,7 +271,7 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
                     expected_deal_ops.remove(&deal_id);
                     deal_op_count += 1;
                     Ok(())
-                }).map_err(|e| anyhow::anyhow!("error iterating deal ops for epoch {}: {}", epoch, e))
+                }, hash_algo).map_err(|e| anyhow::anyhow!("error iterating deal ops for epoch {}: {}", epoch, e))
             });
             acc.require_no_error(ret, "error iterating all deal ops");
         }

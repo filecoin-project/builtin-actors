@@ -94,16 +94,26 @@ pub fn setup() -> MockRuntime {
 
 /// Checks internal invariants of market state asserting none of them are broken.
 pub fn check_state(rt: &MockRuntime) {
-    let (_, acc) =
-        check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
+    let (_, acc) = check_state_invariants(
+        &rt.get_state::<State>(),
+        rt.store(),
+        &rt.get_balance(),
+        rt.epoch,
+        rt,
+    );
     acc.assert_empty();
 }
 
 /// Checks state, allowing expected invariants to fail. The invariants *must* fail in the
 /// provided order.
 pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) {
-    let (_, acc) =
-        check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
+    let (_, acc) = check_state_invariants(
+        &rt.get_state::<State>(),
+        rt.store(),
+        &rt.get_balance(),
+        rt.epoch,
+        rt,
+    );
     acc.assert_expected(expected_patterns);
 }
 pub fn construct_and_verify(rt: &mut MockRuntime) {
@@ -121,7 +131,7 @@ pub fn get_escrow_balance(rt: &MockRuntime, addr: &Address) -> Result<TokenAmoun
     let et = BalanceTable::from_root(rt.store(), &st.escrow_table)
         .expect("failed to construct balance table from blockstore");
 
-    Ok(et.get(addr).expect("address does not exist in escrow balance table"))
+    Ok(et.get(addr, rt).expect("address does not exist in escrow balance table"))
 }
 
 pub fn expect_get_control_addresses(
@@ -305,7 +315,7 @@ pub fn get_locked_balance(rt: &mut MockRuntime, addr: Address) -> TokenAmount {
 
     let lt = BalanceTable::from_root(&rt.store, &st.locked_table).unwrap();
 
-    lt.get(&addr).unwrap()
+    lt.get(&addr, rt).unwrap()
 }
 
 pub fn get_deal_state(rt: &mut MockRuntime, deal_id: DealID) -> DealState {
@@ -609,17 +619,25 @@ pub fn expect_query_network_info(rt: &mut MockRuntime) {
     );
 }
 
-pub fn assert_n_good_deals<BS>(dobe: &SetMultimap<BS>, epoch: ChainEpoch, n: isize)
-where
+pub fn assert_n_good_deals<BS>(
+    rt: &MockRuntime,
+    dobe: &SetMultimap<BS>,
+    epoch: ChainEpoch,
+    n: isize,
+) where
     BS: fvm_ipld_blockstore::Blockstore,
 {
     let deal_updates_interval = Policy::default().deal_updates_interval;
     let mut count = 0;
-    dobe.for_each(epoch, |id| {
-        assert_eq!(epoch % deal_updates_interval, (id as i64) % deal_updates_interval);
-        count += 1;
-        Ok(())
-    })
+    dobe.for_each(
+        epoch,
+        |id| {
+            assert_eq!(epoch % deal_updates_interval, (id as i64) % deal_updates_interval);
+            count += 1;
+            Ok(())
+        },
+        rt,
+    )
     .unwrap();
     assert_eq!(n, count, "unexpected deal count at epoch {}", epoch);
 }
@@ -665,7 +683,7 @@ pub fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposa
             PROPOSALS_AMT_BITWIDTH,
         )
         .unwrap();
-    assert!(!pending_deals.contains_key(&BytesKey(p_cid.to_bytes())).unwrap());
+    assert!(!pending_deals.contains_key(&BytesKey(p_cid.to_bytes()), rt).unwrap());
 }
 
 pub fn assert_deal_failure<F>(

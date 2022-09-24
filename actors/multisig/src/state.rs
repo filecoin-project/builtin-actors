@@ -6,6 +6,7 @@ use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
+use fvm_ipld_hamt::HashAlgorithm;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Integer;
@@ -75,6 +76,7 @@ impl State {
         &mut self,
         store: &BS,
         addr: &Address,
+        hash_algo: &dyn HashAlgorithm,
     ) -> anyhow::Result<()> {
         let mut txns = make_map_with_root(&self.pending_txs, store)?;
 
@@ -94,9 +96,9 @@ impl State {
             txn.approved.retain(|approver| approver != addr);
 
             if !txn.approved.is_empty() {
-                txns.set(tx_id.into(), txn)?;
+                txns.set(tx_id.into(), txn, hash_algo)?;
             } else {
-                txns.delete(&tx_id)?;
+                txns.delete(&tx_id, hash_algo)?;
             }
         }
 
