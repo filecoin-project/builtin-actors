@@ -25,6 +25,9 @@ pub use self::builtin::*;
 pub use self::util::*;
 use crate::runtime::Runtime;
 
+#[cfg(feature = "fil-actor")]
+use crate::runtime::hash_algorithm::FvmHashSha256;
+
 pub mod actor_error;
 pub mod builtin;
 pub mod runtime;
@@ -43,6 +46,11 @@ macro_rules! wasm_trampoline {
     };
 }
 
+#[cfg(feature = "fil-actor")]
+/// Map type to be used within actors. The underlying type is a HAMT.
+pub type Map<'bs, BS, V> = Hamt<&'bs BS, V, BytesKey, FvmHashSha256>;
+
+#[cfg(not(feature = "fil-actor"))]
 /// Map type to be used within actors. The underlying type is a HAMT.
 pub type Map<'bs, BS, V> = Hamt<&'bs BS, V, BytesKey>;
 
