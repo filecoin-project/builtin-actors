@@ -798,7 +798,7 @@ mod claims {
 }
 
 mod datacap {
-    use fil_fungible_token::receiver::types::{UniversalReceiverParams, FRC46_TOKEN_TYPE};
+    use frc46_token::receiver::types::{UniversalReceiverParams, FRC46_TOKEN_TYPE};
     use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
