@@ -34,7 +34,7 @@ impl HashAlgorithm for FvmHashSha256 {
         let mut rval: HashedKey = Default::default();
         let mut hasher = RuntimeHasherWrapper::default();
         key.hash(&mut hasher);
-        rval.copy_from_slice(&fvm::crypto::hash_owned(SupportedHashes::Sha2_256, &hasher.0));
+        fvm::crypto::hash_into(SupportedHashes::Sha2_256, &hasher.0, &rval);
         rval
     }
 }
