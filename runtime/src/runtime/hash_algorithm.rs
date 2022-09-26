@@ -31,10 +31,10 @@ impl HashAlgorithm for FvmHashSha256 {
     where
         X: Hash + ?Sized,
     {
-        let mut rval: HashedKey = Default::default();
+        let mut rval_digest: HashedKey = Default::default();
         let mut hasher = RuntimeHasherWrapper::default();
         key.hash(&mut hasher);
-        rval.copy_from_slice(&fvm::crypto::hash_owned(SupportedHashes::Sha2_256, &hasher.0));
-        rval
+        fvm::crypto::hash_into(SupportedHashes::Sha2_256, &hasher.0, &mut rval_digest);
+        rval_digest
     }
 }

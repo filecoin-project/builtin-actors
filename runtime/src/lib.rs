@@ -28,6 +28,9 @@ use crate::runtime::Runtime;
 #[cfg(feature = "fil-actor")]
 use crate::runtime::hash_algorithm::FvmHashSha256;
 
+#[cfg(not(feature = "fil-actor"))]
+use fvm_ipld_hamt::Sha256;
+
 pub mod actor_error;
 pub mod builtin;
 pub mod runtime;
@@ -47,12 +50,13 @@ macro_rules! wasm_trampoline {
 }
 
 #[cfg(feature = "fil-actor")]
-/// Map type to be used within actors. The underlying type is a HAMT.
-pub type Map<'bs, BS, V> = Hamt<&'bs BS, V, BytesKey, FvmHashSha256>;
+type Hasher = FvmHashSha256;
 
 #[cfg(not(feature = "fil-actor"))]
+type Hasher = Sha256;
+
 /// Map type to be used within actors. The underlying type is a HAMT.
-pub type Map<'bs, BS, V> = Hamt<&'bs BS, V, BytesKey>;
+pub type Map<'bs, BS, V> = Hamt<&'bs BS, V, BytesKey, Hasher>;
 
 /// Array type used within actors. The underlying type is an AMT.
 pub type Array<'bs, V, BS> = Amt<V, &'bs BS>;

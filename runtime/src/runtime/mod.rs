@@ -37,7 +37,7 @@ mod actor_blockstore;
 #[cfg(feature = "fil-actor")]
 pub mod fvm;
 #[cfg(feature = "fil-actor")]
-pub mod hash_algorithm;
+pub(crate) mod hash_algorithm;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
