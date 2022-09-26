@@ -51,8 +51,8 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
     let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
     assert_eq!(1, v_response.sectors.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.sectors[0].commd);
-    assert_eq!(BigInt::zero(), a_response.spaces.verified_deal_space);
-    assert_eq!(BigInt::from(deal_proposal.piece_size.0), a_response.spaces.deal_space);
+    assert!(a_response.verified_infos.is_empty());
+    assert_eq!(BigInt::from(deal_proposal.piece_size.0), a_response.nonverified_deal_space);
 
     check_state(&rt);
 }
@@ -60,13 +60,14 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
 #[test]
 fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
     let mut rt = setup();
+    let next_allocation_id = 1;
     let deal_id = generate_and_publish_verified_deal(
         &mut rt,
         CLIENT_ADDR,
         &MINER_ADDRESSES,
         START_EPOCH,
         END_EPOCH,
-        1,
+        next_allocation_id,
     );
     let deal_proposal = get_deal_proposal(&mut rt, deal_id);
 
@@ -85,8 +86,13 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
 
     assert_eq!(1, response.sectors.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), response.sectors[0].commd);
-    assert_eq!(BigInt::from(deal_proposal.piece_size.0), a_response.spaces.verified_deal_space);
-    assert_eq!(BigInt::zero(), a_response.spaces.deal_space);
+    assert_eq!(1, a_response.verified_infos.len());
+    assert_eq!(deal_proposal.piece_size, a_response.verified_infos[0].size);
+    assert_eq!(deal_proposal.client.id().unwrap(), a_response.verified_infos[0].client);
+    assert_eq!(deal_proposal.piece_cid, a_response.verified_infos[0].data);
+    assert_eq!(next_allocation_id, a_response.verified_infos[0].allocation_id);
+
+    assert_eq!(BigInt::zero(), a_response.nonverified_deal_space);
 
     check_state(&rt);
 }
@@ -145,8 +151,10 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
     let a_response = activate_deals(&mut rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &deal_ids);
 
     assert_eq!(1, response.sectors.len());
-    assert_eq!(verified_space, a_response.spaces.verified_deal_space);
-    assert_eq!(unverified_space, a_response.spaces.deal_space);
+    let returned_verified_space: BigInt =
+        a_response.verified_infos.iter().map(|info| BigInt::from(info.size.0)).sum();
+    assert_eq!(verified_space, returned_verified_space);
+    assert_eq!(unverified_space, a_response.nonverified_deal_space);
 
     check_state(&rt);
 }

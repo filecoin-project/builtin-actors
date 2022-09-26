@@ -422,6 +422,7 @@ mod clients {
 }
 
 mod claims {
+    use fvm_shared::bigint::BigInt;
     use fvm_shared::error::ExitCode;
     use fvm_shared::ActorID;
     use num_traits::Zero;
@@ -562,10 +563,12 @@ mod claims {
                     make_claim_req(3, &alloc3, sector, 1500),
                 ],
                 size * 3,
+                false,
             )
             .unwrap();
 
-        assert_eq!(ret.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK]);
+        assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK]);
+        assert_eq!(ret.claimed_space, BigInt::from(3 * size));
 
         // check that state is as expected
         let st: State = rt.get_state();
