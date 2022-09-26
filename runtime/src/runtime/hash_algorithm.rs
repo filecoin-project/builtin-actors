@@ -35,15 +35,13 @@ impl HashAlgorithm for FvmHashSha256 {
         let mut hasher = RuntimeHasherWrapper::default();
         key.hash(&mut hasher);
 
-		// TODO :: Enable this when moving to
-		// fvm_sdk 3.0.0-alpha.2,
-		// looks like fvm_sdk 2.0.0-alpha.3 doesn't support `hash_into()` api
+        // TODO :: Enable this when moving to
+        // fvm_sdk 3.0.0-alpha.2,
+        // looks like fvm_sdk 2.0.0-alpha.3 doesn't support `hash_into()` api
         // fvm::crypto::hash_into(SupportedHashes::Sha2_256, &hasher.0, &mut rval_digest);
 
-		rval_digest.copy_from_slice(
-			&fvm::crypto::hash(SupportedHashes::Sha2_256, &hasher.0),
-		);
+        rval_digest.copy_from_slice(&fvm::crypto::hash(SupportedHashes::Sha2_256, &hasher.0));
 
-		rval_digest
+        rval_digest
     }
 }
