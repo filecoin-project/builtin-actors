@@ -38,6 +38,6 @@ serde = { version = "1.0.136", features = ["derive"] }
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
 [dev-dependencies]
-[features]
-fil-actor = []
 
+[features]
+fil-actor = ["fil_actors_runtime/fil-actor"]
