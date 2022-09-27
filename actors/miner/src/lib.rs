@@ -3796,7 +3796,6 @@ fn extend_simple_qap_sector(
         // update deal weights to account for new duration
         new_sector.deal_weight = deal_space * (new_sector.expiration - new_sector.activation);
         new_sector.verified_deal_weight =
-        // XXX this will be updated to be new space
             BigInt::from(*new_verified_deal_space) * (new_sector.expiration - new_sector.activation);
     } else {
         new_sector.expiration = new_expiration
