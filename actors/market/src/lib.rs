@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
-use fil_fungible_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
+use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, RawBytes};
