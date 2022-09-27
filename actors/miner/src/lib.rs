@@ -3687,7 +3687,7 @@ fn extend_sector_committment(
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
     if sector.simple_qa_power {
-        extend_simple_qap_sector(new_expiration, curr_epoch, sector, claim_space_by_sector)
+        extend_simple_qap_sector(policy, new_expiration, curr_epoch, sector, claim_space_by_sector)
     } else {
         extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
     }
@@ -3755,6 +3755,7 @@ fn validate_extended_expiration(
 }
 
 fn extend_simple_qap_sector(
+    policy: &Policy,
     new_expiration: ChainEpoch,
     curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
@@ -3781,13 +3782,13 @@ fn extend_simple_qap_sector(
             return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, old_verified_deal_space, sector.sector_number));
         }
         // claim dropping is restricted to extensions at the end of a sector's life
-        use fil_actors_runtime::EPOCHS_IN_DAY;
-        if sector.expiration - curr_epoch > 30 * EPOCHS_IN_DAY {
+
+        let dropping_claims = expected_verified_deal_space != new_verified_deal_space;
+        if dropping_claims && sector.expiration - curr_epoch >= policy.end_of_life_claim_drop_period
+        {
             return Err(actor_error!(
                 forbidden,
-                "attempt to drop sectors with {} epochs < end of life threshold ({}) remaining",
-                sector.expiration - curr_epoch,
-                30 * EPOCHS_IN_DAY
+                "attempt to drop sectors with {} epochs < end of life claim drop period remaining"
             ));
         }
 
