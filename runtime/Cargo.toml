@@ -26,7 +26,7 @@ thiserror = "1.0.30"
 # enforce wasm compat
 getrandom = { version = "0.2.5", features = ["js"] }
 hex = { version = "0.4.3", optional = true }
-anyhow = "1.0.56"
+anyhow = "1.0.65"
 fvm_sdk = { version = "2.0.0-alpha.3", optional = true }
 blake2b_simd = "1.0"
 fvm_ipld_blockstore = "0.1.1"
