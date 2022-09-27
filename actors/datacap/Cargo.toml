@@ -18,7 +18,7 @@ fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../../runtime", featur
 
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 frc42_dispatch = "1.0.0"
-frc46_token = "1.0.0"
+frc46_token = { git = "https://github.com/arajasek/filecoin", branch="asr/fix-map-key" }
 fvm_actor_utils = "0.1.0"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.2"
