@@ -30,7 +30,7 @@ anyhow = "1.0.56"
 bimap = { version = "0.6.2" }
 blake2b_simd = "1.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-fil_fungible_token = { git = "https://github.com/helix-onchain/filecoin", rev = "39320534b8e992b9c5e53e15641ea4c9c113ed3e" }
+frc46_token = "1.0.0"
 fvm_ipld_bitfield = "0.5.2"
 fvm_ipld_blockstore = { version = "0.1.1", default-features = false }
 fvm_ipld_encoding = { version = "0.2.2", default-features = false }

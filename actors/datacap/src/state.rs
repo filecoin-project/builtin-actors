@@ -1,4 +1,4 @@
-use fil_fungible_token::token;
+use frc46_token::token;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
