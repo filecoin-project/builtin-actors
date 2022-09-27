@@ -16,7 +16,7 @@ use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id, ActorContext,
-    ActorError, AsActorError, Map, INIT_ACTOR_ADDR, UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
+    ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
 };
 
 pub use self::state::*;
@@ -42,7 +42,7 @@ pub enum Method {
     SwapSigner = 7,
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
-    UniversalReceiverHook = UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
+    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 /// Multisig Actor

@@ -17,13 +17,6 @@ pub const HAMT_BIT_WIDTH: u32 = 5;
 /// user-programmable actors.
 pub const CALLER_TYPES_SIGNABLE: &[Type] = &[Type::Account, Type::Multisig];
 
-// TODO: use the fvm_dispatch crate here when we can depend on a published crate.
-// This method number comes from taking the name as "Received" and applying
-// the transformation described in FRC-42.
-// This matches the value in the fungible token library used by the datacap token actor.
-// pub const FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM: u64 = 1361519036;
-pub const UNIVERSAL_RECEIVER_HOOK_METHOD_NUM: u64 = 302636343;
-
 /// ResolveToActorID resolves the given address to it's actor ID.
 /// If an actor ID for the given address dosen't exist yet, it tries to create one by sending
 /// a zero balance to the given address.

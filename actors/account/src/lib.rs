@@ -13,7 +13,6 @@ use num_traits::FromPrimitive;
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::UNIVERSAL_RECEIVER_HOOK_METHOD_NUM;
 use fil_actors_runtime::{actor_error, ActorError};
 use fil_actors_runtime::{cbor, ActorDowncast};
 
@@ -35,7 +34,7 @@ pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     PubkeyAddress = 2,
     AuthenticateMessage = 3,
-    UniversalReceiverHook = UNIVERSAL_RECEIVER_HOOK_METHOD_NUM,
+    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 /// Account Actor
