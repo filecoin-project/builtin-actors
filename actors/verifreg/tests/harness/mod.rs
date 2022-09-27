@@ -243,17 +243,19 @@ impl Harness {
         rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
 
-        rt.expect_send(
-            DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::Burn as MethodNum,
-            RawBytes::serialize(&BurnParams {
-                amount: TokenAmount::from_whole(datacap_burnt.to_i64().unwrap()),
-            })
-            .unwrap(),
-            TokenAmount::zero(),
-            RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
-            ExitCode::OK,
-        );
+        if datacap_burnt > 0 {
+            rt.expect_send(
+                DATACAP_TOKEN_ACTOR_ADDR,
+                ext::datacap::Method::Burn as MethodNum,
+                RawBytes::serialize(&BurnParams {
+                    amount: TokenAmount::from_whole(datacap_burnt.to_i64().unwrap()),
+                })
+                .unwrap(),
+                TokenAmount::zero(),
+                RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
+                ExitCode::OK,
+            );
+        }
 
         let params = ClaimAllocationsParams { sectors: claim_allocs, all_or_nothing };
         let ret = rt
@@ -553,4 +555,27 @@ pub fn assert_claim(rt: &MockRuntime, provider: ActorID, id: ClaimID, expected: 
     let mut claims = st.load_claims(store).unwrap();
 
     assert_eq!(expected, claims.get(provider, id).unwrap().unwrap());
+}
+
+pub fn assert_alloc_claimed(
+    rt: &MockRuntime,
+    client: ActorID,
+    provider: ActorID,
+    id: ClaimID,
+    alloc: &Allocation,
+    epoch: ChainEpoch,
+    sector: SectorNumber,
+) -> Claim {
+    let st: State = rt.get_state();
+    let store = &rt.store();
+
+    // Alloc is gone
+    let mut allocs = st.load_allocs(&store).unwrap();
+    assert!(allocs.get(client, id).unwrap().is_none());
+
+    // Claim is present
+    let expected_claim = claim_from_alloc(alloc, epoch, sector);
+    let mut claims = st.load_claims(store).unwrap();
+    assert_eq!(&expected_claim, claims.get(provider, id).unwrap().unwrap());
+    expected_claim
 }
