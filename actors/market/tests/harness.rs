@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use cid::Cid;
-use fil_fungible_token::token::types::{TransferFromParams, TransferFromReturn};
+use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 use std::cmp::min;

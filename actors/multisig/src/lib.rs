@@ -19,6 +19,13 @@ use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
+use fil_actors_runtime::cbor::serialize_vec;
+use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Primitives, Runtime};
+use fil_actors_runtime::{
+    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id, ActorContext,
+    ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
+};
+
 pub use self::state::*;
 pub use self::types::*;
 
@@ -42,7 +49,7 @@ pub enum Method {
     SwapSigner = 7,
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
-    FungibleTokenReceiverHook = FUNGIBLE_TOKEN_RECEIVER_HOOK_METHOD_NUM,
+    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 /// Multisig Actor

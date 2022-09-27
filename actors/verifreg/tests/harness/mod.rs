@@ -1,7 +1,13 @@
+<<<<<<< HEAD
 use fil_fungible_token::receiver::types::{
     FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
 };
 use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
+=======
+use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
+use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use frc46_token::token::TOKEN_PRECISION;
+>>>>>>> 2a25e794 (Update token libraries to v1.0.0 (#706))
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
