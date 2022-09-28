@@ -33,6 +33,8 @@ mod randomness;
 mod actor_blockstore;
 #[cfg(feature = "fil-actor")]
 pub mod fvm;
+#[cfg(feature = "fil-actor")]
+pub(crate) mod hash_algorithm;
 
 pub(crate) mod empty;
 pub use empty::EMPTY_ARR_CID;

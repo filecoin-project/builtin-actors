@@ -701,7 +701,8 @@ pub fn assert_deals_not_terminated(rt: &mut MockRuntime, deal_ids: &[DealID]) {
 pub fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposal) {
     use cid::multihash::Code;
     use cid::multihash::MultihashDigest;
-    use fvm_ipld_hamt::{BytesKey, Hamt};
+    use fil_actors_runtime::Map;
+    use fvm_ipld_hamt::BytesKey;
 
     let st: State = rt.get_state();
 
@@ -718,12 +719,11 @@ pub fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposa
     let mh_code = Code::Blake2b256;
     let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&p).unwrap()));
     // Check that the deal_id is not in st.pending_proposals.
-    let pending_deals: Hamt<&fvm_ipld_blockstore::MemoryBlockstore, DealProposal> =
-        fil_actors_runtime::make_map_with_root_and_bitwidth(
-            &st.pending_proposals,
-            &*rt.store,
-            PROPOSALS_AMT_BITWIDTH,
-        )
+    let pending_deals: Map<fvm_ipld_blockstore::MemoryBlockstore, DealProposal> =
+        fil_actors_runtime::make_map_with_root_and_bitwidth::<
+            fvm_ipld_blockstore::MemoryBlockstore,
+            DealProposal,
+        >(&st.pending_proposals, &*rt.store, PROPOSALS_AMT_BITWIDTH)
         .unwrap();
     assert!(!pending_deals.contains_key(&BytesKey(p_cid.to_bytes())).unwrap());
 }
