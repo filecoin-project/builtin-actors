@@ -26,7 +26,7 @@ fil_actor_verifreg = { version = "9.0.0-alpha.1", path = "../actors/verifreg" }
 fil_actor_miner = { version = "9.0.0-alpha.1", path = "../actors/miner" }
 fil_actor_datacap = { version = "9.0.0-alpha.1", path = "../actors/datacap" }
 
-anyhow = "1.0.56"
+anyhow = "1.0.65"
 bimap = { version = "0.6.2" }
 blake2b_simd = "1.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }

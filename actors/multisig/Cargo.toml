@@ -16,7 +16,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../../runtime"}
 
-anyhow = "1.0.56"
+anyhow = "1.0.65"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 frc42_dispatch = "1.0.0"
 fvm_ipld_blockstore = "0.1.1"
