@@ -1,4 +1,4 @@
-use fil_actor_market::DealSpaces;
+use fil_actor_market::VerifiedDealInfo;
 use fil_actor_miner::ext::verifreg::Claim as FILPlusClaim;
 use fil_actor_miner::{
     power_for_sector, seal_proof_sector_maximum_lifetime, ExpirationExtension,
@@ -13,13 +13,11 @@ use fil_actors_runtime::{
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{
     address::Address,
-    bigint::BigInt,
     clock::ChainEpoch,
     error::ExitCode,
     sector::{RegisteredSealProof, SectorNumber},
     ActorID,
 };
-use fvm_shared::{bigint::Zero, piece::PaddedPieceSize};
 use std::collections::HashMap;
 
 mod util;
@@ -363,26 +361,16 @@ fn supports_extensions_off_deadline_boundary() {
     h.check_state(&rt);
 }
 
-struct TestVerifiedDeal {
-    pub space: PaddedPieceSize,
-}
-
 fn commit_sector_verified_deals(
-    verified_deals: &Vec<TestVerifiedDeal>,
+    verified_deals: &Vec<VerifiedDealInfo>,
     h: &mut ActorHarness,
     rt: &mut MockRuntime,
 ) -> SectorOnChainInfo {
     h.construct_and_verify(rt);
     assert!(!verified_deals.is_empty());
-    let mut sector_space = 0;
-    for d in verified_deals {
-        sector_space += d.space.0;
-    }
-    let mut prove_commit_spaces = HashMap::new();
-    prove_commit_spaces.insert(
-        h.next_sector_no,
-        DealSpaces { deal_space: BigInt::zero(), verified_deal_space: BigInt::from(sector_space) },
-    );
+
+    let mut pcc = ProveCommitConfig::empty();
+    pcc.add_verified_deals(h.next_sector_no, verified_deals.clone());
 
     let sector_info = &h.commit_and_prove_sectors_with_cfgs(
         rt,
@@ -390,7 +378,7 @@ fn commit_sector_verified_deals(
         DEFAULT_SECTOR_EXPIRATION as u64,
         vec![vec![42]],
         true,
-        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_spaces: prove_commit_spaces },
+        pcc,
     )[0];
 
     sector_info.clone()
@@ -429,14 +417,14 @@ fn make_claim(
     client: ActorID,
     provider: ActorID,
     new_expiration: ChainEpoch,
-    deal: &TestVerifiedDeal,
+    deal: &VerifiedDealInfo,
     term_min: ChainEpoch,
 ) -> FILPlusClaim {
     FILPlusClaim {
         provider,
         client,
         data: make_piece_cid(format!("piece for claim {}", claim_id).as_bytes()),
-        size: deal.space,
+        size: deal.size,
         term_min,
         term_max: new_expiration - sector.activation,
         term_start: sector.activation,
@@ -449,8 +437,8 @@ fn update_expiration_multiple_claims() {
     let (mut h, mut rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        TestVerifiedDeal { space: PaddedPieceSize(h.sector_size as u64 / 2) },
-        TestVerifiedDeal { space: PaddedPieceSize(h.sector_size as u64 / 2) },
+        test_verified_deal(h.sector_size as u64 / 2),
+        test_verified_deal(h.sector_size as u64 / 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
     h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
@@ -498,6 +486,7 @@ fn update_expiration_multiple_claims() {
             sectors_with_claims: vec![SectorClaim {
                 sector_number: old_sector.sector_number,
                 maintain_claims: claim_ids,
+                drop_claims: vec![],
             }],
         }],
     };
@@ -520,8 +509,8 @@ fn update_expiration2_failure_cases() {
     let (mut h, mut rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        TestVerifiedDeal { space: PaddedPieceSize(h.sector_size as u64 / 2) },
-        TestVerifiedDeal { space: PaddedPieceSize(h.sector_size as u64 / 2) },
+        test_verified_deal(h.sector_size as u64 / 2),
+        test_verified_deal(h.sector_size as u64 / 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
     h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
@@ -570,6 +559,7 @@ fn update_expiration2_failure_cases() {
                 sectors_with_claims: vec![SectorClaim {
                     sector_number: old_sector.sector_number,
                     maintain_claims: vec![claim_ids[0]],
+                    drop_claims: vec![],
                 }],
             }],
         };
@@ -608,6 +598,7 @@ fn update_expiration2_failure_cases() {
                 sectors_with_claims: vec![SectorClaim {
                     sector_number: old_sector.sector_number,
                     maintain_claims: claim_ids.clone(),
+                    drop_claims: vec![],
                 }],
             }],
         };
@@ -646,6 +637,7 @@ fn update_expiration2_failure_cases() {
                 sectors_with_claims: vec![SectorClaim {
                     sector_number: old_sector.sector_number,
                     maintain_claims: claim_ids,
+                    drop_claims: vec![],
                 }],
             }],
         };

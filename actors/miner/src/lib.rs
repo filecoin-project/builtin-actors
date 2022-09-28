@@ -1052,25 +1052,20 @@ impl Actor {
                 continue;
             }
 
-            let res = rt.send(
-                &STORAGE_MARKET_ACTOR_ADDR,
-                ext::market::ACTIVATE_DEALS_METHOD,
-                RawBytes::serialize(ext::market::ActivateDealsParams {
-                    deal_ids: update.deals.clone(),
-                    sector_expiry: sector_info.expiration,
-                })?,
-                TokenAmount::zero(),
-            );
-            let deal_spaces = if let Ok(res) = res {
-                // Erroring in this case as it means something went really wrong
-                let activate_ret: ext::market::ActivateDealsResult = res.deserialize()?;
-                activate_ret.spaces
-            } else {
-                info!(
-                    "failed to activate deals on sector {0}, skipping sector {0}",
-                    update.sector_number,
-                );
-                continue;
+            let deal_spaces = match activate_deals_and_claim_allocations(
+                rt,
+                update.deals.clone(),
+                sector_info.expiration,
+                sector_info.sector_number,
+            )? {
+                Some(deal_spaces) => deal_spaces,
+                None => {
+                    info!(
+                        "failed to activate deals on sector {}, skipping from replica update set",
+                        update.sector_number
+                    );
+                    continue;
+                }
             };
 
             let expiration = sector_info.expiration;
@@ -3556,7 +3551,11 @@ enum ExtensionKind {
 // ExtendSectorExpiration param
 struct ExtendExpirationsInner {
     extensions: Vec<ValidatedExpirationExtension>,
-    claims: Option<BTreeMap<SectorNumber, u64>>,
+    // Map from sector being extended to (check, maintain)
+    // `check` is the space of active claims, checked to ensure all claims are checked
+    // `maintain` is the space of claims to maintain
+    // maintain <= check with equality in the case no claims are dropped
+    claims: Option<BTreeMap<SectorNumber, (u64, u64)>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -3621,7 +3620,7 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    let mut claim_space_by_sector = BTreeMap::<SectorNumber, u64>::new();
+    let mut claim_space_by_sector = BTreeMap::<SectorNumber, (u64, u64)>::new();
 
     for decl in &extensions {
         let policy = rt.policy();
@@ -3635,27 +3634,38 @@ where
         }
 
         for sc in &decl.sectors_with_claims {
-            let claims = get_claims(rt, &sc.maintain_claims)
+            let mut drop_claims = sc.drop_claims.clone();
+            let mut all_claim_ids = sc.maintain_claims.clone();
+            all_claim_ids.append(&mut drop_claims);
+            let claims = get_claims(rt, &all_claim_ids)
                 .with_context(|| format!("failed to get claims for sector {}", sc.sector_number))?;
+            let first_drop = sc.maintain_claims.len();
 
             for (i, claim) in claims.iter().enumerate() {
                 // check provider and sector matches
                 if claim.provider != rt.message().receiver().id().unwrap() {
-                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={}, expected claim provider to be {} but found {} ", sc.sector_number, sc.maintain_claims[i], rt.message().receiver().id().unwrap(), claim.provider));
+                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={}, expected claim provider to be {} but found {} ", sc.sector_number, all_claim_ids[i], rt.message().receiver().id().unwrap(), claim.provider));
                 }
                 if claim.sector != sc.sector_number {
-                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={} expected claim sector number to be {} but found {} ", sc.sector_number, sc.maintain_claims[i], sc.sector_number, claim.sector));
+                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={} expected claim sector number to be {} but found {} ", sc.sector_number, all_claim_ids[i], sc.sector_number, claim.sector));
                 }
 
-                // check expiration does not exceed term max
-                if decl.new_expiration > claim.term_start + claim.term_max {
-                    return Err(actor_error!(forbidden, "failed to validate declaration sector={}, claim={} claim only allows extension to {} but declared new expiration is {}", sc.sector_number, sc.maintain_claims[i], claim.term_start + claim.term_max, decl.new_expiration));
+                // If we are not dropping check expiration does not exceed term max
+                let mut maintain_delta: u64 = 0;
+                if i < first_drop {
+                    if decl.new_expiration > claim.term_start + claim.term_max {
+                        return Err(actor_error!(forbidden, "failed to validate declaration sector={}, claim={} claim only allows extension to {} but declared new expiration is {}", sc.sector_number, sc.maintain_claims[i], claim.term_start + claim.term_max, decl.new_expiration));
+                    }
+                    maintain_delta = claim.size.0
                 }
 
                 claim_space_by_sector
                     .entry(sc.sector_number)
-                    .and_modify(|size| *size += claim.size.0)
-                    .or_insert(claim.size.0);
+                    .and_modify(|(check, maintain)| {
+                        *check += claim.size.0;
+                        *maintain += maintain_delta;
+                    })
+                    .or_insert((claim.size.0, maintain_delta));
             }
         }
     }
@@ -3670,13 +3680,13 @@ fn extend_sector_committment(
     curr_epoch: ChainEpoch,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
-    claim_space_by_sector: &BTreeMap<SectorNumber, u64>,
+    claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
     if sector.simple_qa_power {
-        extend_simple_qap_sector(new_expiration, sector, claim_space_by_sector)
+        extend_simple_qap_sector(policy, new_expiration, curr_epoch, sector, claim_space_by_sector)
     } else {
         extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
     }
@@ -3744,33 +3754,51 @@ fn validate_extended_expiration(
 }
 
 fn extend_simple_qap_sector(
+    policy: &Policy,
     new_expiration: ChainEpoch,
+    curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
-    claim_space_by_sector: &BTreeMap<SectorNumber, u64>,
+    claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
     let mut new_sector = sector.clone();
     if sector.verified_deal_weight > BigInt::zero() {
         let old_duration = sector.expiration - sector.activation;
         let deal_space = &sector.deal_weight / old_duration;
-        let verified_deal_space = &sector.verified_deal_weight / old_duration;
-        let expected_verified_deal_space = match claim_space_by_sector.get(&sector.sector_number) {
-            None => {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "claim missing from declaration for sector {}",
-                    sector.sector_number
-                ))
-            }
-            Some(space) => space,
-        };
-        if BigInt::from(*expected_verified_deal_space as i64) != verified_deal_space {
-            return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, verified_deal_space, sector.sector_number));
+        let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
+        let (expected_verified_deal_space, new_verified_deal_space) =
+            match claim_space_by_sector.get(&sector.sector_number) {
+                None => {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "claim missing from declaration for sector {} with non-zero verified deal weight {}",
+                        sector.sector_number,
+                        &sector.verified_deal_weight
+                    ))
+                }
+                Some(space) => space,
+            };
+        // claims must be completely accounted for
+        if BigInt::from(*expected_verified_deal_space as i64) != old_verified_deal_space {
+            return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, old_verified_deal_space, sector.sector_number));
         }
+        // claim dropping is restricted to extensions at the end of a sector's life
+
+        let dropping_claims = expected_verified_deal_space != new_verified_deal_space;
+        if dropping_claims && sector.expiration - curr_epoch >= policy.end_of_life_claim_drop_period
+        {
+            return Err(actor_error!(
+                forbidden,
+                "attempt to drop sectors with {} epochs < end of life claim drop period {} remaining",
+                sector.expiration - curr_epoch,
+                policy.end_of_life_claim_drop_period
+            ));
+        }
+
         new_sector.expiration = new_expiration;
         // update deal weights to account for new duration
         new_sector.deal_weight = deal_space * (new_sector.expiration - new_sector.activation);
-        new_sector.verified_deal_weight =
-            verified_deal_space * (new_sector.expiration - new_sector.activation);
+        new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space)
+            * (new_sector.expiration - new_sector.activation);
     } else {
         new_sector.expiration = new_expiration
     }
@@ -4787,35 +4815,21 @@ where
     let mut valid_pre_commits = Vec::default();
 
     for pre_commit in pre_commits {
-        let deal_spaces = if !pre_commit.info.deal_ids.is_empty() {
-            // Check (and activate) storage deals associated to sector. Abort if checks failed.
-            let res = rt.send(
-                &STORAGE_MARKET_ACTOR_ADDR,
-                ext::market::ACTIVATE_DEALS_METHOD,
-                RawBytes::serialize(ext::market::ActivateDealsParams {
-                    deal_ids: pre_commit.info.deal_ids.clone(),
-                    sector_expiry: pre_commit.info.expiration,
-                })?,
-                TokenAmount::zero(),
-            );
-            match res {
-                Ok(res) => {
-                    let activate_res: ext::market::ActivateDealsResult = res.deserialize()?;
-                    activate_res.spaces
-                }
-                Err(e) => {
-                    info!(
-                        "failed to activate deals on sector {}, dropping from prove commit set: {}",
-                        pre_commit.info.sector_number,
-                        e.msg()
-                    );
-                    continue;
-                }
+        match activate_deals_and_claim_allocations(
+            rt,
+            pre_commit.clone().info.deal_ids,
+            pre_commit.info.expiration,
+            pre_commit.info.sector_number,
+        )? {
+            None => {
+                info!(
+                    "failed to activate deals on sector {}, dropping from prove commit set",
+                    pre_commit.info.sector_number,
+                );
+                continue;
             }
-        } else {
-            ext::market::DealSpaces::default()
+            Some(deal_spaces) => valid_pre_commits.push((pre_commit, deal_spaces)),
         };
-        valid_pre_commits.push((pre_commit, deal_spaces));
     }
 
     // When all prove commits have failed abort early
@@ -4962,6 +4976,79 @@ where
     notify_pledge_changed(rt, &(total_pledge - newly_vested))?;
 
     Ok(())
+}
+
+// activate deals with builtin market and claim allocations with verified registry actor
+// returns an error in case of a fatal programmer error
+// returns Ok(None) in case deal activation or verified allocation claim fails
+fn activate_deals_and_claim_allocations<RT, BS>(
+    rt: &mut RT,
+    deal_ids: Vec<DealID>,
+    sector_expiry: ChainEpoch,
+    sector_number: SectorNumber,
+) -> Result<Option<crate::ext::market::DealSpaces>, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    if deal_ids.is_empty() {
+        return Ok(Some(ext::market::DealSpaces::default()));
+    }
+    // Check (and activate) storage deals associated to sector. Abort if checks failed.
+    let activate_raw = rt.send(
+        &STORAGE_MARKET_ACTOR_ADDR,
+        ext::market::ACTIVATE_DEALS_METHOD,
+        RawBytes::serialize(ext::market::ActivateDealsParams { deal_ids, sector_expiry })?,
+        TokenAmount::zero(),
+    );
+    let activate_res: ext::market::ActivateDealsResult = match activate_raw {
+        Ok(res) => res.deserialize()?,
+        Err(e) => {
+            info!("error activating deals on sector {}: {}", sector_number, e.msg());
+            return Ok(None);
+        }
+    };
+
+    // If deal activation includes verified deals claim allocations
+    if activate_res.verified_infos.is_empty() {
+        return Ok(Some(ext::market::DealSpaces {
+            deal_space: activate_res.nonverified_deal_space,
+            ..Default::default()
+        }));
+    }
+    let sector_claims = activate_res
+        .verified_infos
+        .iter()
+        .map(|info| ext::verifreg::SectorAllocationClaim {
+            client: info.client,
+            allocation_id: info.allocation_id,
+            data: info.data,
+            size: info.size,
+            sector: sector_number,
+            sector_expiry,
+        })
+        .collect();
+
+    let claim_raw = rt.send(
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
+        RawBytes::serialize(ext::verifreg::ClaimAllocationsParams {
+            sectors: sector_claims,
+            all_or_nothing: true,
+        })?,
+        TokenAmount::zero(),
+    );
+    let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
+        Ok(res) => res.deserialize()?,
+        Err(e) => {
+            info!("error claiming allocation on sector {}: {}", sector_number, e.msg());
+            return Ok(None);
+        }
+    };
+    Ok(Some(ext::market::DealSpaces {
+        deal_space: activate_res.nonverified_deal_space,
+        verified_deal_space: claim_res.claimed_space,
+    }))
 }
 
 // XXX: probably better to push this one level down into state
