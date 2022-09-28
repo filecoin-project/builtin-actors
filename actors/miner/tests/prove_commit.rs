@@ -46,9 +46,10 @@ fn prove_single_sector() {
     let expiration =
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
                                                                                            // Fill the sector with verified deals
+    let verified_deal = test_verified_deal(h.sector_size as u64);
     let deal_spaces = DealSpaces {
         deal_space: BigInt::zero(),
-        verified_deal_space: BigInt::from(h.sector_size as u64),
+        verified_deal_space: BigInt::from(verified_deal.size.0),
     };
 
     // Pre-commit with a deal in order to exercise non-zero deal weights.
@@ -72,10 +73,8 @@ fn prove_single_sector() {
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
     rt.balance.replace(TokenAmount::from_whole(1000));
-    let pcc = ProveCommitConfig {
-        deal_spaces: HashMap::from([(sector_no, deal_spaces.clone())]),
-        ..Default::default()
-    };
+    let mut pcc = ProveCommitConfig::empty();
+    pcc.add_verified_deals(sector_no, vec![verified_deal]);
 
     let sector = h
         .prove_commit_sector_and_confirm(
@@ -179,13 +178,13 @@ fn prove_sectors_from_batch_pre_commit() {
     ];
 
     let deal_space: i64 = 32 << 30;
-    let deal_weight = DealWeight::zero();
     let prove_commit_epoch = precommit_epoch + rt.policy.pre_commit_challenge_delay + 1;
     let deal_lifespan = sector_expiration - prove_commit_epoch;
+    let verified_deal1 = test_verified_deal(deal_space as u64);
+    let verified_deal2 = test_verified_deal(deal_space as u64 / 2);
+    let verified_deal3 = test_verified_deal(deal_space as u64 / 2);
+    let deal_weight = DealWeight::zero();
     let verified_deal_weight = deal_space * DealWeight::from(deal_lifespan);
-
-    let deal_spaces =
-        DealSpaces { deal_space: BigInt::zero(), verified_deal_space: BigInt::from(deal_space) };
 
     let conf = PreCommitBatchConfig {
         sector_deal_data: vec![
@@ -263,10 +262,8 @@ fn prove_sectors_from_batch_pre_commit() {
     // Prove the next, with one deal
     {
         let precommit = &precommits[1];
-        let pcc = ProveCommitConfig {
-            deal_spaces: HashMap::from([(precommit.info.sector_number, deal_spaces.clone())]),
-            ..Default::default()
-        };
+        let mut pcc = ProveCommitConfig::empty();
+        pcc.add_verified_deals(precommit.info.sector_number, vec![verified_deal1]);
         let sector = h
             .prove_commit_sector_and_confirm(
                 &mut rt,
@@ -292,10 +289,8 @@ fn prove_sectors_from_batch_pre_commit() {
     // Prove the last
     {
         let precommit = &precommits[2];
-        let pcc = ProveCommitConfig {
-            deal_spaces: HashMap::from([(precommit.info.sector_number, deal_spaces)]),
-            ..Default::default()
-        };
+        let mut pcc = ProveCommitConfig::empty();
+        pcc.add_verified_deals(precommit.info.sector_number, vec![verified_deal2, verified_deal3]);
         let sector = h
             .prove_commit_sector_and_confirm(
                 &mut rt,

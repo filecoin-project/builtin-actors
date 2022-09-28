@@ -385,6 +385,7 @@ impl Actor {
         }
         let mut datacap_claimed = DataCap::zero();
         let mut ret_gen = BatchReturnGen::new(params.sectors.len());
+        let all_or_nothing = params.all_or_nothing;
         rt.transaction(|st: &mut State, rt| {
             let mut claims = st.load_claims(rt.store())?;
             let mut allocs = st.load_allocs(rt.store())?;
@@ -455,11 +456,19 @@ impl Actor {
             Ok(())
         })
         .context("state transaction failed")?;
+        let batch_info = ret_gen.gen();
+        if all_or_nothing && !batch_info.all_ok() {
+            return Err(actor_error!(
+                illegal_argument,
+                "all or nothing call contained failures: {}",
+                batch_info.to_string()
+            ));
+        }
 
         // Burn the datacap tokens from verified registry's own balance.
         burn(rt, &datacap_claimed)?;
 
-        Ok(ret_gen.gen())
+        Ok(ClaimAllocationsReturn { batch_info, claimed_space: datacap_claimed })
     }
 
     // get claims for a provider
@@ -1095,7 +1104,7 @@ fn can_claim_alloc(
         && claim_alloc.client == alloc.client
         && claim_alloc.data == alloc.data
         && claim_alloc.size == alloc.size
-        && curr_epoch < alloc.expiration
+        && curr_epoch <= alloc.expiration
         && sector_lifetime >= alloc.term_min
         && sector_lifetime <= alloc.term_max
 }

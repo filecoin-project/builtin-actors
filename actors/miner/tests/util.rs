@@ -3,11 +3,14 @@
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
     ActivateDealsParams, ActivateDealsResult, DealSpaces, Method as MarketMethod,
-    OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifyDealsForActivationParams,
-    VerifyDealsForActivationReturn,
+    OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifiedDealInfo,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
+use fil_actor_miner::ext::verifreg::{
+    ClaimAllocationsParams, ClaimAllocationsReturn, SectorAllocationClaim, CLAIM_ALLOCATIONS_METHOD,
+};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
@@ -39,7 +42,7 @@ use fil_actor_miner::ext::verifreg::{
 };
 
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
-use fil_actors_runtime::{test_utils::*, BatchReturnGen};
+use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
@@ -63,6 +66,7 @@ use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
@@ -1026,24 +1030,24 @@ impl ActorHarness {
         let mut valid_pcs = Vec::new();
         for pc in pcs {
             if !pc.info.deal_ids.is_empty() {
-                let params = ActivateDealsParams {
+                let deal_spaces = cfg.deal_spaces(&pc.info.sector_number);
+                let activate_params = ActivateDealsParams {
                     deal_ids: pc.info.deal_ids.clone(),
                     sector_expiry: pc.info.expiration,
                 };
 
-                let mut exit = ExitCode::OK;
+                let mut activate_deals_exit = ExitCode::OK;
                 match cfg.verify_deals_exit.get(&pc.info.sector_number) {
                     Some(exit_code) => {
-                        exit = *exit_code;
+                        activate_deals_exit = *exit_code;
                     }
-                    None => {
-                        valid_pcs.push(pc);
-                    }
+                    None => (),
                 }
 
                 let ret = ActivateDealsResult {
-                    spaces: cfg
-                        .deal_spaces
+                    nonverified_deal_space: deal_spaces.deal_space,
+                    verified_infos: cfg
+                        .verified_deal_infos
                         .get(&pc.info.sector_number)
                         .cloned()
                         .unwrap_or_default(),
@@ -1052,11 +1056,49 @@ impl ActorHarness {
                 rt.expect_send(
                     STORAGE_MARKET_ACTOR_ADDR,
                     MarketMethod::ActivateDeals as u64,
-                    RawBytes::serialize(params).unwrap(),
+                    RawBytes::serialize(activate_params).unwrap(),
                     TokenAmount::zero(),
-                    RawBytes::serialize(ret).unwrap(),
-                    exit,
+                    RawBytes::serialize(&ret).unwrap(),
+                    activate_deals_exit,
                 );
+                if ret.verified_infos.is_empty() {
+                    if activate_deals_exit == ExitCode::OK {
+                        valid_pcs.push(pc);
+                    }
+                } else {
+                    // calim FIL+ allocations
+                    let sector_claims = ret
+                        .verified_infos
+                        .iter()
+                        .map(|info| SectorAllocationClaim {
+                            client: info.client,
+                            allocation_id: info.allocation_id,
+                            data: info.data,
+                            size: info.size,
+                            sector: pc.info.sector_number,
+                            sector_expiry: pc.info.expiration,
+                        })
+                        .collect();
+
+                    let claim_allocation_params =
+                        ClaimAllocationsParams { sectors: sector_claims, all_or_nothing: true };
+
+                    // TODO handle failures of claim allocations
+                    // use exit code map for claim allocations in config
+                    valid_pcs.push(pc);
+                    let claim_allocs_ret = ClaimAllocationsReturn {
+                        batch_info: BatchReturn::ok(ret.verified_infos.len() as u32),
+                        claimed_space: deal_spaces.verified_deal_space,
+                    };
+                    rt.expect_send(
+                        VERIFIED_REGISTRY_ACTOR_ADDR,
+                        CLAIM_ALLOCATIONS_METHOD as u64,
+                        RawBytes::serialize(&claim_allocation_params).unwrap(),
+                        TokenAmount::zero(),
+                        RawBytes::serialize(&claim_allocs_ret).unwrap(),
+                        ExitCode::OK,
+                    );
+                }
             } else {
                 valid_pcs.push(pc);
             }
@@ -1068,8 +1110,7 @@ impl ActorHarness {
             let mut expected_raw_power = BigInt::from(0);
 
             for pc in valid_pcs {
-                let spaces =
-                    cfg.deal_spaces.get(&pc.info.sector_number).cloned().unwrap_or_default();
+                let spaces = cfg.deal_spaces(&pc.info.sector_number);
 
                 let duration = pc.info.expiration - rt.epoch;
                 let deal_weight = spaces.deal_space * duration;
@@ -2502,13 +2543,50 @@ impl PreCommitConfig {
 #[derive(Default, Clone)]
 pub struct ProveCommitConfig {
     pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
-    pub deal_spaces: HashMap<SectorNumber, DealSpaces>,
+    pub claim_allocs_exit: HashMap<SectorNumber, ExitCode>,
+    pub deal_space: HashMap<SectorNumber, BigInt>,
+    pub verified_deal_infos: HashMap<SectorNumber, Vec<VerifiedDealInfo>>,
+}
+
+#[allow(dead_code)]
+pub fn test_verified_deal(space: u64) -> VerifiedDealInfo {
+    // only set size for testing and zero out remaining fields
+    VerifiedDealInfo {
+        client: 0,
+        allocation_id: 0,
+        data: make_piece_cid("test verified deal".as_bytes()),
+        size: PaddedPieceSize(space),
+    }
 }
 
 #[allow(dead_code)]
 impl ProveCommitConfig {
     pub fn empty() -> ProveCommitConfig {
-        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_spaces: HashMap::new() }
+        ProveCommitConfig {
+            verify_deals_exit: HashMap::new(),
+            claim_allocs_exit: HashMap::new(),
+            deal_space: HashMap::new(),
+            verified_deal_infos: HashMap::new(),
+        }
+    }
+
+    pub fn add_verified_deals(&mut self, sector: SectorNumber, deals: Vec<VerifiedDealInfo>) {
+        self.verified_deal_infos.insert(sector, deals);
+    }
+
+    pub fn deal_spaces(&self, sector: &SectorNumber) -> DealSpaces {
+        let verified_deal_space = match self.verified_deal_infos.get(sector) {
+            None => BigInt::zero(),
+            Some(infos) => infos
+                .iter()
+                .map(|info| BigInt::from(info.size.0))
+                .reduce(|x, a| x + a)
+                .unwrap_or_default(),
+        };
+        DealSpaces {
+            deal_space: self.deal_space.get(sector).cloned().unwrap_or_default(),
+            verified_deal_space,
+        }
     }
 }
 

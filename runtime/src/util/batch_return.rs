@@ -1,6 +1,7 @@
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::error::ExitCode;
+use std::fmt;
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
 pub struct FailCode {
@@ -27,6 +28,10 @@ impl BatchReturn {
 
     pub fn size(&self) -> usize {
         self.success_count as usize + self.fail_codes.len()
+    }
+
+    pub fn all_ok(&self) -> bool {
+        self.fail_codes.is_empty()
     }
 
     // Returns a vector of exit codes for each item (including successes).
@@ -61,6 +66,24 @@ impl BatchReturn {
             }
         }
         ret
+    }
+}
+
+impl fmt::Display for BatchReturn {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let succ_str = format!("Batch successes {} / {}", self.success_count, self.size());
+        if self.all_ok() {
+            return f.write_str(&succ_str);
+        }
+        let mut ret = format!("{}, Batch failing: [", succ_str);
+        let mut strs = Vec::new();
+        for fail in &self.fail_codes {
+            strs.push(format!("code={} at idx={}", fail.code, fail.idx))
+        }
+        let fail_str = strs.join(", ");
+        ret.push_str(&fail_str);
+        ret.push(']');
+        f.write_str(&ret)
     }
 }
 

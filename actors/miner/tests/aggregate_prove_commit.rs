@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::iter::FromIterator;
 
 use fil_actor_market::DealSpaces;
 use fil_actor_miner::{
@@ -35,13 +34,14 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     let prove_commit_epoch = precommit_epoch + rt.policy.pre_commit_challenge_delay + 1;
     // something on deadline boundary but > 180 days
+    let verified_deal_space = actor.sector_size as u64;
     let expiration =
         dl_info.period_end() + rt.policy.wpost_proving_period * DEFAULT_SECTOR_EXPIRATION;
     // fill the sector with verified seals
     let duration = expiration - prove_commit_epoch;
     let deal_spaces = DealSpaces {
         deal_space: BigInt::zero(),
-        verified_deal_space: BigInt::from(actor.sector_size as u64),
+        verified_deal_space: BigInt::from(verified_deal_space),
     };
 
     let mut precommits = vec![];
@@ -59,12 +59,13 @@ fn valid_precommits_then_aggregate_provecommit() {
     rt.set_epoch(prove_commit_epoch);
     rt.set_balance(TokenAmount::from_whole(1000));
 
-    let pcc = ProveCommitConfig {
-        deal_spaces: HashMap::from_iter(
-            precommits.iter().map(|pc| (pc.info.sector_number, deal_spaces.clone())),
-        ),
-        ..Default::default()
-    };
+    let mut pcc = ProveCommitConfig::empty();
+    for pc in &precommits {
+        pcc.add_verified_deals(
+            pc.info.sector_number,
+            vec![test_verified_deal(verified_deal_space)],
+        );
+    }
 
     actor
         .prove_commit_aggregate_sector(
