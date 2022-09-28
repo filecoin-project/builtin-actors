@@ -298,11 +298,13 @@ impl Actor {
                 }
             };
 
+            // Fetch client's datacap balance and calculate the amount of datacap required for the verified deals.
+            // Drop any verified deals for which the client has insufficient datacap.
             if deal.proposal.verified_deal {
                 let (mut use_client_datacap, total_client_datacap) =
                     match all_client_datacap.get(&client_id).cloned() {
                         None => {
-                            let total_datacap = balance_of(rt, &Address::new_id(client_id as u64))
+                            let total_datacap = balance_of(rt, &Address::new_id(client_id))
                             .map_err(
                                 |e| actor_error!(not_found; "failed to get datacap {}", e.msg()),
                             )?;
@@ -384,20 +386,18 @@ impl Actor {
             valid_deals.push(ValidDeal { proposal: deal.proposal, cid: pcid });
             valid_input_bf.set(di as u64)
         }
-        let mut alloc_reqs: BTreeMap<ActorID, Vec<AllocationRequest>> = BTreeMap::new();
+        let mut client_alloc_reqs: BTreeMap<ActorID, Vec<AllocationRequest>> = BTreeMap::new();
         for valid_deal in valid_deals.iter() {
-            alloc_reqs
+            client_alloc_reqs
                 .entry(valid_deal.proposal.client.id().unwrap())
                 .or_default()
                 .push(alloc_request_for_deal(&valid_deal.proposal, rt.policy(), curr_epoch));
         }
 
-        let mut allocation_map: BTreeMap<ActorID, Vec<AllocationID>> = BTreeMap::new();
-        for (action_id, _client_datacap) in all_client_datacap.iter() {
-            let params = datacap_transfer_request(
-                &Address::new_id(*action_id as u64),
-                alloc_reqs.get(action_id).unwrap().clone(),
-            )?;
+        let mut client_allocations: BTreeMap<ActorID, Vec<AllocationID>> = BTreeMap::new();
+        for (client_id, alloc_reqs) in client_alloc_reqs.iter() {
+            let params =
+                datacap_transfer_request(&Address::new_id(*client_id), alloc_reqs.clone())?;
             let mut alloc_ids = match transfer_from(rt, params) {
                 Ok(ids) => ids,
                 Err(e) => {
@@ -408,7 +408,7 @@ impl Actor {
                     ));
                 }
             };
-            allocation_map.entry(*action_id).or_default().append(alloc_ids.as_mut());
+            client_allocations.entry(*client_id).or_default().append(alloc_ids.as_mut());
         }
 
         let valid_deal_count = valid_input_bf.len();
@@ -462,7 +462,7 @@ impl Actor {
                         .unwrap()
                         .set(
                             deal_id_key(deal_id),
-                            allocation_map
+                            client_allocations
                                 .get_mut(&valid_deal.proposal.client.id().unwrap())
                                 .unwrap()
                                 .remove(0),
@@ -1168,7 +1168,7 @@ fn datacap_transfer_request(
     })
 }
 
-// Invokes transfer on a data cap token actor for whole units of data cap.
+// Invokes transfer_from on a data cap token actor.
 fn transfer_from<BS, RT>(
     rt: &RT,
     params: TransferFromParams,
@@ -1188,7 +1188,7 @@ where
     Ok(datacap_transfer_response(&ret)?)
 }
 
-// Invokes BalanceOf on the data cap token actor, and converts the result to whole units of data cap.
+// Invokes BalanceOf on the data cap token actor.
 fn balance_of<BS, RT>(rt: &RT, owner: &Address) -> Result<TokenAmount, ActorError>
 where
     BS: Blockstore,
