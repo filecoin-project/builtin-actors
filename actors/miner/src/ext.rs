@@ -1,13 +1,16 @@
 use cid::Cid;
-use fil_actors_runtime::DealWeight;
+use fil_actors_runtime::BatchReturn;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::bigint::bigint_ser;
+use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::ActorID;
 
 pub mod account {
     pub const PUBKEY_ADDRESS_METHOD: u64 = 2;
@@ -35,20 +38,39 @@ pub mod market {
         pub sector_expiry: ChainEpoch,
     }
 
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+    pub struct VerifiedDealInfo {
+        pub client: ActorID,
+        pub allocation_id: u64,
+        pub data: Cid,
+        pub size: PaddedPieceSize,
+    }
+
+    impl Default for VerifiedDealInfo {
+        fn default() -> VerifiedDealInfo {
+            VerifiedDealInfo {
+                size: PaddedPieceSize(0),
+                client: 0,
+                allocation_id: 0,
+                data: Default::default(),
+            }
+        }
+    }
+
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct ActivateDealsResult {
-        pub weights: DealWeights,
+        #[serde(with = "bigint_ser")]
+        pub nonverified_deal_space: BigInt,
+        pub verified_infos: Vec<VerifiedDealInfo>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone, Default)]
-    pub struct DealWeights {
-        pub deal_space: u64,
+    pub struct DealSpaces {
         #[serde(with = "bigint_ser")]
-        pub deal_weight: DealWeight,
+        pub deal_space: BigInt,
         #[serde(with = "bigint_ser")]
-        pub verified_deal_weight: DealWeight,
+        pub verified_deal_space: BigInt,
     }
-
     #[derive(Serialize_tuple)]
     pub struct ComputeDataCommitmentParamsRef<'a> {
         pub inputs: &'a [SectorDataSpec],
@@ -131,4 +153,67 @@ pub mod power {
 
 pub mod reward {
     pub const THIS_EPOCH_REWARD_METHOD: u64 = 3;
+}
+
+pub mod verifreg {
+    use super::*;
+
+    pub const GET_CLAIMS_METHOD: u64 = 10;
+    pub const CLAIM_ALLOCATIONS_METHOD: u64 = 9;
+
+    pub type ClaimID = u64;
+    pub type AllocationID = u64;
+
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
+    pub struct Claim {
+        // The provider storing the data (from allocation).
+        pub provider: ActorID,
+        // The client which allocated the DataCap (from allocation).
+        pub client: ActorID,
+        // Identifier of the data committed (from allocation).
+        pub data: Cid,
+        // The (padded) size of data (from allocation).
+        pub size: PaddedPieceSize,
+        // The min period which the provider must commit to storing data
+        pub term_min: ChainEpoch,
+        // The max period for which provider can earn QA-power for the data
+        pub term_max: ChainEpoch,
+        // The epoch at which the (first range of the) piece was committed.
+        pub term_start: ChainEpoch,
+        // ID of the provider's sector in which the data is committed.
+        pub sector: SectorNumber,
+    }
+    #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+    pub struct GetClaimsParams {
+        pub provider: ActorID,
+        pub claim_ids: Vec<ClaimID>,
+    }
+    #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+
+    pub struct GetClaimsReturn {
+        pub batch_info: BatchReturn,
+        pub claims: Vec<Claim>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct SectorAllocationClaim {
+        pub client: ActorID,
+        pub allocation_id: AllocationID,
+        pub data: Cid,
+        pub size: PaddedPieceSize,
+        pub sector: SectorNumber,
+        pub sector_expiry: ChainEpoch,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct ClaimAllocationsParams {
+        pub sectors: Vec<SectorAllocationClaim>,
+        pub all_or_nothing: bool,
+    }
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct ClaimAllocationsReturn {
+        pub batch_info: BatchReturn,
+        #[serde(with = "bigint_ser")]
+        pub claimed_space: BigInt,
+    }
 }

@@ -3,7 +3,7 @@ use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
     Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
-    ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo,
+    ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo, Sectors,
     State as MinerState, TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 
@@ -701,6 +701,15 @@ fn extend_after_upgrade() {
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, _) =
         create_miner_and_upgrade_sector(store, false);
     let sector_number = sector_info.sector_number;
+    let mut legacy_sector = sector_info;
+    legacy_sector.simple_qa_power = false;
+
+    // TODO change to use extend2
+    v.mutate_state(miner_id, |st: &mut MinerState| {
+        let mut sectors = Sectors::load(&store, &st.sectors).unwrap();
+        sectors.store(vec![legacy_sector]).unwrap();
+        st.sectors = sectors.amt.flush().unwrap();
+    });
 
     let extension_params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {

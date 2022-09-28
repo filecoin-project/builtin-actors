@@ -36,22 +36,50 @@ pub mod miner {
 
 pub mod verifreg {
     use super::*;
+    use cid::Cid;
+    use fil_actors_runtime::BatchReturn;
+    use fvm_shared::clock::ChainEpoch;
+    use fvm_shared::piece::PaddedPieceSize;
 
-    // based on fil_actor_verifreg
-    pub const USE_BYTES_METHOD: u64 = 5;
-    pub const RESTORE_BYTES_METHOD: u64 = 6;
-
-    pub type UseBytesParams = BytesParams;
-    pub type RestoreBytesParams = BytesParams;
+    pub type AllocationID = u64;
+    pub type ClaimID = u64;
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-    pub struct BytesParams {
-        /// Address of verified client.
-        pub address: Address,
-        /// Number of bytes to use.
-        #[serde(with = "bigint_ser")]
-        pub deal_size: StoragePower,
+    pub struct AllocationRequest {
+        pub provider: Address,
+        pub data: Cid,
+        pub size: PaddedPieceSize,
+        pub term_min: ChainEpoch,
+        pub term_max: ChainEpoch,
+        pub expiration: ChainEpoch,
     }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct ClaimExtensionRequest {
+        pub provider: Address,
+        pub claim: ClaimID,
+        pub term_max: ChainEpoch,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct AllocationRequests {
+        pub allocations: Vec<AllocationRequest>,
+        pub extensions: Vec<ClaimExtensionRequest>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct AllocationsResponse {
+        // Result for each allocation request.
+        pub allocation_results: BatchReturn,
+        // Result for each extension request.
+        pub extension_results: BatchReturn,
+        // IDs of new allocations created.
+        pub new_allocations: Vec<AllocationID>,
+    }
+}
+
+pub mod datacap {
+    pub const TRANSFER_FROM_METHOD: u64 = 15;
 }
 
 pub mod reward {

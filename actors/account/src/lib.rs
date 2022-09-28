@@ -11,11 +11,12 @@ use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use crate::types::AuthenticateMessageParams;
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, ActorError};
 use fil_actors_runtime::{cbor, ActorDowncast};
+
+use crate::types::AuthenticateMessageParams;
 
 pub use self::state::State;
 
@@ -26,8 +27,6 @@ pub mod types;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
-// * Updated to specs-actors commit: 845089a6d2580e46055c24415a6c32ee688e5186 (v3.0.0)
-
 /// Account actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -35,6 +34,7 @@ pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     PubkeyAddress = 2,
     AuthenticateMessage = 3,
+    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 /// Account Actor
@@ -102,6 +102,19 @@ impl Actor {
 
         Ok(())
     }
+
+    // Always succeeds, accepting any transfers.
+    pub fn universal_receiver_hook<BS, RT>(
+        rt: &mut RT,
+        _params: &RawBytes,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_accept_any()?;
+        Ok(())
+    }
 }
 
 impl ActorCode for Actor {
@@ -125,6 +138,10 @@ impl ActorCode for Actor {
             }
             Some(Method::AuthenticateMessage) => {
                 Self::authenticate_message(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::UniversalReceiverHook) => {
+                Self::universal_receiver_hook(rt, params)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

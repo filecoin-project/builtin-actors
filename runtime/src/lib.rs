@@ -6,6 +6,7 @@ use cid::Cid;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::{BytesKey, Error as HamtError, Hamt};
+use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 pub use fvm_shared::BLOCKS_PER_EPOCH as EXPECTED_LEADERS_PER_EPOCH;
 use serde::de::DeserializeOwned;
@@ -103,4 +104,20 @@ pub fn u64_key(k: u64) -> BytesKey {
 pub fn parse_uint_key(s: &[u8]) -> Result<u64, UVarintError> {
     let (v, _) = unsigned_varint::decode::u64(s)?;
     Ok(v)
+}
+
+pub trait Keyer {
+    fn key(&self) -> BytesKey;
+}
+
+impl Keyer for Address {
+    fn key(&self) -> BytesKey {
+        self.to_bytes().into()
+    }
+}
+
+impl Keyer for u64 {
+    fn key(&self) -> BytesKey {
+        u64_key(*self)
+    }
 }

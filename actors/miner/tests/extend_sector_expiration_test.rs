@@ -1,13 +1,24 @@
+use fil_actor_market::VerifiedDealInfo;
+use fil_actor_miner::ext::verifreg::Claim as FILPlusClaim;
 use fil_actor_miner::{
     power_for_sector, seal_proof_sector_maximum_lifetime, ExpirationExtension,
-    ExtendSectorExpirationParams, PoStPartition, SectorOnChainInfo, State,
+    ExpirationExtension2, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
+    PoStPartition, SectorClaim, SectorOnChainInfo, State,
 };
 use fil_actors_runtime::{
+    actor_error,
     runtime::{Runtime, RuntimePolicy},
-    test_utils::{expect_abort_contains_message, MockRuntime},
+    test_utils::{expect_abort_contains_message, make_piece_cid, MockRuntime},
 };
 use fvm_ipld_bitfield::BitField;
-use fvm_shared::{clock::ChainEpoch, error::ExitCode, sector::RegisteredSealProof};
+use fvm_shared::{
+    address::Address,
+    clock::ChainEpoch,
+    error::ExitCode,
+    sector::{RegisteredSealProof, SectorNumber},
+    ActorID,
+};
+use std::collections::HashMap;
 
 mod util;
 use itertools::Itertools;
@@ -348,4 +359,309 @@ fn supports_extensions_off_deadline_boundary() {
     assert!(!state.deadline_cron_active);
 
     h.check_state(&rt);
+}
+
+fn commit_sector_verified_deals(
+    verified_deals: &Vec<VerifiedDealInfo>,
+    h: &mut ActorHarness,
+    rt: &mut MockRuntime,
+) -> SectorOnChainInfo {
+    h.construct_and_verify(rt);
+    assert!(!verified_deals.is_empty());
+
+    let mut pcc = ProveCommitConfig::empty();
+    pcc.add_verified_deals(h.next_sector_no, verified_deals.clone());
+
+    let sector_info = &h.commit_and_prove_sectors_with_cfgs(
+        rt,
+        1,
+        DEFAULT_SECTOR_EXPIRATION as u64,
+        vec![vec![42]],
+        true,
+        pcc,
+    )[0];
+
+    sector_info.clone()
+}
+
+// assert that state tracks an expiration at the provided epoch in the provided deadline and partition for the provided sector
+fn check_for_expiration(
+    h: &mut ActorHarness,
+    rt: &mut MockRuntime,
+    expiration: ChainEpoch,
+    sector_number: SectorNumber,
+    deadline_index: u64,
+    partition_index: u64,
+) {
+    let new_sector = h.get_sector(rt, sector_number);
+    assert_eq!(expiration, new_sector.expiration);
+    let state: State = rt.get_state();
+    let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
+
+    // assert that new expiration exists
+    let (_, mut partition) = h.get_deadline_and_partition(rt, deadline_index, partition_index);
+    let expiration_set = partition.pop_expired_sectors(rt.store(), expiration - 1, quant).unwrap();
+    assert!(expiration_set.is_empty());
+
+    let expiration_set =
+        partition.pop_expired_sectors(rt.store(), quant.quantize_up(expiration), quant).unwrap();
+    assert_eq!(expiration_set.len(), 1);
+    assert!(expiration_set.on_time_sectors.get(sector_number));
+
+    h.check_state(rt);
+}
+
+fn make_claim(
+    claim_id: u64,
+    sector: &SectorOnChainInfo,
+    client: ActorID,
+    provider: ActorID,
+    new_expiration: ChainEpoch,
+    deal: &VerifiedDealInfo,
+    term_min: ChainEpoch,
+) -> FILPlusClaim {
+    FILPlusClaim {
+        provider,
+        client,
+        data: make_piece_cid(format!("piece for claim {}", claim_id).as_bytes()),
+        size: deal.size,
+        term_min,
+        term_max: new_expiration - sector.activation,
+        term_start: sector.activation,
+        sector: sector.sector_number,
+    }
+}
+
+#[test]
+fn update_expiration_multiple_claims() {
+    let (mut h, mut rt) = setup();
+    // add in verified deal
+    let verified_deals = vec![
+        test_verified_deal(h.sector_size as u64 / 2),
+        test_verified_deal(h.sector_size as u64 / 2),
+    ];
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
+    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+
+    let state: State = rt.get_state();
+
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+
+    let extension = 42 * rt.policy().wpost_proving_period;
+    let new_expiration = old_sector.expiration + extension;
+
+    let claim_ids = vec![400, 500];
+    let client = Address::new_id(3000).id().unwrap();
+
+    let claim0 = make_claim(
+        claim_ids[0],
+        &old_sector,
+        client,
+        h.receiver.id().unwrap(),
+        new_expiration,
+        &verified_deals[0],
+        rt.policy.minimum_verified_allocation_term,
+    );
+    let claim1 = make_claim(
+        claim_ids[1],
+        &old_sector,
+        client,
+        h.receiver.id().unwrap(),
+        new_expiration,
+        &verified_deals[1],
+        rt.policy.minimum_verified_allocation_term,
+    );
+
+    let mut claims = HashMap::new();
+    claims.insert(claim_ids[0], Ok(claim0));
+    claims.insert(claim_ids[1], Ok(claim1));
+
+    let params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: BitField::new(),
+            new_expiration,
+            sectors_with_claims: vec![SectorClaim {
+                sector_number: old_sector.sector_number,
+                maintain_claims: claim_ids,
+                drop_claims: vec![],
+            }],
+        }],
+    };
+
+    h.extend_sectors2(&mut rt, params, claims).unwrap();
+
+    // assert sector expiration is set to the new value
+    check_for_expiration(
+        &mut h,
+        &mut rt,
+        new_expiration,
+        old_sector.sector_number,
+        deadline_index,
+        partition_index,
+    );
+}
+
+#[test]
+fn update_expiration2_failure_cases() {
+    let (mut h, mut rt) = setup();
+    // add in verified deal
+    let verified_deals = vec![
+        test_verified_deal(h.sector_size as u64 / 2),
+        test_verified_deal(h.sector_size as u64 / 2),
+    ];
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
+    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+
+    let state: State = rt.get_state();
+
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+
+    let extension = 42 * rt.policy().wpost_proving_period;
+    let new_expiration = old_sector.expiration + extension;
+
+    let claim_ids = vec![400, 500];
+    let client = Address::new_id(3000).id().unwrap();
+
+    let claim0 = make_claim(
+        claim_ids[0],
+        &old_sector,
+        client,
+        h.receiver.id().unwrap(),
+        new_expiration,
+        &verified_deals[0],
+        rt.policy.minimum_verified_allocation_term,
+    );
+    let mut claim1 = make_claim(
+        claim_ids[1],
+        &old_sector,
+        client,
+        h.receiver.id().unwrap(),
+        new_expiration,
+        &verified_deals[1],
+        rt.policy.minimum_verified_allocation_term,
+    );
+
+    /* 1. Claim used by sector not referenced in extension params */
+    {
+        let mut claims = HashMap::new();
+        claims.insert(claim_ids[0], Ok(claim0.clone()));
+
+        let params = ExtendSectorExpiration2Params {
+            extensions: vec![ExpirationExtension2 {
+                deadline: deadline_index,
+                partition: partition_index,
+                sectors: BitField::new(),
+                new_expiration,
+                sectors_with_claims: vec![SectorClaim {
+                    sector_number: old_sector.sector_number,
+                    maintain_claims: vec![claim_ids[0]],
+                    drop_claims: vec![],
+                }],
+            }],
+        };
+
+        let res = h.extend_sectors2(&mut rt, params, claims);
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "does not match verified deal space",
+            res,
+        );
+        // assert sector expiration is same as the old value
+        check_for_expiration(
+            &mut h,
+            &mut rt,
+            old_sector.expiration,
+            old_sector.sector_number,
+            deadline_index,
+            partition_index,
+        );
+        rt.replace_state(&state);
+        rt.reset();
+    }
+
+    /* Claim not found */
+    {
+        let mut claims = HashMap::new();
+        claims.insert(claim_ids[0], Ok(claim0.clone()));
+        claims.insert(claim_ids[1], Err(actor_error!(not_found, "claim not found")));
+
+        let params = ExtendSectorExpiration2Params {
+            extensions: vec![ExpirationExtension2 {
+                deadline: deadline_index,
+                partition: partition_index,
+                sectors: BitField::new(),
+                new_expiration,
+                sectors_with_claims: vec![SectorClaim {
+                    sector_number: old_sector.sector_number,
+                    maintain_claims: claim_ids.clone(),
+                    drop_claims: vec![],
+                }],
+            }],
+        };
+
+        let res = h.extend_sectors2(&mut rt, params, claims);
+        expect_abort_contains_message(
+            ExitCode::USR_ILLEGAL_ARGUMENT,
+            "failed to get claims for sector",
+            res,
+        );
+        // assert sector expiration is set to the new value
+        check_for_expiration(
+            &mut h,
+            &mut rt,
+            old_sector.expiration,
+            old_sector.sector_number,
+            deadline_index,
+            partition_index,
+        );
+        rt.replace_state(&state);
+        rt.reset();
+    }
+    /* Bad claim -- max term too small for expiration */
+    {
+        claim1.term_max -= 1;
+        let mut claims = HashMap::new();
+        claims.insert(claim_ids[0], Ok(claim0));
+        claims.insert(claim_ids[1], Ok(claim1));
+
+        let params = ExtendSectorExpiration2Params {
+            extensions: vec![ExpirationExtension2 {
+                deadline: deadline_index,
+                partition: partition_index,
+                sectors: BitField::new(),
+                new_expiration,
+                sectors_with_claims: vec![SectorClaim {
+                    sector_number: old_sector.sector_number,
+                    maintain_claims: claim_ids,
+                    drop_claims: vec![],
+                }],
+            }],
+        };
+
+        let res = h.extend_sectors2(&mut rt, params, claims);
+        expect_abort_contains_message(
+            ExitCode::USR_FORBIDDEN,
+            &format!(
+                "claim only allows extension to {} but declared new expiration is {}",
+                new_expiration - 1,
+                new_expiration
+            ),
+            res,
+        );
+        // assert sector expiration is set to the new value
+        check_for_expiration(
+            &mut h,
+            &mut rt,
+            old_sector.expiration,
+            old_sector.sector_number,
+            deadline_index,
+            partition_index,
+        );
+        rt.replace_state(&state);
+        rt.reset();
+    }
 }

@@ -5,7 +5,6 @@ use std::cmp::max;
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::DealWeight;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -14,19 +13,9 @@ use fvm_shared::sector::StoragePower;
 use fvm_shared::TOTAL_FILECOIN;
 use num_traits::Zero;
 
-use super::deal::DealProposal;
-
 pub mod detail {
-    use super::*;
-
     /// Maximum length of a deal label.
     pub const DEAL_MAX_LABEL_SIZE: usize = 256;
-
-    /// Computes the weight for a deal proposal, which is a function of its size and duration.
-    pub fn deal_weight(proposal: &DealProposal) -> DealWeight {
-        let deal_duration = DealWeight::from(proposal.duration());
-        deal_duration * proposal.piece_size.0
-    }
 }
 
 /// Bounds (inclusive) on deal duration.

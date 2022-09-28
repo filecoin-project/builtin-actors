@@ -1,10 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use super::beneficiary::*;
-use crate::commd::CompactCommD;
 use cid::Cid;
-use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, BytesDe, Cbor};
@@ -19,6 +16,13 @@ use fvm_shared::sector::{
     StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
+
+use fil_actors_runtime::DealWeight;
+
+use crate::commd::CompactCommD;
+use crate::ext::verifreg::ClaimID;
+
+use super::beneficiary::*;
 
 pub type CronEvent = i64;
 
@@ -145,6 +149,33 @@ pub struct ExpirationExtension {
     pub sectors: BitField,
     pub new_expiration: ChainEpoch,
 }
+
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ExtendSectorExpiration2Params {
+    pub extensions: Vec<ExpirationExtension2>,
+}
+
+impl Cbor for ExtendSectorExpiration2Params {}
+
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorClaim {
+    pub sector_number: SectorNumber,
+    pub maintain_claims: Vec<ClaimID>,
+    pub drop_claims: Vec<ClaimID>,
+}
+
+impl Cbor for SectorClaim {}
+
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+pub struct ExpirationExtension2 {
+    pub deadline: u64,
+    pub partition: u64,
+    pub sectors: BitField, // IDs of sectors without FIL+ claims
+    pub sectors_with_claims: Vec<SectorClaim>,
+    pub new_expiration: ChainEpoch,
+}
+
+impl Cbor for ExpirationExtension2 {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct TerminateSectorsParams {
@@ -331,6 +362,8 @@ pub struct SectorOnChainInfo {
     pub replaced_day_reward: TokenAmount,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,
+    // Flag for QA power mechanism introduced in fip 0045
+    pub simple_qa_power: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]

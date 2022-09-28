@@ -1,3 +1,19 @@
+use std::ops::{Div, Sub};
+
+use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::to_vec;
+use fvm_shared::bigint::bigint_ser::BigIntDe;
+use fvm_shared::bigint::{BigInt, Zero};
+use fvm_shared::crypto::signature::{Signature, SignatureType};
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::sector::StoragePower;
+use fvm_shared::HAMT_BIT_WIDTH;
+use num_traits::ToPrimitive;
+
+use fil_actor_datacap::{
+    DestroyParams, Method as DataCapMethod, MintParams, State as DataCapState,
+};
 use fil_actor_verifreg::{
     AddVerifierClientParams, RemoveDataCapParams, RemoveDataCapRequest, RemoveDataCapReturn,
     SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
@@ -5,16 +21,10 @@ use fil_actor_verifreg::{
 use fil_actor_verifreg::{AddrPairKey, Method as VerifregMethod};
 use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State as VerifregState};
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::{make_map_with_root_and_bitwidth, VERIFIED_REGISTRY_ACTOR_ADDR};
-use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::to_vec;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
-use fvm_shared::bigint::{BigInt, Zero};
-use fvm_shared::crypto::signature::{Signature, SignatureType};
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::StoragePower;
-use fvm_shared::HAMT_BIT_WIDTH;
-use std::ops::{Div, Sub};
+use fil_actors_runtime::{
+    make_map_with_root_and_bitwidth, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
+};
 use test_vm::util::{add_verifier, apply_ok, create_accounts};
 use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
 
@@ -28,7 +38,7 @@ fn remove_datacap_simple_successful_path() {
     let verifier1_id_addr = v.normalize_address(&verifier1).unwrap();
     let verifier2_id_addr = v.normalize_address(&verifier2).unwrap();
     let verified_client_id_addr = v.normalize_address(&verified_client).unwrap();
-    let verifier_allowance = StoragePower::from(2 * 1048576);
+    let verifier_allowance = StoragePower::from(2 * 1048576u64);
     let allowance_to_remove: StoragePower = verifier_allowance.clone().div(2);
 
     // register verifier1 and verifier2
@@ -38,22 +48,31 @@ fn remove_datacap_simple_successful_path() {
     // register the verified client
     let add_verified_client_params =
         AddVerifierClientParams { address: verified_client, allowance: verifier_allowance.clone() };
-    let add_verified_client_params_ser =
-        serialize(&add_verified_client_params, "add verifier params").unwrap();
+    let mint_params = MintParams {
+        to: verified_client,
+        amount: TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()),
+        operators: vec![STORAGE_MARKET_ACTOR_ADDR],
+    };
     apply_ok(
         &v,
         verifier1,
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
-        add_verified_client_params,
+        add_verified_client_params.clone(),
     );
 
     ExpectInvocation {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifiedClient as u64,
-        params: Some(add_verified_client_params_ser),
-        subinvocs: Some(vec![]),
+        params: Some(serialize(&add_verified_client_params, "add verifier params").unwrap()),
+        subinvocs: Some(vec![ExpectInvocation {
+            to: DATACAP_TOKEN_ACTOR_ADDR,
+            method: DataCapMethod::Mint as u64,
+            params: Some(serialize(&mint_params, "mint params").unwrap()),
+            subinvocs: None,
+            ..Default::default()
+        }]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -72,16 +91,9 @@ fn remove_datacap_simple_successful_path() {
         verifiers.get(&verifier2_id_addr.to_bytes()).unwrap().unwrap();
     assert_eq!(verifier_allowance, *verifier2_data_cap);
 
-    let mut verified_clients = make_map_with_root_and_bitwidth::<_, BigIntDe>(
-        &v_st.verified_clients,
-        &store,
-        HAMT_BIT_WIDTH,
-    )
-    .unwrap();
-
-    let BigIntDe(data_cap) =
-        verified_clients.get(&verified_client_id_addr.to_bytes()).unwrap().unwrap();
-    assert_eq!(*data_cap, verifier_allowance);
+    let token_st = v.get_state::<DataCapState>(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
+    assert_eq!(balance, TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()));
 
     let mut proposal_ids = make_map_with_root_and_bitwidth::<_, RemoveDataCapProposalID>(
         &v_st.remove_data_cap_proposal_ids,
@@ -134,47 +146,31 @@ fn remove_datacap_simple_successful_path() {
         },
     };
 
-    let mut remove_datacap_params_ser =
-        serialize(&remove_datacap_params, "add verifier params").unwrap();
-
     let remove_datacap_ret: RemoveDataCapReturn = apply_ok(
         &v,
         TEST_VERIFREG_ROOT_ADDR,
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        remove_datacap_params,
+        remove_datacap_params.clone(),
     )
     .deserialize()
     .unwrap();
 
-    ExpectInvocation {
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        params: Some(remove_datacap_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
+    expect_remove_datacap(&remove_datacap_params).matches(v.take_invocations().last().unwrap());
 
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
 
-    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-
     // confirm client's allowance has fallen by half
-    verified_clients = make_map_with_root_and_bitwidth::<_, BigIntDe>(
-        &v_st.verified_clients,
-        &store,
-        HAMT_BIT_WIDTH,
-    )
-    .unwrap();
+    let token_st = v.get_state::<DataCapState>(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
+    assert_eq!(
+        balance,
+        TokenAmount::from_whole(verifier_allowance.sub(&allowance_to_remove).to_i64().unwrap())
+    );
 
-    let BigIntDe(data_cap) =
-        verified_clients.get(&verified_client_id_addr.to_bytes()).unwrap().unwrap();
-
-    assert_eq!(*data_cap, verifier_allowance.sub(allowance_to_remove.clone()));
-
+    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     // confirm proposalIds has changed as expected
     proposal_ids =
         make_map_with_root_and_bitwidth(&v_st.remove_data_cap_proposal_ids, &store, HAMT_BIT_WIDTH)
@@ -229,44 +225,29 @@ fn remove_datacap_simple_successful_path() {
         },
     };
 
-    remove_datacap_params_ser = serialize(&remove_datacap_params, "add verifier params").unwrap();
-
     let remove_datacap_ret: RemoveDataCapReturn = apply_ok(
         &v,
         TEST_VERIFREG_ROOT_ADDR,
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        remove_datacap_params,
+        remove_datacap_params.clone(),
     )
     .deserialize()
     .unwrap();
 
-    ExpectInvocation {
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        params: Some(remove_datacap_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
+    expect_remove_datacap(&remove_datacap_params).matches(v.take_invocations().last().unwrap());
 
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
 
-    // confirm client has been removed entirely
-
-    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    verified_clients = make_map_with_root_and_bitwidth::<_, BigIntDe>(
-        &v_st.verified_clients,
-        &store,
-        HAMT_BIT_WIDTH,
-    )
-    .unwrap();
-
-    assert!(verified_clients.get(&verified_client_id_addr.to_bytes()).unwrap().is_none());
+    // confirm client has no balance
+    let token_st = v.get_state::<DataCapState>(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
+    assert_eq!(balance, TokenAmount::zero());
 
     // confirm proposalIds has changed as expected
+    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     proposal_ids =
         make_map_with_root_and_bitwidth(&v_st.remove_data_cap_proposal_ids, &store, HAMT_BIT_WIDTH)
             .unwrap();
@@ -285,4 +266,45 @@ fn remove_datacap_simple_successful_path() {
 
     assert_eq!(2u64, verifier2_proposal_id.id);
     v.assert_state_invariants();
+}
+
+fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
+    ExpectInvocation {
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+        method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
+        params: Some(serialize(&params, "remove datacap params").unwrap()),
+        code: Some(ExitCode::OK),
+        subinvocs: Some(vec![
+            ExpectInvocation {
+                to: DATACAP_TOKEN_ACTOR_ADDR,
+                method: DataCapMethod::BalanceOf as u64,
+                params: Some(
+                    serialize(&params.verified_client_to_remove, "balance_of params").unwrap(),
+                ),
+                code: Some(ExitCode::OK),
+                subinvocs: None,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: DATACAP_TOKEN_ACTOR_ADDR,
+                method: DataCapMethod::Destroy as u64,
+                params: Some(
+                    serialize(
+                        &DestroyParams {
+                            owner: params.verified_client_to_remove,
+                            amount: TokenAmount::from_whole(
+                                params.data_cap_amount_to_remove.to_i64().unwrap(),
+                            ),
+                        },
+                        "destroy params",
+                    )
+                    .unwrap(),
+                ),
+                code: Some(ExitCode::OK),
+                subinvocs: None,
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    }
 }

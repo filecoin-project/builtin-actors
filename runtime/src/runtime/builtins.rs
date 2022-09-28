@@ -19,6 +19,7 @@ pub enum Type {
     Multisig = 9,
     Reward = 10,
     VerifiedRegistry = 11,
+    DataCap = 12,
 }
 
 impl Type {
@@ -35,6 +36,7 @@ impl Type {
             Type::Multisig => "multisig",
             Type::Reward => "reward",
             Type::VerifiedRegistry => "verifiedregistry",
+            Type::DataCap => "datacap",
         }
     }
 }

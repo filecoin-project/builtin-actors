@@ -2,7 +2,7 @@ use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     max_prove_commit_duration, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MinerMethod, PowerPair, PreCommitSectorParams, ProveCommitSectorParams,
+    Method as MinerMethod, PowerPair, PreCommitSectorParams, ProveCommitSectorParams, Sectors,
     State as MinerState,
 };
 use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
@@ -170,6 +170,17 @@ fn extend_sector_with_deals() {
         DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30)),
         sector_info.verified_deal_weight
     ); // (180 days *2880 epochs per day) * 32 GiB
+
+    // Note: we don't need to explicitly set verified weight using the legacy method
+    // because legacy and simple qa power deal weight calculations line up for fully packed sectors
+    // We do need to set simple_qa_power to false
+    sector_info.simple_qa_power = false;
+    // Manually craft state to match legacy sectors
+    v.mutate_state(miner_id, |st: &mut MinerState| {
+        let mut sectors = Sectors::load(&store, &st.sectors).unwrap();
+        sectors.store(vec![sector_info.clone()]).unwrap();
+        st.sectors = sectors.amt.flush().unwrap();
+    });
 
     let initial_verified_deal_weight = sector_info.verified_deal_weight;
     let initial_deal_weight = sector_info.deal_weight;

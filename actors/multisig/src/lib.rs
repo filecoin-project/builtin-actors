@@ -3,21 +3,21 @@
 
 use std::collections::BTreeSet;
 
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use num_derive::FromPrimitive;
+use num_traits::{FromPrimitive, Zero};
+
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id, ActorContext,
     ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
 };
-use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
-
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
-use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Zero};
 
 pub use self::state::*;
 pub use self::types::*;
@@ -42,6 +42,7 @@ pub enum Method {
     SwapSigner = 7,
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
+    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 /// Multisig Actor
@@ -472,6 +473,19 @@ impl Actor {
 
         execute_transaction_if_approved(rt, &st, tx_id, &txn)
     }
+
+    // Always succeeds, accepting any transfers.
+    pub fn universal_receiver_hook<BS, RT>(
+        rt: &mut RT,
+        _params: &RawBytes,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_accept_any()?;
+        Ok(())
+    }
 }
 
 fn execute_transaction_if_approved<BS, RT>(
@@ -614,6 +628,10 @@ impl ActorCode for Actor {
             }
             Some(Method::LockBalance) => {
                 Self::lock_balance(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::UniversalReceiverHook) => {
+                Self::universal_receiver_hook(rt, params)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),

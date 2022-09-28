@@ -2,12 +2,15 @@
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivateDealsParams, ActivateDealsResult, DealWeights, Method as MarketMethod,
-    OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifyDealsForActivationParams,
-    VerifyDealsForActivationReturn,
+    ActivateDealsParams, ActivateDealsResult, DealSpaces, Method as MarketMethod,
+    OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifiedDealInfo,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
+use fil_actor_miner::ext::verifreg::{
+    ClaimAllocationsParams, ClaimAllocationsReturn, SectorAllocationClaim, CLAIM_ALLOCATIONS_METHOD,
+};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
@@ -18,8 +21,8 @@ use fil_actor_miner::{
     CompactCommD, CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
     CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
-    ExpirationQueue, ExpirationSet, ExtendSectorExpirationParams, FaultDeclaration,
-    GetBeneficiaryReturn, GetControlAddressesReturn, Method,
+    ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
+    FaultDeclaration, GetBeneficiaryReturn, GetControlAddressesReturn, Method,
     MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
     PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
     PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration,
@@ -33,12 +36,17 @@ use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
+
+use fil_actor_miner::ext::verifreg::{
+    Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn,
+};
+
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
@@ -58,6 +66,7 @@ use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
@@ -346,6 +355,25 @@ impl ActorHarness {
         deal_ids: Vec<Vec<DealID>>,
         first: bool,
     ) -> Vec<SectorOnChainInfo> {
+        self.commit_and_prove_sectors_with_cfgs(
+            rt,
+            num_sectors,
+            lifetime_periods,
+            deal_ids,
+            first,
+            ProveCommitConfig::empty(),
+        )
+    }
+
+    pub fn commit_and_prove_sectors_with_cfgs(
+        &mut self,
+        rt: &mut MockRuntime,
+        num_sectors: usize,
+        lifetime_periods: u64,
+        deal_ids: Vec<Vec<DealID>>,
+        first: bool,
+        prove_cfg: ProveCommitConfig, // must be same length as num_sectors
+    ) -> Vec<SectorOnChainInfo> {
         let precommit_epoch = rt.epoch;
         let deadline = self.get_deadline_info(rt);
         let expiration =
@@ -385,7 +413,7 @@ impl ActorHarness {
                     rt,
                     &pc,
                     self.make_prove_commit_params(pc.info.sector_number),
-                    ProveCommitConfig::empty(),
+                    prove_cfg.clone(),
                 )
                 .unwrap();
             info.push(sector);
@@ -1002,24 +1030,24 @@ impl ActorHarness {
         let mut valid_pcs = Vec::new();
         for pc in pcs {
             if !pc.info.deal_ids.is_empty() {
-                let params = ActivateDealsParams {
+                let deal_spaces = cfg.deal_spaces(&pc.info.sector_number);
+                let activate_params = ActivateDealsParams {
                     deal_ids: pc.info.deal_ids.clone(),
                     sector_expiry: pc.info.expiration,
                 };
 
-                let mut exit = ExitCode::OK;
+                let mut activate_deals_exit = ExitCode::OK;
                 match cfg.verify_deals_exit.get(&pc.info.sector_number) {
                     Some(exit_code) => {
-                        exit = *exit_code;
+                        activate_deals_exit = *exit_code;
                     }
-                    None => {
-                        valid_pcs.push(pc);
-                    }
+                    None => (),
                 }
 
                 let ret = ActivateDealsResult {
-                    weights: cfg
-                        .deal_weights
+                    nonverified_deal_space: deal_spaces.deal_space,
+                    verified_infos: cfg
+                        .verified_deal_infos
                         .get(&pc.info.sector_number)
                         .cloned()
                         .unwrap_or_default(),
@@ -1028,11 +1056,49 @@ impl ActorHarness {
                 rt.expect_send(
                     STORAGE_MARKET_ACTOR_ADDR,
                     MarketMethod::ActivateDeals as u64,
-                    RawBytes::serialize(params).unwrap(),
+                    RawBytes::serialize(activate_params).unwrap(),
                     TokenAmount::zero(),
-                    RawBytes::serialize(ret).unwrap(),
-                    exit,
+                    RawBytes::serialize(&ret).unwrap(),
+                    activate_deals_exit,
                 );
+                if ret.verified_infos.is_empty() {
+                    if activate_deals_exit == ExitCode::OK {
+                        valid_pcs.push(pc);
+                    }
+                } else {
+                    // calim FIL+ allocations
+                    let sector_claims = ret
+                        .verified_infos
+                        .iter()
+                        .map(|info| SectorAllocationClaim {
+                            client: info.client,
+                            allocation_id: info.allocation_id,
+                            data: info.data,
+                            size: info.size,
+                            sector: pc.info.sector_number,
+                            sector_expiry: pc.info.expiration,
+                        })
+                        .collect();
+
+                    let claim_allocation_params =
+                        ClaimAllocationsParams { sectors: sector_claims, all_or_nothing: true };
+
+                    // TODO handle failures of claim allocations
+                    // use exit code map for claim allocations in config
+                    valid_pcs.push(pc);
+                    let claim_allocs_ret = ClaimAllocationsReturn {
+                        batch_info: BatchReturn::ok(ret.verified_infos.len() as u32),
+                        claimed_space: deal_spaces.verified_deal_space,
+                    };
+                    rt.expect_send(
+                        VERIFIED_REGISTRY_ACTOR_ADDR,
+                        CLAIM_ALLOCATIONS_METHOD as u64,
+                        RawBytes::serialize(&claim_allocation_params).unwrap(),
+                        TokenAmount::zero(),
+                        RawBytes::serialize(&claim_allocs_ret).unwrap(),
+                        ExitCode::OK,
+                    );
+                }
             } else {
                 valid_pcs.push(pc);
             }
@@ -1044,16 +1110,17 @@ impl ActorHarness {
             let mut expected_raw_power = BigInt::from(0);
 
             for pc in valid_pcs {
-                let weights =
-                    cfg.deal_weights.get(&pc.info.sector_number).cloned().unwrap_or_default();
+                let spaces = cfg.deal_spaces(&pc.info.sector_number);
 
                 let duration = pc.info.expiration - rt.epoch;
+                let deal_weight = spaces.deal_space * duration;
+                let verified_deal_weight = spaces.verified_deal_space * duration;
                 if duration >= rt.policy.min_sector_expiration {
                     let qa_power_delta = qa_power_for_weight(
                         self.sector_size,
                         duration,
-                        &weights.deal_weight,
-                        &weights.verified_deal_weight,
+                        &deal_weight,
+                        &verified_deal_weight,
                     );
                     expected_qa_power += &qa_power_delta;
                     expected_raw_power += self.sector_size as u64;
@@ -2296,6 +2363,85 @@ impl ActorHarness {
         Ok(ret)
     }
 
+    pub fn extend_sectors2(
+        &self,
+        rt: &mut MockRuntime,
+        mut params: ExtendSectorExpiration2Params,
+        expected_claims: HashMap<ClaimID, Result<FILPlusClaim, ActorError>>,
+    ) -> Result<RawBytes, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        // TODO handle qa power changes for dropping claims once claim dropping logic is added
+        for extension in params.extensions.iter_mut() {
+            for sc in &extension.sectors_with_claims {
+                // construct expected return value
+                let mut claims = Vec::new();
+                let mut batch_gen = BatchReturnGen::new(sc.maintain_claims.len());
+                for claim_id in &sc.maintain_claims {
+                    match expected_claims.get(&claim_id).unwrap().clone() {
+                        Ok(claim) => {
+                            batch_gen.add_success();
+                            claims.push(claim);
+                        }
+                        Err(ae) => {
+                            batch_gen.add_fail(ae.exit_code());
+                        }
+                    }
+                }
+
+                rt.expect_send(
+                    VERIFIED_REGISTRY_ACTOR_ADDR,
+                    fil_actor_miner::ext::verifreg::GET_CLAIMS_METHOD as u64,
+                    RawBytes::serialize(GetClaimsParams {
+                        provider: self.receiver.id().unwrap(),
+                        claim_ids: sc.maintain_claims.clone(),
+                    })
+                    .unwrap(),
+                    TokenAmount::zero(),
+                    RawBytes::serialize(GetClaimsReturn { batch_info: batch_gen.gen(), claims })
+                        .unwrap(),
+                    ExitCode::OK,
+                );
+            }
+        }
+
+        // Handle non claim bearing sector extensions
+        let mut qa_delta = BigInt::zero();
+        for extension in params.extensions.iter_mut() {
+            for sector_nr in extension.sectors.validate().unwrap().iter() {
+                let sector = self.get_sector(&rt, sector_nr);
+                let mut new_sector = sector.clone();
+                new_sector.expiration = extension.new_expiration;
+                qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
+                    - qa_power_for_sector(self.sector_size, &sector);
+            }
+        }
+
+        if !qa_delta.is_zero() {
+            let params = UpdateClaimedPowerParams {
+                raw_byte_delta: BigInt::zero(),
+                quality_adjusted_delta: qa_delta,
+            };
+            rt.expect_send(
+                STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_CLAIMED_POWER_METHOD,
+                RawBytes::serialize(params).unwrap(),
+                TokenAmount::zero(),
+                RawBytes::default(),
+                ExitCode::OK,
+            );
+        }
+
+        let ret = rt.call::<Actor>(
+            Method::ExtendSectorExpiration2 as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )?;
+
+        rt.verify();
+        Ok(ret)
+    }
+
     pub fn compact_partitions(
         &self,
         rt: &mut MockRuntime,
@@ -2397,13 +2543,50 @@ impl PreCommitConfig {
 #[derive(Default, Clone)]
 pub struct ProveCommitConfig {
     pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
-    pub deal_weights: HashMap<SectorNumber, DealWeights>,
+    pub claim_allocs_exit: HashMap<SectorNumber, ExitCode>,
+    pub deal_space: HashMap<SectorNumber, BigInt>,
+    pub verified_deal_infos: HashMap<SectorNumber, Vec<VerifiedDealInfo>>,
+}
+
+#[allow(dead_code)]
+pub fn test_verified_deal(space: u64) -> VerifiedDealInfo {
+    // only set size for testing and zero out remaining fields
+    VerifiedDealInfo {
+        client: 0,
+        allocation_id: 0,
+        data: make_piece_cid("test verified deal".as_bytes()),
+        size: PaddedPieceSize(space),
+    }
 }
 
 #[allow(dead_code)]
 impl ProveCommitConfig {
     pub fn empty() -> ProveCommitConfig {
-        ProveCommitConfig { verify_deals_exit: HashMap::new(), deal_weights: HashMap::new() }
+        ProveCommitConfig {
+            verify_deals_exit: HashMap::new(),
+            claim_allocs_exit: HashMap::new(),
+            deal_space: HashMap::new(),
+            verified_deal_infos: HashMap::new(),
+        }
+    }
+
+    pub fn add_verified_deals(&mut self, sector: SectorNumber, deals: Vec<VerifiedDealInfo>) {
+        self.verified_deal_infos.insert(sector, deals);
+    }
+
+    pub fn deal_spaces(&self, sector: &SectorNumber) -> DealSpaces {
+        let verified_deal_space = match self.verified_deal_infos.get(sector) {
+            None => BigInt::zero(),
+            Some(infos) => infos
+                .iter()
+                .map(|info| BigInt::from(info.size.0))
+                .reduce(|x, a| x + a)
+                .unwrap_or_default(),
+        };
+        DealSpaces {
+            deal_space: self.deal_space.get(sector).cloned().unwrap_or_default(),
+            verified_deal_space,
+        }
     }
 }
 

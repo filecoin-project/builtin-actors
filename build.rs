@@ -25,6 +25,7 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("multisig", "multisig"),
     ("reward", "reward"),
     ("verifreg", "verifiedregistry"),
+    ("datacap", "datacap"),
 ];
 
 const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";

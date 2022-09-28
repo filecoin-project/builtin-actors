@@ -46,7 +46,7 @@ fn terminate_sectors() {
     let sealed_cid = make_sealed_cid(b"s100");
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
-    let (id_addr, robust_addr) = create_miner(
+    let (miner_id_addr, miner_robust_addr) = create_miner(
         &mut v,
         owner,
         worker,
@@ -96,7 +96,7 @@ fn terminate_sectors() {
         STORAGE_MARKET_ACTOR_ADDR,
         miner_collateral.clone(),
         MarketMethod::AddBalance as u64,
-        id_addr,
+        miner_id_addr,
     );
 
     // create 3 deals, some verified and some not
@@ -106,7 +106,7 @@ fn terminate_sectors() {
         &v,
         worker,
         verified_client,
-        id_addr,
+        miner_id_addr,
         "deal1".to_string(),
         PaddedPieceSize(1 << 30),
         true,
@@ -120,7 +120,7 @@ fn terminate_sectors() {
         &v,
         worker,
         verified_client,
-        id_addr,
+        miner_id_addr,
         "deal2".to_string(),
         PaddedPieceSize(1 << 32),
         true,
@@ -134,7 +134,7 @@ fn terminate_sectors() {
         &v,
         worker,
         unverified_client,
-        id_addr,
+        miner_id_addr,
         "deal3".to_string(),
         PaddedPieceSize(1 << 34),
         false,
@@ -166,7 +166,7 @@ fn terminate_sectors() {
     apply_ok(
         &v,
         worker,
-        robust_addr,
+        miner_robust_addr,
         TokenAmount::zero(),
         MinerMethod::PreCommitSector as u64,
         PreCommitSectorParams {
@@ -180,14 +180,14 @@ fn terminate_sectors() {
         },
     );
     let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    let v = advance_by_deadline_to_epoch(v, miner_id_addr, prove_time).0;
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
     apply_ok(
         &v,
         worker,
-        robust_addr,
+        miner_robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitSector as u64,
         prove_params,
@@ -202,12 +202,12 @@ fn terminate_sectors() {
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
-    let (dline_info, p_idx, v) = advance_to_proving_deadline(v, id_addr, sector_number);
+    let (dline_info, p_idx, v) = advance_to_proving_deadline(v, miner_id_addr, sector_number);
     let d_idx = dline_info.index;
-    let st = v.get_state::<MinerState>(id_addr).unwrap();
+    let st = v.get_state::<MinerState>(miner_id_addr).unwrap();
     let sector = st.get_sector(v.store, sector_number).unwrap().unwrap();
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
-    submit_windowed_post(&v, worker, id_addr, dline_info, p_idx, Some(sector_power));
+    submit_windowed_post(&v, worker, miner_id_addr, dline_info, p_idx, Some(sector_power));
     let v = v.with_epoch(dline_info.last());
 
     v.apply_message(
@@ -225,7 +225,7 @@ fn terminate_sectors() {
     let v = v.with_epoch(start); // get out of proving deadline so we don't post twice
     let v = advance_by_deadline_to_epoch_while_proving(
         v,
-        id_addr,
+        miner_id_addr,
         worker,
         sector_number,
         start + Policy::default().deal_updates_interval,
@@ -244,7 +244,7 @@ fn terminate_sectors() {
     apply_ok(
         &v,
         worker,
-        robust_addr,
+        miner_robust_addr,
         TokenAmount::zero(),
         MinerMethod::TerminateSectors as u64,
         TerminateSectorsParams {
@@ -256,7 +256,7 @@ fn terminate_sectors() {
         },
     );
     ExpectInvocation {
-        to: id_addr,
+        to: miner_id_addr,
         method: MinerMethod::TerminateSectors as u64,
         subinvocs: Some(vec![
             ExpectInvocation {
@@ -294,7 +294,7 @@ fn terminate_sectors() {
     }
     .matches(v.take_invocations().last().unwrap());
 
-    let miner_balances = v.get_miner_balance(id_addr);
+    let miner_balances = v.get_miner_balance(miner_id_addr);
     assert!(miner_balances.initial_pledge.is_zero());
     assert!(miner_balances.pre_commit_deposit.is_zero());
 
@@ -319,7 +319,7 @@ fn terminate_sectors() {
     // advance a market cron processing period to process terminations fully
     let (v, _) = advance_by_deadline_to_epoch(
         v,
-        id_addr,
+        miner_id_addr,
         termination_epoch + Policy::default().deal_updates_interval,
     );
     // because of rounding error it's annoying to compute exact withdrawable balance which is 2.9999.. FIL
@@ -352,7 +352,7 @@ fn terminate_sectors() {
         STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
         MarketMethod::WithdrawBalance as u64,
-        WithdrawBalanceParams { provider_or_client: id_addr, amount: miner_collateral },
+        WithdrawBalanceParams { provider_or_client: miner_id_addr, amount: miner_collateral },
     );
 
     let value_withdrawn = v.take_invocations().last().unwrap().subinvocations[1].msg.value();

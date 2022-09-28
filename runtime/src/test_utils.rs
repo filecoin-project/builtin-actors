@@ -53,6 +53,7 @@ lazy_static::lazy_static! {
     pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/multisig");
     pub static ref REWARD_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/reward");
     pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/verifiedregistry");
+    pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/datacap");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -66,6 +67,7 @@ lazy_static::lazy_static! {
         map.insert(*MULTISIG_ACTOR_CODE_ID, Type::Multisig);
         map.insert(*REWARD_ACTOR_CODE_ID, Type::Reward);
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
+        map.insert(*DATACAP_TOKEN_ACTOR_CODE_ID, Type::DataCap);
         map
     };
     pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
@@ -80,6 +82,7 @@ lazy_static::lazy_static! {
         (Type::Multisig, *MULTISIG_ACTOR_CODE_ID),
         (Type::Reward, *REWARD_ACTOR_CODE_ID),
         (Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID),
+        (Type::DataCap, *DATACAP_TOKEN_ACTOR_CODE_ID),
     ]
     .into_iter()
     .collect();
@@ -895,7 +898,7 @@ impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
 
         assert!(
             !self.expectations.borrow_mut().expect_sends.is_empty(),
-            "unexpected expectedMessage to: {:?} method: {:?}, value: {:?}, params: {:?}",
+            "unexpected message to: {:?} method: {:?}, value: {:?}, params: {:?}",
             to,
             method,
             value,
@@ -909,9 +912,9 @@ impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
                 && expected_msg.method == method
                 && expected_msg.params == params
                 && expected_msg.value == value,
-            "expectedMessage being sent does not match expectation.\n\
-             Message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
-             Expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
+            "message sent does not match expectation.\n\
+             message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
+             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
             to,
             method,
             value,

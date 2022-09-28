@@ -1,21 +1,17 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actor_market::ext::verifreg::RestoreBytesParams;
 use fil_actor_market::{
-    ext, Actor as MarketActor, ClientDealProposal, Method, PublishStorageDealsParams,
+    Actor as MarketActor, ClientDealProposal, Method, PublishStorageDealsParams,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::StoragePower;
 use fvm_shared::METHOD_SEND;
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
@@ -140,7 +136,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
 }
 
 #[test]
-fn timed_out_and_verified_deals_are_slashed_deleted_and_sent_to_the_registry_actor() {
+fn timed_out_and_verified_deals_are_slashed_deleted() {
     let mut rt = setup();
     let mut deal1 = generate_deal_and_add_funds(
         &mut rt,
@@ -174,38 +170,12 @@ fn timed_out_and_verified_deals_are_slashed_deleted_and_sent_to_the_registry_act
         &mut rt,
         &MinerAddresses::default(),
         &[deal1.clone(), deal2.clone(), deal3.clone()],
+        1,
     );
 
     // do a cron tick for it -> all should time out and get slashed
     // ONLY deal1 and deal2 should be sent to the Registry actor
     rt.set_epoch(process_epoch(START_EPOCH, *deal_ids.last().unwrap()));
-
-    // expected sends to the registry actor
-    let param1 = RestoreBytesParams {
-        address: deal1.client,
-        deal_size: StoragePower::from(deal1.piece_size.0),
-    };
-    let param2 = RestoreBytesParams {
-        address: deal2.client,
-        deal_size: StoragePower::from(deal2.piece_size.0),
-    };
-
-    rt.expect_send(
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        ext::verifreg::RESTORE_BYTES_METHOD as u64,
-        RawBytes::serialize(param1).unwrap(),
-        TokenAmount::zero(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
-    rt.expect_send(
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        ext::verifreg::RESTORE_BYTES_METHOD as u64,
-        RawBytes::serialize(param2).unwrap(),
-        TokenAmount::zero(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
 
     let expected_burn = 3 * &deal1.provider_collateral;
     rt.expect_send(
