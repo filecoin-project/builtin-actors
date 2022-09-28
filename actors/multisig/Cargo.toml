@@ -23,7 +23,7 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 indexmap = { version = "1.8.0", features = ["serde-1"] }
 integer-encoding = { version = "3.0.3", default-features = false }
 serde = { version = "1.0.136", features = ["derive"] }
-anyhow = "1.0.56"
+anyhow = "1.0.65"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.2"
 
