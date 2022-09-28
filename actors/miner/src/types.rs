@@ -159,6 +159,7 @@ impl Cbor for ExtendSectorExpiration2Params {}
 pub struct SectorClaim {
     pub sector_number: SectorNumber,
     pub maintain_claims: Vec<ClaimID>,
+    pub drop_claims: Vec<ClaimID>,
 }
 
 impl Cbor for SectorClaim {}
