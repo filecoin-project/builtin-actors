@@ -498,6 +498,7 @@ fn update_expiration_multiple_claims() {
             sectors_with_claims: vec![SectorClaim {
                 sector_number: old_sector.sector_number,
                 maintain_claims: claim_ids,
+                drop_claims: vec![],
             }],
         }],
     };
@@ -570,6 +571,7 @@ fn update_expiration2_failure_cases() {
                 sectors_with_claims: vec![SectorClaim {
                     sector_number: old_sector.sector_number,
                     maintain_claims: vec![claim_ids[0]],
+                    drop_claims: vec![],
                 }],
             }],
         };
@@ -608,6 +610,7 @@ fn update_expiration2_failure_cases() {
                 sectors_with_claims: vec![SectorClaim {
                     sector_number: old_sector.sector_number,
                     maintain_claims: claim_ids.clone(),
+                    drop_claims: vec![],
                 }],
             }],
         };
@@ -646,6 +649,7 @@ fn update_expiration2_failure_cases() {
                 sectors_with_claims: vec![SectorClaim {
                     sector_number: old_sector.sector_number,
                     maintain_claims: claim_ids,
+                    drop_claims: vec![],
                 }],
             }],
         };

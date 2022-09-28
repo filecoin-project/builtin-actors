@@ -3556,7 +3556,11 @@ enum ExtensionKind {
 // ExtendSectorExpiration param
 struct ExtendExpirationsInner {
     extensions: Vec<ValidatedExpirationExtension>,
-    claims: Option<BTreeMap<SectorNumber, u64>>,
+    // Map from sector being extended to (check, maintain)
+    // `check` is the space of active claims, checked to ensure all claims are checked
+    // `maintain` is the space of claims to maintain
+    // maintain <= check with equality in the case no claims are dropped
+    claims: Option<BTreeMap<SectorNumber, (u64, u64)>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -3621,7 +3625,7 @@ where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
-    let mut claim_space_by_sector = BTreeMap::<SectorNumber, u64>::new();
+    let mut claim_space_by_sector = BTreeMap::<SectorNumber, (u64, u64)>::new();
 
     for decl in &extensions {
         let policy = rt.policy();
@@ -3635,27 +3639,38 @@ where
         }
 
         for sc in &decl.sectors_with_claims {
-            let claims = get_claims(rt, &sc.maintain_claims)
+            let mut drop_claims = sc.drop_claims.clone();
+            let mut all_claim_ids = sc.maintain_claims.clone();
+            all_claim_ids.append(&mut drop_claims);
+            let claims = get_claims(rt, &all_claim_ids)
                 .with_context(|| format!("failed to get claims for sector {}", sc.sector_number))?;
+            let first_drop = sc.maintain_claims.len();
 
             for (i, claim) in claims.iter().enumerate() {
                 // check provider and sector matches
                 if claim.provider != rt.message().receiver().id().unwrap() {
-                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={}, expected claim provider to be {} but found {} ", sc.sector_number, sc.maintain_claims[i], rt.message().receiver().id().unwrap(), claim.provider));
+                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={}, expected claim provider to be {} but found {} ", sc.sector_number, all_claim_ids[i], rt.message().receiver().id().unwrap(), claim.provider));
                 }
                 if claim.sector != sc.sector_number {
-                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={} expected claim sector number to be {} but found {} ", sc.sector_number, sc.maintain_claims[i], sc.sector_number, claim.sector));
+                    return Err(actor_error!(illegal_argument, "failed to validate declaration sector={}, claim={} expected claim sector number to be {} but found {} ", sc.sector_number, all_claim_ids[i], sc.sector_number, claim.sector));
                 }
 
-                // check expiration does not exceed term max
-                if decl.new_expiration > claim.term_start + claim.term_max {
-                    return Err(actor_error!(forbidden, "failed to validate declaration sector={}, claim={} claim only allows extension to {} but declared new expiration is {}", sc.sector_number, sc.maintain_claims[i], claim.term_start + claim.term_max, decl.new_expiration));
+                // If we are not dropping check expiration does not exceed term max
+                let mut maintain_delta: u64 = 0;
+                if i < first_drop {
+                    if decl.new_expiration > claim.term_start + claim.term_max {
+                        return Err(actor_error!(forbidden, "failed to validate declaration sector={}, claim={} claim only allows extension to {} but declared new expiration is {}", sc.sector_number, sc.maintain_claims[i], claim.term_start + claim.term_max, decl.new_expiration));
+                    }
+                    maintain_delta = claim.size.0
                 }
 
                 claim_space_by_sector
                     .entry(sc.sector_number)
-                    .and_modify(|size| *size += claim.size.0)
-                    .or_insert(claim.size.0);
+                    .and_modify(|(check, maintain)| {
+                        *check += claim.size.0;
+                        *maintain += maintain_delta;
+                    })
+                    .or_insert((claim.size.0, maintain_delta));
             }
         }
     }
@@ -3670,13 +3685,13 @@ fn extend_sector_committment(
     curr_epoch: ChainEpoch,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
-    claim_space_by_sector: &BTreeMap<SectorNumber, u64>,
+    claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
     if sector.simple_qa_power {
-        extend_simple_qap_sector(new_expiration, sector, claim_space_by_sector)
+        extend_simple_qap_sector(policy, new_expiration, curr_epoch, sector, claim_space_by_sector)
     } else {
         extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
     }
@@ -3744,33 +3759,51 @@ fn validate_extended_expiration(
 }
 
 fn extend_simple_qap_sector(
+    policy: &Policy,
     new_expiration: ChainEpoch,
+    curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
-    claim_space_by_sector: &BTreeMap<SectorNumber, u64>,
+    claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
     let mut new_sector = sector.clone();
     if sector.verified_deal_weight > BigInt::zero() {
         let old_duration = sector.expiration - sector.activation;
         let deal_space = &sector.deal_weight / old_duration;
-        let verified_deal_space = &sector.verified_deal_weight / old_duration;
-        let expected_verified_deal_space = match claim_space_by_sector.get(&sector.sector_number) {
-            None => {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "claim missing from declaration for sector {}",
-                    sector.sector_number
-                ))
-            }
-            Some(space) => space,
-        };
-        if BigInt::from(*expected_verified_deal_space as i64) != verified_deal_space {
-            return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, verified_deal_space, sector.sector_number));
+        let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
+        let (expected_verified_deal_space, new_verified_deal_space) =
+            match claim_space_by_sector.get(&sector.sector_number) {
+                None => {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "claim missing from declaration for sector {} with non-zero verified deal weight {}",
+                        sector.sector_number,
+                        &sector.verified_deal_weight
+                    ))
+                }
+                Some(space) => space,
+            };
+        // claims must be completely accounted for
+        if BigInt::from(*expected_verified_deal_space as i64) != old_verified_deal_space {
+            return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, old_verified_deal_space, sector.sector_number));
         }
+        // claim dropping is restricted to extensions at the end of a sector's life
+
+        let dropping_claims = expected_verified_deal_space != new_verified_deal_space;
+        if dropping_claims && sector.expiration - curr_epoch >= policy.end_of_life_claim_drop_period
+        {
+            return Err(actor_error!(
+                forbidden,
+                "attempt to drop sectors with {} epochs < end of life claim drop period {} remaining",
+                sector.expiration - curr_epoch,
+                policy.end_of_life_claim_drop_period
+            ));
+        }
+
         new_sector.expiration = new_expiration;
         // update deal weights to account for new duration
         new_sector.deal_weight = deal_space * (new_sector.expiration - new_sector.activation);
-        new_sector.verified_deal_weight =
-            verified_deal_space * (new_sector.expiration - new_sector.activation);
+        new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space)
+            * (new_sector.expiration - new_sector.activation);
     } else {
         new_sector.expiration = new_expiration
     }
