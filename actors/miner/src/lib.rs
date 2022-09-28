@@ -3556,6 +3556,10 @@ enum ExtensionKind {
 // ExtendSectorExpiration param
 struct ExtendExpirationsInner {
     extensions: Vec<ValidatedExpirationExtension>,
+    // Map from sector being extended to (check, maintain)
+    // `check` is the space of active claims, checked to ensure all claims are checked
+    // `maintain` is the space of claims to maintain
+    // maintain <= check with equality in the case no claims are dropped
     claims: Option<BTreeMap<SectorNumber, (u64, u64)>>,
 }
 
@@ -3771,8 +3775,9 @@ fn extend_simple_qap_sector(
                 None => {
                     return Err(actor_error!(
                         illegal_argument,
-                        "claim missing from declaration for sector {}",
-                        sector.sector_number
+                        "claim missing from declaration for sector {} with non-zero verified deal weight {}",
+                        sector.sector_number,
+                        &sector.verified_deal_weight
                     ))
                 }
                 Some(space) => space,
@@ -3788,7 +3793,9 @@ fn extend_simple_qap_sector(
         {
             return Err(actor_error!(
                 forbidden,
-                "attempt to drop sectors with {} epochs < end of life claim drop period remaining"
+                "attempt to drop sectors with {} epochs < end of life claim drop period {} remaining",
+                sector.expiration - curr_epoch,
+                policy.end_of_life_claim_drop_period
             ));
         }
 
