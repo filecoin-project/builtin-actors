@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use super::ext::verifreg::AllocationID;
 use cid::Cid;
 use fil_actors_runtime::Array;
 use fvm_ipld_bitfield::BitField;
@@ -11,6 +12,9 @@ use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::ActorID;
+
 use fvm_shared::sector::RegisteredSealProof;
 
 use super::deal::{ClientDealProposal, DealProposal, DealState};
@@ -95,11 +99,20 @@ pub struct ActivateDealsParams {
     pub sector_expiry: ChainEpoch,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ActivateDealsResult {
-    pub spaces: DealSpaces,
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+pub struct VerifiedDealInfo {
+    pub client: ActorID,
+    pub allocation_id: AllocationID,
+    pub data: Cid,
+    pub size: PaddedPieceSize,
 }
 
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ActivateDealsResult {
+    #[serde(with = "bigint_ser")]
+    pub nonverified_deal_space: BigInt,
+    pub verified_infos: Vec<VerifiedDealInfo>,
+}
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Default)]
 pub struct DealSpaces {
     #[serde(with = "bigint_ser")]

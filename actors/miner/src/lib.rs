@@ -1052,25 +1052,20 @@ impl Actor {
                 continue;
             }
 
-            let res = rt.send(
-                &STORAGE_MARKET_ACTOR_ADDR,
-                ext::market::ACTIVATE_DEALS_METHOD,
-                RawBytes::serialize(ext::market::ActivateDealsParams {
-                    deal_ids: update.deals.clone(),
-                    sector_expiry: sector_info.expiration,
-                })?,
-                TokenAmount::zero(),
-            );
-            let deal_spaces = if let Ok(res) = res {
-                // Erroring in this case as it means something went really wrong
-                let activate_ret: ext::market::ActivateDealsResult = res.deserialize()?;
-                activate_ret.spaces
-            } else {
-                info!(
-                    "failed to activate deals on sector {0}, skipping sector {0}",
-                    update.sector_number,
-                );
-                continue;
+            let deal_spaces = match activate_deals_and_claim_allocations(
+                rt,
+                update.deals.clone(),
+                sector_info.expiration,
+                sector_info.sector_number,
+            )? {
+                Some(deal_spaces) => deal_spaces,
+                None => {
+                    info!(
+                        "failed to activate deals on sector {}, skipping from replica update set",
+                        update.sector_number
+                    );
+                    continue;
+                }
             };
 
             let expiration = sector_info.expiration;
@@ -4834,35 +4829,21 @@ where
     let mut valid_pre_commits = Vec::default();
 
     for pre_commit in pre_commits {
-        let deal_spaces = if !pre_commit.info.deal_ids.is_empty() {
-            // Check (and activate) storage deals associated to sector. Abort if checks failed.
-            let res = rt.send(
-                &STORAGE_MARKET_ACTOR_ADDR,
-                ext::market::ACTIVATE_DEALS_METHOD,
-                RawBytes::serialize(ext::market::ActivateDealsParams {
-                    deal_ids: pre_commit.info.deal_ids.clone(),
-                    sector_expiry: pre_commit.info.expiration,
-                })?,
-                TokenAmount::zero(),
-            );
-            match res {
-                Ok(res) => {
-                    let activate_res: ext::market::ActivateDealsResult = res.deserialize()?;
-                    activate_res.spaces
-                }
-                Err(e) => {
-                    info!(
-                        "failed to activate deals on sector {}, dropping from prove commit set: {}",
-                        pre_commit.info.sector_number,
-                        e.msg()
-                    );
-                    continue;
-                }
+        match activate_deals_and_claim_allocations(
+            rt,
+            pre_commit.clone().info.deal_ids,
+            pre_commit.info.expiration,
+            pre_commit.info.sector_number,
+        )? {
+            None => {
+                info!(
+                    "failed to activate deals on sector {}, dropping from prove commit set",
+                    pre_commit.info.sector_number,
+                );
+                continue;
             }
-        } else {
-            ext::market::DealSpaces::default()
+            Some(deal_spaces) => valid_pre_commits.push((pre_commit, deal_spaces)),
         };
-        valid_pre_commits.push((pre_commit, deal_spaces));
     }
 
     // When all prove commits have failed abort early
@@ -5009,6 +4990,79 @@ where
     notify_pledge_changed(rt, &(total_pledge - newly_vested))?;
 
     Ok(())
+}
+
+// activate deals with builtin market and claim allocations with verified registry actor
+// returns an error in case of a fatal programmer error
+// returns Ok(None) in case deal activation or verified allocation claim fails
+fn activate_deals_and_claim_allocations<RT, BS>(
+    rt: &mut RT,
+    deal_ids: Vec<DealID>,
+    sector_expiry: ChainEpoch,
+    sector_number: SectorNumber,
+) -> Result<Option<crate::ext::market::DealSpaces>, ActorError>
+where
+    BS: Blockstore,
+    RT: Runtime<BS>,
+{
+    if deal_ids.is_empty() {
+        return Ok(Some(ext::market::DealSpaces::default()));
+    }
+    // Check (and activate) storage deals associated to sector. Abort if checks failed.
+    let activate_raw = rt.send(
+        &STORAGE_MARKET_ACTOR_ADDR,
+        ext::market::ACTIVATE_DEALS_METHOD,
+        RawBytes::serialize(ext::market::ActivateDealsParams { deal_ids, sector_expiry })?,
+        TokenAmount::zero(),
+    );
+    let activate_res: ext::market::ActivateDealsResult = match activate_raw {
+        Ok(res) => res.deserialize()?,
+        Err(e) => {
+            info!("error activating deals on sector {}: {}", sector_number, e.msg());
+            return Ok(None);
+        }
+    };
+
+    // If deal activation includes verified deals claim allocations
+    if activate_res.verified_infos.is_empty() {
+        return Ok(Some(ext::market::DealSpaces {
+            deal_space: activate_res.nonverified_deal_space,
+            ..Default::default()
+        }));
+    }
+    let sector_claims = activate_res
+        .verified_infos
+        .iter()
+        .map(|info| ext::verifreg::SectorAllocationClaim {
+            client: info.client,
+            allocation_id: info.allocation_id,
+            data: info.data,
+            size: info.size,
+            sector: sector_number,
+            sector_expiry,
+        })
+        .collect();
+
+    let claim_raw = rt.send(
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
+        RawBytes::serialize(ext::verifreg::ClaimAllocationsParams {
+            sectors: sector_claims,
+            all_or_nothing: true,
+        })?,
+        TokenAmount::zero(),
+    );
+    let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
+        Ok(res) => res.deserialize()?,
+        Err(e) => {
+            info!("error claiming allocation on sector {}: {}", sector_number, e.msg());
+            return Ok(None);
+        }
+    };
+    Ok(Some(ext::market::DealSpaces {
+        deal_space: activate_res.nonverified_deal_space,
+        verified_deal_space: claim_res.claimed_space,
+    }))
 }
 
 // XXX: probably better to push this one level down into state

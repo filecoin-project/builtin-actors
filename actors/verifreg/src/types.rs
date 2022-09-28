@@ -6,7 +6,7 @@ use fil_actors_runtime::BatchReturn;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
+use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::piece::PaddedPieceSize;
@@ -131,10 +131,18 @@ impl Cbor for SectorAllocationClaim {}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsParams {
     pub sectors: Vec<SectorAllocationClaim>,
+    pub all_or_nothing: bool,
 }
 impl Cbor for ClaimAllocationsParams {}
 
-pub type ClaimAllocationsReturn = BatchReturn;
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimAllocationsReturn {
+    pub batch_info: BatchReturn,
+    #[serde(with = "bigint_ser")]
+    pub claimed_space: BigInt,
+}
+
+impl Cbor for ClaimAllocationsReturn {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimTerm {

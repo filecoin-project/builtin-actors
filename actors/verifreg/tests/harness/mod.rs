@@ -306,6 +306,7 @@ impl Harness {
         provider: ActorID,
         claim_allocs: Vec<SectorAllocationClaim>,
         datacap_burnt: u64,
+        all_or_nothing: bool,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
@@ -322,7 +323,7 @@ impl Harness {
             ExitCode::OK,
         );
 
-        let params = ClaimAllocationsParams { sectors: claim_allocs };
+        let params = ClaimAllocationsParams { sectors: claim_allocs, all_or_nothing };
         let ret = rt
             .call::<VerifregActor>(
                 Method::ClaimAllocations as MethodNum,
