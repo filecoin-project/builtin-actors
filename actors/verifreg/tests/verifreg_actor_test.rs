@@ -421,11 +421,14 @@ mod clients {
     }
 }
 
-mod claims {
+mod allocs_claims {
+    use cid::Cid;
     use fvm_shared::bigint::BigInt;
     use fvm_shared::error::ExitCode;
+    use fvm_shared::piece::PaddedPieceSize;
     use fvm_shared::ActorID;
     use num_traits::Zero;
+    use std::str::FromStr;
 
     use fil_actor_verifreg::Claim;
     use fil_actor_verifreg::{AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, State};
@@ -433,8 +436,8 @@ mod claims {
         MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_SIZE,
         MINIMUM_VERIFIED_ALLOCATION_TERM,
     };
-    use fil_actors_runtime::runtime::Runtime;
     use fil_actors_runtime::test_utils::ACCOUNT_ACTOR_CODE_ID;
+    use fil_actors_runtime::FailCode;
     use harness::*;
 
     use crate::*;
@@ -545,62 +548,137 @@ mod claims {
 
         let size = 128;
         let alloc1 = make_alloc("1", CLIENT1, PROVIDER1, size);
-        let alloc2 = make_alloc("2", CLIENT1, PROVIDER1, size);
-        let alloc3 = make_alloc("3", CLIENT1, PROVIDER1, size);
+        let alloc2 = make_alloc("2", CLIENT2, PROVIDER1, size); // Distinct client
+        let alloc3 = make_alloc("3", CLIENT1, PROVIDER2, size); // Distinct provider
 
         h.create_alloc(&mut rt, &alloc1).unwrap();
         h.create_alloc(&mut rt, &alloc2).unwrap();
         h.create_alloc(&mut rt, &alloc3).unwrap();
 
         let sector = 1000;
-        let ret = h
-            .claim_allocations(
-                &mut rt,
-                PROVIDER1,
-                vec![
-                    make_claim_req(1, &alloc1, sector, 1500),
-                    make_claim_req(2, &alloc2, sector, 1500),
-                    make_claim_req(3, &alloc3, sector, 1500),
-                ],
-                size * 3,
-                false,
-            )
-            .unwrap();
+        let expiry = 1500;
 
-        assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK]);
-        assert_eq!(ret.claimed_space, BigInt::from(3 * size));
+        let prior_state: State = rt.get_state();
+        {
+            // Claim two for PROVIDER1
+            let reqs = vec![
+                make_claim_req(1, &alloc1, sector, expiry),
+                make_claim_req(2, &alloc2, sector, expiry),
+            ];
+            let ret = h.claim_allocations(&mut rt, PROVIDER1, reqs, size * 2, false).unwrap();
 
-        // check that state is as expected
-        let st: State = rt.get_state();
-        let store = rt.store();
-        let mut allocs = st.load_allocs(&store).unwrap();
-        // allocs deleted
-        assert!(allocs.get(CLIENT1, 1).unwrap().is_none());
-        assert!(allocs.get(CLIENT1, 2).unwrap().is_none());
-        assert!(allocs.get(CLIENT1, 3).unwrap().is_none());
+            assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::OK]);
+            assert_eq!(ret.claimed_space, BigInt::from(2 * size));
+            assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
+            assert_alloc_claimed(&rt, CLIENT2, PROVIDER1, 2, &alloc2, 0, sector);
+        }
+        {
+            // Can't find claim for wrong client
+            rt.replace_state(&prior_state);
+            let mut reqs = vec![
+                make_claim_req(1, &alloc1, sector, expiry),
+                make_claim_req(2, &alloc2, sector, expiry),
+            ];
+            reqs[1].client = CLIENT1;
+            let ret = h.claim_allocations(&mut rt, PROVIDER1, reqs, size, false).unwrap();
+            assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
+            assert_eq!(ret.claimed_space, BigInt::from(size));
+            assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
+            assert_allocation(&rt, CLIENT2, 2, &alloc2);
+        }
+        {
+            // Can't claim for other provider
+            rt.replace_state(&prior_state);
+            let reqs = vec![
+                make_claim_req(2, &alloc2, sector, expiry),
+                make_claim_req(3, &alloc3, sector, expiry), // Different provider
+            ];
+            let ret = h.claim_allocations(&mut rt, PROVIDER1, reqs, size, false).unwrap();
+            assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.claimed_space, BigInt::from(size));
+            assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 2, &alloc2, 0, sector);
+            assert_allocation(&rt, CLIENT1, 3, &alloc3);
+        }
+        {
+            // Mismatched data / size
+            rt.replace_state(&prior_state);
+            let mut reqs = vec![
+                make_claim_req(1, &alloc1, sector, expiry),
+                make_claim_req(2, &alloc2, sector, expiry),
+            ];
+            reqs[0].data =
+                Cid::from_str("bafyreibjo4xmgaevkgud7mbifn3dzp4v4lyaui4yvqp3f2bqwtxcjrdqg4")
+                    .unwrap();
+            reqs[1].size = PaddedPieceSize(size + 1);
+            let ret = h.claim_allocations(&mut rt, PROVIDER1, reqs, 0, false).unwrap();
+            assert_eq!(
+                ret.batch_info.codes(),
+                vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN]
+            );
+            assert_eq!(ret.claimed_space, BigInt::zero());
+        }
+        {
+            // Expired allocation
+            rt.replace_state(&prior_state);
+            let reqs = vec![make_claim_req(1, &alloc1, sector, expiry)];
+            rt.set_epoch(alloc1.expiration + 1);
+            let ret = h.claim_allocations(&mut rt, PROVIDER1, reqs, 0, false).unwrap();
+            assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.claimed_space, BigInt::zero());
+        }
+        {
+            // Sector expiration too soon
+            rt.replace_state(&prior_state);
+            let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_min - 1)];
+            let ret = h.claim_allocations(&mut rt, PROVIDER1, reqs, 0, false).unwrap();
+            assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            // Sector expiration too late
+            let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_max + 1)];
+            let ret = h.claim_allocations(&mut rt, PROVIDER1, reqs, 0, false).unwrap();
+            assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.claimed_space, BigInt::zero());
+        }
+    }
 
-        // claims inserted
-        let claim1 = claim_from_alloc(&alloc1, 0, sector);
-        let claim2 = claim_from_alloc(&alloc2, 0, sector);
-        let claim3 = claim_from_alloc(&alloc3, 0, sector);
-        assert_claim(&rt, PROVIDER1, 1, &claim1);
-        assert_claim(&rt, PROVIDER1, 2, &claim2);
-        assert_claim(&rt, PROVIDER1, 3, &claim3);
+    #[test]
+    fn get_claims() {
+        let (h, mut rt) = new_harness();
+        let size = 128;
+        let sector = 0;
+        let start = 0;
+        let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
+        let max_term = min_term + 1000;
 
-        // get claims
-        //successfully
-        let succ_gc = h.get_claims(&mut rt, PROVIDER1, vec![1, 2, 3]).unwrap();
-        assert_eq!(3, succ_gc.batch_info.success_count);
-        assert_eq!(claim2, succ_gc.claims[1]);
+        let claim1 = make_claim("1", CLIENT1, PROVIDER1, size, min_term, max_term, start, sector);
+        let claim2 = make_claim("2", CLIENT1, PROVIDER1, size, min_term, max_term, start, sector);
+        let claim3 = make_claim("3", CLIENT1, PROVIDER2, size, min_term, max_term, start, sector);
+        let id1 = h.create_claim(&mut rt, &claim1).unwrap();
+        let id2 = h.create_claim(&mut rt, &claim2).unwrap();
+        let id3 = h.create_claim(&mut rt, &claim3).unwrap();
 
-        // bad provider
-        let fail_gc = h.get_claims(&mut rt, PROVIDER1 + 42, vec![1, 2, 3]).unwrap();
-        assert_eq!(0, fail_gc.batch_info.success_count);
-
-        // mixed bag
-        let mix_gc = h.get_claims(&mut rt, PROVIDER1, vec![1, 4, 5]).unwrap();
-        assert_eq!(1, mix_gc.batch_info.success_count);
-        assert_eq!(claim1, succ_gc.claims[0]);
+        {
+            // Get multiple
+            let ret = h.get_claims(&mut rt, PROVIDER1, vec![id1, id2]).unwrap();
+            assert_eq!(2, ret.batch_info.success_count);
+            assert_eq!(claim1, ret.claims[0]);
+            assert_eq!(claim2, ret.claims[1]);
+        }
+        {
+            // Wrong provider
+            let ret = h.get_claims(&mut rt, PROVIDER1, vec![id3]).unwrap();
+            assert_eq!(0, ret.batch_info.success_count);
+        }
+        {
+            // Mixed bag
+            let ret = h.get_claims(&mut rt, PROVIDER1, vec![id1, id3, id2]).unwrap();
+            assert_eq!(2, ret.batch_info.success_count);
+            assert_eq!(claim1, ret.claims[0]);
+            assert_eq!(claim2, ret.claims[1]);
+            assert_eq!(
+                vec![FailCode { idx: 1, code: ExitCode::USR_NOT_FOUND }],
+                ret.batch_info.fail_codes
+            );
+        }
     }
 
     #[test]
