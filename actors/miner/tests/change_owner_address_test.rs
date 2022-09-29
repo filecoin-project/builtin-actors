@@ -1,6 +1,7 @@
 use fil_actors_runtime::test_utils::{
     expect_abort, new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
 };
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::{address::Address, error::ExitCode};
 
 mod util;
@@ -22,7 +23,16 @@ fn setup() -> (ActorHarness, MockRuntime) {
 
 #[test]
 fn successful_change() {
-    let (h, mut rt) = setup();
+    let (mut h, mut rt) = setup();
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OTHER_ADDRESS);
+    h.change_beneficiary(
+        &mut rt,
+        h.owner,
+        &BeneficiaryChange::new(OTHER_ADDRESS, TokenAmount::from_atto(100), 100),
+        None,
+    )
+    .unwrap();
 
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, h.owner);
     h.change_owner_address(&mut rt, NEW_ADDRESS).unwrap();
@@ -37,6 +47,38 @@ fn successful_change() {
     let info = h.get_info(&rt);
     assert_eq!(NEW_ADDRESS, info.owner);
     assert_eq!(NEW_ADDRESS, info.beneficiary);
+    assert!(info.pending_owner_address.is_none());
+
+    h.check_state(&rt);
+}
+
+#[test]
+fn successful_keep_beneficiary_when_change_owner() {
+    let (mut h, mut rt) = setup();
+
+    h.change_beneficiary(
+        &mut rt,
+        h.owner,
+        &BeneficiaryChange::new(OTHER_ADDRESS, TokenAmount::from_atto(100), 100),
+        None,
+    )
+    .unwrap();
+    h.change_beneficiary(
+        &mut rt,
+        OTHER_ADDRESS,
+        &BeneficiaryChange::new(OTHER_ADDRESS, TokenAmount::from_atto(100), 100),
+        None,
+    )
+    .unwrap();
+
+    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, h.owner);
+    h.change_owner_address(&mut rt, NEW_ADDRESS).unwrap();
+    rt.set_caller(*MULTISIG_ACTOR_CODE_ID, NEW_ADDRESS);
+    h.change_owner_address(&mut rt, NEW_ADDRESS).unwrap();
+
+    let info = h.get_info(&rt);
+    assert_eq!(NEW_ADDRESS, info.owner);
+    assert_eq!(OTHER_ADDRESS, info.beneficiary);
     assert!(info.pending_owner_address.is_none());
 
     h.check_state(&rt);

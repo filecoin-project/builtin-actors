@@ -10,11 +10,12 @@ use fil_actor_market::{
 use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationRequests};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, CompactCommD, Deadline, DeadlineInfo,
-    DeclareFaultsRecoveredParams, Method as MinerMethod, PoStPartition, PowerPair,
-    PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
+    new_deadline_info_from_offset_and_epoch, ChangeBeneficiaryParams, CompactCommD, Deadline,
+    DeadlineInfo, DeclareFaultsRecoveredParams, GetBeneficiaryReturn, Method as MinerMethod,
+    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
+    PreCommitSectorParams, ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo,
+    SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
+    WithdrawBalanceParams, WithdrawBalanceReturn,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
@@ -578,6 +579,85 @@ pub fn submit_windowed_post(
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn change_beneficiary(
+    v: &VM,
+    from: Address,
+    maddr: Address,
+    beneficiary_change_proposal: &ChangeBeneficiaryParams,
+) {
+    apply_ok(
+        v,
+        from,
+        maddr,
+        TokenAmount::zero(),
+        MinerMethod::ChangeBeneficiary as u64,
+        beneficiary_change_proposal.clone(),
+    );
+}
+
+pub fn get_beneficiary(v: &VM, from: Address, m_addr: Address) -> GetBeneficiaryReturn {
+    apply_ok(
+        v,
+        from,
+        m_addr,
+        TokenAmount::zero(),
+        MinerMethod::GetBeneficiary as u64,
+        RawBytes::default(),
+    )
+    .deserialize()
+    .unwrap()
+}
+
+pub fn change_owner_address(v: &VM, from: Address, m_addr: Address, new_miner_addr: Address) {
+    apply_ok(
+        v,
+        from,
+        m_addr,
+        TokenAmount::zero(),
+        MinerMethod::ChangeOwnerAddress as u64,
+        new_miner_addr,
+    );
+}
+
+pub fn withdraw_balance(
+    v: &VM,
+    from: Address,
+    m_addr: Address,
+    to_withdraw_amount: TokenAmount,
+    expect_withdraw_amount: TokenAmount,
+) {
+    let params = WithdrawBalanceParams { amount_requested: to_withdraw_amount };
+    let withdraw_return: WithdrawBalanceReturn = apply_ok(
+        v,
+        from,
+        m_addr,
+        TokenAmount::zero(),
+        MinerMethod::WithdrawBalance as u64,
+        params.clone(),
+    )
+    .deserialize()
+    .unwrap();
+
+    if expect_withdraw_amount.is_positive() {
+        let withdraw_balance_params_se = serialize(&params, "withdraw  balance params").unwrap();
+        ExpectInvocation {
+            from: Some(from),
+            to: m_addr,
+            method: MinerMethod::WithdrawBalance as u64,
+            params: Some(withdraw_balance_params_se),
+            subinvocs: Some(vec![ExpectInvocation {
+                to: from,
+                method: METHOD_SEND as u64,
+                value: Some(expect_withdraw_amount.clone()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        }
+        .matches(v.take_invocations().last().unwrap());
+    }
+    assert_eq!(expect_withdraw_amount, withdraw_return.amount_withdrawn);
 }
 
 pub fn submit_invalid_post(

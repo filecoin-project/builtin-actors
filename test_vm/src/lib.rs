@@ -7,7 +7,7 @@ use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState}
 use fil_actor_datacap::{Actor as DataCapActor, State as DataCapState};
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
-use fil_actor_miner::{Actor as MinerActor, State as MinerState};
+use fil_actor_miner::{Actor as MinerActor, MinerInfo, State as MinerState};
 use fil_actor_multisig::Actor as MultisigActor;
 use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as PowerState};
@@ -277,6 +277,11 @@ impl<'bs> VM<'bs> {
             initial_pledge: st.initial_pledge,
             pre_commit_deposit: st.pre_commit_deposits,
         }
+    }
+
+    pub fn get_miner_info(&self, maddr: Address) -> MinerInfo {
+        let st = self.get_state::<MinerState>(maddr).unwrap();
+        self.store.get_cbor::<MinerInfo>(&st.info).unwrap().unwrap()
     }
 
     pub fn get_network_stats(&self) -> NetworkStats {

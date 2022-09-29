@@ -254,7 +254,7 @@ pub struct ReportConsensusFaultParams {
     pub header_extra: Vec<u8>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct WithdrawBalanceParams {
     pub amount_requested: TokenAmount,
 }
@@ -433,11 +433,21 @@ pub struct ProveReplicaUpdatesParams2 {
 
 impl Cbor for ProveReplicaUpdatesParams2 {}
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct ChangeBeneficiaryParams {
     pub new_beneficiary: Address,
     pub new_quota: TokenAmount,
     pub new_expiration: ChainEpoch,
+}
+
+impl ChangeBeneficiaryParams {
+    pub fn new(beneficiary: Address, quota: TokenAmount, expiration: ChainEpoch) -> Self {
+        ChangeBeneficiaryParams {
+            new_beneficiary: beneficiary,
+            new_quota: quota,
+            new_expiration: expiration,
+        }
+    }
 }
 
 impl Cbor for ChangeBeneficiaryParams {}
