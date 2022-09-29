@@ -792,7 +792,7 @@ pub fn publish_deal(
         let deal_term = deal.end_epoch - deal.start_epoch;
         let token_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
         let alloc_expiration =
-            min(deal.start_epoch, v.curr_epoch + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
+            min(deal.start_epoch + 1, v.curr_epoch + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
 
         let alloc_reqs = AllocationRequests {
             allocations: vec![AllocationRequest {

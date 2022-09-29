@@ -1143,8 +1143,10 @@ fn alloc_request_for_deal(
         alloc_term_min + policy.market_default_allocation_term_buffer,
         policy.maximum_verified_allocation_term,
     );
-    let alloc_expiration =
-        min(deal.proposal.start_epoch + 1, curr_epoch + policy.maximum_verified_allocation_expiration);
+    let alloc_expiration = min(
+        deal.proposal.start_epoch + 1,
+        curr_epoch + policy.maximum_verified_allocation_expiration,
+    );
     ext::verifreg::AllocationRequest {
         provider: deal.proposal.provider,
         data: deal.proposal.piece_cid,

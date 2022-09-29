@@ -870,7 +870,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
             size: deal.piece_size,
             term_min: deal.end_epoch - deal.start_epoch,
             term_max: (deal.end_epoch - deal.start_epoch) + 90 * EPOCHS_IN_DAY,
-            expiration: deal.start_epoch,
+            expiration: deal.start_epoch + 1,
         }],
         extensions: vec![],
     };

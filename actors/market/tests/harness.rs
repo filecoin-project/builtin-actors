@@ -498,7 +498,7 @@ pub fn publish_deals(
                     size: deal.piece_size,
                     term_min: deal.end_epoch - deal.start_epoch,
                     term_max: (deal.end_epoch - deal.start_epoch) + 90 * EPOCHS_IN_DAY,
-                    expiration: min(deal.start_epoch, curr_epoch + 60 * EPOCHS_IN_DAY),
+                    expiration: min(deal.start_epoch + 1, curr_epoch + 60 * EPOCHS_IN_DAY),
                 }],
                 extensions: vec![],
             };
