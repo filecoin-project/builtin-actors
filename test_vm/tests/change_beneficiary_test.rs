@@ -16,7 +16,7 @@ use test_vm::VM;
 fn change_beneficiary_success() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 4, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, beneficiary, another_beneficiary, query_addr) =
         (addrs[0], addrs[0], addrs[1], addrs[2], addrs[3]);
@@ -27,13 +27,13 @@ fn change_beneficiary_success() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(1_000e18 as i128),
+        TokenAmount::from_whole(1_000),
     )
     .0;
 
     //change from owner to beneficiary address
     let beneficiary_change_proposal =
-        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from(100), 500);
+        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(100), 500);
     change_beneficiary(&v, owner, miner_id, &beneficiary_change_proposal);
     let mut get_beneficiary_return = get_beneficiary(&v, query_addr, miner_id);
     let pending_beneficiary_term = get_beneficiary_return.proposed.unwrap();
@@ -48,7 +48,7 @@ fn change_beneficiary_success() {
 
     //change beneficiary to another address
     let change_another_beneificiary_proposal =
-        ChangeBeneficiaryParams::new(another_beneficiary, TokenAmount::from(100), 500);
+        ChangeBeneficiaryParams::new(another_beneficiary, TokenAmount::from_atto(100), 500);
     change_beneficiary(&v, owner, miner_id, &change_another_beneificiary_proposal);
     let mut get_beneficiary_return = get_beneficiary(&v, query_addr, miner_id);
     let mut pending_beneficiary_term = get_beneficiary_return.proposed.unwrap();
@@ -74,7 +74,7 @@ fn change_beneficiary_success() {
 fn change_beneficiary_back_owner_success() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, beneficiary, query_addr) = (addrs[0], addrs[0], addrs[1], addrs[2]);
 
@@ -84,11 +84,11 @@ fn change_beneficiary_back_owner_success() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(1_000e18 as i128),
+        TokenAmount::from_whole(1_000),
     )
     .0;
 
-    let quota = TokenAmount::from(100);
+    let quota = TokenAmount::from_atto(100);
     let beneficiary_change_proposal = ChangeBeneficiaryParams::new(beneficiary, quota.clone(), 500);
     change_beneficiary(&v, owner, miner_id, &beneficiary_change_proposal);
     change_beneficiary(&v, beneficiary, miner_id, &beneficiary_change_proposal);
@@ -105,8 +105,7 @@ fn change_beneficiary_back_owner_success() {
     //case2 beneficiary(non-main) used up
     change_beneficiary(&v, owner, miner_id, &beneficiary_change_proposal);
     change_beneficiary(&v, beneficiary, miner_id, &beneficiary_change_proposal);
-    let withdraw_return = withdraw_balance(&v, beneficiary, miner_id, quota.clone());
-    assert_eq!(quota, withdraw_return.amount_withdrawn);
+    withdraw_balance(&v, beneficiary, miner_id, quota.clone(), quota);
 
     change_beneficiary(&v, owner, miner_id, &back_owner_proposal);
     let get_beneficiary_return = get_beneficiary(&v, query_addr, miner_id);
@@ -128,7 +127,7 @@ fn change_beneficiary_back_owner_success() {
 fn change_beneficiary_fail() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, beneficiary, addr) = (addrs[0], addrs[0], addrs[1], addrs[2]);
 
@@ -138,7 +137,7 @@ fn change_beneficiary_fail() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(1_000e18 as i128),
+        TokenAmount::from_whole(1_000),
     )
     .0;
 
@@ -148,12 +147,12 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from(0), 0),
+        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(0), 0),
         ExitCode::USR_FORBIDDEN,
     );
 
     let beneficiary_change_proposal =
-        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from(100), 500);
+        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(100), 500);
     change_beneficiary(&v, owner, miner_id, &beneficiary_change_proposal);
 
     //argument not match with pending
@@ -163,7 +162,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from(100), 400),
+        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(100), 400),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -173,7 +172,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from(80), 500),
+        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(80), 500),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -183,7 +182,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(addr, TokenAmount::from(80), 500),
+        ChangeBeneficiaryParams::new(addr, TokenAmount::from_atto(80), 500),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -206,7 +205,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(owner, TokenAmount::from(80), 0),
+        ChangeBeneficiaryParams::new(owner, TokenAmount::from_atto(80), 0),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     apply_code(
@@ -215,12 +214,12 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(owner, TokenAmount::from(0), 100),
+        ChangeBeneficiaryParams::new(owner, TokenAmount::from_atto(0), 100),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
     //success change back to owner
-    let back_owner_proposal = ChangeBeneficiaryParams::new(owner, TokenAmount::from(0), 0);
+    let back_owner_proposal = ChangeBeneficiaryParams::new(owner, TokenAmount::zero(), 0);
     change_beneficiary(&v, owner, miner_id, &back_owner_proposal);
     change_beneficiary(&v, beneficiary, miner_id, &back_owner_proposal);
     v.assert_state_invariants();

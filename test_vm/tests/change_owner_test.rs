@@ -14,7 +14,7 @@ use test_vm::VM;
 fn change_owner_success() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, new_owner, beneficiary) = (addrs[0], addrs[0], addrs[1], addrs[2]);
 
@@ -24,7 +24,7 @@ fn change_owner_success() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(1_000e18 as i128),
+        TokenAmount::from_whole(1_000),
     )
     .0;
 
@@ -32,7 +32,7 @@ fn change_owner_success() {
         &v,
         owner,
         miner_id,
-        &ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from(100), 100),
+        &ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(100), 100),
     );
     change_owner_address(&v, owner, miner_id, new_owner);
     let miner_info = v.get_miner_info(miner_id);
@@ -51,7 +51,7 @@ fn change_owner_success() {
 fn keep_beneficiary_when_owner_changed() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, new_owner, beneficiary) = (addrs[0], addrs[0], addrs[1], addrs[2]);
 
@@ -61,7 +61,7 @@ fn keep_beneficiary_when_owner_changed() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(1_000e18 as i128),
+        TokenAmount::from_whole(1_000),
     )
     .0;
 
@@ -69,13 +69,13 @@ fn keep_beneficiary_when_owner_changed() {
         &v,
         owner,
         miner_id,
-        &ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from(100), 100),
+        &ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(100), 100),
     );
     change_beneficiary(
         &v,
         beneficiary,
         miner_id,
-        &ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from(100), 100),
+        &ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(100), 100),
     );
     assert_eq!(beneficiary, get_beneficiary(&v, worker, miner_id).active.beneficiary);
 
@@ -93,7 +93,7 @@ fn keep_beneficiary_when_owner_changed() {
 fn change_owner_fail() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 4, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, new_owner, addr) = (addrs[0], addrs[0], addrs[1], addrs[2]);
 
@@ -103,7 +103,7 @@ fn change_owner_fail() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(1_000e18 as i128),
+        TokenAmount::from_whole(1_000),
     )
     .0;
 

@@ -1,6 +1,7 @@
 use fil_actors_runtime::test_utils::{
     expect_abort, new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
 };
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::{address::Address, error::ExitCode};
 
 mod util;
@@ -28,7 +29,7 @@ fn successful_change() {
     h.change_beneficiary(
         &mut rt,
         h.owner,
-        &BeneficiaryChange::new(OTHER_ADDRESS, TokenAmount::from(100), 100),
+        &BeneficiaryChange::new(OTHER_ADDRESS, TokenAmount::from_atto(100), 100),
         None,
     )
     .unwrap();
@@ -58,14 +59,14 @@ fn successful_keep_beneficiary_when_change_owner() {
     h.change_beneficiary(
         &mut rt,
         h.owner,
-        &BeneficiaryChange::new(OTHER_ADDRESS, TokenAmount::from(100), 100),
+        &BeneficiaryChange::new(OTHER_ADDRESS, TokenAmount::from_atto(100), 100),
         None,
     )
     .unwrap();
     h.change_beneficiary(
         &mut rt,
         OTHER_ADDRESS,
-        &BeneficiaryChange::new(OTHER_ADDRESS, TokenAmount::from(100), 100),
+        &BeneficiaryChange::new(OTHER_ADDRESS, TokenAmount::from_atto(100), 100),
         None,
     )
     .unwrap();
