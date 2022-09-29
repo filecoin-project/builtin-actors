@@ -301,19 +301,17 @@ impl Actor {
             // Fetch client's datacap balance and calculate the amount of datacap required for the verified deals.
             // Drop any verified deals for which the client has insufficient datacap.
             if deal.proposal.verified_deal {
-                let (mut use_client_datacap, total_client_datacap) = match all_client_datacap
-                    .get(&client_id)
-                    .cloned()
-                {
-                    None => {
-                        let total_datacap = balance_of(rt, &Address::new_id(client_id)).map_err(
+                let (mut use_client_datacap, total_client_datacap) =
+                    match all_client_datacap.get(&client_id).cloned() {
+                        None => {
+                            let total_datacap = balance_of(rt, &Address::new_id(client_id)).map_err(
                             |e| actor_error!(not_found; "failed to get datacap {}", e.msg()),
                         )?;
 
-                        (TokenAmount::zero(), total_datacap)
-                    }
-                    Some(client_data) => client_data,
-                };
+                            (TokenAmount::zero(), total_datacap)
+                        }
+                        Some(client_data) => client_data,
+                    };
                 let piece_datacap_required =
                     TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
                 if &use_client_datacap + &piece_datacap_required > total_client_datacap {
