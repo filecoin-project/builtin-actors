@@ -30,7 +30,7 @@ use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     apply_code, apply_ok, bf_all, check_sector_active, check_sector_faulty, create_accounts,
     create_miner, deadline_state, declare_recovery, invariant_failure_patterns, make_bitfield,
-    miner_power, precommit_sectors, prove_commit_sectors, publish_deal, sector_info,
+    market_publish_deal, miner_power, precommit_sectors, prove_commit_sectors, sector_info,
     submit_invalid_post, submit_windowed_post,
 };
 use test_vm::VM;
@@ -1173,7 +1173,7 @@ fn create_deals_frac(
     let deal_start = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
 
     for i in 0..num_deals {
-        let deals = publish_deal(
+        let deals = market_publish_deal(
             v,
             worker,
             client,
