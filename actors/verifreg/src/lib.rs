@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
-use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use frc46_token::token::types::{BurnParams, TransferParams};
 use frc46_token::token::TOKEN_PRECISION;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -965,43 +965,48 @@ where
 }
 
 // Invokes Burn on a data cap token actor for whole units of data cap.
-fn burn<BS, RT>(rt: &mut RT, amount: &DataCap) -> Result<DataCap, ActorError>
+fn burn<BS, RT>(rt: &mut RT, amount: &DataCap) -> Result<(), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
+    if amount.is_zero() {
+        return Ok(());
+    }
+
     let token_amt = datacap_to_tokens(amount);
     let params = BurnParams { amount: token_amt };
-    let ret: BurnReturn = rt
-        .send(
-            &DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::Burn as u64,
-            serialize(&params, "burn params")?,
-            TokenAmount::zero(),
-        )
-        .context(format!("failed to send burn {:?} to datacap", params))?
-        .deserialize()?;
-    Ok(tokens_to_datacap(&ret.balance))
+    rt.send(
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        ext::datacap::Method::Burn as u64,
+        serialize(&params, "burn params")?,
+        TokenAmount::zero(),
+    )
+    .context(format!("failed to send burn {:?} to datacap", params))?;
+    // The burn return value gives the new balance, but it's dropped here.
+    // This also allows the check for zero burns inside this method.
+    Ok(())
 }
 
 // Invokes Destroy on a data cap token actor for whole units of data cap.
-fn destroy<BS, RT>(rt: &mut RT, owner: &Address, amount: &DataCap) -> Result<DataCap, ActorError>
+fn destroy<BS, RT>(rt: &mut RT, owner: &Address, amount: &DataCap) -> Result<(), ActorError>
 where
     BS: Blockstore,
     RT: Runtime<BS>,
 {
+    if amount.is_zero() {
+        return Ok(());
+    }
     let token_amt = datacap_to_tokens(amount);
     let params = DestroyParams { owner: *owner, amount: token_amt };
-    let ret: BurnReturn = rt
-        .send(
-            &DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::Destroy as u64,
-            serialize(&params, "destroy params")?,
-            TokenAmount::zero(),
-        )
-        .context(format!("failed to send destroy {:?} to datacap", params))?
-        .deserialize()?;
-    Ok(tokens_to_datacap(&ret.balance))
+    rt.send(
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        ext::datacap::Method::Destroy as u64,
+        serialize(&params, "destroy params")?,
+        TokenAmount::zero(),
+    )
+    .context(format!("failed to send destroy {:?} to datacap", params))?;
+    Ok(())
 }
 
 // Invokes transfer on a data cap token actor for whole units of data cap.

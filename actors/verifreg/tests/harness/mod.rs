@@ -1,13 +1,6 @@
-<<<<<<< HEAD
-use fil_fungible_token::receiver::types::{
-    FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE,
-};
-use fil_fungible_token::token::types::{BurnParams, BurnReturn, TransferParams};
-=======
 use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
 use frc46_token::token::TOKEN_PRECISION;
->>>>>>> 2a25e794 (Update token libraries to v1.0.0 (#706))
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
@@ -311,17 +304,19 @@ impl Harness {
         rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
 
-        rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::Burn as MethodNum,
-            RawBytes::serialize(&BurnParams {
-                amount: TokenAmount::from(datacap_burnt) * TOKEN_PRECISION,
-            })
-            .unwrap(),
-            TokenAmount::zero(),
-            RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
-            ExitCode::OK,
-        );
+        if datacap_burnt > 0 {
+            rt.expect_send(
+                DATACAP_TOKEN_ACTOR_ADDR,
+                ext::datacap::Method::Burn as MethodNum,
+                RawBytes::serialize(&BurnParams {
+                    amount: TokenAmount::from_whole(datacap_burnt.to_i64().unwrap()),
+                })
+                .unwrap(),
+                TokenAmount::zero(),
+                RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
+                ExitCode::OK,
+            );
+        }
 
         let params = ClaimAllocationsParams { sectors: claim_allocs, all_or_nothing };
         let ret = rt
@@ -500,4 +495,27 @@ fn load_clients(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
         HAMT_BIT_WIDTH,
     )
     .unwrap()
+}
+
+pub fn assert_alloc_claimed(
+    rt: &MockRuntime,
+    client: ActorID,
+    provider: ActorID,
+    id: ClaimID,
+    alloc: &Allocation,
+    epoch: ChainEpoch,
+    sector: SectorNumber,
+) -> Claim {
+    let st: State = rt.get_state();
+    let store = &rt.store();
+
+    // Alloc is gone
+    let mut allocs = st.load_allocs(&store).unwrap();
+    assert!(allocs.get(client, id).unwrap().is_none());
+
+    // Claim is present
+    let expected_claim = claim_from_alloc(alloc, epoch, sector);
+    let mut claims = st.load_claims(store).unwrap();
+    assert_eq!(&expected_claim, claims.get(provider, id).unwrap().unwrap());
+    expected_claim
 }
