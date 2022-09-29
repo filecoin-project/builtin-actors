@@ -1104,7 +1104,7 @@ fn can_claim_alloc(
         && claim_alloc.client == alloc.client
         && claim_alloc.data == alloc.data
         && claim_alloc.size == alloc.size
-        && curr_epoch <= alloc.expiration
+        && curr_epoch < alloc.expiration
         && sector_lifetime >= alloc.term_min
         && sector_lifetime <= alloc.term_max
 }
