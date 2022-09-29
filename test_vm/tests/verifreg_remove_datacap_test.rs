@@ -25,7 +25,7 @@ use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use test_vm::util::{add_verifier, apply_ok, create_accounts};
+use test_vm::util::{apply_ok, create_accounts, verifreg_add_verifier};
 use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
 
 #[test]
@@ -42,8 +42,8 @@ fn remove_datacap_simple_successful_path() {
     let allowance_to_remove: StoragePower = verifier_allowance.clone().div(2);
 
     // register verifier1 and verifier2
-    add_verifier(&v, verifier1, verifier_allowance.clone());
-    add_verifier(&v, verifier2, verifier_allowance.clone());
+    verifreg_add_verifier(&v, verifier1, verifier_allowance.clone());
+    verifreg_add_verifier(&v, verifier2, verifier_allowance.clone());
 
     // register the verified client
     let add_verified_client_params =

@@ -1,38 +1,12 @@
-use crate::*;
-use fil_actor_account::Method as AccountMethod;
-use fil_actor_cron::Method as CronMethod;
-use fil_actor_datacap::Method as DataCapMethod;
-use fil_actor_market::{
-    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
-    PublishStorageDealsReturn,
-};
+use std::cmp::min;
 
-use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationRequests};
-use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, ChangeBeneficiaryParams, CompactCommD, Deadline,
-    DeadlineInfo, DeclareFaultsRecoveredParams, GetBeneficiaryReturn, Method as MinerMethod,
-    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
-    PreCommitSectorParams, ProveCommitAggregateParams, RecoveryDeclaration, SectorOnChainInfo,
-    SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
-    WithdrawBalanceParams, WithdrawBalanceReturn,
-};
-use fil_actor_multisig::Method as MultisigMethod;
-use fil_actor_multisig::ProposeParams;
-use fil_actor_power::{
-    CreateMinerParams, CreateMinerReturn, Method as PowerMethod, UpdateClaimedPowerParams,
-};
-use fil_actor_reward::Method as RewardMethod;
-use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
-use fil_actors_runtime::runtime::policy_constants::{
-    MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
-};
 use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::TransferFromParams;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
+use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
@@ -40,7 +14,40 @@ use fvm_shared::sector::{PoStProof, RegisteredPoStProof, RegisteredSealProof, Se
 use fvm_shared::{MethodNum, METHOD_SEND};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
-use std::cmp::min;
+
+use fil_actor_account::Method as AccountMethod;
+use fil_actor_cron::Method as CronMethod;
+use fil_actor_datacap::{Method as DataCapMethod, MintParams};
+use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationRequests};
+use fil_actor_market::{
+    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
+    PublishStorageDealsReturn,
+};
+use fil_actor_miner::{
+    aggregate_pre_commit_network_fee, max_prove_commit_duration,
+    new_deadline_info_from_offset_and_epoch, ChangeBeneficiaryParams, CompactCommD, Deadline,
+    DeadlineInfo, DeclareFaultsRecoveredParams, ExpirationExtension2,
+    ExtendSectorExpiration2Params, GetBeneficiaryReturn, Method as MinerMethod, PoStPartition,
+    PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
+    ProveCommitAggregateParams, ProveCommitSectorParams, RecoveryDeclaration, SectorClaim,
+    SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState,
+    SubmitWindowedPoStParams, WithdrawBalanceParams, WithdrawBalanceReturn,
+};
+use fil_actor_multisig::Method as MultisigMethod;
+use fil_actor_multisig::ProposeParams;
+use fil_actor_power::{
+    CreateMinerParams, CreateMinerReturn, Method as PowerMethod, UpdateClaimedPowerParams,
+};
+use fil_actor_reward::Method as RewardMethod;
+use fil_actor_verifreg::{
+    AddVerifierClientParams, ClaimID, ClaimTerm, ExtendClaimTermsParams, GetClaimsParams,
+    Method as VerifregMethod, VerifierParams,
+};
+use fil_actors_runtime::runtime::policy_constants::{
+    MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
+};
+
+use crate::*;
 
 // Generate count addresses by seeding an rng
 pub fn pk_addrs_from(seed: u64, count: u64) -> Vec<Address> {
@@ -100,6 +107,17 @@ pub fn apply_code<C: Cbor>(
     res.ret
 }
 
+pub fn cron_tick(v: &VM) {
+    apply_ok(
+        v,
+        SYSTEM_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
+        TokenAmount::zero(),
+        CronMethod::EpochTick as u64,
+        RawBytes::default(),
+    );
+}
+
 pub fn create_miner(
     v: &mut VM,
     owner: Address,
@@ -130,6 +148,61 @@ pub fn create_miner(
         .deserialize()
         .unwrap();
     (res.id_address, res.robust_address)
+}
+
+pub fn miner_precommit_sector(
+    v: &VM,
+    worker: Address,
+    miner_id: Address,
+    seal_proof: RegisteredSealProof,
+    sector_number: SectorNumber,
+    deal_ids: Vec<DealID>,
+    expiration: ChainEpoch,
+) -> SectorPreCommitOnChainInfo {
+    let sealed_cid = make_sealed_cid(b"s100");
+
+    let params = PreCommitSectorParams {
+        seal_proof,
+        sector_number,
+        sealed_cid,
+        seal_rand_epoch: v.get_epoch() - 1,
+        deal_ids,
+        expiration,
+        replace_capacity: false,
+        replace_sector_deadline: 0,
+        replace_sector_partition: 0,
+        replace_sector_number: 0,
+    };
+
+    apply_ok(v, worker, miner_id, TokenAmount::zero(), MinerMethod::PreCommitSector as u64, params);
+
+    let state: MinerState = v.get_state(miner_id).unwrap();
+    state.get_precommitted_sector(v.store, sector_number).unwrap().unwrap()
+}
+
+pub fn miner_prove_sector(v: &VM, worker: Address, miner_id: Address, sector_number: SectorNumber) {
+    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![] };
+    apply_ok(
+        v,
+        worker,
+        miner_id,
+        TokenAmount::zero(),
+        MinerMethod::ProveCommitSector as u64,
+        prove_commit_params,
+    );
+
+    ExpectInvocation {
+        to: miner_id,
+        method: MinerMethod::ProveCommitSector as u64,
+        from: Some(worker),
+        subinvocs: Some(vec![ExpectInvocation {
+            to: STORAGE_POWER_ACTOR_ADDR,
+            method: PowerMethod::SubmitPoRepForBulkVerify as u64,
+            ..Default::default()
+        }]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -383,6 +456,86 @@ pub fn prove_commit_sectors(
         .matches(v.take_invocations().last().unwrap());
     }
 }
+#[allow(clippy::too_many_arguments)]
+pub fn miner_extend_sector_expiration2(
+    v: &VM,
+    worker: Address,
+    miner_id: Address,
+    deadline: u64,
+    partition: u64,
+    sectors_without_claims: Vec<u64>,
+    sectors_with_claims: Vec<SectorClaim>,
+    new_expiration: ChainEpoch,
+    power_delta: PowerPair,
+) {
+    let extension_params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline,
+            partition,
+            sectors: BitField::try_from_bits(sectors_without_claims.iter().copied()).unwrap(),
+            sectors_with_claims: sectors_with_claims.clone(),
+            new_expiration,
+        }],
+    };
+
+    apply_ok(
+        v,
+        worker,
+        miner_id,
+        TokenAmount::zero(),
+        MinerMethod::ExtendSectorExpiration2 as u64,
+        extension_params,
+    );
+
+    let mut claim_ids = vec![];
+    for sector_claim in sectors_with_claims {
+        claim_ids = sector_claim.maintain_claims.clone();
+        claim_ids.extend(sector_claim.drop_claims);
+    }
+
+    let mut subinvocs = vec![];
+    if !claim_ids.is_empty() {
+        subinvocs.push(ExpectInvocation {
+            to: VERIFIED_REGISTRY_ACTOR_ADDR,
+            method: VerifregMethod::GetClaims as u64,
+            code: Some(ExitCode::OK),
+            params: Some(
+                serialize(
+                    &GetClaimsParams { provider: miner_id.id().unwrap(), claim_ids },
+                    "get claims params",
+                )
+                .unwrap(),
+            ),
+            ..Default::default()
+        })
+    }
+    if !power_delta.is_zero() {
+        subinvocs.push(ExpectInvocation {
+            to: STORAGE_POWER_ACTOR_ADDR,
+            method: PowerMethod::UpdateClaimedPower as u64,
+            params: Some(
+                serialize(
+                    &UpdateClaimedPowerParams {
+                        raw_byte_delta: power_delta.raw,
+                        quality_adjusted_delta: power_delta.qa,
+                    },
+                    "update_claimed_power params",
+                )
+                .unwrap(),
+            ),
+            ..Default::default()
+        });
+    }
+
+    ExpectInvocation {
+        to: miner_id,
+        method: MinerMethod::ExtendSectorExpiration2 as u64,
+        subinvocs: Some(subinvocs),
+        code: Some(ExitCode::OK),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+}
 
 pub fn advance_by_deadline_to_epoch(v: VM, maddr: Address, e: ChainEpoch) -> (VM, DeadlineInfo) {
     // keep advancing until the epoch of interest is within the deadline
@@ -445,16 +598,7 @@ where
         }
         v = v.with_epoch(dline_info.last());
 
-        let res = v
-            .apply_message(
-                SYSTEM_ACTOR_ADDR,
-                CRON_ACTOR_ADDR,
-                TokenAmount::zero(),
-                CronMethod::EpochTick as u64,
-                RawBytes::default(),
-            )
-            .unwrap();
-        assert_eq!(ExitCode::OK, res.code);
+        cron_tick(&v);
         let next = v.get_epoch() + 1;
         v = v.with_epoch(next);
     }
@@ -469,7 +613,7 @@ pub fn miner_dline_info(v: &VM, m: Address) -> DeadlineInfo {
     )
 }
 
-fn sector_deadline(v: &VM, m: Address, s: SectorNumber) -> (u64, u64) {
+pub fn sector_deadline(v: &VM, m: Address, s: SectorNumber) -> (u64, u64) {
     let st = v.get_state::<MinerState>(m).unwrap();
     st.find_sector(&Policy::default(), v.store, s).unwrap()
 }
@@ -680,7 +824,7 @@ pub fn submit_invalid_post(
     apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
 }
 
-pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
+pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
     let add_verifier_params = VerifierParams { address: verifier, allowance: data_cap };
     // root address is msig, send proposal from root key
     let proposal = ProposeParams {
@@ -719,8 +863,81 @@ pub fn add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
     .matches(v.take_invocations().last().unwrap());
 }
 
+pub fn verifreg_add_client(v: &VM, verifier: Address, client: Address, allowance: StoragePower) {
+    let add_client_params =
+        AddVerifierClientParams { address: client, allowance: allowance.clone() };
+    apply_ok(
+        v,
+        verifier,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
+        TokenAmount::zero(),
+        VerifregMethod::AddVerifiedClient as u64,
+        add_client_params,
+    );
+    ExpectInvocation {
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+        method: VerifregMethod::AddVerifiedClient as u64,
+        // params: Some(serialize(&add_client_params, "verifreg add client params").unwrap()),
+        subinvocs: Some(vec![ExpectInvocation {
+            to: DATACAP_TOKEN_ACTOR_ADDR,
+            method: DataCapMethod::Mint as u64,
+            params: Some(
+                serialize(
+                    &MintParams {
+                        to: client,
+                        amount: TokenAmount::from_whole(allowance),
+                        operators: vec![STORAGE_MARKET_ACTOR_ADDR],
+                    },
+                    "mint params",
+                )
+                .unwrap(),
+            ),
+            code: Some(ExitCode::OK),
+            ..Default::default()
+        }]),
+        code: Some(ExitCode::OK),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn verifreg_extend_claim_terms(
+    v: &VM,
+    client: Address,
+    provider: Address,
+    claim: ClaimID,
+    new_term: ChainEpoch,
+) {
+    let params = ExtendClaimTermsParams {
+        terms: vec![ClaimTerm {
+            provider: provider.id().unwrap(),
+            claim_id: claim,
+            term_max: new_term,
+        }],
+    };
+    apply_ok(
+        v,
+        client,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
+        TokenAmount::zero(),
+        VerifregMethod::ExtendClaimTerms as u64,
+        params,
+    );
+}
+
+pub fn market_add_balance(v: &VM, sender: Address, beneficiary: Address, amount: TokenAmount) {
+    apply_ok(
+        v,
+        sender,
+        STORAGE_MARKET_ACTOR_ADDR,
+        amount,
+        MarketMethod::AddBalance as u64,
+        beneficiary,
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
-pub fn publish_deal(
+pub fn market_publish_deal(
     v: &VM,
     worker: Address,
     deal_client: Address,
@@ -864,6 +1081,7 @@ pub fn bf_all(bf: BitField) -> Vec<u64> {
 pub mod invariant_failure_patterns {
     use lazy_static::lazy_static;
     use regex::Regex;
+
     lazy_static! {
         pub static ref REWARD_STATE_EPOCH_MISMATCH: Regex =
             Regex::new("^reward state epoch \\d+ does not match prior_epoch\\+1 \\d+$").unwrap();

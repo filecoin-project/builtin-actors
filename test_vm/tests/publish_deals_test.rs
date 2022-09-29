@@ -28,7 +28,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use test_vm::util::{
-    add_verifier, apply_ok, bf_all, create_accounts, create_accounts_seeded, create_miner,
+    apply_ok, bf_all, create_accounts, create_accounts_seeded, create_miner, verifreg_add_verifier,
 };
 use test_vm::{ExpectInvocation, VM};
 
@@ -73,7 +73,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     .0;
 
     // setup verified client
-    add_verifier(&v, verifier, StoragePower::from((32_u64 << 40) as u128));
+    verifreg_add_verifier(&v, verifier, StoragePower::from((32_u64 << 40) as u128));
     let add_client_params = AddVerifierClientParams {
         address: verified_client,
         allowance: StoragePower::from((1_u64 << 32) as u64),
