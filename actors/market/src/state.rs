@@ -165,15 +165,14 @@ impl Cbor for State {}
 
 impl State {
     pub(super) fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<Self> {
-        let empty_proposals =
-            DealArray::<BS>::new_with_bit_width(store, PROPOSALS_AMT_BITWIDTH).flush().map_err(
-                |e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "Failed to create empty deal proposals array",
-                    )
-                },
-            )?;
+        let empty_proposals = DealArray::<BS>::new_with_bit_width(store, PROPOSALS_AMT_BITWIDTH)
+            .flush()
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "Failed to create empty deal proposals array",
+                )
+            })?;
 
         let empty_states = DealMetaArray::<BS>::new_with_bit_width(store, STATES_AMT_BITWIDTH)
             .flush()

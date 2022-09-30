@@ -73,6 +73,7 @@ pub enum Method {
     CronTick = 9,
 }
 
+/// Market Actor
 pub struct Actor;
 
 impl Actor {
