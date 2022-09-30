@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use crate::balance_table::BalanceTable;
-use anyhow::anyhow;
 use cid::Cid;
+use std::collections::BTreeMap;
+
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    actor_error, make_empty_map, ActorDowncast, ActorError, Array, Set, SetMultimap,
+    actor_error, make_empty_map, ActorDowncast, ActorError, Set, SetMultimap,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -22,6 +23,12 @@ use num_traits::Zero;
 use super::policy::*;
 use super::types::*;
 use super::{DealProposal, DealState};
+
+pub(super) enum Reason {
+    ClientCollateral,
+    ClientStorageFee,
+    ProviderCollateral,
+}
 
 /// Market actor state
 #[derive(Clone, Default, Serialize_tuple, Deserialize_tuple)]
@@ -58,60 +65,12 @@ pub struct State {
 
     /// Total Client Collateral that is locked -> unlocked when deal is terminated
     pub total_client_locked_collateral: TokenAmount,
+
     /// Total Provider Collateral that is locked -> unlocked when deal is terminated
     pub total_provider_locked_collateral: TokenAmount,
+
     /// Total storage fee that is locked in escrow -> unlocked when payments are made
     pub total_client_storage_fee: TokenAmount,
-}
-
-impl State {
-    pub fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<Self> {
-        let empty_proposals_array =
-            Array::<(), BS>::new_with_bit_width(store, PROPOSALS_AMT_BITWIDTH)
-                .flush()
-                .map_err(|e| anyhow!("Failed to create empty proposals array: {}", e))?;
-        let empty_states_array = Array::<(), BS>::new_with_bit_width(store, STATES_AMT_BITWIDTH)
-            .flush()
-            .map_err(|e| anyhow!("Failed to create empty states array: {}", e))?;
-
-        let empty_pending_proposals_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
-            .flush()
-            .map_err(|e| anyhow!("Failed to create empty pending proposals map state: {}", e))?;
-        let empty_balance_table = BalanceTable::new(store)
-            .root()
-            .map_err(|e| anyhow!("Failed to create empty balance table map: {}", e))?;
-
-        let empty_deal_ops_hamt = SetMultimap::new(store)
-            .root()
-            .map_err(|e| anyhow!("Failed to create empty multiset: {}", e))?;
-        Ok(Self {
-            proposals: empty_proposals_array,
-            states: empty_states_array,
-            pending_proposals: empty_pending_proposals_map,
-            escrow_table: empty_balance_table,
-            locked_table: empty_balance_table,
-            next_id: 0,
-            deal_ops_by_epoch: empty_deal_ops_hamt,
-            last_cron: EPOCH_UNDEFINED,
-
-            total_client_locked_collateral: TokenAmount::default(),
-            total_provider_locked_collateral: TokenAmount::default(),
-            total_client_storage_fee: TokenAmount::default(),
-        })
-    }
-
-    pub fn total_locked(&self) -> TokenAmount {
-        &self.total_client_locked_collateral
-            + &self.total_provider_locked_collateral
-            + &self.total_client_storage_fee
-    }
-
-    pub(super) fn mutator<'bs, BS: Blockstore>(
-        &mut self,
-        store: &'bs BS,
-    ) -> MarketStateMutation<'bs, '_, BS> {
-        MarketStateMutation::new(self, store)
-    }
 }
 
 fn deal_get_payment_remaining(
@@ -144,208 +103,425 @@ fn deal_get_payment_remaining(
 
 impl Cbor for State {}
 
-#[derive(Debug, PartialEq, Eq)]
-pub(super) enum Permission {
-    Invalid,
-    ReadOnly,
-    Write,
-}
+impl State {
+    pub(super) fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<Self> {
+        let empty_proposals =
+            DealArray::<BS>::new_with_bit_width(store, PROPOSALS_AMT_BITWIDTH).flush().map_err(
+                |e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "Failed to create empty deal proposals array",
+                    )
+                },
+            )?;
 
-pub(super) enum Reason {
-    ClientCollateral,
-    ClientStorageFee,
-    ProviderCollateral,
-}
+        let empty_states = DealMetaArray::<BS>::new_with_bit_width(store, STATES_AMT_BITWIDTH)
+            .flush()
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "Failed to create empty deal states array",
+                )
+            })?;
 
-pub(super) struct MarketStateMutation<'bs, 's, BS> {
-    pub(super) st: &'s mut State,
-    pub(super) store: &'bs BS,
+        let empty_pending_proposal =
+            make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "Failed to create empty pending deals map",
+                )
+            })?;
 
-    pub(super) proposal_permit: Permission,
-    pub(super) deal_proposals: Option<DealArray<'bs, BS>>,
+        let empty_escrow_table = BalanceTable::new(store).root().map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                "Failed to create empty escrow balance table map",
+            )
+        })?;
 
-    pub(super) state_permit: Permission,
-    pub(super) deal_states: Option<DealMetaArray<'bs, BS>>,
+        let empty_locked_table = BalanceTable::new(store).root().map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                "Failed to create empty locked balance table map",
+            )
+        })?;
 
-    pub(super) escrow_permit: Permission,
-    pub(super) escrow_table: Option<BalanceTable<'bs, BS>>,
+        let empty_deal_ops_by_epoch = SetMultimap::new(store).root().map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                "Failed to create empty deals by epoch multiset",
+            )
+        })?;
 
-    pub(super) pending_permit: Permission,
-    pub(super) pending_deals: Option<Set<'bs, BS>>,
-
-    pub(super) dpe_permit: Permission,
-    pub(super) deals_by_epoch: Option<SetMultimap<'bs, BS>>,
-
-    pub(super) locked_permit: Permission,
-    pub(super) locked_table: Option<BalanceTable<'bs, BS>>,
-    pub(super) total_client_locked_collateral: Option<TokenAmount>,
-    pub(super) total_provider_locked_collateral: Option<TokenAmount>,
-    pub(super) total_client_storage_fee: Option<TokenAmount>,
-
-    pub(super) next_deal_id: DealID,
-}
-
-impl<'bs, 's, BS> MarketStateMutation<'bs, 's, BS>
-where
-    BS: Blockstore,
-{
-    pub(super) fn new(st: &'s mut State, store: &'bs BS) -> Self {
-        Self {
-            next_deal_id: st.next_id,
-            st,
-            store,
-            proposal_permit: Permission::Invalid,
-            deal_proposals: None,
-            state_permit: Permission::Invalid,
-            deal_states: None,
-            escrow_permit: Permission::Invalid,
-            escrow_table: None,
-            pending_permit: Permission::Invalid,
-            pending_deals: None,
-            dpe_permit: Permission::Invalid,
-            deals_by_epoch: None,
-            locked_permit: Permission::Invalid,
-            locked_table: None,
-            total_client_locked_collateral: None,
-            total_provider_locked_collateral: None,
-            total_client_storage_fee: None,
-        }
+        Ok(Self {
+            proposals: empty_proposals,
+            states: empty_states,
+            pending_proposals: empty_pending_proposal,
+            escrow_table: empty_escrow_table,
+            locked_table: empty_locked_table,
+            next_id: 0,
+            deal_ops_by_epoch: empty_deal_ops_by_epoch,
+            last_cron: EPOCH_UNDEFINED,
+            total_client_locked_collateral: TokenAmount::default(),
+            total_provider_locked_collateral: TokenAmount::default(),
+            total_client_storage_fee: TokenAmount::default(),
+        })
     }
 
-    pub(super) fn build(&mut self) -> anyhow::Result<&mut Self> {
-        if self.proposal_permit != Permission::Invalid {
-            self.deal_proposals = Some(DealArray::load(&self.st.proposals, self.store)?);
-        }
+    pub(super) fn deal_states_get<BS>(
+        &self,
+        store: &BS,
+        deal_id: DealID,
+    ) -> anyhow::Result<Option<DealState>>
+    where
+        BS: Blockstore,
+    {
+        let deal_states = DealMetaArray::load(&self.states, store)
+            .map_err(|e| e.downcast_wrap("failed to load deal state array"))?;
 
-        if self.state_permit != Permission::Invalid {
-            self.deal_states = Some(DealMetaArray::load(&self.st.states, self.store)?);
-        }
+        let deal_state = deal_states
+            .get(deal_id)
+            .map_err(|e| e.downcast_wrap(&format!("no such deal state {}", deal_id)))?;
 
-        if self.locked_permit != Permission::Invalid {
-            self.locked_table = Some(BalanceTable::from_root(self.store, &self.st.locked_table)?);
-            self.total_client_locked_collateral =
-                Some(self.st.total_client_locked_collateral.clone());
-            self.total_client_storage_fee = Some(self.st.total_client_storage_fee.clone());
-            self.total_provider_locked_collateral =
-                Some(self.st.total_provider_locked_collateral.clone());
-        }
-
-        if self.escrow_permit != Permission::Invalid {
-            self.escrow_table = Some(BalanceTable::from_root(self.store, &self.st.escrow_table)?);
-        }
-
-        if self.pending_permit != Permission::Invalid {
-            self.pending_deals = Some(Set::from_root(self.store, &self.st.pending_proposals)?);
-        }
-
-        if self.dpe_permit != Permission::Invalid {
-            self.deals_by_epoch =
-                Some(SetMultimap::from_root(self.store, &self.st.deal_ops_by_epoch)?);
-        }
-
-        self.next_deal_id = self.st.next_id;
-
-        Ok(self)
+        Ok(deal_state.cloned())
     }
 
-    pub(super) fn with_deal_proposals(&mut self, permit: Permission) -> &mut Self {
-        self.proposal_permit = permit;
-        self
-    }
+    pub(super) fn deal_states_update<BS>(
+        &mut self,
+        store: &BS,
+        new_deal_states: &[(DealID, DealState)],
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
+        let mut deal_states = DealMetaArray::load(&self.states, store)
+            .map_err(|e| e.downcast_wrap("failed to load deal proposal array"))?;
 
-    pub(super) fn with_deal_states(&mut self, permit: Permission) -> &mut Self {
-        self.state_permit = permit;
-        self
-    }
+        new_deal_states.iter().try_for_each(|(id, deal_state)| -> anyhow::Result<()> {
+            deal_states
+                .set(*id, *deal_state)
+                .map_err(|e| e.downcast_wrap("failed to set deal state"))?;
+            Ok(())
+        })?;
 
-    pub(super) fn with_escrow_table(&mut self, permit: Permission) -> &mut Self {
-        self.escrow_permit = permit;
-        self
-    }
-
-    pub(super) fn with_locked_table(&mut self, permit: Permission) -> &mut Self {
-        self.locked_permit = permit;
-        self
-    }
-
-    pub(super) fn with_pending_proposals(&mut self, permit: Permission) -> &mut Self {
-        self.pending_permit = permit;
-        self
-    }
-
-    pub(super) fn with_deals_by_epoch(&mut self, permit: Permission) -> &mut Self {
-        self.dpe_permit = permit;
-        self
-    }
-
-    pub(super) fn commit_state(&mut self) -> anyhow::Result<()> {
-        if self.proposal_permit == Permission::Write {
-            if let Some(s) = &mut self.deal_proposals {
-                self.st.proposals =
-                    s.flush().map_err(|e| e.downcast_wrap("failed to flush deal proposals"))?;
-            }
-        }
-
-        if self.state_permit == Permission::Write {
-            if let Some(s) = &mut self.deal_states {
-                self.st.states =
-                    s.flush().map_err(|e| e.downcast_wrap("failed to flush deal states"))?;
-            }
-        }
-
-        if self.locked_permit == Permission::Write {
-            if let Some(s) = &mut self.locked_table {
-                self.st.locked_table =
-                    s.root().map_err(|e| e.downcast_wrap("failed to flush locked table"))?;
-            }
-            if let Some(s) = &mut self.total_client_locked_collateral {
-                self.st.total_client_locked_collateral = s.clone();
-            }
-            if let Some(s) = &mut self.total_provider_locked_collateral {
-                self.st.total_provider_locked_collateral = s.clone();
-            }
-            if let Some(s) = &mut self.total_client_storage_fee {
-                self.st.total_client_storage_fee = s.clone();
-            }
-        }
-
-        if self.escrow_permit == Permission::Write {
-            if let Some(s) = &mut self.escrow_table {
-                self.st.escrow_table =
-                    s.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
-            }
-        }
-
-        if self.pending_permit == Permission::Write {
-            if let Some(s) = &mut self.pending_deals {
-                self.st.pending_proposals =
-                    s.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
-            }
-        }
-
-        if self.dpe_permit == Permission::Write {
-            if let Some(s) = &mut self.deals_by_epoch {
-                self.st.deal_ops_by_epoch =
-                    s.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
-            }
-        }
-
-        self.st.next_id = self.next_deal_id;
+        self.states =
+            deal_states.flush().map_err(|e| e.downcast_wrap("failed to flush deal states"))?;
 
         Ok(())
+    }
+
+    pub(super) fn deal_states_delete<BS>(
+        &mut self,
+        store: &BS,
+        deal_id: DealID,
+    ) -> anyhow::Result<Option<DealState>>
+    where
+        BS: Blockstore,
+    {
+        let mut deal_states = DealMetaArray::load(&self.states, store)
+            .map_err(|e| e.downcast_wrap("failed to load deal proposal array"))?;
+
+        let rval_deal_state = deal_states
+            .delete(deal_id)
+            .map_err(|e| e.downcast_wrap("failed to delete deal state"))?;
+
+        self.states =
+            deal_states.flush().map_err(|e| e.downcast_wrap("failed to flush deal states"))?;
+
+        Ok(rval_deal_state)
+    }
+
+    pub(super) fn deal_proposals_get<BS>(
+        &self,
+        store: &BS,
+        deal_id: DealID,
+    ) -> anyhow::Result<Option<DealProposal>>
+    where
+        BS: Blockstore,
+    {
+        let deal_proposals = DealArray::load(&self.proposals, store)
+            .map_err(|e| e.downcast_wrap("failed to load deal proposal array"))?;
+
+        let proposal = deal_proposals
+            .get(deal_id)
+            .map_err(|e| e.downcast_wrap(&format!("no such deal proposal {}", deal_id)))?;
+
+        Ok(proposal.cloned())
+    }
+
+    pub(super) fn deal_proposals_delete<BS>(
+        &mut self,
+        store: &BS,
+        deal_id: DealID,
+    ) -> anyhow::Result<Option<DealProposal>>
+    where
+        BS: Blockstore,
+    {
+        let mut deal_proposals = DealArray::load(&self.proposals, store)
+            .map_err(|e| e.downcast_wrap("failed to load deal proposal array"))?;
+
+        let proposal = deal_proposals
+            .delete(deal_id)
+            .map_err(|e| e.downcast_wrap(&format!("no such deal proposal {}", deal_id)))?;
+
+        self.proposals = deal_proposals
+            .flush()
+            .map_err(|e| e.downcast_wrap("failed to flush deal proposals"))?;
+
+        Ok(proposal)
+    }
+
+    pub(super) fn deal_proposals_update<BS>(
+        &mut self,
+        store: &BS,
+        new_deal_proposals: &[(DealID, DealProposal)],
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
+        let mut deal_proposals = DealArray::load(&self.proposals, store)
+            .map_err(|e| e.downcast_wrap("failed to load deal proposal array"))?;
+
+        new_deal_proposals.iter().try_for_each(|(id, proposal)| -> anyhow::Result<()> {
+            deal_proposals
+                .set(*id, proposal.clone())
+                .map_err(|e| e.downcast_wrap("failed to set deal proposal"))?;
+            Ok(())
+        })?;
+
+        self.proposals = deal_proposals
+            .flush()
+            .map_err(|e| e.downcast_wrap("failed to flush deal proposals"))?;
+
+        Ok(())
+    }
+
+    pub(super) fn deals_by_epoch_update<BS>(
+        &mut self,
+        store: &BS,
+        new_deals_by_epoch: &[(ChainEpoch, DealID)],
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
+        let mut deals_by_epoch = SetMultimap::from_root(store, &self.deal_ops_by_epoch)
+            .map_err(|e| e.downcast_wrap("failed to load deals by epoch"))?;
+
+        new_deals_by_epoch.iter().try_for_each(|(epoch, id)| -> anyhow::Result<()> {
+            deals_by_epoch.put(*epoch, *id).map_err(|e| e.downcast_wrap("failed to set deal"))?;
+            Ok(())
+        })?;
+
+        self.deal_ops_by_epoch =
+            deals_by_epoch.root().map_err(|e| e.downcast_wrap("failed to flush deals by epoch"))?;
+
+        Ok(())
+    }
+
+    pub(super) fn deals_by_epoch_update_many<BS>(
+        &mut self,
+        store: &BS,
+        new_deals_by_epoch: &BTreeMap<ChainEpoch, Vec<DealID>>,
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
+        let mut deals_by_epoch = SetMultimap::from_root(store, &self.deal_ops_by_epoch)
+            .map_err(|e| e.downcast_wrap("failed to load deals by epoch"))?;
+
+        new_deals_by_epoch.iter().try_for_each(|(epoch, deals)| -> anyhow::Result<()> {
+            deals_by_epoch.put_many(*epoch, deals).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to reinsert deal IDs for epoch {}", epoch),
+                )
+            })?;
+            Ok(())
+        })?;
+
+        self.deal_ops_by_epoch =
+            deals_by_epoch.root().map_err(|e| e.downcast_wrap("failed to flush deals by epoch"))?;
+
+        Ok(())
+    }
+
+    pub(super) fn deals_for_epoch_get<BS>(
+        &self,
+        store: &BS,
+        key: ChainEpoch,
+    ) -> anyhow::Result<Vec<DealID>>
+    where
+        BS: Blockstore,
+    {
+        let mut deal_ids = Vec::new();
+
+        let deals_by_epoch = SetMultimap::from_root(store, &self.deal_ops_by_epoch)
+            .map_err(|e| e.downcast_wrap("failed to load deals by epoch"))?;
+
+        deals_by_epoch
+            .for_each(key, |deal_id| {
+                deal_ids.push(deal_id);
+                Ok(())
+            })
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to set deal state")
+            })?;
+
+        Ok(deal_ids)
+    }
+
+    pub(super) fn deals_by_epoch_delete<BS>(
+        &mut self,
+        store: &BS,
+        new_deals_by_epoch: &[ChainEpoch],
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
+        let mut deals_by_epoch = SetMultimap::from_root(store, &self.deal_ops_by_epoch)
+            .map_err(|e| e.downcast_wrap("failed to load deals by epoch"))?;
+
+        new_deals_by_epoch.iter().try_for_each(|epoch| -> anyhow::Result<()> {
+            deals_by_epoch.remove_all(*epoch).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to delete deal ops for epoch {}", epoch),
+                )
+            })?;
+            Ok(())
+        })?;
+
+        self.deal_ops_by_epoch =
+            deals_by_epoch.root().map_err(|e| e.downcast_wrap("failed to flush deals by epoch"))?;
+
+        Ok(())
+    }
+
+    pub(super) fn escrow_table_add_balance<BS>(
+        &mut self,
+        store: &BS,
+        addr: &Address,
+        amount: &TokenAmount,
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
+        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table)
+            .map_err(|e| e.downcast_wrap("failed to load escrow table"))?;
+
+        escrow_table.add(addr, amount).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add escrow table")
+        })?;
+
+        self.escrow_table =
+            escrow_table.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
+
+        Ok(())
+    }
+
+    pub(super) fn escrow_table_withdraw_balance<BS>(
+        &mut self,
+        store: &BS,
+        addr: &Address,
+        amount: &TokenAmount,
+    ) -> anyhow::Result<TokenAmount>
+    where
+        BS: Blockstore,
+    {
+        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table)
+            .map_err(|e| e.downcast_wrap("failed to load escrow table"))?;
+
+        let locked_table = BalanceTable::from_root(store, &self.locked_table)
+            .map_err(|e| e.downcast_wrap("failed to load locked table"))?;
+
+        let min_balance = locked_table.get(addr).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
+        })?;
+
+        let ex = escrow_table.subtract_with_minimum(addr, amount, &min_balance).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to subtract from escrow table")
+        })?;
+
+        self.escrow_table =
+            escrow_table.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
+
+        Ok(ex)
+    }
+
+    pub(super) fn pending_deals_has<BS>(&self, store: &BS, key: Cid) -> anyhow::Result<bool>
+    where
+        BS: Blockstore,
+    {
+        let pending_deals = Set::from_root(store, &self.pending_proposals)
+            .map_err(|e| e.downcast_wrap("failed to get pending deals"))?;
+
+        let rval = pending_deals.has(&key.to_bytes()).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get pending deals")
+        })?;
+        Ok(rval)
+    }
+
+    pub(super) fn pending_deals_update<BS>(
+        &mut self,
+        store: &BS,
+        new_pending_deals: &[Cid],
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
+        let mut pending_deals = Set::from_root(store, &self.pending_proposals)
+            .map_err(|e| e.downcast_wrap("failed to load pending deals"))?;
+
+        new_pending_deals.iter().try_for_each(|key: &Cid| -> anyhow::Result<()> {
+            pending_deals
+                .put(key.to_bytes().into())
+                .map_err(|e| e.downcast_wrap("failed to set deal"))?;
+            Ok(())
+        })?;
+
+        self.pending_proposals =
+            pending_deals.root().map_err(|e| e.downcast_wrap("failed to flush pending deals"))?;
+
+        Ok(())
+    }
+
+    pub(super) fn pending_deals_delete<BS>(
+        &mut self,
+        store: &BS,
+        pending_deal_key: Cid,
+    ) -> anyhow::Result<Option<()>>
+    where
+        BS: Blockstore,
+    {
+        let mut pending_deals = Set::from_root(store, &self.pending_proposals)
+            .map_err(|e| e.downcast_wrap("failed to load pending deals"))?;
+
+        let rval_pending_deal =
+            pending_deals.delete(&pending_deal_key.to_bytes()).map_err(|e| {
+                e.downcast_wrap(&format!("failed to delete pending proposal {}", pending_deal_key))
+            })?;
+
+        self.pending_proposals =
+            pending_deals.root().map_err(|e| e.downcast_wrap("failed to flush pending deals"))?;
+
+        Ok(rval_pending_deal)
     }
 
     ////////////////////////////////////////////////////////////////////////////////
     // Deal state operations
     ////////////////////////////////////////////////////////////////////////////////
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn update_pending_deal_state(
+    pub(super) fn update_pending_deal_state<BS>(
         &mut self,
+        store: &BS,
         policy: &Policy,
         state: &DealState,
         deal: &DealProposal,
         epoch: ChainEpoch,
-    ) -> Result<(TokenAmount, ChainEpoch, bool), ActorError> {
+    ) -> Result<(TokenAmount, ChainEpoch, bool), ActorError>
+    where
+        BS: Blockstore,
+    {
         let ever_updated = state.last_updated_epoch != EPOCH_UNDEFINED;
         let ever_slashed = state.slash_epoch != EPOCH_UNDEFINED;
 
@@ -395,7 +571,7 @@ where
 
         let total_payment = &deal.storage_price_per_epoch * num_epochs_elapsed;
         if total_payment.is_positive() {
-            self.transfer_balance(&deal.client, &deal.provider, &total_payment)?;
+            self.transfer_balance(store, &deal.client, &deal.provider, &total_payment)?;
         }
 
         if ever_slashed {
@@ -403,7 +579,7 @@ where
             let payment_remaining = deal_get_payment_remaining(deal, state.slash_epoch)?;
 
             // Unlock remaining storage fee
-            self.unlock_balance(&deal.client, &payment_remaining, Reason::ClientStorageFee)
+            self.unlock_balance(store, &deal.client, &payment_remaining, Reason::ClientStorageFee)
                 .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -412,24 +588,29 @@ where
                 })?;
 
             // Unlock client collateral
-            self.unlock_balance(&deal.client, &deal.client_collateral, Reason::ClientCollateral)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to unlock client collateral",
-                    )
-                })?;
+            self.unlock_balance(
+                store,
+                &deal.client,
+                &deal.client_collateral,
+                Reason::ClientCollateral,
+            )
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to unlock client collateral",
+                )
+            })?;
 
             // slash provider collateral
             let slashed = deal.provider_collateral.clone();
-            self.slash_balance(&deal.provider, &slashed, Reason::ProviderCollateral)
+            self.slash_balance(store, &deal.provider, &slashed, Reason::ProviderCollateral)
                 .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "slashing balance"))?;
 
             return Ok((slashed, EPOCH_UNDEFINED, true));
         }
 
         if epoch >= deal.end_epoch {
-            self.process_deal_expired(deal, state)?;
+            self.process_deal_expired(store, deal, state)?;
             return Ok((TokenAmount::zero(), EPOCH_UNDEFINED, true));
         }
 
@@ -444,19 +625,25 @@ where
     /// Deal start deadline elapsed without appearing in a proven sector.
     /// Slash a portion of provider's collateral, and unlock remaining collaterals
     /// for both provider and client.
-    pub(super) fn process_deal_init_timed_out(
+    pub(super) fn process_deal_init_timed_out<BS>(
         &mut self,
+        store: &BS,
         deal: &DealProposal,
-    ) -> Result<TokenAmount, ActorError> {
-        self.unlock_balance(&deal.client, &deal.total_storage_fee(), Reason::ClientStorageFee)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failure unlocking client storage fee",
-                )
-            })?;
+    ) -> Result<TokenAmount, ActorError>
+    where
+        BS: Blockstore,
+    {
+        self.unlock_balance(
+            store,
+            &deal.client,
+            &deal.total_storage_fee(),
+            Reason::ClientStorageFee,
+        )
+        .map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failure unlocking client storage fee")
+        })?;
 
-        self.unlock_balance(&deal.client, &deal.client_collateral, Reason::ClientCollateral)
+        self.unlock_balance(store, &deal.client, &deal.client_collateral, Reason::ClientCollateral)
             .map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -466,26 +653,29 @@ where
 
         let amount_slashed =
             collateral_penalty_for_deal_activation_missed(deal.provider_collateral.clone());
+
         let amount_remaining = deal.provider_balance_requirement() - &amount_slashed;
 
-        self.slash_balance(&deal.provider, &amount_slashed, Reason::ProviderCollateral).map_err(
-            |e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to slash balance"),
-        )?;
-
-        self.unlock_balance(&deal.provider, &amount_remaining, Reason::ProviderCollateral)
+        self.slash_balance(store, &deal.provider, &amount_slashed, Reason::ProviderCollateral)
             .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to unlock deal provider balance",
-                )
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to slash balance")
             })?;
+
+        self.unlock_balance(store, &deal.provider, &amount_remaining, Reason::ProviderCollateral)
+            .map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to unlock deal provider balance",
+            )
+        })?;
 
         Ok(amount_slashed)
     }
 
     /// Normal expiration. Unlock collaterals for both miner and client.
-    fn process_deal_expired(
+    fn process_deal_expired<BS>(
         &mut self,
+        store: &BS,
         deal: &DealProposal,
         state: &DealState,
     ) -> Result<(), ActorError>
@@ -496,15 +686,20 @@ where
             return Err(actor_error!(illegal_state, "start sector epoch undefined"));
         }
 
-        self.unlock_balance(&deal.provider, &deal.provider_collateral, Reason::ProviderCollateral)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed unlocking deal provider balance",
-                )
-            })?;
+        self.unlock_balance(
+            store,
+            &deal.provider,
+            &deal.provider_collateral,
+            Reason::ProviderCollateral,
+        )
+        .map_err(|e| {
+            e.downcast_default(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed unlocking deal provider balance",
+            )
+        })?;
 
-        self.unlock_balance(&deal.client, &deal.client_collateral, Reason::ClientCollateral)
+        self.unlock_balance(store, &deal.client, &deal.client_collateral, Reason::ClientCollateral)
             .map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -516,147 +711,213 @@ where
     }
 
     pub(super) fn generate_storage_deal_id(&mut self) -> DealID {
-        let ret = self.next_deal_id;
-        self.next_deal_id += 1;
+        let ret = self.next_id;
+        self.next_id = self.next_id.saturating_add(1);
         ret
     }
 
     // Return true when the funds in escrow for the input address can cover an additional lockup of amountToLock
-    pub(super) fn balance_covered(
+    pub(super) fn balance_covered<BS>(
         &self,
+        store: &BS,
         addr: Address,
         amount_to_lock: &TokenAmount,
-    ) -> anyhow::Result<bool> {
-        let prev_locked = self.locked_table.as_ref().unwrap().get(&addr).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
-        })?;
-        let escrow_balance = self.escrow_table.as_ref().unwrap().get(&addr).map_err(|e| {
+    ) -> anyhow::Result<bool>
+    where
+        BS: Blockstore,
+    {
+        let escrow_table = BalanceTable::from_root(store, &self.escrow_table)
+            .map_err(|e| e.downcast_wrap("failed to load escrow table"))?;
+
+        let locked_table = BalanceTable::from_root(store, &self.locked_table)
+            .map_err(|e| e.downcast_wrap("failed to load locked table"))?;
+
+        let escrow_balance = escrow_table.get(&addr).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")
         })?;
+
+        let prev_locked = locked_table.get(&addr).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
+        })?;
+
         Ok((prev_locked + amount_to_lock) <= escrow_balance)
     }
 
-    pub(super) fn maybe_lock_balance(
+    fn maybe_lock_balance<BS>(
         &mut self,
+        store: &BS,
         addr: &Address,
         amount: &TokenAmount,
-    ) -> Result<(), ActorError> {
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
         if amount.is_negative() {
-            return Err(actor_error!(illegal_state, "cannot lock negative amount {}", amount));
+            return Err(
+                actor_error!(illegal_state, "cannot lock negative amount {}", amount).into()
+            );
         }
 
-        let prev_locked = self.locked_table.as_ref().unwrap().get(addr).map_err(|e| {
+        let escrow_table = BalanceTable::from_root(store, &self.escrow_table)
+            .map_err(|e| e.downcast_wrap("failed to load escrow table"))?;
+
+        let mut locked_table = BalanceTable::from_root(store, &self.locked_table)
+            .map_err(|e| e.downcast_wrap("failed to load locked table"))?;
+
+        let prev_locked = locked_table.get(addr).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
         })?;
 
-        let escrow_balance = self.escrow_table.as_ref().unwrap().get(addr).map_err(|e| {
+        let escrow_balance = escrow_table.get(addr).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")
         })?;
 
         if &prev_locked + amount > escrow_balance {
-            return Err(actor_error!(insufficient_funds;
-                    "not enough balance to lock for addr{}: \
-                    escrow balance {} < prev locked {} + amount {}",
-                    addr, escrow_balance, prev_locked, amount));
+            return Err(actor_error!(
+                insufficient_funds;
+                "not enough balance to lock for addr{}: \
+                escrow balance {} < prev locked {} + amount {}",
+                addr, escrow_balance, prev_locked, amount
+            )
+            .into());
         }
 
-        self.locked_table.as_mut().unwrap().add(addr, amount).map_err(|e| {
+        locked_table.add(addr, amount).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add locked balance")
         })?;
+
+        self.locked_table =
+            locked_table.root().map_err(|e| e.downcast_wrap("failed to flush locked table"))?;
+
         Ok(())
     }
 
-    pub(super) fn lock_client_and_provider_balances(
+    pub(super) fn lock_client_and_provider_balances<BS>(
         &mut self,
+        store: &BS,
         proposal: &DealProposal,
-    ) -> Result<(), ActorError> {
-        self.maybe_lock_balance(&proposal.client, &proposal.client_balance_requirement())
-            .map_err(|e| e.wrap("failed to lock client funds"))?;
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
+        self.maybe_lock_balance(store, &proposal.client, &proposal.client_balance_requirement())
+            .map_err(|e| e.downcast_wrap("failed to lock client funds"))?;
 
-        self.maybe_lock_balance(&proposal.provider, &proposal.provider_collateral)
-            .map_err(|e| e.wrap("failed to lock provider funds"))?;
+        self.maybe_lock_balance(store, &proposal.provider, &proposal.provider_collateral)
+            .map_err(|e| e.downcast_wrap("failed to lock provider funds"))?;
 
-        if let Some(v) = self.total_client_locked_collateral.as_mut() {
-            *v += &proposal.client_collateral;
-        }
-        if let Some(v) = self.total_client_storage_fee.as_mut() {
-            *v += proposal.total_storage_fee();
-        }
-        if let Some(v) = self.total_provider_locked_collateral.as_mut() {
-            *v += &proposal.provider_collateral;
-        }
+        self.total_client_locked_collateral += &proposal.client_collateral;
+
+        self.total_client_storage_fee += proposal.total_storage_fee();
+
+        self.total_provider_locked_collateral += &proposal.provider_collateral;
+
         Ok(())
     }
 
-    fn unlock_balance(
+    fn unlock_balance<BS>(
         &mut self,
+        store: &BS,
         addr: &Address,
         amount: &TokenAmount,
         lock_reason: Reason,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
         if amount.is_negative() {
             return Err(actor_error!(illegal_state, "unlock negative amount: {}", amount).into());
         }
-        self.locked_table.as_mut().unwrap().must_subtract(addr, amount)?;
+
+        let mut locked_table = BalanceTable::from_root(store, &self.locked_table)
+            .map_err(|e| e.downcast_wrap("failed to load locked table"))?;
+
+        locked_table.must_subtract(addr, amount).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "subtract from locked table failed")
+        })?;
 
         match lock_reason {
-            Reason::ClientCollateral => self.total_client_locked_collateral.as_mut().map(|v| {
-                *v -= amount;
-            }),
-            Reason::ClientStorageFee => self.total_client_storage_fee.as_mut().map(|v| {
-                *v -= amount;
-            }),
-            Reason::ProviderCollateral => self.total_provider_locked_collateral.as_mut().map(|v| {
-                *v -= amount;
-            }),
+            Reason::ClientCollateral => {
+                self.total_client_locked_collateral -= amount;
+            }
+            Reason::ClientStorageFee => {
+                self.total_client_storage_fee -= amount;
+            }
+            Reason::ProviderCollateral => {
+                self.total_provider_locked_collateral -= amount;
+            }
         };
+
+        self.locked_table =
+            locked_table.root().map_err(|e| e.downcast_wrap("failed to flush locked table"))?;
 
         Ok(())
     }
 
     /// move funds from locked in client to available in provider
-    fn transfer_balance(
+    fn transfer_balance<BS>(
         &mut self,
+        store: &BS,
         from_addr: &Address,
         to_addr: &Address,
         amount: &TokenAmount,
-    ) -> Result<(), ActorError> {
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
         if amount.is_negative() {
             return Err(actor_error!(illegal_state, "transfer negative amount: {}", amount));
         }
 
+        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")
+        })?;
+
         // Subtract from locked and escrow tables
-        self.escrow_table
-            .as_mut()
-            .unwrap()
+        escrow_table
             .must_subtract(from_addr, amount)
             .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "subtract from escrow"))?;
 
-        self.unlock_balance(from_addr, amount, Reason::ClientStorageFee)
+        self.unlock_balance(store, from_addr, amount, Reason::ClientStorageFee)
             .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "subtract from locked"))?;
 
         // Add subtracted amount to the recipient
-        self.escrow_table
-            .as_mut()
-            .unwrap()
+        escrow_table
             .add(to_addr, amount)
             .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "add to escrow"))?;
+
+        self.escrow_table = escrow_table.root().map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")
+        })?;
 
         Ok(())
     }
 
-    fn slash_balance(
+    fn slash_balance<BS>(
         &mut self,
+        store: &BS,
         addr: &Address,
         amount: &TokenAmount,
         lock_reason: Reason,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<()>
+    where
+        BS: Blockstore,
+    {
         if amount.is_negative() {
             return Err(actor_error!(illegal_state, "negative amount to slash: {}", amount).into());
         }
 
+        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table)
+            .map_err(|e| e.downcast_wrap("failed to load escrow table"))?;
+
         // Subtract from locked and escrow tables
-        self.escrow_table.as_mut().unwrap().must_subtract(addr, amount)?;
-        self.unlock_balance(addr, amount, lock_reason)
+        escrow_table.must_subtract(addr, amount).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "subtract from escrow failed")
+        })?;
+
+        self.escrow_table =
+            escrow_table.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
+
+        self.unlock_balance(store, addr, amount, lock_reason)
     }
 }
