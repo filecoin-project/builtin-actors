@@ -50,9 +50,6 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// Information related to the current message being executed.
     fn message(&self) -> &dyn MessageInfo;
 
-    /// Information related to the current execution environment
-    fn environment(&self) -> &dyn Environment;
-
     /// The current chain epoch number. The genesis block has epoch zero.
     fn curr_epoch(&self) -> ChainEpoch;
 
@@ -69,8 +66,8 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// The balance of the receiver.
     fn current_balance(&self) -> TokenAmount;
 
-    /// The balance of an address.
-    fn actor_balance(&self, address: &Address) -> TokenAmount;
+    /// The balance of an actor.
+    fn actor_balance(&self, id: ActorID) -> TokenAmount;
 
     /// Resolves an address of any protocol to an ID address (via the Init actor's table).
     /// This allows resolution of externally-provided SECP, BLS, or actor addresses to the canonical form.
@@ -173,24 +170,17 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// `name` provides information about gas charging point
     fn charge_gas(&mut self, name: &'static str, compute: i64);
 
+    /// The current network base fee
     fn base_fee(&self) -> TokenAmount;
 
+    /// The gas still available for computation
     fn gas_available(&self) -> u64;
-}
 
-/// Information related to the current execution environment
-pub trait Environment {
-    /// The current epoch's timestamp, as UNIX seconds
-    fn timestamp(&self) -> u64;
+    /// The current tipset's timestamp, as UNIX seconds
+    fn tipset_timestamp(&self) -> u64;
 
     /// The hash of on of the last 256 blocks
-    fn blockhash(&self, block: u8) -> [u8; 32];
-
-    /// The current execution gas limit
-    fn gas_limit(&self) -> u64;
-
-    /// The current execution gas price (base fee + premium)
-    fn gas_price(&self) -> u64;
+    fn tipset_cid(&self, epoch: i64) -> Option<Cid>;
 }
 
 /// Message information available to the actor about executing message.
@@ -207,6 +197,12 @@ pub trait MessageInfo {
     /// The value attached to the message being processed, implicitly
     /// added to current_balance() before method invocation.
     fn value_received(&self) -> TokenAmount;
+
+    /// The message gas limit
+    fn gas_limit(&self) -> u64;
+
+    /// The message gas premium
+    fn gas_premium(&self) -> TokenAmount;
 }
 
 /// Pure functions implemented as primitives by the runtime.

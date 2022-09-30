@@ -12,10 +12,20 @@ pub fn blockhash<'r, BS: Blockstore, RT: Runtime<BS>>(
     platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
     let bn = state.stack.pop();
-    let bn8 = u8::try_from(bn)
-        .map_err(|_| StatusCode::ArgumentOutOfRange("expected byte".to_string()))?;
-    state.stack.push(U256::from_big_endian(&platform.rt.environment().blockhash(bn8)));
-    Ok(())
+    if bn.bits() > 8 {
+        return Err(StatusCode::ArgumentOutOfRange(format!("invalid epoch lookback: {}", bn)));
+    }
+    let epoch = bn.as_u64() as i64;
+    if let Some(cid) = platform.rt.tipset_cid(epoch) {
+        let mut hash = cid.hash().digest();
+        if hash.len() > 32 {
+            hash = &hash[..32]
+        }
+        state.stack.push(U256::from_big_endian(hash));
+        Ok(())
+    } else {
+        Err(StatusCode::InvalidArgument(format!("no tipset for epoch lookback at: {}", epoch)))
+    }
 }
 
 #[inline]
@@ -67,7 +77,8 @@ pub fn gas_price<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
 ) {
-    state.stack.push(U256::from(platform.rt.environment().gas_price()));
+    let effective_price = platform.rt.base_fee() + platform.rt.message().gas_premium();
+    state.stack.push(U256::from(&effective_price));
 }
 
 #[inline]
@@ -83,7 +94,7 @@ pub fn timestamp<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
 ) {
-    state.stack.push(U256::from(platform.rt.environment().timestamp()));
+    state.stack.push(U256::from(platform.rt.tipset_timestamp()));
 }
 
 #[inline]
@@ -107,7 +118,7 @@ pub fn gas_limit<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
 ) {
-    state.stack.push(U256::from(platform.rt.environment().gas_limit()));
+    state.stack.push(U256::from(platform.rt.message().gas_limit()));
 }
 
 #[inline]

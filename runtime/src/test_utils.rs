@@ -39,8 +39,8 @@ use rand::prelude::*;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{
-    ActorCode, DomainSeparationTag, Environment, MessageInfo, Policy, Primitives, Runtime,
-    RuntimePolicy, Verifier,
+    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
+    Verifier,
 };
 use crate::{actor_error, ActorError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
@@ -697,6 +697,14 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     fn value_received(&self) -> TokenAmount {
         self.value_received.clone()
     }
+    fn gas_limit(&self) -> u64 {
+        todo!()
+    }
+
+    fn gas_premium(&self) -> TokenAmount {
+        todo!()
+    }
+
 }
 
 impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
@@ -705,11 +713,6 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
     }
 
     fn message(&self) -> &dyn MessageInfo {
-        self.require_in_call();
-        self
-    }
-
-    fn environment(&self) -> &dyn Environment {
         self.require_in_call();
         self
     }
@@ -799,7 +802,7 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         self.balance.borrow().clone()
     }
 
-    fn actor_balance(&self, _adrress: &Address) -> TokenAmount {
+    fn actor_balance(&self, _id: ActorID) -> TokenAmount {
         todo!()
     }
 
@@ -1051,6 +1054,14 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
     }
 
     fn gas_available(&self) -> u64 {
+        todo!()
+    }
+
+    fn tipset_timestamp(&self) -> u64 {
+        todo!()
+    }
+
+    fn tipset_cid(&self, _epoch: i64) -> Option<Cid> {
         todo!()
     }
 }

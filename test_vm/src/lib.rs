@@ -523,6 +523,12 @@ impl MessageInfo for InvocationCtx<'_, '_> {
     fn value_received(&self) -> TokenAmount {
         self.msg.value.clone()
     }
+    fn gas_limit(&self) -> u64 {
+        todo!()
+    }
+    fn gas_premium(&self) -> TokenAmount {
+        todo!()
+    }
 }
 
 pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
@@ -922,6 +928,22 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
 
     fn base_fee(&self) -> TokenAmount {
         TokenAmount::zero()
+    }
+
+    fn actor_balance(&self, _id: ActorID) -> TokenAmount {
+        todo!()
+    }
+
+    fn gas_available(&self) -> u64 {
+        todo!()
+    }
+
+    fn tipset_timestamp(&self) -> u64 {
+        todo!()
+    }
+
+    fn tipset_cid(&self, _epoch: i64) -> Option<Cid> {
+        todo!()
     }
 }
 

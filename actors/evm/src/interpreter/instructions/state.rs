@@ -15,7 +15,7 @@ pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
     let actor_addr = EthAddress::try_from(actor)?
         .as_id_address()
         .ok_or_else(|| StatusCode::BadAddress(format!("not an actor id address: {}", actor)))?;
-    state.stack.push(U256::from(&platform.rt.actor_balance(&actor_addr)));
+    state.stack.push(U256::from(&platform.rt.actor_balance(actor_addr.id().unwrap())));
     Ok(())
 }
 
