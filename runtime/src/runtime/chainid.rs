@@ -7,7 +7,7 @@ pub const CHAINID: u64 = 31415;
 #[cfg(feature = "calibrationnet")]
 pub const CHAINID: u64 = 314159;
 
-#[cfg(any(feature = "catterpillarnet", feature = "butterflynet"))]
+#[cfg(any(feature = "caterpillarnet", feature = "butterflynet"))]
 pub const CHAINID: u64 = 3141592;
 
 #[cfg(any(
