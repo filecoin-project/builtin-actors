@@ -104,7 +104,7 @@ fn deal_get_payment_remaining(
 impl Cbor for State {}
 
 impl State {
-    pub(super) fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<Self> {
+    pub fn new<BS: Blockstore>(store: &BS) -> anyhow::Result<Self> {
         let empty_proposals = DealArray::<BS>::new_with_bit_width(store, PROPOSALS_AMT_BITWIDTH)
             .flush()
             .map_err(|e| {
