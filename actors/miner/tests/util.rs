@@ -2372,13 +2372,15 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        // TODO handle qa power changes for dropping claims once claim dropping logic is added
+        let mut qa_delta = BigInt::zero();
         for extension in params.extensions.iter_mut() {
             for sc in &extension.sectors_with_claims {
                 // construct expected return value
                 let mut claims = Vec::new();
                 let mut batch_gen = BatchReturnGen::new(sc.maintain_claims.len());
-                for claim_id in &sc.maintain_claims {
+                let mut all_claim_ids = sc.maintain_claims.clone();
+                all_claim_ids.append(&mut sc.drop_claims.clone());
+                for claim_id in all_claim_ids {
                     match expected_claims.get(&claim_id).unwrap().clone() {
                         Ok(claim) => {
                             batch_gen.add_success();
@@ -2406,13 +2408,29 @@ impl ActorHarness {
             }
         }
 
-        // Handle non claim bearing sector extensions
-        let mut qa_delta = BigInt::zero();
+        // Handle QA power updates
         for extension in params.extensions.iter_mut() {
             for sector_nr in extension.sectors.validate().unwrap().iter() {
                 let sector = self.get_sector(&rt, sector_nr);
                 let mut new_sector = sector.clone();
                 new_sector.expiration = extension.new_expiration;
+                qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
+                    - qa_power_for_sector(self.sector_size, &sector);
+            }
+            for sector_claim in &extension.sectors_with_claims {
+                let mut dropped_space = BigInt::zero();
+                for drop in &sector_claim.drop_claims {
+                    dropped_space +=
+                        BigInt::from(expected_claims.get(&drop).unwrap().as_ref().unwrap().size.0);
+                }
+                let sector = self.get_sector(&rt, sector_claim.sector_number);
+                let old_duration = sector.expiration - sector.activation;
+                let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
+                let new_verified_deal_space = old_verified_deal_space - dropped_space;
+                let mut new_sector = sector.clone();
+                new_sector.expiration = extension.new_expiration;
+                new_sector.verified_deal_weight = BigInt::from(new_verified_deal_space)
+                    * (new_sector.expiration - new_sector.activation);
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }
