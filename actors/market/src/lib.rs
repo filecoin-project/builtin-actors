@@ -71,6 +71,9 @@ where
     Ok((addrs.owner, addrs.worker, addrs.control_addresses))
 }
 
+// * Updated to specs-actors commit: e195950ba98adb8ce362030356bf4a3809b7ec77 (v2.3.2)
+
+/// Market actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
@@ -85,6 +88,7 @@ pub enum Method {
     CronTick = 9,
 }
 
+/// Market Actor
 pub struct Actor;
 
 impl Actor {
