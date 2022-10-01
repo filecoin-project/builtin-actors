@@ -46,9 +46,6 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
 
     /// Get value of a storage key.
     pub fn get_storage(&mut self, key: U256) -> Result<Option<U256>, StatusCode> {
-        let mut key_bytes = [0u8; 32];
-        key.to_big_endian(&mut key_bytes);
-
         Ok(self.state.get(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?.cloned())
     }
 
@@ -58,24 +55,23 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         key: U256,
         value: Option<U256>,
     ) -> Result<StorageStatus, StatusCode> {
-        let mut key_bytes = [0u8; 32];
-        key.to_big_endian(&mut key_bytes);
+        let prev_value = self.get_storage(key)?;
 
-        let prev_value =
-            self.state.get(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?.cloned();
-
-        let mut storage_status =
-            if prev_value == value { StorageStatus::Unchanged } else { StorageStatus::Modified };
-
-        if value.is_none() {
-            self.state.delete(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?;
-            storage_status = StorageStatus::Deleted;
-        } else {
-            self.state
-                .set(key, value.unwrap())
-                .map_err(|e| StatusCode::InternalError(e.to_string()))?;
+        match (prev_value, value) {
+            (None, None) => Ok(StorageStatus::Unchanged),
+            (Some(_), None) => {
+                self.state.delete(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?;
+                Ok(StorageStatus::Deleted)
+            }
+            (Some(p), Some(n)) if p == n => Ok(StorageStatus::Unchanged),
+            (_, Some(v)) => {
+                self.state.set(key, v).map_err(|e| StatusCode::InternalError(e.to_string()))?;
+                if prev_value.is_none() {
+                    Ok(StorageStatus::Added)
+                } else {
+                    Ok(StorageStatus::Modified)
+                }
+            }
         }
-
-        Ok(storage_status)
     }
 }
