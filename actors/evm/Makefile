@@ -33,25 +33,7 @@ plot-measurements: $(MEASUREMENTS_PNG)
 
 # Render a specfic plot if the data changed.
 $(MEASUREMENTS_DIR)/%.png: $(MEASUREMENTS_DIR)/%.jsonline $(MEASUREMENTS_DIR)/storage-footprint.plt | jq gnuplot
-
-	@# Separate the two series (the current max) with newlines for gnuplot
-	@# Ignoring warnings from gnuplot because sometimes we only have 1 series.
-
-	cd $(MEASUREMENTS_DIR) && \
-	rm -f $*.dat && \
-	for S in 1 2; do \
-		cat $*.jsonline \
-			| jq -r "select(.series == $$S) | [.series, .i, .stats.get_count, .stats.get_bytes, .stats.put_count, .stats.put_bytes] | @tsv" \
-			>> $*.dat && \
-		echo "\n" >> $*.dat; \
-	done && \
-	gnuplot \
-		-e "scenario='$(shell echo $* | tr _ - )'" \
-		-e "filein='$*.dat'" \
-		-e "fileout='$*.png'" \
-		storage-footprint.plt \
-		2>/dev/null && \
-	rm $*.dat
+	cd $(MEASUREMENTS_DIR) && ./storage-footprint.sh $*
 
 
 # Requirements checks.
