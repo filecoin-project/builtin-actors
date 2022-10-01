@@ -34,14 +34,15 @@ contract StorageFootprint {
     // Push `n` more elements to `array1`, to measure how much it costs to extend it with varying
     // number of items, depending on how many fit into a node.
     function array1_push(uint32 n) public {
-        for (uint32 i = 0; i < n; i++) {
+        // Starting from 1 because pushing 0 doesn't increase the storage size.
+        for (uint32 i = 1; i <= n; i++) {
             array1.push(i);
         }
     }
 
     // Push `n` more elements to `array2`, to see if the size of `array1` has any bearing on it.
     function array2_push(uint32 n) public {
-        for (uint32 i = 0; i < n; i++) {
+        for (uint32 i = 1; i <= n; i++) {
             array2.push(i);
         }
     }
