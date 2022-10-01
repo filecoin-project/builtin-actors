@@ -1,4 +1,3 @@
-use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
@@ -6,6 +5,7 @@ use std::sync::Arc;
 use ethers::contract::Lazy;
 use ethers::prelude::abigen;
 use ethers::providers::{MockProvider, Provider};
+use fil_actor_evm::interpreter::address::EthAddress;
 use fvm_ipld_blockstore::tracking::BSStats as BlockstoreStats;
 use fvm_shared::address::Address;
 
@@ -33,8 +33,8 @@ const OWNER: Address = Address::new_id(100);
 static CONTRACT: Lazy<StorageFootprint<Provider<MockProvider>>> = Lazy::new(|| {
     // The owner of the contract is expected to be the 160 bit hash used on Ethereum.
     // We're not going to use it during the tests.
-    let owner_hex = format!("{:0>40}", hex::encode(OWNER.payload_bytes()));
-    let address = owner_hex.parse::<ethers::core::types::Address>().unwrap();
+    let address = EthAddress::from_id_address(&OWNER).unwrap();
+    let address = ethers::core::types::Address::from_slice(address.as_ref());
     // A dummy client that we don't intend to use to call the contract or send transactions.
     let (client, _mock) = Provider::mocked();
     StorageFootprint::new(address, Arc::new(client))
@@ -73,7 +73,7 @@ impl Measurements {
     }
 
     pub fn export(self) -> Result<(), std::io::Error> {
-        let dir = env!("CARGO_MANIFEST_DIR");
+        let dir = std::env!("CARGO_MANIFEST_DIR");
         let path = format!("{}/tests/measurements/{}.jsonline", dir, self.scenario);
         let mut output = File::create(path)?;
         for value in self.values {

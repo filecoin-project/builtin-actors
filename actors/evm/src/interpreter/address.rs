@@ -65,6 +65,12 @@ impl EthAddress {
     }
 }
 
+impl AsRef<[u8]> for EthAddress {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::interpreter::address::EthAddress;
