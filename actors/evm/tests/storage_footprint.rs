@@ -1,3 +1,4 @@
+use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
@@ -72,7 +73,7 @@ impl Measurements {
     }
 
     pub fn export(self) -> Result<(), std::io::Error> {
-        let dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let dir = env!("CARGO_MANIFEST_DIR");
         let path = format!("{}/tests/measurements/{}.jsonline", dir, self.scenario);
         let mut output = File::create(path)?;
         for value in self.values {
