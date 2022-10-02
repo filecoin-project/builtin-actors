@@ -442,11 +442,15 @@ impl<'bs> VM<'bs> {
         match res {
             Err(ae) => {
                 self.rollback(prior_root);
-                Ok(MessageResult { code: ae.exit_code(), ret: RawBytes::default() })
+                Ok(MessageResult {
+                    code: ae.exit_code(),
+                    message: ae.msg().to_string(),
+                    ret: RawBytes::default(),
+                })
             }
             Ok(ret) => {
                 self.checkpoint();
-                Ok(MessageResult { code: ExitCode::OK, ret })
+                Ok(MessageResult { code: ExitCode::OK, message: "OK".to_string(), ret })
             }
         }
     }
@@ -1037,6 +1041,7 @@ impl RuntimePolicy for InvocationCtx<'_, '_> {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MessageResult {
     pub code: ExitCode,
+    pub message: String,
     pub ret: RawBytes,
 }
 

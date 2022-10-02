@@ -3784,11 +3784,11 @@ fn extend_simple_qap_sector(
         // claim dropping is restricted to extensions at the end of a sector's life
 
         let dropping_claims = expected_verified_deal_space != new_verified_deal_space;
-        if dropping_claims && sector.expiration - curr_epoch >= policy.end_of_life_claim_drop_period
+        if dropping_claims && sector.expiration - curr_epoch > policy.end_of_life_claim_drop_period
         {
             return Err(actor_error!(
                 forbidden,
-                "attempt to drop sectors with {} epochs < end of life claim drop period {} remaining",
+                "attempt to drop claims with {} epochs > end of life claim drop period {} remaining",
                 sector.expiration - curr_epoch,
                 policy.end_of_life_claim_drop_period
             ));
