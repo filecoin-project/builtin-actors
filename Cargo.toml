@@ -56,13 +56,13 @@ members = [
 ]
 
 [patch.crates-io]
-fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "feat/invocation-context-accessors" }
-fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "feat/invocation-context-accessors"  }
-fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "feat/invocation-context-accessors"  }
-fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "feat/invocation-context-accessors"  }
-fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "feat/invocation-context-accessors"  }
-fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "feat/invocation-context-accessors"  }
-fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "feat/invocation-context-accessors"  }
+fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
+fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm" }
+fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
+fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm" }
+fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm" }
+fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm"  }
+fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
