@@ -1,5 +1,6 @@
 use crate::U256;
 use {
+    crate::interpreter::address::EthAddress,
     crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
@@ -7,10 +8,19 @@ use {
 
 #[inline]
 pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
-    _state: &mut ExecutionState,
-    _platform: &'r System<'r, BS, RT>,
+    state: &mut ExecutionState,
+    platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    todo!("requires syscall")
+    let actor = state.stack.pop();
+
+    let balance = if let Some(id) = EthAddress::try_from(actor).ok().and_then(|addr| addr.as_id()) {
+        U256::from(&platform.rt.actor_balance(id))
+    } else {
+        U256::zero()
+    };
+
+    state.stack.push(balance);
+    Ok(())
 }
 
 #[inline]

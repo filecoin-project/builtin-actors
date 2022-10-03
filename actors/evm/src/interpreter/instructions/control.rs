@@ -51,11 +51,6 @@ pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn gas(_state: &mut ExecutionState) {
-    todo!()
-}
-
-#[inline]
 pub fn pc(stack: &mut Stack, pc: usize) {
     stack.push(U256::from(pc))
 }
