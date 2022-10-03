@@ -1092,7 +1092,7 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
 
         let epoch_index = epoch as usize;
         if epoch_index < self.tipset_cids.len() {
-            return Some(self.tipset_cids[epoch_index].clone())
+            return Some(self.tipset_cids[epoch_index].clone());
         }
         None
     }
