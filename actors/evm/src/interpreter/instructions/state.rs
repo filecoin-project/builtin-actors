@@ -12,10 +12,18 @@ pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
     platform: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
     let actor = state.stack.pop();
-    let actor_addr = EthAddress::try_from(actor)?
-        .as_id_address()
-        .ok_or_else(|| StatusCode::BadAddress(format!("not an actor id address: {}", actor)))?;
-    state.stack.push(U256::from(&platform.rt.actor_balance(actor_addr.id().unwrap())));
+
+    let maybe_actor_addr = EthAddress::try_from(actor);
+    if maybe_actor_addr.is_err() {
+        state.stack.push(U256::zero());
+        return Ok(());
+    }
+
+    if let Some(actor_addr) = maybe_actor_addr.unwrap().as_id_address() {
+        state.stack.push(U256::from(&platform.rt.actor_balance(actor_addr.id().unwrap())));
+    } else {
+        state.stack.push(U256::zero());
+    }
     Ok(())
 }
 
