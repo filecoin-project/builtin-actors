@@ -62,7 +62,7 @@ mod mint {
 
     #[test]
     fn requires_verifreg_caller() {
-        let (mut rt, _) = make_harness();
+        let (mut rt, h) = make_harness();
         let amt = TokenAmount::from_whole(1);
         let params = MintParams { to: *ALICE, amount: amt, operators: vec![] };
 
@@ -73,6 +73,7 @@ mod mint {
             "caller address",
             rt.call::<Actor>(Method::Mint as MethodNum, &serialize(&params, "params").unwrap()),
         );
+        h.check_state(&rt);
     }
 
     #[test]
@@ -84,6 +85,7 @@ mod mint {
             "must be a multiple of 1000000000000000000",
             h.mint(&mut rt, &*ALICE, &amt, vec![]),
         );
+        h.check_state(&rt);
     }
 }
 

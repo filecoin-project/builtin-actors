@@ -19,9 +19,11 @@ use fil_actor_paych::State as PaychState;
 use fil_actor_power::testing::MinerCronEvent;
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
-use fil_actor_verifreg::State as VerifregState;
+use fil_actor_verifreg::{DataCap, State as VerifregState};
 
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+
 use fil_actors_runtime::Map;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
@@ -203,7 +205,8 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
             }
             Some(Type::VerifiedRegistry) => {
                 let state = get_state!(tree, actor, VerifregState);
-                let (summary, msgs) = verifreg::check_state_invariants(&state, tree.store);
+                let (summary, msgs) =
+                    verifreg::check_state_invariants(&state, tree.store, prior_epoch);
                 acc.with_prefix("verifreg: ").add_all(&msgs);
                 verifreg_summary = Some(summary);
             }
@@ -228,6 +231,12 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
 
     if let Some(market_summary) = market_summary {
         check_deal_states_against_sectors(&acc, &miner_summaries, &market_summary);
+    }
+
+    if let Some(verifreg_summary) = verifreg_summary {
+        if let Some(datacap_summary) = datacap_summary {
+            check_verifreg_against_datacap(&acc, &verifreg_summary, &datacap_summary);
+        }
     }
 
     acc.require(
@@ -374,4 +383,33 @@ fn check_deal_states_against_sectors(
             ),
         );
     }
+}
+
+fn check_verifreg_against_datacap(
+    acc: &MessageAccumulator,
+    verifreg_summary: &verifreg::StateSummary,
+    datacap_summary: &datacap::StateSummary,
+) {
+    // Verifier and datacap token holders are distinct.
+    for verifier in verifreg_summary.verifiers.keys() {
+        acc.require(
+            !datacap_summary.balances.contains_key(&verifier.id().unwrap()),
+            format!("verifier {} is also a datacap token holder", verifier),
+        );
+    }
+    // Verifreg token balance matches unclaimed allocations.
+    let pending_alloc_total: DataCap =
+        verifreg_summary.allocations.iter().map(|(_, alloc)| alloc.size.0).sum();
+    let verifreg_balance = datacap_summary
+        .balances
+        .get(&VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap())
+        .cloned()
+        .unwrap_or_else(TokenAmount::zero);
+    acc.require(
+        TokenAmount::from_whole(pending_alloc_total.clone()) == verifreg_balance,
+        format!(
+            "verifreg datacap balance {} does not match pending allocation size {}",
+            verifreg_balance, pending_alloc_total
+        ),
+    );
 }
