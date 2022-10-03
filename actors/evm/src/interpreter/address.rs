@@ -100,6 +100,11 @@ mod tests {
                     $expectation
                 );
 
+                assert_eq!(
+                    evm_addr.as_id(),
+                    $expectation.map(|addr: FilecoinAddress| addr.id().unwrap())
+                );
+
                 // test inverse conversion, if a valid ID address was supplied
                 if let Some(fil_addr) = $expectation {
                     assert_eq!(EthAddress::from_id_address(&fil_addr), Some(evm_addr));
