@@ -32,7 +32,7 @@ return
 #[test]
 fn test_blockhash() {
     let contract = asm::new_contract(
-        "timestamp",
+        "blockhash",
         "",
         r#"
 push1 0x00
