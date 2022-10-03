@@ -79,7 +79,7 @@ return
 #[test]
 fn test_gas_limit() {
     let contract = asm::new_contract(
-        "timestamp",
+        "gaslimit",
         "",
         r#"
 gaslimit
