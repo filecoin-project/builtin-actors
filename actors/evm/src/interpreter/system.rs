@@ -23,7 +23,7 @@ type StateHashAlgorithm = Identity;
 /// It would be tempting to define a `HashingAlgorithm` that takes care of this, but that's
 /// not possible because `HashingAlgorithm` has to deal with any data that knows how to hash
 /// itself, not just the key type of the HAMT.
-#[derive(Eq, PartialEq, PartialOrd, Debug)]
+#[derive(Eq, PartialEq, PartialOrd, Debug, Serialize, Deserialize)]
 pub struct U256Key(U256);
 
 impl Hash for U256Key {
@@ -31,24 +31,6 @@ impl Hash for U256Key {
         let mut bs = [0; 32];
         self.0.to_big_endian(&mut bs);
         bs.hash(state);
-    }
-}
-
-impl Serialize for U256Key {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.0.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for U256Key {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        U256::deserialize(deserializer).map(U256Key)
     }
 }
 
