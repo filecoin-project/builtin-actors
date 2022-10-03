@@ -123,7 +123,7 @@ return
 #[test]
 fn test_balance() {
     let contract = asm::new_contract(
-        "timestamp",
+        "balance",
         "",
         r#"
 push1 0x20
