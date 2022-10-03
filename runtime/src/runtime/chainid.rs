@@ -1,6 +1,10 @@
 #[cfg(feature = "mainnet")]
 pub const CHAINID: u64 = 314;
 
+// TODO buildernet
+// #[cfg(feature = "buildernet")]
+// pub const CHAINID: u64 = 3141;
+
 #[cfg(feature = "wallaby")]
 pub const CHAINID: u64 = 31415;
 
@@ -18,7 +22,7 @@ pub const CHAINID: u64 = 3141592;
 ))]
 pub const CHAINID: u64 = 31415926;
 
-// default build is same as mainnet
+// default build is same as a devnet
 #[cfg(not(any(
     feature = "mainnet",
     feature = "wallaby",
@@ -30,4 +34,4 @@ pub const CHAINID: u64 = 31415926;
     feature = "testing",
     feature = "testing-fake-proofs",
 )))]
-pub const CHAINID: u64 = 314;
+pub const CHAINID: u64 = 31415926;
