@@ -405,6 +405,7 @@ impl Harness {
         expected_alloc_results: BatchReturn,
         expected_extension_results: BatchReturn,
         expected_alloc_ids: Vec<AllocationID>,
+        expected_burn: u64,
     ) -> Result<(), ActorError> {
         rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
         let params = UniversalReceiverParams {
@@ -412,7 +413,19 @@ impl Harness {
             payload: serialize(&payload, "payload").unwrap(),
         };
 
-        rt.expect_validate_caller_addr(vec![*DATACAP_TOKEN_ACTOR_ADDR]);
+        if !expected_burn.is_zero() {
+            rt.expect_send(
+                DATACAP_TOKEN_ACTOR_ADDR,
+                ext::datacap::Method::Burn as MethodNum,
+                RawBytes::serialize(&BurnParams { amount: TokenAmount::from_whole(expected_burn) })
+                    .unwrap(),
+                TokenAmount::zero(),
+                RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
+                ExitCode::OK,
+            );
+        }
+
+        rt.expect_validate_caller_addr(vec![DATACAP_TOKEN_ACTOR_ADDR]);
         let ret = rt.call::<VerifregActor>(
             Method::UniversalReceiverHook as MethodNum,
             &serialize(&params, "hook params").unwrap(),

@@ -829,13 +829,12 @@ impl Actor {
 
         // Validate receiver hook payload.
         let tokens_received = validate_tokens_received(&params, my_id)?;
-        let token_datacap = tokens_to_datacap(&tokens_received.amount);
         let client = tokens_received.from;
 
         // Extract and validate allocation request from the operator data.
         let reqs: AllocationRequests =
             deserialize(&tokens_received.operator_data, "allocation requests")?;
-        let mut allocation_total = DataCap::zero();
+        let mut datacap_total = DataCap::zero();
 
         // Construct new allocation records.
         let mut new_allocs = Vec::with_capacity(reqs.allocations.len());
@@ -853,12 +852,13 @@ impl Actor {
                 term_max: req.term_max,
                 expiration: req.expiration,
             });
-            allocation_total += DataCap::from(req.size.0);
+            datacap_total += DataCap::from(req.size.0);
         }
 
         let st: State = rt.state()?;
         let mut claims = st.load_claims(rt.store())?;
         let mut updated_claims = Vec::<(ClaimID, Claim)>::new();
+        let mut extension_total = DataCap::zero();
         for req in &reqs.extensions {
             // Note: we don't check the client address here, by design.
             // Any client can spend datacap to extend an existing claim.
@@ -877,18 +877,25 @@ impl Actor {
             // The claim's client is not changed to be the address of the token sender.
             // It remains the original allocation client.
             updated_claims.push((req.claim, Claim { term_max: req.term_max, ..*claim }));
-            allocation_total += DataCap::from(claim.size.0);
+            datacap_total += DataCap::from(claim.size.0);
+            extension_total += DataCap::from(claim.size.0);
         }
 
         // Allocation size must match the tokens received exactly (we don't return change).
-        if allocation_total != token_datacap {
+        let tokens_as_datacap = tokens_to_datacap(&tokens_received.amount);
+        if datacap_total != tokens_as_datacap {
             return Err(actor_error!(
                 illegal_argument,
                 "total allocation size {} must match data cap amount received {}",
-                allocation_total,
-                token_datacap
+                datacap_total,
+                tokens_as_datacap
             ));
         }
+
+        // Burn the received datacap tokens spent on extending existing claims.
+        // The tokens spent on new allocations will be burnt when claimed later, or refunded.
+        burn(rt, &extension_total)?;
+
         // Partial success isn't supported yet, but these results make space for it in the future.
         let allocation_results = BatchReturn::ok(new_allocs.len() as u32);
         let extension_results = BatchReturn::ok(updated_claims.len() as u32);
