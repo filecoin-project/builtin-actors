@@ -1,6 +1,7 @@
 use crate::StatusCode;
 use crate::U256;
 use fvm_shared::address::Address as FilecoinAddress;
+use fvm_shared::ActorID;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 ///
@@ -44,8 +45,8 @@ impl EthAddress {
         EthAddress(bytes)
     }
 
-    /// Interpret the hash as an ID address in EVM-form, and return a Filecoin ID address if that's
-    /// the case.
+    /// Interpret the EVM word as an ID address in EVM-form, and return a Filecoin ID address if
+    /// that's the case.
     ///
     /// An ID address starts with 0xff (msb), and contains the u64 in the last 8 bytes.
     /// We assert that everything in between are 0x00, otherwise we've gotten an illegal address.
@@ -57,6 +58,11 @@ impl EthAddress {
             return None;
         }
         Some(FilecoinAddress::new_id(u64::from_be_bytes(self.0[12..].try_into().unwrap())))
+    }
+
+    /// Same as as_id_address, but go the extra mile and return the ActorID.
+    pub fn as_id(&self) -> Option<ActorID> {
+        self.as_id_address().and_then(|id| id.id().ok())
     }
 
     /// Returns this Address as an EVM word.

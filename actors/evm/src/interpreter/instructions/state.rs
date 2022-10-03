@@ -13,17 +13,13 @@ pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
 ) -> Result<(), StatusCode> {
     let actor = state.stack.pop();
 
-    let maybe_actor_addr = EthAddress::try_from(actor);
-    if maybe_actor_addr.is_err() {
-        state.stack.push(U256::zero());
-        return Ok(());
-    }
-
-    if let Some(actor_addr) = maybe_actor_addr.unwrap().as_id_address() {
-        state.stack.push(U256::from(&platform.rt.actor_balance(actor_addr.id().unwrap())));
+    let balance = if let Some(id) = EthAddress::try_from(actor).ok().and_then(|addr| addr.as_id()) {
+        U256::from(&platform.rt.actor_balance(id))
     } else {
-        state.stack.push(U256::zero());
-    }
+        U256::zero()
+    };
+
+    state.stack.push(balance);
     Ok(())
 }
 
