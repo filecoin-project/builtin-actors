@@ -152,6 +152,57 @@ return
 }
 
 #[test]
+fn test_balance_bogus() {
+    let contract = asm::new_contract(
+        "balance",
+        "",
+        r#"
+push1 0x20
+push1 0x00
+push1 0x00
+calldatacopy
+push1 0x00
+mload
+balance
+push1 0x00
+mstore
+push1 0x20
+push1 0x00
+return
+"#,
+    )
+    .unwrap();
+
+    let mut rt = util::construct_and_verify(contract);
+    let mut input_data = vec![0u8; 32];
+    input_data[31] = 123;
+    let result = util::invoke_contract(&mut rt, RawBytes::from(input_data));
+    assert_eq!(U256::from_big_endian(&result), U256::from(0));
+}
+
+#[test]
+fn test_balance0() {
+    let contract = asm::new_contract(
+        "balance",
+        "",
+        r#"
+push1 0x00
+balance
+push1 0x00
+mstore
+push1 0x20
+push1 0x00
+return
+"#,
+    )
+    .unwrap();
+
+    let mut rt = util::construct_and_verify(contract);
+    let result = util::invoke_contract(&mut rt, RawBytes::default());
+    assert_eq!(U256::from_big_endian(&result), U256::from(0));
+}
+
+#[test]
 fn test_gas() {
     let contract = asm::new_contract(
         "gas",
