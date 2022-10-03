@@ -116,9 +116,10 @@ pub fn difficulty<'r, BS: Blockstore, RT: Runtime<BS>>(
 #[inline]
 pub fn gas_limit<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
+    _platform: &'r System<'r, BS, RT>,
 ) {
-    state.stack.push(U256::from(platform.rt.message().gas_limit()));
+    const BLOCK_GAS_LIMIT: u64 = 10_000_000_000u64;
+    state.stack.push(U256::from(BLOCK_GAS_LIMIT));
 }
 
 #[inline]
