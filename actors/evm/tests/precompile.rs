@@ -40,7 +40,7 @@ return
 #[test]
 fn test_precompile_hash() {
     let contract = magic_precompile_contract();
-    let mut rt = util::construct_and_verify(contract.into());
+    let mut rt = util::construct_and_verify(contract);
 
     // invoke contract
     let contract_params = vec![0u8; 32];

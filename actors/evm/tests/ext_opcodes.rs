@@ -33,7 +33,7 @@ fn test_extcodesize() {
         asm::new_contract("extcodesize", init, body).unwrap()
     };
 
-    let mut rt = util::construct_and_verify(bytecode.into());
+    let mut rt = util::construct_and_verify(bytecode);
 
     // 0x88 is an EVM actor
     let target = FILAddress::new_id(0x88);
@@ -77,7 +77,7 @@ fn test_extcodehash() {
         asm::new_contract("extcodehash", init, body).unwrap()
     };
 
-    let mut rt = util::construct_and_verify(bytecode.into());
+    let mut rt = util::construct_and_verify(bytecode);
 
     // 0x88 is an EVM actor
     let target = FILAddress::new_id(0x88);
@@ -119,7 +119,7 @@ fn test_extcodecopy() {
         asm::new_contract("extcodecopy", init, body).unwrap()
     };
 
-    let mut rt = util::construct_and_verify(bytecode.into());
+    let mut rt = util::construct_and_verify(bytecode);
 
     // 0x88 is an EVM actor
     let target = FILAddress::new_id(0x88);

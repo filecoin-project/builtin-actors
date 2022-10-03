@@ -78,7 +78,7 @@ return
         (asm::new_contract("get_bytecode", init, body).unwrap(), body_bytecode)
     };
 
-    let mut rt = util::construct_and_verify(init_code.into());
+    let mut rt = util::construct_and_verify(init_code);
 
     rt.reset();
     rt.expect_validate_caller_any();
@@ -107,7 +107,7 @@ sstore";
         asm::new_contract("get_storage_at", init, body).unwrap()
     };
 
-    let mut rt = util::construct_and_verify(init_code.into());
+    let mut rt = util::construct_and_verify(init_code);
 
     rt.reset();
     let params = evm::GetStorageAtParams { storage_key: 0x8965.into() };

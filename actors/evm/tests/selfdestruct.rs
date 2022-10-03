@@ -11,7 +11,7 @@ fn test_selfdestruct() {
     let contract = Address::new_id(100);
     let beneficiary = Address::new_id(1001);
 
-    let mut rt = util::init_construct_and_verify(bytecode.into(), |rt| {
+    let mut rt = util::init_construct_and_verify(bytecode, |rt| {
         rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
         rt.set_origin(contract);
     });

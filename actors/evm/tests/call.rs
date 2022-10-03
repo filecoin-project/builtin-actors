@@ -63,7 +63,7 @@ fn test_call() {
     let contract = call_proxy_contract();
 
     // construct the proxy
-    let mut rt = util::construct_and_verify(contract.into());
+    let mut rt = util::construct_and_verify(contract);
     MockRuntime::default();
 
     // create a mock target and proxy a call through the proxy
@@ -119,7 +119,7 @@ return
 fn test_methodnum() {
     let contract = methodnum_contract();
 
-    let mut rt = util::construct_and_verify(contract.into());
+    let mut rt = util::construct_and_verify(contract);
 
     // invoke the contract
     rt.expect_validate_caller_any();
@@ -180,7 +180,7 @@ fn test_callactor() {
     let contract = callactor_proxy_contract();
 
     // construct the proxy
-    let mut rt = util::construct_and_verify(contract.into());
+    let mut rt = util::construct_and_verify(contract);
 
     // create a mock target and proxy a call through the proxy
     let target = FILAddress::new_id(0x100);

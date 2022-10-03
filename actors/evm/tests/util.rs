@@ -7,7 +7,7 @@ pub fn construct_and_verify(initcode: Vec<u8>) -> MockRuntime {
     init_construct_and_verify(initcode, |_| {})
 }
 
-pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime) -> ()>(
+pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     initcode: Vec<u8>,
     initrt: F,
 ) -> MockRuntime {
