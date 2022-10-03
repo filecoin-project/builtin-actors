@@ -101,13 +101,11 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
 
     /// Get value of a storage key.
     pub fn get_storage(&mut self, key: U256) -> Result<Option<U256>, StatusCode> {
-        let r = Ok(self
+        Ok(self
             .state
             .get(&U256Key(key))
             .map_err(|e| StatusCode::InternalError(e.to_string()))?
-            .cloned());
-
-        r
+            .cloned())
     }
 
     /// Set value of a storage key.
