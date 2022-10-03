@@ -213,7 +213,7 @@ impl Actor {
 
     /// Transfers data cap tokens to an address.
     /// Data cap tokens are not generally transferable.
-    /// Succeeds if the to address is the governor, otherwise always fails.
+    /// Succeeds if the to or from address is the governor, otherwise always fails.
     pub fn transfer<BS, RT>(
         rt: &mut RT,
         params: TransferParams,
@@ -233,9 +233,15 @@ impl Actor {
 
         let mut hook = rt
             .transaction(|st: &mut State, rt| {
-                let allowed = to_address == st.governor;
+                let allowed = to_address == st.governor || *from == st.governor;
                 if !allowed {
-                    return Err(actor_error!(forbidden, "transfer not allowed"));
+                    return Err(actor_error!(
+                        forbidden,
+                        "transfer not allowed from {} to {} (governor is {})",
+                        from,
+                        to_address,
+                        st.governor
+                    ));
                 }
 
                 let msg = Messenger { rt, dummy: Default::default() };
@@ -282,7 +288,13 @@ impl Actor {
             .transaction(|st: &mut State, rt| {
                 let allowed = to_address == st.governor;
                 if !allowed {
-                    return Err(actor_error!(forbidden, "transfer not allowed"));
+                    return Err(actor_error!(
+                        forbidden,
+                        "transfer not allowed from {} to {} (governor is {})",
+                        from,
+                        to_address,
+                        st.governor
+                    ));
                 }
 
                 let msg = Messenger { rt, dummy: Default::default() };
