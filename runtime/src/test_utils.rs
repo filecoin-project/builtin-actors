@@ -723,11 +723,9 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     fn gas_limit(&self) -> u64 {
         self.gas_limit
     }
-
     fn gas_premium(&self) -> TokenAmount {
         self.gas_premium.clone()
     }
-
 }
 
 impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
