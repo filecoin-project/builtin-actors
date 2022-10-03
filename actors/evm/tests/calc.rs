@@ -2,8 +2,9 @@ mod asm;
 
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
-use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
+
+mod util;
 
 #[allow(dead_code)]
 pub fn magic_calc_contract() -> Vec<u8> {
@@ -70,30 +71,13 @@ return
 fn test_magic_calc() {
     let contract = magic_calc_contract();
 
-    let mut rt = MockRuntime::default();
-
-    // invoke constructor
-    rt.expect_validate_caller_any();
-
-    let params = evm::ConstructorParams { bytecode: contract.into() };
-
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-    expect_empty(result);
-    rt.verify();
+    let mut rt = util::construct_and_verify(contract);
 
     // invoke contract -- get_magic
     let contract_params = vec![0u8; 32];
     let input_data = RawBytes::from(contract_params);
 
-    rt.expect_validate_caller_any();
-    let result =
-        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
-
+    let result = util::invoke_contract(&mut rt, input_data);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 
     // invoke contract -- add_magic
@@ -102,10 +86,7 @@ fn test_magic_calc() {
     contract_params[35] = 0x01;
     let input_data = RawBytes::from(contract_params);
 
-    rt.expect_validate_caller_any();
-    let result =
-        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
-
+    let result = util::invoke_contract(&mut rt, input_data);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x43));
 
     // invoke contract -- mul_magic
@@ -114,9 +95,6 @@ fn test_magic_calc() {
     contract_params[35] = 0x02;
     let input_data = RawBytes::from(contract_params);
 
-    rt.expect_validate_caller_any();
-    let result =
-        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
-
+    let result = util::invoke_contract(&mut rt, input_data);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x84));
 }

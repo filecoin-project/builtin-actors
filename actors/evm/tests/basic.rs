@@ -9,29 +9,17 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 
+mod util;
+
 #[test]
 fn basic_contract_construction_and_invocation() {
-    let mut rt = MockRuntime::default();
-
+    let bytecode = hex::decode(include_str!("contracts/simplecoin.hex")).unwrap();
     let contract = Address::new_id(100);
 
-    let params = evm::ConstructorParams {
-        bytecode: hex::decode(include_str!("contracts/simplecoin.hex")).unwrap().into(),
-    };
-
-    // invoke constructor
-    rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
-    rt.expect_validate_caller_any();
-    rt.set_origin(contract);
-
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-    expect_empty(result);
-    rt.verify();
+    let mut rt = util::init_construct_and_verify(bytecode.into(), |rt| {
+        rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
+        rt.set_origin(contract);
+    });
 
     // invoke contract -- getBalance
     // first we invoke without specifying an address, so it would be the system actor and have
@@ -45,10 +33,7 @@ fn basic_contract_construction_and_invocation() {
 
     let input_data = RawBytes::from(solidity_params);
 
-    rt.expect_validate_caller_any();
-    let result =
-        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
-
+    let result = util::invoke_contract(&mut rt, input_data);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 
     // invoke contract -- getBalance
@@ -63,9 +48,7 @@ fn basic_contract_construction_and_invocation() {
 
     let input_data = RawBytes::from(solidity_params);
 
-    rt.expect_validate_caller_any();
-    let result =
-        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
+    let result = util::invoke_contract(&mut rt, input_data);
     assert_eq!(U256::from_big_endian(&result), U256::from(10000));
 }
 
@@ -95,20 +78,9 @@ return
         (asm::new_contract("get_bytecode", init, body).unwrap(), body_bytecode)
     };
 
-    let mut rt = MockRuntime::default();
+    let mut rt = util::construct_and_verify(init_code.into());
 
-    rt.expect_validate_caller_any();
-    let params = evm::ConstructorParams { bytecode: init_code.into() };
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-    expect_empty(result);
-    rt.verify();
     rt.reset();
-
     rt.expect_validate_caller_any();
     let returned_bytecode_cid: Cid = rt
         .call::<evm::EvmContractActor>(evm::Method::GetBytecode as u64, &Default::default())
@@ -135,20 +107,9 @@ sstore";
         asm::new_contract("get_storage_at", init, body).unwrap()
     };
 
-    let mut rt = MockRuntime::default();
+    let mut rt = util::construct_and_verify(init_code.into());
 
-    rt.expect_validate_caller_any();
-    let params = evm::ConstructorParams { bytecode: init_code.into() };
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-    expect_empty(result);
-    rt.verify();
     rt.reset();
-
     let params = evm::GetStorageAtParams { storage_key: 0x8965.into() };
 
     let sender = Address::new_id(0); // zero address because this method is not invokable on-chain
