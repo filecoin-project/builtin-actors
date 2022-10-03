@@ -16,7 +16,7 @@ fn basic_contract_construction_and_invocation() {
     let bytecode = hex::decode(include_str!("contracts/simplecoin.hex")).unwrap();
     let contract = Address::new_id(100);
 
-    let mut rt = util::init_construct_and_verify(bytecode.into(), |rt| {
+    let mut rt = util::init_construct_and_verify(bytecode, |rt| {
         rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
         rt.set_origin(contract);
     });
