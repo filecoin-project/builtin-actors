@@ -1086,13 +1086,13 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
     }
 
     fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
-        if epoch < 0 || epoch > 900 {
+        if !(0..900).contains(&epoch) {
             panic!("ivalidn epoch {}", epoch);
         }
 
         let epoch_index = epoch as usize;
         if epoch_index < self.tipset_cids.len() {
-            return Some(self.tipset_cids[epoch_index].clone());
+            return Some(self.tipset_cids[epoch_index]);
         }
         None
     }
