@@ -938,9 +938,9 @@ dependencies = [
 
 [[package]]
 name = "frc46_token"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39f30577fceeca364f7a9e3041161bdc239d2d662683aec2160b065557d66e78"
+checksum = "8958b1fe87ffacf17196cc3c7f2dd5a31293a79611a46771ac603d4cc289a099"
 dependencies = [
  "anyhow",
  "cid",
