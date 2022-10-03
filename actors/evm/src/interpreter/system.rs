@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use fvm_ipld_hamt::Identity;
+
 use {
     crate::interpreter::{StatusCode, U256},
     cid::Cid,
@@ -7,6 +9,11 @@ use {
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_hamt::Hamt,
 };
+
+/// The EVM stores its state as Key-Value pairs with both keys and values
+/// being 256 bits long. We store thse in a HAMT, The keys are already hashed
+/// by the Solidity compiler, so we can use the identity hasher.
+pub type StateHamt<BS> = Hamt<BS, U256, U256, Identity>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum StorageStatus {
@@ -26,11 +33,11 @@ pub enum StorageStatus {
 /// that bridges the FVM world to EVM world
 pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
     pub rt: &'r mut RT,
-    state: &'r mut Hamt<BS, U256, U256>,
+    state: &'r mut StateHamt<BS>,
 }
 
 impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
-    pub fn new(rt: &'r mut RT, state: &'r mut Hamt<BS, U256, U256>) -> anyhow::Result<Self> {
+    pub fn new(rt: &'r mut RT, state: &'r mut StateHamt<BS>) -> anyhow::Result<Self> {
         Ok(Self { rt, state })
     }
 

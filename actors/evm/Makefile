@@ -7,12 +7,10 @@ MEASUREMENTS_JSON = $(shell find $(MEASUREMENTS_DIR) -type f -name "*.jsonline")
 MEASUREMENTS_PNG  = $(MEASUREMENTS_JSON:.jsonline=.png)
 
 .PHONY: all
-all: test-contracts
-
-# Run storage footprint tests.
-measure-storage-footprint:
-	cargo test --test storage_footprint
-
+all: \
+	test-contracts \
+	measure-storage-footprint \
+	plot-measurements
 
 # Compile all Solidity test contracts.
 # This could also be achieved with https://docs.rs/ethers/latest/ethers/solc/
@@ -25,6 +23,12 @@ $(TEST_CONTRACTS_DIR)/%.hex: $(TEST_CONTRACTS_DIR)/%.sol | solc
 	@# We could use just the .bin files in the test, but this is a way to stick to the existing pattern.
 	solc --bin $< | tail -n +4 | tr -d '\n' > $@
 	solc --bin --abi --storage-layout --hashes --overwrite $< -o $(TEST_CONTRACTS_DIR)
+
+
+# Run storage footprint tests.
+.PHONY: measure-storage-footprint
+measure-storage-footprint:
+	cargo test --test storage_footprint
 
 
 # Render measurement charts.
