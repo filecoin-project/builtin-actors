@@ -58,7 +58,7 @@ return
 #[test]
 fn test_chainid() {
     let contract = asm::new_contract(
-        "timestamp",
+        "chainid",
         "",
         r#"
 chainid
