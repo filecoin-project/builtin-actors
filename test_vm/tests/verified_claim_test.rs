@@ -21,6 +21,7 @@ use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, DealWeight, Map, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_DAY,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, create_accounts, create_miner,

@@ -606,6 +606,7 @@ dependencies = [
  "fvm_ipld_hamt",
  "fvm_shared",
  "lazy_static",
+ "log",
  "num-derive",
  "num-traits",
  "serde",
