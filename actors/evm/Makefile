@@ -36,7 +36,11 @@ measure-storage-footprint:
 plot-measurements: $(MEASUREMENTS_PNG)
 
 # Render a specfic plot if the data changed.
-$(MEASUREMENTS_DIR)/%.png: $(MEASUREMENTS_DIR)/%.jsonline $(MEASUREMENTS_DIR)/storage-footprint.plt | jq gnuplot
+$(MEASUREMENTS_DIR)/%.png: \
+	$(MEASUREMENTS_DIR)/%.jsonline \
+	$(MEASUREMENTS_DIR)/storage-footprint.plt \
+	$(MEASUREMENTS_DIR)/storage-footprint.sh \
+	| jq gnuplot
 	cd $(MEASUREMENTS_DIR) && ./storage-footprint.sh $*
 
 
