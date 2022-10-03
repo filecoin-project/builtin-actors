@@ -18,9 +18,8 @@ fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../../runtime"}
 
 anyhow = "1.0.65"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-lazy_static = "1.4.0"
-anyhow = "1.0.65"
-fvm_ipld_hamt = "0.5.1"
+frc42_dispatch = "1.0.0"
+frc46_token = "1.1.0"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.2"
 fvm_ipld_hamt = "0.5.1"
