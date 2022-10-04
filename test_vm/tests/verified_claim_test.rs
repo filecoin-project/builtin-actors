@@ -3,22 +3,28 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
+use std::ops::Neg;
 
+use fil_actor_datacap::State as DatacapState;
 use fil_actor_market::DealMetaArray;
 use fil_actor_market::State as MarketState;
 use fil_actor_miner::{max_prove_commit_duration, PowerPair, SectorClaim, State as MinerState};
+use fil_actor_power::State as PowerState;
 use fil_actor_verifreg::{Claim, State as VerifregState};
+use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
-    DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    DealWeight, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, create_accounts, create_miner,
-    cron_tick, market_add_balance, market_publish_deal, miner_extend_sector_expiration2,
-    miner_precommit_sector, miner_prove_sector, sector_deadline, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
+    cron_tick, datacap_extend_claim, invariant_failure_patterns, market_add_balance,
+    market_publish_deal, miner_extend_sector_expiration2, miner_precommit_sector,
+    miner_prove_sector, sector_deadline, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier, verifreg_extend_claim_terms,
 };
 use test_vm::VM;
 
@@ -29,9 +35,10 @@ use test_vm::VM;
 fn verified_claim_scenario() {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
+    let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
-    let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let (owner, worker, verifier, verified_client, verified_client2) =
+        (addrs[0], addrs[0], addrs[1], addrs[2], addrs[3]);
     let sector_number: SectorNumber = 100;
     let policy = Policy::default();
 
@@ -47,8 +54,9 @@ fn verified_claim_scenario() {
 
     // Register verifier and verified client
     let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(&v, verifier, datacap.clone());
-    verifreg_add_client(&v, verifier, verified_client, datacap);
+    verifreg_add_verifier(&v, verifier, &datacap * 2);
+    verifreg_add_client(&v, verifier, verified_client, datacap.clone());
+    verifreg_add_client(&v, verifier, verified_client2, datacap.clone());
 
     // Add market collateral for clients and miner
     market_add_balance(&v, verified_client, verified_client, TokenAmount::from_whole(3));
@@ -59,22 +67,22 @@ fn verified_claim_scenario() {
         v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     let deal_term_min = 180 * EPOCHS_IN_DAY;
 
-    let deal_size = PaddedPieceSize(32u64 << 30);
+    let deal_size = 32u64 << 30;
     let deals = market_publish_deal(
         &v,
         worker,
         verified_client,
         miner_id,
         "deal1".to_string(),
-        deal_size,
+        PaddedPieceSize(deal_size),
         true,
         deal_start,
         deal_term_min,
     )
     .ids;
 
-    // Precommit and prove the sector
-    let sector_term = 240 * EPOCHS_IN_DAY; // Longer than deal min term, but less than max.
+    // Precommit and prove the sector for the max term allowed by the deal.
+    let sector_term = deal_term_min + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
     let _precommit = miner_precommit_sector(
         &v,
         worker,
@@ -95,9 +103,9 @@ fn verified_claim_scenario() {
     let miner_state: MinerState = v.get_state(miner_id).unwrap();
     let sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
     assert_eq!(sector_term, sector_info.expiration - sector_info.activation);
-    assert_eq!(StoragePower::zero(), sector_info.deal_weight);
+    assert_eq!(DealWeight::zero(), sector_info.deal_weight);
     // Verified weight is sector term * 32 GiB, using simple QAP
-    let verified_weight = DealWeight::from(sector_term * (32i64 << 30));
+    let verified_weight = DealWeight::from(sector_term as u64 * deal_size);
     assert_eq!(verified_weight, sector_info.verified_deal_weight);
 
     // Verify deal state.
@@ -106,6 +114,28 @@ fn verified_claim_scenario() {
     let deal_state = deal_states.get(deals[0]).unwrap().unwrap();
     let claim_id = deal_state.verified_claim;
     assert_ne!(0, claim_id);
+
+    // Verify datacap state
+    let datacap_state: DatacapState = v.get_state(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    assert_eq!(
+        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size), // Spent deal size
+        datacap_state.token.get_balance(&v.store, verified_client.id().unwrap()).unwrap()
+    );
+    assert_eq!(
+        TokenAmount::from_whole(datacap.clone()), // Nothing spent
+        datacap_state.token.get_balance(&v.store, verified_client2.id().unwrap()).unwrap()
+    );
+    assert_eq!(
+        TokenAmount::zero(), // Burnt when the allocation was claimed
+        datacap_state
+            .token
+            .get_balance(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap())
+            .unwrap()
+    );
+    assert_eq!(
+        TokenAmount::from_whole(datacap.clone()) * 2 - TokenAmount::from_whole(deal_size),
+        datacap_state.token.supply
+    );
 
     // Verify claim state
     let verifreg_state: VerifregState = v.get_state(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
@@ -117,7 +147,7 @@ fn verified_claim_scenario() {
             provider: miner_id.id().unwrap(),
             client: verified_client.id().unwrap(),
             data: make_piece_cid("deal1".as_bytes()),
-            size: deal_size,
+            size: PaddedPieceSize(deal_size),
             term_min: deal_term_min,
             term_max: deal_term_min + 90 * EPOCHS_IN_DAY,
             term_start: deal_start,
@@ -130,18 +160,22 @@ fn verified_claim_scenario() {
     let (deadline_info, partition_index, v) =
         advance_to_proving_deadline(v, miner_id, sector_number);
 
-    let expected_power_delta = PowerPair {
-        raw: StoragePower::from(32u64 << 30),
-        qa: StoragePower::from(10 * (32u64 << 30)),
-    };
+    let expected_power =
+        PowerPair { raw: StoragePower::from(deal_size), qa: StoragePower::from(10 * deal_size) };
     submit_windowed_post(
         &v,
         worker,
         miner_id,
         deadline_info,
         partition_index,
-        Some(expected_power_delta),
+        Some(expected_power.clone()),
     );
+
+    // Verify miner power
+    let power_state: PowerState = v.get_state(STORAGE_POWER_ACTOR_ADDR).unwrap();
+    let power_claim = power_state.get_claim(v.store, &miner_id).unwrap().unwrap();
+    assert_eq!(power_claim.raw_byte_power, expected_power.raw);
+    assert_eq!(power_claim.quality_adj_power, expected_power.qa);
 
     // move forward one deadline so advanceWhileProving doesn't fail double submitting posts.
     let (mut v, _) = advance_by_deadline_to_index(
@@ -164,6 +198,7 @@ fn verified_claim_scenario() {
 
     // Now the miner can extend the sector's expiration to the same.
     let (didx, pidx) = sector_deadline(&v, miner_id, sector_number);
+    let extended_expiration_1 = deal_start + 360 * EPOCHS_IN_DAY;
     miner_extend_sector_expiration2(
         &v,
         worker,
@@ -172,12 +207,94 @@ fn verified_claim_scenario() {
         pidx,
         vec![],
         vec![SectorClaim { sector_number, maintain_claims: vec![claim_id], drop_claims: vec![] }],
-        deal_start + 360 * EPOCHS_IN_DAY,
+        extended_expiration_1,
         PowerPair::zero(), // No change in power
     );
 
-    // TODO continuing this test
-    //  - extend the claim further by spending more datacap
-    //  - extend sector again
-    //  - drop the claim while extending sector
+    // Advance toward the sector's expiration
+    v = advance_by_deadline_to_epoch_while_proving(
+        v,
+        miner_id,
+        worker,
+        sector_number,
+        extended_expiration_1 - 100,
+    );
+
+    // Another client extends the claim beyond the initial maximum term.
+    let original_max_term = policy.maximum_verified_allocation_term;
+    let new_max_term = v.get_epoch() - claim.term_start + policy.maximum_verified_allocation_term;
+    assert!(new_max_term > original_max_term);
+
+    datacap_extend_claim(&v, verified_client2, miner_id, claim_id, deal_size, new_max_term);
+
+    // The miner extends the sector into the second year.
+    let extended_expiration_2 = extended_expiration_1 + 60 * EPOCHS_IN_DAY;
+    miner_extend_sector_expiration2(
+        &v,
+        worker,
+        miner_id,
+        didx,
+        pidx,
+        vec![],
+        vec![SectorClaim { sector_number, maintain_claims: vec![claim_id], drop_claims: vec![] }],
+        extended_expiration_2,
+        PowerPair::zero(), // No change in power
+    );
+
+    // Advance toward the sector's new expiration
+    v = advance_by_deadline_to_epoch_while_proving(
+        v,
+        miner_id,
+        worker,
+        sector_number,
+        extended_expiration_2 - 30 * EPOCHS_IN_DAY,
+    );
+
+    // The miner can drop the claim, losing the multiplied QA power.
+    let expected_power_delta =
+        PowerPair::new(StoragePower::zero(), StoragePower::from(9 * deal_size).neg());
+    miner_extend_sector_expiration2(
+        &v,
+        worker,
+        miner_id,
+        didx,
+        pidx,
+        vec![],
+        vec![SectorClaim { sector_number, maintain_claims: vec![], drop_claims: vec![claim_id] }],
+        extended_expiration_2, // No change in expiration
+        expected_power_delta,  // Power lost
+    );
+
+    // Verify sector info
+    let miner_state: MinerState = v.get_state(miner_id).unwrap();
+    let sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
+    assert_eq!(extended_expiration_2, sector_info.expiration);
+    assert_eq!(DealWeight::zero(), sector_info.deal_weight);
+    assert_eq!(DealWeight::zero(), sector_info.verified_deal_weight); // No longer verified
+
+    // Verify datacap state
+    let datacap_state: DatacapState = v.get_state(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    assert_eq!(
+        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size), // Spent deal size
+        datacap_state.token.get_balance(&v.store, verified_client.id().unwrap()).unwrap()
+    );
+    assert_eq!(
+        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size), // Also spent deal size
+        datacap_state.token.get_balance(&v.store, verified_client2.id().unwrap()).unwrap()
+    );
+    assert_eq!(
+        TokenAmount::zero(), // All burnt
+        datacap_state
+            .token
+            .get_balance(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap())
+            .unwrap()
+    );
+    assert_eq!(
+        TokenAmount::from_whole(datacap) * 2 - TokenAmount::from_whole(deal_size) * 2, // Spent deal size twice
+        datacap_state.token.supply
+    );
+
+    v.expect_state_invariants(
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }

@@ -15,8 +15,9 @@ use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, apply_ok, create_accounts,
-    create_miner, cron_tick, market_add_balance, market_publish_deal, miner_precommit_sector,
-    miner_prove_sector, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    create_miner, cron_tick, invariant_failure_patterns, market_add_balance, market_publish_deal,
+    miner_precommit_sector, miner_prove_sector, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier,
 };
 use test_vm::{ExpectInvocation, VM};
 
@@ -247,4 +248,8 @@ fn extend_sector_with_deals() {
     assert_eq!(initial_deal_weight, sector_info.deal_weight); // 0 space time, unchanged
     assert_eq!(initial_verified_deal_weight / 4, sector_info.verified_deal_weight);
     // two halvings => 1/4 initial verified deal weight
+
+    v.expect_state_invariants(
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
