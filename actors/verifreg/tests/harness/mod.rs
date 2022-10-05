@@ -259,7 +259,7 @@ impl Harness {
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
-        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store());
+        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), rt.epoch);
         acc.assert_empty();
     }
 
@@ -494,10 +494,16 @@ impl Harness {
     }
 }
 
-fn load_verifiers(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
-    let state: State = rt.get_state();
-    make_map_with_root_and_bitwidth::<_, BigIntDe>(&state.verifiers, &*rt.store, HAMT_BIT_WIDTH)
-        .unwrap()
+pub fn make_alloc(data_id: &str, client: ActorID, provider: ActorID, size: u64) -> Allocation {
+    Allocation {
+        client,
+        provider,
+        data: make_piece_cid(data_id.as_bytes()),
+        size: PaddedPieceSize(size),
+        term_min: MINIMUM_VERIFIED_ALLOCATION_TERM,
+        term_max: MINIMUM_VERIFIED_ALLOCATION_TERM * 2,
+        expiration: 100,
+    }
 }
 
 fn load_clients(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
