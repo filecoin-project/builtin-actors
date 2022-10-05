@@ -39,8 +39,7 @@ fn datacap_transfer_scenario() {
     let data_cap_amt = TokenAmount::from_whole(
         MINIMUM_VERIFIED_ALLOCATION_SIZE + MINIMUM_VERIFIED_ALLOCATION_SIZE / 2,
     );
-    let mint_params =
-        MintParams { to: client, amount: data_cap_amt.clone(), operators: vec![operator] };
+    let mint_params = MintParams { to: client, amount: data_cap_amt, operators: vec![operator] };
 
     // cannot mint from non-verifreg
     apply_code(
@@ -83,8 +82,8 @@ fn datacap_transfer_scenario() {
     };
     let clone_params = |x: &TransferFromParams| -> TransferFromParams {
         TransferFromParams {
-            to: x.to.clone(),
-            from: x.from.clone(),
+            to: x.to,
+            from: x.from,
             amount: x.amount.clone(),
             operator_data: x.operator_data.clone(),
         }
@@ -125,7 +124,7 @@ fn datacap_transfer_scenario() {
     );
 
     // 3. invalid term
-    let mut bad_alloc = alloc.clone();
+    let mut bad_alloc = alloc;
     bad_alloc.term_max = policy.maximum_verified_allocation_term + 1;
     let mut params_bad_term = clone_params(&transfer_from_params);
     params_bad_term.operator_data = serialize(
