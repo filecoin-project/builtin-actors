@@ -540,13 +540,14 @@ mod allocs_claims {
         assert_eq!(DataCap::from(total_size), ret.datacap_recovered);
         assert!(h.load_alloc(&mut rt, CLIENT1, id1).is_none()); // removed
         assert!(h.load_alloc(&mut rt, CLIENT1, id2).is_none()); // removed
+        h.check_state(&rt);
     }
 
     #[test]
     fn claim_allocs() {
         let (h, mut rt) = new_harness();
 
-        let size = 128;
+        let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
         let alloc1 = make_alloc("1", CLIENT1, PROVIDER1, size);
         let alloc2 = make_alloc("2", CLIENT2, PROVIDER1, size); // Distinct client
         let alloc3 = make_alloc("3", CLIENT1, PROVIDER2, size); // Distinct provider
@@ -554,9 +555,10 @@ mod allocs_claims {
         h.create_alloc(&mut rt, &alloc1).unwrap();
         h.create_alloc(&mut rt, &alloc2).unwrap();
         h.create_alloc(&mut rt, &alloc3).unwrap();
+        h.check_state(&rt);
 
         let sector = 1000;
-        let expiry = 1500;
+        let expiry = MINIMUM_VERIFIED_ALLOCATION_TERM;
 
         let prior_state: State = rt.get_state();
         {
@@ -571,6 +573,7 @@ mod allocs_claims {
             assert_eq!(ret.claimed_space, BigInt::from(2 * size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
             assert_alloc_claimed(&rt, CLIENT2, PROVIDER1, 2, &alloc2, 0, sector);
+            h.check_state(&rt);
         }
         {
             // Can't find claim for wrong client
@@ -585,6 +588,7 @@ mod allocs_claims {
             assert_eq!(ret.claimed_space, BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
             assert_allocation(&rt, CLIENT2, 2, &alloc2);
+            h.check_state(&rt);
         }
         {
             // Can't claim for other provider
@@ -598,6 +602,7 @@ mod allocs_claims {
             assert_eq!(ret.claimed_space, BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 2, &alloc2, 0, sector);
             assert_allocation(&rt, CLIENT1, 3, &alloc3);
+            h.check_state(&rt);
         }
         {
             // Mismatched data / size
@@ -616,6 +621,7 @@ mod allocs_claims {
                 vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN]
             );
             assert_eq!(ret.claimed_space, BigInt::zero());
+            h.check_state(&rt);
         }
         {
             // Expired allocation
@@ -625,6 +631,7 @@ mod allocs_claims {
             let ret = h.claim_allocations(&mut rt, PROVIDER1, reqs, 0, false).unwrap();
             assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
             assert_eq!(ret.claimed_space, BigInt::zero());
+            h.check_state(&rt);
         }
         {
             // Sector expiration too soon
@@ -637,13 +644,14 @@ mod allocs_claims {
             let ret = h.claim_allocations(&mut rt, PROVIDER1, reqs, 0, false).unwrap();
             assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
             assert_eq!(ret.claimed_space, BigInt::zero());
+            h.check_state(&rt);
         }
     }
 
     #[test]
     fn get_claims() {
         let (h, mut rt) = new_harness();
-        let size = 128;
+        let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
         let sector = 0;
         let start = 0;
         let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
@@ -679,12 +687,13 @@ mod allocs_claims {
                 ret.batch_info.fail_codes
             );
         }
+        h.check_state(&rt);
     }
 
     #[test]
     fn extend_claims_basic() {
         let (h, mut rt) = new_harness();
-        let size = 128;
+        let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
         let sector = 0;
         let start = 0;
         let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
@@ -714,12 +723,13 @@ mod allocs_claims {
         assert_claim(&rt, PROVIDER1, id1, &Claim { term_max: max_term + 1, ..claim1 });
         assert_claim(&rt, PROVIDER1, id2, &Claim { term_max: max_term + 2, ..claim2 });
         assert_claim(&rt, PROVIDER2, id3, &Claim { term_max: max_term + 3, ..claim3 });
+        h.check_state(&rt);
     }
 
     #[test]
     fn extend_claims_edge_cases() {
         let (h, mut rt) = new_harness();
-        let size = 128;
+        let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
         let sector = 0;
         let start = 0;
         let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
@@ -802,6 +812,7 @@ mod allocs_claims {
             assert_eq!(ret.codes(), vec![ExitCode::OK]);
             rt.verify()
         }
+        h.check_state(&rt);
     }
 
     #[test]
@@ -875,6 +886,7 @@ mod allocs_claims {
         assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
         assert!(h.load_claim(&mut rt, PROVIDER1, id1).is_none()); // removed
         assert!(h.load_claim(&mut rt, PROVIDER1, id2).is_none()); // removed
+        h.check_state(&rt);
     }
 }
 
@@ -951,6 +963,7 @@ mod datacap {
         let term_max = term_min + 100;
         let term_start = 100;
         let sector = 1234;
+        rt.set_epoch(term_start);
         let claim1 =
             make_claim("1", CLIENT1, PROVIDER1, SIZE, term_min, term_max, term_start, sector);
         let claim2 =
@@ -971,6 +984,7 @@ mod datacap {
         // Verify claims in state.
         assert_claim(&rt, PROVIDER1, cid1, &Claim { term_max: term_max + 1000, ..claim1 });
         assert_claim(&rt, PROVIDER2, cid2, &Claim { term_max: term_max + 2000, ..claim2 });
+        h.check_state(&rt);
     }
 
     #[test]
@@ -986,6 +1000,7 @@ mod datacap {
         let term_max = term_min + 100;
         let term_start = 100;
         let sector = 1234;
+        rt.set_epoch(term_start);
         let claim1 =
             make_claim("1", CLIENT1, PROVIDER1, SIZE, term_min, term_max, term_start, sector);
         let claim2 =
@@ -1019,6 +1034,7 @@ mod datacap {
 
         let st: State = rt.get_state();
         assert_eq!(5, st.next_allocation_id);
+        h.check_state(&rt);
     }
 
     #[test]
@@ -1223,6 +1239,7 @@ mod datacap {
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
             h.receive_tokens(&mut rt, payload, BATCH_EMPTY, BatchReturn::ok(1), vec![], SIZE)
                 .unwrap();
+            h.check_state(&rt);
         }
         {
             // Claim already expired
@@ -1245,6 +1262,7 @@ mod datacap {
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
             h.receive_tokens(&mut rt, payload, BATCH_EMPTY, BatchReturn::ok(1), vec![], SIZE)
                 .unwrap();
+            h.check_state(&rt);
         }
         {
             // Extension is zero
@@ -1270,6 +1288,7 @@ mod datacap {
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
             h.receive_tokens(&mut rt, payload, BATCH_EMPTY, BatchReturn::ok(1), vec![], SIZE)
                 .unwrap();
+            h.check_state(&rt);
         }
     }
 }
