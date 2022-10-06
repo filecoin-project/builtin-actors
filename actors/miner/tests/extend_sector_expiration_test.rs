@@ -20,6 +20,7 @@ use fvm_shared::{
     ActorID,
 };
 use std::collections::HashMap;
+use fil_actors_runtime::DealWeight;
 
 mod util;
 use fil_actors_runtime::runtime::Policy;
@@ -413,6 +414,16 @@ fn check_for_expiration(
     h.check_state(rt);
 }
 
+fn assert_sector_verified_space(
+    h: &mut ActorHarness,
+    rt: &mut MockRuntime,
+    sector_number: SectorNumber,
+    v_deal_space: u64,
+) {
+    let new_sector = h.get_sector(rt, sector_number);
+    assert_eq!(DealWeight::from(v_deal_space), new_sector.verified_deal_weight / (new_sector.expiration - new_sector.activation));
+}
+
 fn make_claim(
     claim_id: u64,
     sector: &SectorOnChainInfo,
@@ -738,6 +749,8 @@ fn extend_expiration2_drop_claims() {
         partition_index,
     );
 
+    assert_sector_verified_space(& mut h, & mut rt, old_sector.sector_number, verified_deals[0].size.0);
+
     // only claim0 stored in verifreg now
     let mut claims = HashMap::new();
     claims.insert(claim_ids[0], Ok(claim0));
@@ -782,4 +795,56 @@ fn extend_expiration2_drop_claims() {
         deadline_index,
         partition_index,
     );
+
+    assert_sector_verified_space(& mut h, & mut rt, old_sector.sector_number, verified_deals[0].size.0);
+}
+
+#[test]
+fn update_expiration2_drop_claims_failure_cases() {
+    let (mut h, mut rt) = setup();
+    // add in verified deal
+    let verified_deals = vec![
+        test_verified_deal(h.sector_size as u64 / 2),
+        test_verified_deal(h.sector_size as u64 / 2),
+    ];
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
+    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+
+    let state: State = rt.get_state();
+
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+
+    let extension = 42 * rt.policy().wpost_proving_period;
+    let new_expiration = old_sector.expiration + extension;
+
+    let claim_ids = vec![400, 500];
+    let client = Address::new_id(3000).id().unwrap();
+
+    let claim0 = make_claim(
+        claim_ids[0],
+        &old_sector,
+        client,
+        h.receiver.id().unwrap(),
+        new_expiration,
+        &verified_deals[0],
+        rt.policy.minimum_verified_allocation_term,
+    );
+    let mut claim1 = make_claim(
+        claim_ids[1],
+        &old_sector,
+        client,
+        h.receiver.id().unwrap(),
+        new_expiration,
+        &verified_deals[1],
+        rt.policy.minimum_verified_allocation_term,
+    );
+
+    /* Drop claim before grace period */
+
+    /* Dropped claim not found */
+
+    /* Dropped claim provider mismatch */
+
+    /* Dropped claim sector number mismatch */
 }
