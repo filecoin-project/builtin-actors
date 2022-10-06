@@ -741,6 +741,24 @@ fn extend_expiration2_drop_claims() {
     // only claim0 stored in verifreg now
     let mut claims = HashMap::new();
     claims.insert(claim_ids[0], Ok(claim0));
+
+    // attempting to extend without accounting for claim0 fails
+    let bad_params2 = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: bitfield_from_slice(&[old_sector.sector_number]),
+            new_expiration: second_expiration,
+            sectors_with_claims: vec![],
+        }],
+    };
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "claim missing from declaration for sector",
+        h.extend_sectors2(&mut rt, bad_params2, claims.clone()),
+    );
+    rt.reset();
+
     // if we extend again the dropped claim is irrelevant
     let params2 = ExtendSectorExpiration2Params {
         extensions: vec![ExpirationExtension2 {
