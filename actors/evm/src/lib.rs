@@ -14,7 +14,7 @@ use {
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::tuple::*,
     fvm_ipld_encoding::RawBytes,
-    fvm_ipld_hamt::Hamt,
+    fvm_ipld_hamt::{Config as HamtConfig, Hamt},
     fvm_shared::error::*,
     fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
     num_derive::FromPrimitive,
@@ -29,6 +29,13 @@ fil_actors_runtime::wasm_trampoline!(EvmContractActor);
 const MAX_CODE_SIZE: usize = 24 << 10;
 
 pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
+
+lazy_static::lazy_static! {
+    static ref HAMT_CONFIG: HamtConfig = HamtConfig {
+        use_extensions: true,
+        ..Default::default()
+    };
+}
 
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -60,7 +67,7 @@ impl EvmContractActor {
         }
 
         // create an empty storage HAMT to pass it down for execution.
-        let mut hamt = Hamt::new(rt.store().clone());
+        let mut hamt = Hamt::new_with_config(rt.store().clone(), HAMT_CONFIG.to_owned());
 
         // create an instance of the platform abstraction layer -- note: do we even need this?
         let mut system = System::new(rt, &mut hamt).map_err(|e| {
@@ -139,9 +146,13 @@ impl EvmContractActor {
         let blockstore = rt.store().clone();
 
         // load the storage HAMT
-        let mut hamt = Hamt::load(&state.contract_state, blockstore).map_err(|e| {
-            ActorError::illegal_state(format!("failed to load storage HAMT on invoke: {e:?}, e"))
-        })?;
+        let mut hamt =
+            Hamt::load_with_config(&state.contract_state, blockstore, HAMT_CONFIG.to_owned())
+                .map_err(|e| {
+                    ActorError::illegal_state(format!(
+                        "failed to load storage HAMT on invoke: {e:?}, e"
+                    ))
+                })?;
 
         let mut system = System::new(rt, &mut hamt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
@@ -211,9 +222,13 @@ impl EvmContractActor {
         let blockstore = rt.store().clone();
 
         // load the storage HAMT
-        let mut hamt = Hamt::load(&state.contract_state, blockstore).map_err(|e| {
-            ActorError::illegal_state(format!("failed to load storage HAMT on invoke: {e:?}, e"))
-        })?;
+        let mut hamt =
+            Hamt::load_with_config(&state.contract_state, blockstore, HAMT_CONFIG.to_owned())
+                .map_err(|e| {
+                    ActorError::illegal_state(format!(
+                        "failed to load storage HAMT on invoke: {e:?}, e"
+                    ))
+                })?;
 
         let mut system = System::new(rt, &mut hamt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
