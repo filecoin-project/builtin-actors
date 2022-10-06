@@ -9,6 +9,7 @@ use fil_actors_runtime::{
     actor_error,
     runtime::{Runtime, RuntimePolicy},
     test_utils::{expect_abort_contains_message, make_piece_cid, MockRuntime},
+    EPOCHS_IN_DAY,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{
@@ -21,6 +22,7 @@ use fvm_shared::{
 use std::collections::HashMap;
 
 mod util;
+use fil_actors_runtime::runtime::Policy;
 use itertools::Itertools;
 use util::*;
 
@@ -664,4 +666,102 @@ fn update_expiration2_failure_cases() {
         rt.replace_state(&state);
         rt.reset();
     }
+}
+
+#[test]
+fn extend_expiration2_drop_claims() {
+    let (mut h, mut rt) = setup();
+    // add in verified deal
+    let verified_deals = vec![
+        test_verified_deal(h.sector_size as u64 / 2),
+        test_verified_deal(h.sector_size as u64 / 2),
+    ];
+    let policy = Policy::default();
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
+    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+
+    let state: State = rt.get_state();
+
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+
+    let extension = 42 * rt.policy().wpost_proving_period;
+    let new_expiration = old_sector.expiration + extension;
+
+    let claim_ids = vec![400, 500];
+    let client = Address::new_id(3000).id().unwrap();
+    let second_expiration = new_expiration + 42 * EPOCHS_IN_DAY;
+
+    let claim0 = make_claim(
+        claim_ids[0],
+        &old_sector,
+        client,
+        h.receiver.id().unwrap(),
+        second_expiration,
+        &verified_deals[0],
+        rt.policy.minimum_verified_allocation_term,
+    );
+    let claim1 = make_claim(
+        claim_ids[1],
+        &old_sector,
+        client,
+        h.receiver.id().unwrap(),
+        new_expiration,
+        &verified_deals[1],
+        rt.policy.minimum_verified_allocation_term,
+    );
+    let mut claims = HashMap::new();
+    claims.insert(claim_ids[0], Ok(claim0.clone()));
+    claims.insert(claim_ids[1], Ok(claim1));
+
+    let params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: BitField::new(),
+            new_expiration,
+            sectors_with_claims: vec![SectorClaim {
+                sector_number: old_sector.sector_number,
+                maintain_claims: vec![claim_ids[0]],
+                drop_claims: vec![claim_ids[1]],
+            }],
+        }],
+    };
+    rt.set_epoch(old_sector.expiration - policy.end_of_life_claim_drop_period);
+    h.extend_sectors2(&mut rt, params, claims).unwrap();
+    check_for_expiration(
+        &mut h,
+        &mut rt,
+        new_expiration,
+        old_sector.sector_number,
+        deadline_index,
+        partition_index,
+    );
+
+    // only claim0 stored in verifreg now
+    let mut claims = HashMap::new();
+    claims.insert(claim_ids[0], Ok(claim0));
+    // if we extend again the dropped claim is irrelevant
+    let params2 = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: BitField::new(),
+            new_expiration: second_expiration,
+            sectors_with_claims: vec![SectorClaim {
+                sector_number: old_sector.sector_number,
+                maintain_claims: vec![claim_ids[0]],
+                drop_claims: vec![],
+            }],
+        }],
+    };
+    h.extend_sectors2(&mut rt, params2, claims).unwrap();
+    check_for_expiration(
+        &mut h,
+        &mut rt,
+        second_expiration,
+        old_sector.sector_number,
+        deadline_index,
+        partition_index,
+    );
 }

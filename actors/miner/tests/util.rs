@@ -2377,10 +2377,10 @@ impl ActorHarness {
             for sc in &extension.sectors_with_claims {
                 // construct expected return value
                 let mut claims = Vec::new();
-                let mut batch_gen = BatchReturnGen::new(sc.maintain_claims.len());
                 let mut all_claim_ids = sc.maintain_claims.clone();
                 all_claim_ids.append(&mut sc.drop_claims.clone());
-                for claim_id in all_claim_ids {
+                let mut batch_gen = BatchReturnGen::new(all_claim_ids.len());
+                for claim_id in &all_claim_ids {
                     match expected_claims.get(&claim_id).unwrap().clone() {
                         Ok(claim) => {
                             batch_gen.add_success();
@@ -2397,7 +2397,7 @@ impl ActorHarness {
                     fil_actor_miner::ext::verifreg::GET_CLAIMS_METHOD as u64,
                     RawBytes::serialize(GetClaimsParams {
                         provider: self.receiver.id().unwrap(),
-                        claim_ids: sc.maintain_claims.clone(),
+                        claim_ids: all_claim_ids,
                     })
                     .unwrap(),
                     TokenAmount::zero(),
