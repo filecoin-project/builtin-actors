@@ -2420,8 +2420,10 @@ impl ActorHarness {
             for sector_claim in &extension.sectors_with_claims {
                 let mut dropped_space = BigInt::zero();
                 for drop in &sector_claim.drop_claims {
-                    dropped_space +=
-                        BigInt::from(expected_claims.get(&drop).unwrap().as_ref().unwrap().size.0);
+                    dropped_space += match expected_claims.get(&drop).unwrap() {
+                        Ok(claim) => BigInt::from(claim.size.0),
+                        Err(_) => BigInt::zero(),
+                    }
                 }
                 let sector = self.get_sector(&rt, sector_claim.sector_number);
                 let old_duration = sector.expiration - sector.activation;

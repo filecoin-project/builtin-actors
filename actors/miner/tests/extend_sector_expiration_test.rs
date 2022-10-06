@@ -5,6 +5,7 @@ use fil_actor_miner::{
     ExpirationExtension2, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
     PoStPartition, SectorClaim, SectorOnChainInfo, State,
 };
+use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::{
     actor_error,
     runtime::{Runtime, RuntimePolicy},
@@ -20,7 +21,6 @@ use fvm_shared::{
     ActorID,
 };
 use std::collections::HashMap;
-use fil_actors_runtime::DealWeight;
 
 mod util;
 use fil_actors_runtime::runtime::Policy;
@@ -421,7 +421,10 @@ fn assert_sector_verified_space(
     v_deal_space: u64,
 ) {
     let new_sector = h.get_sector(rt, sector_number);
-    assert_eq!(DealWeight::from(v_deal_space), new_sector.verified_deal_weight / (new_sector.expiration - new_sector.activation));
+    assert_eq!(
+        DealWeight::from(v_deal_space),
+        new_sector.verified_deal_weight / (new_sector.expiration - new_sector.activation)
+    );
 }
 
 fn make_claim(
@@ -749,7 +752,12 @@ fn extend_expiration2_drop_claims() {
         partition_index,
     );
 
-    assert_sector_verified_space(& mut h, & mut rt, old_sector.sector_number, verified_deals[0].size.0);
+    assert_sector_verified_space(
+        &mut h,
+        &mut rt,
+        old_sector.sector_number,
+        verified_deals[0].size.0,
+    );
 
     // only claim0 stored in verifreg now
     let mut claims = HashMap::new();
@@ -796,12 +804,18 @@ fn extend_expiration2_drop_claims() {
         partition_index,
     );
 
-    assert_sector_verified_space(& mut h, & mut rt, old_sector.sector_number, verified_deals[0].size.0);
+    assert_sector_verified_space(
+        &mut h,
+        &mut rt,
+        old_sector.sector_number,
+        verified_deals[0].size.0,
+    );
 }
 
 #[test]
 fn update_expiration2_drop_claims_failure_cases() {
     let (mut h, mut rt) = setup();
+    let policy = Policy::default();
     // add in verified deal
     let verified_deals = vec![
         test_verified_deal(h.sector_size as u64 / 2),
@@ -842,9 +856,74 @@ fn update_expiration2_drop_claims_failure_cases() {
 
     /* Drop claim before grace period */
 
+    let mut claims = HashMap::new();
+    claims.insert(claim_ids[0], Ok(claim0.clone()));
+    claims.insert(claim_ids[1], Ok(claim1.clone()));
+
+    let params = ExtendSectorExpiration2Params {
+        extensions: vec![ExpirationExtension2 {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: BitField::new(),
+            new_expiration,
+            sectors_with_claims: vec![SectorClaim {
+                sector_number: old_sector.sector_number,
+                maintain_claims: vec![claim_ids[0]],
+                drop_claims: vec![claim_ids[1]],
+            }],
+        }],
+    };
+    rt.set_epoch(old_sector.expiration - policy.end_of_life_claim_drop_period - 1);
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "attempt to drop claims with 86401 epochs > end of life claim drop period 86400 remaining",
+        h.extend_sectors2(&mut rt, params.clone(), claims.clone()),
+    );
+    rt.reset();
+    rt.set_epoch(old_sector.expiration - policy.end_of_life_claim_drop_period);
+
     /* Dropped claim not found */
+    let mut claims = HashMap::new();
+    claims.insert(claim_ids[0], Ok(claim0.clone()));
+    claims.insert(claim_ids[1], Err(actor_error!(not_found, "claim not found")));
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "failed to get claims for sector",
+        h.extend_sectors2(&mut rt, params.clone(), claims.clone()),
+    );
+    rt.reset();
 
     /* Dropped claim provider mismatch */
+    claim1.provider = h.receiver.id().unwrap() + 7;
+    let mut claims = HashMap::new();
+    claims.insert(claim_ids[0], Ok(claim0.clone()));
+    claims.insert(claim_ids[1], Ok(claim1.clone()));
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        &format!(
+            "expected claim provider to be {} but found {}",
+            h.receiver.id().unwrap(),
+            h.receiver.id().unwrap() + 7
+        ),
+        h.extend_sectors2(&mut rt, params.clone(), claims.clone()),
+    );
+    rt.reset();
+    claim1.provider = h.receiver.id().unwrap(); // reset
 
     /* Dropped claim sector number mismatch */
+    claim1.sector = old_sector.sector_number + 7;
+    let mut claims = HashMap::new();
+    claims.insert(claim_ids[0], Ok(claim0.clone()));
+    claims.insert(claim_ids[1], Ok(claim1.clone()));
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        &format!(
+            "expected claim sector number to be {} but found {}",
+            old_sector.sector_number,
+            old_sector.sector_number + 7
+        ),
+        h.extend_sectors2(&mut rt, params, claims.clone()),
+    );
+    rt.reset();
+    claim1.sector = old_sector.sector_number;
 }
