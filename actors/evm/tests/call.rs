@@ -10,6 +10,8 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
+mod util;
+
 #[allow(dead_code)]
 pub fn call_proxy_contract() -> Vec<u8> {
     let init = "";
@@ -58,20 +60,11 @@ return
 
 #[test]
 fn test_call() {
-    let mut rt = MockRuntime::default();
+    let contract = call_proxy_contract();
 
     // construct the proxy
-    let contract = call_proxy_contract();
-    rt.expect_validate_caller_any();
-    let params = evm::ConstructorParams { bytecode: contract.into() };
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-    expect_empty(result);
-    rt.verify();
+    let mut rt = util::construct_and_verify(contract);
+    MockRuntime::default();
 
     // create a mock target and proxy a call through the proxy
     let target = FILAddress::new_id(0x100);
@@ -92,7 +85,6 @@ fn test_call() {
     let mut return_data = vec![0u8; 32];
     return_data[31] = 0x42;
 
-    rt.expect_validate_caller_any();
     rt.expect_send(
         target,
         evm::Method::InvokeContract as u64,
@@ -101,9 +93,8 @@ fn test_call() {
         RawBytes::from(return_data),
         ExitCode::OK,
     );
-    let result =
-        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
 
+    let result = util::invoke_contract(&mut rt, input_data);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 }
 
@@ -126,25 +117,14 @@ return
 
 #[test]
 fn test_methodnum() {
-    let mut rt = MockRuntime::default();
-
     let contract = methodnum_contract();
-    rt.expect_validate_caller_any();
-    let params = evm::ConstructorParams { bytecode: contract.into() };
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-    expect_empty(result);
-    rt.verify();
+
+    let mut rt = util::construct_and_verify(contract);
 
     // invoke the contract
     rt.expect_validate_caller_any();
 
     let result = rt.call::<evm::EvmContractActor>(0x42, &RawBytes::default()).unwrap();
-
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 }
 
@@ -197,20 +177,10 @@ return
 
 #[test]
 fn test_callactor() {
-    let mut rt = MockRuntime::default();
+    let contract = callactor_proxy_contract();
 
     // construct the proxy
-    let contract = callactor_proxy_contract();
-    rt.expect_validate_caller_any();
-    let params = evm::ConstructorParams { bytecode: contract.into() };
-    let result = rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
-        )
-        .unwrap();
-    expect_empty(result);
-    rt.verify();
+    let mut rt = util::construct_and_verify(contract);
 
     // create a mock target and proxy a call through the proxy
     let target = FILAddress::new_id(0x100);
@@ -231,7 +201,6 @@ fn test_callactor() {
     let mut return_data = vec![0u8; 32];
     return_data[31] = 0x42;
 
-    rt.expect_validate_caller_any();
     rt.expect_send(
         target,
         0x42,
@@ -240,8 +209,7 @@ fn test_callactor() {
         RawBytes::from(return_data),
         ExitCode::OK,
     );
-    let result =
-        rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap();
+    let result = util::invoke_contract(&mut rt, input_data);
 
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 }

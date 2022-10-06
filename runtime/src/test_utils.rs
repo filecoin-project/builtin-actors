@@ -151,6 +151,13 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub policy: Policy,
 
     pub circulating_supply: TokenAmount,
+
+    // iron
+    pub gas_limit: u64,
+    pub gas_premium: TokenAmount,
+    pub actor_balances: HashMap<ActorID, TokenAmount>,
+    pub tipset_timestamp: u64,
+    pub tipset_cids: Vec<Cid>,
 }
 
 #[derive(Default)]
@@ -172,6 +179,7 @@ pub struct Expectations {
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
+    pub expect_gas_available: VecDeque<u64>,
 }
 
 impl Expectations {
@@ -261,6 +269,11 @@ impl Expectations {
             "expect_gas_charge {:?}, not received",
             self.expect_gas_charge
         );
+        assert!(
+            self.expect_gas_available.is_empty(),
+            "expect_gas_charge {:?}, not received",
+            self.expect_gas_available
+        );
     }
 }
 
@@ -295,6 +308,11 @@ impl<BS> MockRuntime<BS> {
             expectations: Default::default(),
             policy: Default::default(),
             circulating_supply: Default::default(),
+            gas_limit: 10_000_000_000u64,
+            gas_premium: Default::default(),
+            actor_balances: Default::default(),
+            tipset_timestamp: Default::default(),
+            tipset_cids: Default::default(),
         }
     }
 }
@@ -669,6 +687,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.expectations.borrow_mut().expect_gas_charge.push_back(value);
     }
 
+    #[allow(dead_code)]
+    pub fn expect_gas_available(&mut self, value: u64) {
+        self.expectations.borrow_mut().expect_gas_available.push_back(value);
+    }
+
     ///// Private helpers /////
 
     fn require_in_call(&self) {
@@ -696,6 +719,12 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     }
     fn value_received(&self) -> TokenAmount {
         self.value_received.clone()
+    }
+    fn gas_limit(&self) -> u64 {
+        self.gas_limit
+    }
+    fn gas_premium(&self) -> TokenAmount {
+        self.gas_premium.clone()
     }
 }
 
@@ -792,6 +821,11 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
     fn current_balance(&self) -> TokenAmount {
         self.require_in_call();
         self.balance.borrow().clone()
+    }
+
+    fn actor_balance(&self, id: ActorID) -> TokenAmount {
+        self.require_in_call();
+        self.actor_balances.get(&id).cloned().unwrap_or_default()
     }
 
     fn resolve_address(&self, address: &Address) -> Option<ActorID> {
@@ -1039,6 +1073,28 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
 
     fn base_fee(&self) -> TokenAmount {
         self.base_fee.clone()
+    }
+
+    fn gas_available(&self) -> u64 {
+        let mut exs = self.expectations.borrow_mut();
+        assert!(!exs.expect_gas_available.is_empty(), "unexpected gas available call");
+        exs.expect_gas_available.pop_front().unwrap()
+    }
+
+    fn tipset_timestamp(&self) -> u64 {
+        self.tipset_timestamp
+    }
+
+    fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
+        if !(0..900).contains(&epoch) {
+            panic!("ivalidn epoch {}", epoch);
+        }
+
+        let epoch_index = epoch as usize;
+        if epoch_index < self.tipset_cids.len() {
+            return Some(self.tipset_cids[epoch_index]);
+        }
+        None
     }
 }
 

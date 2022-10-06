@@ -93,6 +93,14 @@ impl MessageInfo for FvmMessage {
     fn value_received(&self) -> TokenAmount {
         fvm::message::value_received()
     }
+
+    fn gas_limit(&self) -> u64 {
+        fvm::message::gas_limit()
+    }
+
+    fn gas_premium(&self) -> TokenAmount {
+        fvm::message::gas_premium()
+    }
 }
 
 impl<B> Runtime<B> for FvmRuntime<B>
@@ -156,6 +164,10 @@ where
 
     fn current_balance(&self) -> TokenAmount {
         fvm::sself::current_balance()
+    }
+
+    fn actor_balance(&self, id: ActorID) -> TokenAmount {
+        fvm::actor::balance_of(id)
     }
 
     fn resolve_address(&self, address: &Address) -> Option<ActorID> {
@@ -385,6 +397,18 @@ where
 
     fn base_fee(&self) -> TokenAmount {
         fvm::network::base_fee()
+    }
+
+    fn gas_available(&self) -> u64 {
+        fvm::gas::available()
+    }
+
+    fn tipset_timestamp(&self) -> u64 {
+        fvm::network::tipset_timestamp()
+    }
+
+    fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
+        fvm::network::tipset_cid(epoch)
     }
 }
 

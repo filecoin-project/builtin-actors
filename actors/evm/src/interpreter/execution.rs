@@ -319,7 +319,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         GASPRICE(m) {
-            context::gas_price(m.runtime, m.system)?;
+            context::gas_price(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
@@ -359,7 +359,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         TIMESTAMP(m) {
-            context::timestamp(m.runtime, m.system)?;
+            context::timestamp(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
@@ -374,12 +374,12 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         GASLIMIT(m) {
-            context::gas_limit(m.runtime, m.system)?;
+            context::gas_limit(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
         CHAINID(m) {
-            context::chain_id(m.runtime, m.system)?;
+            context::chain_id(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
@@ -448,7 +448,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         GAS(m) {
-            control::gas(m.runtime);
+            context::gas(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
