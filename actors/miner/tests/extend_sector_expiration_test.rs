@@ -364,90 +364,6 @@ fn supports_extensions_off_deadline_boundary() {
     h.check_state(&rt);
 }
 
-fn commit_sector_verified_deals(
-    verified_deals: &Vec<VerifiedDealInfo>,
-    h: &mut ActorHarness,
-    rt: &mut MockRuntime,
-) -> SectorOnChainInfo {
-    h.construct_and_verify(rt);
-    assert!(!verified_deals.is_empty());
-
-    let mut pcc = ProveCommitConfig::empty();
-    pcc.add_verified_deals(h.next_sector_no, verified_deals.clone());
-
-    let sector_info = &h.commit_and_prove_sectors_with_cfgs(
-        rt,
-        1,
-        DEFAULT_SECTOR_EXPIRATION as u64,
-        vec![vec![42]],
-        true,
-        pcc,
-    )[0];
-
-    sector_info.clone()
-}
-
-// assert that state tracks an expiration at the provided epoch in the provided deadline and partition for the provided sector
-fn check_for_expiration(
-    h: &mut ActorHarness,
-    rt: &mut MockRuntime,
-    expiration: ChainEpoch,
-    sector_number: SectorNumber,
-    deadline_index: u64,
-    partition_index: u64,
-) {
-    let new_sector = h.get_sector(rt, sector_number);
-    assert_eq!(expiration, new_sector.expiration);
-    let state: State = rt.get_state();
-    let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
-
-    // assert that new expiration exists
-    let (_, mut partition) = h.get_deadline_and_partition(rt, deadline_index, partition_index);
-    let expiration_set = partition.pop_expired_sectors(rt.store(), expiration - 1, quant).unwrap();
-    assert!(expiration_set.is_empty());
-
-    let expiration_set =
-        partition.pop_expired_sectors(rt.store(), quant.quantize_up(expiration), quant).unwrap();
-    assert_eq!(expiration_set.len(), 1);
-    assert!(expiration_set.on_time_sectors.get(sector_number));
-
-    h.check_state(rt);
-}
-
-fn assert_sector_verified_space(
-    h: &mut ActorHarness,
-    rt: &mut MockRuntime,
-    sector_number: SectorNumber,
-    v_deal_space: u64,
-) {
-    let new_sector = h.get_sector(rt, sector_number);
-    assert_eq!(
-        DealWeight::from(v_deal_space),
-        new_sector.verified_deal_weight / (new_sector.expiration - new_sector.activation)
-    );
-}
-
-fn make_claim(
-    claim_id: u64,
-    sector: &SectorOnChainInfo,
-    client: ActorID,
-    provider: ActorID,
-    new_expiration: ChainEpoch,
-    deal: &VerifiedDealInfo,
-    term_min: ChainEpoch,
-) -> FILPlusClaim {
-    FILPlusClaim {
-        provider,
-        client,
-        data: make_piece_cid(format!("piece for claim {}", claim_id).as_bytes()),
-        size: deal.size,
-        term_min,
-        term_max: new_expiration - sector.activation,
-        term_start: sector.activation,
-        sector: sector.sector_number,
-    }
-}
-
 #[test]
 fn update_expiration_multiple_claims() {
     let (mut h, mut rt) = setup();
@@ -913,7 +829,7 @@ fn update_expiration2_drop_claims_failure_cases() {
     /* Dropped claim sector number mismatch */
     claim1.sector = old_sector.sector_number + 7;
     let mut claims = HashMap::new();
-    claims.insert(claim_ids[0], Ok(claim0.clone()));
+    claims.insert(claim_ids[0], Ok(claim0));
     claims.insert(claim_ids[1], Ok(claim1.clone()));
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -926,4 +842,88 @@ fn update_expiration2_drop_claims_failure_cases() {
     );
     rt.reset();
     claim1.sector = old_sector.sector_number;
+}
+
+fn commit_sector_verified_deals(
+    verified_deals: &Vec<VerifiedDealInfo>,
+    h: &mut ActorHarness,
+    rt: &mut MockRuntime,
+) -> SectorOnChainInfo {
+    h.construct_and_verify(rt);
+    assert!(!verified_deals.is_empty());
+
+    let mut pcc = ProveCommitConfig::empty();
+    pcc.add_verified_deals(h.next_sector_no, verified_deals.clone());
+
+    let sector_info = &h.commit_and_prove_sectors_with_cfgs(
+        rt,
+        1,
+        DEFAULT_SECTOR_EXPIRATION as u64,
+        vec![vec![42]],
+        true,
+        pcc,
+    )[0];
+
+    sector_info.clone()
+}
+
+// assert that state tracks an expiration at the provided epoch in the provided deadline and partition for the provided sector
+fn check_for_expiration(
+    h: &mut ActorHarness,
+    rt: &mut MockRuntime,
+    expiration: ChainEpoch,
+    sector_number: SectorNumber,
+    deadline_index: u64,
+    partition_index: u64,
+) {
+    let new_sector = h.get_sector(rt, sector_number);
+    assert_eq!(expiration, new_sector.expiration);
+    let state: State = rt.get_state();
+    let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
+
+    // assert that new expiration exists
+    let (_, mut partition) = h.get_deadline_and_partition(rt, deadline_index, partition_index);
+    let expiration_set = partition.pop_expired_sectors(rt.store(), expiration - 1, quant).unwrap();
+    assert!(expiration_set.is_empty());
+
+    let expiration_set =
+        partition.pop_expired_sectors(rt.store(), quant.quantize_up(expiration), quant).unwrap();
+    assert_eq!(expiration_set.len(), 1);
+    assert!(expiration_set.on_time_sectors.get(sector_number));
+
+    h.check_state(rt);
+}
+
+fn assert_sector_verified_space(
+    h: &mut ActorHarness,
+    rt: &mut MockRuntime,
+    sector_number: SectorNumber,
+    v_deal_space: u64,
+) {
+    let new_sector = h.get_sector(rt, sector_number);
+    assert_eq!(
+        DealWeight::from(v_deal_space),
+        new_sector.verified_deal_weight / (new_sector.expiration - new_sector.activation)
+    );
+}
+
+fn make_claim(
+    claim_id: u64,
+    sector: &SectorOnChainInfo,
+    client: ActorID,
+    provider: ActorID,
+    new_expiration: ChainEpoch,
+    deal: &VerifiedDealInfo,
+    term_min: ChainEpoch,
+) -> FILPlusClaim {
+    FILPlusClaim {
+        provider,
+        client,
+        data: make_piece_cid(format!("piece for claim {}", claim_id).as_bytes()),
+        size: deal.size,
+        term_min,
+        term_max: new_expiration - sector.activation,
+        term_start: sector.activation,
+        sector: sector.sector_number,
+    }
 }
