@@ -443,6 +443,9 @@ where
         self.rt.message().receiver().id().unwrap()
     }
 
+    // This never returns an Err.  However we could return an error if the
+    // Runtime send method passed through the underlying syscall error
+    // instead of hiding it behind a client-side chosen exit code.
     fn send(
         &self,
         to: &Address,
