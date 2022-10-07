@@ -32,7 +32,17 @@ pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
 
 lazy_static::lazy_static! {
     static ref HAMT_CONFIG: HamtConfig = HamtConfig {
+        // The Solidity compiler creates contiguous array item keys.
+        // To prevent the tree from going very deep we use extensions.
         use_extensions: true,
+        // There are maximum 32 levels in the tree with the default bit width of 8.
+        // The top few levels will have a higher level of overlap in their hashed.
+        // Intuitively these levels should be used for routing, not storing data.
+        // The only exception to this is the top level variables in the contract
+        // which solidity puts in the first few slots. There having to do extra
+        // lookups is burdensome, and they will always be accessed even for arrays
+        // because that's where the array length is stored.
+        min_data_depth: 2,
         ..Default::default()
     };
 }
