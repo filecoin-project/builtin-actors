@@ -43,7 +43,7 @@ lazy_static::lazy_static! {
         // lookups is burdensome, and they will always be accessed even for arrays
         // because that's where the array length is stored.
         min_data_depth: 2,
-        ..Default::default()
+        bit_width: 5,
     };
 }
 
