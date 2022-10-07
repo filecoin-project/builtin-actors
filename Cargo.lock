@@ -1846,7 +1846,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.4.2"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-891-hamt-link-extension#7fe44ee3a95ac3910f41127bc495afde9aad76bc"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-892-keep-root-small#770c6a8da120a55f63b708434fe80560ad293e16"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1862,7 +1862,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_bitfield"
 version = "0.5.3"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-891-hamt-link-extension#7fe44ee3a95ac3910f41127bc495afde9aad76bc"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-892-keep-root-small#770c6a8da120a55f63b708434fe80560ad293e16"
 dependencies = [
  "cs_serde_bytes",
  "fvm_ipld_encoding",
@@ -1874,7 +1874,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_blockstore"
 version = "0.1.1"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-891-hamt-link-extension#7fe44ee3a95ac3910f41127bc495afde9aad76bc"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-892-keep-root-small#770c6a8da120a55f63b708434fe80560ad293e16"
 dependencies = [
  "anyhow",
  "cid",
@@ -1899,7 +1899,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_encoding"
 version = "0.2.2"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-891-hamt-link-extension#7fe44ee3a95ac3910f41127bc495afde9aad76bc"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-892-keep-root-small#770c6a8da120a55f63b708434fe80560ad293e16"
 dependencies = [
  "anyhow",
  "cid",
@@ -1916,7 +1916,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_hamt"
 version = "0.5.1"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-891-hamt-link-extension#7fe44ee3a95ac3910f41127bc495afde9aad76bc"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-892-keep-root-small#770c6a8da120a55f63b708434fe80560ad293e16"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -1936,7 +1936,7 @@ dependencies = [
 [[package]]
 name = "fvm_sdk"
 version = "3.0.0-alpha.2"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-891-hamt-link-extension#7fe44ee3a95ac3910f41127bc495afde9aad76bc"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-892-keep-root-small#770c6a8da120a55f63b708434fe80560ad293e16"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -1950,7 +1950,7 @@ dependencies = [
 [[package]]
 name = "fvm_shared"
 version = "3.0.0-alpha.2"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-891-hamt-link-extension#7fe44ee3a95ac3910f41127bc495afde9aad76bc"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=evm-892-keep-root-small#770c6a8da120a55f63b708434fe80560ad293e16"
 dependencies = [
  "anyhow",
  "blake2b_simd",
