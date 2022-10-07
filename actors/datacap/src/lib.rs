@@ -16,6 +16,7 @@ use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::receipt::Receipt;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use lazy_static::lazy_static;
+use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
@@ -442,6 +443,9 @@ where
         self.rt.message().receiver().id().unwrap()
     }
 
+    // This never returns an Err.  However we could return an error if the
+    // Runtime send method passed through the underlying syscall error
+    // instead of hiding it behind a client-side chosen exit code.
     fn send(
         &self,
         to: &Address,
@@ -451,15 +455,22 @@ where
     ) -> fvm_actor_utils::messaging::Result<Receipt> {
         // The Runtime discards some of the information from the syscall :-(
         let fake_gas_used = 0;
-        let fake_syscall_error_number = ErrorNumber::NotFound;
-        self.rt
-            .send(to, method, params.clone(), value.clone())
-            .map(|bytes| Receipt {
-                exit_code: ExitCode::OK,
-                return_data: bytes,
-                gas_used: fake_gas_used,
-            })
-            .map_err(|_| MessagingError::Syscall(fake_syscall_error_number))
+        let res = self.rt.send(to, method, params.clone(), value.clone());
+
+        let rec = match res {
+            Ok(bytes) => {
+                Receipt { exit_code: ExitCode::OK, return_data: bytes, gas_used: fake_gas_used }
+            }
+            Err(ae) => {
+                info!("datacap messenger failed: {}", ae.msg());
+                Receipt {
+                    exit_code: ae.exit_code(),
+                    return_data: RawBytes::default(),
+                    gas_used: fake_gas_used,
+                }
+            }
+        };
+        Ok(rec)
     }
 
     fn resolve_id(&self, address: &Address) -> fvm_actor_utils::messaging::Result<ActorID> {
