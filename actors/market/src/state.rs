@@ -231,7 +231,7 @@ impl State {
             .get(deal_id)
             .map_err(|e| e.downcast_wrap(&format!("no such deal proposal {}", deal_id)))?;
 
-        Ok(proposal.cloned())
+        Ok(proposal)
     }
 
     pub(super) fn deal_proposals_delete<BS>(
