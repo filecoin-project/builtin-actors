@@ -198,7 +198,7 @@ impl Harness {
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
-        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store());
+        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), rt.epoch);
         acc.assert_empty();
     }
 
@@ -243,17 +243,19 @@ impl Harness {
         rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
 
-        rt.expect_send(
-            DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::Burn as MethodNum,
-            RawBytes::serialize(&BurnParams {
-                amount: TokenAmount::from_whole(datacap_burnt.to_i64().unwrap()),
-            })
-            .unwrap(),
-            TokenAmount::zero(),
-            RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
-            ExitCode::OK,
-        );
+        if datacap_burnt > 0 {
+            rt.expect_send(
+                DATACAP_TOKEN_ACTOR_ADDR,
+                ext::datacap::Method::Burn as MethodNum,
+                RawBytes::serialize(&BurnParams {
+                    amount: TokenAmount::from_whole(datacap_burnt.to_i64().unwrap()),
+                })
+                .unwrap(),
+                TokenAmount::zero(),
+                RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
+                ExitCode::OK,
+            );
+        }
 
         let params = ClaimAllocationsParams { sectors: claim_allocs, all_or_nothing };
         let ret = rt
@@ -342,12 +344,25 @@ impl Harness {
         expected_alloc_results: BatchReturn,
         expected_extension_results: BatchReturn,
         expected_alloc_ids: Vec<AllocationID>,
+        expected_burn: u64,
     ) -> Result<(), ActorError> {
         rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, DATACAP_TOKEN_ACTOR_ADDR);
         let params = UniversalReceiverParams {
             type_: FRC46_TOKEN_TYPE,
             payload: serialize(&payload, "payload").unwrap(),
         };
+
+        if !expected_burn.is_zero() {
+            rt.expect_send(
+                DATACAP_TOKEN_ACTOR_ADDR,
+                ext::datacap::Method::Burn as MethodNum,
+                RawBytes::serialize(&BurnParams { amount: TokenAmount::from_whole(expected_burn) })
+                    .unwrap(),
+                TokenAmount::zero(),
+                RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
+                ExitCode::OK,
+            );
+        }
 
         rt.expect_validate_caller_addr(vec![DATACAP_TOKEN_ACTOR_ADDR]);
         let ret = rt.call::<VerifregActor>(
@@ -424,8 +439,8 @@ pub fn make_alloc(data_id: &str, client: ActorID, provider: ActorID, size: u64) 
         provider,
         data: make_piece_cid(data_id.as_bytes()),
         size: PaddedPieceSize(size),
-        term_min: 1000,
-        term_max: 2000,
+        term_min: MINIMUM_VERIFIED_ALLOCATION_TERM,
+        term_max: MINIMUM_VERIFIED_ALLOCATION_TERM * 2,
         expiration: 100,
     }
 }
@@ -553,4 +568,27 @@ pub fn assert_claim(rt: &MockRuntime, provider: ActorID, id: ClaimID, expected: 
     let mut claims = st.load_claims(store).unwrap();
 
     assert_eq!(expected, claims.get(provider, id).unwrap().unwrap());
+}
+
+pub fn assert_alloc_claimed(
+    rt: &MockRuntime,
+    client: ActorID,
+    provider: ActorID,
+    id: ClaimID,
+    alloc: &Allocation,
+    epoch: ChainEpoch,
+    sector: SectorNumber,
+) -> Claim {
+    let st: State = rt.get_state();
+    let store = &rt.store();
+
+    // Alloc is gone
+    let mut allocs = st.load_allocs(&store).unwrap();
+    assert!(allocs.get(client, id).unwrap().is_none());
+
+    // Claim is present
+    let expected_claim = claim_from_alloc(alloc, epoch, sector);
+    let mut claims = st.load_claims(store).unwrap();
+    assert_eq!(&expected_claim, claims.get(provider, id).unwrap().unwrap());
+    expected_claim
 }

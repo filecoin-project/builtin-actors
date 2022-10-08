@@ -7,7 +7,7 @@ use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState}
 use fil_actor_datacap::{Actor as DataCapActor, State as DataCapState};
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
-use fil_actor_miner::{Actor as MinerActor, State as MinerState};
+use fil_actor_miner::{Actor as MinerActor, MinerInfo, State as MinerState};
 use fil_actor_multisig::Actor as MultisigActor;
 use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as PowerState};
@@ -279,6 +279,11 @@ impl<'bs> VM<'bs> {
         }
     }
 
+    pub fn get_miner_info(&self, maddr: Address) -> MinerInfo {
+        let st = self.get_state::<MinerState>(maddr).unwrap();
+        self.store.get_cbor::<MinerInfo>(&st.info).unwrap().unwrap()
+    }
+
     pub fn get_network_stats(&self) -> NetworkStats {
         let power_state = self.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
         let reward_state = self.get_state::<RewardState>(REWARD_ACTOR_ADDR).unwrap();
@@ -437,11 +442,15 @@ impl<'bs> VM<'bs> {
         match res {
             Err(ae) => {
                 self.rollback(prior_root);
-                Ok(MessageResult { code: ae.exit_code(), ret: RawBytes::default() })
+                Ok(MessageResult {
+                    code: ae.exit_code(),
+                    message: ae.msg().to_string(),
+                    ret: RawBytes::default(),
+                })
             }
             Ok(ret) => {
                 self.checkpoint();
-                Ok(MessageResult { code: ExitCode::OK, ret })
+                Ok(MessageResult { code: ExitCode::OK, message: "OK".to_string(), ret })
             }
         }
     }
@@ -1032,6 +1041,7 @@ impl RuntimePolicy for InvocationCtx<'_, '_> {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MessageResult {
     pub code: ExitCode,
+    pub message: String,
     pub ret: RawBytes,
 }
 

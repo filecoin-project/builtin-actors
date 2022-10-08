@@ -26,9 +26,10 @@ use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::METHOD_SEND;
 use num_traits::cast::FromPrimitive;
 use test_vm::util::{
-    add_verifier, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
+    advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_to_proving_deadline, apply_ok, create_accounts, create_miner,
-    invariant_failure_patterns, make_bitfield, publish_deal, submit_windowed_post,
+    invariant_failure_patterns, make_bitfield, market_publish_deal, submit_windowed_post,
+    verifreg_add_verifier,
 };
 use test_vm::{ExpectInvocation, VM};
 
@@ -55,7 +56,7 @@ fn terminate_sectors() {
     );
 
     // publish verified and unverified deals
-    add_verifier(&v, verifier, StoragePower::from_i64(32 << 40_i64).unwrap());
+    verifreg_add_verifier(&v, verifier, StoragePower::from_i64(32 << 40_i64).unwrap());
 
     let add_client_params = VerifierParams {
         address: verified_client,
@@ -102,7 +103,7 @@ fn terminate_sectors() {
     // create 3 deals, some verified and some not
     let mut deal_ids = vec![];
     let deal_start = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
-    let deals = publish_deal(
+    let deals = market_publish_deal(
         &v,
         worker,
         verified_client,
@@ -116,7 +117,7 @@ fn terminate_sectors() {
     for id in deals.ids.iter() {
         deal_ids.push(*id);
     }
-    let deals = publish_deal(
+    let deals = market_publish_deal(
         &v,
         worker,
         verified_client,
@@ -130,7 +131,7 @@ fn terminate_sectors() {
     for id in deals.ids.iter() {
         deal_ids.push(*id);
     }
-    let deals = publish_deal(
+    let deals = market_publish_deal(
         &v,
         worker,
         unverified_client,

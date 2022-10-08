@@ -21,8 +21,8 @@ mod construction {
     #[test]
     fn construct_with_verified() {
         let mut rt = new_runtime();
-        let h = Harness { registry: VERIFIED_REGISTRY_ACTOR_ADDR };
-        h.construct_and_verify(&mut rt, &h.registry);
+        let h = Harness { governor: VERIFIED_REGISTRY_ACTOR_ADDR };
+        h.construct_and_verify(&mut rt, &h.governor);
         h.check_state(&rt);
     }
 }
@@ -62,7 +62,7 @@ mod mint {
 
     #[test]
     fn requires_verifreg_caller() {
-        let (mut rt, _) = make_harness();
+        let (mut rt, h) = make_harness();
         let amt = TokenAmount::from_whole(1);
         let params = MintParams { to: *ALICE, amount: amt, operators: vec![] };
 
@@ -73,6 +73,7 @@ mod mint {
             "caller address",
             rt.call::<Actor>(Method::Mint as MethodNum, &serialize(&params, "params").unwrap()),
         );
+        h.check_state(&rt);
     }
 
     #[test]
@@ -84,12 +85,45 @@ mod mint {
             "must be a multiple of 1000000000000000000",
             h.mint(&mut rt, &*ALICE, &amt, vec![]),
         );
+        h.check_state(&rt);
+    }
+}
+
+mod transfer {
+    // Tests for the specific transfer restrictions of the datacap token.
+
+    use crate::{make_harness, ALICE, BOB};
+    use fil_actors_runtime::test_utils::expect_abort_contains_message;
+    use fvm_ipld_encoding::RawBytes;
+    use fvm_shared::econ::TokenAmount;
+    use fvm_shared::error::ExitCode;
+
+    #[test]
+    fn only_governor_allowed() {
+        let (mut rt, h) = make_harness();
+        let operator_data = RawBytes::new(vec![1, 2, 3, 4]);
+
+        let amt = TokenAmount::from_whole(1);
+        h.mint(&mut rt, &*ALICE, &amt, vec![]).unwrap();
+
+        expect_abort_contains_message(
+            ExitCode::USR_FORBIDDEN,
+            "transfer not allowed",
+            h.transfer(&mut rt, &*ALICE, &*BOB, &amt, operator_data.clone()),
+        );
+        rt.reset();
+
+        // Transfer to governor is allowed.
+        h.transfer(&mut rt, &*ALICE, &h.governor, &amt, operator_data.clone()).unwrap();
+
+        // The governor can transfer out.
+        h.transfer(&mut rt, &h.governor, &*BOB, &amt, operator_data).unwrap();
     }
 }
 
 fn make_harness() -> (MockRuntime, Harness) {
     let mut rt = new_runtime();
-    let h = Harness { registry: VERIFIED_REGISTRY_ACTOR_ADDR };
-    h.construct_and_verify(&mut rt, &h.registry);
+    let h = Harness { governor: VERIFIED_REGISTRY_ACTOR_ADDR };
+    h.construct_and_verify(&mut rt, &h.governor);
     (rt, h)
 }

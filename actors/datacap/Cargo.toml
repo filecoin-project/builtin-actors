@@ -18,7 +18,7 @@ fil_actors_runtime = { version = "9.0.0-alpha.1", path = "../../runtime"}
 
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 frc42_dispatch = "1.0.0"
-frc46_token = "1.0.0"
+frc46_token = "1.1.0"
 fvm_actor_utils = "0.1.0"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.2"
@@ -28,6 +28,7 @@ lazy_static = "1.4.0"
 num-derive = "0.3.3"
 num-traits = "0.2.14"
 serde = { version = "1.0.136", features = ["derive"] }
+log = "0.4.14"
 
 [dev-dependencies]
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }

@@ -1,30 +1,23 @@
-use fil_actor_cron::Method as CronMethod;
-use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     max_prove_commit_duration, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MinerMethod, PowerPair, PreCommitSectorParams, ProveCommitSectorParams, Sectors,
-    State as MinerState,
+    Method as MinerMethod, PowerPair, Sectors, State as MinerState,
 };
 use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
-use fil_actor_verifreg::{AddVerifierClientParams, Method as VerifregMethod};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{
-    DealWeight, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use test_vm::util::{
-    add_verifier, advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
+    advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, apply_ok, create_accounts,
-    create_miner, publish_deal, submit_windowed_post,
+    create_miner, cron_tick, invariant_failure_patterns, market_add_balance, market_publish_deal,
+    miner_precommit_sector, miner_prove_sector, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier,
 };
 use test_vm::{ExpectInvocation, VM};
 
@@ -36,11 +29,9 @@ fn extend_sector_with_deals() {
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let sector_number: SectorNumber = 100;
-    let sealed_cid = make_sealed_cid(b"s100");
     let policy = Policy::default();
 
     // create miner
-
     let miner_id = create_miner(
         &mut v,
         owner,
@@ -56,45 +47,18 @@ fn extend_sector_with_deals() {
     //
 
     // register verifier then verified client
-
-    add_verifier(&v, verifier, StoragePower::from((32_u64 << 40) as u128));
-    let add_client_params = AddVerifierClientParams {
-        address: verified_client,
-        allowance: StoragePower::from((32_u64 << 40) as u64),
-    };
-    apply_ok(
-        &v,
-        verifier,
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        TokenAmount::zero(),
-        VerifregMethod::AddVerifiedClient as u64,
-        add_client_params,
-    );
+    let datacap = StoragePower::from(32_u128 << 40);
+    verifreg_add_verifier(&v, verifier, datacap.clone());
+    verifreg_add_client(&v, verifier, verified_client, datacap);
 
     // add market collateral for clients and miner
-    let mut collateral = TokenAmount::from_whole(3);
-    apply_ok(
-        &v,
-        verified_client,
-        STORAGE_MARKET_ACTOR_ADDR,
-        collateral.clone(),
-        MarketMethod::AddBalance as u64,
-        verified_client,
-    );
-    collateral = TokenAmount::from_whole(64);
-    apply_ok(
-        &v,
-        worker,
-        STORAGE_MARKET_ACTOR_ADDR,
-        collateral,
-        MarketMethod::AddBalance as u64,
-        miner_id,
-    );
+    market_add_balance(&v, verified_client, verified_client, TokenAmount::from_whole(3));
+    market_add_balance(&v, worker, miner_id, TokenAmount::from_whole(64));
 
     // create 1 verified deal for total sector capacity for 6 months
     let deal_start =
         v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
-    let deals = publish_deal(
+    let deals = market_publish_deal(
         &v,
         worker,
         verified_client,
@@ -111,54 +75,21 @@ fn extend_sector_with_deals() {
     // Precommit, prove and PoSt empty sector (more fully tested in TestCommitPoStFlow)
     //
 
-    // precommit sector
-    let precommit_params = PreCommitSectorParams {
+    miner_precommit_sector(
+        &v,
+        worker,
+        miner_id,
         seal_proof,
         sector_number,
-        sealed_cid,
-        seal_rand_epoch: v.get_epoch() - 1,
-        deal_ids: deals,
-        expiration: deal_start + 180 * EPOCHS_IN_DAY,
-        replace_capacity: false,
-        replace_sector_deadline: 0,
-        replace_sector_partition: 0,
-        replace_sector_number: 0,
-    };
-
-    apply_ok(
-        &v,
-        worker,
-        miner_id,
-        TokenAmount::zero(),
-        MinerMethod::PreCommitSector as u64,
-        precommit_params,
+        deals,
+        deal_start + 180 * EPOCHS_IN_DAY,
     );
 
-    // advance time to max seal duration
-
+    // advance time to max seal duration and prove the sector
     v = advance_by_deadline_to_epoch(v, miner_id, deal_start).0;
-
-    // Prove commit sector
-
-    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![] };
-    apply_ok(
-        &v,
-        worker,
-        miner_id,
-        TokenAmount::zero(),
-        MinerMethod::ProveCommitSector as u64,
-        prove_commit_params,
-    );
-
-    // In the same epoch, trigger cron to validate prove commit
-    apply_ok(
-        &v,
-        SYSTEM_ACTOR_ADDR,
-        CRON_ACTOR_ADDR,
-        TokenAmount::zero(),
-        CronMethod::EpochTick as u64,
-        RawBytes::default(),
-    );
+    miner_prove_sector(&v, worker, miner_id, sector_number);
+    // trigger cron to validate the prove commit
+    cron_tick(&v);
 
     // inspect sector info
 
@@ -317,4 +248,8 @@ fn extend_sector_with_deals() {
     assert_eq!(initial_deal_weight, sector_info.deal_weight); // 0 space time, unchanged
     assert_eq!(initial_verified_deal_weight / 4, sector_info.verified_deal_weight);
     // two halvings => 1/4 initial verified deal weight
+
+    v.expect_state_invariants(
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
