@@ -1940,9 +1940,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "3.0.0-alpha.3"
+version = "3.0.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ab114165b001c7ff18de384d56c05992b636a29180f704c1bb09e28fe57e6a3"
+checksum = "52916d828994181d1e61b01ad254d3502291869e92892ddd0624dd49951e47cc"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -1955,9 +1955,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "3.0.0-alpha.3"
+version = "3.0.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f383d7556da494339f507766bc1caa0cf612fa1986cc94bb76509e05ad7037d7"
+checksum = "6806b52893ee4da415d47136ffb3c495af82c6e830fcb803a325a3b573b4893b"
 dependencies = [
  "anyhow",
  "blake2b_simd",

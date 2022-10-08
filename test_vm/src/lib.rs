@@ -140,17 +140,23 @@ impl<'bs> VM<'bs> {
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
-        v.set_actor(SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value));
+        v.set_actor(SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value, None));
 
         // init
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
-        v.set_actor(INIT_ACTOR_ADDR, actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero()));
+        v.set_actor(
+            INIT_ACTOR_ADDR,
+            actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero(), None),
+        );
 
         // reward
 
         let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
-        v.set_actor(REWARD_ACTOR_ADDR, actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total));
+        v.set_actor(
+            REWARD_ACTOR_ADDR,
+            actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),
+        );
 
         // cron
         let builtin_entries = vec![
@@ -164,20 +170,23 @@ impl<'bs> VM<'bs> {
             },
         ];
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
-        v.set_actor(CRON_ACTOR_ADDR, actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()));
+        v.set_actor(
+            CRON_ACTOR_ADDR,
+            actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero(), None),
+        );
 
         // power
         let power_head = v.put_store(&PowerState::new(&v.store).unwrap());
         v.set_actor(
             STORAGE_POWER_ACTOR_ADDR,
-            actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero()),
+            actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero(), None),
         );
 
         // market
         let market_head = v.put_store(&MarketState::new(&v.store).unwrap());
         v.set_actor(
             STORAGE_MARKET_ACTOR_ADDR,
-            actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero()),
+            actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero(), None),
         );
 
         // verifreg
@@ -225,14 +234,14 @@ impl<'bs> VM<'bs> {
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
             VERIFIED_REGISTRY_ACTOR_ADDR,
-            actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero()),
+            actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
         );
 
         // burnt funds
         let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
         v.set_actor(
             BURNT_FUNDS_ACTOR_ADDR,
-            actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero()),
+            actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
@@ -593,7 +602,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 subinvocations: RefCell::new(vec![]),
             };
             if is_account {
-                new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id).unwrap();
+                new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
                 let res = new_ctx.invoke();
                 let invoc = new_ctx.gather_trace(res);
                 RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
@@ -601,7 +610,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                     subinvocs
                 });
             } else {
-                new_ctx.create_actor(*EMBRYO_ACTOR_CODE_ID, target_id).unwrap();
+                new_ctx.create_actor(*EMBRYO_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
             }
         }
 
@@ -686,7 +695,12 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 }
 
 impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
-    fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
+    fn create_actor(
+        &mut self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) -> Result<(), ActorError> {
         match NON_SINGLETON_CODES.get(&code_id) {
             Some(_) => (),
             None => {
@@ -702,7 +716,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 act.code = code_id;
                 act
             }
-            None => actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero()),
+            None => actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero(), predictable_address),
             _ => {
                 // can happen if an actor is deployed to an f4 address.
                 return Err(ActorError::unchecked(
@@ -1093,10 +1107,17 @@ pub struct Actor {
     pub head: Cid,
     pub call_seq_num: u64,
     pub balance: TokenAmount,
+    pub predictable_address: Option<Address>,
 }
 
-pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
-    Actor { code, head, call_seq_num: seq, balance: bal }
+pub fn actor(
+    code: Cid,
+    head: Cid,
+    call_seq_num: u64,
+    balance: TokenAmount,
+    predictable_address: Option<Address>,
+) -> Actor {
+    Actor { code, head, call_seq_num, balance, predictable_address }
 }
 
 #[derive(Clone)]
