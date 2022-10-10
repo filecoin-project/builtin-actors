@@ -105,15 +105,8 @@ mod mint {
 
         // transfer of an allowance *does* deduct allowance even though it is too small to matter in practice
         let operator_data = RawBytes::new(vec![1, 2, 3, 4]);
-        h.transfer_from(
-            &mut rt,
-            &*BOB,
-            &*ALICE,
-            &h.governor,
-            &(2 * amt.clone()),
-            operator_data.clone(),
-        )
-        .unwrap();
+        h.transfer_from(&mut rt, &*BOB, &*ALICE, &h.governor, &(2 * amt.clone()), operator_data)
+            .unwrap();
         let allowance3 = h.get_allowance_between(&rt, &*ALICE, &*BOB);
         assert!(allowance3.eq(&INFINITE_ALLOWANCE.clone().sub(2 * amt.clone())));
 
@@ -186,7 +179,7 @@ mod transfer {
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "transfer not allowed",
-            h.transfer_from(&mut rt, &*BOB, &h.governor, &*ALICE, &amt, operator_data.clone()),
+            h.transfer_from(&mut rt, &*BOB, &h.governor, &*ALICE, &amt, operator_data),
         );
         rt.reset();
     }
@@ -223,7 +216,7 @@ mod destroy {
         );
 
         // Destroying from 0 allowance having governor works
-        assert!(h.get_allowance_between(&mut rt, &*ALICE, &h.governor).is_zero());
+        assert!(h.get_allowance_between(&rt, &*ALICE, &h.governor).is_zero());
         let ret = h.destroy(&mut rt, &*ALICE, &amt).unwrap();
         assert_eq!(ret.balance, amt); // burned 2 amt - amt = amt
         h.check_state(&rt)

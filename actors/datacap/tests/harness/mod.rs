@@ -107,7 +107,7 @@ impl Harness {
     ) -> Result<BurnReturn, ActorError> {
         rt.expect_validate_caller_addr(vec![VERIFIED_REGISTRY_ACTOR_ADDR]);
 
-        let params = DestroyParams { owner: owner.clone(), amount: amount.clone() };
+        let params = DestroyParams { owner: *owner, amount: amount.clone() };
 
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret =
