@@ -6,25 +6,30 @@ use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use std::ops::Neg;
 
 use fil_actor_datacap::State as DatacapState;
-use fil_actor_market::DealMetaArray;
 use fil_actor_market::State as MarketState;
+use fil_actor_market::{deal_id_key, DealArray, DealMetaArray};
 use fil_actor_miner::{max_prove_commit_duration, PowerPair, SectorClaim, State as MinerState};
 use fil_actor_power::State as PowerState;
-use fil_actor_verifreg::{Claim, State as VerifregState};
-use fil_actors_runtime::runtime::policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
+use fil_actor_verifreg::{AllocationID, Claim, State as VerifregState};
+use fil_actors_runtime::runtime::policy_constants::{
+    DEAL_UPDATES_INTERVAL, MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
+};
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::shared::HAMT_BIT_WIDTH;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
-    DealWeight, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    make_map_with_root_and_bitwidth, DealWeight, Map, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_DAY,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, create_accounts, create_miner,
-    cron_tick, datacap_extend_claim, invariant_failure_patterns, market_add_balance,
-    market_publish_deal, miner_extend_sector_expiration2, miner_precommit_sector,
-    miner_prove_sector, sector_deadline, submit_windowed_post, verifreg_add_client,
-    verifreg_add_verifier, verifreg_extend_claim_terms,
+    cron_tick, datacap_extend_claim, datacap_get_balance, invariant_failure_patterns,
+    market_add_balance, market_publish_deal, miner_extend_sector_expiration2,
+    miner_precommit_sector, miner_prove_sector, sector_deadline, submit_windowed_post,
+    verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
+    verifreg_remove_expired_allocations,
 };
 use test_vm::VM;
 
@@ -52,13 +57,14 @@ fn verified_claim_scenario() {
     );
     let mut v = v.with_epoch(200);
 
-    // Register verifier and verified client
+    // Register verifier and verified clients
     let datacap = StoragePower::from(32_u128 << 40);
     verifreg_add_verifier(&v, verifier, &datacap * 2);
     verifreg_add_client(&v, verifier, verified_client, datacap.clone());
     verifreg_add_client(&v, verifier, verified_client2, datacap.clone());
 
-    // Add market collateral for clients and miner
+    // Add market collateral for client and miner
+    // Client2 doesn't need collateral because they won't make a new deal, only extend a claim.
     market_add_balance(&v, verified_client, verified_client, TokenAmount::from_whole(3));
     market_add_balance(&v, worker, miner_id, TokenAmount::from_whole(64));
 
@@ -293,6 +299,96 @@ fn verified_claim_scenario() {
         TokenAmount::from_whole(datacap) * 2 - TokenAmount::from_whole(deal_size) * 2, // Spent deal size twice
         datacap_state.token.supply
     );
+
+    v.expect_state_invariants(
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
+}
+
+#[test]
+fn expired_allocations() {
+    let store = MemoryBlockstore::new();
+    let mut v = VM::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+    let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+
+    // Create miner
+    let (miner_id, _) = create_miner(
+        &mut v,
+        owner,
+        worker,
+        seal_proof.registered_window_post_proof().unwrap(),
+        TokenAmount::from_whole(1_000),
+    );
+    let v = v.with_epoch(200);
+
+    // Register verifier and verified clients
+    let datacap = StoragePower::from(32_u128 << 40);
+    verifreg_add_verifier(&v, verifier, &datacap * 2);
+    verifreg_add_client(&v, verifier, verified_client, datacap.clone());
+
+    // Add market collateral for client and miner
+    market_add_balance(&v, verified_client, verified_client, TokenAmount::from_whole(3));
+    market_add_balance(&v, worker, miner_id, TokenAmount::from_whole(64));
+
+    // Publish 2 verified deals
+    let deal1_start =
+        v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+    let deal_term_min = 180 * EPOCHS_IN_DAY;
+
+    let deal_size = 32u64 << 30;
+    let deal1 = market_publish_deal(
+        &v,
+        worker,
+        verified_client,
+        miner_id,
+        "deal1".to_string(),
+        PaddedPieceSize(deal_size),
+        true,
+        deal1_start,
+        deal_term_min,
+    )
+    .ids[0];
+
+    // Client datacap balance reduced
+    assert_eq!(
+        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size),
+        datacap_get_balance(&v, verified_client)
+    );
+
+    // Advance to after the first deal's start
+    let v = v.with_epoch(deal1_start + DEAL_UPDATES_INTERVAL);
+    cron_tick(&v);
+
+    // Deal has expired and cleaned up.
+    let market_state: MarketState = v.get_state(STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let proposals: DealArray<MemoryBlockstore> =
+        DealArray::load(&market_state.proposals, v.store).unwrap();
+    assert!(proposals.get(deal1).unwrap().is_none());
+    let pending_deal_allocs: Map<MemoryBlockstore, AllocationID> = make_map_with_root_and_bitwidth(
+        &market_state.pending_deal_allocation_ids,
+        v.store,
+        HAMT_BIT_WIDTH,
+    )
+    .unwrap();
+    assert!(pending_deal_allocs.get(&deal_id_key(deal1)).unwrap().is_none());
+
+    // Allocation still exists until explicit cleanup
+    let alloc_id = 1;
+    let verifreg_state: VerifregState = v.get_state(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let mut allocs = verifreg_state.load_allocs(v.store).unwrap();
+    assert!(allocs.get(verified_client.id().unwrap(), alloc_id).unwrap().is_some());
+
+    verifreg_remove_expired_allocations(&v, worker, verified_client, vec![], deal_size);
+
+    // Allocation is gone
+    let verifreg_state: VerifregState = v.get_state(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let mut allocs = verifreg_state.load_allocs(v.store).unwrap();
+    assert!(allocs.get(verified_client.id().unwrap(), alloc_id).unwrap().is_none());
+
+    // Client has original datacap balance
+    assert_eq!(TokenAmount::from_whole(datacap), datacap_get_balance(&v, verified_client));
 
     v.expect_state_invariants(
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],

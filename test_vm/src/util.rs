@@ -42,9 +42,10 @@ use fil_actor_power::{
 };
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::{
-    AddVerifierClientParams, ClaimID, ClaimTerm, ExtendClaimTermsParams, GetClaimsParams,
-    Method as VerifregMethod, VerifierParams,
+    AddVerifierClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
+    GetClaimsParams, Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
 };
+use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::policy_constants::{
     MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
@@ -879,7 +880,6 @@ pub fn verifreg_add_client(v: &VM, verifier: Address, client: Address, allowance
     ExpectInvocation {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifiedClient as u64,
-        // params: Some(serialize(&add_client_params, "verifreg add client params").unwrap()),
         subinvocs: Some(vec![ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::Mint as u64,
@@ -925,6 +925,60 @@ pub fn verifreg_extend_claim_terms(
         VerifregMethod::ExtendClaimTerms as u64,
         params,
     );
+}
+
+pub fn verifreg_remove_expired_allocations(
+    v: &VM,
+    caller: Address,
+    client: Address,
+    ids: Vec<AllocationID>,
+    datacap_refund: u64,
+) {
+    let params =
+        RemoveExpiredAllocationsParams { client: client.id().unwrap(), allocation_ids: ids };
+    apply_ok(
+        v,
+        caller,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
+        TokenAmount::zero(),
+        VerifregMethod::RemoveExpiredAllocations as u64,
+        params,
+    );
+    ExpectInvocation {
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+        method: VerifregMethod::RemoveExpiredAllocations as u64,
+        subinvocs: Some(vec![ExpectInvocation {
+            to: DATACAP_TOKEN_ACTOR_ADDR,
+            method: DataCapMethod::Transfer as u64,
+            code: Some(ExitCode::OK),
+            params: Some(
+                serialize(
+                    &TransferParams {
+                        to: client,
+                        amount: TokenAmount::from_whole(datacap_refund),
+                        operator_data: Default::default(),
+                    },
+                    "transfer params",
+                )
+                .unwrap(),
+            ),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn datacap_get_balance(v: &VM, address: Address) -> TokenAmount {
+    let ret = apply_ok(
+        v,
+        address,
+        DATACAP_TOKEN_ACTOR_ADDR,
+        TokenAmount::zero(),
+        DataCapMethod::BalanceOf as u64,
+        address,
+    );
+    deserialize(&ret, "balance of return value").unwrap()
 }
 
 pub fn datacap_extend_claim(

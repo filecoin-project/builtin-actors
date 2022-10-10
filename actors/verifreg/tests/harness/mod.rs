@@ -198,7 +198,7 @@ impl Harness {
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
-        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store());
+        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), rt.epoch);
         acc.assert_empty();
     }
 
@@ -439,8 +439,8 @@ pub fn make_alloc(data_id: &str, client: ActorID, provider: ActorID, size: u64) 
         provider,
         data: make_piece_cid(data_id.as_bytes()),
         size: PaddedPieceSize(size),
-        term_min: 1000,
-        term_max: 2000,
+        term_min: MINIMUM_VERIFIED_ALLOCATION_TERM,
+        term_max: MINIMUM_VERIFIED_ALLOCATION_TERM * 2,
         expiration: 100,
     }
 }
