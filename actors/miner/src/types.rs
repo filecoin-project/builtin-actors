@@ -175,6 +175,19 @@ pub struct ExpirationExtension2 {
 
 impl Cbor for ExpirationExtension2 {}
 
+// From is straightforward when there are no claim bearing sectors
+impl From<&ExpirationExtension> for ExpirationExtension2 {
+    fn from(e: &ExpirationExtension) -> Self {
+        ExpirationExtension2 {
+            deadline: e.deadline,
+            partition: e.partition,
+            sectors: e.sectors.clone(),
+            sectors_with_claims: vec![],
+            new_expiration: e.new_expiration,
+        }
+    }
+}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct TerminateSectorsParams {
     pub terminations: Vec<TerminationDeclaration>,
