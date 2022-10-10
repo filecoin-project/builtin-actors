@@ -36,7 +36,7 @@ fn extend2_legacy_sector_with_deals() {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn extend1(
+fn extend(
     v: &VM,
     worker: Address,
     maddr: Address,
@@ -45,71 +45,37 @@ fn extend1(
     sector_number: SectorNumber,
     new_expiration: ChainEpoch,
     power_update_params: RawBytes,
+    v2: bool,
 ) {
-    let extension_params = ExtendSectorExpirationParams {
-        extensions: vec![ExpirationExtension {
-            deadline: deadline_index,
-            partition: partition_index,
-            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            new_expiration,
-        }],
+    let extension_params = match v2 {
+        false => ExtendSectorExpirationParams {
+            extensions: vec![ExpirationExtension {
+                deadline: deadline_index,
+                partition: partition_index,
+                sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
+                new_expiration,
+            }],
+        },
+        true => ExtendSectorExpiration2Params {
+            extensions: vec![ExpirationExtension2 {
+                deadline: deadline_index,
+                partition: partition_index,
+                sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
+                new_expiration,
+                sectors_with_claims: vec![],
+            }],
+        },
+    };
+    let extension_method = match v2 {
+        false => MinerMethod::ExtendSectorExpiration as u64,
+        true => MinerMethod::ExtendSectorExpiration2 as u64,
     };
 
-    apply_ok(
-        v,
-        worker,
-        maddr,
-        TokenAmount::zero(),
-        MinerMethod::ExtendSectorExpiration as u64,
-        extension_params,
-    );
+    apply_ok(v, worker, maddr, TokenAmount::zero(), extension_method, extension_params);
 
     ExpectInvocation {
         to: maddr,
-        method: MinerMethod::ExtendSectorExpiration as u64,
-        subinvocs: Some(vec![ExpectInvocation {
-            to: STORAGE_POWER_ACTOR_ADDR,
-            method: PowerMethod::UpdateClaimedPower as u64,
-            params: Some(power_update_params),
-            ..Default::default()
-        }]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
-}
-
-#[allow(clippy::too_many_arguments)]
-fn extend2(
-    v: &VM,
-    worker: Address,
-    maddr: Address,
-    deadline_index: u64,
-    partition_index: u64,
-    sector_number: SectorNumber,
-    new_expiration: ChainEpoch,
-    power_update_params: RawBytes,
-) {
-    let extension_params = ExtendSectorExpiration2Params {
-        extensions: vec![ExpirationExtension2 {
-            deadline: deadline_index,
-            partition: partition_index,
-            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            new_expiration,
-            sectors_with_claims: vec![],
-        }],
-    };
-
-    apply_ok(
-        v,
-        worker,
-        maddr,
-        TokenAmount::zero(),
-        MinerMethod::ExtendSectorExpiration2 as u64,
-        extension_params,
-    );
-    ExpectInvocation {
-        to: maddr,
-        method: MinerMethod::ExtendSectorExpiration2 as u64,
+        method: extension_method,
         subinvocs: Some(vec![ExpectInvocation {
             to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::UpdateClaimedPower as u64,
@@ -262,29 +228,17 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     let mut expected_update_claimed_power_params_ser =
         serialize(&expected_update_claimed_power_params, "update_claimed_power params").unwrap();
 
-    if do_extend2 {
-        extend2(
-            &v,
-            worker,
-            miner_id,
-            deadline_info.index,
-            partition_index,
-            sector_number,
-            new_expiration,
-            expected_update_claimed_power_params_ser,
-        );
-    } else {
-        extend1(
-            &v,
-            worker,
-            miner_id,
-            deadline_info.index,
-            partition_index,
-            sector_number,
-            new_expiration,
-            expected_update_claimed_power_params_ser,
-        );
-    }
+    extend(
+        &v,
+        worker,
+        miner_id,
+        deadline_info.index,
+        partition_index,
+        sector_number,
+        new_expiration,
+        expected_update_claimed_power_params_ser,
+        do_extend2,
+    );
 
     // advance to 6 months (original expiration) and extend another 6 months
     // verified deal weight /= 2
@@ -307,29 +261,17 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     expected_update_claimed_power_params_ser =
         serialize(&expected_update_claimed_power_params, "update_claimed_power params").unwrap();
 
-    if do_extend2 {
-        extend2(
-            &v,
-            worker,
-            miner_id,
-            deadline_info.index,
-            partition_index,
-            sector_number,
-            new_expiration,
-            expected_update_claimed_power_params_ser,
-        );
-    } else {
-        extend1(
-            &v,
-            worker,
-            miner_id,
-            deadline_info.index,
-            partition_index,
-            sector_number,
-            new_expiration,
-            expected_update_claimed_power_params_ser,
-        );
-    }
+    extend(
+        &v,
+        worker,
+        miner_id,
+        deadline_info.index,
+        partition_index,
+        sector_number,
+        new_expiration,
+        expected_update_claimed_power_params_ser,
+        do_extend2,
+    );
 
     miner_state = v.get_state::<MinerState>(miner_id).unwrap();
     sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();

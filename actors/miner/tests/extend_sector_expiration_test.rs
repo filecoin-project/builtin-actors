@@ -729,7 +729,7 @@ fn extend_expiration2_drop_claims() {
 }
 
 #[test]
-fn update_expiration_legacy_fails_on_new_sector_with_deals_fails() {
+fn update_expiration_legacy_fails_on_new_sector_with_deals() {
     let (mut h, mut rt) = setup();
     // add in verified deal
     let verified_deals = vec![
