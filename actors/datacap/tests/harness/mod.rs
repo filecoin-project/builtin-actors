@@ -1,5 +1,7 @@
 use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
-use frc46_token::token::types::{MintReturn, TransferParams, TransferReturn};
+use frc46_token::token::types::{
+    BurnReturn, MintReturn, TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
+};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -8,7 +10,7 @@ use fvm_shared::MethodNum;
 use num_traits::Zero;
 
 use fil_actor_datacap::testing::check_state_invariants;
-use fil_actor_datacap::{Actor as DataCapActor, Method, MintParams, State};
+use fil_actor_datacap::{Actor as DataCapActor, DestroyParams, Method, MintParams, State};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
@@ -97,6 +99,24 @@ impl Harness {
         Ok(ret.deserialize().unwrap())
     }
 
+    pub fn destroy(
+        &self,
+        rt: &mut MockRuntime,
+        owner: &Address,
+        amount: &TokenAmount,
+    ) -> Result<BurnReturn, ActorError> {
+        rt.expect_validate_caller_addr(vec![VERIFIED_REGISTRY_ACTOR_ADDR]);
+
+        let params = DestroyParams { owner: owner.clone(), amount: amount.clone() };
+
+        rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
+        let ret =
+            rt.call::<DataCapActor>(Method::Destroy as MethodNum, &serialize(&params, "params")?)?;
+
+        rt.verify();
+        Ok(ret.deserialize().unwrap())
+    }
+
     pub fn transfer(
         &self,
         rt: &mut MockRuntime,
@@ -141,6 +161,54 @@ impl Harness {
         Ok(ret.deserialize().unwrap())
     }
 
+    pub fn transfer_from(
+        &self,
+        rt: &mut MockRuntime,
+        operator: &Address,
+        from: &Address,
+        to: &Address,
+        amount: &TokenAmount,
+        operator_data: RawBytes,
+    ) -> Result<TransferFromReturn, ActorError> {
+        rt.expect_validate_caller_any();
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *operator);
+
+        // Expect the token receiver hook to be called.
+        let hook_params = UniversalReceiverParams {
+            type_: FRC46_TOKEN_TYPE,
+            payload: serialize(
+                &FRC46TokenReceived {
+                    from: from.id().unwrap(),
+                    to: to.id().unwrap(),
+                    operator: operator.id().unwrap(),
+                    amount: amount.clone(),
+                    operator_data: operator_data.clone(),
+                    token_data: Default::default(),
+                },
+                "hook payload",
+            )?,
+        };
+        // UniversalReceiverParams
+        rt.expect_send(
+            *to,
+            frc42_dispatch::method_hash!("Receive"),
+            serialize(&hook_params, "hook params")?,
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        let params =
+            TransferFromParams { to: *to, from: *from, amount: amount.clone(), operator_data };
+        let ret = rt.call::<DataCapActor>(
+            Method::TransferFrom as MethodNum,
+            &serialize(&params, "params")?,
+        )?;
+
+        rt.verify();
+        Ok(ret.deserialize().unwrap())
+    }
+
     // Reads the total supply from state directly.
     pub fn get_supply(&self, rt: &MockRuntime) -> TokenAmount {
         rt.get_state::<State>().token.supply
@@ -149,6 +217,19 @@ impl Harness {
     // Reads a balance from state directly.
     pub fn get_balance(&self, rt: &MockRuntime, address: &Address) -> TokenAmount {
         rt.get_state::<State>().token.get_balance(rt.store(), address.id().unwrap()).unwrap()
+    }
+
+    // Reads allowance from state directly
+    pub fn get_allowance_between(
+        &self,
+        rt: &MockRuntime,
+        owner: &Address,
+        operator: &Address,
+    ) -> TokenAmount {
+        rt.get_state::<State>()
+            .token
+            .get_allowance_between(rt.store(), owner.id().unwrap(), operator.id().unwrap())
+            .unwrap()
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
