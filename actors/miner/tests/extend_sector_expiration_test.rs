@@ -729,6 +729,50 @@ fn extend_expiration2_drop_claims() {
 }
 
 #[test]
+fn update_expiration_legacy_fails_on_new_sector_with_deals() {
+    let (mut h, mut rt) = setup();
+    // add in verified deal
+    let verified_deals = vec![
+        test_verified_deal(h.sector_size as u64 / 2),
+        test_verified_deal(h.sector_size as u64 / 2),
+    ];
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
+    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+
+    let state: State = rt.get_state();
+
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+
+    let extension = 42 * rt.policy().wpost_proving_period;
+    let new_expiration = old_sector.expiration + extension;
+
+    let params = ExtendSectorExpirationParams {
+        extensions: vec![ExpirationExtension {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[old_sector.sector_number]),
+            new_expiration,
+        }],
+    };
+
+    // legacy extend_sectors will fail to extend newly created sectors with deals
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "cannot use legacy sector extension for simple qa power with deal weight",
+        h.extend_sectors(&mut rt, params),
+    );
+    check_for_expiration(
+        &mut h,
+        &mut rt,
+        old_sector.expiration,
+        old_sector.sector_number,
+        deadline_index,
+        partition_index,
+    );
+}
+
+#[test]
 fn update_expiration2_drop_claims_failure_cases() {
     let (mut h, mut rt) = setup();
     let policy = Policy::default();
