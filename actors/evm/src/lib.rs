@@ -47,7 +47,7 @@ lazy_static::lazy_static! {
         // the data down into the leaves.
         push_data_to_leaves: true,
         // Bit width picked by experimentation.
-        bit_width: 5,
+        bit_width: 4,
     };
 }
 
