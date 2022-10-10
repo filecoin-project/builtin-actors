@@ -35,6 +35,7 @@ fn extend2_legacy_sector_with_deals() {
     extend_legacy_sector_with_deals_inner(true);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn extend1(
     v: &VM,
     worker: Address,
@@ -45,17 +46,17 @@ fn extend1(
     new_expiration: ChainEpoch,
     power_update_params: RawBytes,
 ) {
-    let mut extension_params = ExtendSectorExpirationParams {
+    let extension_params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
             deadline: deadline_index,
             partition: partition_index,
             sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            new_expiration: new_expiration,
+            new_expiration,
         }],
     };
 
     apply_ok(
-        &v,
+        v,
         worker,
         maddr,
         TokenAmount::zero(),
@@ -77,6 +78,7 @@ fn extend1(
     .matches(v.take_invocations().last().unwrap());
 }
 
+#[allow(clippy::too_many_arguments)]
 fn extend2(
     v: &VM,
     worker: Address,
@@ -87,18 +89,18 @@ fn extend2(
     new_expiration: ChainEpoch,
     power_update_params: RawBytes,
 ) {
-    let mut extension_params = ExtendSectorExpiration2Params {
+    let extension_params = ExtendSectorExpiration2Params {
         extensions: vec![ExpirationExtension2 {
             deadline: deadline_index,
             partition: partition_index,
             sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            new_expiration: new_expiration,
+            new_expiration,
             sectors_with_claims: vec![],
         }],
     };
 
     apply_ok(
-        &v,
+        v,
         worker,
         maddr,
         TokenAmount::zero(),
