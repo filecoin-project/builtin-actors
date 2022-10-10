@@ -43,6 +43,10 @@ lazy_static::lazy_static! {
         // lookups is burdensome, and they will always be accessed even for arrays
         // because that's where the array length is stored.
         min_data_depth: 2,
+        // Combat the write amplification caused by mapping keys by pushing
+        // the data down into the leaves.
+        push_data_to_leaves: true,
+        // Bit width picked by experimentation.
         bit_width: 5,
     };
 }
