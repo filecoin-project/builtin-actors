@@ -47,31 +47,36 @@ fn extend(
     power_update_params: RawBytes,
     v2: bool,
 ) {
-    let extension_params = match v2 {
-        false => ExtendSectorExpirationParams {
-            extensions: vec![ExpirationExtension {
-                deadline: deadline_index,
-                partition: partition_index,
-                sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-                new_expiration,
-            }],
-        },
-        true => ExtendSectorExpiration2Params {
-            extensions: vec![ExpirationExtension2 {
-                deadline: deadline_index,
-                partition: partition_index,
-                sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-                new_expiration,
-                sectors_with_claims: vec![],
-            }],
-        },
-    };
     let extension_method = match v2 {
         false => MinerMethod::ExtendSectorExpiration as u64,
         true => MinerMethod::ExtendSectorExpiration2 as u64,
     };
 
-    apply_ok(v, worker, maddr, TokenAmount::zero(), extension_method, extension_params);
+    match v2 {
+        false => {
+            let extension_params = ExtendSectorExpirationParams {
+                extensions: vec![ExpirationExtension {
+                    deadline: deadline_index,
+                    partition: partition_index,
+                    sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
+                    new_expiration,
+                }],
+            };
+            apply_ok(v, worker, maddr, TokenAmount::zero(), extension_method, extension_params);
+        }
+        true => {
+            let extension_params = ExtendSectorExpiration2Params {
+                extensions: vec![ExpirationExtension2 {
+                    deadline: deadline_index,
+                    partition: partition_index,
+                    sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
+                    new_expiration,
+                    sectors_with_claims: vec![],
+                }],
+            };
+            apply_ok(v, worker, maddr, TokenAmount::zero(), extension_method, extension_params);
+        }
+    };
 
     ExpectInvocation {
         to: maddr,
