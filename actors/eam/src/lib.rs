@@ -132,9 +132,9 @@ impl EamActor {
             nonce: params.nonce,
         };
         // rlp encoded bytes
-        let mut addr = rt.hash(SupportedHashes::Keccak256, &rlp.rlp_bytes().to_vec());
+        let mut addr = rt.hash_arr::<20>(SupportedHashes::Keccak256, &rlp.rlp_bytes().to_vec());
 
-        
+        eth2f4(&addr[12..32]);
 
         // TODO
         Ok((&addr[12..32]).to_vec().into())
@@ -153,12 +153,13 @@ impl EamActor {
         
         let eth_address = Self::get_eth_address(rt)?;
 
-        let address_hash = rt.hash(
+        let address_hash = rt.hash_arr::<20>(
             SupportedHashes::Keccak256,
             &[&[0xff], eth_address.as_slice(), &params.salt, &inithash].concat(),
         );
 
-        Ok(Create2Ret { eth_address: (&address_hash[12..32].try_into()).unwrap() })
+        // TODO
+        Ok(Create2Ret { f4_address: Address::new_delegated(ETH, &address_hash), id_address: 0})
     }
 
     fn get_eth_address<BS, RT>(rt: &RT) -> Result<[u8; 20], ActorError>
@@ -201,7 +202,7 @@ impl EamActor {
         rt.validate_immediate_caller_is(iter::once(&key_addr))?;
 
         // Compute the equivalent eth address
-        let eth_address: [u8; 20] = rt.hash(SupportedHashes::Keccak256, &params.pubkey[1..])[12..32].try_into().unwrap();
+        let eth_address = rt.hash_arr(SupportedHashes::Keccak256, &params.pubkey[1..]);
 
         // TODO: Check reserved ranges (id, precompile, etc.).
 

@@ -222,6 +222,8 @@ pub trait Primitives {
     /// Hashes input data using a supported hash function.
     fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8>;
 
+    fn hash_arr<const N: usize>(&self, hasher: SupportedHashes, data: &[u8]) -> [u8; N];
+
     /// Computes an unsealed sector CID (CommD) from its constituent piece CIDs (CommPs) and sizes.
     fn compute_unsealed_sector_cid(
         &self,

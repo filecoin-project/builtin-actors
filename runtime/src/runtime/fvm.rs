@@ -7,6 +7,7 @@ use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{
     Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
 };
@@ -457,8 +458,14 @@ where
         fvm::actor::install_actor(code_id).map_err(|_| Error::msg("failed to install actor"))
     }
 
-    fn hash(&self, hasher: fvm_shared::crypto::hash::SupportedHashes, data: &[u8]) -> Vec<u8> {
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
         fvm::crypto::hash_owned(hasher, data)
+    }
+
+    fn hash_arr<const N: usize>(&self, hasher: SupportedHashes, data: &[u8]) -> [u8; N] {
+        let mut buf = [0u8; N];
+        fvm::crypto::hash_into(hasher, data, &mut buf);
+        buf
     }
 
     fn recover_secp_public_key(
