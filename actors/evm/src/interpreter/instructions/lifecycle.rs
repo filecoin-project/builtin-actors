@@ -1,14 +1,18 @@
+use fil_actors_runtime::builtin::singletons::EAM_ACTOR_ID;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fil_actors_runtime::{actor_error, runtime::builtins::Type, ActorError};
-use fil_actors_runtime::builtin::singletons::EAM_ACTOR_ID;
-use fvm_ipld_encoding::{serde_bytes::{self, Deserialize}, tuple::*, RawBytes};
+use fvm_ipld_encoding::{
+    serde_bytes::{self, Deserialize},
+    tuple::*,
+    RawBytes,
+};
 use fvm_shared::{
     address::Address,
     bigint::{self, BigUint},
     econ::TokenAmount,
 };
-use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 use serde::Deserializer;
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use crate::interpreter::{address::EthAddress, U256};
 

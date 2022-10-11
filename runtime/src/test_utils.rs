@@ -1212,6 +1212,10 @@ impl<BS> Primitives for MockRuntime<BS> {
     ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
         (*self.recover_pubkey_fn)(hash, signature).map_err(|_| anyhow!("failed to recover pubkey."))
     }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        (*self.hash_func)(hasher, data)
+    }
 }
 
 impl<BS> Verifier for MockRuntime<BS> {

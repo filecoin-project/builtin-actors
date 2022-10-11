@@ -462,10 +462,10 @@ where
         fvm::crypto::hash_owned(hasher, data)
     }
 
-    fn hash_arr<const N: usize>(&self, hasher: SupportedHashes, data: &[u8]) -> [u8; N] {
-        let mut buf = [0u8; N];
-        fvm::crypto::hash_into(hasher, data, &mut buf);
-        buf
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        let mut buf = [0u8; 64];
+        let len = fvm::crypto::hash_into(hasher, data, &mut buf);
+        (buf, len)
     }
 
     fn recover_secp_public_key(
