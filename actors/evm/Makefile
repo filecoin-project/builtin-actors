@@ -62,7 +62,7 @@ gnuplot:
 
 .PHONY: jq
 jq:
-	@if [ -z "$(shell which gnuplot)" ]; then \
+	@if [ -z "$(shell which jq)" ]; then \
 		echo "Please install jq. See https://stedolan.github.io/jq/"; \
 		exit 1; \
 	fi
