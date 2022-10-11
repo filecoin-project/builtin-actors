@@ -67,7 +67,7 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     fn current_balance(&self) -> TokenAmount;
 
     /// The balance of an actor.
-    fn actor_balance(&self, id: ActorID) -> TokenAmount;
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount>;
 
     /// Resolves an address of any protocol to an ID address (via the Init actor's table).
     /// This allows resolution of externally-provided SECP, BLS, or actor addresses to the canonical form.

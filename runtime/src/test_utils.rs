@@ -823,9 +823,9 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         self.balance.borrow().clone()
     }
 
-    fn actor_balance(&self, id: ActorID) -> TokenAmount {
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
         self.require_in_call();
-        self.actor_balances.get(&id).cloned().unwrap_or_default()
+        self.actor_balances.get(&id).cloned()
     }
 
     fn resolve_address(&self, address: &Address) -> Option<ActorID> {
