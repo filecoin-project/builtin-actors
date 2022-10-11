@@ -26,7 +26,7 @@ fn embryo_deploy() {
     // Create a "fake" eam.
     v.set_actor(
         EAM_ACTOR_ADDR,
-        actor(*ACCOUNT_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero()),
+        actor(*ACCOUNT_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
     );
 
     // Create an embryo.
