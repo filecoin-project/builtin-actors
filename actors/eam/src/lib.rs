@@ -13,7 +13,7 @@ use {
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::{serde_bytes, tuple::*, RawBytes},
     fvm_shared::{
-        address::{Address, SECP_PUB_LEN},
+        address::{Address, Payload, SECP_PUB_LEN},
         crypto::hash::SupportedHashes,
         ActorID, MethodNum, METHOD_CONSTRUCTOR,
     },
@@ -47,6 +47,7 @@ pub struct CreateParams {
 pub struct Create2Params {
     #[serde(with = "serde_bytes")]
     pub initcode: Vec<u8>,
+    /// TODO are we hashing with Little Endian bytes
     #[serde(with = "serde_bytes")]
     pub salt: [u8; 32],
 }
@@ -93,6 +94,13 @@ impl EamActor {
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
         // TODO: Implement CREATE logic.
+
+        // rlp encoded bytes
+        let mut addr = rt.hash(SupportedHashes::Keccak256, &params.initcode[12..]);
+        // be bytes?
+        addr.reverse();
+        // TODO
+        Ok(&addr[12..])
     }
 
     pub fn create2<BS, RT>(rt: &mut RT, params: Create2Params) -> Result<RawBytes, ActorError>
@@ -102,6 +110,26 @@ impl EamActor {
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
         // TODO: Implement CREATE2 logic.
+
+        // hash the initial code bytes
+        let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);
+
+        let eth_address = {
+            let addr = rt.lookup_address(rt.message().caller()).unwrap();
+            match addr.payload() {
+                Payload::Delegated(eth) => Ok(eth.subaddress()),
+                _ => Err(ActorError::assertion_failed(
+                    "All FEVM actors should have a predictable address".to_string(),
+                )),
+            }?
+        };
+
+        let address_hash = rt.hash(
+            SupportedHashes::Keccak256,
+            &[&[0xff], eth_address, &params.salt, &inithash].concat(),
+        );
+
+        todo!()
     }
 
     pub fn init_account<BS, RT>(
