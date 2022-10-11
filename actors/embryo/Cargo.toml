@@ -13,8 +13,8 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fvm_sdk = { version = "3.0.0-alpha.2", optional = true }
-fvm_shared = { version = "3.0.0-alpha.2", optional = true }
+fvm_sdk = { version = "3.0.0-alpha.3", optional = true }
+fvm_shared = { version = "3.0.0-alpha.3", optional = true }
 
 [features]
 fil-actor = ["fvm_sdk", "fvm_shared"]

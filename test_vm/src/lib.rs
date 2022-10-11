@@ -930,7 +930,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         TokenAmount::zero()
     }
 
-    fn actor_balance(&self, _id: ActorID) -> TokenAmount {
+    fn actor_balance(&self, _id: ActorID) -> Option<TokenAmount> {
         todo!()
     }
 

@@ -166,7 +166,7 @@ where
         fvm::sself::current_balance()
     }
 
-    fn actor_balance(&self, id: ActorID) -> TokenAmount {
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
         fvm::actor::balance_of(id)
     }
 
@@ -408,7 +408,7 @@ where
     }
 
     fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
-        fvm::network::tipset_cid(epoch)
+        fvm::network::tipset_cid(epoch).ok()
     }
 }
 
