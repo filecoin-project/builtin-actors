@@ -1377,6 +1377,7 @@ dependencies = [
  "multihash",
  "num-derive",
  "num-traits",
+ "rlp",
  "serde",
  "serde_tuple",
 ]

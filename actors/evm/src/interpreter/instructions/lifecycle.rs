@@ -1,4 +1,14 @@
-use fvm_shared::{bigint::{self, BigUint}, address::Address};
+use fil_actors_runtime::EAM_ACTOR_ADDR;
+use fil_actors_runtime::{actor_error, runtime::builtins::Type, ActorError};
+use fil_actors_runtime::builtin::singletons::EAM_ACTOR_ID;
+use fvm_ipld_encoding::{serde_bytes::{self, Deserialize}, tuple::*, RawBytes};
+use fvm_shared::{
+    address::Address,
+    bigint::{self, BigUint},
+    econ::TokenAmount,
+};
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
+use serde::Deserializer;
 
 use crate::interpreter::{address::EthAddress, U256};
 
@@ -15,27 +25,33 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     platform: &'r System<'r, BS, RT>,
     create2: bool,
 ) -> Result<(), StatusCode> {
-    let ExecutionState {stack, memory, ..} = state;
+    const CREATE_METHOD_NUM: u64 = 2;
+    const CREATE2_METHOD_NUM: u64 = 3;
+
+    let ExecutionState { stack, memory, .. } = state;
     // readonly things?
 
     // create2
     if create2 {
-        // TODO, endowment can't be implemented till abstract account send funds is avaliable 
-        let endowment = stack.pop().into();
+        #[derive(Serialize_tuple, Deserialize_tuple)]
+        struct Create2Params {
+            #[serde(with = "serde_bytes")]
+            code: Vec<u8>,
+            #[serde(with = "serde_bytes")]
+            salt: [u8; 32],
+        }
 
+        let endowment = stack.pop();
         let offset = stack.pop();
         let size = stack.pop();
-        let input_region = get_memory_region(memory, offset, size)
-            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
-    
         let salt = stack.pop();
-    
-        
-        let gas = platform.rt.gas_available();
-    
-        let stackvalue = size;
-    
-        // endowment bigint?
+
+        let endowment = TokenAmount::from(&endowment);
+        let input_region =
+            get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
+
+        let stackvalue = size; // ?
+
         let salt = {
             let mut buf = [0u8; 32];
             // TODO make sure this is the right encoding
@@ -46,20 +62,28 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
         let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
             &memory[offset..][..size.get()]
         } else {
-            // TODO: ERR
-            &[]
+            return Err(StatusCode::ActorError(ActorError::assertion_failed(
+                "inicode not in memory range".to_string(),
+            )));
         };
-        // call into Ethereum Address Manager to make the address
-        // call_create2(platform, 0, input_data, 0, endowment, salt).unwrap();
-    
+
+        // call into Ethereum Address Manager to make the new account
+
+        let params = Create2Params { code: input_data.to_vec(), salt };
+
+        platform.rt.send(
+            &EAM_ACTOR_ADDR,
+            CREATE2_METHOD_NUM,
+            RawBytes::serialize(&params)?,
+            endowment,
+        )?;
+
         // errs
-    } else {
-        // create1
+    } else { // create1
     }
-    
+
     todo!()
 }
-
 
 struct Create2Ret {
     out: Vec<u8>,

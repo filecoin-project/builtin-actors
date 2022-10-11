@@ -1,5 +1,7 @@
 use std::iter;
 
+use rlp::Encodable;
+
 mod ext;
 mod state;
 
@@ -37,10 +39,32 @@ pub enum Method {
     CreateAccount = 4,
 }
 
+/// Intermediate type between RLP encoding for CREATE
+struct RlpCreateAddress {
+    address: [u8; 20],
+    nonce: u64,
+}
+
+impl rlp::Encodable for RlpCreateAddress {
+    fn rlp_append(&self, s: &mut rlp::RlpStream) {
+        // TODO check if this is correct... I cant read go code well enough to tell
+        s.encoder().encode_value(&self.address);
+        s.append(&self.nonce);
+    }
+}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CreateParams {
     #[serde(with = "serde_bytes")]
     pub initcode: Vec<u8>,
+    pub nonce: u64,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct Create2Ret {
+    #[serde(with = "serde_bytes")]
+    pub f4_address: Vec<u8>,
+    pub id_address: ActorID,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -50,6 +74,13 @@ pub struct Create2Params {
     /// TODO are we hashing with Little Endian bytes
     #[serde(with = "serde_bytes")]
     pub salt: [u8; 32],
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct Create2Ret {
+    #[serde(with = "serde_bytes")]
+    pub f4_address: Vec<u8>,
+    pub id_address: ActorID,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -94,42 +125,59 @@ impl EamActor {
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
         // TODO: Implement CREATE logic.
+        Self::assert_code_size(&params.initcode)?;
 
+        let rlp = RlpCreateAddress {
+            address: Self::get_eth_address(rt)?,
+            nonce: params.nonce,
+        };
         // rlp encoded bytes
-        let mut addr = rt.hash(SupportedHashes::Keccak256, &params.initcode[12..]);
-        // be bytes?
-        addr.reverse();
+        let mut addr = rt.hash(SupportedHashes::Keccak256, &rlp.rlp_bytes().to_vec());
+
+        
+
         // TODO
-        Ok(&addr[12..])
+        Ok((&addr[12..32]).to_vec().into())
     }
 
-    pub fn create2<BS, RT>(rt: &mut RT, params: Create2Params) -> Result<RawBytes, ActorError>
+    pub fn create2<BS, RT>(rt: &mut RT, params: Create2Params) -> Result<Create2Ret, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
-        // TODO: Implement CREATE2 logic.
+        Self::assert_code_size(&params.initcode)?;
 
         // hash the initial code bytes
         let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);
-
-        let eth_address = {
-            let addr = rt.lookup_address(rt.message().caller()).unwrap();
-            match addr.payload() {
-                Payload::Delegated(eth) => Ok(eth.subaddress()),
-                _ => Err(ActorError::assertion_failed(
-                    "All FEVM actors should have a predictable address".to_string(),
-                )),
-            }?
-        };
+        
+        let eth_address = Self::get_eth_address(rt)?;
 
         let address_hash = rt.hash(
             SupportedHashes::Keccak256,
-            &[&[0xff], eth_address, &params.salt, &inithash].concat(),
+            &[&[0xff], eth_address.as_slice(), &params.salt, &inithash].concat(),
         );
 
-        todo!()
+        Ok(Create2Ret { eth_address: (&address_hash[12..32].try_into()).unwrap() })
+    }
+
+    fn get_eth_address<BS, RT>(rt: &RT) -> Result<[u8; 20], ActorError>
+    where
+        BS: Blockstore + Clone,
+        RT: Runtime<BS>,
+    {
+        let addr = rt.lookup_address(rt.message().caller().id().unwrap());
+
+        match addr.map(|a| a.payload()) {
+            Some(Payload::Delegated(eth)) => Ok(eth.subaddress().try_into().unwrap()),
+            _ => Err(ActorError::assertion_failed(
+                "All FEVM actors should have a predictable address".to_string(),
+            )),
+        }
+    }
+
+    fn assert_code_size(code: &[u8]) -> Result<(), ActorError> {
+        (code.len() == MAX_CODE_SIZE).then(|| ()).ok_or(ActorError::illegal_argument("EVM bytecode larger than 24kB".to_string()))
     }
 
     pub fn init_account<BS, RT>(
@@ -153,7 +201,7 @@ impl EamActor {
         rt.validate_immediate_caller_is(iter::once(&key_addr))?;
 
         // Compute the equivalent eth address
-        let eth_address = rt.hash(SupportedHashes::Keccak256, &params.pubkey[1..])[12..].to_owned();
+        let eth_address: [u8; 20] = rt.hash(SupportedHashes::Keccak256, &params.pubkey[1..])[12..32].try_into().unwrap();
 
         // TODO: Check reserved ranges (id, precompile, etc.).
 
@@ -161,14 +209,14 @@ impl EamActor {
         let init_params = ext::init::Exec4Params {
             code_cid: todo!(),
             constructor_params: todo!(),
-            subaddress: eth_address.into(),
+            subaddress: eth_address.to_vec().into(),
         };
 
         let ret: ext::init::Exec4Return = rt
             .send(
                 &INIT_ACTOR_ADDR,
                 ext::init::EXEC4_METHOD,
-                RawBytes::serialize(&init_params),
+                RawBytes::serialize(&init_params)?,
                 rt.message().value_received(),
             )?
             .deserialize()?;
@@ -176,7 +224,7 @@ impl EamActor {
         Ok(InitAccountReturn {
             actor_id: ret.id_address.id().unwrap(),
             robust_address: ret.robust_address,
-            eth_address: init_params.subaddress,
+            eth_address,
         })
     }
 }
@@ -196,8 +244,8 @@ impl ActorCode for EamActor {
                 Self::constructor(rt)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::Create) => Self::create_actor(rt),
-            Some(Method::Create2) => Self::create_actor2(rt),
+            Some(Method::Create) => Self::create(rt, cbor::deserialize_params(params)?),
+            Some(Method::Create2) => Ok(RawBytes::serialize(Self::create2(rt, cbor::deserialize_params(params)?)?)?),
             Some(Method::InitAccount) => {
                 RawBytes::serialize(Self::init_account(rt, cbor::deserialize_params(params)?))
             }
