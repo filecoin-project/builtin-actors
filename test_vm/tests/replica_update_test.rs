@@ -1001,7 +1001,7 @@ fn replica_update_verified_deal() {
     // Get client verified
     let datacap = StoragePower::from(32_u128 << 30);
     verifreg_add_verifier(&v, verifier, datacap.clone());
-    verifreg_add_client(&v, verifier, client, datacap.clone());
+    verifreg_add_client(&v, verifier, client, datacap);
 
     // advance to have seal randomness epoch in the past
     let v = v.with_epoch(200);
@@ -1072,7 +1072,7 @@ fn replica_update_verified_deal_max_term_violated() {
     // Get client verified
     let datacap = StoragePower::from(32_u128 << 30);
     verifreg_add_verifier(&v, verifier, datacap.clone());
-    verifreg_add_client(&v, verifier, client, datacap.clone());
+    verifreg_add_client(&v, verifier, client, datacap);
 
     // advance to have seal randomness epoch in the past
     let v = v.with_epoch(200);
@@ -1100,7 +1100,7 @@ fn replica_update_verified_deal_max_term_violated() {
         deadline: d_idx,
         partition: p_idx,
         new_sealed_cid: new_cid,
-        deals: deal_ids.clone(),
+        deals: deal_ids,
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![],
         new_unsealed_cid: make_piece_cid(b"unsealed from itest vm"),
@@ -1289,6 +1289,7 @@ fn create_verified_deals(
     create_deals_frac(num_deals, v, client, worker, maddr, 1, true, deal_lifetime)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_deals_frac(
     num_deals: u32,
     v: &VM,
