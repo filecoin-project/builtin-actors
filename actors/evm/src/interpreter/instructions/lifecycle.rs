@@ -1,17 +1,13 @@
-use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fil_actors_runtime::ActorError;
-use fvm_ipld_encoding::{
-    strict_bytes,
-    tuple::*,
-    RawBytes,
-};
-use fvm_shared::{
-    address::Address,
-    econ::TokenAmount,
-};
+use fil_actors_runtime::EAM_ACTOR_ADDR;
+use fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes};
+use fvm_shared::MethodNum;
+use fvm_shared::{address::Address, econ::TokenAmount};
 use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
+use crate::interpreter::stack::Stack;
 use crate::interpreter::{address::EthAddress, U256};
+use crate::state::State;
 
 use super::memory::{get_memory_region, MemoryRegion};
 use {
@@ -31,88 +27,118 @@ pub struct EamReturn {
 pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r mut System<'r, BS, RT>,
-    create2: bool,
 ) -> Result<(), StatusCode> {
     const CREATE_METHOD_NUM: u64 = 2;
-    const CREATE2_METHOD_NUM: u64 = 3;
-
     let ExecutionState { stack, memory, .. } = state;
-    // TODO: readonly state things
 
-    // create2
-    let ret: Result<RawBytes, ActorError> = if create2 {
-        #[derive(Serialize_tuple, Deserialize_tuple)]
-        struct Create2Params {
-            #[serde(with = "strict_bytes")]
-            code: Vec<u8>,
-            salt: [u8; 32],
-        }
+    // Overall future work / TODOs:
+    //  readonly state things | ISSUE NEEDED
+    //  preload state items (~eq to EVM access list) | ISSUE NEEDED
 
-        let endowment = stack.pop();
-        let (offset, size) = (stack.pop(), stack.pop());
-        let salt = stack.pop();
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    struct CreateParams {
+        #[serde(with = "strict_bytes")]
+        code: Vec<u8>,
+        nonce: u64,
+    }
 
-        let endowment = TokenAmount::from(&endowment);
-        let input_region =
-            get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let value = stack.pop();
+    let (offset, size) = (stack.pop(), stack.pop());
 
-        // BE encoded array
-        let salt: [u8; 32] = salt.into();
+    let value = TokenAmount::from(&value);
+    let input_region =
+        get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-        let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
-            &memory[offset..][..size.get()]
-        } else {
-            return Err(StatusCode::ActorError(ActorError::illegal_argument(
-                "initcode not in memory range".to_string(),
-            )));
-        };
-
-        // call into Ethereum Address Manager to make the new account
-        let params = Create2Params { code: input_data.to_vec(), salt };
-
-        platform.rt.send(
-            &EAM_ACTOR_ADDR,
-            CREATE2_METHOD_NUM,
-            RawBytes::serialize(&params)?,
-            endowment,
-        )
-        // errs
+    let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
+        &memory[offset..][..size.get()]
     } else {
-        // create1
-        #[derive(Serialize_tuple, Deserialize_tuple)]
-        struct CreateParams {
-            #[serde(with = "strict_bytes")]
-            code: Vec<u8>,
-            nonce: u64,
-        }
-
-        let value = stack.pop();
-        let (offset, size) = (stack.pop(), stack.pop());
-
-        let value = TokenAmount::from(&value);
-        let input_region =
-            get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
-
-        let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
-            &memory[offset..][..size.get()]
-        } else {
-            return Err(StatusCode::ActorError(ActorError::assertion_failed(
-                "inicode not in memory range".to_string(),
-            )));
-        };
-
-        // call into Ethereum Address Manager to make the new account
-        let params = CreateParams { code: input_data.to_vec(), nonce: state.nonce };
-        
-        platform.rt.send(&EAM_ACTOR_ADDR, CREATE_METHOD_NUM, RawBytes::serialize(&params)?, value)
+        return Err(StatusCode::ActorError(ActorError::assertion_failed(
+            "inicode not in memory range".to_string(),
+        )));
     };
 
-    // bump nonce
-    state.nonce += 1;
-    // flush nonce change 
-    platform.flush_state().unwrap();
-    
-    // TODO handle nonce change revert 
+    // bump nonce and flush state TODO before send
+    let mut nonce = 0;
+    platform.rt.transaction(|state: &mut State, _rt| {
+        // this may be redundant if we are compiling with checked integer math
+        state.nonce = state.nonce.checked_add(1).unwrap();
+        nonce = state.nonce;
+        Ok(())
+    })?;
+
+    let params = CreateParams { code: input_data.to_vec(), nonce };
+
+    create_init(stack, platform, RawBytes::serialize(&params)?, CREATE_METHOD_NUM, value)
+}
+
+pub fn create2<'r, BS: Blockstore, RT: Runtime<BS>>(
+    state: &mut ExecutionState,
+    platform: &'r mut System<'r, BS, RT>,
+) -> Result<(), StatusCode> {
+    const CREATE2_METHOD_NUM: u64 = 3;
+    let ExecutionState { stack, memory, .. } = state;
+
+    // see `create()` overall TODOs
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    struct Create2Params {
+        #[serde(with = "strict_bytes")]
+        code: Vec<u8>,
+        salt: [u8; 32],
+    }
+
+    let endowment = stack.pop();
+    let (offset, size) = (stack.pop(), stack.pop());
+    let salt = stack.pop();
+
+    let endowment = TokenAmount::from(&endowment);
+    let input_region =
+        get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
+
+    // BE encoded array
+    let salt: [u8; 32] = salt.into();
+
+    let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
+        &memory[offset..][..size.get()]
+    } else {
+        return Err(StatusCode::ActorError(ActorError::illegal_argument(
+            "initcode not in memory range".to_string(),
+        )));
+    };
+    let params = Create2Params { code: input_data.to_vec(), salt };
+
+    platform.rt.transaction(|state: &mut State, _rt| {
+        // this may be redundant if we are compiling with checked integer math
+        state.nonce = state.nonce.checked_add(1).unwrap();
+        Ok(())
+    })?;
+
+    create_init(stack, platform, RawBytes::serialize(&params)?, CREATE2_METHOD_NUM, endowment)
+}
+
+/// call into Ethereum Address Manager to make the new account
+fn create_init<'r, BS: Blockstore, RT: Runtime<BS>>(
+    stack: &mut Stack,
+    platform: &'r mut System<'r, BS, RT>,
+    params: RawBytes,
+    method: MethodNum,
+    value: TokenAmount,
+) -> Result<(), StatusCode> {
+    // send bytecode & params to EAM to generate the address and contract
+    let ret = platform.rt.send(&EAM_ACTOR_ADDR, method, params, value);
+
+    // https://github.com/ethereum/go-ethereum/blob/fb75f11e87420ec25ff72f7eeeb741fa8974e87e/core/vm/evm.go#L406-L496
+    // Normally EVM will do some checks here to ensure that a contract has the capability
+    // to create an actor, but here FVM does these checks for us, including:
+    // - execution depth (FVM) // TODO do we have different expectations here?
+    // - account has enough value to send (FVM)
+    // - ensuring there isn't an existing account at the generated f4 address (INIT)
+    // - constructing smart contract on chain (INIT)
+    // - checks if max code size is exceeded (EAM & EVM)
+    // - gas cost of deployment (FVM)
+    // - EIP-3541 (EVM)
+
+    // TODO revert state if error was returned (revert nonce bump)
 
     let word = match ret {
         Ok(eam_ret) => {
@@ -123,7 +149,6 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     };
 
     stack.push(word);
-
     Ok(())
 }
 

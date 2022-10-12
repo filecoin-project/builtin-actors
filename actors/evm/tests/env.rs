@@ -40,7 +40,10 @@ impl TestEnv {
 
     /// Deploy a contract into the EVM actor.
     pub fn deploy(&mut self, contract_hex: &str) {
-        let params = evm::ConstructorParams { creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()), initcode: hex::decode(contract_hex).unwrap().into() };
+        let params = evm::ConstructorParams {
+            creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()),
+            initcode: hex::decode(contract_hex).unwrap().into(),
+        };
         // invoke constructor
         self.runtime.expect_validate_caller_any();
         self.runtime.set_origin(self.evm_address);

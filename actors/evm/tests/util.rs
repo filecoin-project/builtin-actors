@@ -18,7 +18,10 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     rt.expect_validate_caller_any();
     initrt(&mut rt);
 
-    let params = evm::ConstructorParams { creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()), initcode: initcode.into() };
+    let params = evm::ConstructorParams {
+        creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()),
+        initcode: initcode.into(),
+    };
 
     let result = rt
         .call::<evm::EvmContractActor>(

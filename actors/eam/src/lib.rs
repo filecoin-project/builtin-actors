@@ -31,10 +31,6 @@ fil_actors_runtime::wasm_trampoline!(EamActor);
 /// The contract code size limit is 24kB.
 const MAX_CODE_SIZE: usize = 24 << 10;
 
-/// TODO double check this
-const Keccack256_ZERO_INPUT_HASH: [u8; 32] =
-    hex_literal::hex!("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
-
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {

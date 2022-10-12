@@ -219,6 +219,7 @@ def_opcodes! {
     0xb0: CALLACTOR(6, -5),
     0xb1: METHODNUM(0, 1),
     //////////////////////////////////////////////////////////
+    // 0xEF Reserved for EIP-3541
     0xf0: CREATE(3, -2),
     0xf1: CALL(7, -6),
     0xf2: CALLCODE(7, -6),

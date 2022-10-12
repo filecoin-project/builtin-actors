@@ -33,8 +33,6 @@ pub struct ExecutionState {
     pub caller: EthAddress,
     /// The EVM address of the receiver.
     pub receiver: EthAddress,
-    /// EVM address nonce, bumped by CREATE
-    pub nonce: u64,
 }
 
 impl ExecutionState {
@@ -49,7 +47,6 @@ impl ExecutionState {
             selfdestroyed: None,
             caller,
             receiver,
-            nonce: 0,
         }
     }
 }
@@ -814,7 +811,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         CREATE(m) {
-            lifecycle::create(m.runtime, m.system, false)?;
+            lifecycle::create(m.runtime, m.system)?;
             Ok(ControlFlow::Continue)
         }
 
@@ -839,7 +836,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
 
         CREATE2(m) {
-            lifecycle::create(m.runtime, m.system, true)?;
+            lifecycle::create2(m.runtime, m.system)?;
             Ok(ControlFlow::Continue)
         }
 

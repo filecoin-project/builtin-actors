@@ -1,6 +1,6 @@
 use std::iter;
 
-use fil_actors_runtime::EAM_ACTOR_ADDR;
+use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_shared::address::Address;
 use interpreter::address::EthAddress;
 
@@ -52,7 +52,8 @@ impl EvmContractActor {
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(iter::once(&EAM_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(iter::once(&INIT_ACTOR_ADDR))?;
+        // TODO make sure we have an f4 address
 
         if params.initcode.len() > MAX_CODE_SIZE {
             return Err(ActorError::illegal_argument(format!(
@@ -109,12 +110,20 @@ impl EvmContractActor {
             // the resulting bytecode.
             let contract_bytecode = exec_status.output_data;
 
+            // Reject code starting with 0xEF, EIP-3541
+            if contract_bytecode.len() >= 1 && contract_bytecode[0] == 0xEF {
+                return Err(ActorError::illegal_argument(
+                    "EIP-3541: Contract code starting with the 0xEF byte is disallowed.".into(),
+                ));
+            }
+
             let contract_state_cid = system.flush_state()?;
 
             let state = State::new(
                 rt.store(),
                 RawBytes::new(contract_bytecode.to_vec()),
                 contract_state_cid,
+                0,
             )
             .map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
