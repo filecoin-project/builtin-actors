@@ -165,7 +165,6 @@ where
     RT: Runtime<BS>,
 {
     let caller_id = rt.message().caller().id().unwrap();
-    assert_eq!(caller_id, Type::EVM as u64);
 
     let addr = rt.lookup_address(caller_id);
 
