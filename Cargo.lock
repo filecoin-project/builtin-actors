@@ -25,17 +25,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ahash"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"
-dependencies = [
- "getrandom",
- "once_cell",
- "version_check",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "0.7.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1343,9 +1332,9 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_bundler"
-version = "4.0.0"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c1e563d609dede95fb0a847ea4ebfe71f5d7074703fc3e92736c74be4b237c2"
+checksum = "6d0550a13a20decf920aeeb630a648b13174af5acf6b513895996ff1cd09393d"
 dependencies = [
  "anyhow",
  "async-std",
@@ -1453,7 +1442,7 @@ dependencies = [
  "fvm_ipld_hamt",
  "fvm_shared",
  "itertools",
- "libipld-core",
+ "libipld-core 0.13.1",
  "log",
  "multihash",
  "num-derive",
@@ -1845,11 +1834,10 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_amt"
-version = "0.4.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48d09e5aa7de45452676d18fcb70b750acd65faae7a4fe18fe784b4c85f869fb"
+checksum = "21efabb8ae696f1cfd90b176a3600176010bd6ad3fb9919b16a24b43ba866b3d"
 dependencies = [
- "ahash",
  "anyhow",
  "cid",
  "fvm_ipld_blockstore",
@@ -1862,11 +1850,10 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_bitfield"
-version = "0.5.3"
+version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97dfb38431e301bf063a412f870a3d9ebb541d581d1884f95e921f5ea823d29d"
+checksum = "d1950291f40d2d1047eb0a4568f7ef6d5b4973452dcef012dffb1957fe483ff7"
 dependencies = [
- "cs_serde_bytes",
  "fvm_ipld_encoding",
  "serde",
  "thiserror",
@@ -1886,9 +1873,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_car"
-version = "0.4.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ade8c2f76a9e014f2fdaeb693a0884f49eca5ee663958e1c8c1db8d23290817c"
+checksum = "c60423568393a284de6d7c342cd664690611f27d223eb78629fa568ddd4e7951"
 dependencies = [
  "cid",
  "futures",
@@ -1901,13 +1888,12 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_encoding"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce9cfcb4ae444801009182fded790dd56aff9c9a567e54510e2ccf14fb9daf8e"
+checksum = "cf531c59e7c9a4c9044a34d1b44c9d544fab1eb0ba50aaa18121fe698d4fec35"
 dependencies = [
  "anyhow",
  "cid",
- "cs_serde_bytes",
  "fvm_ipld_blockstore",
  "multihash",
  "serde",
@@ -1919,18 +1905,17 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_hamt"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65b5c939897aa1bfd63e7cb9c458ba10689371af3278ff20d66c6f8ca152c6c0"
+checksum = "e48ac0db0c676fe9663f34782d448320b0c71d5e0afb7df38914983ae4d46faa"
 dependencies = [
  "anyhow",
  "byteorder",
  "cid",
- "cs_serde_bytes",
  "forest_hash_utils",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
- "libipld-core",
+ "libipld-core 0.14.0",
  "multihash",
  "once_cell",
  "serde",
@@ -1940,9 +1925,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "3.0.0-alpha.4"
+version = "3.0.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52916d828994181d1e61b01ad254d3502291869e92892ddd0624dd49951e47cc"
+checksum = "fddbad8bddf3fcc961e8f2884d8eb5610485606f808b50955945dcd3cc5c31eb"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -1955,15 +1940,14 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "3.0.0-alpha.4"
+version = "3.0.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6806b52893ee4da415d47136ffb3c495af82c6e830fcb803a325a3b573b4893b"
+checksum = "4f2a195a55012c943894f71f8ed505dd3efe73b13f2cab70fb9e4d335c63d0f3"
 dependencies = [
  "anyhow",
  "blake2b_simd",
  "byteorder",
  "cid",
- "cs_serde_bytes",
  "data-encoding",
  "data-encoding-macro",
  "fvm_ipld_blockstore",
@@ -2358,6 +2342,21 @@ name = "libipld-core"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbdd758764f9680a818af33c31db733eb7c45224715d8816b9dcf0548c75f7c5"
+dependencies = [
+ "anyhow",
+ "cid",
+ "core2",
+ "multibase",
+ "multihash",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "libipld-core"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d44790246ec6b7314cba745992c23d479d018073e66d49ae40ae1b64e5dd8eb5"
 dependencies = [
  "anyhow",
  "cid",
