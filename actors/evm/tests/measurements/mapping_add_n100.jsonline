@@ -1,4 +1,4 @@
-{"i":0,"series":1,"stats":{"get_bytes":2185,"get_count":4,"put_bytes":2188,"put_count":5}}
+{"i":0,"series":1,"stats":{"get_bytes":2185,"get_count":4,"put_bytes":2185,"put_count":4}}
 {"i":1,"series":1,"stats":{"get_bytes":2185,"get_count":4,"put_bytes":7494,"put_count":2}}
 {"i":2,"series":1,"stats":{"get_bytes":9589,"get_count":4,"put_bytes":15001,"put_count":4}}
 {"i":3,"series":1,"stats":{"get_bytes":16765,"get_count":5,"put_bytes":22582,"put_count":11}}
@@ -98,7 +98,7 @@
 {"i":97,"series":1,"stats":{"get_bytes":254250,"get_count":88,"put_bytes":259638,"put_count":86}}
 {"i":98,"series":1,"stats":{"get_bytes":245365,"get_count":83,"put_bytes":250747,"put_count":81}}
 {"i":99,"series":1,"stats":{"get_bytes":265670,"get_count":91,"put_bytes":271053,"put_count":89}}
-{"i":0,"series":2,"stats":{"get_bytes":262559,"get_count":87,"put_bytes":11133,"put_count":2}}
+{"i":0,"series":2,"stats":{"get_bytes":262559,"get_count":87,"put_bytes":87,"put_count":1}}
 {"i":1,"series":2,"stats":{"get_bytes":256304,"get_count":86,"put_bytes":261594,"put_count":84}}
 {"i":2,"series":2,"stats":{"get_bytes":259549,"get_count":88,"put_bytes":264832,"put_count":86}}
 {"i":3,"series":2,"stats":{"get_bytes":258453,"get_count":87,"put_bytes":263745,"put_count":85}}
