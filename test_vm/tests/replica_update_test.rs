@@ -33,7 +33,6 @@ use test_vm::util::{
     create_miner, deadline_state, declare_recovery, invariant_failure_patterns, make_bitfield,
     market_publish_deal, miner_power, precommit_sectors, prove_commit_sectors, sector_info,
     submit_invalid_post, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
-    verifreg_extend_claim_terms,
 };
 use test_vm::VM;
 // ---- Success cases ----
@@ -1052,6 +1051,69 @@ fn replica_update_verified_deal() {
     assert_eq!(deal_ids[0], new_sector_info.deal_ids[0]);
     assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
     assert_eq!(new_cid, new_sector_info.sealed_cid);
+}
+
+#[test]
+fn replica_update_verified_deal_max_term_violated() {
+    let store = &MemoryBlockstore::new();
+    let mut v = VM::new_with_singletons(store);
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(100_000));
+    let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+    let policy = Policy::default();
+    let (maddr, robust) = create_miner(
+        &mut v,
+        owner,
+        worker,
+        seal_proof.registered_window_post_proof().unwrap(),
+        TokenAmount::from_whole(10_000),
+    );
+
+    // Get client verified
+    let datacap = StoragePower::from(32_u128 << 30);
+    verifreg_add_verifier(&v, verifier, datacap.clone());
+    verifreg_add_client(&v, verifier, client, datacap.clone());
+
+    // advance to have seal randomness epoch in the past
+    let v = v.with_epoch(200);
+
+    let sector_number = 100;
+    let (v, d_idx, p_idx) = create_sector(v, worker, maddr, sector_number, seal_proof);
+
+    let old_sector_info = sector_info(&v, maddr, sector_number);
+    // make some deals, chop off market's alloc term buffer from deal lifetime.  This way term max can
+    // line up with sector lifetime AND the deal has buffer room to start a bit later while still fitting in the sector
+    let sector_lifetime = old_sector_info.expiration - v.get_epoch();
+    let deal_ids = create_verified_deals(
+        1,
+        &v,
+        client,
+        worker,
+        maddr,
+        sector_lifetime - policy.market_default_allocation_term_buffer - 1,
+    );
+
+    // replica update
+    let new_cid = make_sealed_cid(b"replica1");
+    let replica_update = ReplicaUpdate2 {
+        sector_number,
+        deadline: d_idx,
+        partition: p_idx,
+        new_sealed_cid: new_cid,
+        deals: deal_ids.clone(),
+        update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
+        replica_proof: vec![],
+        new_unsealed_cid: make_piece_cid(b"unsealed from itest vm"),
+    };
+    apply_code(
+        &v,
+        worker,
+        robust,
+        TokenAmount::zero(),
+        MinerMethod::ProveReplicaUpdates2 as u64,
+        ProveReplicaUpdatesParams2 { updates: vec![replica_update] },
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
 }
 
 fn create_miner_and_upgrade_sector(
