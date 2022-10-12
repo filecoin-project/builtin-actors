@@ -84,7 +84,15 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
 
         // errs
     } else { // create1
+        #[derive(Serialize_tuple, Deserialize_tuple)]
+        struct CreateParams {
+            #[serde(with = "serde_bytes")]
+            code: Vec<u8>,
+            nonce: u64,
+        }
     }
+
+    // TODO bump nonce
 
     todo!()
 }

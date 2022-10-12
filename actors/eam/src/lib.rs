@@ -1,5 +1,6 @@
 use std::iter;
 
+use ext::init::{Exec4Params, Exec4Return};
 use rlp::Encodable;
 
 mod ext;
@@ -36,7 +37,7 @@ pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     Create = 2,
     Create2 = 3,
-    CreateAccount = 4,
+    // CreateAccount = 4,
 }
 
 /// Intermediate type between RLP encoding for CREATE
@@ -52,7 +53,6 @@ impl rlp::Encodable for RlpCreateAddress {
         s.append(&self.nonce);
     }
 }
-
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CreateParams {
     #[serde(with = "serde_bytes")]
@@ -77,24 +77,35 @@ pub struct Create2Params {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct Create2Ret {
-    #[serde(with = "serde_bytes")]
-    pub f4_address: Vec<u8>,
-    pub id_address: ActorID,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct InitAccountParams {
     #[serde(with = "serde_bytes")]
     pub pubkey: [u8; SECP_PUB_LEN],
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct InitAccountReturn {
+pub struct EamReturn {
     pub actor_id: ActorID,
     pub robust_address: Address,
     #[serde(with = "serde_bytes")]
     pub eth_address: [u8; 20],
+}
+
+impl EamReturn {
+    fn from_exec4(exec4: Exec4Return, eth_address: [u8; 20]) -> Self {
+        Self {
+            actor_id: exec4.id_address.id().unwrap(),
+            robust_address: exec4.robust_address,
+            eth_address,
+        }
+    }
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct EvmConstructorParams {
+    /// The actor's "creator" (specified by the EAM).
+    pub creator: [u8; 20],
+    /// The initcode that will construct the new EVM actor.
+    pub initcode: RawBytes,
 }
 
 fn eth2f4(addr: &[u8]) -> Result<Address, ActorError> {
@@ -130,20 +141,17 @@ impl EamActor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
-        // TODO: Implement CREATE logic.
         assert_code_size(&params.initcode)?;
 
+        // CREATE logic
         let rlp = RlpCreateAddress { address: Self::get_eth_address(rt)?, nonce: params.nonce };
-        // rlp encoded bytes
-        let mut addr = Self::hash_address_20(rt, &rlp.rlp_bytes().to_vec());
+        let eth_addr = Self::hash_20(rt, &rlp.rlp_bytes().to_vec());
 
-        eth2f4(&addr[12..32]);
-
-        // TODO
-        Ok((&addr[12..32]).to_vec().into())
+        // send to init actor
+        Self::create_actor(rt, eth_addr, params.initcode)
     }
 
-    pub fn create2<BS, RT>(rt: &mut RT, params: Create2Params) -> Result<Create2Ret, ActorError>
+    pub fn create2<BS, RT>(rt: &mut RT, params: Create2Params) -> Result<RawBytes, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
@@ -151,25 +159,51 @@ impl EamActor {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
         assert_code_size(&params.initcode)?;
 
-        // hash the initial code bytes
+        // CREATE2 logic
         let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);
 
-        let eth_address = Self::get_eth_address(rt)?;
+        let caller_addr = Self::get_eth_address(rt)?;
 
-        let address_hash = Self::hash_address_20(
-            rt,
-            &[&[0xff], eth_address.as_slice(), &params.salt, &inithash].concat(),
-        );
+        let eth_addr =
+            Self::hash_20(rt, &[&[0xff], caller_addr.as_slice(), &params.salt, &inithash].concat());
 
-        // TODO
-        Ok(Create2Ret {
-            f4_address: Address::new_delegated(EAM_ACTOR_ID, &address_hash)
-                .unwrap()
-                .payload_bytes(),
-            id_address: 0,
-        })
+        // send to init actor
+        Self::create_actor(rt, eth_addr, params.initcode)
     }
 
+    fn create_actor<BS, RT>(
+        rt: &mut RT,
+        eth_addr: [u8; 20],
+        initcode: Vec<u8>,
+    ) -> Result<RawBytes, ActorError>
+    where
+        BS: Blockstore + Clone,
+        RT: Runtime<BS>,
+    {
+        let constructor_params = RawBytes::serialize(EvmConstructorParams {
+            creator: eth_addr,
+            initcode: initcode.into(),
+        })?;
+
+        let init_params = Exec4Params {
+            code_cid: rt.get_code_cid_for_type(Type::EVM),
+            constructor_params,
+            subaddress: eth2f4(&eth_addr)?.to_bytes().into(),
+        };
+
+        let ret: ext::init::Exec4Return = rt
+            .send(
+                &INIT_ACTOR_ADDR,
+                ext::init::EXEC4_METHOD,
+                RawBytes::serialize(&init_params)?,
+                rt.message().value_received(),
+            )?
+            .deserialize()?;
+
+        Ok(RawBytes::serialize(EamReturn::from_exec4(ret, eth_addr))?)
+    }
+
+    /// lookup caller's raw ETH address
     fn get_eth_address<BS, RT>(rt: &RT) -> Result<[u8; 20], ActorError>
     where
         BS: Blockstore + Clone,
@@ -185,7 +219,8 @@ impl EamActor {
         }
     }
 
-    fn hash_address_20<BS, RT>(rt: &RT, data: &[u8]) -> [u8; 20]
+    /// hash of data with Keccack256, with first 12 bytes cropped
+    fn hash_20<BS, RT>(rt: &RT, data: &[u8]) -> [u8; 20]
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
@@ -194,10 +229,10 @@ impl EamActor {
         buf[12..32].try_into().unwrap()
     }
 
-    pub fn init_account<BS, RT>(
+    pub fn create_account<BS, RT>(
         rt: &mut RT,
         params: InitAccountParams,
-    ) -> Result<InitAccountReturn, ActorError>
+    ) -> Result<RawBytes, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
@@ -215,31 +250,12 @@ impl EamActor {
         rt.validate_immediate_caller_is(iter::once(&key_addr))?;
 
         // Compute the equivalent eth address
-        let eth_address = Self::hash_address_20(rt, &params.pubkey[1..]);
+        let eth_address = Self::hash_20(rt, &params.pubkey[1..]);
 
         // TODO: Check reserved ranges (id, precompile, etc.).
 
         // Attempt to deploy an account there.
-        let init_params = ext::init::Exec4Params {
-            code_cid: todo!(),
-            constructor_params: todo!(),
-            subaddress: eth_address.to_vec().into(),
-        };
-
-        let ret: ext::init::Exec4Return = rt
-            .send(
-                &INIT_ACTOR_ADDR,
-                ext::init::EXEC4_METHOD,
-                RawBytes::serialize(&init_params)?,
-                rt.message().value_received(),
-            )?
-            .deserialize()?;
-
-        Ok(InitAccountReturn {
-            actor_id: ret.id_address.id().unwrap(),
-            robust_address: ret.robust_address,
-            eth_address,
-        })
+        Self::create_actor(rt, eth_address, Vec::new())
     }
 }
 
@@ -262,9 +278,9 @@ impl ActorCode for EamActor {
             Some(Method::Create2) => {
                 Ok(RawBytes::serialize(Self::create2(rt, cbor::deserialize_params(params)?)?)?)
             }
-            Some(Method::InitAccount) => {
-                RawBytes::serialize(Self::init_account(rt, cbor::deserialize_params(params)?))
-            }
+            // Some(Method::CreateAccount) => {
+            //     Self::create_account(rt, cbor::deserialize_params(params)?)
+            // }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
