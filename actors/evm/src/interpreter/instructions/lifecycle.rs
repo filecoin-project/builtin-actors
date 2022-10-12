@@ -2,7 +2,7 @@ use fil_actors_runtime::builtin::singletons::EAM_ACTOR_ID;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fil_actors_runtime::{actor_error, runtime::builtins::Type, ActorError};
 use fvm_ipld_encoding::{
-    serde_bytes::{self, Deserialize},
+    strict_bytes::{self, Deserialize},
     tuple::*,
     RawBytes,
 };
@@ -27,7 +27,7 @@ use {
 pub struct EamReturn {
     pub actor_id: u64,
     pub robust_address: Address,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub eth_address: EthAddress,
 }
 
@@ -48,7 +48,7 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     let ret: Result<RawBytes, ActorError> = if create2 {
         #[derive(Serialize_tuple, Deserialize_tuple)]
         struct Create2Params {
-            #[serde(with = "serde_bytes")]
+            #[serde(with = "strict_bytes")]
             code: Vec<u8>,
             salt: [u8; 32],
         }
@@ -87,7 +87,7 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
         // create1
         #[derive(Serialize_tuple, Deserialize_tuple)]
         struct CreateParams {
-            #[serde(with = "serde_bytes")]
+            #[serde(with = "strict_bytes")]
             code: Vec<u8>,
             nonce: u64,
         }

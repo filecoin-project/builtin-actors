@@ -14,7 +14,7 @@ use {
         ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
     },
     fvm_ipld_blockstore::Blockstore,
-    fvm_ipld_encoding::{serde_bytes, tuple::*, RawBytes},
+    fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes},
     fvm_shared::{
         address::{Address, Payload, SECP_PUB_LEN},
         crypto::hash::SupportedHashes,
@@ -60,23 +60,23 @@ impl rlp::Encodable for RlpCreateAddress {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CreateParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub initcode: Vec<u8>,
     pub nonce: u64,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct Create2Params {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub initcode: Vec<u8>,
     /// TODO are we hashing with Little Endian bytes
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub salt: [u8; 32],
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct InitAccountParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub pubkey: [u8; SECP_PUB_LEN],
 }
 
@@ -84,7 +84,7 @@ pub struct InitAccountParams {
 pub struct EamReturn {
     pub actor_id: ActorID,
     pub robust_address: Address,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub eth_address: [u8; 20],
 }
 
