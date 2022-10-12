@@ -33,6 +33,7 @@ pub struct ExecutionState {
     pub caller: EthAddress,
     /// The EVM address of the receiver.
     pub receiver: EthAddress,
+    pub nonce: u64,
 }
 
 impl ExecutionState {
@@ -47,6 +48,7 @@ impl ExecutionState {
             selfdestroyed: None,
             caller,
             receiver,
+            nonce: 0,
         }
     }
 }
