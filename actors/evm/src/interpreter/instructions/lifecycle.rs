@@ -1,17 +1,14 @@
-use fil_actors_runtime::builtin::singletons::EAM_ACTOR_ID;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
-use fil_actors_runtime::{actor_error, runtime::builtins::Type, ActorError};
+use fil_actors_runtime::ActorError;
 use fvm_ipld_encoding::{
-    strict_bytes::{self, Deserialize},
+    strict_bytes,
     tuple::*,
     RawBytes,
 };
 use fvm_shared::{
     address::Address,
-    bigint::{self, BigUint},
     econ::TokenAmount,
 };
-use serde::Deserializer;
 use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use crate::interpreter::{address::EthAddress, U256};
@@ -27,22 +24,20 @@ use {
 pub struct EamReturn {
     pub actor_id: u64,
     pub robust_address: Address,
-    #[serde(with = "strict_bytes")]
     pub eth_address: EthAddress,
 }
 
 #[inline]
 pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
+    platform: &'r mut System<'r, BS, RT>,
     create2: bool,
 ) -> Result<U256, StatusCode> {
-    // TODO be more careful with errors
     const CREATE_METHOD_NUM: u64 = 2;
     const CREATE2_METHOD_NUM: u64 = 3;
 
     let ExecutionState { stack, memory, .. } = state;
-    // readonly things?
+    // TODO: readonly state things
 
     // create2
     let ret: Result<RawBytes, ActorError> = if create2 {
@@ -67,13 +62,12 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
         let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
             &memory[offset..][..size.get()]
         } else {
-            return Err(StatusCode::ActorError(ActorError::assertion_failed(
+            return Err(StatusCode::ActorError(ActorError::illegal_argument(
                 "initcode not in memory range".to_string(),
             )));
         };
 
         // call into Ethereum Address Manager to make the new account
-
         let params = Create2Params { code: input_data.to_vec(), salt };
 
         platform.rt.send(
@@ -107,16 +101,18 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
             )));
         };
 
+        // call into Ethereum Address Manager to make the new account
         let params = CreateParams { code: input_data.to_vec(), nonce: state.nonce };
-
-        // bump nonce
-        state.nonce += 1;
-
-        // TODO save state after nonce change
-        // revert if syscall error
-
+        
         platform.rt.send(&EAM_ACTOR_ADDR, CREATE_METHOD_NUM, RawBytes::serialize(&params)?, value)
     };
+
+    // bump nonce
+    state.nonce += 1;
+    // flush nonce change 
+    platform.flush_state().unwrap();
+    
+    // TODO handle nonce change revert 
 
     let word = match ret {
         Ok(eam_ret) => {
@@ -129,14 +125,6 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     stack.push(word);
 
     todo!()
-}
-
-struct Create2Ret {
-    out: Vec<u8>,
-    // f4 address
-    addr: Address,
-    // todo gas num type
-    leftover_gas: i64,
 }
 
 #[inline]

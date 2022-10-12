@@ -106,10 +106,10 @@ pub struct EvmConstructorParams {
     pub initcode: RawBytes,
 }
 
-fn eth2f4(addr: &[u8]) -> Result<Address, ActorError> {
-    Address::new_delegated(EAM_ACTOR_ID, addr)
-        .map_err(|e| ActorError::illegal_argument(e.to_string()))
-}
+// fn eth2f4(addr: &[u8]) -> Result<Address, ActorError> {
+//     Address::new_delegated(EAM_ACTOR_ID, addr)
+//         .map_err(|e| ActorError::illegal_argument(e.to_string()))
+// }
 
 fn assert_code_size(code: &[u8]) -> Result<(), ActorError> {
     (code.len() == MAX_CODE_SIZE).then(|| ()).ok_or(ActorError::illegal_argument(
@@ -130,7 +130,7 @@ where
 fn create_actor<BS, RT>(
     rt: &mut RT,
     creator: [u8; 20],
-    eth_addr: [u8; 20],
+    new_addr: [u8; 20],
     initcode: Vec<u8>,
 ) -> Result<RawBytes, ActorError>
 where
@@ -143,7 +143,7 @@ where
     let init_params = Exec4Params {
         code_cid: rt.get_code_cid_for_type(Type::EVM),
         constructor_params,
-        subaddress: eth_addr.to_vec().into(),
+        subaddress: new_addr.to_vec().into(),
     };
 
     let ret: ext::init::Exec4Return = rt
@@ -155,7 +155,26 @@ where
         )?
         .deserialize()?;
 
-    Ok(RawBytes::serialize(EamReturn::from_exec4(ret, eth_addr))?)
+    Ok(RawBytes::serialize(EamReturn::from_exec4(ret, new_addr))?)
+}
+
+/// lookup caller's raw ETH address
+fn get_eth_address<BS, RT>(rt: &RT) -> Result<[u8; 20], ActorError>
+where
+    BS: Blockstore + Clone,
+    RT: Runtime<BS>,
+{
+    let caller_id = rt.message().caller().id().unwrap();
+    assert_eq!(caller_id, Type::EVM as u64);
+
+    let addr = rt.lookup_address(caller_id);
+
+    match addr.map(|a| *a.payload()) {
+        Some(Payload::Delegated(eth)) => Ok(eth.subaddress().try_into().unwrap()),
+        _ => Err(ActorError::assertion_failed(
+            "All FEVM actors should have a delegated address".to_string(),
+        )),
+    }
 }
 
 pub struct EamActor;
@@ -182,7 +201,7 @@ impl EamActor {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
         assert_code_size(&params.initcode)?;
 
-        let caller_addr = Self::get_eth_address(rt)?;
+        let caller_addr = get_eth_address(rt)?;
         // CREATE logic
         let rlp = RlpCreateAddress { address: caller_addr, nonce: params.nonce };
         let eth_addr = hash_20(rt, &rlp.rlp_bytes().to_vec());
@@ -202,29 +221,13 @@ impl EamActor {
         // CREATE2 logic
         let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);
 
-        let caller_addr = Self::get_eth_address(rt)?;
+        let caller_addr = get_eth_address(rt)?;
 
         let eth_addr =
             hash_20(rt, &[&[0xff], caller_addr.as_slice(), &params.salt, &inithash].concat());
 
         // send to init actor
         create_actor(rt, caller_addr, eth_addr, params.initcode)
-    }
-
-    /// lookup caller's raw ETH address
-    fn get_eth_address<BS, RT>(rt: &RT) -> Result<[u8; 20], ActorError>
-    where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
-    {
-        let addr = rt.lookup_address(rt.message().caller().id().unwrap());
-
-        match addr.map(|a| a.payload()) {
-            Some(Payload::Delegated(eth)) => Ok(eth.subaddress().try_into().unwrap()),
-            _ => Err(ActorError::assertion_failed(
-                "All FEVM actors should have a predictable address".to_string(),
-            )),
-        }
     }
 
     pub fn create_account<BS, RT>(
@@ -254,7 +257,7 @@ impl EamActor {
 
         // Attempt to deploy an account there.
         // TODO
-        create_actor(rt, [0u8; 20], eth_address, Vec::new());
+        create_actor(rt, [0u8; 20], eth_address, Vec::new()).ok();
         todo!()
     }
 }
