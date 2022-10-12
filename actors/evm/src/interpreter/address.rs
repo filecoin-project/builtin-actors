@@ -1,38 +1,15 @@
 use crate::StatusCode;
 use crate::U256;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
+use fvm_ipld_encoding::{serde, strict_bytes};
 use fvm_shared::address::Address;
 use fvm_shared::ActorID;
-use serde::{Deserialize, Serialize};
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 ///
 /// TODO this type will eventually handle f4 address detection.
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub struct EthAddress(pub [u8; 20]);
-
-impl Serialize for EthAddress {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        fvm_ipld_encoding::BytesSer(&self.0).serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for EthAddress {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::Error;
-        let addr = fvm_ipld_encoding::BytesDe::deserialize(deserializer)?;
-        addr.0[..]
-            .try_into()
-            .map(EthAddress)
-            .map_err(|_| D::Error::invalid_length(addr.0.len(), &"expected a 20 byte ETH address"))
-    }
-}
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Eq, Clone, Copy)]
+pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
 impl TryFrom<U256> for EthAddress {
     type Error = StatusCode;

@@ -4,7 +4,6 @@ use ext::init::{Exec4Params, Exec4Return};
 use rlp::Encodable;
 
 mod ext;
-mod state;
 
 use {
     fil_actors_runtime::{
@@ -40,19 +39,22 @@ pub enum Method {
     // CreateAccount = 4,
 }
 
+#[derive(Debug)]
 /// Intermediate type between RLP encoding for CREATE
 struct RlpCreateAddress {
-    address: [u8; 20],
+    address: EthAddress,
     nonce: u64,
 }
 
 impl rlp::Encodable for RlpCreateAddress {
     fn rlp_append(&self, s: &mut rlp::RlpStream) {
-        // TODO check if this is correct... I cant read go code well enough to tell
-        s.encoder().encode_value(&self.address);
+        s.encoder().encode_value(&self.address.0);
         s.append(&self.nonce);
     }
 }
+
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy)]
+pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CreateParams {
@@ -80,12 +82,11 @@ pub struct InitAccountParams {
 pub struct EamReturn {
     pub actor_id: ActorID,
     pub robust_address: Address,
-    #[serde(with = "strict_bytes")]
-    pub eth_address: [u8; 20],
+    pub eth_address: EthAddress,
 }
 
 impl EamReturn {
-    fn from_exec4(exec4: Exec4Return, eth_address: [u8; 20]) -> Self {
+    fn from_exec4(exec4: Exec4Return, eth_address: EthAddress) -> Self {
         Self {
             actor_id: exec4.id_address.id().unwrap(),
             robust_address: exec4.robust_address,
@@ -97,13 +98,13 @@ impl EamReturn {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct EvmConstructorParams {
     /// The actor's "creator" (specified by the EAM).
-    pub creator: [u8; 20],
+    pub creator: EthAddress,
     /// The initcode that will construct the new EVM actor.
     pub initcode: RawBytes,
 }
 
 fn assert_code_size(code: &[u8]) -> Result<(), ActorError> {
-    (code.len() == MAX_CODE_SIZE).then(|| ()).ok_or(ActorError::illegal_argument(
+    (code.len() == MAX_CODE_SIZE).then_some(()).ok_or(ActorError::illegal_argument(
         "Supplied EVM bytecode is larger than 24kB.".to_string(),
     ))
 }
@@ -120,8 +121,8 @@ where
 
 fn create_actor<BS, RT>(
     rt: &mut RT,
-    creator: [u8; 20],
-    new_addr: [u8; 20],
+    creator: EthAddress,
+    new_addr: EthAddress,
     initcode: Vec<u8>,
 ) -> Result<RawBytes, ActorError>
 where
@@ -134,7 +135,7 @@ where
     let init_params = Exec4Params {
         code_cid: rt.get_code_cid_for_type(Type::EVM),
         constructor_params,
-        subaddress: new_addr.to_vec().into(),
+        subaddress: new_addr.0.to_vec().into(),
     };
 
     let ret: ext::init::Exec4Return = rt
@@ -150,7 +151,7 @@ where
 }
 
 /// lookup caller's raw ETH address
-fn get_caller_address<BS, RT>(rt: &RT) -> Result<[u8; 20], ActorError>
+fn get_caller_address<BS, RT>(rt: &RT) -> Result<EthAddress, ActorError>
 where
     BS: Blockstore + Clone,
     RT: Runtime<BS>,
@@ -160,9 +161,15 @@ where
     let addr = rt.lookup_address(caller_id);
 
     match addr.map(|a| *a.payload()) {
-        Some(Payload::Delegated(eth)) => Ok(eth.subaddress().try_into().unwrap()),
+        Some(Payload::Delegated(eth)) => {
+            if eth.namespace() == EAM_ACTOR_ID {
+                Ok(EthAddress(eth.subaddress().try_into().unwrap()))
+            } else {
+                Err(ActorError::assertion_failed("Caller is not in the EVM namespace.".into()))
+            }
+        }
         _ => Err(ActorError::assertion_failed(
-            "All FEVM actors should have a delegated address".to_string(),
+            "All FEVM actors should have a delegated address.".to_string(),
         )),
     }
 }
@@ -180,7 +187,7 @@ impl EamActor {
                 "The Ethereum Address Manager must be deployed at {EAM_ACTOR_ID}, was deployed at {actor_id}"
             )));
         }
-        rt.validate_immediate_caller_accept_any()
+        rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))
     }
 
     pub fn create<BS, RT>(rt: &mut RT, params: CreateParams) -> Result<RawBytes, ActorError>
@@ -194,7 +201,7 @@ impl EamActor {
         let caller_addr = get_caller_address(rt)?;
         // CREATE logic
         let rlp = RlpCreateAddress { address: caller_addr, nonce: params.nonce };
-        let eth_addr = hash_20(rt, &rlp.rlp_bytes().to_vec());
+        let eth_addr = EthAddress(hash_20(rt, &rlp.rlp_bytes()));
 
         // send to init actor
         create_actor(rt, caller_addr, eth_addr, params.initcode)
@@ -213,8 +220,10 @@ impl EamActor {
 
         let caller_addr = get_caller_address(rt)?;
 
-        let eth_addr =
-            hash_20(rt, &[&[0xff], caller_addr.as_slice(), &params.salt, &inithash].concat());
+        let eth_addr = EthAddress(hash_20(
+            rt,
+            &[&[0xff], caller_addr.0.as_slice(), &params.salt, &inithash].concat(),
+        ));
 
         // send to init actor
         create_actor(rt, caller_addr, eth_addr, params.initcode)
@@ -241,13 +250,13 @@ impl EamActor {
         rt.validate_immediate_caller_is(iter::once(&key_addr))?;
 
         // Compute the equivalent eth address
-        let eth_address = hash_20(rt, &params.pubkey[1..]);
+        let eth_address = EthAddress(hash_20(rt, &params.pubkey[1..]));
 
         // TODO: Check reserved ranges (id, precompile, etc.).
 
         // Attempt to deploy an account there.
         // TODO
-        create_actor(rt, [0u8; 20], eth_address, Vec::new()).ok();
+        create_actor(rt, EthAddress([0u8; 20]), eth_address, Vec::new()).ok();
         todo!()
     }
 }
