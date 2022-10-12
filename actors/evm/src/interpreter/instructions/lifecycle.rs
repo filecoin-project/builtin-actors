@@ -37,7 +37,6 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     platform: &'r System<'r, BS, RT>,
     create2: bool,
 ) -> Result<U256, StatusCode> {
-
     // TODO be more careful with errors
     const CREATE_METHOD_NUM: u64 = 2;
     const CREATE2_METHOD_NUM: u64 = 3;
@@ -62,20 +61,14 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
         let input_region =
             get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-        let stackvalue = size; // ?
-
-        let salt = {
-            let mut buf = [0u8; 32];
-            // TODO make sure this is the right encoding
-            salt.to_little_endian(&mut buf);
-            buf
-        };
+        // BE encoded array
+        let salt: [u8; 32] = salt.into();
 
         let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
             &memory[offset..][..size.get()]
         } else {
             return Err(StatusCode::ActorError(ActorError::assertion_failed(
-                "inicode not in memory range".to_string(),
+                "initcode not in memory range".to_string(),
             )));
         };
 
@@ -90,7 +83,8 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
             endowment,
         )
         // errs
-    } else { // create1
+    } else {
+        // create1
         #[derive(Serialize_tuple, Deserialize_tuple)]
         struct CreateParams {
             #[serde(with = "serde_bytes")]
@@ -100,11 +94,10 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
 
         let value = stack.pop();
         let (offset, size) = (stack.pop(), stack.pop());
-        let input = stack.pop();
 
+        let value = TokenAmount::from(&value);
         let input_region =
             get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
-        let value = TokenAmount::from(&value);
 
         let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
             &memory[offset..][..size.get()]
@@ -117,25 +110,19 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
         let params = CreateParams { code: input_data.to_vec(), nonce: state.nonce };
 
         // bump nonce
-        state.nonce += 1; 
+        state.nonce += 1;
 
-        // TODO access control list?
+        // TODO save state after nonce change
+        // revert if syscall error
 
-        platform.rt.send(
-            &EAM_ACTOR_ADDR,
-            CREATE_METHOD_NUM,
-            RawBytes::serialize(&params)?,
-            value,
-        )
+        platform.rt.send(&EAM_ACTOR_ADDR, CREATE_METHOD_NUM, RawBytes::serialize(&params)?, value)
     };
-    
-    
 
     let word = match ret {
         Ok(eam_ret) => {
             let ret: EamReturn = eam_ret.deserialize()?;
             ret.eth_address.as_evm_word()
-        },
+        }
         Err(_) => U256::zero(),
     };
 
