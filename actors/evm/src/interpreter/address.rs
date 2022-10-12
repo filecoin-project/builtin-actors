@@ -33,14 +33,13 @@ impl std::fmt::Debug for EthAddress {
     }
 }
 
-impl From<&EthAddress> for Address {
-    fn from(addr: &EthAddress) -> Self {
-        // TODO: handle precompiles?
-        // Maybe implement try?
+impl TryFrom<&EthAddress> for Address {
+    type Error = fvm_shared::address::Error;
+    fn try_from(addr: &EthAddress) -> Result<Self, Self::Error> {
         if let Some(addr) = addr.as_id_address() {
-            addr
+            Ok(addr)
         } else {
-            Address::new_delegated(EAM_ACTOR_ADDR.id().unwrap(), addr.as_ref()).unwrap()
+            Address::new_delegated(EAM_ACTOR_ADDR.id().unwrap(), addr.as_ref())
         }
     }
 }

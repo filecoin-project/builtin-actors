@@ -105,7 +105,7 @@ pub struct EvmConstructorParams {
 
 fn assert_code_size(code: &[u8]) -> Result<(), ActorError> {
     (code.len() == MAX_CODE_SIZE).then_some(()).ok_or(ActorError::illegal_argument(
-        "Supplied EVM bytecode is larger than 24kB.".to_string(),
+        format!("Supplied EVM initcode {} is larger than max code size 24kB.", code.len()),
     ))
 }
 

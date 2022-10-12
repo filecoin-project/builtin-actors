@@ -139,6 +139,7 @@ fn create_init<'r, BS: Blockstore, RT: Runtime<BS>>(
     // - EIP-3541 (EVM)
 
     // TODO revert state if error was returned (revert nonce bump)
+    // https://github.com/filecoin-project/ref-fvm/issues/956
 
     let word = match ret {
         Ok(eam_ret) => {
