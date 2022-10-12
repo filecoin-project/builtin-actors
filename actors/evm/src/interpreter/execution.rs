@@ -33,6 +33,7 @@ pub struct ExecutionState {
     pub caller: EthAddress,
     /// The EVM address of the receiver.
     pub receiver: EthAddress,
+    /// EVM address nonce, bumped by CREATE
     pub nonce: u64,
 }
 

@@ -27,6 +27,7 @@ cid = "0.8.6"
 fvm_shared = { version = "3.0.0-alpha.4", default-features = false }
 num-traits = "0.2.15"
 num-derive = "0.3.3"
+hex-literal = "0.3.4"
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

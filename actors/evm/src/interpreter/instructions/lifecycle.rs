@@ -46,12 +46,11 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     // readonly things?
 
     // create2
-    let ret: Result<EthAddress, ()> = if create2 {
+    let ret: Result<RawBytes, ActorError> = if create2 {
         #[derive(Serialize_tuple, Deserialize_tuple)]
         struct Create2Params {
             #[serde(with = "serde_bytes")]
             code: Vec<u8>,
-            #[serde(with = "serde_bytes")]
             salt: [u8; 32],
         }
 
@@ -84,14 +83,12 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
 
         let params = Create2Params { code: input_data.to_vec(), salt };
 
-        let eam_ret: EamReturn = platform.rt.send(
+        platform.rt.send(
             &EAM_ACTOR_ADDR,
             CREATE2_METHOD_NUM,
             RawBytes::serialize(&params)?,
             endowment,
-        )?.deserialize()?;
-
-        Ok(eam_ret.eth_address)
+        )
         // errs
     } else { // create1
         #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -119,23 +116,25 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
 
         let params = CreateParams { code: input_data.to_vec(), nonce: state.nonce };
 
-        let eam_ret: EamReturn = platform.rt.send(
+        // bump nonce
+        state.nonce += 1; 
+
+        // TODO access control list?
+
+        platform.rt.send(
             &EAM_ACTOR_ADDR,
             CREATE_METHOD_NUM,
             RawBytes::serialize(&params)?,
             value,
-        )?.deserialize()?;
-
-        Ok(eam_ret.eth_address)
+        )
     };
     
     
 
     let word = match ret {
-        Ok(v) => {
-            // bump nonce on success
-            state.nonce += 1; 
-            v.as_evm_word()
+        Ok(eam_ret) => {
+            let ret: EamReturn = eam_ret.deserialize()?;
+            ret.eth_address.as_evm_word()
         },
         Err(_) => U256::zero(),
     };

@@ -1373,6 +1373,7 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
+ "hex-literal",
  "log",
  "multihash",
  "num-derive",

@@ -31,6 +31,9 @@ fil_actors_runtime::wasm_trampoline!(EamActor);
 /// The contract code size limit is 24kB.
 const MAX_CODE_SIZE: usize = 24 << 10;
 
+/// TODO double check this
+const Keccack256_ZERO_INPUT_HASH: [u8; 32] = hex_literal::hex!("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"); 
+
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
@@ -58,13 +61,6 @@ pub struct CreateParams {
     #[serde(with = "serde_bytes")]
     pub initcode: Vec<u8>,
     pub nonce: u64,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct CreateRet {
-    #[serde(with = "serde_bytes")]
-    pub f4_address: Vec<u8>,
-    pub id_address: ActorID,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -116,7 +112,7 @@ fn eth2f4(addr: &[u8]) -> Result<Address, ActorError> {
 fn assert_code_size(code: &[u8]) -> Result<(), ActorError> {
     (code.len() == MAX_CODE_SIZE)
         .then(|| ())
-        .ok_or(ActorError::illegal_argument("EVM bytecode larger than 24kB".to_string()))
+        .ok_or(ActorError::illegal_argument("Supplied EVM bytecode is larger than 24kB.".to_string()))
 }
 
 pub struct EamActor;
@@ -148,7 +144,7 @@ impl EamActor {
         let eth_addr = Self::hash_20(rt, &rlp.rlp_bytes().to_vec());
 
         // send to init actor
-        Self::create_actor(rt, eth_addr, params.initcode)
+        Self::create_actor(rt, eth_addr, params.initcode, None)
     }
 
     pub fn create2<BS, RT>(rt: &mut RT, params: Create2Params) -> Result<RawBytes, ActorError>
@@ -168,18 +164,30 @@ impl EamActor {
             Self::hash_20(rt, &[&[0xff], caller_addr.as_slice(), &params.salt, &inithash].concat());
 
         // send to init actor
-        Self::create_actor(rt, eth_addr, params.initcode)
+        Self::create_actor(rt, eth_addr, params.initcode, Some(inithash))
     }
 
     fn create_actor<BS, RT>(
         rt: &mut RT,
         eth_addr: [u8; 20],
         initcode: Vec<u8>,
+        inithash: Option<Vec<u8>>,
     ) -> Result<RawBytes, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
+        let f4_addr = eth2f4(&eth_addr)?;
+
+        if rt.resolve_address(&f4_addr).is_some() {
+            return Err(ActorError::forbidden(format!("Actor at {f4_addr} is already deployed.")));
+        }
+        let inithash = inithash.get_or_insert(rt.hash(SupportedHashes::Keccak256, &initcode));        
+
+        if &inithash == &Keccack256_ZERO_INPUT_HASH {
+            return Err(ActorError::forbidden(format!("Cannot deploy zero code contract")));
+        }
+
         let constructor_params = RawBytes::serialize(EvmConstructorParams {
             creator: eth_addr,
             initcode: initcode.into(),
@@ -188,7 +196,7 @@ impl EamActor {
         let init_params = Exec4Params {
             code_cid: rt.get_code_cid_for_type(Type::EVM),
             constructor_params,
-            subaddress: eth2f4(&eth_addr)?.to_bytes().into(),
+            subaddress: f4_addr.to_bytes().into(),
         };
 
         let ret: ext::init::Exec4Return = rt
@@ -255,7 +263,7 @@ impl EamActor {
         // TODO: Check reserved ranges (id, precompile, etc.).
 
         // Attempt to deploy an account there.
-        Self::create_actor(rt, eth_address, Vec::new())
+        Self::create_actor(rt, eth_address, Vec::new(), None)
     }
 }
 
