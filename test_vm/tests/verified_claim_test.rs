@@ -10,7 +10,11 @@ use fil_actor_market::State as MarketState;
 use fil_actor_market::{deal_id_key, DealArray, DealMetaArray};
 use fil_actor_miner::{max_prove_commit_duration, PowerPair, SectorClaim, State as MinerState};
 use fil_actor_power::State as PowerState;
-use fil_actor_verifreg::{AllocationID, Claim, State as VerifregState};
+use fil_actor_verifreg::{
+    AllocationID, Claim, Method as VerifregMethod, RemoveExpiredClaimsParams,
+    RemoveExpiredClaimsReturn, State as VerifregState,
+};
+use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::policy_constants::{
     DEAL_UPDATES_INTERVAL, MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
 };
@@ -24,8 +28,8 @@ use fil_actors_runtime::{
 
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_by_deadline_to_index, advance_to_proving_deadline, create_accounts, create_miner,
-    cron_tick, datacap_extend_claim, datacap_get_balance, invariant_failure_patterns,
+    advance_by_deadline_to_index, advance_to_proving_deadline, apply_ok, create_accounts,
+    create_miner, cron_tick, datacap_extend_claim, datacap_get_balance, invariant_failure_patterns,
     market_add_balance, market_publish_deal, miner_extend_sector_expiration2,
     miner_precommit_sector, miner_prove_sector, sector_deadline, submit_windowed_post,
     verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
@@ -228,7 +232,8 @@ fn verified_claim_scenario() {
 
     // Another client extends the claim beyond the initial maximum term.
     let original_max_term = policy.maximum_verified_allocation_term;
-    let new_max_term = v.get_epoch() - claim.term_start + policy.maximum_verified_allocation_term;
+    let new_claim_expiry_epoch = v.get_epoch() + policy.maximum_verified_allocation_term;
+    let new_max_term = new_claim_expiry_epoch - claim.term_start;
     assert!(new_max_term > original_max_term);
 
     datacap_extend_claim(&v, verified_client2, miner_id, claim_id, deal_size, new_max_term);
@@ -299,6 +304,32 @@ fn verified_claim_scenario() {
         TokenAmount::from_whole(datacap) * 2 - TokenAmount::from_whole(deal_size) * 2, // Spent deal size twice
         datacap_state.token.supply
     );
+
+    // Advance sector to expiration
+    v = advance_by_deadline_to_epoch_while_proving(
+        v,
+        miner_id,
+        worker,
+        sector_number,
+        extended_expiration_2,
+    );
+    // And advance vm past the claim's max term (no more sector exists to prove)
+    let v = v.with_epoch(new_claim_expiry_epoch);
+    // Expired claim can now be cleaned up
+    let cleanup_claims =
+        RemoveExpiredClaimsParams { provider: miner_id.id().unwrap(), claim_ids: vec![claim_id] };
+
+    let ret_raw = apply_ok(
+        &v,
+        worker,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
+        TokenAmount::zero(),
+        VerifregMethod::RemoveExpiredClaims as u64,
+        cleanup_claims,
+    );
+    let ret: RemoveExpiredClaimsReturn = deserialize(&ret_raw, "balance of return value").unwrap();
+    assert_eq!(vec![claim_id], ret.considered);
+    assert!(ret.results.all_ok(), "results had failures {}", ret.results);
 
     v.expect_state_invariants(
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
