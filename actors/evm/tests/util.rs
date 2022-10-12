@@ -1,3 +1,4 @@
+use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
@@ -17,7 +18,7 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     rt.expect_validate_caller_any();
     initrt(&mut rt);
 
-    let params = evm::ConstructorParams { initcode: initcode.into() };
+    let params = evm::ConstructorParams { creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()), initcode: initcode.into() };
 
     let result = rt
         .call::<evm::EvmContractActor>(

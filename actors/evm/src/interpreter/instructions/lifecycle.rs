@@ -32,7 +32,7 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r mut System<'r, BS, RT>,
     create2: bool,
-) -> Result<U256, StatusCode> {
+) -> Result<(), StatusCode> {
     const CREATE_METHOD_NUM: u64 = 2;
     const CREATE2_METHOD_NUM: u64 = 3;
 
@@ -124,7 +124,7 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
 
     stack.push(word);
 
-    todo!()
+    Ok(())
 }
 
 #[inline]

@@ -106,11 +106,6 @@ pub struct EvmConstructorParams {
     pub initcode: RawBytes,
 }
 
-// fn eth2f4(addr: &[u8]) -> Result<Address, ActorError> {
-//     Address::new_delegated(EAM_ACTOR_ID, addr)
-//         .map_err(|e| ActorError::illegal_argument(e.to_string()))
-// }
-
 fn assert_code_size(code: &[u8]) -> Result<(), ActorError> {
     (code.len() == MAX_CODE_SIZE).then(|| ()).ok_or(ActorError::illegal_argument(
         "Supplied EVM bytecode is larger than 24kB.".to_string(),
@@ -159,7 +154,7 @@ where
 }
 
 /// lookup caller's raw ETH address
-fn get_eth_address<BS, RT>(rt: &RT) -> Result<[u8; 20], ActorError>
+fn get_caller_address<BS, RT>(rt: &RT) -> Result<[u8; 20], ActorError>
 where
     BS: Blockstore + Clone,
     RT: Runtime<BS>,
@@ -200,7 +195,7 @@ impl EamActor {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
         assert_code_size(&params.initcode)?;
 
-        let caller_addr = get_eth_address(rt)?;
+        let caller_addr = get_caller_address(rt)?;
         // CREATE logic
         let rlp = RlpCreateAddress { address: caller_addr, nonce: params.nonce };
         let eth_addr = hash_20(rt, &rlp.rlp_bytes().to_vec());
@@ -220,7 +215,7 @@ impl EamActor {
         // CREATE2 logic
         let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);
 
-        let caller_addr = get_eth_address(rt)?;
+        let caller_addr = get_caller_address(rt)?;
 
         let eth_addr =
             hash_20(rt, &[&[0xff], caller_addr.as_slice(), &params.salt, &inithash].concat());
