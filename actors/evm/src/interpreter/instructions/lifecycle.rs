@@ -19,14 +19,14 @@ use {
 pub const CREATE_METHOD_NUM: u64 = 2;
 pub const CREATE2_METHOD_NUM: u64 = 3;
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct CreateParams {
     #[serde(with = "strict_bytes")]
     pub code: Vec<u8>,
     pub nonce: u64,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct Create2Params {
     #[serde(with = "strict_bytes")]
     pub code: Vec<u8>,
@@ -66,12 +66,12 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
         )));
     };
 
-    // bump nonce and flush state TODO before send
+    // bump nonce and flush state before send
     let mut nonce = 0;
     platform.rt.transaction(|state: &mut State, _rt| {
+        nonce = state.nonce;
         // this may be redundant if we are compiling with checked integer math
         state.nonce = state.nonce.checked_add(1).unwrap();
-        nonce = state.nonce;
         Ok(())
     })?;
 
@@ -131,16 +131,21 @@ fn create_init<'r, BS: Blockstore, RT: Runtime<BS>>(
     // https://github.com/ethereum/go-ethereum/blob/fb75f11e87420ec25ff72f7eeeb741fa8974e87e/core/vm/evm.go#L406-L496
     // Normally EVM will do some checks here to ensure that a contract has the capability
     // to create an actor, but here FVM does these checks for us, including:
-    // - execution depth (FVM) // TODO do we have different expectations here?
+    // - execution depth, equal to FVM's max call depth (FVM) 
     // - account has enough value to send (FVM)
     // - ensuring there isn't an existing account at the generated f4 address (INIT)
     // - constructing smart contract on chain (INIT)
     // - checks if max code size is exceeded (EAM & EVM)
     // - gas cost of deployment (FVM)
     // - EIP-3541 (EVM)
+    //
+    // However these errors are flattened to a 0 pushed on the stack.
 
     // TODO revert state if error was returned (revert nonce bump)
     // https://github.com/filecoin-project/ref-fvm/issues/956
+
+    // TODO Exit with revert if sys out of gas when subcall gas limits are introduced 
+    // https://github.com/filecoin-project/ref-fvm/issues/966
 
     let word = match ret {
         Ok(eam_ret) => {

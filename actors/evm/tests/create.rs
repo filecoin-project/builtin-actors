@@ -72,21 +72,54 @@ fn test_create() {
         robust_address: (&fake_eth_addr).try_into().unwrap(),
     };
 
+    let salt =
+            hex_literal::hex!("0000000000000000000000000000000000000000000000796573206D616E6921");
+
+    let create2_params = Create2Params {
+        code: hex_literal::hex!("666F6F206261722062617A20626F7879").to_vec(),
+        salt,
+    };
+
+    let mut create_params = CreateParams {
+        code: hex_literal::hex!("666F6F206261722062617A20626F7879").to_vec(),
+        nonce: 0,
+    };
+
+    // byte 3 is method num
     let mut contract_params = [0u8; 32];
 
     // invoke contract -- create
     {
-        let params = CreateParams {
-            code: hex_literal::hex!("666F6F206261722062617A20626F7879").to_vec(),
-            nonce: 1,
-        };
+        create_params.nonce += 1;
 
         rt.add_balance(TokenAmount::from_atto(1));
 
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE_METHOD_NUM,
-            RawBytes::serialize(params).unwrap(),
+            RawBytes::serialize(create_params.clone()).unwrap(),
+            TokenAmount::from_atto(1),
+            RawBytes::serialize(fake_ret).unwrap(),
+            ExitCode::OK,
+        );
+
+        let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
+        let result: [u8; 20] = result[12..]
+                .try_into()
+                .unwrap();
+        let result = EthAddress(result);
+        // make sure we arent doing weird things to EAM's return value
+        assert_eq!(result, fake_eth_addr);
+    }
+
+    // invoke contract -- create with new nonce 
+    {
+        rt.add_balance(TokenAmount::from_atto(1));
+
+        rt.expect_send(
+            EAM_ACTOR_ADDR,
+            CREATE_METHOD_NUM,
+            RawBytes::serialize(create_params.clone()).unwrap(),
             TokenAmount::from_atto(1),
             RawBytes::serialize(fake_ret).unwrap(),
             ExitCode::OK,
@@ -105,20 +138,12 @@ fn test_create() {
 
     // invoke contract -- create2
     {
-        let salt =
-            hex_literal::hex!("0000000000000000000000000000000000000000000000796573206D616E6921");
-
-        let params = Create2Params {
-            code: hex_literal::hex!("666F6F206261722062617A20626F7879").to_vec(),
-            salt,
-        };
-
         rt.add_balance(TokenAmount::from_atto(1));
 
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE2_METHOD_NUM,
-            RawBytes::serialize(params).unwrap(),
+            RawBytes::serialize(create2_params.clone()).unwrap(),
             TokenAmount::from_atto(1),
             RawBytes::serialize(fake_ret).unwrap(),
             ExitCode::OK,
@@ -131,5 +156,35 @@ fn test_create() {
         let result = EthAddress(result);
         // make sure we arent doing weird things to EAM's return value
         assert_eq!(result, fake_eth_addr);
+    }
+
+    // not enough funds -- create2
+    {
+        rt.expect_send(
+            EAM_ACTOR_ADDR,
+            CREATE2_METHOD_NUM,
+            RawBytes::serialize(create2_params).unwrap(),
+            TokenAmount::from_atto(1),
+            RawBytes::serialize(fake_ret).unwrap(),
+            ExitCode::OK,
+        );
+
+        let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
+        assert_eq!(&result[..], &[0; 32]);
+    }
+
+    // not enough funds -- create
+    {
+        rt.expect_send(
+            EAM_ACTOR_ADDR,
+            CREATE_METHOD_NUM,
+            RawBytes::serialize(create_params).unwrap(),
+            TokenAmount::from_atto(1),
+            RawBytes::serialize(fake_ret).unwrap(),
+            ExitCode::OK,
+        );
+
+        let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
+        assert_eq!(&result[..], &[0; 32]);
     }
 }
