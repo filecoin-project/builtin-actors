@@ -4,7 +4,7 @@
 use std::fmt::Display;
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
+use fvm_ipld_encoding::{strict_bytes, Cbor, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 
@@ -105,7 +105,7 @@ pub struct TxnIDParams {
     pub id: TxnID,
     /// Optional hash of proposal to ensure an operation can only apply to a
     /// specific proposal.
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub proposal_hash: Vec<u8>,
 }
 

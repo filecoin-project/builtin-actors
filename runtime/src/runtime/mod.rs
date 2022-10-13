@@ -67,7 +67,7 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     fn current_balance(&self) -> TokenAmount;
 
     /// The balance of an actor.
-    fn actor_balance(&self, id: ActorID) -> TokenAmount;
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount>;
 
     /// Resolves an address of any protocol to an ID address (via the Init actor's table).
     /// This allows resolution of externally-provided SECP, BLS, or actor addresses to the canonical form.
@@ -140,9 +140,14 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// Always an ActorExec address.
     fn new_actor_address(&mut self) -> Result<Address, ActorError>;
 
-    /// Creates an actor with code `codeID` and address `address`, with empty state.
+    /// Creates an actor with code `codeID`, an empty state, id `actor_id`, and an optional predictable address.
     /// May only be called by Init actor.
-    fn create_actor(&mut self, code_id: Cid, address: ActorID) -> Result<(), ActorError>;
+    fn create_actor(
+        &mut self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) -> Result<(), ActorError>;
 
     /// Deletes the executing actor from the state tree, transferring any balance to beneficiary.
     /// Aborts if the beneficiary does not exist.

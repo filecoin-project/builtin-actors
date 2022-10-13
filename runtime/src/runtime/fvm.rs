@@ -166,7 +166,7 @@ where
         fvm::sself::current_balance()
     }
 
-    fn actor_balance(&self, id: ActorID) -> TokenAmount {
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
         fvm::actor::balance_of(id)
     }
 
@@ -363,13 +363,18 @@ where
         Ok(fvm::actor::new_actor_address())
     }
 
-    fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
+    fn create_actor(
+        &mut self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) -> Result<(), ActorError> {
         if self.in_transaction {
             return Err(
                 actor_error!(assertion_failed; "create_actor is not allowed during transaction"),
             );
         }
-        fvm::actor::create_actor(actor_id, &code_id).map_err(|e| match e {
+        fvm::actor::create_actor(actor_id, &code_id, predictable_address).map_err(|e| match e {
             ErrorNumber::IllegalArgument => {
                 ActorError::illegal_argument("failed to create actor".into())
             }
@@ -408,7 +413,7 @@ where
     }
 
     fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
-        fvm::network::tipset_cid(epoch)
+        fvm::network::tipset_cid(epoch).ok()
     }
 }
 
