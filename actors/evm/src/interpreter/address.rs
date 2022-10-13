@@ -1,8 +1,10 @@
 use crate::StatusCode;
 use crate::U256;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
+use fil_actors_runtime::EAM_ACTOR_ID;
 use fvm_ipld_encoding::{serde, strict_bytes};
 use fvm_shared::address::Address;
+use fvm_shared::address::Payload;
 use fvm_shared::ActorID;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
@@ -34,13 +36,18 @@ impl std::fmt::Debug for EthAddress {
 }
 
 impl TryFrom<&EthAddress> for Address {
-    type Error = fvm_shared::address::Error;
+    type Error = ();
     fn try_from(addr: &EthAddress) -> Result<Self, Self::Error> {
-        if let Some(addr) = addr.as_id_address() {
-            Ok(addr)
+        // hehe fun
+        (&addr.0[1..] == &[0; 19]).then_some(()).ok_or(())?;
+
+        let f4_addr = if let Some(addr) = addr.as_id_address() {
+            addr
         } else {
-            Address::new_delegated(EAM_ACTOR_ADDR.id().unwrap(), addr.as_ref())
-        }
+            Address::new_delegated(EAM_ACTOR_ID, addr.as_ref()).unwrap()
+        };
+
+        Ok(f4_addr)
     }
 }
 

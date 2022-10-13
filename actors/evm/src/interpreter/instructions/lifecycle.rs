@@ -16,6 +16,23 @@ use {
     fvm_ipld_blockstore::Blockstore,
 };
 
+pub const CREATE_METHOD_NUM: u64 = 2;
+pub const CREATE2_METHOD_NUM: u64 = 3;
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct CreateParams {
+    #[serde(with = "strict_bytes")]
+    pub code: Vec<u8>,
+    pub nonce: u64,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct Create2Params {
+    #[serde(with = "strict_bytes")]
+    pub code: Vec<u8>,
+    pub salt: [u8; 32],
+}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct EamReturn {
     pub actor_id: u64,
@@ -28,19 +45,11 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r mut System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    const CREATE_METHOD_NUM: u64 = 2;
     let ExecutionState { stack, memory, .. } = state;
 
     // Overall future work / TODOs:
     //  readonly state things | ISSUE NEEDED
     //  preload state items (~eq to EVM access list) | ISSUE NEEDED
-
-    #[derive(Serialize_tuple, Deserialize_tuple)]
-    struct CreateParams {
-        #[serde(with = "strict_bytes")]
-        code: Vec<u8>,
-        nonce: u64,
-    }
 
     let value = stack.pop();
     let (offset, size) = (stack.pop(), stack.pop());
@@ -75,17 +84,9 @@ pub fn create2<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r mut System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    const CREATE2_METHOD_NUM: u64 = 3;
     let ExecutionState { stack, memory, .. } = state;
 
     // see `create()` overall TODOs
-
-    #[derive(Serialize_tuple, Deserialize_tuple)]
-    struct Create2Params {
-        #[serde(with = "strict_bytes")]
-        code: Vec<u8>,
-        salt: [u8; 32],
-    }
 
     let endowment = stack.pop();
     let (offset, size) = (stack.pop(), stack.pop());

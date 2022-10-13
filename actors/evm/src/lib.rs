@@ -1,6 +1,6 @@
 use std::iter;
 
-use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime::{runtime::builtins::Type, INIT_ACTOR_ADDR};
 use fvm_shared::address::Address;
 use interpreter::address::EthAddress;
 
@@ -52,7 +52,7 @@ impl EvmContractActor {
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(iter::once(&INIT_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_type(iter::once(&Type::Init))?;
         // TODO make sure we have an f4 address
 
         if params.initcode.len() > MAX_CODE_SIZE {

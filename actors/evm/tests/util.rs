@@ -1,6 +1,6 @@
 use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{runtime::builtins::Type, test_utils::*, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 
 #[allow(dead_code)]
@@ -15,7 +15,8 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     let mut rt = MockRuntime::default();
 
     // invoke constructor
-    rt.expect_validate_caller_any();
+    rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+    rt.expect_validate_caller_type(vec![Type::Init]);
     initrt(&mut rt);
 
     let params = evm::ConstructorParams {

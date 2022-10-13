@@ -3,7 +3,6 @@ mod asm;
 use cid::Cid;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
-use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::ActorError;
 use fvm_ipld_blockstore::Blockstore;
@@ -19,7 +18,7 @@ fn basic_contract_construction_and_invocation() {
 
     let mut rt = util::init_construct_and_verify(bytecode, |rt| {
         rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
-        rt.set_origin(INIT_ACTOR_ADDR);
+        rt.set_origin(contract);
     });
 
     // invoke contract -- getBalance
