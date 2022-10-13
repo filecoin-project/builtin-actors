@@ -1,10 +1,8 @@
 use crate::StatusCode;
 use crate::U256;
-use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fil_actors_runtime::EAM_ACTOR_ID;
 use fvm_ipld_encoding::{serde, strict_bytes};
 use fvm_shared::address::Address;
-use fvm_shared::address::Payload;
 use fvm_shared::ActorID;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
@@ -36,10 +34,14 @@ impl std::fmt::Debug for EthAddress {
 }
 
 impl TryFrom<&EthAddress> for Address {
-    type Error = ();
+    type Error = anyhow::Error;
     fn try_from(addr: &EthAddress) -> Result<Self, Self::Error> {
-        // hehe fun
-        (&addr.0[1..] == &[0; 19]).then_some(()).ok_or(())?;
+        if &addr.0[1..] == &[0; 19] {
+            return Err(anyhow::anyhow!(
+                "Cannot convert a precompile address {:X?} to an f4 address.",
+                addr
+            ));
+        }
 
         let f4_addr = if let Some(addr) = addr.as_id_address() {
             addr

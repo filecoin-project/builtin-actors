@@ -35,9 +35,8 @@ impl State {
         store: &BS,
         bytecode: RawBytes,
         contract_state: Cid,
-        nonce: u64,
     ) -> anyhow::Result<Self> {
         let bytecode_cid = store.put(Code::Blake2b256, &Block::new(RAW, bytecode.to_vec()))?;
-        Ok(Self { bytecode: bytecode_cid, contract_state, nonce })
+        Ok(Self { bytecode: bytecode_cid, contract_state, nonce: 0 })
     }
 }

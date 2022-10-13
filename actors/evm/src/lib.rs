@@ -1,6 +1,6 @@
 use std::iter;
 
-use fil_actors_runtime::{runtime::builtins::Type, INIT_ACTOR_ADDR};
+use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::address::Address;
 use interpreter::address::EthAddress;
 
@@ -123,7 +123,6 @@ impl EvmContractActor {
                 rt.store(),
                 RawBytes::new(contract_bytecode.to_vec()),
                 contract_state_cid,
-                0,
             )
             .map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")

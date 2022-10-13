@@ -33,7 +33,7 @@ pub struct Create2Params {
     pub salt: [u8; 32],
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EamReturn {
     pub actor_id: u64,
     pub robust_address: Address,
