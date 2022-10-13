@@ -1,5 +1,5 @@
-{"i":0,"series":1,"stats":{"get_bytes":2185,"get_count":4,"put_bytes":4185,"put_count":8}}
-{"i":1,"series":1,"stats":{"get_bytes":2858,"get_count":6,"put_bytes":2450,"put_count":5}}
+{"i":0,"series":1,"stats":{"get_bytes":2185,"get_count":4,"put_bytes":4257,"put_count":9}}
+{"i":1,"series":1,"stats":{"get_bytes":2930,"get_count":7,"put_bytes":2450,"put_count":5}}
 {"i":2,"series":1,"stats":{"get_bytes":4545,"get_count":7,"put_bytes":4206,"put_count":7}}
 {"i":3,"series":1,"stats":{"get_bytes":4187,"get_count":8,"put_bytes":3753,"put_count":7}}
 {"i":4,"series":1,"stats":{"get_bytes":3733,"get_count":8,"put_bytes":3369,"put_count":7}}
@@ -123,8 +123,8 @@
 {"i":22,"series":2,"stats":{"get_bytes":3438,"get_count":8,"put_bytes":3027,"put_count":6}}
 {"i":23,"series":2,"stats":{"get_bytes":5122,"get_count":8,"put_bytes":4689,"put_count":7}}
 {"i":24,"series":2,"stats":{"get_bytes":4670,"get_count":8,"put_bytes":4328,"put_count":7}}
-{"i":25,"series":2,"stats":{"get_bytes":3614,"get_count":7,"put_bytes":3156,"put_count":6}}
-{"i":26,"series":2,"stats":{"get_bytes":3136,"get_count":7,"put_bytes":2774,"put_count":6}}
+{"i":25,"series":2,"stats":{"get_bytes":3614,"get_count":7,"put_bytes":3205,"put_count":7}}
+{"i":26,"series":2,"stats":{"get_bytes":3185,"get_count":8,"put_bytes":2774,"put_count":6}}
 {"i":27,"series":2,"stats":{"get_bytes":4869,"get_count":8,"put_bytes":4436,"put_count":7}}
 {"i":28,"series":2,"stats":{"get_bytes":4416,"get_count":8,"put_bytes":4052,"put_count":7}}
 {"i":29,"series":2,"stats":{"get_bytes":4032,"get_count":8,"put_bytes":3598,"put_count":7}}
