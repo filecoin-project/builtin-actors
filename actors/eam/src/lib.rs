@@ -67,7 +67,6 @@ pub struct CreateParams {
 pub struct Create2Params {
     #[serde(with = "strict_bytes")]
     pub initcode: Vec<u8>,
-    /// TODO are we hashing with Little Endian bytes
     #[serde(with = "strict_bytes")]
     pub salt: [u8; 32],
 }
@@ -115,8 +114,7 @@ where
     BS: Blockstore + Clone,
     RT: Runtime<BS>,
 {
-    let buf = rt.hash(SupportedHashes::Keccak256, data);
-    buf[12..32].try_into().unwrap()
+    rt.hash(SupportedHashes::Keccak256, data)[12..32].try_into().unwrap()
 }
 
 fn create_actor<BS, RT>(

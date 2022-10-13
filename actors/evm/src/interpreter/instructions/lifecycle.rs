@@ -67,12 +67,11 @@ pub fn create<'r, BS: Blockstore, RT: Runtime<BS>>(
     };
 
     // bump nonce and flush state before send
-    let mut nonce = 0;
-    platform.rt.transaction(|state: &mut State, _rt| {
-        nonce = state.nonce;
+    let nonce = platform.rt.transaction(|state: &mut State, _rt| {
+        let nonce = state.nonce;
         // this may be redundant if we are compiling with checked integer math
         state.nonce = state.nonce.checked_add(1).unwrap();
-        Ok(())
+        Ok(nonce)
     })?;
 
     let params = CreateParams { code: input_data.to_vec(), nonce };
