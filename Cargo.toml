@@ -28,7 +28,7 @@ fil_actor_embryo = { version = "10.0.0-alpha.1", path = "./actors/embryo", featu
 fil_actor_evm = { version = "10.0.0-alpha.1", path = "./actors/evm", features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = "4.0.0"
+fil_actor_bundler = "4.1.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 fil_actors_runtime = { version = "10.0.0-alpha.1", path = "runtime" }
 num-traits = "0.2.15"

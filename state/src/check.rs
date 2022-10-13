@@ -60,6 +60,10 @@ pub struct Actor {
     pub call_seq_num: u64,
     /// Token balance of the actor
     pub balance: TokenAmount,
+    /// The actor's "predictable" address, if assigned.
+    ///
+    /// This field is set on actor creation and never modified.
+    pub address: Option<Address>,
 }
 
 /// A specialization of a map of ID-addresses to actor heads.
