@@ -28,7 +28,7 @@ fil_actor_embryo = { version = "10.0.0-alpha.1", path = "./actors/embryo", featu
 fil_actor_evm = { version = "10.0.0-alpha.1", path = "./actors/evm", features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = "4.0.0"
+fil_actor_bundler = "4.1.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 fil_actors_runtime = { version = "10.0.0-alpha.1", path = "runtime" }
 num-traits = "0.2.15"
@@ -55,14 +55,14 @@ members = [
      "test_vm",
 ]
 
-[patch.crates-io]
-fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
-fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm" }
-fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
-fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm" }
-fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm" }
-fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm"  }
-fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm" }
+#[patch.crates-io]
+#fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm"  }
+#fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
