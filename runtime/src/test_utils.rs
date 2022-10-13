@@ -317,10 +317,11 @@ impl<BS> MockRuntime<BS> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct ExpectCreateActor {
     pub code_id: Cid,
     pub actor_id: ActorID,
+    pub predictable_address: Option<Address>,
 }
 
 #[derive(Clone, Debug)]
@@ -595,8 +596,13 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_create_actor(&mut self, code_id: Cid, actor_id: ActorID) {
-        let a = ExpectCreateActor { code_id, actor_id };
+    pub fn expect_create_actor(
+        &mut self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) {
+        let a = ExpectCreateActor { code_id, actor_id, predictable_address };
         self.expectations.borrow_mut().expect_create_actor = Some(a);
     }
 
@@ -823,9 +829,9 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         self.balance.borrow().clone()
     }
 
-    fn actor_balance(&self, id: ActorID) -> TokenAmount {
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
         self.require_in_call();
-        self.actor_balances.get(&id).cloned().unwrap_or_default()
+        self.actor_balances.get(&id).cloned()
     }
 
     fn resolve_address(&self, address: &Address) -> Option<ActorID> {
@@ -1015,7 +1021,12 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         Ok(ret)
     }
 
-    fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
+    fn create_actor(
+        &mut self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) -> Result<(), ActorError> {
         self.require_in_call();
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
@@ -1027,7 +1038,11 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
             .take()
             .expect("unexpected call to create actor");
 
-        assert!(expect_create_actor.code_id == code_id && expect_create_actor.actor_id == actor_id, "unexpected actor being created, expected code: {:?} address: {:?}, actual code: {:?} address: {:?}", expect_create_actor.code_id, expect_create_actor.actor_id, code_id, actor_id);
+        assert_eq!(
+            expect_create_actor,
+            ExpectCreateActor { code_id, actor_id, predictable_address },
+            "unexpected actor being created"
+        );
         Ok(())
     }
 
