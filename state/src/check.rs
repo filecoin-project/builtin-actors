@@ -229,7 +229,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
         check_miner_against_power(&acc, &miner_summaries, &power_summary);
     }
 
-    if let Some(market_summary) = market_summary {
+    if let Some(market_summary) = market_summary.clone() {
         check_deal_states_against_sectors(&acc, &miner_summaries, &market_summary);
     }
 
@@ -237,6 +237,10 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
         if let Some(datacap_summary) = datacap_summary {
             check_verifreg_against_datacap(&acc, &verifreg_summary, &datacap_summary);
         }
+        if let Some(market_summary) = market_summary.clone() {
+            check_market_against_verifreg(&acc, &market_summary, &verifreg_summary);
+        }
+        check_verifreg_against_miners(&acc, &verifreg_summary, &miner_summaries);
     }
 
     acc.require(
@@ -412,4 +416,130 @@ fn check_verifreg_against_datacap(
             verifreg_balance, pending_alloc_total
         ),
     );
+}
+
+fn check_market_against_verifreg(
+    acc: &MessageAccumulator,
+    market_summary: &market::StateSummary,
+    verifreg_summary: &verifreg::StateSummary,
+) {
+    // all activated verified deals with claim ids reference a claim in verifreg state
+    // note that it is possible for claims to exist with no matching deal if the deal expires
+    for (claim_id, deal_id) in &market_summary.claim_id_to_deal_id {
+        // claim is found
+        let claim = match verifreg_summary.claims.get(&claim_id) {
+            None => {
+                acc.add(format!("claim {} not found for activated deal {}", claim_id, deal_id));
+                continue;
+            }
+            Some(claim) => claim,
+        };
+
+        let info = match market_summary.deals.get(&deal_id) {
+            None => {
+                acc.add(format!(
+                    "internal invariant error invalid market state referrences missing deal {}",
+                    deal_id
+                ));
+                continue;
+            }
+            Some(info) => info,
+        };
+        // claim and proposal match
+        acc.require(
+            info.provider.id().unwrap() == claim.provider,
+            format!(
+                "mismatched providers {} {} on claim {} and deal {}",
+                claim.provider,
+                info.provider.id().unwrap(),
+                claim_id,
+                deal_id
+            ),
+        );
+        acc.require(
+            info.piece_cid.unwrap() == claim.data,
+            format!(
+                "mismatched piece cid {} {} on claim {} and deal {}",
+                info.piece_cid.unwrap(),
+                claim.data,
+                claim_id,
+                deal_id
+            ),
+        );
+    }
+
+    // all pending deal allocation ids have an associated allocation
+    // note that it is possible for allocations to exist that don't match any deal
+    // if they are created from a direct DataCap transfer
+    for (allocation_id, deal_id) in &market_summary.alloc_id_to_deal_id {
+        // allocation is found
+        let alloc = match verifreg_summary.allocations.get(&allocation_id) {
+            None => {
+                acc.add(format!(
+                    "allocation {} not found for pending deal {}",
+                    allocation_id, deal_id
+                ));
+                continue;
+            }
+            Some(alloc) => alloc,
+        };
+        // alloc and proposal match
+        let info = match market_summary.deals.get(&deal_id) {
+            None => {
+                acc.add(format!(
+                    "internal invariant error invalid market state referrences missing deal {}",
+                    deal_id
+                ));
+                continue;
+            }
+            Some(info) => info,
+        };
+        acc.require(
+            info.provider.id().unwrap() == alloc.provider,
+            format!(
+                "mismatched providers {} {} on alloc {} and deal {}",
+                alloc.provider,
+                info.provider.id().unwrap(),
+                allocation_id,
+                deal_id
+            ),
+        );
+        acc.require(
+            info.piece_cid.unwrap() == alloc.data,
+            format!(
+                "mismatched piece cid {} {} on alloc {} and deal {}",
+                info.piece_cid.unwrap(),
+                alloc.data,
+                allocation_id,
+                deal_id
+            ),
+        );
+    }
+}
+
+fn check_verifreg_against_miners(
+    acc: &MessageAccumulator,
+    verifreg_summary: &verifreg::StateSummary,
+    miner_summaries: &HashMap<Address, miner::StateSummary>,
+) {
+    for (_, claim) in &verifreg_summary.claims {
+        // all claims are indexed by valid providers
+        let maddr = Address::new_id(claim.provider);
+        let miner_summary = match miner_summaries.get(&maddr) {
+            None => {
+                acc.add(format!("claim provider {} is not found in miner summaries", maddr));
+                continue;
+            }
+            Some(summary) => summary,
+        };
+
+        // all claims are linked to a valid sector number
+        acc.require(
+            miner_summary.sectors_with_deals.get(&claim.sector).is_some(),
+            format!(
+                "claim sector number {} not recorded as a sector with deals for miner {}",
+                claim.sector, maddr
+            ),
+        );
+    }
 }
