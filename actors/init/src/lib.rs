@@ -93,7 +93,7 @@ impl Actor {
         })?;
 
         // Create an empty actor
-        rt.create_actor(params.code_cid, id_address)?;
+        rt.create_actor(params.code_cid, id_address, None)?;
 
         // Invoke constructor
         rt.send(
@@ -144,7 +144,7 @@ impl Actor {
         })?;
 
         // Create an empty actor
-        rt.create_actor(params.code_cid, id_address)?;
+        rt.create_actor(params.code_cid, id_address, Some(delegated_address))?;
 
         // Invoke constructor
         rt.send(
