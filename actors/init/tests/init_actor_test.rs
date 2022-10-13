@@ -67,7 +67,7 @@ fn repeated_robust_address() {
         // Next id
         let expected_id = 100;
         let expected_id_addr = Address::new_id(expected_id);
-        rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id);
+        rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
 
         // Expect a send to the multisig actor constructor
         rt.expect_send(
@@ -125,7 +125,7 @@ fn create_2_payment_channels() {
 
         let expected_id = 100 + n;
         let expected_id_addr = Address::new_id(expected_id);
-        rt.expect_create_actor(*PAYCH_ACTOR_CODE_ID, expected_id);
+        rt.expect_create_actor(*PAYCH_ACTOR_CODE_ID, expected_id, None);
 
         let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
@@ -169,7 +169,7 @@ fn create_storage_miner() {
 
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id);
+    rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id, None);
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
@@ -218,7 +218,7 @@ fn create_multisig_actor() {
     // Next id
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id);
+    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
@@ -253,7 +253,7 @@ fn sending_constructor_failure() {
     // Create the next id address
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id);
+    rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id, None);
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     rt.expect_send(
@@ -292,10 +292,14 @@ fn call_exec4() {
     let unique_address = Address::new_actor(b"test");
     rt.new_actor_addr = Some(unique_address);
 
+    // Make the f4 addr
+    let subaddr = b"foobar";
+    let f4_addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
+
     // Next id
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id);
+    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, Some(f4_addr));
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
@@ -307,9 +311,6 @@ fn call_exec4() {
         RawBytes::default(),
         ExitCode::OK,
     );
-
-    let subaddr = b"foobar";
-    let f4_addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
 
     // Return should have been successful. Check the returned addresses
     let exec_ret =
