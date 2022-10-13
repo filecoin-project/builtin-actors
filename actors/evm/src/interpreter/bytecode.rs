@@ -1,14 +1,15 @@
 #![allow(dead_code)]
 
-use {super::opcode::OpCode, crate::interpreter::output::StatusCode, std::ops::Deref};
+use {super::opcode::OpCode, std::ops::Deref};
 
-pub struct Bytecode<'c> {
-    code: &'c [u8],
+#[derive(Clone, Debug)]
+pub struct Bytecode {
+    code: Vec<u8>,
     jumpdest: Vec<bool>,
 }
 
-impl<'c> Bytecode<'c> {
-    pub fn new(bytecode: &'c [u8]) -> Result<Self, StatusCode> {
+impl Bytecode {
+    pub fn new(bytecode: Vec<u8>) -> Self {
         // only jumps to those addresses are valid. This is a security
         // feature by EVM to disallow jumps to arbitary code addresses.
         // todo: create the jumpdest table only once during initial contract deployment
@@ -25,7 +26,7 @@ impl<'c> Bytecode<'c> {
             }
         }
 
-        Ok(Self { code: bytecode, jumpdest })
+        Self { code: bytecode, jumpdest }
     }
 
     /// Checks if the EVM is allowed to jump to this location.
@@ -37,16 +38,16 @@ impl<'c> Bytecode<'c> {
     }
 }
 
-impl<'c> Deref for Bytecode<'c> {
+impl Deref for Bytecode {
     type Target = [u8];
 
-    fn deref(&self) -> &'c Self::Target {
-        self.code
+    fn deref(&self) -> &Self::Target {
+        &self.code
     }
 }
 
-impl<'c> AsRef<[u8]> for Bytecode<'c> {
-    fn as_ref(&self) -> &'c [u8] {
-        self.code
+impl AsRef<[u8]> for Bytecode {
+    fn as_ref(&self) -> &[u8] {
+        &self.code
     }
 }

@@ -5,9 +5,9 @@ use {
 };
 
 #[inline]
-pub fn sload<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn sload<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r mut System<'r, BS, RT>,
+    platform: &'r mut System<'a, BS, RT>,
 ) -> Result<(), StatusCode> {
     // where?
     let location = state.stack.pop();
@@ -22,9 +22,9 @@ pub fn sload<'r, BS: Blockstore, RT: Runtime<BS>>(
 }
 
 #[inline]
-pub fn sstore<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn sstore<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r mut System<'r, BS, RT>,
+    platform: &'r mut System<'a, BS, RT>,
 ) -> Result<(), StatusCode> {
     let location = state.stack.pop();
     let value = state.stack.pop();

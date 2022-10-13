@@ -920,30 +920,23 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         Ok(Randomness(TEST_VM_RAND_STRING.as_bytes().into()))
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+    fn get_state_root(&self) -> Result<Cid, ActorError> {
+        Ok(self.v.get_actor(self.to()).unwrap().head)
+    }
+
+    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
         let maybe_act = self.v.get_actor(self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
-                "failed to create state".to_string(),
+                "actor does not exist".to_string(),
             )),
             Some(mut act) => {
-                if act.head != EMPTY_ARR_CID {
-                    Err(ActorError::unchecked(
-                        ExitCode::SYS_ASSERTION_FAILED,
-                        "failed to construct state: already initialized".to_string(),
-                    ))
-                } else {
-                    act.head = self.v.store.put_cbor(obj, Code::Blake2b256).unwrap();
-                    self.v.set_actor(self.to(), act);
-                    Ok(())
-                }
+                act.head = *root;
+                self.v.set_actor(self.to(), act);
+                Ok(())
             }
         }
-    }
-
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        Ok(self.v.get_state::<C>(self.to()).unwrap())
     }
 
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>

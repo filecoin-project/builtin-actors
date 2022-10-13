@@ -16,12 +16,11 @@ use {
     fil_actors_runtime::{
         cbor,
         runtime::{ActorCode, Runtime},
-        ActorDowncast, ActorError,
+        ActorError,
     },
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::tuple::*,
     fvm_ipld_encoding::RawBytes,
-    fvm_ipld_hamt::Hamt,
     fvm_shared::error::*,
     fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
     num_derive::FromPrimitive,
@@ -97,13 +96,7 @@ impl EvmContractActor {
             return Err(ActorError::illegal_argument("no initcode provided".into()));
         }
 
-        // create an empty storage HAMT to pass it down for execution.
-        let mut hamt = Hamt::<_, U256, U256>::new(rt.store().clone());
-
-        // create an instance of the platform abstraction layer -- note: do we even need this?
-        let mut system = System::new(rt, &mut hamt).map_err(|e| {
-            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
-        })?;
+        let mut system = System::create(rt)?;
 
         // create a new execution context
         let mut exec_state = ExecutionState::new(
@@ -114,12 +107,11 @@ impl EvmContractActor {
         );
 
         // identify bytecode valid jump destinations
-        let initcode = Bytecode::new(&params.initcode)
-            .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
+        let initcode = Bytecode::new(params.initcode.into());
 
         // invoke the contract constructor
         let exec_status =
-            execute(&initcode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
+            execute(&initcode, &mut exec_state, &mut system).map_err(|e| match e {
                 StatusCode::ActorError(e) => e,
                 _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
             })?;
@@ -137,26 +129,8 @@ impl EvmContractActor {
             // the resulting bytecode.
             let contract_bytecode = exec_status.output_data;
 
-            // Reject code starting with 0xEF, EIP-3541
-            if !contract_bytecode.is_empty() && contract_bytecode[0] == 0xEF {
-                return Err(ActorError::illegal_argument(
-                    "EIP-3541: Contract code starting with the 0xEF byte is disallowed.".into(),
-                ));
-            }
-
-            let contract_state_cid = system.flush_state()?;
-
-            let state = State::new(
-                rt.store(),
-                RawBytes::new(contract_bytecode.to_vec()),
-                contract_state_cid,
-            )
-            .map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
-            })?;
-            rt.create(&state)?;
-
-            Ok(())
+            system.set_bytecode(&contract_bytecode)?;
+            system.flush()
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             Err(e)
         } else {
@@ -175,27 +149,14 @@ impl EvmContractActor {
     {
         rt.validate_immediate_caller_accept_any()?;
 
-        let state: State = rt.state()?;
-        let bytecode: Vec<u8> = rt
-            .store()
-            .get(&state.bytecode)
-            .map_err(|e| ActorError::unspecified(format!("failed to load bytecode: {e:?}")))?
-            .ok_or_else(|| ActorError::unspecified("missing bytecode".to_string()))?;
-
-        let bytecode = Bytecode::new(&bytecode)
-            .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
-
-        // clone the blockstore here to pass to the System, this is bound to the HAMT.
-        let blockstore = rt.store().clone();
-
-        // load the storage HAMT
-        let mut hamt = Hamt::load(&state.contract_state, blockstore).map_err(|e| {
-            ActorError::illegal_state(format!("failed to load storage HAMT on invoke: {e:?}, e"))
-        })?;
-
-        let mut system = System::new(rt, &mut hamt).map_err(|e| {
+        let mut system = System::load(rt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
+
+        let bytecode = match system.load_bytecode()? {
+            Some(bytecode) => bytecode,
+            None => return Ok(Vec::new()), // an EVM contract with no code returns immediately
+        };
 
         // Resolve the caller's ethereum address. If the caller doesn't have one, the caller's ID is used instead.
         let caller_fil_addr = system.rt.message().caller();
@@ -213,7 +174,7 @@ impl EvmContractActor {
         );
 
         let exec_status =
-            execute(&bytecode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
+            execute(&bytecode, &mut exec_state, &mut system).map_err(|e| match e {
                 StatusCode::ActorError(e) => e,
                 _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
             })?;
@@ -225,13 +186,7 @@ impl EvmContractActor {
                 "contract reverted".to_string(),
             ));
         } else if exec_status.status_code == StatusCode::Success {
-            // this needs to be outside the transaction or else rustc has a fit about
-            // mutably borrowing the runtime twice.... sigh.
-            let contract_state = system.flush_state()?;
-            rt.transaction(|state: &mut State, _rt| {
-                state.contract_state = contract_state;
-                Ok(())
-            })?;
+            system.flush()?;
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             return Err(e);
         } else {
@@ -269,22 +224,7 @@ impl EvmContractActor {
         // access arbitrary storage keys from a contract.
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
-        let state: State = rt.state()?;
-        let blockstore = rt.store().clone();
-
-        // load the storage HAMT
-        let mut hamt =
-            Hamt::<_, _, U256>::load(&state.contract_state, blockstore).map_err(|e| {
-                ActorError::illegal_state(format!(
-                    "failed to load storage HAMT on invoke: {e:?}, e"
-                ))
-            })?;
-
-        let mut system = System::new(rt, &mut hamt).map_err(|e| {
-            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
-        })?;
-
-        system
+        System::load(rt)?
             .get_storage(params.storage_key)
             .map_err(|st| ActorError::unspecified(format!("failed to get storage key: {}", &st)))?
             .ok_or_else(|| ActorError::not_found(String::from("storage key not found")))
