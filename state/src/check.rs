@@ -237,7 +237,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
         if let Some(datacap_summary) = datacap_summary {
             check_verifreg_against_datacap(&acc, &verifreg_summary, &datacap_summary);
         }
-        if let Some(market_summary) = market_summary.clone() {
+        if let Some(market_summary) = market_summary {
             check_market_against_verifreg(&acc, &market_summary, &verifreg_summary);
         }
         check_verifreg_against_miners(&acc, &verifreg_summary, &miner_summaries);
@@ -427,7 +427,7 @@ fn check_market_against_verifreg(
     // note that it is possible for claims to exist with no matching deal if the deal expires
     for (claim_id, deal_id) in &market_summary.claim_id_to_deal_id {
         // claim is found
-        let claim = match verifreg_summary.claims.get(&claim_id) {
+        let claim = match verifreg_summary.claims.get(claim_id) {
             None => {
                 acc.add(format!("claim {} not found for activated deal {}", claim_id, deal_id));
                 continue;
@@ -435,7 +435,7 @@ fn check_market_against_verifreg(
             Some(claim) => claim,
         };
 
-        let info = match market_summary.deals.get(&deal_id) {
+        let info = match market_summary.deals.get(deal_id) {
             None => {
                 acc.add(format!(
                     "internal invariant error invalid market state referrences missing deal {}",
@@ -473,7 +473,7 @@ fn check_market_against_verifreg(
     // if they are created from a direct DataCap transfer
     for (allocation_id, deal_id) in &market_summary.alloc_id_to_deal_id {
         // allocation is found
-        let alloc = match verifreg_summary.allocations.get(&allocation_id) {
+        let alloc = match verifreg_summary.allocations.get(allocation_id) {
             None => {
                 acc.add(format!(
                     "allocation {} not found for pending deal {}",
@@ -484,7 +484,7 @@ fn check_market_against_verifreg(
             Some(alloc) => alloc,
         };
         // alloc and proposal match
-        let info = match market_summary.deals.get(&deal_id) {
+        let info = match market_summary.deals.get(deal_id) {
             None => {
                 acc.add(format!(
                     "internal invariant error invalid market state referrences missing deal {}",
@@ -522,7 +522,7 @@ fn check_verifreg_against_miners(
     verifreg_summary: &verifreg::StateSummary,
     miner_summaries: &HashMap<Address, miner::StateSummary>,
 ) {
-    for (_, claim) in &verifreg_summary.claims {
+    for claim in verifreg_summary.claims.values() {
         // all claims are indexed by valid providers
         let maddr = Address::new_id(claim.provider);
         let miner_summary = match miner_summaries.get(&maddr) {
