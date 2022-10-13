@@ -1004,6 +1004,12 @@ impl Primitives for VM<'_> {
         hasher.digest(data).to_bytes()
     }
 
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        let hasher = Code::try_from(hasher as u64).unwrap();
+        let (len, buf, ..) = hasher.digest(data).into_inner();
+        (buf, len as usize)
+    }
+
     fn recover_secp_public_key(
         &self,
         hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
@@ -1042,6 +1048,10 @@ impl Primitives for InvocationCtx<'_, '_> {
 
     fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
         self.v.hash(hasher, data)
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        self.v.hash_64(hasher, data)
     }
 
     fn recover_secp_public_key(

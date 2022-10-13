@@ -24,7 +24,7 @@ pub struct State {
     /// HAMT<U256, U256>
     pub contract_state: Cid,
 
-    /// TODO
+    /// The EVM nonce used to track how many times CREATE or CREATE2 have been called.
     pub nonce: u64,
 }
 

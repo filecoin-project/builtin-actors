@@ -64,7 +64,6 @@ fn test_create() {
     let contract = magic_precompile_contract();
     let mut rt = util::construct_and_verify(contract);
 
-
     let fake_eth_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
     let fake_ret = EamReturn {
         actor_id: 12345,
@@ -73,7 +72,7 @@ fn test_create() {
     };
 
     let salt =
-            hex_literal::hex!("0000000000000000000000000000000000000000000000796573206D616E6921");
+        hex_literal::hex!("0000000000000000000000000000000000000000000000796573206D616E6921");
 
     let create2_params = Create2Params {
         code: hex_literal::hex!("666F6F206261722062617A20626F7879").to_vec(),
@@ -104,15 +103,13 @@ fn test_create() {
         );
 
         let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
-        let result: [u8; 20] = result[12..]
-                .try_into()
-                .unwrap();
+        let result: [u8; 20] = result[12..].try_into().unwrap();
         let result = EthAddress(result);
         // make sure we arent doing weird things to EAM's return value
         assert_eq!(result, fake_eth_addr);
     }
 
-    // invoke contract -- create with new nonce 
+    // invoke contract -- create with new nonce
     {
         rt.add_balance(TokenAmount::from_atto(1));
 
@@ -126,9 +123,7 @@ fn test_create() {
         );
 
         let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
-        let result: [u8; 20] = result[12..]
-                .try_into()
-                .unwrap();
+        let result: [u8; 20] = result[12..].try_into().unwrap();
         let result = EthAddress(result);
         // make sure we arent doing weird things to EAM's return value
         assert_eq!(result, fake_eth_addr);
@@ -150,9 +145,7 @@ fn test_create() {
         );
 
         let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
-        let result: [u8; 20] = result[12..]
-                .try_into()
-                .unwrap();
+        let result: [u8; 20] = result[12..].try_into().unwrap();
         let result = EthAddress(result);
         // make sure we arent doing weird things to EAM's return value
         assert_eq!(result, fake_eth_addr);

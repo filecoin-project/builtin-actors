@@ -90,7 +90,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         match addr.payload() {
             Payload::Delegated(delegated) if delegated.namespace() == EAM_ACTOR_ID => {
                 let subaddr: [u8; 20] = delegated.subaddress().try_into().map_err(|_| {
-                    StatusCode::BadAddress(format!("invalid ethereum address length"))
+                    StatusCode::BadAddress("invalid ethereum address length".into())
                 })?;
                 return Ok(EthAddress(subaddr));
             }
@@ -112,7 +112,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         match self.rt.lookup_address(actor_id).map(|a| a.into_payload()) {
             Some(Payload::Delegated(delegated)) if delegated.namespace() == EAM_ACTOR_ID => {
                 let subaddr: [u8; 20] = delegated.subaddress().try_into().map_err(|_| {
-                    StatusCode::BadAddress(format!("invalid ethereum address length"))
+                    StatusCode::BadAddress("invalid ethereum address length".into())
                 })?;
                 Ok(EthAddress(subaddr))
             }

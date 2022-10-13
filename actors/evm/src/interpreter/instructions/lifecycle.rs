@@ -130,7 +130,7 @@ fn create_init<'r, BS: Blockstore, RT: Runtime<BS>>(
     // https://github.com/ethereum/go-ethereum/blob/fb75f11e87420ec25ff72f7eeeb741fa8974e87e/core/vm/evm.go#L406-L496
     // Normally EVM will do some checks here to ensure that a contract has the capability
     // to create an actor, but here FVM does these checks for us, including:
-    // - execution depth, equal to FVM's max call depth (FVM) 
+    // - execution depth, equal to FVM's max call depth (FVM)
     // - account has enough value to send (FVM)
     // - ensuring there isn't an existing account at the generated f4 address (INIT)
     // - constructing smart contract on chain (INIT)
@@ -143,7 +143,7 @@ fn create_init<'r, BS: Blockstore, RT: Runtime<BS>>(
     // TODO revert state if error was returned (revert nonce bump)
     // https://github.com/filecoin-project/ref-fvm/issues/956
 
-    // TODO Exit with revert if sys out of gas when subcall gas limits are introduced 
+    // TODO Exit with revert if sys out of gas when subcall gas limits are introduced
     // https://github.com/filecoin-project/ref-fvm/issues/966
 
     let word = match ret {

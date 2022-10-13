@@ -36,7 +36,7 @@ impl std::fmt::Debug for EthAddress {
 impl TryFrom<&EthAddress> for Address {
     type Error = anyhow::Error;
     fn try_from(addr: &EthAddress) -> Result<Self, Self::Error> {
-        if &addr.0[1..] == &[0; 19] {
+        if addr.0[1..] == [0; 19] {
             return Err(anyhow::anyhow!(
                 "Cannot convert a precompile address {:X?} to an f4 address.",
                 addr

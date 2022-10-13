@@ -111,7 +111,7 @@ impl EvmContractActor {
             let contract_bytecode = exec_status.output_data;
 
             // Reject code starting with 0xEF, EIP-3541
-            if contract_bytecode.len() >= 1 && contract_bytecode[0] == 0xEF {
+            if !contract_bytecode.is_empty() && contract_bytecode[0] == 0xEF {
                 return Err(ActorError::illegal_argument(
                     "EIP-3541: Contract code starting with the 0xEF byte is disallowed.".into(),
                 ));

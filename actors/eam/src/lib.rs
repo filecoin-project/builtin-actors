@@ -103,9 +103,14 @@ pub struct EvmConstructorParams {
 }
 
 fn assert_code_size(code: &[u8]) -> Result<(), ActorError> {
-    (code.len() == MAX_CODE_SIZE).then_some(()).ok_or(ActorError::illegal_argument(
-        format!("Supplied EVM initcode {} is larger than max code size 24kB.", code.len()),
-    ))
+    if code.len() >= MAX_CODE_SIZE {
+        Err(ActorError::illegal_argument(format!(
+            "Supplied EVM initcode {} is larger than max code size 24kB.",
+            code.len()
+        )))
+    } else {
+        Ok(())
+    }
 }
 
 /// hash of data with Keccack256, with first 12 bytes cropped
