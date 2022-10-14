@@ -37,8 +37,6 @@ pub enum StorageStatus {
     Deleted,
 }
 
-struct SystemState {}
-
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
 pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
