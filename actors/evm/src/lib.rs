@@ -52,8 +52,15 @@ impl EvmContractActor {
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
+        // TODO ideally we would be checking that we are constructed by the EAM actor,
+        //   so instead we check for init and then assert that we have a delegated address.
         rt.validate_immediate_caller_type(iter::once(&Type::Init))?;
-        // TODO make sure we have an f4 address
+        
+        if rt.lookup_address(rt.message().caller().id().unwrap()).is_none() {
+            return Err(ActorError::assertion_failed(
+                "EVM actor created without a delegated address".into()
+            ))
+        }
 
         if params.initcode.len() > MAX_CODE_SIZE {
             return Err(ActorError::illegal_argument(format!(

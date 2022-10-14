@@ -117,6 +117,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub miner: Address,
     pub base_fee: TokenAmount,
     pub id_addresses: HashMap<Address, Address>,
+    pub delegated_addresses: HashMap<Address, Address>,
     pub actor_code_cids: HashMap<Address, Cid>,
     pub new_actor_addr: Option<Address>,
     pub receiver: Address,
@@ -290,6 +291,7 @@ impl<BS> MockRuntime<BS> {
             miner: Address::new_id(0),
             base_fee: Default::default(),
             id_addresses: Default::default(),
+            delegated_addresses: Default::default(),
             actor_code_cids: Default::default(),
             new_actor_addr: Default::default(),
             receiver: Address::new_id(0),
@@ -486,6 +488,12 @@ impl<BS: Blockstore> MockRuntime<BS> {
     pub fn add_id_address(&mut self, source: Address, target: Address) {
         assert_eq!(target.protocol(), Protocol::ID, "target must use ID address protocol");
         self.id_addresses.insert(source, target);
+    }
+
+    pub fn add_delegated_address(&mut self, source: Address, target: Address) {
+        assert_eq!(target.protocol(), Protocol::Delegated, "target must use Delegated address protocol");
+        assert_eq!(source.protocol(), Protocol::ID, "source must use ID address protocol");
+        self.delegated_addresses.insert(source, target);
     }
 
     pub fn call<A: ActorCode>(
@@ -851,10 +859,9 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         }
     }
 
-    fn lookup_address(&self, _id: ActorID) -> Option<Address> {
+    fn lookup_address(&self, id: ActorID) -> Option<Address> {
         self.require_in_call();
-        // TODO: Record ID addresses
-        None
+        self.delegated_addresses.get(&Address::new_id(id)).copied()
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {

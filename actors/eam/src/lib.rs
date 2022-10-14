@@ -3,7 +3,7 @@ use std::iter;
 use ext::init::{Exec4Params, Exec4Return};
 use rlp::Encodable;
 
-mod ext;
+pub mod ext;
 
 use {
     fil_actors_runtime::{
@@ -41,9 +41,9 @@ pub enum Method {
 
 #[derive(Debug)]
 /// Intermediate type between RLP encoding for CREATE
-struct RlpCreateAddress {
-    address: EthAddress,
-    nonce: u64,
+pub struct RlpCreateAddress {
+    pub address: EthAddress,
+    pub nonce: u64,
 }
 
 impl rlp::Encodable for RlpCreateAddress {
@@ -77,7 +77,7 @@ pub struct InitAccountParams {
     pub pubkey: [u8; SECP_PUB_LEN],
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug)]
 pub struct EamReturn {
     pub actor_id: ActorID,
     pub robust_address: Address,
@@ -94,7 +94,7 @@ impl EamReturn {
     }
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct EvmConstructorParams {
     /// The actor's "creator" (specified by the EAM).
     pub creator: EthAddress,
@@ -108,6 +108,8 @@ fn assert_code_size(code: &[u8]) -> Result<(), ActorError> {
             "Supplied EVM initcode {} is larger than max code size 24kB.",
             code.len()
         )))
+    } else if code.is_empty() {
+        Err(ActorError::illegal_argument("Supplied EVM initcode cannot be empty.".into()))
     } else {
         Ok(())
     }
@@ -149,8 +151,14 @@ where
             rt.message().value_received(),
         )?
         .deserialize()?;
+    dbg!(&ret);
+    dbg!(&new_addr);
 
-    Ok(RawBytes::serialize(EamReturn::from_exec4(ret, new_addr))?)
+
+    let ret = RawBytes::serialize(EamReturn::from_exec4(ret, new_addr))?;
+    dbg!(&ret);
+
+    Ok(ret)
 }
 
 /// lookup caller's raw ETH address
@@ -190,7 +198,7 @@ impl EamActor {
                 "The Ethereum Address Manager must be deployed at {EAM_ACTOR_ID}, was deployed at {actor_id}"
             )));
         }
-        rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Init))
     }
 
     pub fn create<BS, RT>(rt: &mut RT, params: CreateParams) -> Result<RawBytes, ActorError>
@@ -225,7 +233,7 @@ impl EamActor {
 
         let eth_addr = EthAddress(hash_20(
             rt,
-            &[&[0xff], caller_addr.0.as_slice(), &params.salt, &inithash].concat(),
+            &[&[0xff], &caller_addr.0[..], &params.salt, &inithash].concat(),
         ));
 
         // send to init actor

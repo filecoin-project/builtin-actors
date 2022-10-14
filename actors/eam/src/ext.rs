@@ -10,7 +10,7 @@ pub mod init {
     pub const EXEC4_METHOD: u64 = 3;
 
     /// Init actor Exec4 Params
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[derive(Serialize_tuple, Deserialize_tuple, Debug)]
     pub struct Exec4Params {
         pub code_cid: Cid,
         pub constructor_params: RawBytes,
@@ -18,7 +18,7 @@ pub mod init {
     }
 
     /// Init actor Exec4 Return value
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[derive(Serialize_tuple, Deserialize_tuple, Debug)]
     pub struct Exec4Return {
         /// ID based address for created actor
         pub id_address: Address,
