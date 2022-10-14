@@ -12,8 +12,7 @@ use cid::Cid;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
-use fvm_shared::address::Payload;
-use fvm_shared::address::{Address, Protocol};
+use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
@@ -117,6 +116,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub miner: Address,
     pub base_fee: TokenAmount,
     pub id_addresses: HashMap<Address, Address>,
+    pub delegated_addresses: HashMap<Address, Address>,
     pub actor_code_cids: HashMap<Address, Cid>,
     pub new_actor_addr: Option<Address>,
     pub receiver: Address,
@@ -164,6 +164,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
 pub struct Expectations {
     pub expect_validate_caller_any: bool,
     pub expect_validate_caller_addr: Option<Vec<Address>>,
+    pub expect_validate_caller_f4_namespace: Option<Vec<u64>>,
     pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
@@ -193,6 +194,11 @@ impl Expectations {
             self.expect_validate_caller_addr.is_none(),
             "expected ValidateCallerAddr {:?}, not received",
             self.expect_validate_caller_addr
+        );
+        assert!(
+            self.expect_validate_caller_f4_namespace.is_none(),
+            "expected ValidateNamespace {:?}, not received",
+            self.expect_validate_caller_f4_namespace
         );
         assert!(
             self.expect_validate_caller_type.is_none(),
@@ -290,6 +296,7 @@ impl<BS> MockRuntime<BS> {
             miner: Address::new_id(0),
             base_fee: Default::default(),
             id_addresses: Default::default(),
+            delegated_addresses: Default::default(),
             actor_code_cids: Default::default(),
             new_actor_addr: Default::default(),
             receiver: Address::new_id(0),
@@ -488,6 +495,16 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.id_addresses.insert(source, target);
     }
 
+    pub fn add_delegated_address(&mut self, source: Address, target: Address) {
+        assert_eq!(
+            target.protocol(),
+            Protocol::Delegated,
+            "target must use Delegated address protocol"
+        );
+        assert_eq!(source.protocol(), Protocol::ID, "source must use ID address protocol");
+        self.delegated_addresses.insert(source, target);
+    }
+
     pub fn call<A: ActorCode>(
         &mut self,
         method_num: MethodNum,
@@ -568,6 +585,12 @@ impl<BS: Blockstore> MockRuntime<BS> {
     #[allow(dead_code)]
     pub fn expect_validate_caller_any(&self) {
         self.expectations.borrow_mut().expect_validate_caller_any = true;
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_validate_caller_namespace(&self, namespaces: Vec<u64>) {
+        assert!(!namespaces.is_empty(), "f4 namespaces must be non-empty");
+        self.expectations.borrow_mut().expect_validate_caller_f4_namespace = Some(namespaces);
     }
 
     #[allow(dead_code)]
@@ -792,6 +815,51 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
                 self.message().caller(), &addrs
         ))
     }
+
+    fn validate_immediate_caller_namespace<I>(&mut self, namespaces: I) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        self.require_in_call();
+
+        let namespaces: Vec<u64> = namespaces.into_iter().collect();
+
+        let mut expectations = self.expectations.borrow_mut();
+        assert!(
+            expectations.expect_validate_caller_f4_namespace.is_some(),
+            "unexpected validate caller namespace"
+        );
+
+        let expected_namespaces =
+            expectations.expect_validate_caller_f4_namespace.as_ref().unwrap();
+
+        assert_eq!(
+            &namespaces, expected_namespaces,
+            "unexpected validate caller namespace {:?}, expected {:?}",
+            namespaces, &expectations.expect_validate_caller_f4_namespace
+        );
+
+        let caller_f4 = self.lookup_address(self.caller().id().unwrap());
+
+        assert!(caller_f4.is_some(), "unexpected caller doesn't have a delegated address");
+
+        for id in namespaces.iter() {
+            let bound_address = match caller_f4.unwrap().payload() {
+                Payload::Delegated(d) => d.namespace(),
+                _ => unreachable!("lookup_address should always return a delegated address"),
+            };
+            if bound_address == *id {
+                expectations.expect_validate_caller_f4_namespace = None;
+                return Ok(());
+            }
+        }
+        expectations.expect_validate_caller_addr = None;
+        Err(actor_error!(forbidden;
+                "caller address {:?} forbidden, allowed: {:?}",
+                self.message().caller(), &namespaces
+        ))
+    }
+
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,
@@ -849,6 +917,11 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
                 None
             }
         }
+    }
+
+    fn lookup_address(&self, id: ActorID) -> Option<Address> {
+        self.require_in_call();
+        self.delegated_addresses.get(&Address::new_id(id)).copied()
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
@@ -1205,6 +1278,10 @@ impl<BS> Primitives for MockRuntime<BS> {
         signature: &[u8; SECP_SIG_LEN],
     ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
         (*self.recover_pubkey_fn)(hash, signature).map_err(|_| anyhow!("failed to recover pubkey."))
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        (*self.hash_func)(hasher, data)
     }
 }
 

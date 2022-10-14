@@ -1,5 +1,10 @@
 #![allow(dead_code)]
 
+use fil_actors_runtime::EAM_ACTOR_ID;
+use fvm_shared::address::{Address, Payload};
+
+use super::address::EthAddress;
+
 use {
     crate::interpreter::{StatusCode, U256},
     cid::Cid,
@@ -77,5 +82,42 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         }
 
         Ok(storage_status)
+    }
+
+    /// Resolve the address to the ethereum equivalent, if possible.
+    pub fn resolve_ethereum_address(&self, addr: &Address) -> Result<EthAddress, StatusCode> {
+        // Short-circuit if we already have an EVM actor.
+        match addr.payload() {
+            Payload::Delegated(delegated) if delegated.namespace() == EAM_ACTOR_ID => {
+                let subaddr: [u8; 20] = delegated.subaddress().try_into().map_err(|_| {
+                    StatusCode::BadAddress("invalid ethereum address length".into())
+                })?;
+                return Ok(EthAddress(subaddr));
+            }
+            _ => {}
+        }
+
+        // Otherwise, resolve to an ID address.
+        let actor_id = self.rt.resolve_address(addr).ok_or_else(|| {
+            StatusCode::BadAddress(format!(
+                "non-ethereum address {addr} cannot be resolved to an ID address"
+            ))
+        })?;
+
+        // Then attempt to resolve back into an EVM address.
+        //
+        // TODO: this method doesn't differentiate between "actor doesn't have a predictable
+        // address" and "actor doesn't exist". We should probably fix that and return an error if
+        // the actor doesn't exist.
+        match self.rt.lookup_address(actor_id).map(|a| a.into_payload()) {
+            Some(Payload::Delegated(delegated)) if delegated.namespace() == EAM_ACTOR_ID => {
+                let subaddr: [u8; 20] = delegated.subaddress().try_into().map_err(|_| {
+                    StatusCode::BadAddress("invalid ethereum address length".into())
+                })?;
+                Ok(EthAddress(subaddr))
+            }
+            // But use an EVM address as the fallback.
+            _ => Ok(EthAddress::from_id(actor_id)),
+        }
     }
 }

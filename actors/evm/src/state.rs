@@ -23,6 +23,9 @@ pub struct State {
     ///
     /// HAMT<U256, U256>
     pub contract_state: Cid,
+
+    /// The EVM nonce used to track how many times CREATE or CREATE2 have been called.
+    pub nonce: u64,
 }
 
 impl Cbor for State {}
@@ -34,6 +37,6 @@ impl State {
         contract_state: Cid,
     ) -> anyhow::Result<Self> {
         let bytecode_cid = store.put(Code::Blake2b256, &Block::new(RAW, bytecode.to_vec()))?;
-        Ok(Self { bytecode: bytecode_cid, contract_state })
+        Ok(Self { bytecode: bytecode_cid, contract_state, nonce: 0 })
     }
 }

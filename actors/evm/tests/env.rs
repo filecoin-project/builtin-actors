@@ -3,8 +3,12 @@ use ethers::{
     prelude::{builders::ContractCall, decode_function_data},
     providers::{MockProvider, Provider},
 };
+use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
-use fil_actors_runtime::test_utils::{expect_empty, MockRuntime, EVM_ACTOR_CODE_ID};
+use fil_actors_runtime::{
+    runtime::builtins::Type,
+    test_utils::{expect_empty, MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID},
+};
 use fvm_ipld_blockstore::tracking::{BSStats, TrackingBlockstore};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -39,10 +43,24 @@ impl TestEnv {
 
     /// Deploy a contract into the EVM actor.
     pub fn deploy(&mut self, contract_hex: &str) {
-        let params = evm::ConstructorParams { bytecode: hex::decode(contract_hex).unwrap().into() };
+        let params = evm::ConstructorParams {
+            creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()),
+            initcode: hex::decode(contract_hex).unwrap().into(),
+        };
         // invoke constructor
-        self.runtime.expect_validate_caller_any();
+        self.runtime.expect_validate_caller_type(vec![Type::Init]);
+        self.runtime.caller_type = *INIT_ACTOR_CODE_ID;
+
         self.runtime.set_origin(self.evm_address);
+        // first actor created is 0
+        self.runtime.add_delegated_address(
+            Address::new_id(0),
+            Address::new_delegated(
+                10,
+                &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"),
+            )
+            .unwrap(),
+        );
 
         let result = self
             .runtime

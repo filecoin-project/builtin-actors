@@ -5,8 +5,9 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
-use fvm_shared::address::Address;
+use fvm_shared::address::{Address, Payload};
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{
     Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
 };
@@ -141,6 +142,26 @@ where
         }
     }
 
+    fn validate_immediate_caller_namespace<I>(&mut self, addresses: I) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        self.assert_not_validated()?;
+        let caller_addr = self.message().caller();
+        let caller_f4 = self.lookup_address(caller_addr.id().unwrap()).map(|a| *a.payload());
+        if addresses
+            .into_iter()
+            .any(|a| matches!(caller_f4, Some(Payload::Delegated(d)) if d.namespace() == a))
+        {
+            self.caller_validated = true;
+            Ok(())
+        } else {
+            Err(actor_error!(forbidden;
+                "caller's namespace {} is not one of supported", caller_addr
+            ))
+        }
+    }
+
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,
@@ -172,6 +193,10 @@ where
 
     fn resolve_address(&self, address: &Address) -> Option<ActorID> {
         fvm::actor::resolve_address(address)
+    }
+
+    fn lookup_address(&self, id: ActorID) -> Option<Address> {
+        fvm::actor::lookup_address(id)
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
@@ -453,8 +478,14 @@ where
         fvm::actor::install_actor(code_id).map_err(|_| Error::msg("failed to install actor"))
     }
 
-    fn hash(&self, hasher: fvm_shared::crypto::hash::SupportedHashes, data: &[u8]) -> Vec<u8> {
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
         fvm::crypto::hash_owned(hasher, data)
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        let mut buf = [0u8; 64];
+        let len = fvm::crypto::hash_into(hasher, data, &mut buf);
+        (buf, len)
     }
 
     fn recover_secp_public_key(

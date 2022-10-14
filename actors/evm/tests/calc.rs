@@ -51,7 +51,7 @@ return
 
 mul_magic:
 jumpdest
-push1 0x20   # length of return dataa
+push1 0x20   # length of return data
 push1 0x04
 calldataload # arg1
 push1 0x00   # key of magic

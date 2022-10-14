@@ -59,6 +59,14 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>;
+    /// Validates the caller is a member of a namespace.
+    /// Addresses must be of Protocol ID.
+    fn validate_immediate_caller_namespace<I>(
+        &mut self,
+        namespace_manager_addresses: I,
+    ) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>;
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>;
@@ -73,6 +81,10 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// This allows resolution of externally-provided SECP, BLS, or actor addresses to the canonical form.
     /// If the argument is an ID address it is returned directly.
     fn resolve_address(&self, address: &Address) -> Option<ActorID>;
+
+    /// Looks-up the "predictable" address of an actor by ID, if any. Returns None if either the
+    /// target actor doesn't exist, or if the target actord doesn't have a predictable address.
+    fn lookup_address(&self, id: ActorID) -> Option<Address>;
 
     /// Look up the code ID at an actor address.
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid>;
@@ -217,6 +229,9 @@ pub trait Primitives {
 
     /// Hashes input data using a supported hash function.
     fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8>;
+
+    /// Hashes input into a 64 byte buffer
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize);
 
     /// Computes an unsealed sector CID (CommD) from its constituent piece CIDs (CommPs) and sizes.
     fn compute_unsealed_sector_cid(

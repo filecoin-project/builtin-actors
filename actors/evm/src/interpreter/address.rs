@@ -1,13 +1,15 @@
 use crate::StatusCode;
 use crate::U256;
-use fvm_shared::address::Address as FilecoinAddress;
+use fil_actors_runtime::EAM_ACTOR_ID;
+use fvm_ipld_encoding::{serde, strict_bytes};
+use fvm_shared::address::Address;
 use fvm_shared::ActorID;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 ///
 /// TODO this type will eventually handle f4 address detection.
-#[derive(PartialEq, Eq, Clone)]
-pub struct EthAddress([u8; 20]);
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Eq, Clone, Copy)]
+pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
 impl TryFrom<U256> for EthAddress {
     type Error = StatusCode;
@@ -31,9 +33,29 @@ impl std::fmt::Debug for EthAddress {
     }
 }
 
+impl TryFrom<&EthAddress> for Address {
+    type Error = anyhow::Error;
+    fn try_from(addr: &EthAddress) -> Result<Self, Self::Error> {
+        if addr.0[..19] == [0; 19] {
+            return Err(anyhow::anyhow!(
+                "Cannot convert a precompile address {:X?} to an f4 address.",
+                addr
+            ));
+        }
+
+        let f4_addr = if let Some(addr) = addr.as_id_address() {
+            addr
+        } else {
+            Address::new_delegated(EAM_ACTOR_ID, addr.as_ref()).unwrap()
+        };
+
+        Ok(f4_addr)
+    }
+}
+
 impl EthAddress {
     /// Expect a Filecoin address type containing an ID address, and return an address in EVM-form.
-    pub fn from_id_address(addr: &FilecoinAddress) -> Option<EthAddress> {
+    pub fn from_id_address(addr: &Address) -> Option<EthAddress> {
         addr.id().ok().map(EthAddress::from_id)
     }
 
@@ -53,11 +75,11 @@ impl EthAddress {
     ///
     /// 0    1-11       12
     /// 0xff \[0x00...] [id address...]
-    pub fn as_id_address(&self) -> Option<FilecoinAddress> {
+    pub fn as_id_address(&self) -> Option<Address> {
         if (self.0[0] != 0xff) || !self.0[1..12].iter().all(|&byte| byte == 0) {
             return None;
         }
-        Some(FilecoinAddress::new_id(u64::from_be_bytes(self.0[12..].try_into().unwrap())))
+        Some(Address::new_id(u64::from_be_bytes(self.0[12..].try_into().unwrap())))
     }
 
     /// Same as as_id_address, but go the extra mile and return the ActorID.

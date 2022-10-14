@@ -757,6 +757,43 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         }
     }
 
+    fn validate_immediate_caller_namespace<I>(
+        &mut self,
+        namespace_manager_addresses: I,
+    ) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        if self.caller_validated {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "caller double validated".to_string(),
+            ));
+        }
+        let managers: Vec<_> = namespace_manager_addresses.into_iter().collect();
+
+        if let Some(delegated) = self.lookup_address(self.message().caller().id().unwrap()) {
+            for id in managers {
+                if match delegated.payload() {
+                    Payload::Delegated(d) => d.namespace() == id,
+                    _ => false,
+                } {
+                    return Ok(());
+                }
+            }
+        } else {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "immediate caller actor expected to have namespace".to_string(),
+            ));
+        }
+
+        Err(ActorError::unchecked(
+            ExitCode::SYS_ASSERTION_FAILED,
+            "immediate caller actor namespace forbidden".to_string(),
+        ))
+    }
+
     fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>,
@@ -817,6 +854,10 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
             None => None,
             Some(act) => Some(act.code),
         }
+    }
+
+    fn lookup_address(&self, id: ActorID) -> Option<Address> {
+        self.v.get_actor(Address::new_id(id)).and_then(|act| act.predictable_address)
     }
 
     fn send(
@@ -1000,6 +1041,12 @@ impl Primitives for VM<'_> {
         hasher.digest(data).to_bytes()
     }
 
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        let hasher = Code::try_from(hasher as u64).unwrap();
+        let (len, buf, ..) = hasher.digest(data).into_inner();
+        (buf, len as usize)
+    }
+
     fn recover_secp_public_key(
         &self,
         hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
@@ -1038,6 +1085,10 @@ impl Primitives for InvocationCtx<'_, '_> {
 
     fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
         self.v.hash(hasher, data)
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        self.v.hash_64(hasher, data)
     }
 
     fn recover_secp_public_key(

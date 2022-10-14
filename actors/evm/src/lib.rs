@@ -1,3 +1,9 @@
+use std::iter;
+
+use fil_actors_runtime::{runtime::builtins::Type, EAM_ACTOR_ID};
+use fvm_shared::address::{Address, Payload};
+use interpreter::address::EthAddress;
+
 pub mod interpreter;
 mod state;
 
@@ -46,17 +52,48 @@ impl EvmContractActor {
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_accept_any()?;
+        // TODO ideally we would be checking that we are constructed by the EAM actor,
+        //   but instead we check for init and then assert that we have a delegated address.
+        //   https://github.com/filecoin-project/ref-fvm/issues/746
+        // rt.validate_immediate_caller_is(vec![&EAM_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_type(iter::once(&Type::Init))?;
 
-        if params.bytecode.len() > MAX_CODE_SIZE {
+        // Assert we are constructed with a delegated address from the EAM
+        let receiver = rt.message().receiver();
+        let delegated_addr = rt.lookup_address(receiver.id().unwrap()).ok_or_else(|| {
+            ActorError::assertion_failed(format!(
+                "EVM actor {} created without a delegated address",
+                receiver
+            ))
+        })?;
+        let delegated_addr = match delegated_addr.payload() {
+            Payload::Delegated(delegated) if delegated.namespace() == EAM_ACTOR_ID => {
+                // sanity check
+                assert_eq!(delegated.subaddress().len(), 20);
+                Ok(*delegated)
+            }
+            _ => Err(ActorError::assertion_failed(format!(
+                "EVM actor with delegated address {} created not namespaced to the EAM {}",
+                delegated_addr, EAM_ACTOR_ID,
+            ))),
+        }?;
+        let receiver_eth_addr = {
+            let subaddr: [u8; 20] = delegated_addr.subaddress().try_into().map_err(|_| {
+                ActorError::assertion_failed(format!(
+                    "expected 20 byte EVM address, found {} bytes",
+                    delegated_addr.subaddress().len()
+                ))
+            })?;
+            EthAddress(subaddr)
+        };
+
+        if params.initcode.len() > MAX_CODE_SIZE {
             return Err(ActorError::illegal_argument(format!(
                 "EVM byte code length ({}) is exceeding the maximum allowed of {MAX_CODE_SIZE}",
-                params.bytecode.len()
+                params.initcode.len()
             )));
-        }
-
-        if params.bytecode.is_empty() {
-            return Err(ActorError::illegal_argument("no bytecode provided".into()));
+        } else if params.initcode.is_empty() {
+            return Err(ActorError::illegal_argument("no initcode provided".into()));
         }
 
         // create an empty storage HAMT to pass it down for execution.
@@ -68,15 +105,20 @@ impl EvmContractActor {
         })?;
 
         // create a new execution context
-        let mut exec_state = ExecutionState::new(Method::Constructor as u64, Bytes::new());
+        let mut exec_state = ExecutionState::new(
+            params.creator,
+            receiver_eth_addr,
+            Method::Constructor as u64,
+            Bytes::new(),
+        );
 
         // identify bytecode valid jump destinations
-        let bytecode = Bytecode::new(&params.bytecode)
+        let initcode = Bytecode::new(&params.initcode)
             .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
 
         // invoke the contract constructor
         let exec_status =
-            execute(&bytecode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
+            execute(&initcode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
                 StatusCode::ActorError(e) => e,
                 _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
             })?;
@@ -93,6 +135,13 @@ impl EvmContractActor {
             // constructor ran to completion successfully and returned
             // the resulting bytecode.
             let contract_bytecode = exec_status.output_data;
+
+            // Reject code starting with 0xEF, EIP-3541
+            if !contract_bytecode.is_empty() && contract_bytecode[0] == 0xEF {
+                return Err(ActorError::illegal_argument(
+                    "EIP-3541: Contract code starting with the 0xEF byte is disallowed.".into(),
+                ));
+            }
 
             let contract_state_cid = system.flush_state()?;
 
@@ -147,7 +196,20 @@ impl EvmContractActor {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
-        let mut exec_state = ExecutionState::new(method, input_data.to_vec().into());
+        // Resolve the caller's ethereum address. If the caller doesn't have one, the caller's ID is used instead.
+        let caller_fil_addr = system.rt.message().caller();
+        let caller_eth_addr = system.resolve_ethereum_address(&caller_fil_addr).unwrap();
+
+        // Resolve the receiver's ethereum address.
+        let receiver_fil_addr = system.rt.message().receiver();
+        let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).unwrap();
+
+        let mut exec_state = ExecutionState::new(
+            caller_eth_addr,
+            receiver_eth_addr,
+            method,
+            input_data.to_vec().into(),
+        );
 
         let exec_status =
             execute(&bytecode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
@@ -205,7 +267,7 @@ impl EvmContractActor {
     {
         // This method cannot be called on-chain; other on-chain logic should not be able to
         // access arbitrary storage keys from a contract.
-        rt.validate_immediate_caller_is([&fvm_shared::address::Address::new_id(0)])?;
+        rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
         let state: State = rt.state()?;
         let blockstore = rt.store().clone();
@@ -262,7 +324,10 @@ impl ActorCode for EvmContractActor {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ConstructorParams {
-    pub bytecode: RawBytes,
+    /// The actor's "creator" (specified by the EAM).
+    pub creator: EthAddress,
+    /// The initcode that will construct the new EVM actor.
+    pub initcode: RawBytes,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
