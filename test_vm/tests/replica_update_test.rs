@@ -1055,7 +1055,7 @@ fn replica_update_verified_deal() {
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);
     let expected_update_claimed_power_params = UpdateClaimedPowerParams {
         raw_byte_delta: StoragePower::zero(),
-        quality_adjusted_delta: StoragePower::from(9 * old_power.qa), // sector now fully qap, 10x - x = 9x
+        quality_adjusted_delta: 9 * old_power.qa, // sector now fully qap, 10x - x = 9x
     };
     // check for the expected subcalls
     ExpectInvocation {
