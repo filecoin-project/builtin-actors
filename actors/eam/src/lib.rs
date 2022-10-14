@@ -10,7 +10,7 @@ use {
         actor_error, cbor,
         runtime::builtins::Type,
         runtime::{ActorCode, Runtime},
-        ActorError, EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
+        ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
     },
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes},
@@ -193,7 +193,6 @@ impl EamActor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
-        rt.validate_immediate_caller_namespace(vec![&EAM_ACTOR_ADDR])?;
 
         // CREATE2 logic
         let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);

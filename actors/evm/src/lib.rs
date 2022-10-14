@@ -66,17 +66,26 @@ impl EvmContractActor {
                 receiver
             ))
         })?;
-        match delegated_addr.payload() {
+        let delegated_addr = match delegated_addr.payload() {
             Payload::Delegated(delegated) if delegated.namespace() == EAM_ACTOR_ID => {
                 // sanity check
                 assert_eq!(delegated.subaddress().len(), 20);
-                Ok(())
+                Ok(*delegated)
             }
             _ => Err(ActorError::assertion_failed(format!(
                 "EVM actor with delegated address {} created not namespaced to the EAM {}",
                 delegated_addr, EAM_ACTOR_ID,
             ))),
         }?;
+        let receiver_eth_addr = {
+            let subaddr: [u8; 20] = delegated_addr.subaddress().try_into().map_err(|_| {
+                ActorError::assertion_failed(format!(
+                    "expected 20 byte EVM address, found {} bytes",
+                    delegated_addr.subaddress().len()
+                ))
+            })?;
+            EthAddress(subaddr)
+        };
 
         if params.initcode.len() > MAX_CODE_SIZE {
             return Err(ActorError::illegal_argument(format!(
@@ -94,10 +103,6 @@ impl EvmContractActor {
         let mut system = System::new(rt, &mut hamt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
-
-        // Resolve the receiver's ethereum address.
-        let receiver_fil_addr = receiver;
-        let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).unwrap();
 
         // create a new execution context
         let mut exec_state = ExecutionState::new(

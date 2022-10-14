@@ -142,19 +142,15 @@ where
         }
     }
 
-    fn validate_immediate_caller_namespace<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_namespace<I>(&mut self, addresses: I) -> Result<(), ActorError>
     where
-        I: IntoIterator<Item = &'a Address>,
+        I: IntoIterator<Item = u64>,
     {
         self.assert_not_validated()?;
         let caller_addr = self.message().caller();
         let caller_f4 = self.lookup_address(caller_addr.id().unwrap()).map(|a| *a.payload());
         if addresses.into_iter().any(|a| {
-            if let Some(Payload::Delegated(d)) = caller_f4 {
-                a.id().unwrap() == d.namespace()
-            } else {
-                false
-            }
+            matches!(caller_f4, Some(Payload::Delegated(d)) if d.namespace() == a)
         }) {
             self.caller_validated = true;
             Ok(())

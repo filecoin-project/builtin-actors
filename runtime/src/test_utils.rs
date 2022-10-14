@@ -164,7 +164,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
 pub struct Expectations {
     pub expect_validate_caller_any: bool,
     pub expect_validate_caller_addr: Option<Vec<Address>>,
-    pub expect_validate_caller_f4_namespace: Option<Vec<Address>>,
+    pub expect_validate_caller_f4_namespace: Option<Vec<u64>>,
     pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
@@ -588,7 +588,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_validate_caller_namespace(&self, namespaces: Vec<Address>) {
+    pub fn expect_validate_caller_namespace(&self, namespaces: Vec<u64>) {
         assert!(!namespaces.is_empty(), "f4 namespaces must be non-empty");
         self.expectations.borrow_mut().expect_validate_caller_f4_namespace = Some(namespaces);
     }
@@ -816,20 +816,14 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         ))
     }
 
-    fn validate_immediate_caller_namespace<'a, I>(
-        &mut self,
-        namespaces: I,
-    ) -> Result<(), ActorError>
+    fn validate_immediate_caller_namespace<I>(&mut self, namespaces: I) -> Result<(), ActorError>
     where
-        I: IntoIterator<Item = &'a Address>,
+        I: IntoIterator<Item = u64>,
     {
         self.require_in_call();
 
-        let namespaces: Vec<Address> = namespaces.into_iter().copied().collect();
-        assert!(
-            namespaces.iter().all(|a| a.id().is_ok()),
-            "validate caller namespaces must all be ID protocol"
-        );
+        let namespaces: Vec<u64> = namespaces.into_iter().collect();
+
         let mut expectations = self.expectations.borrow_mut();
         assert!(
             expectations.expect_validate_caller_f4_namespace.is_some(),
@@ -849,12 +843,12 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
 
         assert!(caller_f4.is_some(), "unexpected caller doesn't have a delegated address");
 
-        for id in namespaces.iter().map(|a| a.id().unwrap()) {
+        for id in namespaces.iter() {
             let bound_address = match caller_f4.unwrap().payload() {
                 Payload::Delegated(d) => d.namespace(),
                 _ => unreachable!("lookup_address should always return a delegated address"),
             };
-            if bound_address == id {
+            if bound_address == *id {
                 expectations.expect_validate_caller_f4_namespace = None;
                 return Ok(());
             }

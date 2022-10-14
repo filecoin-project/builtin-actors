@@ -757,12 +757,12 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         }
     }
 
-    fn validate_immediate_caller_namespace<'a, I>(
+    fn validate_immediate_caller_namespace<I>(
         &mut self,
         namespace_manager_addresses: I,
     ) -> Result<(), ActorError>
     where
-        I: IntoIterator<Item = &'a Address>,
+        I: IntoIterator<Item = u64>,
     {
         if self.caller_validated {
             return Err(ActorError::unchecked(
@@ -771,15 +771,11 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
             ));
         }
         let managers: Vec<_> = namespace_manager_addresses.into_iter().collect();
-        assert!(
-            managers.iter().all(|a| a.id().is_ok()),
-            "All namespace managers must refered to by ID address"
-        );
 
         if let Some(delegated) = self.lookup_address(self.message().caller().id().unwrap()) {
-            for addr in managers {
+            for id in managers {
                 if match delegated.payload() {
-                    Payload::Delegated(d) => d.namespace() == addr.id().unwrap(),
+                    Payload::Delegated(d) => d.namespace() == id,
                     _ => false,
                 } {
                     return Ok(());
