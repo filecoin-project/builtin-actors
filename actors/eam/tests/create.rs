@@ -142,10 +142,7 @@ fn call_create2() {
 }
 
 pub fn construct_and_verify() -> MockRuntime {
-    let mut rt = MockRuntime {
-        receiver: Address::new_id(10),
-        ..Default::default()
-    };
+    let mut rt = MockRuntime { receiver: Address::new_id(10), ..Default::default() };
 
     // construct EAM singleton actor
     rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
