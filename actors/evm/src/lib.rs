@@ -1,3 +1,5 @@
+use std::iter;
+
 use fil_actors_runtime::{runtime::builtins::Type, EAM_ACTOR_ID};
 use fvm_shared::address::{Address, Payload};
 use interpreter::address::EthAddress;
@@ -52,41 +54,37 @@ impl EvmContractActor {
     {
         // TODO ideally we would be checking that we are constructed by the EAM actor,
         //   but instead we check for init and then assert that we have a delegated address.
+        //   https://github.com/filecoin-project/ref-fvm/issues/746
         // rt.validate_immediate_caller_is(vec![&EAM_ACTOR_ADDR])?;
-        rt.validate_immediate_caller_type(vec![&Type::Init])?;
+        rt.validate_immediate_caller_type(iter::once(&Type::Init))?;
 
-        let delegated_addr = rt.lookup_address(rt.message().receiver().id().unwrap());
-        if delegated_addr.is_none() {
-            return Err(ActorError::assertion_failed(format!(
+        // Assert we are constructed with a delegated address from the EAM
+        let receiver = rt.message().receiver();
+        let delegated_addr = rt.lookup_address(receiver.id().unwrap()).ok_or_else(|| {
+            ActorError::assertion_failed(format!(
                 "EVM actor {} created without a delegated address",
-                rt.message().receiver()
-            )));
-        } else if delegated_addr
-            .and_then(|a| match a.payload() {
-                Payload::Delegated(d) => (d.namespace() == EAM_ACTOR_ID as u64).then_some(()),
-                _ => None,
-            })
-            .is_none()
-        {
-            return Err(ActorError::assertion_failed(format!(
-                "EVM actor {} created without a delegated address from the EAM",
-                delegated_addr.unwrap()
-            )));
-        }
-
-        let caller = rt.message().caller().id().unwrap();
-        let delegated = rt.lookup_address(caller);
-        dbg!(caller, delegated);
+                receiver
+            ))
+        })?;
+        match delegated_addr.payload() {
+            Payload::Delegated(delegated) if delegated.namespace() == EAM_ACTOR_ID => {
+                // sanity check
+                assert_eq!(delegated.subaddress().len(), 20);
+                Ok(())
+            }
+            _ => Err(ActorError::assertion_failed(format!(
+                "EVM actor with delegated address {} created not namespaced to the EAM {}",
+                delegated_addr, EAM_ACTOR_ID,
+            ))),
+        }?;
 
         if params.initcode.len() > MAX_CODE_SIZE {
             return Err(ActorError::illegal_argument(format!(
                 "EVM byte code length ({}) is exceeding the maximum allowed of {MAX_CODE_SIZE}",
                 params.initcode.len()
             )));
-        }
-
-        if params.initcode.is_empty() {
-            return Err(ActorError::illegal_argument("no bytecode provided".into()));
+        } else if params.initcode.is_empty() {
+            return Err(ActorError::illegal_argument("no initcode provided".into()));
         }
 
         // create an empty storage HAMT to pass it down for execution.
@@ -98,7 +96,7 @@ impl EvmContractActor {
         })?;
 
         // Resolve the receiver's ethereum address.
-        let receiver_fil_addr = system.rt.message().receiver();
+        let receiver_fil_addr = receiver;
         let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).unwrap();
 
         // create a new execution context

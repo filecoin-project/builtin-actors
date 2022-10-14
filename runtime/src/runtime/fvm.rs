@@ -148,8 +148,8 @@ where
     {
         self.assert_not_validated()?;
         let caller_addr = self.message().caller();
+        let caller_f4 = self.lookup_address(caller_addr.id().unwrap()).map(|a| *a.payload());
         if addresses.into_iter().any(|a| {
-            let caller_f4 = self.lookup_address(caller_addr.id().unwrap()).map(|a| *a.payload());
             if let Some(Payload::Delegated(d)) = caller_f4 {
                 a.id().unwrap() == d.namespace()
             } else {

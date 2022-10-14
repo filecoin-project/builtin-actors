@@ -1,6 +1,6 @@
 use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
-use fil_actors_runtime::{runtime::builtins::Type, test_utils::*, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{runtime::builtins::Type, test_utils::*, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 

@@ -123,10 +123,6 @@ fn create_init<'r, BS: Blockstore, RT: Runtime<BS>>(
     // send bytecode & params to EAM to generate the address and contract
     let ret = platform.rt.send(&EAM_ACTOR_ADDR, method, params, value);
 
-    // Overall future work / TODOs:
-    //  readonly state things | https://github.com/filecoin-project/ref-fvm/issues/971
-    //  preload state items (~eq to EVM access list) | maybe M3
-
     // https://github.com/ethereum/go-ethereum/blob/fb75f11e87420ec25ff72f7eeeb741fa8974e87e/core/vm/evm.go#L406-L496
     // Normally EVM will do some checks here to ensure that a contract has the capability
     // to create an actor, but here FVM does these checks for us, including:

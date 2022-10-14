@@ -148,8 +148,8 @@ where
 {
     let caller_id = rt.message().caller().id().unwrap();
 
-    let addr = *rt.lookup_address(caller_id).unwrap().payload();
-    match addr {
+    let addr = rt.lookup_address(caller_id).unwrap();
+    match addr.payload() {
         Payload::Delegated(eth) => Ok(EthAddress(eth.subaddress().try_into().unwrap())),
         _ => unreachable!(),
     }
@@ -177,7 +177,6 @@ impl EamActor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
-        rt.validate_immediate_caller_namespace(vec![&EAM_ACTOR_ADDR])?;
 
         let caller_addr = get_caller_address(rt)?;
         // CREATE logic

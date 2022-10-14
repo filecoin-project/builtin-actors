@@ -26,7 +26,6 @@ fn call_create() {
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, id_addr);
     rt.expect_validate_caller_type(vec![Type::EVM]);
-    rt.expect_validate_caller_namespace(vec![EAM_ACTOR_ADDR]);
 
     let initcode = vec![0xff];
 
