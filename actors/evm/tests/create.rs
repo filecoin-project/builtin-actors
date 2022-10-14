@@ -81,7 +81,7 @@ fn test_create() {
 
     let mut create_params = CreateParams {
         code: hex_literal::hex!("666F6F206261722062617A20626F7879").to_vec(),
-        nonce: 0,
+        nonce: 1,
     };
 
     // byte 3 is method num
