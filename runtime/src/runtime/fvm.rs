@@ -149,9 +149,10 @@ where
         self.assert_not_validated()?;
         let caller_addr = self.message().caller();
         let caller_f4 = self.lookup_address(caller_addr.id().unwrap()).map(|a| *a.payload());
-        if addresses.into_iter().any(|a| {
-            matches!(caller_f4, Some(Payload::Delegated(d)) if d.namespace() == a)
-        }) {
+        if addresses
+            .into_iter()
+            .any(|a| matches!(caller_f4, Some(Payload::Delegated(d)) if d.namespace() == a))
+        {
             self.caller_validated = true;
             Ok(())
         } else {
