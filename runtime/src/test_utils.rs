@@ -12,8 +12,7 @@ use cid::Cid;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
-use fvm_shared::address::Payload;
-use fvm_shared::address::{Address, Protocol};
+use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
@@ -165,6 +164,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
 pub struct Expectations {
     pub expect_validate_caller_any: bool,
     pub expect_validate_caller_addr: Option<Vec<Address>>,
+    pub expect_validate_caller_f4_namespace: Option<Vec<Address>>,
     pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
@@ -194,6 +194,11 @@ impl Expectations {
             self.expect_validate_caller_addr.is_none(),
             "expected ValidateCallerAddr {:?}, not received",
             self.expect_validate_caller_addr
+        );
+        assert!(
+            self.expect_validate_caller_f4_namespace.is_none(),
+            "expected ValidateNamespace {:?}, not received",
+            self.expect_validate_caller_f4_namespace
         );
         assert!(
             self.expect_validate_caller_type.is_none(),
@@ -583,6 +588,12 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
+    pub fn expect_validate_caller_namespace(&self, namespaces: Vec<Address>) {
+        assert!(!namespaces.is_empty(), "f4 namespaces must be non-empty");
+        self.expectations.borrow_mut().expect_validate_caller_f4_namespace = Some(namespaces);
+    }
+
+    #[allow(dead_code)]
     pub fn expect_delete_actor(&mut self, beneficiary: Address) {
         self.expectations.borrow_mut().expect_delete_actor = Some(beneficiary);
     }
@@ -804,6 +815,57 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
                 self.message().caller(), &addrs
         ))
     }
+
+    fn validate_immediate_caller_namespace<'a, I>(
+        &mut self,
+        namespaces: I,
+    ) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = &'a Address>,
+    {
+        self.require_in_call();
+
+        let namespaces: Vec<Address> = namespaces.into_iter().copied().collect();
+        assert!(
+            namespaces.iter().all(|a| a.id().is_ok()),
+            "validate caller namespaces must all be ID protocol"
+        );
+        let mut expectations = self.expectations.borrow_mut();
+        assert!(
+            expectations.expect_validate_caller_f4_namespace.is_some(),
+            "unexpected validate caller namespace"
+        );
+
+        let expected_namespaces =
+            expectations.expect_validate_caller_f4_namespace.as_ref().unwrap();
+
+        assert_eq!(
+            &namespaces, expected_namespaces,
+            "unexpected validate caller namespace {:?}, expected {:?}",
+            namespaces, &expectations.expect_validate_caller_f4_namespace
+        );
+
+        let caller_f4 = self.lookup_address(self.caller().id().unwrap());
+
+        assert!(caller_f4.is_some(), "unexpected caller doesn't have a delegated address");
+
+        for id in namespaces.iter().map(|a| a.id().unwrap()) {
+            let bound_address = match caller_f4.unwrap().payload() {
+                Payload::Delegated(d) => d.namespace(),
+                _ => unreachable!("lookup_address should always return a delegated address"),
+            };
+            if bound_address == id {
+                expectations.expect_validate_caller_f4_namespace = None;
+                return Ok(());
+            }
+        }
+        expectations.expect_validate_caller_addr = None;
+        Err(actor_error!(forbidden;
+                "caller address {:?} forbidden, allowed: {:?}",
+                self.message().caller(), &namespaces
+        ))
+    }
+
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,

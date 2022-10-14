@@ -10,7 +10,7 @@ use {
         actor_error, cbor,
         runtime::builtins::Type,
         runtime::{ActorCode, Runtime},
-        ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
+        ActorError, EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
     },
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes},
@@ -148,19 +148,10 @@ where
 {
     let caller_id = rt.message().caller().id().unwrap();
 
-    let addr = rt.lookup_address(caller_id);
-
-    match addr.map(|a| *a.payload()) {
-        Some(Payload::Delegated(eth)) => {
-            if eth.namespace() == EAM_ACTOR_ID {
-                Ok(EthAddress(eth.subaddress().try_into().unwrap()))
-            } else {
-                Err(ActorError::assertion_failed("Caller is not in the EVM namespace.".into()))
-            }
-        }
-        _ => Err(ActorError::assertion_failed(
-            "All FEVM actors should have a delegated address.".to_string(),
-        )),
+    let addr = *rt.lookup_address(caller_id).unwrap().payload();
+    match addr {
+        Payload::Delegated(eth) => Ok(EthAddress(eth.subaddress().try_into().unwrap())),
+        _ => unreachable!(),
     }
 }
 
@@ -186,6 +177,7 @@ impl EamActor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
+        rt.validate_immediate_caller_namespace(vec![&EAM_ACTOR_ADDR])?;
 
         let caller_addr = get_caller_address(rt)?;
         // CREATE logic
@@ -202,6 +194,7 @@ impl EamActor {
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
+        rt.validate_immediate_caller_namespace(vec![&EAM_ACTOR_ADDR])?;
 
         // CREATE2 logic
         let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);

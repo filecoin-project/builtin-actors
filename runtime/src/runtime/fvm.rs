@@ -5,7 +5,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
-use fvm_shared::address::Address;
+use fvm_shared::address::{Address, Payload};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{
@@ -138,6 +138,29 @@ where
         } else {
             Err(actor_error!(forbidden;
                 "caller {} is not one of supported", caller_addr
+            ))
+        }
+    }
+
+    fn validate_immediate_caller_namespace<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = &'a Address>,
+    {
+        self.assert_not_validated()?;
+        let caller_addr = self.message().caller();
+        if addresses.into_iter().any(|a| {
+            let caller_f4 = self.lookup_address(caller_addr.id().unwrap()).map(|a| *a.payload());
+            if let Some(Payload::Delegated(d)) = caller_f4 {
+                a.id().unwrap() == d.namespace()
+            } else {
+                false
+            }
+        }) {
+            self.caller_validated = true;
+            Ok(())
+        } else {
+            Err(actor_error!(forbidden;
+                "caller's namespace {} is not one of supported", caller_addr
             ))
         }
     }

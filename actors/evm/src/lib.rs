@@ -1,7 +1,5 @@
-use std::iter;
-
-use fil_actors_runtime::runtime::builtins::Type;
-use fvm_shared::address::Address;
+use fil_actors_runtime::{runtime::builtins::Type, EAM_ACTOR_ID};
+use fvm_shared::address::{Address, Payload};
 use interpreter::address::EthAddress;
 
 pub mod interpreter;
@@ -53,18 +51,32 @@ impl EvmContractActor {
         RT: Runtime<BS>,
     {
         // TODO ideally we would be checking that we are constructed by the EAM actor,
-        //   so instead we check for init and then assert that we have a delegated address.
-        rt.validate_immediate_caller_type(iter::once(&Type::Init))?;
+        //   but instead we check for init and then assert that we have a delegated address.
+        // rt.validate_immediate_caller_is(vec![&EAM_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_type(vec![&Type::Init])?;
+
+        let delegated_addr = rt.lookup_address(rt.message().receiver().id().unwrap());
+        if delegated_addr.is_none() {
+            return Err(ActorError::assertion_failed(format!(
+                "EVM actor {} created without a delegated address",
+                rt.message().receiver()
+            )));
+        } else if delegated_addr
+            .and_then(|a| match a.payload() {
+                Payload::Delegated(d) => (d.namespace() == EAM_ACTOR_ID as u64).then_some(()),
+                _ => None,
+            })
+            .is_none()
+        {
+            return Err(ActorError::assertion_failed(format!(
+                "EVM actor {} created without a delegated address from the EAM",
+                delegated_addr.unwrap()
+            )));
+        }
 
         let caller = rt.message().caller().id().unwrap();
         let delegated = rt.lookup_address(caller);
         dbg!(caller, delegated);
-
-        if rt.lookup_address(rt.message().caller().id().unwrap()).is_none() {
-            return Err(ActorError::assertion_failed(
-                "EVM actor created without a delegated address".into(),
-            ));
-        }
 
         if params.initcode.len() > MAX_CODE_SIZE {
             return Err(ActorError::illegal_argument(format!(

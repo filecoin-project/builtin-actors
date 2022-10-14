@@ -757,6 +757,44 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         }
     }
 
+    fn validate_immediate_caller_namespace<'a, I>(
+        &mut self,
+        namespace_manager_addresses: I,
+    ) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = &'a Address> 
+    {
+        if self.caller_validated {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "caller double validated".to_string(),
+            ));
+        }
+        let managers: Vec<_> = namespace_manager_addresses.into_iter().collect();
+        assert!(managers.iter().all(|a| a.id().is_ok()), "All namespace managers must refered to by ID address");
+
+        if let Some(delegated) = self.lookup_address(self.message().caller().id().unwrap()) {
+            for addr in managers {
+                if match delegated.payload() {
+                    Payload::Delegated(d) => d.namespace() == addr.id().unwrap(),
+                    _ => false
+                } {
+                    return Ok(())
+                }
+            }
+        } else {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "immediate caller actor expected to have namespace".to_string(),
+            ))
+        }
+        
+        Err(ActorError::unchecked(
+            ExitCode::SYS_ASSERTION_FAILED,
+            "immediate caller actor namespace forbidden".to_string(),
+        ))
+    }
+
     fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>,
