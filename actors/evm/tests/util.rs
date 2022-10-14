@@ -1,6 +1,6 @@
 use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
-use fil_actors_runtime::{runtime::builtins::Type, test_utils::*, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{runtime::builtins::Type, test_utils::*, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 
@@ -20,9 +20,9 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     rt.expect_validate_caller_type(vec![Type::Init]);
     initrt(&mut rt);
 
-    // first actor is usually 1
+    // first actor created is 0
     rt.add_delegated_address(
-        Address::new_id(1),
+        Address::new_id(0),
         Address::new_delegated(10, &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"))
             .unwrap(),
     );

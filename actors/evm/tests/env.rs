@@ -52,9 +52,9 @@ impl TestEnv {
         self.runtime.caller_type = *INIT_ACTOR_CODE_ID;
 
         self.runtime.set_origin(self.evm_address);
-        // first actor is usually 1
+        // first actor created is 0
         self.runtime.add_delegated_address(
-            Address::new_id(1),
+            Address::new_id(0),
             Address::new_delegated(
                 10,
                 &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"),
