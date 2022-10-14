@@ -92,6 +92,14 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         })
     }
 
+    pub fn increment_nonce(&mut self) -> u64 {
+        self.saved_state_root = None;
+        let nonce = self.nonce;
+        self.nonce = self.nonce.checked_add(1).unwrap();
+        nonce
+    }
+
+    /// Send a message, saving and reloading state as necessary.
     pub fn send(
         &mut self,
         to: &Address,

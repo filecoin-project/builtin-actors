@@ -7,7 +7,6 @@ use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use crate::interpreter::stack::Stack;
 use crate::interpreter::{address::EthAddress, U256};
-use crate::state::State;
 
 use super::memory::{get_memory_region, MemoryRegion};
 use {
@@ -62,16 +61,8 @@ pub fn create<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
         )));
     };
 
-    // bump nonce and flush state before send
-    let nonce = platform.rt.transaction(|state: &mut State, _rt| {
-        let nonce = state.nonce;
-        // this may be redundant if we are compiling with checked integer math
-        state.nonce = state.nonce.checked_add(1).unwrap();
-        Ok(nonce)
-    })?;
-
+    let nonce = platform.increment_nonce();
     let params = CreateParams { code: input_data.to_vec(), nonce };
-
     create_init(stack, platform, RawBytes::serialize(&params)?, CREATE_METHOD_NUM, value)
 }
 
@@ -103,12 +94,7 @@ pub fn create2<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
     };
     let params = Create2Params { code: input_data.to_vec(), salt };
 
-    platform.rt.transaction(|state: &mut State, _rt| {
-        // this may be redundant if we are compiling with checked integer math
-        state.nonce = state.nonce.checked_add(1).unwrap();
-        Ok(())
-    })?;
-
+    platform.increment_nonce();
     create_init(stack, platform, RawBytes::serialize(&params)?, CREATE2_METHOD_NUM, endowment)
 }
 
@@ -121,7 +107,7 @@ fn create_init<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
     value: TokenAmount,
 ) -> Result<(), StatusCode> {
     // send bytecode & params to EAM to generate the address and contract
-    let ret = platform.rt.send(&EAM_ACTOR_ADDR, method, params, value);
+    let ret = platform.send(&EAM_ACTOR_ADDR, method, params, value);
 
     // https://github.com/ethereum/go-ethereum/blob/fb75f11e87420ec25ff72f7eeeb741fa8974e87e/core/vm/evm.go#L406-L496
     // Normally EVM will do some checks here to ensure that a contract has the capability
