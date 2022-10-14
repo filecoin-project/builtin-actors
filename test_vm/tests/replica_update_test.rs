@@ -6,13 +6,20 @@ use fil_actor_miner::{
     ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo, Sectors,
     State as MinerState, TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
+use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
+use fil_actor_reward::Method as RewardMethod;
+use fil_actor_verifreg::Method as VerifregMethod;
+use fil_actors_runtime::{STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+use test_vm::ExpectInvocation;
 
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fvm_shared::piece::PaddedPieceSize;
 
+use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
@@ -1045,6 +1052,60 @@ fn replica_update_verified_deal() {
     .unwrap();
     assert_eq!(vec![100], bf_all(updated_sectors));
 
+    let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);
+    let expected_update_claimed_power_params = UpdateClaimedPowerParams {
+        raw_byte_delta: StoragePower::zero(),
+        quality_adjusted_delta: StoragePower::from(9 * old_power.qa), // sector now fully qap, 10x - x = 9x
+    };
+    // check for the expected subcalls
+    ExpectInvocation {
+        to: maddr,
+        method: MinerMethod::ProveReplicaUpdates2 as u64,
+        subinvocs: Some(vec![
+            ExpectInvocation {
+                to: STORAGE_MARKET_ACTOR_ADDR,
+                method: MarketMethod::ActivateDeals as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                method: VerifregMethod::ClaimAllocations as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_MARKET_ACTOR_ADDR,
+                method: MarketMethod::VerifyDealsForActivation as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: REWARD_ACTOR_ADDR,
+                method: RewardMethod::ThisEpochReward as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::CurrentTotalPower as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::UpdatePledgeTotal as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::UpdateClaimedPower as u64,
+                params: Some(
+                    serialize(&expected_update_claimed_power_params, "update_claimed_power params")
+                        .unwrap(),
+                ),
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+
     // sanity check the sector after update
     let new_sector_info = sector_info(&v, maddr, sector_number);
     assert_eq!(1, new_sector_info.deal_ids.len());
@@ -1081,8 +1142,7 @@ fn replica_update_verified_deal_max_term_violated() {
     let (v, d_idx, p_idx) = create_sector(v, worker, maddr, sector_number, seal_proof);
 
     let old_sector_info = sector_info(&v, maddr, sector_number);
-    // make some deals, chop off market's alloc term buffer from deal lifetime.  This way term max can
-    // line up with sector lifetime AND the deal has buffer room to start a bit later while still fitting in the sector
+    // term max of claim is 1 epoch less than the remaining sector lifetime causing get claims validation failure
     let sector_lifetime = old_sector_info.expiration - v.get_epoch();
     let deal_ids = create_verified_deals(
         1,
