@@ -55,11 +55,11 @@ impl EvmContractActor {
         // TODO ideally we would be checking that we are constructed by the EAM actor,
         //   so instead we check for init and then assert that we have a delegated address.
         rt.validate_immediate_caller_type(iter::once(&Type::Init))?;
-        
+
         if rt.lookup_address(rt.message().caller().id().unwrap()).is_none() {
             return Err(ActorError::assertion_failed(
-                "EVM actor created without a delegated address".into()
-            ))
+                "EVM actor created without a delegated address".into(),
+            ));
         }
 
         if params.initcode.len() > MAX_CODE_SIZE {

@@ -53,7 +53,7 @@ impl rlp::Encodable for RlpCreateAddress {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -77,7 +77,7 @@ pub struct InitAccountParams {
     pub pubkey: [u8; SECP_PUB_LEN],
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
 pub struct EamReturn {
     pub actor_id: ActorID,
     pub robust_address: Address,
@@ -151,12 +151,8 @@ where
             rt.message().value_received(),
         )?
         .deserialize()?;
-    dbg!(&ret);
-    dbg!(&new_addr);
-
 
     let ret = RawBytes::serialize(EamReturn::from_exec4(ret, new_addr))?;
-    dbg!(&ret);
 
     Ok(ret)
 }
@@ -288,9 +284,7 @@ impl ActorCode for EamActor {
                 Ok(RawBytes::default())
             }
             Some(Method::Create) => Self::create(rt, cbor::deserialize_params(params)?),
-            Some(Method::Create2) => {
-                Ok(RawBytes::serialize(Self::create2(rt, cbor::deserialize_params(params)?)?)?)
-            }
+            Some(Method::Create2) => Self::create2(rt, cbor::deserialize_params(params)?),
             // Some(Method::CreateAccount) => {
             //     Self::create_account(rt, cbor::deserialize_params(params)?)
             // }

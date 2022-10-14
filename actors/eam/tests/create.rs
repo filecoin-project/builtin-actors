@@ -1,5 +1,7 @@
 use eam::ext::init::{Exec4Params, Exec4Return, EXEC4_METHOD};
-use eam::{CreateParams, EamReturn, EvmConstructorParams, RlpCreateAddress, Create2Params};
+use eam::{
+    Create2Params, CreateParams, EamReturn, EthAddress, EvmConstructorParams, RlpCreateAddress,
+};
 use fil_actor_eam as eam;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Primitives;
@@ -19,9 +21,7 @@ fn call_create() {
 
     let id_addr = Address::new_id(110);
     let eth_addr = eam::EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
-    let f4_eth_addr =
-        Address::new_delegated(10, &eth_addr.0)
-            .unwrap();
+    let f4_eth_addr = Address::new_delegated(10, &eth_addr.0).unwrap();
     rt.add_delegated_address(id_addr, f4_eth_addr);
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, id_addr);
@@ -29,13 +29,10 @@ fn call_create() {
 
     let initcode = vec![0xff];
 
-    let create_params = CreateParams {
-        initcode: initcode.clone().into(),
-        nonce: 0,
-    };
+    let create_params = CreateParams { initcode: initcode.clone().into(), nonce: 0 };
 
     let evm_params = EvmConstructorParams { creator: eth_addr, initcode: initcode.into() };
-    
+
     let rlp_params = RlpCreateAddress { address: eth_addr, nonce: 0 };
     let mut subaddress =
         rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &rlp_params.rlp_bytes());
@@ -44,7 +41,7 @@ fn call_create() {
     let params = Exec4Params {
         code_cid: *EVM_ACTOR_CODE_ID,
         constructor_params: RawBytes::serialize(evm_params.clone()).unwrap(),
-        subaddress: subaddress.into(),
+        subaddress: subaddress.clone().into(),
     };
 
     let send_return = RawBytes::serialize(Exec4Return {
@@ -68,9 +65,16 @@ fn call_create() {
             &RawBytes::serialize(create_params).unwrap(),
         )
         .unwrap()
-        .deserialize::<EamReturn>();
+        .deserialize::<EamReturn>()
+        .unwrap();
 
-    println!("{result:?}")
+    let expected_return = EamReturn {
+        actor_id: 111,
+        robust_address: Address::new_id(0),
+        eth_address: EthAddress(subaddress.try_into().unwrap()),
+    };
+
+    assert_eq!(result, expected_return)
 }
 
 #[test]
@@ -79,9 +83,7 @@ fn call_create2() {
 
     let id_addr = Address::new_id(110);
     let eth_addr = eam::EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
-    let f4_eth_addr =
-        Address::new_delegated(10, &eth_addr.0)
-            .unwrap();
+    let f4_eth_addr = Address::new_delegated(10, &eth_addr.0).unwrap();
     rt.add_delegated_address(id_addr, f4_eth_addr);
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, id_addr);
@@ -89,22 +91,21 @@ fn call_create2() {
 
     let initcode = vec![0xff];
 
-    let create2_params = Create2Params {
-        initcode: initcode.clone().into(),
-        salt: [0; 32],
-    };
+    let create2_params = Create2Params { initcode: initcode.clone().into(), salt: [0; 32] };
 
     let evm_params = EvmConstructorParams { creator: eth_addr, initcode: initcode.clone().into() };
-    
+
     let inithash = rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &initcode);
-    let mut subaddress =
-        rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &[&[0xff], &eth_addr.0[..], &create2_params.salt, &inithash].concat());
+    let mut subaddress = rt.hash(
+        fvm_shared::crypto::hash::SupportedHashes::Keccak256,
+        &[&[0xff], &eth_addr.0[..], &create2_params.salt, &inithash].concat(),
+    );
     subaddress.drain(..12);
 
     let params = Exec4Params {
         code_cid: *EVM_ACTOR_CODE_ID,
         constructor_params: RawBytes::serialize(evm_params.clone()).unwrap(),
-        subaddress: subaddress.into(),
+        subaddress: subaddress.clone().into(),
     };
 
     let send_return = RawBytes::serialize(Exec4Return {
@@ -128,9 +129,16 @@ fn call_create2() {
             &RawBytes::serialize(create2_params).unwrap(),
         )
         .unwrap()
-        .deserialize::<EamReturn>();
+        .deserialize::<EamReturn>()
+        .unwrap();
 
-    println!("{result:?}")
+    let expected_return = EamReturn {
+        actor_id: 111,
+        robust_address: Address::new_id(0),
+        eth_address: EthAddress(subaddress.try_into().unwrap()),
+    };
+
+    assert_eq!(result, expected_return)
 }
 
 pub fn construct_and_verify() -> MockRuntime {

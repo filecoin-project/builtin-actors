@@ -491,7 +491,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     pub fn add_delegated_address(&mut self, source: Address, target: Address) {
-        assert_eq!(target.protocol(), Protocol::Delegated, "target must use Delegated address protocol");
+        assert_eq!(
+            target.protocol(),
+            Protocol::Delegated,
+            "target must use Delegated address protocol"
+        );
         assert_eq!(source.protocol(), Protocol::ID, "source must use ID address protocol");
         self.delegated_addresses.insert(source, target);
     }
