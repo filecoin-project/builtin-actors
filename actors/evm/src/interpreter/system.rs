@@ -42,9 +42,13 @@ pub enum StorageStatus {
 pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
     pub rt: &'r mut RT,
 
+    /// The current bytecode. This is usually only "none" when the actor is first constructed.
     bytecode: Option<Cid>,
+    /// The contract's EVM storage slots.
     slots: Hamt<BS, U256, U256>,
+    /// The contracts "nonce" (incremented when creating new actors).
     nonce: u64,
+    /// The last saved state root. None if the current state hasn't been saved yet.
     saved_state_root: Option<Cid>,
 }
 
