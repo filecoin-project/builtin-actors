@@ -5,7 +5,10 @@ use ethers::{
 };
 use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
-use fil_actors_runtime::test_utils::{expect_empty, MockRuntime, EVM_ACTOR_CODE_ID};
+use fil_actors_runtime::{
+    runtime::builtins::Type,
+    test_utils::{expect_empty, MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID},
+};
 use fvm_ipld_blockstore::tracking::{BSStats, TrackingBlockstore};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -45,8 +48,19 @@ impl TestEnv {
             initcode: hex::decode(contract_hex).unwrap().into(),
         };
         // invoke constructor
-        self.runtime.expect_validate_caller_any();
+        self.runtime.expect_validate_caller_type(vec![Type::Init]);
+        self.runtime.caller_type = *INIT_ACTOR_CODE_ID;
+
         self.runtime.set_origin(self.evm_address);
+        // first actor is usually 1
+        self.runtime.add_delegated_address(
+            Address::new_id(1),
+            Address::new_delegated(
+                10,
+                &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"),
+            )
+            .unwrap(),
+        );
 
         let result = self
             .runtime

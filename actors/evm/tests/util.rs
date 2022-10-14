@@ -2,6 +2,7 @@ use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
 use fil_actors_runtime::{runtime::builtins::Type, test_utils::*, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
 
 #[allow(dead_code)]
 pub fn construct_and_verify(initcode: Vec<u8>) -> MockRuntime {
@@ -18,6 +19,13 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     rt.expect_validate_caller_type(vec![Type::Init]);
     initrt(&mut rt);
+
+    // first actor is usually 1
+    rt.add_delegated_address(
+        Address::new_id(1),
+        Address::new_delegated(10, &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"))
+            .unwrap(),
+    );
 
     let params = evm::ConstructorParams {
         creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()),

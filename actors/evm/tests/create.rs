@@ -89,8 +89,6 @@ fn test_create() {
 
     // invoke contract -- create
     {
-        create_params.nonce += 1;
-
         rt.add_balance(TokenAmount::from_atto(1));
 
         rt.expect_send(
@@ -111,6 +109,8 @@ fn test_create() {
 
     // invoke contract -- create with new nonce
     {
+        create_params.nonce += 1;
+
         rt.add_balance(TokenAmount::from_atto(1));
 
         rt.expect_send(
@@ -166,8 +166,12 @@ fn test_create() {
         assert_eq!(&result[..], &[0; 32]);
     }
 
+    contract_params[3] = 0x00;
+
     // not enough funds -- create
     {
+        // TODO this nonce is broken
+        create_params.nonce += 3;
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE_METHOD_NUM,
