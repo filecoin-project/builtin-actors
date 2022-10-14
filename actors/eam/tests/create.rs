@@ -29,7 +29,7 @@ fn call_create() {
 
     let initcode = vec![0xff];
 
-    let create_params = CreateParams { initcode: initcode.clone().into(), nonce: 0 };
+    let create_params = CreateParams { initcode: initcode.clone(), nonce: 0 };
 
     let evm_params = EvmConstructorParams { creator: eth_addr, initcode: initcode.into() };
 
@@ -40,7 +40,7 @@ fn call_create() {
 
     let params = Exec4Params {
         code_cid: *EVM_ACTOR_CODE_ID,
-        constructor_params: RawBytes::serialize(evm_params.clone()).unwrap(),
+        constructor_params: RawBytes::serialize(evm_params).unwrap(),
         subaddress: subaddress.clone().into(),
     };
 
@@ -91,7 +91,7 @@ fn call_create2() {
 
     let initcode = vec![0xff];
 
-    let create2_params = Create2Params { initcode: initcode.clone().into(), salt: [0; 32] };
+    let create2_params = Create2Params { initcode: initcode.clone(), salt: [0; 32] };
 
     let evm_params = EvmConstructorParams { creator: eth_addr, initcode: initcode.clone().into() };
 
@@ -104,7 +104,7 @@ fn call_create2() {
 
     let params = Exec4Params {
         code_cid: *EVM_ACTOR_CODE_ID,
-        constructor_params: RawBytes::serialize(evm_params.clone()).unwrap(),
+        constructor_params: RawBytes::serialize(evm_params).unwrap(),
         subaddress: subaddress.clone().into(),
     };
 
@@ -142,9 +142,10 @@ fn call_create2() {
 }
 
 pub fn construct_and_verify() -> MockRuntime {
-    let mut rt = MockRuntime::default();
-
-    rt.receiver = Address::new_id(10);
+    let mut rt = MockRuntime {
+        receiver: Address::new_id(10),
+        ..Default::default()
+    };
 
     // construct EAM singleton actor
     rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
