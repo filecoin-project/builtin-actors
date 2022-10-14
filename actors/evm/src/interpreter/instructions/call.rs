@@ -107,9 +107,9 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
     Ok(())
 }
 
-pub fn call<'a, 'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn call<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'a mut System<'r, BS, RT>,
+    platform: &mut System<BS, RT>,
     kind: CallKind,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
@@ -203,9 +203,9 @@ pub fn call<'a, 'r, BS: Blockstore, RT: Runtime<BS>>(
     Ok(())
 }
 
-pub fn callactor<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn callactor<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
+    platform: &System<BS, RT>,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
     let rt = &*platform.rt; // as immutable reference

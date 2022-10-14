@@ -40,9 +40,9 @@ pub struct EamReturn {
 }
 
 #[inline]
-pub fn create<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
+pub fn create<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r mut System<'a, BS, RT>,
+    platform: &mut System<BS, RT>,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
 
@@ -66,9 +66,9 @@ pub fn create<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
     create_init(stack, platform, RawBytes::serialize(&params)?, CREATE_METHOD_NUM, value)
 }
 
-pub fn create2<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
+pub fn create2<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r mut System<'a, BS, RT>,
+    platform: &mut System<BS, RT>,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
 
@@ -99,9 +99,9 @@ pub fn create2<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
 }
 
 /// call into Ethereum Address Manager to make the new account
-fn create_init<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
+fn create_init<BS: Blockstore, RT: Runtime<BS>>(
     stack: &mut Stack,
-    platform: &'a mut System<'r, BS, RT>,
+    platform: &mut System<BS, RT>,
     params: RawBytes,
     method: MethodNum,
     value: TokenAmount,
@@ -141,9 +141,9 @@ fn create_init<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
 }
 
 #[inline]
-pub fn selfdestruct<'r, 'a, BS: Blockstore, RT: Runtime<BS>>(
+pub fn selfdestruct<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    _system: &'r mut System<'a, BS, RT>,
+    _system: &mut System<BS, RT>,
 ) -> Result<(), StatusCode> {
     let beneficiary_addr = EthAddress::try_from(state.stack.pop())?;
     let id_addr = beneficiary_addr.as_id_address().expect("no support for non-ID addresses yet");
