@@ -1,6 +1,6 @@
 use eam::ext::init::{Exec4Params, Exec4Return, EXEC4_METHOD};
 use eam::{
-    Create2Params, CreateParams, EamReturn, EthAddress, EvmConstructorParams, RlpCreateAddress,
+    Create2Params, CreateParams, EthAddress, EvmConstructorParams, Return, RlpCreateAddress,
 };
 use fil_actor_eam as eam;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -65,10 +65,10 @@ fn call_create() {
             &RawBytes::serialize(create_params).unwrap(),
         )
         .unwrap()
-        .deserialize::<EamReturn>()
+        .deserialize::<Return>()
         .unwrap();
 
-    let expected_return = EamReturn {
+    let expected_return = Return {
         actor_id: 111,
         robust_address: Address::new_id(0),
         eth_address: EthAddress(subaddress.try_into().unwrap()),
@@ -129,10 +129,10 @@ fn call_create2() {
             &RawBytes::serialize(create2_params).unwrap(),
         )
         .unwrap()
-        .deserialize::<EamReturn>()
+        .deserialize::<Return>()
         .unwrap();
 
-    let expected_return = EamReturn {
+    let expected_return = Return {
         actor_id: 111,
         robust_address: Address::new_id(0),
         eth_address: EthAddress(subaddress.try_into().unwrap()),

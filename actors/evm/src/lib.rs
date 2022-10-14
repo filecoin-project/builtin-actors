@@ -56,13 +56,15 @@ impl EvmContractActor {
         //   so instead we check for init and then assert that we have a delegated address.
         rt.validate_immediate_caller_type(iter::once(&Type::Init))?;
 
-        // BIG LARGE TODO AS IN TODO TOMORROW
-        // - @mriise
-        // if rt.lookup_address(rt.message().caller().id().unwrap()).is_none() {
-        //     return Err(ActorError::assertion_failed(
-        //         "EVM actor created without a delegated address".into(),
-        //     ));
-        // }
+        let caller = rt.message().caller().id().unwrap();
+        let delegated = rt.lookup_address(caller);
+        dbg!(caller, delegated);
+
+        if rt.lookup_address(rt.message().caller().id().unwrap()).is_none() {
+            return Err(ActorError::assertion_failed(
+                "EVM actor created without a delegated address".into(),
+            ));
+        }
 
         if params.initcode.len() > MAX_CODE_SIZE {
             return Err(ActorError::illegal_argument(format!(

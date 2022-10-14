@@ -26,10 +26,6 @@ use {
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EamActor);
 
-/// Maximum allowed EVM bytecode size.
-/// The contract code size limit is 24kB.
-const MAX_CODE_SIZE: usize = 24 << 10;
-
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
@@ -78,13 +74,15 @@ pub struct InitAccountParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
-pub struct EamReturn {
+pub struct Return {
     pub actor_id: ActorID,
     pub robust_address: Address,
     pub eth_address: EthAddress,
 }
+pub type CreateReturn = Return;
+pub type Create2Return = Return;
 
-impl EamReturn {
+impl Return {
     fn from_exec4(exec4: Exec4Return, eth_address: EthAddress) -> Self {
         Self {
             actor_id: exec4.id_address.id().unwrap(),
@@ -102,19 +100,6 @@ pub struct EvmConstructorParams {
     pub initcode: RawBytes,
 }
 
-fn assert_code_size(code: &[u8]) -> Result<(), ActorError> {
-    if code.len() >= MAX_CODE_SIZE {
-        Err(ActorError::illegal_argument(format!(
-            "Supplied EVM initcode {} is larger than max code size 24kB.",
-            code.len()
-        )))
-    } else if code.is_empty() {
-        Err(ActorError::illegal_argument("Supplied EVM initcode cannot be empty.".into()))
-    } else {
-        Ok(())
-    }
-}
-
 /// hash of data with Keccack256, with first 12 bytes cropped
 fn hash_20<BS, RT>(rt: &RT, data: &[u8]) -> [u8; 20]
 where
@@ -129,7 +114,7 @@ fn create_actor<BS, RT>(
     creator: EthAddress,
     new_addr: EthAddress,
     initcode: Vec<u8>,
-) -> Result<RawBytes, ActorError>
+) -> Result<Return, ActorError>
 where
     BS: Blockstore + Clone,
     RT: Runtime<BS>,
@@ -152,9 +137,7 @@ where
         )?
         .deserialize()?;
 
-    let ret = RawBytes::serialize(EamReturn::from_exec4(ret, new_addr))?;
-
-    Ok(ret)
+    Ok(Return::from_exec4(ret, new_addr))
 }
 
 /// lookup caller's raw ETH address
@@ -197,13 +180,12 @@ impl EamActor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))
     }
 
-    pub fn create<BS, RT>(rt: &mut RT, params: CreateParams) -> Result<RawBytes, ActorError>
+    pub fn create<BS, RT>(rt: &mut RT, params: CreateParams) -> Result<CreateReturn, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
-        assert_code_size(&params.initcode)?;
 
         let caller_addr = get_caller_address(rt)?;
         // CREATE logic
@@ -214,13 +196,12 @@ impl EamActor {
         create_actor(rt, caller_addr, eth_addr, params.initcode)
     }
 
-    pub fn create2<BS, RT>(rt: &mut RT, params: Create2Params) -> Result<RawBytes, ActorError>
+    pub fn create2<BS, RT>(rt: &mut RT, params: Create2Params) -> Result<Create2Return, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
-        assert_code_size(&params.initcode)?;
 
         // CREATE2 logic
         let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);
@@ -239,7 +220,7 @@ impl EamActor {
     pub fn create_account<BS, RT>(
         rt: &mut RT,
         params: InitAccountParams,
-    ) -> Result<RawBytes, ActorError>
+    ) -> Result<Return, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
@@ -283,8 +264,12 @@ impl ActorCode for EamActor {
                 Self::constructor(rt)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::Create) => Self::create(rt, cbor::deserialize_params(params)?),
-            Some(Method::Create2) => Self::create2(rt, cbor::deserialize_params(params)?),
+            Some(Method::Create) => {
+                Ok(RawBytes::serialize(Self::create(rt, cbor::deserialize_params(params)?)?)?)
+            }
+            Some(Method::Create2) => {
+                Ok(RawBytes::serialize(Self::create2(rt, cbor::deserialize_params(params)?)?)?)
+            }
             // Some(Method::CreateAccount) => {
             //     Self::create_account(rt, cbor::deserialize_params(params)?)
             // }
