@@ -27,6 +27,7 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("verifreg", "verifiedregistry"),
     ("embryo", "embryo"),
     ("evm", "evm"),
+    ("eam", "eam"),
 ];
 
 /// Default Cargo features to activate during the build.

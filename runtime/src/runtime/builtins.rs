@@ -21,6 +21,7 @@ pub enum Type {
     VerifiedRegistry = 11,
     Embryo = 12,
     EVM = 13,
+    EAM = 14,
 }
 
 impl Type {
@@ -39,6 +40,7 @@ impl Type {
             Type::VerifiedRegistry => "verifiedregistry",
             Type::Embryo => "embryo",
             Type::EVM => "evm",
+            Type::EAM => "eam",
         }
     }
 }

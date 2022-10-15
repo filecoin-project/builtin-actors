@@ -58,6 +58,7 @@ lazy_static::lazy_static! {
     pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/verifiedregistry");
     pub static ref EMBRYO_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/embryo");
     pub static ref EVM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/evm");
+    pub static ref EAM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/eam");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -71,8 +72,9 @@ lazy_static::lazy_static! {
         map.insert(*MULTISIG_ACTOR_CODE_ID, Type::Multisig);
         map.insert(*REWARD_ACTOR_CODE_ID, Type::Reward);
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
-        map.insert(*EMBRYO_ACTOR_CODE_ID, Type::EVM);
+        map.insert(*EMBRYO_ACTOR_CODE_ID, Type::Embryo);
         map.insert(*EVM_ACTOR_CODE_ID, Type::EVM);
+        map.insert(*EAM_ACTOR_CODE_ID, Type::EAM);
         map
     };
     pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
@@ -89,6 +91,7 @@ lazy_static::lazy_static! {
         (Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID),
         (Type::Embryo, *EMBRYO_ACTOR_CODE_ID),
         (Type::EVM, *EVM_ACTOR_CODE_ID),
+        (Type::EAM, *EAM_ACTOR_CODE_ID),
     ]
     .into_iter()
     .collect();

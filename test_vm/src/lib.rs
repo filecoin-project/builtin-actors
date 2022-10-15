@@ -4,6 +4,7 @@ use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
+use fil_actor_eam::EamActor;
 use fil_actor_evm::EvmContractActor;
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
@@ -23,9 +24,9 @@ use fil_actors_runtime::runtime::{
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
@@ -235,6 +236,12 @@ impl<'bs> VM<'bs> {
         v.set_actor(
             VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
+        );
+
+        // Ethereum Address Manager
+        v.set_actor(
+            EAM_ACTOR_ADDR,
+            actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
         );
 
         // burnt funds
@@ -686,6 +693,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 Err(ActorError::unhandled_message("embryo actors only handle method 0".into()))
             }
             Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, &params),
+            Type::EAM => EamActor::invoke_method(self, self.msg.method, &params),
         };
         if res.is_err() {
             self.v.rollback(prior_root)
