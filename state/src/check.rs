@@ -210,6 +210,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
             }
             Some(Type::Embryo) => {}
             Some(Type::EVM) => {}
+            Some(Type::EAM) => {}
             None => {
                 bail!("unexpected actor code CID {} for address {}", actor.code, key);
             }
