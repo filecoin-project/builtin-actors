@@ -1,3 +1,5 @@
+use fvm_ipld_encoding::{BytesDe, BytesSer};
+
 use {
     super::memory::{copy_to_memory, get_memory_region},
     crate::interpreter::address::EthAddress,
@@ -140,7 +142,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     let input_region = get_memory_region(memory, input_offset, input_size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    let result = {
+    state.return_data = {
         // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
             &memory[offset..][..size.get()]
@@ -149,19 +151,19 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         };
 
         if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
-            let result = precompiles::Precompiles::call_precompile(rt, dst, input_data)
-                .map_err(|_| StatusCode::PrecompileFailure)?;
-            Ok(RawBytes::from(result))
+            precompiles::Precompiles::call_precompile(rt, dst, input_data)
+                .map_err(|_| StatusCode::PrecompileFailure)?
         } else {
             let dst_addr = EthAddress::try_from(dst)?
                 .as_id_address()
                 .ok_or_else(|| StatusCode::BadAddress("not an actor id address".to_string()))?;
 
-            match kind {
+            let call_result = match kind {
                 CallKind::Call => rt.send(
                     &dst_addr,
                     Method::InvokeContract as u64,
-                    RawBytes::from(input_data.to_vec()),
+                    // TODO: support IPLD codecs #758
+                    RawBytes::serialize(BytesSer(input_data))?,
                     TokenAmount::from(&value),
                 ),
                 CallKind::DelegateCall => {
@@ -173,28 +175,30 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
                 CallKind::CallCode => {
                     todo!()
                 }
+            };
+            match call_result {
+                Ok(result) => {
+                    // TODO: support IPLD codecs #758
+                    let BytesDe(result) = result.deserialize()?;
+                    result
+                }
+                Err(ae) => {
+                    return if ae.exit_code() == EVM_CONTRACT_REVERTED {
+                        // reverted -- we don't have return data yet
+                        // push failure
+                        stack.push(U256::zero());
+                        Ok(())
+                    } else {
+                        Err(StatusCode::from(ae))
+                    };
+                }
             }
         }
-    };
-
-    if let Err(ae) = result {
-        return if ae.exit_code() == EVM_CONTRACT_REVERTED {
-            // reverted -- we don't have return data yet
-            // push failure
-            stack.push(U256::zero());
-            Ok(())
-        } else {
-            Err(StatusCode::from(ae))
-        };
     }
-
-    let result = result.unwrap().to_vec();
-
-    // save return_data
-    state.return_data = result.clone().into();
+    .into();
 
     // copy return data to output region if it is non-zero
-    copy_to_memory(memory, output_offset, output_size, U256::zero(), result.as_slice())?;
+    copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data)?;
 
     stack.push(U256::from(1));
     Ok(())
