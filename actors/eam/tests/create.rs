@@ -8,7 +8,7 @@ use fil_actors_runtime::runtime::Primitives;
 use fil_actors_runtime::test_utils::{
     expect_empty, MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::{EAM_ACTOR_ID, INIT_ACTOR_ADDR};
+use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -87,8 +87,7 @@ fn call_create2() {
     rt.add_delegated_address(id_addr, f4_eth_addr);
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, id_addr);
-    rt.expect_validate_caller_type(vec![Type::EVM]);
-    rt.expect_validate_caller_namespace(vec![EAM_ACTOR_ID]);
+    rt.expect_validate_caller_any();
 
     let initcode = vec![0xff];
 

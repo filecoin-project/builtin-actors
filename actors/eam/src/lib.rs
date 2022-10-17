@@ -140,21 +140,6 @@ where
     Ok(Return::from_exec4(ret, new_addr))
 }
 
-/// lookup caller's raw ETH address
-fn get_caller_address<BS, RT>(rt: &RT) -> Result<EthAddress, ActorError>
-where
-    BS: Blockstore + Clone,
-    RT: Runtime<BS>,
-{
-    let caller_id = rt.message().caller().id().unwrap();
-
-    let addr = rt.lookup_address(caller_id).unwrap();
-    match addr.payload() {
-        Payload::Delegated(eth) => Ok(EthAddress(eth.subaddress().try_into().unwrap())),
-        _ => unreachable!(),
-    }
-}
-
 pub struct EamActor;
 impl EamActor {
     pub fn constructor<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
@@ -171,6 +156,9 @@ impl EamActor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))
     }
 
+    /// Create a new contract per the EVM's CREATE rules.
+    ///
+    /// Permissions: May only be called by EVM contracts.
     pub fn create<BS, RT>(rt: &mut RT, params: CreateParams) -> Result<CreateReturn, ActorError>
     where
         BS: Blockstore + Clone,
@@ -178,7 +166,12 @@ impl EamActor {
     {
         rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
 
-        let caller_addr = get_caller_address(rt)?;
+        let caller_id = rt.message().caller().id().unwrap();
+        let caller_addr = match rt.lookup_address(caller_id).unwrap().payload() {
+            Payload::Delegated(addr) => EthAddress(addr.subaddress().try_into().unwrap()),
+            _ => unreachable!(),
+        };
+
         // CREATE logic
         let rlp = RlpCreateAddress { address: caller_addr, nonce: params.nonce };
         let eth_addr = EthAddress(hash_20(rt, &rlp.rlp_bytes()));
@@ -187,17 +180,32 @@ impl EamActor {
         create_actor(rt, caller_addr, eth_addr, params.initcode)
     }
 
+    /// Create a new contract per the EVM's CREATE2 rules.
+    ///
+    /// Permissions: May be called by any actor.
     pub fn create2<BS, RT>(rt: &mut RT, params: Create2Params) -> Result<Create2Return, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
+        rt.validate_immediate_caller_accept_any()?;
 
         // CREATE2 logic
         let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);
 
-        let caller_addr = get_caller_address(rt)?;
+        // Try to lookup the caller's EVM address, but otherwise derive one from the ID address.
+        let caller_id = rt.message().caller().id().unwrap();
+        let caller_addr = match rt.lookup_address(caller_id).map(|a| *a.payload()) {
+            Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => {
+                EthAddress(addr.subaddress().try_into().expect("eth address has an invalid size"))
+            }
+            _ => {
+                let mut bytes = [0u8; 20];
+                bytes[0] = 0xff;
+                bytes[12..].copy_from_slice(&caller_id.to_be_bytes());
+                EthAddress(bytes)
+            }
+        };
 
         let eth_addr = EthAddress(hash_20(
             rt,
