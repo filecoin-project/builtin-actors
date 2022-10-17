@@ -25,6 +25,7 @@ use std::collections::HashMap;
 mod util;
 use fil_actors_runtime::runtime::Policy;
 use itertools::Itertools;
+use test_case::test_case;
 use util::*;
 
 // an expriration ~10 days greater than effective min expiration taking into account 30 days max between pre and prove commit
@@ -52,8 +53,9 @@ fn commit_sector(h: &mut ActorHarness, rt: &mut MockRuntime) -> SectorOnChainInf
         .to_owned()
 }
 
-#[test]
-fn rejects_negative_extensions() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn rejects_negative_extensions(v2: bool) {
     let (mut h, mut rt) = setup();
     let sector = commit_sector(&mut h, &mut rt);
 
@@ -74,7 +76,7 @@ fn rejects_negative_extensions() {
         }],
     };
 
-    let res = h.extend_sectors(&mut rt, params);
+    let res = h.extend_sectors_versioned(&mut rt, params, v2);
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         &format!("cannot reduce sector {} expiration", sector.sector_number),
@@ -83,8 +85,9 @@ fn rejects_negative_extensions() {
     h.check_state(&rt);
 }
 
-#[test]
-fn rejects_extension_too_far_in_future() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn rejects_extension_too_far_in_future(v2: bool) {
     let (mut h, mut rt) = setup();
     let sector = commit_sector(&mut h, &mut rt);
 
@@ -107,7 +110,7 @@ fn rejects_extension_too_far_in_future() {
         }],
     };
 
-    let res = h.extend_sectors(&mut rt, params);
+    let res = h.extend_sectors_versioned(&mut rt, params, v2);
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         &format!(
@@ -119,8 +122,9 @@ fn rejects_extension_too_far_in_future() {
     h.check_state(&rt);
 }
 
-#[test]
-fn rejects_extension_past_max_for_seal_proof() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn rejects_extension_past_max_for_seal_proof(v2: bool) {
     let (mut h, mut rt) = setup();
     let mut sector = commit_sector(&mut h, &mut rt);
     // and prove it once to activate it.
@@ -162,13 +166,14 @@ fn rejects_extension_past_max_for_seal_proof() {
         }],
     };
 
-    let res = h.extend_sectors(&mut rt, params);
+    let res = h.extend_sectors_versioned(&mut rt, params, v2);
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "total sector lifetime", res);
     h.check_state(&rt);
 }
 
-#[test]
-fn updates_expiration_with_valid_params() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn updates_expiration_with_valid_params(v2: bool) {
     let (mut h, mut rt) = setup();
     let old_sector = commit_sector(&mut h, &mut rt);
     h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
@@ -190,7 +195,7 @@ fn updates_expiration_with_valid_params() {
         }],
     };
 
-    h.extend_sectors(&mut rt, params).unwrap();
+    h.extend_sectors_versioned(&mut rt, params, v2).unwrap();
 
     // assert sector expiration is set to the new value
     let new_sector = h.get_sector(&rt, old_sector.sector_number);
@@ -213,8 +218,9 @@ fn updates_expiration_with_valid_params() {
     h.check_state(&rt);
 }
 
-#[test]
-fn updates_many_sectors() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn updates_many_sectors(v2: bool) {
     let (mut h, mut rt) = setup();
     h.construct_and_verify(&mut rt);
 
@@ -266,7 +272,7 @@ fn updates_many_sectors() {
     assert!(extensions.len() >= 2, "test error: this test should touch more than one partition");
     let params = ExtendSectorExpirationParams { extensions };
 
-    h.extend_sectors(&mut rt, params).unwrap();
+    h.extend_sectors_versioned(&mut rt, params, v2).unwrap();
     let state: State = rt.get_state();
     let deadlines = state.load_deadlines(rt.store()).unwrap();
 
@@ -298,8 +304,9 @@ fn updates_many_sectors() {
     h.check_state(&rt);
 }
 
-#[test]
-fn supports_extensions_off_deadline_boundary() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn supports_extensions_off_deadline_boundary(v2: bool) {
     let (mut h, mut rt) = setup();
     let old_sector = commit_sector(&mut h, &mut rt);
     h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
@@ -320,7 +327,7 @@ fn supports_extensions_off_deadline_boundary() {
         }],
     };
 
-    h.extend_sectors(&mut rt, params).unwrap();
+    h.extend_sectors_versioned(&mut rt, params, v2).unwrap();
 
     // assert sector expiration is set to the new value
     let mut state: State = rt.get_state();
@@ -365,7 +372,7 @@ fn supports_extensions_off_deadline_boundary() {
 }
 
 #[test]
-fn update_expiration_multiple_claims() {
+fn update_expiration2_multiple_claims() {
     let (mut h, mut rt) = setup();
     // add in verified deal
     let verified_deals = vec![
@@ -725,6 +732,50 @@ fn extend_expiration2_drop_claims() {
         &mut rt,
         old_sector.sector_number,
         verified_deals[0].size.0,
+    );
+}
+
+#[test]
+fn update_expiration_legacy_fails_on_new_sector_with_deals() {
+    let (mut h, mut rt) = setup();
+    // add in verified deal
+    let verified_deals = vec![
+        test_verified_deal(h.sector_size as u64 / 2),
+        test_verified_deal(h.sector_size as u64 / 2),
+    ];
+    let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &mut rt);
+    h.advance_and_submit_posts(&mut rt, &vec![old_sector.clone()]);
+
+    let state: State = rt.get_state();
+
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+
+    let extension = 42 * rt.policy().wpost_proving_period;
+    let new_expiration = old_sector.expiration + extension;
+
+    let params = ExtendSectorExpirationParams {
+        extensions: vec![ExpirationExtension {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[old_sector.sector_number]),
+            new_expiration,
+        }],
+    };
+
+    // legacy extend_sectors will fail to extend newly created sectors with deals
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "cannot use legacy sector extension for simple qa power with deal weight",
+        h.extend_sectors(&mut rt, params),
+    );
+    check_for_expiration(
+        &mut h,
+        &mut rt,
+        old_sector.expiration,
+        old_sector.sector_number,
+        deadline_index,
+        partition_index,
     );
 }
 

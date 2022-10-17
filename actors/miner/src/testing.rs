@@ -84,6 +84,9 @@ pub fn check_state_invariants<BS: Blockstore>(
                         },
                     );
                 });
+                if !sector.deal_ids.is_empty() {
+                    miner_summary.sectors_with_deals.insert(sector_number);
+                }
                 Ok(())
             });
 
@@ -143,6 +146,7 @@ pub struct StateSummary {
     pub deals: BTreeMap<DealID, DealSummary>,
     pub window_post_proof_type: RegisteredPoStProof,
     pub deadline_cron_active: bool,
+    pub sectors_with_deals: BTreeSet<SectorNumber>,
 }
 
 impl Default for StateSummary {
@@ -154,6 +158,7 @@ impl Default for StateSummary {
             window_post_proof_type: RegisteredPoStProof::Invalid(0),
             deadline_cron_active: false,
             deals: BTreeMap::new(),
+            sectors_with_deals: BTreeSet::new(),
         }
     }
 }
