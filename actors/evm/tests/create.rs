@@ -100,7 +100,7 @@ fn test_create() {
             ExitCode::OK,
         );
 
-        let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
+        let result = util::invoke_contract(&mut rt, &contract_params);
         let result: [u8; 20] = result[12..].try_into().unwrap();
         let result = EthAddress(result);
         // make sure we arent doing weird things to EAM's return value
@@ -122,7 +122,7 @@ fn test_create() {
             ExitCode::OK,
         );
 
-        let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
+        let result = util::invoke_contract(&mut rt, &contract_params);
         let result: [u8; 20] = result[12..].try_into().unwrap();
         let result = EthAddress(result);
         // make sure we arent doing weird things to EAM's return value
@@ -144,7 +144,7 @@ fn test_create() {
             ExitCode::OK,
         );
 
-        let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
+        let result = util::invoke_contract(&mut rt, &contract_params);
         let result: [u8; 20] = result[12..].try_into().unwrap();
         let result = EthAddress(result);
         // make sure we arent doing weird things to EAM's return value
@@ -162,7 +162,7 @@ fn test_create() {
             ExitCode::OK,
         );
 
-        let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
+        let result = util::invoke_contract(&mut rt, &contract_params);
         assert_eq!(&result[..], &[0; 32]);
     }
 
@@ -181,7 +181,7 @@ fn test_create() {
             ExitCode::OK,
         );
 
-        let result = util::invoke_contract(&mut rt, RawBytes::from(contract_params.to_vec()));
+        let result = util::invoke_contract(&mut rt, &contract_params);
         assert_eq!(&result[..], &[0; 32]);
     }
 }

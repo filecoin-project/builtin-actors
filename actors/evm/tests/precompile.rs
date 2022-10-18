@@ -2,7 +2,6 @@ mod asm;
 
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
-use fvm_ipld_encoding::RawBytes;
 
 mod util;
 
@@ -44,9 +43,8 @@ fn test_precompile_hash() {
 
     // invoke contract
     let contract_params = vec![0u8; 32];
-    let input_data = RawBytes::from(contract_params);
 
-    let result = util::invoke_contract(&mut rt, input_data);
+    let result = util::invoke_contract(&mut rt, &contract_params);
     let expected =
         hex_literal::hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");
     assert_eq!(

@@ -4,7 +4,7 @@ use evm::interpreter::address::EthAddress;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{BytesSer, RawBytes};
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -76,10 +76,10 @@ fn test_call() {
     // dest + method 0 with no data
     let mut contract_params = vec![0u8; 36];
     evm_target_word.to_big_endian(&mut contract_params[..32]);
-    let input_data = RawBytes::from(contract_params);
 
     let proxy_call_contract_params = vec![0u8; 4];
-    let proxy_call_input_data = RawBytes::from(proxy_call_contract_params);
+    let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
+        .expect("failed to serialize input data");
 
     // expected return data
     let mut return_data = vec![0u8; 32];
@@ -90,11 +90,11 @@ fn test_call() {
         evm::Method::InvokeContract as u64,
         proxy_call_input_data,
         TokenAmount::zero(),
-        RawBytes::from(return_data),
+        RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
         ExitCode::OK,
     );
 
-    let result = util::invoke_contract(&mut rt, input_data);
+    let result = util::invoke_contract(&mut rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 }
 
@@ -193,7 +193,6 @@ fn test_callactor() {
     let mut contract_params = vec![0u8; 64];
     evm_target_word.to_big_endian(&mut contract_params[..32]);
     contract_params[63] = 0x42;
-    let input_data = RawBytes::from(contract_params);
 
     let proxy_call_input_data = RawBytes::default();
 
@@ -209,7 +208,7 @@ fn test_callactor() {
         RawBytes::from(return_data),
         ExitCode::OK,
     );
-    let result = util::invoke_contract(&mut rt, input_data);
+    let result = util::invoke_contract(&mut rt, &contract_params);
 
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 }

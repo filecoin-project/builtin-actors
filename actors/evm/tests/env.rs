@@ -7,11 +7,11 @@ use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
 use fil_actors_runtime::{
     runtime::builtins::Type,
-    test_utils::{expect_empty, MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID},
+    test_utils::{MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID},
 };
 use fvm_ipld_blockstore::tracking::{BSStats, TrackingBlockstore};
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
 use fvm_shared::address::Address;
 
 /// Alias for a call we will never send to the blockchain.
@@ -62,15 +62,14 @@ impl TestEnv {
             .unwrap(),
         );
 
-        let result = self
+        assert!(self
             .runtime
             .call::<evm::EvmContractActor>(
                 evm::Method::Constructor as u64,
                 &RawBytes::serialize(params).unwrap(),
             )
-            .unwrap();
-
-        expect_empty(result);
+            .unwrap()
+            .is_empty());
 
         self.runtime.verify();
     }
@@ -80,14 +79,16 @@ impl TestEnv {
     /// EVM interpreter in the test runtime. Finally parse the results.
     pub fn call<R: Detokenize>(&mut self, call: TestContractCall<R>) -> R {
         let input = call.calldata().expect("Should have calldata.");
-        let input = RawBytes::from(input.to_vec());
+        let input = RawBytes::serialize(BytesSer(&input)).expect("failed to serialize input data");
         self.runtime.expect_validate_caller_any();
 
-        let result = self
+        let BytesDe(result) = self
             .runtime
             .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input)
+            .unwrap()
+            .deserialize()
             .unwrap();
 
-        decode_function_data(&call.function, result.bytes(), false).unwrap()
+        decode_function_data(&call.function, result, false).unwrap()
     }
 }

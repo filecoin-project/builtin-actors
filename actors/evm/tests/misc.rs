@@ -4,7 +4,6 @@ mod util;
 use cid::Cid;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
 
 #[test]
@@ -25,7 +24,7 @@ return
 
     let mut rt = util::construct_and_verify(contract);
     rt.tipset_timestamp = 123;
-    let result = util::invoke_contract(&mut rt, RawBytes::default());
+    let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(123));
 }
 
@@ -51,7 +50,7 @@ return
     let test_cid =
         Cid::try_from("bafy2bzacecu7n7wbtogznrtuuvf73dsz7wasgyneqasksdblxupnyovmtwxxu").unwrap();
     rt.tipset_cids = vec![test_cid];
-    let result = util::invoke_contract(&mut rt, RawBytes::default());
+    let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(result.to_vec(), test_cid.hash().digest());
 }
 
@@ -72,7 +71,7 @@ return
     .unwrap();
 
     let mut rt = util::construct_and_verify(contract);
-    let result = util::invoke_contract(&mut rt, RawBytes::default());
+    let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(31415926));
 }
 
@@ -93,7 +92,7 @@ return
     .unwrap();
 
     let mut rt = util::construct_and_verify(contract);
-    let result = util::invoke_contract(&mut rt, RawBytes::default());
+    let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(10_000_000_000u64));
 }
 
@@ -116,7 +115,7 @@ return
     let mut rt = util::construct_and_verify(contract);
     rt.base_fee = TokenAmount::from_atto(123);
     rt.gas_premium = TokenAmount::from_atto(345);
-    let result = util::invoke_contract(&mut rt, RawBytes::default());
+    let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(123 + 345));
 }
 
@@ -147,7 +146,7 @@ return
     let mut input_data = vec![0u8; 32];
     input_data[12] = 0xff;
     input_data[31] = 0x64;
-    let result = util::invoke_contract(&mut rt, RawBytes::from(input_data));
+    let result = util::invoke_contract(&mut rt, &input_data);
     assert_eq!(U256::from_big_endian(&result), U256::from(123));
 }
 
@@ -176,7 +175,7 @@ return
     let mut rt = util::construct_and_verify(contract);
     let mut input_data = vec![0u8; 32];
     input_data[31] = 123;
-    let result = util::invoke_contract(&mut rt, RawBytes::from(input_data));
+    let result = util::invoke_contract(&mut rt, &input_data);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 }
 
@@ -198,7 +197,7 @@ return
     .unwrap();
 
     let mut rt = util::construct_and_verify(contract);
-    let result = util::invoke_contract(&mut rt, RawBytes::default());
+    let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 }
 
@@ -220,6 +219,6 @@ return
 
     let mut rt = util::construct_and_verify(contract);
     rt.expect_gas_available(123);
-    let result = util::invoke_contract(&mut rt, RawBytes::default());
+    let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(123));
 }

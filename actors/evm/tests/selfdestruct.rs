@@ -1,5 +1,4 @@
 use fil_actors_runtime::test_utils::*;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 
 mod util;
@@ -17,11 +16,9 @@ fn test_selfdestruct() {
     });
 
     let solidity_params = hex::decode("35f46994").unwrap();
-    let input_data = RawBytes::from(solidity_params);
     rt.expect_validate_caller_any();
     rt.expect_delete_actor(beneficiary);
 
-    let result = util::invoke_contract(&mut rt, input_data);
-    expect_empty(result);
+    assert!(util::invoke_contract(&mut rt, &solidity_params).is_empty());
     rt.verify();
 }

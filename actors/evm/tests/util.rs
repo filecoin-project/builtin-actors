@@ -1,7 +1,7 @@
 use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
 use fil_actors_runtime::{runtime::builtins::Type, test_utils::*, INIT_ACTOR_ADDR};
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
 use fvm_shared::address::Address;
 
 #[allow(dead_code)]
@@ -32,20 +32,28 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
         initcode: initcode.into(),
     };
 
-    let result = rt
+    assert!(rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
             &RawBytes::serialize(params).unwrap(),
         )
-        .unwrap();
-    expect_empty(result);
+        .unwrap()
+        .is_empty());
     rt.verify();
 
     rt
 }
 
 #[allow(dead_code)]
-pub fn invoke_contract(rt: &mut MockRuntime, input_data: RawBytes) -> RawBytes {
+pub fn invoke_contract(rt: &mut MockRuntime, input_data: &[u8]) -> Vec<u8> {
     rt.expect_validate_caller_any();
-    rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input_data).unwrap()
+    let BytesDe(res) = rt
+        .call::<evm::EvmContractActor>(
+            evm::Method::InvokeContract as u64,
+            &RawBytes::serialize(BytesSer(input_data)).unwrap(),
+        )
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    res
 }

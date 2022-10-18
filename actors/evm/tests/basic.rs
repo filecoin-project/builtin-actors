@@ -31,9 +31,7 @@ fn basic_contract_construction_and_invocation() {
     let mut arg0 = vec![0u8; 32];
     solidity_params.append(&mut arg0);
 
-    let input_data = RawBytes::from(solidity_params);
-
-    let result = util::invoke_contract(&mut rt, input_data);
+    let result = util::invoke_contract(&mut rt, &solidity_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 
     // invoke contract -- getBalance
@@ -46,9 +44,7 @@ fn basic_contract_construction_and_invocation() {
     arg0[31] = 100; // the owner address
     solidity_params.append(&mut arg0);
 
-    let input_data = RawBytes::from(solidity_params);
-
-    let result = util::invoke_contract(&mut rt, input_data);
+    let result = util::invoke_contract(&mut rt, &solidity_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(10000));
 }
 
