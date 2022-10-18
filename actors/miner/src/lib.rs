@@ -3297,6 +3297,7 @@ impl Actor {
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        rt.validate_immediate_caller_accept_any()?;
         let caller = rt.message().caller();
         let new_beneficiary =
             Address::new_id(rt.resolve_address(&params.new_beneficiary).ok_or_else(|| {
