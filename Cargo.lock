@@ -546,7 +546,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_account"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "fil_actors_runtime",
@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_cron"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -594,7 +594,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_datacap"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "cid",
  "fil_actors_runtime",
@@ -614,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_init"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_market"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -659,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_miner"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -688,7 +688,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_multisig"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_paych"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -725,7 +725,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_power"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -746,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_reward"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -762,7 +762,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_system"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -777,7 +777,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_verifreg"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "cid",
@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_runtime"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_bundle"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "cid",
  "clap",
@@ -857,7 +857,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_state"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "bimap",
@@ -1904,7 +1904,7 @@ dependencies = [
 
 [[package]]
 name = "test_vm"
-version = "9.0.0-alpha.1"
+version = "9.0.1"
 dependencies = [
  "anyhow",
  "bimap",
