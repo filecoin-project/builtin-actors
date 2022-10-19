@@ -151,7 +151,11 @@ impl EvmContractActor {
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
+        if delegate.is_some() {
+            rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
+        } else {
+            rt.validate_immediate_caller_accept_any()?;
+        }
 
         let mut system = System::load(rt, readonly).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
