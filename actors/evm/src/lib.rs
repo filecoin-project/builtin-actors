@@ -153,11 +153,11 @@ impl EvmContractActor {
     {
         rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
 
-        let mut system = System::load(rt, readonly, delegate).map_err(|e| {
+        let mut system = System::load(rt, readonly).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
-        let bytecode = match system.load_bytecode()? {
+        let bytecode = match system.load_bytecode(delegate)? {
             Some(bytecode) => bytecode,
             None => return Ok(Vec::new()), // an EVM contract with no code returns immediately
         };
@@ -228,7 +228,7 @@ impl EvmContractActor {
         // access arbitrary storage keys from a contract.
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
-        System::load(rt, true, None)?
+        System::load(rt, true)?
             .get_storage(params.storage_key)
             .map_err(|st| ActorError::unspecified(format!("failed to get storage key: {}", &st)))?
             .ok_or_else(|| ActorError::not_found(String::from("storage key not found")))

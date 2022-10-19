@@ -76,7 +76,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
     }
 
     /// Load the actor from state.
-    pub fn load(rt: &'r mut RT, readonly: bool, delegate: Option<Cid>) -> Result<Self, ActorError>
+    pub fn load(rt: &'r mut RT, readonly: bool) -> Result<Self, ActorError>
     where
         BS: Clone,
     {
@@ -93,7 +93,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
-            bytecode: if delegate.is_some() { delegate } else { Some(state.bytecode) },
+            bytecode: Some(state.bytecode),
             readonly,
         })
     }
@@ -182,21 +182,31 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
     }
 
     /// Load the bytecode.
-    pub fn load_bytecode(&self) -> Result<Option<Bytecode>, ActorError> {
-        match &self.bytecode {
-            Some(cid) => {
-                let bytecode = self
-                    .rt
-                    .store()
-                    .get(cid)
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read state")?
-                    .expect("bytecode not in state tree");
-                if bytecode.is_empty() {
-                    return Ok(None);
+    pub fn load_bytecode(&self, delegate: Option<Cid>) -> Result<Option<Bytecode>, ActorError> {
+        if let Some(cid) = delegate {
+            let bytecode = self
+                .rt
+                .store()
+                .get(&cid)
+                .context_code(ExitCode::USR_NOT_FOUND, "failed to read delegate code")?
+                .expect("bytecode not in state tree");
+            Ok(Some(Bytecode::new(bytecode)))
+        } else {
+            match &self.bytecode {
+                Some(cid) => {
+                    let bytecode = self
+                        .rt
+                        .store()
+                        .get(cid)
+                        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read state")?
+                        .expect("bytecode not in state tree");
+                    if bytecode.is_empty() {
+                        return Ok(None);
+                    }
+                    Ok(Some(Bytecode::new(bytecode)))
                 }
-                Ok(Some(Bytecode::new(bytecode)))
+                None => Ok(None),
             }
-            None => Ok(None),
         }
     }
 
