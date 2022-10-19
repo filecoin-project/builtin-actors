@@ -156,10 +156,15 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
 
     /// Reload the actor state if changed.
     pub fn reload(&mut self) -> Result<(), ActorError> {
+        if self.readonly {
+            return Ok(());
+        }
+
         let root = self.rt.get_state_root()?;
         if self.saved_state_root == Some(root) {
             return Ok(());
         }
+
         let state: State = self
             .rt
             .store()
