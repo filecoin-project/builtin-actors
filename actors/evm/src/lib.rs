@@ -190,9 +190,7 @@ impl EvmContractActor {
                 "contract reverted".to_string(),
             ));
         } else if exec_status.status_code == StatusCode::Success {
-            if !readonly {
-                system.flush()?;
-            }
+            system.flush()?;
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             return Err(e);
         } else {

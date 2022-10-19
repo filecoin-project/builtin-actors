@@ -113,24 +113,22 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        if !self.readonly {
-            self.flush()?;
-        }
+        self.flush()?;
         let result = self.rt.send(to, method, params, value)?;
-        if !self.readonly {
-            self.reload()?;
-        }
+        self.reload()?;
         Ok(result)
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
     pub fn flush(&mut self) -> Result<(), ActorError> {
-        if self.readonly {
-            return Err(ActorError::forbidden("contract invocation is read only".to_string()));
-        }
         if self.saved_state_root.is_some() {
             return Ok(());
         }
+
+        if self.readonly {
+            return Err(ActorError::forbidden("contract invocation is read only".to_string()));
+        }
+
         let bytecode_cid = match self.bytecode {
             Some(cid) => cid,
             None => self.set_bytecode(&[])?,
