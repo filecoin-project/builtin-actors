@@ -33,8 +33,6 @@ use crate::runtime::{
 };
 use crate::{actor_error, ActorError, Runtime};
 
-use super::EMPTY_ARR_CID;
-
 /// A runtime that bridges to the FVM environment through the FVM SDK.
 pub struct FvmRuntime<B = ActorBlockstore> {
     blockstore: B,
@@ -268,25 +266,12 @@ where
         })
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
-        let root = fvm::sself::root()?;
-        if root != EMPTY_ARR_CID {
-            return Err(
-                actor_error!(illegal_state; "failed to create state; expected empty array CID, got: {}", root),
-            );
-        }
-        let new_root = ActorBlockstore.put_cbor(obj, Code::Blake2b256)
-            .map_err(|e| actor_error!(illegal_argument; "failed to write actor state during creation: {}", e.to_string()))?;
-        fvm::sself::set_root(&new_root)?;
-        Ok(())
+    fn get_state_root(&self) -> Result<Cid, ActorError> {
+        Ok(fvm::sself::root()?)
     }
 
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        let root = fvm::sself::root()?;
-        Ok(ActorBlockstore
-            .get_cbor(&root)
-            .map_err(|_| actor_error!(illegal_argument; "failed to get actor for Readonly state"))?
-            .expect("State does not exist for actor state root"))
+    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+        Ok(fvm::sself::set_root(root)?)
     }
 
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>

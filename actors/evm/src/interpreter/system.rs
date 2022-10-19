@@ -1,9 +1,19 @@
 #![allow(dead_code)]
 
-use fil_actors_runtime::EAM_ACTOR_ID;
-use fvm_shared::address::{Address, Payload};
+use fil_actors_runtime::{actor_error, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID};
+use fvm_ipld_blockstore::Block;
+use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_shared::{
+    address::{Address, Payload},
+    econ::TokenAmount,
+    error::ExitCode,
+    MethodNum, IPLD_RAW,
+};
+use multihash::Code;
 
-use super::address::EthAddress;
+use crate::state::State;
+
+use super::{address::EthAddress, Bytecode};
 
 use {
     crate::interpreter::{StatusCode, U256},
@@ -31,22 +41,167 @@ pub enum StorageStatus {
 /// that bridges the FVM world to EVM world
 pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
     pub rt: &'r mut RT,
-    state: &'r mut Hamt<BS, U256, U256>,
+
+    /// The current bytecode. This is usually only "none" when the actor is first constructed.
+    bytecode: Option<Cid>,
+    /// The contract's EVM storage slots.
+    slots: Hamt<BS, U256, U256>,
+    /// The contracts "nonce" (incremented when creating new actors).
+    nonce: u64,
+    /// The last saved state root. None if the current state hasn't been saved yet.
+    saved_state_root: Option<Cid>,
 }
 
 impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
-    pub fn new(rt: &'r mut RT, state: &'r mut Hamt<BS, U256, U256>) -> anyhow::Result<Self> {
-        Ok(Self { rt, state })
+    /// Create the actor.
+    pub fn create(rt: &'r mut RT) -> Result<Self, ActorError>
+    where
+        BS: Clone,
+    {
+        let state_root = rt.get_state_root()?;
+        if state_root != EMPTY_ARR_CID {
+            return Err(actor_error!(illegal_state, "can't create over an existing actor"));
+        }
+        let store = rt.store().clone();
+        Ok(Self {
+            rt,
+            slots: Hamt::<_, U256, U256>::new(store),
+            nonce: 1,
+            saved_state_root: None,
+            bytecode: None,
+        })
     }
 
-    /// Reborrow the system with a shorter lifetime.
-    #[allow(clippy::needless_lifetimes)]
-    pub fn reborrow<'a>(&'a mut self) -> System<'a, BS, RT> {
-        System { rt: &mut *self.rt, state: &mut *self.state }
+    /// Load the actor from state.
+    pub fn load(rt: &'r mut RT) -> Result<Self, ActorError>
+    where
+        BS: Clone,
+    {
+        let store = rt.store().clone();
+        let state_root = rt.get_state_root()?;
+        let state: State = store
+            .get_cbor(&state_root)
+            .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
+
+        Ok(Self {
+            rt,
+            slots: Hamt::<_, U256, U256>::load(&state.contract_state, store)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
+            nonce: state.nonce,
+            saved_state_root: Some(state_root),
+            bytecode: Some(state.bytecode),
+        })
     }
 
-    pub fn flush_state(&mut self) -> Result<Cid, ActorError> {
-        self.state.flush().map_err(|e| ActorError::illegal_state(e.to_string()))
+    pub fn increment_nonce(&mut self) -> u64 {
+        self.saved_state_root = None;
+        let nonce = self.nonce;
+        self.nonce = self.nonce.checked_add(1).unwrap();
+        nonce
+    }
+
+    /// Send a message, saving and reloading state as necessary.
+    pub fn send(
+        &mut self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+    ) -> Result<RawBytes, ActorError> {
+        self.flush()?;
+        let result = self.rt.send(to, method, params, value)?;
+        self.reload()?;
+        Ok(result)
+    }
+
+    /// Flush the actor state (bytecode, nonce, and slots).
+    pub fn flush(&mut self) -> Result<(), ActorError> {
+        if self.saved_state_root.is_some() {
+            return Ok(());
+        }
+        let bytecode_cid = match self.bytecode {
+            Some(cid) => cid,
+            None => self.set_bytecode(&[])?,
+        };
+        let new_root = self
+            .rt
+            .store()
+            .put_cbor(
+                &State {
+                    bytecode: bytecode_cid,
+                    contract_state: self.slots.flush().context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to flush contract state",
+                    )?,
+                    nonce: self.nonce,
+                },
+                Code::Blake2b256,
+            )
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to write contract state")?;
+
+        self.rt.set_state_root(&new_root)?;
+        self.saved_state_root = Some(new_root);
+        Ok(())
+    }
+
+    /// Reload the actor state if changed.
+    pub fn reload(&mut self) -> Result<(), ActorError> {
+        let root = self.rt.get_state_root()?;
+        if self.saved_state_root == Some(root) {
+            return Ok(());
+        }
+        let state: State = self
+            .rt
+            .store()
+            .get_cbor(&root)
+            .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
+
+        self.slots
+            .set_root(&state.contract_state)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
+        self.nonce = state.nonce;
+        self.saved_state_root = Some(root);
+        self.bytecode = Some(state.bytecode);
+        Ok(())
+    }
+
+    /// Load the bytecode.
+    pub fn load_bytecode(&self) -> Result<Option<Bytecode>, ActorError> {
+        match &self.bytecode {
+            Some(cid) => {
+                let bytecode = self
+                    .rt
+                    .store()
+                    .get(cid)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read state")?
+                    .expect("bytecode not in state tree");
+                if bytecode.is_empty() {
+                    return Ok(None);
+                }
+                Ok(Some(Bytecode::new(bytecode)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Set the bytecode.
+    pub fn set_bytecode(&mut self, bytecode: &[u8]) -> Result<Cid, ActorError> {
+        self.saved_state_root = None;
+        // Reject code starting with 0xEF, EIP-3541
+        if bytecode.first() == Some(&0xEF) {
+            return Err(ActorError::illegal_argument(
+                "EIP-3541: Contract code starting with the 0xEF byte is disallowed.".into(),
+            ));
+        }
+        let k = self
+            .rt
+            .store()
+            .put(Code::Blake2b256, &Block::new(IPLD_RAW, bytecode))
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to write bytecode")?;
+        self.bytecode = Some(k);
+        Ok(k)
     }
 
     /// Get value of a storage key.
@@ -54,7 +209,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         let mut key_bytes = [0u8; 32];
         key.to_big_endian(&mut key_bytes);
 
-        Ok(self.state.get(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?.cloned())
+        Ok(self.slots.get(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?.cloned())
     }
 
     /// Set value of a storage key.
@@ -63,20 +218,22 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         key: U256,
         value: Option<U256>,
     ) -> Result<StorageStatus, StatusCode> {
+        self.saved_state_root = None; // dirty.
+
         let mut key_bytes = [0u8; 32];
         key.to_big_endian(&mut key_bytes);
 
         let prev_value =
-            self.state.get(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?.cloned();
+            self.slots.get(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?.cloned();
 
         let mut storage_status =
             if prev_value == value { StorageStatus::Unchanged } else { StorageStatus::Modified };
 
         if value.is_none() {
-            self.state.delete(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?;
+            self.slots.delete(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?;
             storage_status = StorageStatus::Deleted;
         } else {
-            self.state
+            self.slots
                 .set(key, value.unwrap())
                 .map_err(|e| StatusCode::InternalError(e.to_string()))?;
         }

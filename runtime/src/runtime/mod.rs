@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{Cbor, RawBytes};
+use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
@@ -20,12 +20,13 @@ use fvm_shared::sector::{
 };
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
+use multihash::Code;
 
 pub use self::actor_code::*;
 pub use self::policy::*;
 pub use self::randomness::DomainSeparationTag;
 use crate::runtime::builtins::Type;
-use crate::ActorError;
+use crate::{actor_error, ActorError};
 
 mod actor_code;
 pub mod builtins;
@@ -112,10 +113,33 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.
     /// NOTE: we should also limit this to being invoked during the constructor method
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError>;
+    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+        let root = self.get_state_root()?;
+        if root != EMPTY_ARR_CID {
+            return Err(
+                actor_error!(illegal_state; "failed to create state; expected empty array CID, got: {}", root),
+            );
+        }
+        let new_root = self.store().put_cbor(obj, Code::Blake2b256)
+            .map_err(|e| actor_error!(illegal_argument; "failed to write actor state during creation: {}", e.to_string()))?;
+        self.set_state_root(&new_root)?;
+        Ok(())
+    }
 
     /// Loads a readonly copy of the state of the receiver into the argument.
-    fn state<C: Cbor>(&self) -> Result<C, ActorError>;
+    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
+        Ok(self
+            .store()
+            .get_cbor(&self.get_state_root()?)
+            .map_err(|_| actor_error!(illegal_argument; "failed to get actor for Readonly state"))?
+            .expect("State does not exist for actor state root"))
+    }
+
+    /// Gets the state-root.
+    fn get_state_root(&self) -> Result<Cid, ActorError>;
+
+    /// Sets the state-root.
+    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError>;
 
     /// Loads a mutable copy of the state of the receiver, passes it to `f`,
     /// and after `f` completes puts the state object back to the store and sets it as

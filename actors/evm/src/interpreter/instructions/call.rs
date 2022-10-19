@@ -107,13 +107,12 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
     Ok(())
 }
 
-pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn call<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
+    platform: &mut System<BS, RT>,
     kind: CallKind,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
-    let rt = &*platform.rt; // as immutable reference
 
     // NOTE gas is currently ignored as FVM's send doesn't allow the caller to specify a gas
     //      limit (external invocation gas limit applies). This may changed in the future.
@@ -151,7 +150,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
         };
 
         if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
-            precompiles::Precompiles::call_precompile(rt, dst, input_data)
+            precompiles::Precompiles::call_precompile(platform.rt, dst, input_data)
                 .map_err(|_| StatusCode::PrecompileFailure)?
         } else {
             let dst_addr = EthAddress::try_from(dst)?
@@ -159,7 +158,7 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
                 .ok_or_else(|| StatusCode::BadAddress("not an actor id address".to_string()))?;
 
             let call_result = match kind {
-                CallKind::Call => rt.send(
+                CallKind::Call => platform.send(
                     &dst_addr,
                     Method::InvokeContract as u64,
                     // TODO: support IPLD codecs #758
@@ -204,9 +203,9 @@ pub fn call<'r, BS: Blockstore, RT: Runtime<BS>>(
     Ok(())
 }
 
-pub fn callactor<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn callactor<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
+    platform: &System<BS, RT>,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
     let rt = &*platform.rt; // as immutable reference

@@ -51,10 +51,10 @@ impl ExecutionState {
     }
 }
 
-struct Machine<'r, BS: Blockstore, RT: Runtime<BS>> {
-    system: &'r mut System<'r, BS, RT>,
+pub struct Machine<'r, 'a, BS: Blockstore, RT: Runtime<BS>> {
+    system: &'r mut System<'a, BS, RT>,
     runtime: &'r mut ExecutionState,
-    bytecode: &'r Bytecode<'r>,
+    bytecode: &'r Bytecode,
     pc: usize,
     reverted: bool,
 }
@@ -69,9 +69,9 @@ type Instruction<M> = fn(*mut M) -> Result<ControlFlow, StatusCode>;
 
 macro_rules! def_jmptable {
     ($($op:ident)*) => {
-        const fn jmptable() -> [Instruction<Machine<'r, BS, RT>>; 256] {
-            let mut table: [Instruction<Machine::<'r, BS, RT>>; 256] = [Machine::<'r, BS, RT>::UNDEFINED; 256];
-            $(table[OpCode::$op as usize] = Machine::<'r, BS, RT>::$op;)*
+        const fn jmptable() -> [Instruction<Machine<'r, 'a, BS, RT>>; 256] {
+            let mut table: [Instruction<Machine::<'r, 'a, BS, RT>>; 256] = [Machine::<'r, 'a, BS, RT>::UNDEFINED; 256];
+            $(table[OpCode::$op as usize] = Machine::<'r, 'a, BS, RT>::$op;)*
             table
         }
     }
@@ -102,9 +102,9 @@ macro_rules! def_ins {
     }
 }
 
-impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
+impl<'r, 'a, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, 'a, BS, RT> {
     pub fn new(
-        system: &'r mut System<'r, BS, RT>,
+        system: &'r mut System<'a, BS, RT>,
         runtime: &'r mut ExecutionState,
         bytecode: &'r Bytecode,
     ) -> Self {
@@ -133,12 +133,7 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
 
     fn step(&mut self) -> Result<ControlFlow, StatusCode> {
         let op = OpCode::try_from(self.bytecode[self.pc])?;
-        Machine::<'r, BS, RT>::dispatch(op)(self)
-    }
-
-    // Beware, dragons!
-    fn dispatch(op: OpCode) -> Instruction<Machine<'r, BS, RT>> {
-        Self::JMPTABLE[op as usize]
+        Self::JMPTABLE[op as usize](self)
     }
 
     def_ins! {
@@ -872,13 +867,14 @@ impl<'r, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, BS, RT> {
         }
     }
 
-    const JMPTABLE: [Instruction<Machine<'r, BS, RT>>; 256] = Machine::<'r, BS, RT>::jmptable();
+    const JMPTABLE: [Instruction<Machine<'r, 'a, BS, RT>>; 256] =
+        Machine::<'r, 'a, BS, RT>::jmptable();
 }
 
-pub fn execute<'r, BS: Blockstore, RT: Runtime<BS>>(
-    bytecode: &'r Bytecode,
-    runtime: &'r mut ExecutionState,
-    system: &'r mut System<'r, BS, RT>,
+pub fn execute<BS: Blockstore, RT: Runtime<BS>>(
+    bytecode: &Bytecode,
+    runtime: &mut ExecutionState,
+    system: &mut System<BS, RT>,
 ) -> Result<Output, StatusCode> {
     let mut m = Machine::new(system, runtime, bytecode);
     m.execute()?;

@@ -39,7 +39,7 @@ use rand::prelude::*;
 use crate::runtime::builtins::Type;
 use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier,
+    Verifier, EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
@@ -1008,6 +1008,15 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
 
     fn state<C: Cbor>(&self) -> Result<C, ActorError> {
         Ok(self.store_get(self.state.as_ref().unwrap()))
+    }
+
+    fn get_state_root(&self) -> Result<Cid, ActorError> {
+        Ok(self.state.unwrap_or(EMPTY_ARR_CID))
+    }
+
+    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+        self.state = Some(*root);
+        Ok(())
     }
 
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
