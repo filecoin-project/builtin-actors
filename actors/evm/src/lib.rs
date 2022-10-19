@@ -1,6 +1,7 @@
 use std::iter;
 
 use fil_actors_runtime::{runtime::builtins::Type, EAM_ACTOR_ID};
+use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::address::{Address, Payload};
 use interpreter::address::EthAddress;
 
@@ -166,8 +167,8 @@ impl EvmContractActor {
     pub fn invoke_contract<BS, RT>(
         rt: &mut RT,
         method: u64,
-        input_data: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
+        input_data: &[u8],
+    ) -> Result<Vec<u8>, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
@@ -244,8 +245,7 @@ impl EvmContractActor {
             rt.delete_actor(&addr)?
         }
 
-        let output = RawBytes::from(exec_status.output_data.to_vec());
-        Ok(output)
+        Ok(exec_status.output_data.to_vec())
     }
 
     pub fn bytecode<BS, RT>(rt: &mut RT) -> Result<Cid, ActorError>
@@ -307,7 +307,9 @@ impl ActorCode for EvmContractActor {
                 Ok(RawBytes::default())
             }
             Some(Method::InvokeContract) => {
-                Self::invoke_contract(rt, Method::InvokeContract as u64, params)
+                let BytesDe(params) = params.deserialize()?;
+                let value = Self::invoke_contract(rt, Method::InvokeContract as u64, &params)?;
+                Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
                 let cid = Self::bytecode(rt)?;
@@ -317,7 +319,8 @@ impl ActorCode for EvmContractActor {
                 let value = Self::storage_at(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(value)?)
             }
-            None => Self::invoke_contract(rt, method, params),
+            // Otherwise, we take the bytes as CBOR.
+            None => Self::invoke_contract(rt, method, params).map(RawBytes::new),
         }
     }
 }

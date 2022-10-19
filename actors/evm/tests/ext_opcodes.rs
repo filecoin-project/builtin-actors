@@ -53,7 +53,7 @@ fn test_extcodesize() {
         ExitCode::OK,
     );
 
-    let result = util::invoke_contract(&mut rt, RawBytes::default());
+    let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x04));
 }
 
@@ -96,7 +96,7 @@ fn test_extcodehash() {
         ExitCode::OK,
     );
 
-    let result = util::invoke_contract(&mut rt, RawBytes::default());
+    let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(&bytecode_cid.hash().digest()[..32]));
 }
 
@@ -139,6 +139,6 @@ fn test_extcodecopy() {
         ExitCode::OK,
     );
 
-    let result = util::invoke_contract(&mut rt, RawBytes::default());
-    assert_eq!(other_bytecode.as_slice(), result.bytes());
+    let result = util::invoke_contract(&mut rt, &[]);
+    assert_eq!(other_bytecode.as_slice(), result);
 }
