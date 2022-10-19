@@ -2,9 +2,9 @@ mod asm;
 mod util;
 
 use cid::Cid;
-use evm::interpreter::U256;
+use evm::interpreter::{address::EthAddress, U256};
 use fil_actor_evm as evm;
-use fvm_shared::econ::TokenAmount;
+use fvm_shared::{address::Address, econ::TokenAmount};
 
 #[test]
 fn test_timestamp() {
@@ -221,4 +221,127 @@ return
     rt.expect_gas_available(123);
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(123));
+}
+
+#[test]
+fn test_address() {
+    let contract = asm::new_contract(
+        "gas",
+        "",
+        r#"
+push1 0x00
+address
+push1 0x00
+mstore
+push1 0x20
+push1 0x00
+return
+"#,
+    )
+    .unwrap();
+
+    let mut rt = util::construct_and_verify(contract);
+    let result = util::invoke_contract(&mut rt, &[]);
+    let eth_address = &result[12..];
+    // Make sure we get an actual eth address, not an embedded ID address.
+    assert_eq!(&eth_address, &util::CONTRACT_ADDRESS);
+}
+
+#[test]
+fn test_caller_id() {
+    let contract = asm::new_contract(
+        "gas",
+        "",
+        r#"
+push1 0x00
+caller
+push1 0x00
+mstore
+push1 0x20
+push1 0x00
+return
+"#,
+    )
+    .unwrap();
+
+    let mut rt = util::construct_and_verify(contract);
+    let result = util::invoke_contract(&mut rt, &[]);
+    let eth_address = &result[12..];
+    // The caller's address should be the init actor in this case.
+    assert_eq!(&eth_address, &EthAddress::from_id(1).0);
+}
+
+#[test]
+fn test_caller_eth() {
+    let contract = asm::new_contract(
+        "gas",
+        "",
+        r#"
+push1 0x00
+caller
+push1 0x00
+mstore
+push1 0x20
+push1 0x00
+return
+"#,
+    )
+    .unwrap();
+
+    let mut rt = util::construct_and_verify(contract);
+    // set the _id_ address here (ensures we resolve it correctly internally).
+    rt.caller = Address::new_id(0);
+    let result = util::invoke_contract(&mut rt, &[]);
+    let eth_address = &result[12..];
+    // Make sure we prefer the eth address, if we have one.
+    assert_eq!(eth_address, util::CONTRACT_ADDRESS);
+}
+
+#[test]
+fn test_origin_id() {
+    let contract = asm::new_contract(
+        "gas",
+        "",
+        r#"
+push1 0x00
+origin
+push1 0x00
+mstore
+push1 0x20
+push1 0x00
+return
+"#,
+    )
+    .unwrap();
+
+    let mut rt = util::construct_and_verify(contract);
+    rt.origin = Address::new_id(10);
+    let result = util::invoke_contract(&mut rt, &[]);
+    let eth_address = &result[12..];
+    // Make sure we prefer the eth address, if we have one.
+    assert_eq!(eth_address, &EthAddress::from_id(10).0);
+}
+
+#[test]
+fn test_origin_eth() {
+    let contract = asm::new_contract(
+        "gas",
+        "",
+        r#"
+push1 0x00
+origin
+push1 0x00
+mstore
+push1 0x20
+push1 0x00
+return
+"#,
+    )
+    .unwrap();
+
+    let mut rt = util::construct_and_verify(contract);
+    let result = util::invoke_contract(&mut rt, &[]);
+    let eth_address = &result[12..];
+    // Make sure we prefer the eth address, if we have one.
+    assert_eq!(eth_address, util::CONTRACT_ADDRESS);
 }

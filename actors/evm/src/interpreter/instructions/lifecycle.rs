@@ -145,8 +145,9 @@ pub fn selfdestruct<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     _system: &mut System<BS, RT>,
 ) -> Result<(), StatusCode> {
-    let beneficiary_addr = EthAddress::try_from(state.stack.pop())?;
-    let id_addr = beneficiary_addr.as_id_address().expect("no support for non-ID addresses yet");
-    state.selfdestroyed = Some(id_addr);
+    let beneficiary_addr = state.stack.pop();
+    // TODO: how do we handle errors here? Just ignore them?
+    state.selfdestroyed =
+        beneficiary_addr.try_into().and_then(|addr: EthAddress| addr.try_into()).ok();
     Ok(())
 }

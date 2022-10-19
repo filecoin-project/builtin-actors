@@ -8,6 +8,7 @@ use ethers::providers::{MockProvider, Provider};
 use fil_actor_evm::interpreter::address::EthAddress;
 use fvm_ipld_blockstore::tracking::BSStats as BlockstoreStats;
 use fvm_shared::address::Address;
+use fvm_shared::ActorID;
 
 mod env;
 
@@ -28,12 +29,13 @@ abigen!(StorageFootprint, "./tests/contracts/StorageFootprint.abi");
 // ```
 
 // The owner doesn't matter in these tests, so just using the same value that the other tests use, for everything.
-const OWNER: Address = Address::new_id(100);
+const OWNER_ID: ActorID = 100;
+const OWNER: Address = Address::new_id(OWNER_ID);
 
 static CONTRACT: Lazy<StorageFootprint<Provider<MockProvider>>> = Lazy::new(|| {
     // The owner of the contract is expected to be the 160 bit hash used on Ethereum.
     // We're not going to use it during the tests.
-    let address = EthAddress::from_id_address(&OWNER).unwrap();
+    let address = EthAddress::from_id(OWNER_ID);
     let address = ethers::core::types::Address::from_slice(address.as_ref());
     // A dummy client that we don't intend to use to call the contract or send transactions.
     let (client, _mock) = Provider::mocked();
