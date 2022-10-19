@@ -7,13 +7,13 @@ use {
 #[inline]
 pub fn sload<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &mut System<BS, RT>,
+    system: &mut System<BS, RT>,
 ) -> Result<(), StatusCode> {
     // where?
     let location = state.stack.pop();
 
     // get from storage and place on stack
-    let value = match platform.get_storage(location)? {
+    let value = match system.get_storage(location)? {
         Some(val) => val,
         None => U256::zero(),
     };
@@ -24,12 +24,16 @@ pub fn sload<BS: Blockstore, RT: Runtime<BS>>(
 #[inline]
 pub fn sstore<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &mut System<BS, RT>,
+    system: &mut System<BS, RT>,
 ) -> Result<(), StatusCode> {
+    if system.readonly {
+        return Err(StatusCode::StaticModeViolation);
+    }
+
     let location = state.stack.pop();
     let value = state.stack.pop();
     let opt_value = if value == U256::zero() { None } else { Some(value) };
 
-    platform.set_storage(location, opt_value)?;
+    system.set_storage(location, opt_value)?;
     Ok(())
 }

@@ -42,8 +42,12 @@ pub struct EamReturn {
 #[inline]
 pub fn create<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &mut System<BS, RT>,
+    system: &mut System<BS, RT>,
 ) -> Result<(), StatusCode> {
+    if system.readonly {
+        return Err(StatusCode::StaticModeViolation);
+    }
+
     let ExecutionState { stack, memory, .. } = state;
 
     let value = stack.pop();
@@ -61,15 +65,19 @@ pub fn create<BS: Blockstore, RT: Runtime<BS>>(
         )));
     };
 
-    let nonce = platform.increment_nonce();
+    let nonce = system.increment_nonce();
     let params = CreateParams { code: input_data.to_vec(), nonce };
-    create_init(stack, platform, RawBytes::serialize(&params)?, CREATE_METHOD_NUM, value)
+    create_init(stack, system, RawBytes::serialize(&params)?, CREATE_METHOD_NUM, value)
 }
 
 pub fn create2<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &mut System<BS, RT>,
+    system: &mut System<BS, RT>,
 ) -> Result<(), StatusCode> {
+    if system.readonly {
+        return Err(StatusCode::StaticModeViolation);
+    }
+
     let ExecutionState { stack, memory, .. } = state;
 
     // see `create()` overall TODOs
@@ -94,20 +102,20 @@ pub fn create2<BS: Blockstore, RT: Runtime<BS>>(
     };
     let params = Create2Params { code: input_data.to_vec(), salt };
 
-    platform.increment_nonce();
-    create_init(stack, platform, RawBytes::serialize(&params)?, CREATE2_METHOD_NUM, endowment)
+    system.increment_nonce();
+    create_init(stack, system, RawBytes::serialize(&params)?, CREATE2_METHOD_NUM, endowment)
 }
 
 /// call into Ethereum Address Manager to make the new account
 fn create_init<BS: Blockstore, RT: Runtime<BS>>(
     stack: &mut Stack,
-    platform: &mut System<BS, RT>,
+    system: &mut System<BS, RT>,
     params: RawBytes,
     method: MethodNum,
     value: TokenAmount,
 ) -> Result<(), StatusCode> {
     // send bytecode & params to EAM to generate the address and contract
-    let ret = platform.send(&EAM_ACTOR_ADDR, method, params, value);
+    let ret = system.send(&EAM_ACTOR_ADDR, method, params, value);
 
     // https://github.com/ethereum/go-ethereum/blob/fb75f11e87420ec25ff72f7eeeb741fa8974e87e/core/vm/evm.go#L406-L496
     // Normally EVM will do some checks here to ensure that a contract has the capability
@@ -143,8 +151,12 @@ fn create_init<BS: Blockstore, RT: Runtime<BS>>(
 #[inline]
 pub fn selfdestruct<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    _system: &mut System<BS, RT>,
+    system: &mut System<BS, RT>,
 ) -> Result<(), StatusCode> {
+    if system.readonly {
+        return Err(StatusCode::StaticModeViolation);
+    }
+
     let beneficiary_addr = EthAddress::try_from(state.stack.pop())?;
     let id_addr = beneficiary_addr.as_id_address().expect("no support for non-ID addresses yet");
     state.selfdestroyed = Some(id_addr);

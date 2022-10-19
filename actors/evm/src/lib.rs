@@ -43,6 +43,7 @@ pub enum Method {
     InvokeContract = 2,
     GetBytecode = 3,
     GetStorageAt = 4,
+    InvokeContractReadOnly = 5,
 }
 
 pub struct EvmContractActor;
@@ -142,6 +143,7 @@ impl EvmContractActor {
         rt: &mut RT,
         method: u64,
         input_data: &[u8],
+        readonly: bool,
     ) -> Result<Vec<u8>, ActorError>
     where
         BS: Blockstore + Clone,
@@ -149,7 +151,7 @@ impl EvmContractActor {
     {
         rt.validate_immediate_caller_accept_any()?;
 
-        let mut system = System::load(rt).map_err(|e| {
+        let mut system = System::load(rt, readonly).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
@@ -186,7 +188,9 @@ impl EvmContractActor {
                 "contract reverted".to_string(),
             ));
         } else if exec_status.status_code == StatusCode::Success {
-            system.flush()?;
+            if !readonly {
+                system.flush()?;
+            }
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             return Err(e);
         } else {
@@ -224,7 +228,7 @@ impl EvmContractActor {
         // access arbitrary storage keys from a contract.
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
-        System::load(rt)?
+        System::load(rt, true)?
             .get_storage(params.storage_key)
             .map_err(|st| ActorError::unspecified(format!("failed to get storage key: {}", &st)))?
             .ok_or_else(|| ActorError::not_found(String::from("storage key not found")))
@@ -248,7 +252,8 @@ impl ActorCode for EvmContractActor {
             }
             Some(Method::InvokeContract) => {
                 let BytesDe(params) = params.deserialize()?;
-                let value = Self::invoke_contract(rt, Method::InvokeContract as u64, &params)?;
+                let value =
+                    Self::invoke_contract(rt, Method::InvokeContract as u64, &params, false)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
@@ -259,8 +264,14 @@ impl ActorCode for EvmContractActor {
                 let value = Self::storage_at(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(value)?)
             }
+            Some(Method::InvokeContractReadOnly) => {
+                let BytesDe(params) = params.deserialize()?;
+                let value =
+                    Self::invoke_contract(rt, Method::InvokeContract as u64, &params, true)?;
+                Ok(RawBytes::serialize(BytesSer(&value))?)
+            }
             // Otherwise, we take the bytes as CBOR.
-            None => Self::invoke_contract(rt, method, params).map(RawBytes::new),
+            None => Self::invoke_contract(rt, method, params, false).map(RawBytes::new),
         }
     }
 }

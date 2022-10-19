@@ -50,6 +50,8 @@ pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
     nonce: u64,
     /// The last saved state root. None if the current state hasn't been saved yet.
     saved_state_root: Option<Cid>,
+    /// Read Only context (staticcall)
+    pub readonly: bool,
 }
 
 impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
@@ -69,11 +71,12 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
             nonce: 1,
             saved_state_root: None,
             bytecode: None,
+            readonly: false,
         })
     }
 
     /// Load the actor from state.
-    pub fn load(rt: &'r mut RT) -> Result<Self, ActorError>
+    pub fn load(rt: &'r mut RT, readonly: bool) -> Result<Self, ActorError>
     where
         BS: Clone,
     {
@@ -91,6 +94,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
             nonce: state.nonce,
             saved_state_root: Some(state_root),
             bytecode: Some(state.bytecode),
+            readonly,
         })
     }
 
@@ -109,14 +113,21 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        self.flush()?;
+        if !self.readonly {
+            self.flush()?;
+        }
         let result = self.rt.send(to, method, params, value)?;
-        self.reload()?;
+        if !self.readonly {
+            self.reload()?;
+        }
         Ok(result)
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
     pub fn flush(&mut self) -> Result<(), ActorError> {
+        if self.readonly {
+            return Err(ActorError::forbidden("contract invocation is read only".to_string()));
+        }
         if self.saved_state_root.is_some() {
             return Ok(());
         }
