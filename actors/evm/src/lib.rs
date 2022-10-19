@@ -254,13 +254,8 @@ impl ActorCode for EvmContractActor {
             }
             Some(Method::InvokeContract) => {
                 let BytesDe(params) = params.deserialize()?;
-                let value = Self::invoke_contract(
-                    rt,
-                    Method::InvokeContract as u64,
-                    &params,
-                    false,
-                    None
-                )?;
+                let value =
+                    Self::invoke_contract(rt, Method::InvokeContract as u64, &params, false, None)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
@@ -278,20 +273,19 @@ impl ActorCode for EvmContractActor {
                     Method::InvokeContractReadOnly as u64,
                     &params,
                     true,
-                    None
+                    None,
                 )?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::InvokeContractDelegate) => {
                 let params: DelegateCallParams = cbor::deserialize_params(params)?;
-                let value =
-                    Self::invoke_contract(
-                        rt,
-                        Method::InvokeContractDelegate as u64,
-                        &params.input,
-                        params.readonly,
-                        Some(params.code),
-                    )?;
+                let value = Self::invoke_contract(
+                    rt,
+                    Method::InvokeContractDelegate as u64,
+                    &params.input,
+                    params.readonly,
+                    Some(params.code),
+                )?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
 
@@ -317,7 +311,6 @@ pub struct DelegateCallParams {
     /// Whether the call is within a read only (static) call context
     pub readonly: bool,
 }
-
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct GetStorageAtParams {

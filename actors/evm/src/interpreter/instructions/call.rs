@@ -11,7 +11,7 @@ use {
     crate::interpreter::System,
     crate::interpreter::U256,
     crate::RawBytes,
-    crate::{Method, DelegateCallParams, EVM_CONTRACT_REVERTED},
+    crate::{DelegateCallParams, Method, EVM_CONTRACT_REVERTED},
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
     fvm_shared::econ::TokenAmount,
@@ -174,8 +174,7 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
                 CallKind::DelegateCall => {
                     // first invoke GetBytecode to get the code CID from the target
                     let code = crate::interpreter::instructions::ext::get_evm_bytecode_cid(
-                        system.rt,
-                        dst
+                        system.rt, dst,
                     )?;
 
                     // and then invoke self with delegate; readonly context is sticky
