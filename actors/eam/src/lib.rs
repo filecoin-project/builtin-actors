@@ -1,6 +1,7 @@
 use std::iter;
 
 use ext::init::{Exec4Params, Exec4Return};
+use fvm_ipld_encoding::Cbor;
 use rlp::Encodable;
 
 pub mod ext;
@@ -67,11 +68,14 @@ pub struct Create2Params {
     pub salt: [u8; 32],
 }
 
+impl Cbor for Create2Params {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct InitAccountParams {
     #[serde(with = "strict_bytes")]
     pub pubkey: [u8; SECP_PUB_LEN],
 }
+impl Cbor for InitAccountParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
 pub struct Return {
@@ -79,6 +83,9 @@ pub struct Return {
     pub robust_address: Address,
     pub eth_address: EthAddress,
 }
+
+impl Cbor for Return {}
+
 pub type CreateReturn = Return;
 pub type Create2Return = Return;
 

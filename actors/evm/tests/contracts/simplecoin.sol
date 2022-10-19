@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.4.25 <=0.8.15;
+pragma solidity >=0.4.2;
 
 contract SimpleCoin {
     mapping(address => uint256) balances;

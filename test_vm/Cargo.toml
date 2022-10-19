@@ -50,6 +50,8 @@ regex = "1"
 
 [dev-dependencies]
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+ethers = { version = "0.17.0", features = ["abigen"] }
+hex = "0.4.3"
 
 [features]
 m2-native = []

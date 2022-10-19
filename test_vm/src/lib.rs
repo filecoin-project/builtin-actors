@@ -53,7 +53,7 @@ use fvm_shared::sector::{
 };
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND};
 use multihash::MultihashDigest;
 use regex::Regex;
 use serde::ser;
@@ -436,11 +436,15 @@ impl<'bs> VM<'bs> {
         match res {
             Err(ae) => {
                 self.rollback(prior_root);
-                Ok(MessageResult { code: ae.exit_code(), ret: RawBytes::default() })
+                Ok(MessageResult {
+                    code: ae.exit_code(),
+                    ret: RawBytes::default(),
+                    error_message: Some(ae.msg().into()),
+                })
             }
             Ok(ret) => {
                 self.checkpoint();
-                Ok(MessageResult { code: ExitCode::OK, ret })
+                Ok(MessageResult { code: ExitCode::OK, ret, error_message: None })
             }
         }
     }
@@ -540,10 +544,10 @@ impl MessageInfo for InvocationCtx<'_, '_> {
         self.msg.value.clone()
     }
     fn gas_limit(&self) -> u64 {
-        todo!()
+        u32::MAX.into()
     }
     fn gas_premium(&self) -> TokenAmount {
-        todo!()
+        TokenAmount::zero()
     }
 }
 
@@ -986,20 +990,20 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         TokenAmount::zero()
     }
 
-    fn actor_balance(&self, _id: ActorID) -> Option<TokenAmount> {
-        todo!()
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
+        self.v.get_actor(Address::new_id(id)).map(|act| act.balance)
     }
 
     fn gas_available(&self) -> u64 {
-        todo!()
+        u32::MAX.into()
     }
 
     fn tipset_timestamp(&self) -> u64 {
-        todo!()
+        0
     }
 
     fn tipset_cid(&self, _epoch: i64) -> Option<Cid> {
-        todo!()
+        Some(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
     }
 }
 
@@ -1151,6 +1155,7 @@ impl RuntimePolicy for InvocationCtx<'_, '_> {
 pub struct MessageResult {
     pub code: ExitCode,
     pub ret: RawBytes,
+    pub error_message: Option<String>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
