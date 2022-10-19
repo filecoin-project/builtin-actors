@@ -1,7 +1,7 @@
 use std::iter;
 
 use fil_actors_runtime::{runtime::builtins::Type, EAM_ACTOR_ID};
-use fvm_ipld_encoding::{BytesDe, BytesSer};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
 use fvm_shared::address::{Address, Payload};
 use interpreter::address::EthAddress;
 
@@ -305,7 +305,8 @@ pub struct ConstructorParams {
 pub struct DelegateCallParams {
     pub code: Cid,
     /// The contract invocation parameters
-    pub input: RawBytes,
+    #[serde(with = "strict_bytes")]
+    pub input: Vec<u8>,
     /// Whether the call is within a read only (static) call context
     pub readonly: bool,
 }

@@ -180,7 +180,7 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
                     // and then invoke self with delegate; readonly context is sticky
                     let params = DelegateCallParams {
                         code,
-                        input: RawBytes::from(Vec::from(input_data)),
+                        input: input_data.to_vec(),
                         readonly: system.readonly,
                     };
                     system.send(
