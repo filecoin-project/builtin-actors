@@ -57,7 +57,7 @@ pub fn extcodecopy<'r, BS: Blockstore, RT: Runtime<BS>>(
     Ok(())
 }
 
-fn get_evm_bytecode_cid<BS: Blockstore, RT: Runtime<BS>>(
+pub fn get_evm_bytecode_cid<BS: Blockstore, RT: Runtime<BS>>(
     rt: &RT,
     addr: U256,
 ) -> Result<Cid, StatusCode> {

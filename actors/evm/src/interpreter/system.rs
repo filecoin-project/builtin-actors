@@ -76,7 +76,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
     }
 
     /// Load the actor from state.
-    pub fn load(rt: &'r mut RT, readonly: bool) -> Result<Self, ActorError>
+    pub fn load(rt: &'r mut RT, readonly: bool, delegate: Option<Cid>) -> Result<Self, ActorError>
     where
         BS: Clone,
     {
@@ -93,7 +93,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
-            bytecode: Some(state.bytecode),
+            bytecode: if delegate.is_some() { delegate } else { Some(state.bytecode) },
             readonly,
         })
     }
