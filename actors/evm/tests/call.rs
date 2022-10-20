@@ -67,10 +67,13 @@ fn test_call() {
     MockRuntime::default();
 
     // create a mock target and proxy a call through the proxy
-    let target = FILAddress::new_id(0x100);
+    let target_id = 0x100;
+    let target = FILAddress::new_id(target_id);
+    let evm_target = EthAddress(hex_literal::hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
+    let f4_target: FILAddress = evm_target.try_into().unwrap();
     rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+    rt.add_delegated_address(target, f4_target);
 
-    let evm_target = EthAddress::from_id_address(&target).unwrap();
     let evm_target_word = evm_target.as_evm_word();
 
     // dest + method 0 with no data
@@ -86,7 +89,7 @@ fn test_call() {
     return_data[31] = 0x42;
 
     rt.expect_send(
-        target,
+        f4_target,
         evm::Method::InvokeContract as u64,
         proxy_call_input_data,
         TokenAmount::zero(),
@@ -183,10 +186,11 @@ fn test_callactor() {
     let mut rt = util::construct_and_verify(contract);
 
     // create a mock target and proxy a call through the proxy
-    let target = FILAddress::new_id(0x100);
+    let target_id = 0x100;
+    let target = FILAddress::new_id(target_id);
     rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
 
-    let evm_target = EthAddress::from_id_address(&target).unwrap();
+    let evm_target = EthAddress::from_id(target_id);
     let evm_target_word = evm_target.as_evm_word();
 
     // dest + method 0x42 with no data

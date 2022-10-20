@@ -1,5 +1,4 @@
 use {
-    crate::interpreter::address::EthAddress,
     crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::chainid,
     fil_actors_runtime::runtime::Runtime,
@@ -39,10 +38,9 @@ pub fn caller<'r, BS: Blockstore, RT: Runtime<BS>>(
 #[inline]
 pub fn address<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
+    _platform: &'r System<'r, BS, RT>,
 ) {
-    let id = platform.rt.message().receiver().id().unwrap();
-    state.stack.push(EthAddress::from_id(id).as_evm_word())
+    state.stack.push(state.receiver.as_evm_word())
 }
 
 #[inline]
@@ -50,8 +48,10 @@ pub fn origin<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     platform: &'r System<'r, BS, RT>,
 ) {
-    let id = platform.rt.message().origin().id().unwrap();
-    state.stack.push(EthAddress::from_id(id).as_evm_word())
+    let origin_addr = platform
+        .resolve_ethereum_address(&platform.rt.message().origin())
+        .expect("failed to resolve origin address");
+    state.stack.push(origin_addr.as_evm_word())
 }
 
 #[inline]

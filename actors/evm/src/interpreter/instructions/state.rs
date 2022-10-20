@@ -1,3 +1,5 @@
+use fvm_shared::address::Address;
+
 use crate::U256;
 use {
     crate::interpreter::address::EthAddress,
@@ -13,9 +15,11 @@ pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
 ) -> Result<(), StatusCode> {
     let actor = state.stack.pop();
 
-    let balance = EthAddress::try_from(actor)
+    let balance = actor
+        .try_into()
+        .and_then(|addr: EthAddress| addr.try_into())
         .ok()
-        .and_then(|addr| addr.as_id())
+        .and_then(|addr: Address| platform.rt.resolve_address(&addr))
         .and_then(|id| platform.rt.actor_balance(id).as_ref().map(U256::from))
         .unwrap_or_default();
 

@@ -33,18 +33,25 @@ impl std::fmt::Debug for EthAddress {
     }
 }
 
+impl TryFrom<EthAddress> for Address {
+    type Error = StatusCode;
+    fn try_from(addr: EthAddress) -> Result<Self, Self::Error> {
+        TryFrom::try_from(&addr)
+    }
+}
+
 impl TryFrom<&EthAddress> for Address {
-    type Error = anyhow::Error;
+    type Error = StatusCode;
     fn try_from(addr: &EthAddress) -> Result<Self, Self::Error> {
         if addr.0[..19] == [0; 19] {
-            return Err(anyhow::anyhow!(
-                "Cannot convert a precompile address {:X?} to an f4 address.",
-                addr
-            ));
+            return Err(StatusCode::BadAddress(format!(
+                "cannot convert precompile {} to an f4 address",
+                addr.0[19]
+            )));
         }
 
-        let f4_addr = if let Some(addr) = addr.as_id_address() {
-            addr
+        let f4_addr = if let Some(id) = addr.as_id() {
+            Address::new_id(id)
         } else {
             Address::new_delegated(EAM_ACTOR_ID, addr.as_ref()).unwrap()
         };
@@ -54,11 +61,6 @@ impl TryFrom<&EthAddress> for Address {
 }
 
 impl EthAddress {
-    /// Expect a Filecoin address type containing an ID address, and return an address in EVM-form.
-    pub fn from_id_address(addr: &Address) -> Option<EthAddress> {
-        addr.id().ok().map(EthAddress::from_id)
-    }
-
     /// Returns an EVM-form ID address from actor ID.
     pub fn from_id(id: u64) -> EthAddress {
         let mut bytes = [0u8; 20];
@@ -75,16 +77,11 @@ impl EthAddress {
     ///
     /// 0    1-11       12
     /// 0xff \[0x00...] [id address...]
-    pub fn as_id_address(&self) -> Option<Address> {
+    pub fn as_id(&self) -> Option<ActorID> {
         if (self.0[0] != 0xff) || !self.0[1..12].iter().all(|&byte| byte == 0) {
             return None;
         }
-        Some(Address::new_id(u64::from_be_bytes(self.0[12..].try_into().unwrap())))
-    }
-
-    /// Same as as_id_address, but go the extra mile and return the ActorID.
-    pub fn as_id(&self) -> Option<ActorID> {
-        self.as_id_address().and_then(|id| id.id().ok())
+        Some(u64::from_be_bytes(self.0[12..].try_into().unwrap()))
     }
 
     /// Returns this Address as an EVM word.
@@ -103,7 +100,6 @@ impl AsRef<[u8]> for EthAddress {
 mod tests {
     use crate::interpreter::address::EthAddress;
     use crate::U256;
-    use fvm_shared::address::Address as FilecoinAddress;
 
     const TYPE_PADDING: &[u8] = &[0; 12]; // padding (12 bytes)
     const ID_ADDRESS_MARKER: &[u8] = &[0xff]; // ID address marker (1 byte)
@@ -118,18 +114,13 @@ mod tests {
                 let evm_bytes = $input.concat();
                 let evm_addr = EthAddress::try_from(U256::from(evm_bytes.as_slice())).unwrap();
                 assert_eq!(
-                    evm_addr.as_id_address(),
+                    evm_addr.as_id(),
                     $expectation
                 );
 
-                assert_eq!(
-                    evm_addr.as_id(),
-                    $expectation.map(|addr: FilecoinAddress| addr.id().unwrap())
-                );
-
                 // test inverse conversion, if a valid ID address was supplied
-                if let Some(fil_addr) = $expectation {
-                    assert_eq!(EthAddress::from_id_address(&fil_addr), Some(evm_addr));
+                if let Some(fil_id) = $expectation {
+                    assert_eq!(EthAddress::from_id(fil_id), evm_addr);
                 }
             }
         )*
@@ -142,14 +133,14 @@ mod tests {
             ID_ADDRESS_MARKER,
             GOOD_ADDRESS_PADDING,
             vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01].as_slice() // ID address (u64 big endian) (8 bytes)
-        ] => Some(FilecoinAddress::new_id(1)),
+        ] => Some(1),
 
         good_address_2: [
             TYPE_PADDING,
             ID_ADDRESS_MARKER,
             GOOD_ADDRESS_PADDING,
             vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff].as_slice() // ID address (u64 big endian) (8 bytes)
-        ] => Some(FilecoinAddress::new_id(u16::MAX as u64)),
+        ] => Some(u16::MAX as u64),
 
         bad_marker: [
             TYPE_PADDING,
