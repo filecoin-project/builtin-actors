@@ -3,11 +3,11 @@ use std::sync::Arc;
 use ethers::core::types::Address as EthAddress;
 use ethers::prelude::abigen;
 use ethers::providers::Provider;
-use fil_actors_runtime::EAM_ACTOR_ADDR;
+use fil_actors_runtime::{test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{strict_bytes, BytesDe, Cbor};
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::ActorID;
+use fvm_shared::{address::Address, econ::TokenAmount};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use test_vm::{util::create_accounts, VM};
@@ -102,13 +102,15 @@ fn test_evm_staticcall() {
     let v = VM::new_with_singletons(&store);
 
     let accounts = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
-    let addresses: Vec<_> = accounts.iter().map(|account| {id_to_eth(account.id().unwrap())}).collect();
+    let addresses: Vec<_> =
+        accounts.iter().map(|account| id_to_eth(account.id().unwrap())).collect();
 
     let bytecode =
         hex::decode(include_str!("../../actors/evm/tests/contracts/callvariants.hex")).unwrap();
 
-    let created: Vec<_> = accounts.iter().map(
-        |account| {
+    let created: Vec<_> = accounts
+        .iter()
+        .map(|account| {
             let create_result = v
                 .apply_message(
                     *account,
@@ -128,16 +130,22 @@ fn test_evm_staticcall() {
             let create_return: fil_actor_eam::Create2Return =
                 create_result.ret.deserialize().expect("failed to decode results");
 
+            // Make sure we deployed an EVM actor.
+            assert_eq!(
+                &v.get_actor(Address::new_id(create_return.actor_id)).unwrap().code,
+                &*EVM_ACTOR_CODE_ID
+            );
+
             create_return
-        }
-    ).collect();
+        })
+        .collect();
 
     // A -> staticcall -> B (read) OK
     {
         let A_act = accounts[0].clone();
         let A_robust_addr = created[0].robust_address.clone();
         let B = addresses[1].clone();
-        let mut params = [0u8;36];
+        let mut params = [0u8; 36];
         params[3] = 1;
         params[16..].copy_from_slice(B.as_ref());
 
