@@ -55,7 +55,7 @@
 
 # A -> staticcall -> B -> delegatecall -> C (write) FAIL
 %dispatch(13, do_staticcall14)
-%dispatch(14, do_delegatecall2)
+%dispatch(14, do_delegatecall4)
 
 %dispatch_end()
 
@@ -240,7 +240,7 @@ do_staticcall12:
 jumpdest
 push1 0x20   # staticcall ret length
 push1 0x00   # staticcall ret offset
-push1 0x12   # arg1: method
+push1 0x0c   # arg1: method
 push1 0xe0   # shift 224 bits (28 bytes)
 shl
 push1 0x00    # arg1: offset
@@ -264,7 +264,7 @@ do_staticcall14:
 jumpdest
 push1 0x20   # staticcall ret length
 push1 0x00   # staticcall ret offset
-push1 0x14   # arg1: method
+push1 0x0e   # arg1: method
 push1 0xe0   # shift 224 bits (28 bytes)
 shl
 push1 0x00    # arg1: offset
