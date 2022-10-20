@@ -184,10 +184,7 @@ fn test_evm_staticcall() {
                 ContractParams(params.to_vec()),
             )
             .unwrap();
-        assert!(
-            !call_result.code.is_success(),
-            "static call mutation succeeded"
-        );
+        assert!(!call_result.code.is_success(), "static call mutation succeeded");
     }
 
     // A -> staticcall -> B -> call -> C (read) OK
@@ -240,10 +237,7 @@ fn test_evm_staticcall() {
                 ContractParams(params.to_vec()),
             )
             .unwrap();
-        assert!(
-            !call_result.code.is_success(),
-            "static call mutation succeeded",
-        );
+        assert!(!call_result.code.is_success(), "static call mutation succeeded",);
     }
 }
 
@@ -258,7 +252,7 @@ fn test_evm_delegatecall() {
     // A -> staticcall -> B -> delegatecall -> C (read) OK
     // A -> staticcall -> B -> delegatecall -> C (write) FAIL
 
-        let store = MemoryBlockstore::new();
+    let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
 
     let accounts = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
@@ -366,7 +360,7 @@ fn test_evm_staticcall_delegatecall() {
     // A -> staticcall -> B -> delegatecall -> C (read) OK
     // A -> staticcall -> B -> delegatecall -> C (write) FAIL
 
-        let store = MemoryBlockstore::new();
+    let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
 
     let accounts = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
@@ -457,9 +451,6 @@ fn test_evm_staticcall_delegatecall() {
                 ContractParams(params.to_vec()),
             )
             .unwrap();
-        assert!(
-            !call_result.code.is_success(),
-            "static call mutation succeeded",
-        );
+        assert!(!call_result.code.is_success(), "static call mutation succeeded",);
     }
 }
