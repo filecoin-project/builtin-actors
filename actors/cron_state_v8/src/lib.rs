@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime_common::runtime::{ActorCode, Runtime};
+use fil_actors_runtime_common::{actor_error, cbor, ActorError, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
@@ -18,7 +18,7 @@ mod state;
 pub mod testing;
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+fil_actors_runtime_common::wasm_trampoline!(Actor);
 
 // * Updated to specs-actors commit: 845089a6d2580e46055c24415a6c32ee688e5186 (v3.0.0)
 

@@ -3,7 +3,7 @@
 
 use anyhow::anyhow;
 use cid::Cid;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;

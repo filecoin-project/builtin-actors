@@ -13,7 +13,7 @@ lazy_static! {
 }
 
 mod util {
-    use fil_actors_runtime::test_utils::MockRuntime;
+    use fil_actors_runtime_common::test_utils::MockRuntime;
     use fvm_shared::sector::StoragePower;
 
     pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
@@ -32,8 +32,8 @@ mod construction {
     use fvm_shared::MethodNum;
 
     use fil_actor_verifreg_state_v8::{Actor as VerifregActor, Method};
-    use fil_actors_runtime::test_utils::*;
-    use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
+    use fil_actors_runtime_common::test_utils::*;
+    use fil_actors_runtime_common::SYSTEM_ACTOR_ADDR;
 
     use crate::*;
     use harness::*;
@@ -80,7 +80,7 @@ mod verifiers {
     use fvm_shared::{MethodNum, METHOD_SEND};
 
     use fil_actor_verifreg_state_v8::{Actor as VerifregActor, AddVerifierParams, Method};
-    use fil_actors_runtime::test_utils::*;
+    use fil_actors_runtime_common::test_utils::*;
 
     use crate::*;
     use harness::*;
@@ -235,7 +235,7 @@ mod clients {
     use fil_actor_verifreg_state_v8::{
         Actor as VerifregActor, AddVerifierClientParams, DataCap, Method,
     };
-    use fil_actors_runtime::test_utils::*;
+    use fil_actors_runtime_common::test_utils::*;
 
     use crate::*;
     use harness::*;
@@ -435,8 +435,8 @@ mod datacap {
     use fil_actor_verifreg_state_v8::{
         Actor as VerifregActor, Method, RestoreBytesParams, UseBytesParams,
     };
-    use fil_actors_runtime::test_utils::*;
-    use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
+    use fil_actors_runtime_common::test_utils::*;
+    use fil_actors_runtime_common::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 
     use crate::*;
     use harness::*;

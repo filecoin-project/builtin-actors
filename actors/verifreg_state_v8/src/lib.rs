@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{
+use fil_actors_runtime_common::runtime::{ActorCode, Runtime};
+use fil_actors_runtime_common::{
     actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
     ActorError, Map, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
@@ -20,7 +20,7 @@ pub use self::state::State;
 pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+fil_actors_runtime_common::wasm_trampoline!(Actor);
 
 mod state;
 pub mod testing;

@@ -1,5 +1,5 @@
 use fil_actor_verifreg_state_v8::testing::check_state_invariants;
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime_common::runtime::Runtime;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -11,8 +11,8 @@ use fil_actor_verifreg_state_v8::{
     Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, DataCap, Method,
     RestoreBytesParams, State, UseBytesParams,
 };
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::{
     make_empty_map, make_map_with_root_and_bitwidth, ActorError, Map, STORAGE_MARKET_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };

@@ -1,10 +1,10 @@
 use fil_actor_power_state_v8::ext::init::{ExecParams, EXEC_METHOD};
 use fil_actor_power_state_v8::ext::miner::MinerConstructorParams;
-use fil_actors_runtime::test_utils::{
+use fil_actors_runtime_common::test_utils::{
     expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
     SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     runtime::builtins::Type, runtime::Policy, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::{BytesDe, RawBytes};
@@ -623,7 +623,7 @@ mod cron_tests {
         miner::{DeferredCronEventParams, ON_DEFERRED_CRON_EVENT_METHOD},
         reward::UPDATE_NETWORK_KPI,
     };
-    use fil_actors_runtime::{test_utils::CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR};
+    use fil_actors_runtime_common::{test_utils::CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR};
     use fvm_shared::bigint::BigInt;
 
     const OWNER: Address = Address::new_id(103);
@@ -1021,7 +1021,7 @@ mod cron_batch_proof_verifies_tests {
         miner::{ConfirmSectorProofsParams, CONFIRM_SECTOR_PROOFS_VALID_METHOD},
         reward::UPDATE_NETWORK_KPI,
     };
-    use fil_actors_runtime::{
+    use fil_actors_runtime_common::{
         test_utils::{make_piece_cid, make_sealed_cid, CRON_ACTOR_CODE_ID},
         CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     };
@@ -1305,9 +1305,9 @@ mod submit_porep_for_bulk_verify_tests {
         ERR_TOO_MANY_PROVE_COMMITS, MAX_MINER_PROVE_COMMITS_PER_EPOCH,
         PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
     };
-    use fil_actors_runtime::shared::HAMT_BIT_WIDTH;
-    use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
-    use fil_actors_runtime::Multimap;
+    use fil_actors_runtime_common::shared::HAMT_BIT_WIDTH;
+    use fil_actors_runtime_common::test_utils::{make_piece_cid, make_sealed_cid};
+    use fil_actors_runtime_common::Multimap;
     use fvm_shared::sector::{InteractiveSealRandomness, SealRandomness, SealVerifyInfo, SectorID};
 
     const MINER: Address = Address::new_id(101);

@@ -12,9 +12,9 @@ use fil_actor_paych_state_v8::{
     Actor as PaychActor, ConstructorParams, LaneState, Merge, Method, ModVerifyParams,
     SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE, SETTLE_DELAY,
 };
-use fil_actors_runtime::runtime::{builtins::Type, Runtime};
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime_common::runtime::{builtins::Type, Runtime};
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::INIT_ACTOR_ADDR;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;

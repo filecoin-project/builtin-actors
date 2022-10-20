@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime_common::runtime::{builtins::Type, ActorCode, Runtime};
+use fil_actors_runtime_common::{actor_error, cbor, ActorDowncast, ActorError, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 // use fvm_shared::actor::builtin::Type;
@@ -21,7 +21,7 @@ pub mod testing;
 mod types;
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+fil_actors_runtime_common::wasm_trampoline!(Actor);
 
 // * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)
 

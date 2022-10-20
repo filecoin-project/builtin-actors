@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Runtime};
-use fil_actors_runtime::{
+use fil_actors_runtime_common::runtime::{builtins::Type, ActorCode, Runtime};
+use fil_actors_runtime_common::{
     actor_error, cbor, resolve_to_actor_id, ActorDowncast, ActorError, Array,
 };
 use fvm_ipld_blockstore::Blockstore;
@@ -19,7 +19,7 @@ pub use self::state::{LaneState, Merge, State};
 pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+fil_actors_runtime_common::wasm_trampoline!(Actor);
 
 mod state;
 pub mod testing;

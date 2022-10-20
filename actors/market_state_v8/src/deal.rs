@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::{Cid, Version};
-use fil_actors_runtime::DealWeight;
+use fil_actors_runtime_common::DealWeight;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{BytesSer, Cbor};
 use fvm_shared::address::Address;

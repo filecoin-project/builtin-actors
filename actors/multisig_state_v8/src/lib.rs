@@ -3,9 +3,9 @@
 
 use std::collections::BTreeSet;
 
-use fil_actors_runtime::cbor::serialize_vec;
-use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
-use fil_actors_runtime::{
+use fil_actors_runtime_common::cbor::serialize_vec;
+use fil_actors_runtime_common::runtime::{ActorCode, Primitives, Runtime};
+use fil_actors_runtime_common::{
     actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id,
     runtime::builtins::Type, ActorDowncast, ActorError, Map, INIT_ACTOR_ADDR,
 };
@@ -22,7 +22,7 @@ pub use self::state::*;
 pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+fil_actors_runtime_common::wasm_trampoline!(Actor);
 
 mod state;
 pub mod testing;

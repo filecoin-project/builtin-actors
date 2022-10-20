@@ -1,5 +1,5 @@
 use crate::{baseline_power_from_prev, State};
-use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime_common::MessageAccumulator;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
 use num_traits::Signed;
 

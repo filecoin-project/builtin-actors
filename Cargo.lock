@@ -274,7 +274,7 @@ checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 name = "fil_actor_account_state_v8"
 version = "8.0.0"
 dependencies = [
- "fil_actors_runtime",
+ "fil_actors_runtime_common",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -287,7 +287,7 @@ dependencies = [
 name = "fil_actor_cron_state_v8"
 version = "8.0.0"
 dependencies = [
- "fil_actors_runtime",
+ "fil_actors_runtime_common",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -303,7 +303,7 @@ version = "8.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actors_runtime",
+ "fil_actors_runtime_common",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -323,7 +323,7 @@ dependencies = [
  "fil_actor_power_state_v8",
  "fil_actor_reward_state_v8",
  "fil_actor_verifreg_state_v8",
- "fil_actors_runtime",
+ "fil_actors_runtime_common",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
@@ -346,7 +346,7 @@ version = "8.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actors_runtime",
+ "fil_actors_runtime_common",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -365,7 +365,7 @@ dependencies = [
  "anyhow",
  "cid",
  "derive_builder",
- "fil_actors_runtime",
+ "fil_actors_runtime_common",
  "fvm_ipld_amt",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -382,7 +382,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actor_reward_state_v8",
- "fil_actors_runtime",
+ "fil_actors_runtime_common",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -400,7 +400,7 @@ dependencies = [
 name = "fil_actor_reward_state_v8"
 version = "8.0.0"
 dependencies = [
- "fil_actors_runtime",
+ "fil_actors_runtime_common",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -418,7 +418,7 @@ version = "8.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actors_runtime",
+ "fil_actors_runtime_common",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -433,7 +433,7 @@ version = "8.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actors_runtime",
+ "fil_actors_runtime_common",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -445,7 +445,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fil_actors_runtime"
+name = "fil_actors_runtime_common"
 version = "9.0.0"
 dependencies = [
  "anyhow",

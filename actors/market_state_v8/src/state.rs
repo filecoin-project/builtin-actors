@@ -4,8 +4,8 @@
 use crate::balance_table::BalanceTable;
 use anyhow::anyhow;
 use cid::Cid;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::{
     actor_error, make_empty_map, ActorDowncast, ActorError, Array, Set, SetMultimap,
 };
 use fvm_ipld_blockstore::Blockstore;

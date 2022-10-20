@@ -10,12 +10,12 @@ use fil_actor_power_state_v8::CronEvent;
 use fil_actor_power_state_v8::EnrollCronEventParams;
 use fil_actor_power_state_v8::CRON_QUEUE_AMT_BITWIDTH;
 use fil_actor_power_state_v8::CRON_QUEUE_HAMT_BITWIDTH;
-use fil_actors_runtime::runtime::{builtins::Type, RuntimePolicy};
-use fil_actors_runtime::test_utils::CRON_ACTOR_CODE_ID;
-use fil_actors_runtime::Multimap;
-use fil_actors_runtime::CALLER_TYPES_SIGNABLE;
-use fil_actors_runtime::CRON_ACTOR_ADDR;
-use fil_actors_runtime::REWARD_ACTOR_ADDR;
+use fil_actors_runtime_common::runtime::{builtins::Type, RuntimePolicy};
+use fil_actors_runtime_common::test_utils::CRON_ACTOR_CODE_ID;
+use fil_actors_runtime_common::Multimap;
+use fil_actors_runtime_common::CALLER_TYPES_SIGNABLE;
+use fil_actors_runtime_common::CRON_ACTOR_ADDR;
+use fil_actors_runtime_common::REWARD_ACTOR_ADDR;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_ipld_hamt::BytesKey;
@@ -44,12 +44,12 @@ use fil_actor_power_state_v8::{
     ext, Claim, CreateMinerParams, CreateMinerReturn, CurrentTotalPowerReturn, Method, State,
     UpdateClaimedPowerParams,
 };
-use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::{
+use fil_actors_runtime_common::builtin::HAMT_BIT_WIDTH;
+use fil_actors_runtime_common::runtime::Runtime;
+use fil_actors_runtime_common::test_utils::{
     MockRuntime, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     make_map_with_root_and_bitwidth, ActorError, Map, INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };

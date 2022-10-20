@@ -8,10 +8,10 @@ use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
-use fil_actors_runtime::cbor;
-use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, ActorError};
+use fil_actors_runtime_common::builtin::singletons::SYSTEM_ACTOR_ADDR;
+use fil_actors_runtime_common::cbor;
+use fil_actors_runtime_common::runtime::{ActorCode, Runtime};
+use fil_actors_runtime_common::{actor_error, ActorError};
 
 pub use self::state::State;
 

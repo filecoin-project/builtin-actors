@@ -1,4 +1,4 @@
-use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime_common::MessageAccumulator;
 use fvm_shared::address::Protocol;
 
 use crate::State;

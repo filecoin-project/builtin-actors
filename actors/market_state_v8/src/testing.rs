@@ -5,7 +5,7 @@ use std::{
 };
 
 use cid::Cid;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     make_map_with_root_and_bitwidth, parse_uint_key, MessageAccumulator, SetMultimap,
 };
 use fvm_ipld_blockstore::Blockstore;

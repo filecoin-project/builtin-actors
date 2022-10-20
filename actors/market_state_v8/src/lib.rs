@@ -20,9 +20,9 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
-use fil_actors_runtime::cbor::serialize_vec;
-use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Policy, Runtime};
-use fil_actors_runtime::{
+use fil_actors_runtime_common::cbor::serialize_vec;
+use fil_actors_runtime_common::runtime::{builtins::Type, ActorCode, Policy, Runtime};
+use fil_actors_runtime_common::{
     actor_error, cbor, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE,
     CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -48,7 +48,7 @@ pub mod testing;
 mod types;
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+fil_actors_runtime_common::wasm_trampoline!(Actor);
 
 fn request_miner_control_addrs<BS, RT>(
     rt: &mut RT,

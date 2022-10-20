@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use fil_actors_runtime::{Map, MessageAccumulator};
+use fil_actors_runtime_common::{Map, MessageAccumulator};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{
     address::{Address, Protocol},

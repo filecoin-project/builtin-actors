@@ -6,8 +6,8 @@ use std::convert::TryInto;
 
 use anyhow::anyhow;
 use ext::init;
-use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Runtime};
-use fil_actors_runtime::{
+use fil_actors_runtime_common::runtime::{builtins::Type, ActorCode, Runtime};
+use fil_actors_runtime_common::{
     actor_error, cbor, make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Multimap,
     CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
@@ -29,7 +29,7 @@ pub use self::state::*;
 pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+fil_actors_runtime_common::wasm_trampoline!(Actor);
 
 #[doc(hidden)]
 pub mod ext;

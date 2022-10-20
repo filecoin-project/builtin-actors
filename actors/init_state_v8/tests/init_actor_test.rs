@@ -6,9 +6,9 @@ use fil_actor_init_state_v8::testing::check_state_invariants;
 use fil_actor_init_state_v8::{
     Actor as InitActor, ConstructorParams, ExecParams, ExecReturn, Method, State,
 };
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::runtime::Runtime;
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::{
     ActorError, Multimap, FIRST_NON_SINGLETON_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::RawBytes;
