@@ -11,5 +11,6 @@ members = [
     "actors/system_state_v8",
     "actors/verifreg_state_v8",
     "actors/market_state_v8",
+    "actors/miner_state_v8",
 ]
 resolver = "2"

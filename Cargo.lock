@@ -341,6 +341,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_miner_state_v8"
+version = "8.0.0"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "cid",
+ "fil_actors_runtime_common",
+ "fvm_ipld_amt",
+ "fvm_ipld_bitfield",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "itertools",
+ "lazy_static",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_multisig_state_v8"
 version = "8.0.0"
 dependencies = [
