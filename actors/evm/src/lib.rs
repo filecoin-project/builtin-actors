@@ -145,13 +145,13 @@ impl EvmContractActor {
         method: u64,
         input_data: &[u8],
         readonly: bool,
-        delegate: Option<Cid>,
+        with_code: Option<Cid>,
     ) -> Result<Vec<u8>, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
-        if delegate.is_some() {
+        if with_code.is_some() {
             rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
         } else {
             rt.validate_immediate_caller_accept_any()?;
@@ -161,7 +161,7 @@ impl EvmContractActor {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
-        let bytecode = match match delegate {
+        let bytecode = match match with_code {
             Some(cid) => load_bytecode(system.rt.store(), &cid),
             None => system.load_bytecode(),
         }? {
