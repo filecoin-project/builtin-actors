@@ -182,28 +182,20 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
     }
 
     /// Load the bytecode.
-    pub fn load_bytecode(&self, delegate: Option<Cid>) -> Result<Option<Bytecode>, ActorError> {
-        if let Some(cid) = delegate {
-            let bytecode = self
-                .rt
-                .store()
-                .get(&cid)
-                .context_code(ExitCode::USR_NOT_FOUND, "failed to read delegate code")?
-                .expect("bytecode not in state tree");
-            Ok(Some(Bytecode::new(bytecode)))
+    pub fn load_bytecode(
+        &self,
+        override_code: Option<Cid>,
+    ) -> Result<Option<Bytecode>, ActorError> {
+        if let Some(cid) = override_code {
+            Ok(Some(load_bytecode(self.rt.store(), &cid)?))
         } else {
             match &self.bytecode {
                 Some(cid) => {
-                    let bytecode = self
-                        .rt
-                        .store()
-                        .get(cid)
-                        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read state")?
-                        .expect("bytecode not in state tree");
+                    let bytecode = load_bytecode(self.rt.store(), &cid)?;
                     if bytecode.is_empty() {
                         return Ok(None);
                     }
-                    Ok(Some(Bytecode::new(bytecode)))
+                    Ok(Some(bytecode))
                 }
                 None => Ok(None),
             }
@@ -301,4 +293,12 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
             _ => Ok(EthAddress::from_id(actor_id)),
         }
     }
+}
+
+fn load_bytecode<BS: Blockstore>(bs: &BS, cid: &Cid) -> Result<Bytecode, ActorError> {
+    let bytecode = bs
+        .get(cid)
+        .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
+        .expect("bytecode not in state tree");
+    Ok(Bytecode::new(bytecode))
 }
