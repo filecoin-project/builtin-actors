@@ -128,7 +128,7 @@ return
 # do_call2(address)
 do_call2:
 jumpdest
-push1 0x20   # ccall ret length
+push1 0x20   # call ret length
 push1 0x00   # call ret offset
 push1 0x02   # arg: method
 push1 0xe0   # shift 224 bits (28 bytes)
@@ -137,9 +137,9 @@ push1 0x00    # arg: offset
 mstore        # args
 push1 0x04    # call args length
 push1 0x00    # call args offset
-push1 0x04    # input (dest) offset
-calldataload  # icall dest
 push1 0x00    # value
+push1 0x04    # input (dest) offset
+calldataload  # call dest
 push1 0x00    # call gas (ignored)
 call          # do it!
 push1 0x20    # ret length
@@ -182,9 +182,9 @@ push1 0x00    # arg: offset
 mstore        # args
 push1 0x04    # call args length
 push1 0x00    # call args offset
+push1 0x00    # value
 push1 0x04    # input (dest) offset
 calldataload  # icall dest
-push1 0x00    # value
 push1 0x00    # call gas (ignored)
 call          # do it!
 push1 0x20    # ret length
