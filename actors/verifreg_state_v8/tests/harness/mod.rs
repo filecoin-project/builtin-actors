@@ -1,4 +1,4 @@
-use fil_actor_verifreg::testing::check_state_invariants;
+use fil_actor_verifreg_state_v8::testing::check_state_invariants;
 use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -7,7 +7,7 @@ use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
 use lazy_static::lazy_static;
 
-use fil_actor_verifreg::{
+use fil_actor_verifreg_state_v8::{
     Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, DataCap, Method,
     RestoreBytesParams, State, UseBytesParams,
 };
@@ -24,7 +24,7 @@ lazy_static! {
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
         receiver: *ROOT_ADDR,
-        caller: *SYSTEM_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -43,7 +43,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct_and_verify(&self, rt: &mut MockRuntime, root_param: &Address) {
-        rt.expect_validate_caller_addr(vec![*SYSTEM_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
             .call::<VerifregActor>(
                 Method::Constructor as MethodNum,
@@ -179,8 +179,8 @@ impl Harness {
         client: &Address,
         amount: &DataCap,
     ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
         let params = UseBytesParams { address: *client, deal_size: amount.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::UseBytes as MethodNum,
@@ -197,8 +197,8 @@ impl Harness {
         client: &Address,
         amount: &DataCap,
     ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_addr(vec![*STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
         let params = RestoreBytesParams { address: *client, deal_size: amount.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::RestoreBytes as MethodNum,
@@ -217,15 +217,19 @@ impl Harness {
 
 fn load_verifiers(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
     let state: State = rt.get_state();
-    make_map_with_root_and_bitwidth::<_, BigIntDe>(&state.verifiers, &rt.store, HAMT_BIT_WIDTH)
-        .unwrap()
+    make_map_with_root_and_bitwidth::<_, BigIntDe>(
+        &state.verifiers,
+        rt.store.as_ref(),
+        HAMT_BIT_WIDTH,
+    )
+    .unwrap()
 }
 
 fn load_clients(rt: &MockRuntime) -> Map<MemoryBlockstore, BigIntDe> {
     let state: State = rt.get_state();
     make_map_with_root_and_bitwidth::<_, BigIntDe>(
         &state.verified_clients,
-        &rt.store,
+        rt.store.as_ref(),
         HAMT_BIT_WIDTH,
     )
     .unwrap()
