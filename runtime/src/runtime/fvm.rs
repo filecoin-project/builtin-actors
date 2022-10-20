@@ -57,6 +57,13 @@ impl Default for FvmRuntime {
 }
 
 impl<B> FvmRuntime<B> {
+    /// Abort with "assertion failed" if the actor failed to validate the caller somewhere.
+    pub fn assert_validated(&self) {
+        if !self.caller_validated {
+            fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some("failed to validate caller"))
+        }
+    }
+
     fn assert_not_validated(&mut self) -> Result<(), ActorError> {
         if self.caller_validated {
             return Err(actor_error!(
@@ -635,12 +642,10 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     let ret = C::invoke_method(&mut rt, method, &params)
         .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));
 
-    // Abort with "assertion failed" if the actor failed to validate the caller somewhere.
-    // We do this after handling the error, because the actor may have encountered an error before
-    // it even could validate the caller.
-    if !rt.caller_validated {
-        fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some("failed to validate caller"))
-    }
+    /// We do this after handling the error, because the actor may have encountered an error before
+    /// it even could validate the caller.
+    rt.assert_validated();
+    
 
     // Then handle the return value.
     if ret.is_empty() {
