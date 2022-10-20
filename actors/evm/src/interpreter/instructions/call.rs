@@ -1,4 +1,5 @@
 use fvm_ipld_encoding::{BytesDe, BytesSer};
+use fvm_shared::address::Address;
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
@@ -153,9 +154,8 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
             precompiles::Precompiles::call_precompile(system.rt, dst, input_data)
                 .map_err(|_| StatusCode::PrecompileFailure)?
         } else {
-            let dst_addr = EthAddress::try_from(dst)?
-                .as_id_address()
-                .ok_or_else(|| StatusCode::BadAddress("not an actor id address".to_string()))?;
+            let dst_addr: EthAddress = dst.try_into()?;
+            let dst_addr: Address = dst_addr.try_into()?;
 
             let call_result = match kind {
                 CallKind::Call => system.send(
@@ -260,9 +260,8 @@ pub fn callactor<BS: Blockstore, RT: Runtime<BS>>(
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     let result = {
-        let dst_addr = EthAddress::try_from(dst)?
-            .as_id_address()
-            .ok_or_else(|| StatusCode::BadAddress(format!("not an actor id address: {}", dst)))?;
+        let dst_addr: EthAddress = dst.try_into()?;
+        let dst_addr: Address = dst_addr.try_into()?;
 
         if method.bits() > 64 {
             return Err(StatusCode::ArgumentOutOfRange(format!("bad method number: {}", method)));

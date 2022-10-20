@@ -4,7 +4,7 @@ use crate::U256;
 use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::ActorError;
-use fvm_shared::econ::TokenAmount;
+use fvm_shared::{address::Address, econ::TokenAmount};
 use num_traits::Zero;
 use {
     crate::interpreter::{ExecutionState, StatusCode, System},
@@ -61,12 +61,16 @@ pub fn get_evm_bytecode_cid<BS: Blockstore, RT: Runtime<BS>>(
     rt: &RT,
     addr: U256,
 ) -> Result<Cid, StatusCode> {
-    let addr = EthAddress::try_from(addr)?
-        .as_id_address()
-        .ok_or_else(|| StatusCode::BadAddress("no support for non-ID addresses yet".to_string()))?;
+    let addr: EthAddress = addr.try_into()?;
+    let addr: Address = addr.try_into()?;
+    // TODO: just return none in most of these cases?
+    let actor_id = rt.resolve_address(&addr).ok_or_else(|| {
+        StatusCode::InvalidArgument("failed to resolve address".to_string())
+        // TODO better error code
+    })?;
 
     let evm_cid = rt.get_code_cid_for_type(Type::EVM);
-    let target_cid = rt.get_actor_code_cid(&addr.id().expect("not an ID address"));
+    let target_cid = rt.get_actor_code_cid(&actor_id);
 
     if Some(evm_cid) != target_cid {
         return Err(StatusCode::InvalidArgument(
