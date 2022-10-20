@@ -102,8 +102,6 @@ fn test_evm_staticcall() {
     let v = VM::new_with_singletons(&store);
 
     let accounts = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
-    let addresses: Vec<_> =
-        accounts.iter().map(|account| id_to_eth(account.id().unwrap())).collect();
 
     let bytecode =
         hex::decode(include_str!("../../actors/evm/tests/contracts/callvariants.hex")).unwrap();
@@ -144,7 +142,7 @@ fn test_evm_staticcall() {
     {
         let A_act = accounts[0].clone();
         let A_robust_addr = created[0].robust_address.clone();
-        let B = addresses[1].clone();
+        let B = id_to_eth(created[1].actor_id);
         let mut params = [0u8; 36];
         params[3] = 1;
         params[16..].copy_from_slice(B.as_ref());
@@ -165,7 +163,7 @@ fn test_evm_staticcall() {
         );
         let BytesDe(return_value) =
             call_result.ret.deserialize().expect("failed to deserialize results");
-        assert_eq!(return_value, B.as_ref().to_vec());
+        assert_eq!(&return_value[12..], &created[1].eth_address.0);
     }
 }
 
