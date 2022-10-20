@@ -4,7 +4,6 @@
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
@@ -13,6 +12,7 @@ use num_traits::FromPrimitive;
 pub use state::*;
 pub use types::*;
 
+use crate::runtime::builtins::Type;
 use crate::runtime::{ActorCode, Runtime};
 use crate::{actor_error, cbor, ActorError};
 
@@ -57,7 +57,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_accept_any()?;
 
-        let result = rt.send(arg.to, arg.method, arg.params, arg.value);
+        let result = rt.send(&arg.to, arg.method, arg.params, arg.value);
         if let Err(e) = result {
             Ok(SendReturn { return_value: RawBytes::default(), code: e.exit_code() })
         } else {
@@ -137,10 +137,7 @@ impl Actor {
     {
         rt.validate_immediate_caller_accept_any()?;
         let resolved = rt.resolve_address(&args);
-        Ok(ResolveAddressResponse {
-            address: resolved.unwrap_or_else(|| Address::new_id(0)),
-            success: resolved.is_some(),
-        })
+        Ok(ResolveAddressResponse { id: resolved.unwrap_or(0), success: resolved.is_some() })
     }
 
     pub fn delete_actor<BS, RT>(rt: &mut RT, beneficiary: Address) -> Result<(), ActorError>

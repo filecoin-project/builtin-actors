@@ -4,6 +4,7 @@
 use core::fmt;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::rc::Rc;
 
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
@@ -11,17 +12,16 @@ use cid::Cid;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
-use fvm_shared::actor::builtin::Type;
+use fvm_shared::address::Payload;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
-
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, RegisteredSealProof,
     ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
@@ -34,13 +34,14 @@ use multihash::MultihashDigest;
 
 use rand::prelude::*;
 
+use crate::runtime::builtins::Type;
 use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier,
 };
 use crate::{actor_error, ActorError};
 
-lazy_static! {
+lazy_static::lazy_static! {
     pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/system");
     pub static ref INIT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/init");
     pub static ref CRON_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/cron");
@@ -52,6 +53,7 @@ lazy_static! {
     pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/multisig");
     pub static ref REWARD_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/reward");
     pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/verifiedregistry");
+    pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/datacap");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -65,6 +67,7 @@ lazy_static! {
         map.insert(*MULTISIG_ACTOR_CODE_ID, Type::Multisig);
         map.insert(*REWARD_ACTOR_CODE_ID, Type::Reward);
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
+        map.insert(*DATACAP_TOKEN_ACTOR_CODE_ID, Type::DataCap);
         map
     };
     pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
@@ -79,11 +82,10 @@ lazy_static! {
         (Type::Multisig, *MULTISIG_ACTOR_CODE_ID),
         (Type::Reward, *REWARD_ACTOR_CODE_ID),
         (Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID),
+        (Type::DataCap, *DATACAP_TOKEN_ACTOR_CODE_ID),
     ]
     .into_iter()
     .collect();
-    pub static ref CALLER_TYPES_SIGNABLE: Vec<Cid> =
-        vec![*ACCOUNT_ACTOR_CODE_ID, *MULTISIG_ACTOR_CODE_ID];
     pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {
         let mut map = BTreeMap::new();
         map.insert(*ACCOUNT_ACTOR_CODE_ID, ());
@@ -112,6 +114,7 @@ pub struct MockRuntime {
     pub caller: Address,
     pub caller_type: Cid,
     pub value_received: TokenAmount,
+    #[allow(clippy::type_complexity)]
     pub hash_func: Box<dyn Fn(&[u8]) -> [u8; 32]>,
     pub network_version: NetworkVersion,
 
@@ -121,7 +124,7 @@ pub struct MockRuntime {
 
     // VM Impl
     pub in_call: bool,
-    pub store: MemoryBlockstore,
+    pub store: Rc<MemoryBlockstore>,
     pub in_transaction: bool,
 
     // Expectations
@@ -137,7 +140,7 @@ pub struct MockRuntime {
 pub struct Expectations {
     pub expect_validate_caller_any: bool,
     pub expect_validate_caller_addr: Option<Vec<Address>>,
-    pub expect_validate_caller_type: Option<Vec<Cid>>,
+    pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
     pub expect_delete_actor: Option<Address>,
@@ -332,7 +335,7 @@ pub struct ExpectRandomness {
     tag: DomainSeparationTag,
     epoch: ChainEpoch,
     entropy: Vec<u8>,
-    out: Randomness,
+    out: [u8; RANDOMNESS_LENGTH],
 }
 
 #[derive(Debug)]
@@ -509,7 +512,7 @@ impl MockRuntime {
     }
 
     #[allow(dead_code)]
-    pub fn expect_validate_caller_type(&mut self, types: Vec<Cid>) {
+    pub fn expect_validate_caller_type(&mut self, types: Vec<Type>) {
         assert!(!types.is_empty(), "addrs must be non-empty");
         self.expectations.borrow_mut().expect_validate_caller_type = Some(types);
     }
@@ -587,7 +590,7 @@ impl MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
-        out: Randomness,
+        out: [u8; RANDOMNESS_LENGTH],
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_tickets.push_back(a);
@@ -599,7 +602,7 @@ impl MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
-        out: Randomness,
+        out: [u8; RANDOMNESS_LENGTH],
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_beacon.push_back(a);
@@ -664,7 +667,7 @@ impl MessageInfo for MockRuntime {
     }
 }
 
-impl Runtime<MemoryBlockstore> for MockRuntime {
+impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
     fn network_version(&self) -> NetworkVersion {
         self.network_version
     }
@@ -732,14 +735,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             "unexpected validate caller code"
         );
 
-        let find_by_type = |typ| {
-            (*ACTOR_TYPES)
-                .iter()
-                .find_map(|(cid, t)| if t == typ { Some(cid) } else { None })
-                .cloned()
-                .unwrap()
-        };
-        let types: Vec<Cid> = types.into_iter().map(find_by_type).collect();
+        let types: Vec<Type> = types.into_iter().copied().collect();
         let expected_caller_type =
             self.expectations.borrow_mut().expect_validate_caller_type.clone().unwrap();
         assert_eq!(
@@ -748,8 +744,9 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
             types, expected_caller_type,
         );
 
+        let call_type = self.resolve_builtin_actor_type(&self.caller_type).unwrap();
         for expected in &types {
-            if &self.caller_type == expected {
+            if &call_type == expected {
                 self.expectations.borrow_mut().expect_validate_caller_type = None;
                 return Ok(());
             }
@@ -765,17 +762,26 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         self.balance.borrow().clone()
     }
 
-    fn resolve_address(&self, address: &Address) -> Option<Address> {
+    fn resolve_address(&self, address: &Address) -> Option<ActorID> {
         self.require_in_call();
-        if address.protocol() == Protocol::ID {
-            return Some(*address);
+        if let &Payload::ID(id) = address.payload() {
+            return Some(id);
         }
-        self.id_addresses.get(address).cloned()
+
+        match self.get_id_address(address) {
+            None => None,
+            Some(addr) => {
+                if let &Payload::ID(id) = addr.payload() {
+                    return Some(id);
+                }
+                None
+            }
+        }
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         self.require_in_call();
-        self.actor_code_cids.get(addr).cloned()
+        self.actor_code_cids.get(&Address::new_id(*id)).cloned()
     }
 
     fn get_randomness_from_tickets(
@@ -783,7 +789,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         let expected = self
             .expectations
             .borrow_mut()
@@ -816,7 +822,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         let expected = self
             .expectations
             .borrow_mut()
@@ -874,13 +880,13 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         ret
     }
 
-    fn store(&self) -> &MemoryBlockstore {
+    fn store(&self) -> &Rc<MemoryBlockstore> {
         &self.store
     }
 
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
@@ -892,7 +898,7 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
 
         assert!(
             !self.expectations.borrow_mut().expect_sends.is_empty(),
-            "unexpected expectedMessage to: {:?} method: {:?}, value: {:?}, params: {:?}",
+            "unexpected message to: {:?} method: {:?}, value: {:?}, params: {:?}",
             to,
             method,
             value,
@@ -902,13 +908,13 @@ impl Runtime<MemoryBlockstore> for MockRuntime {
         let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
 
         assert!(
-            expected_msg.to == to
+            expected_msg.to == *to
                 && expected_msg.method == method
                 && expected_msg.params == params
                 && expected_msg.value == value,
-            "expectedMessage being sent does not match expectation.\n\
-             Message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
-             Expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
+            "message sent does not match expectation.\n\
+             message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
+             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
             to,
             method,
             value,
@@ -1064,7 +1070,9 @@ impl Primitives for MockRuntime {
         assert_eq!(exp.reg, reg, "Unexpected compute_unsealed_sector_cid : reg mismatch");
         assert!(
             exp.pieces[..].eq(pieces),
-            "Unexpected compute_unsealed_sector_cid : pieces mismatch"
+            "Unexpected compute_unsealed_sector_cid : pieces mismatch, exp: {:?}, got: {:?}",
+            exp.pieces,
+            pieces,
         );
 
         if exp.exit_code != ExitCode::OK {
@@ -1223,7 +1231,7 @@ pub fn blake2b_256(data: &[u8]) -> [u8; 32] {
 }
 
 // multihash library doesn't support poseidon hashing, so we fake it
-#[derive(Clone, Copy, Debug, Eq, Multihash, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Multihash)]
 #[mh(alloc_size = 64)]
 enum MhCode {
     #[mh(code = 0xb401, hasher = multihash::Sha2_256)]

@@ -1,18 +1,12 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-// TODO: disable everything else when not using runtime-wasm
-
-#[macro_use]
-extern crate lazy_static;
-// workaround for a compiler bug, see https://github.com/rust-lang/rust/issues/55779
-extern crate serde;
-
 use builtin::HAMT_BIT_WIDTH;
 use cid::Cid;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::{BytesKey, Error as HamtError, Hamt};
+use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 pub use fvm_shared::BLOCKS_PER_EPOCH as EXPECTED_LEADERS_PER_EPOCH;
 use serde::de::DeserializeOwned;
@@ -24,6 +18,12 @@ pub use self::actor_error::*;
 pub use self::builtin::*;
 pub use self::util::*;
 use crate::runtime::Runtime;
+
+#[cfg(feature = "fil-actor")]
+use crate::runtime::hash_algorithm::FvmHashSha256;
+
+#[cfg(not(feature = "fil-actor"))]
+use fvm_ipld_hamt::Sha256;
 
 pub mod actor_error;
 pub mod builtin;
@@ -43,8 +43,14 @@ macro_rules! wasm_trampoline {
     };
 }
 
+#[cfg(feature = "fil-actor")]
+type Hasher = FvmHashSha256;
+
+#[cfg(not(feature = "fil-actor"))]
+type Hasher = Sha256;
+
 /// Map type to be used within actors. The underlying type is a HAMT.
-pub type Map<'bs, BS, V> = Hamt<&'bs BS, V, BytesKey>;
+pub type Map<'bs, BS, V> = Hamt<&'bs BS, V, BytesKey, Hasher>;
 
 /// Array type used within actors. The underlying type is an AMT.
 pub type Array<'bs, V, BS> = Amt<V, &'bs BS>;
@@ -98,4 +104,32 @@ pub fn u64_key(k: u64) -> BytesKey {
 pub fn parse_uint_key(s: &[u8]) -> Result<u64, UVarintError> {
     let (v, _) = unsigned_varint::decode::u64(s)?;
     Ok(v)
+}
+
+pub trait Keyer {
+    fn key(&self) -> BytesKey;
+}
+
+impl Keyer for Address {
+    fn key(&self) -> BytesKey {
+        self.to_bytes().into()
+    }
+}
+
+impl Keyer for u64 {
+    fn key(&self) -> BytesKey {
+        u64_key(*self)
+    }
+}
+
+impl Keyer for String {
+    fn key(&self) -> BytesKey {
+        BytesKey(self.as_bytes().to_owned())
+    }
+}
+
+impl Keyer for &str {
+    fn key(&self) -> BytesKey {
+        BytesKey(self.as_bytes().to_owned())
+    }
 }

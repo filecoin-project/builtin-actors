@@ -1,90 +1,9 @@
-[package]
-name = "fil_builtin_actors_bundle"
-description = "Bundle of FVM-compatible Wasm bytecode for Filecoin builtin actors"
-version = "8.0.0"
-license = "MIT OR Apache-2.0"
-authors = ["Protocol Labs", "Filecoin Core Devs"]
-edition = "2021"
-repository = "https://github.com/filecoin-project/builtin-actors"
-keywords = ["filecoin", "web3", "wasm"]
-exclude = ["examples", ".github"]
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-fil_actor_account = { version = "8.0.0", path = "./actors/account", features = ["fil-actor"] }
-fil_actor_verifreg = { version = "8.0.0", path = "./actors/verifreg", features = ["fil-actor"] }
-fil_actor_cron = { version = "8.0.0", path = "./actors/cron", features = ["fil-actor"] }
-fil_actor_market = { version = "8.0.0", path = "./actors/market", features = ["fil-actor"] }
-fil_actor_multisig = { version = "8.0.0", path = "./actors/multisig", features = ["fil-actor"] }
-fil_actor_paych = { version = "8.0.0", path = "./actors/paych", features = ["fil-actor"] }
-fil_actor_power = { version = "8.0.0", path = "./actors/power", features = ["fil-actor"] }
-fil_actor_miner = { version = "8.0.0", path = "./actors/miner", features = ["fil-actor"] }
-fil_actor_reward = { version = "8.0.0", path = "./actors/reward", features = ["fil-actor"] }
-fil_actor_system = { version = "8.0.0", path = "./actors/system", features = ["fil-actor"] }
-fil_actor_init = { version = "8.0.0", path = "./actors/init", features = ["fil-actor"] }
-
-[build-dependencies]
-fil_actor_bundler = "3.0.4"
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-
-[dependencies]
-clap = { version = "3.1.8", features = ["derive"] }
-
-[features]
-default = [] ## translates to mainnet
-mainnet = []
-caterpillarnet = []
-butterflynet = []
-calibrationnet = []
-devnet = []
-testing = []
-testing-fake-proofs = []
-
 [workspace]
 members = [
-     "actors/*",
-     "state",
-     "runtime",
-     "test_vm",
+    "runtime",
+    "actors/account_state_v8",
+    "actors/cron_state_v8",
+    "actors/init_state_v8",
+    "actors/multisig_state_v8",
 ]
-
-#[patch.crates-io]
-#fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm" }
-
-## Uncomment when working locally on ref-fvm and this repo simultaneously.
-## Assumes the ref-fvm checkout is in a sibling directory with the same name.
-## (Valid while FVM modules aren't published to crates.io)
-#[patch."https://github.com/filecoin-project/ref-fvm"]
-#fvm_shared = { path = "../ref-fvm/shared" }
-#fvm_sdk = { path = "../ref-fvm/sdk" }
-#fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
-#fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
-#fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
-#fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
-#fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
-
-## Uncomment entries below when working locally on ref-fvm and this repo simultaneously.
-## Assumes the ref-fvm checkout is in a sibling directory with the same name.
-## (Valid once FVM modules are published to crates.io)
-# [patch.crates-io]
-# fvm_shared = { path = "../ref-fvm/shared" }
-# fvm_sdk = { path = "../ref-fvm/sdk" }
-# fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
-# fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
-# fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
-# fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
-# fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
-
-[profile.wasm]
-inherits = "release"
-# This needs to be unwind, not abort, so that we can handle panics within our panic hook.
-panic = "unwind"
-overflow-checks = true
-lto = "thin"
-opt-level = "z"
-strip = true
+resolver = "2"

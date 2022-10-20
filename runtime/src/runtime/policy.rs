@@ -1,8 +1,10 @@
 use std::collections::HashSet;
 
+use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
 use num_traits::FromPrimitive;
+use serde::{Deserialize, Serialize};
 
 // A trait for runtime policy configuration
 pub trait RuntimePolicy {
@@ -10,6 +12,7 @@ pub trait RuntimePolicy {
 }
 
 // The policy itself
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Policy {
     /// Maximum amount of sectors that can be aggregated.
     pub max_aggregated_sectors: u64,
@@ -134,7 +137,17 @@ pub struct Policy {
 
     // --- verifreg policy
     /// Minimum verified deal size
-    pub minimum_verified_deal_size: StoragePower,
+    #[serde(with = "bigint_ser")]
+    pub minimum_verified_allocation_size: StoragePower,
+    /// Minimum term for a verified data allocation (epochs)
+    pub minimum_verified_allocation_term: i64,
+    /// Maximum term for a verified data allocaion (epochs)
+    pub maximum_verified_allocation_term: i64,
+    /// Maximum time a verified allocation can be active without being claimed (epochs).
+    /// Supports recovery of erroneous allocations and prevents indefinite squatting on datacap.
+    pub maximum_verified_allocation_expiration: i64,
+    // Period of time at the end of a sector's life during which claims can be dropped
+    pub end_of_life_claim_drop_period: ChainEpoch,
 
     //  --- market policy ---
     /// The number of blocks between payouts for deals
@@ -148,8 +161,13 @@ pub struct Policy {
     /// supply that must be covered by provider collateral
     pub prov_collateral_percent_supply_denom: i64,
 
+    /// The default duration after a verified deal's nominal term to set for the corresponding
+    /// allocation's maximum term.
+    pub market_default_allocation_term_buffer: i64,
+
     // --- power ---
     /// Minimum miner consensus power
+    #[serde(with = "bigint_ser")]
     pub minimum_consensus_power: StoragePower,
 }
 
@@ -216,16 +234,22 @@ impl Default for Policy {
                 RegisteredSealProof::StackedDRG64GiBV1P1,
             ]),
 
-            minimum_verified_deal_size: StoragePower::from_i32(
-                policy_constants::MINIMUM_VERIFIED_DEAL_SIZE,
+            minimum_verified_allocation_size: StoragePower::from_i32(
+                policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE,
             )
             .unwrap(),
-
+            minimum_verified_allocation_term: policy_constants::MINIMUM_VERIFIED_ALLOCATION_TERM,
+            maximum_verified_allocation_term: policy_constants::MAXIMUM_VERIFIED_ALLOCATION_TERM,
+            maximum_verified_allocation_expiration:
+                policy_constants::MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
+            end_of_life_claim_drop_period: policy_constants::END_OF_LIFE_CLAIM_DROP_PERIOD,
             deal_updates_interval: policy_constants::DEAL_UPDATES_INTERVAL,
             prov_collateral_percent_supply_num:
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_NUM,
             prov_collateral_percent_supply_denom:
                 policy_constants::PROV_COLLATERAL_PERCENT_SUPPLY_DENOM,
+            market_default_allocation_term_buffer:
+                policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
 
             minimum_consensus_power: StoragePower::from(policy_constants::MINIMUM_CONSENSUS_POWER),
         }
@@ -233,9 +257,10 @@ impl Default for Policy {
 }
 
 pub mod policy_constants {
-    use crate::builtin::*;
     use fvm_shared::clock::ChainEpoch;
     use fvm_shared::clock::EPOCH_DURATION_SECONDS;
+
+    use crate::builtin::*;
 
     /// Maximum amount of sectors that can be aggregated.
     pub const MAX_AGGREGATED_SECTORS: u64 = 819;
@@ -358,9 +383,13 @@ pub mod policy_constants {
     pub const CHAIN_FINALITY: ChainEpoch = 900;
 
     #[cfg(not(feature = "small-deals"))]
-    pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 1 << 20;
+    pub const MINIMUM_VERIFIED_ALLOCATION_SIZE: i32 = 1 << 20;
     #[cfg(feature = "small-deals")]
-    pub const MINIMUM_VERIFIED_DEAL_SIZE: i32 = 256;
+    pub const MINIMUM_VERIFIED_ALLOCATION_SIZE: i32 = 256;
+    pub const MINIMUM_VERIFIED_ALLOCATION_TERM: i64 = 180 * EPOCHS_IN_DAY;
+    pub const MAXIMUM_VERIFIED_ALLOCATION_TERM: i64 = 5 * EPOCHS_IN_YEAR;
+    pub const MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION: i64 = 60 * EPOCHS_IN_DAY;
+    pub const END_OF_LIFE_CLAIM_DROP_PERIOD: ChainEpoch = 30 * EPOCHS_IN_DAY;
 
     /// DealUpdatesInterval is the number of blocks between payouts for deals
     pub const DEAL_UPDATES_INTERVAL: i64 = EPOCHS_IN_DAY;
@@ -375,6 +404,8 @@ pub mod policy_constants {
     /// Denominator of the percentage of normalized cirulating
     /// supply that must be covered by provider collateral
     pub const PROV_COLLATERAL_PERCENT_SUPPLY_DENOM: i64 = 100;
+
+    pub const MARKET_DEFAULT_ALLOCATION_TERM_BUFFER: i64 = 90 * EPOCHS_IN_DAY;
 
     #[cfg(feature = "min-power-2k")]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 2 << 10;
