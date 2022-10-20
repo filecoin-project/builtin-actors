@@ -5,7 +5,6 @@ use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 
@@ -19,7 +18,6 @@ pub struct State {
     /// Recipient of payouts from channel.
     pub to: Address,
     /// Amount successfully redeemed through the payment channel, paid out on `Collect`.
-    #[serde(with = "bigint_ser")]
     pub to_send: TokenAmount,
     /// Height at which the channel can be collected.
     pub settling_at: ChainEpoch,
@@ -46,8 +44,7 @@ impl State {
 /// as well as the amount it has already redeemed.
 #[derive(Default, Clone, PartialEq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct LaneState {
-    #[serde(with = "bigint_ser")]
-    pub redeemed: BigInt,
+    pub redeemed: TokenAmount,
     pub nonce: u64,
 }
 

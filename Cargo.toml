@@ -5,5 +5,8 @@ members = [
     "actors/cron_state_v8",
     "actors/init_state_v8",
     "actors/multisig_state_v8",
+    "actors/paych_state_v8",
+    "actors/reward_state_v8",
+    "actors/power_state_v8",
 ]
 resolver = "2"

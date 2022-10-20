@@ -1,9 +1,13 @@
 [package]
-name = "fil_actor_paych"
+name = "fil_actor_paych_state_v8"
 description = "Builtin paych actor for Filecoin"
 version = "8.0.0"
 license = "MIT OR Apache-2.0"
-authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
+authors = [
+    "ChainSafe Systems <info@chainsafe.io>",
+    "Protocol Labs",
+    "Filecoin Core Devs",
+]
 edition = "2018"
 repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm"]
@@ -14,20 +18,26 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "8.0.0", path = "../../runtime", features = ["fil-actor"] }
-fvm_shared = { version = "0.8.0", default-features = false }
+fil_actors_runtime = { version = "9.0.0", path = "../../runtime", features = [
+    "fil-actor",
+] }
+fvm_shared = { version = "2", default-features = false }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 serde = { version = "1.0.136", features = ["derive"] }
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+cid = { version = "0.8.3", default-features = false, features = [
+    "serde-codec",
+] }
 anyhow = "1.0.56"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.2"
 
 [dev-dependencies]
-fil_actors_runtime = { version = "8.0.0", path = "../../runtime", features = ["test_utils", "sector-default"] }
+fil_actors_runtime = { version = "9.0.0", path = "../../runtime", features = [
+    "test_utils",
+    "sector-default",
+] }
 fvm_ipld_amt = { version = "0.4.2", features = ["go-interop"] }
 derive_builder = "0.10.2"
 [features]
 fil-actor = []
-

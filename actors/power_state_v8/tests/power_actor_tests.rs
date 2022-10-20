@@ -1,10 +1,12 @@
-use fil_actor_power::ext::init::{ExecParams, EXEC_METHOD};
-use fil_actor_power::ext::miner::MinerConstructorParams;
+use fil_actor_power_state_v8::ext::init::{ExecParams, EXEC_METHOD};
+use fil_actor_power_state_v8::ext::miner::MinerConstructorParams;
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, CALLER_TYPES_SIGNABLE,
-    MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
+    SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{
+    runtime::builtins::Type, runtime::Policy, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR,
+};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
@@ -15,7 +17,7 @@ use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use num_traits::Zero;
 use std::ops::Neg;
 
-use fil_actor_power::{
+use fil_actor_power_state_v8::{
     consensus_miner_min_power, Actor as PowerActor, CreateMinerParams, EnrollCronEventParams,
     Method, State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
 };
@@ -48,7 +50,7 @@ fn create_miner() {
         peer,
         multiaddrs,
         RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        &TokenAmount::from(10),
+        &TokenAmount::from_atto(10),
     )
     .unwrap();
 
@@ -119,8 +121,8 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
 
     // owner send CreateMiner to Actor
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *OWNER);
-    rt.value_received = TokenAmount::from(10);
-    rt.set_balance(TokenAmount::from(10));
+    rt.value_received = TokenAmount::from_atto(10);
+    rt.set_balance(TokenAmount::from_atto(10));
     rt.expect_validate_caller_type(CALLER_TYPES_SIGNABLE.to_vec());
 
     let message_params = ExecParams {
@@ -137,10 +139,10 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
     };
 
     rt.expect_send(
-        *INIT_ACTOR_ADDR,
+        INIT_ACTOR_ADDR,
         EXEC_METHOD,
         RawBytes::serialize(message_params).unwrap(),
-        TokenAmount::from(10),
+        TokenAmount::from_atto(10),
         RawBytes::default(),
         ExitCode::SYS_INSUFFICIENT_FUNDS,
     );
@@ -166,7 +168,7 @@ fn claimed_power_given_caller_is_not_storage_miner_should_fail() {
     };
 
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, *MINER);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     expect_abort(
         ExitCode::USR_FORBIDDEN,
@@ -190,7 +192,7 @@ fn claimed_power_given_claim_does_not_exist_should_fail() {
     };
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     expect_abort(
         ExitCode::USR_NOT_FOUND,
@@ -234,9 +236,9 @@ fn power_and_pledge_accounted_below_threshold() {
 
     // Add power and pledge for miner2
     h.update_claimed_power(&mut rt, MINER2, small_power_unit, small_power_unit);
-    h.update_pledge_total(&mut rt, MINER1, &TokenAmount::from(1_000_000));
+    h.update_pledge_total(&mut rt, MINER1, &TokenAmount::from_atto(1_000_000));
     h.expect_total_power_eager(&mut rt, small_power_unit_x2, small_power_unit_x3);
-    h.expect_total_pledge_eager(&mut rt, &TokenAmount::from(1_000_000));
+    h.expect_total_pledge_eager(&mut rt, &TokenAmount::from_atto(1_000_000));
 
     rt.verify();
 
@@ -251,9 +253,9 @@ fn power_and_pledge_accounted_below_threshold() {
 
     // Subtract power and some pledge for miner2
     h.update_claimed_power(&mut rt, MINER2, &small_power_unit.neg(), &small_power_unit.neg());
-    h.update_pledge_total(&mut rt, MINER2, &TokenAmount::from(100_000).neg());
+    h.update_pledge_total(&mut rt, MINER2, &TokenAmount::from_atto(100_000).neg());
     h.expect_total_power_eager(&mut rt, small_power_unit, small_power_unit_x2);
-    h.expect_total_pledge_eager(&mut rt, &TokenAmount::from(900_000));
+    h.expect_total_pledge_eager(&mut rt, &TokenAmount::from_atto(900_000));
 
     let claim2 = h.get_claim(&rt, &MINER2).unwrap();
     assert!(claim2.raw_byte_power.is_zero());
@@ -447,7 +449,7 @@ fn enroll_cron_epoch_given_negative_epoch_should_fail() {
     let (h, mut rt) = setup();
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = EnrollCronEventParams {
         event_epoch: -1,
@@ -598,13 +600,13 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
     h.delete_claim(&mut rt, &*MINER);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
-    rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "unknown miner",
         rt.call::<PowerActor>(
             Method::UpdatePledgeTotal as u64,
-            &RawBytes::serialize(BigIntSer(&TokenAmount::from(1_000_000))).unwrap(),
+            &RawBytes::serialize(TokenAmount::from_atto(1_000_000)).unwrap(),
         ),
     );
 
@@ -616,8 +618,8 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
 mod cron_tests {
     use super::*;
 
-    use fil_actor_power::ext::reward::Method as RewardMethod;
-    use fil_actor_power::ext::{
+    use fil_actor_power_state_v8::ext::reward::Method as RewardMethod;
+    use fil_actor_power_state_v8::ext::{
         miner::{DeferredCronEventParams, ON_DEFERRED_CRON_EVENT_METHOD},
         reward::UPDATE_NETWORK_KPI,
     };
@@ -633,18 +635,18 @@ mod cron_tests {
         let expected_power = BigInt::zero();
         rt.set_epoch(1);
 
-        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
 
         h.expect_query_network_info(&mut rt);
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             RewardMethod::UpdateNetworkKPI as u64,
             RawBytes::serialize(BigIntSer(&expected_power)).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
@@ -679,7 +681,7 @@ mod cron_tests {
 
         let expected_power: BigInt = power_unit * 4u8;
 
-        let delta = TokenAmount::from(1u8);
+        let delta = TokenAmount::from_atto(1u8);
         h.update_pledge_total(&mut rt, miner1, &delta);
         h.on_epoch_tick_end(&mut rt, 0, &expected_power, Vec::new(), Vec::new());
 
@@ -715,7 +717,7 @@ mod cron_tests {
 
         let expected_raw_byte_power = BigInt::zero();
         rt.set_epoch(4);
-        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
         h.expect_query_network_info(&mut rt);
         let state: State = rt.get_state();
 
@@ -748,14 +750,14 @@ mod cron_tests {
         );
 
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&expected_raw_byte_power)).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
 
@@ -773,17 +775,17 @@ mod cron_tests {
         // run cron once to put it in a clean state at epoch 4
         let expected_raw_byte_power = BigInt::zero();
         rt.set_epoch(4);
-        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
         h.expect_query_network_info(&mut rt);
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&expected_raw_byte_power)).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
 
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
@@ -796,7 +798,7 @@ mod cron_tests {
 
         // run cron again in the future
         rt.set_epoch(6);
-        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
         h.expect_query_network_info(&mut rt);
 
         let state: State = rt.get_state();
@@ -815,14 +817,14 @@ mod cron_tests {
             ExitCode::OK,
         );
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&expected_raw_byte_power)).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
@@ -867,7 +869,7 @@ mod cron_tests {
         h.delete_claim(&mut rt, &miner1);
 
         rt.set_epoch(2);
-        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
 
         // process batch verifies first
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
@@ -892,14 +894,14 @@ mod cron_tests {
 
         // reward actor is still invoked
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
         rt.verify();
 
@@ -932,7 +934,7 @@ mod cron_tests {
         h.expect_miners_above_min_power(&mut rt, 1);
 
         rt.set_epoch(2);
-        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
 
         // process batch verifies first
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
@@ -967,12 +969,12 @@ mod cron_tests {
             ExitCode::OK,
         );
         // reward actor is still invoked
-        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -991,19 +993,19 @@ mod cron_tests {
 
         // next epoch, only the reward actor is invoked
         rt.set_epoch(3);
-        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
 
         h.expect_query_network_info(&mut rt);
 
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
@@ -1015,7 +1017,7 @@ mod cron_tests {
 #[cfg(test)]
 mod cron_batch_proof_verifies_tests {
     use super::*;
-    use fil_actor_power::ext::{
+    use fil_actor_power_state_v8::ext::{
         miner::{ConfirmSectorProofsParams, CONFIRM_SECTOR_PROOFS_VALID_METHOD},
         reward::UPDATE_NETWORK_KPI,
     };
@@ -1233,7 +1235,7 @@ mod cron_batch_proof_verifies_tests {
             cs.miner,
             CONFIRM_SECTOR_PROOFS_VALID_METHOD,
             RawBytes::serialize(params).unwrap(),
-            TokenAmount::from(0u8),
+            TokenAmount::from_atto(0u8),
             RawBytes::default(),
             ExitCode::OK,
         );
@@ -1242,18 +1244,18 @@ mod cron_batch_proof_verifies_tests {
 
         // expect power sends to reward actor
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
-            TokenAmount::from(0u8),
+            TokenAmount::from_atto(0u8),
             RawBytes::default(),
             ExitCode::OK,
         );
 
-        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
 
         rt.set_epoch(0);
-        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
 
@@ -1274,19 +1276,19 @@ mod cron_batch_proof_verifies_tests {
         h.expect_query_network_info(&mut rt);
 
         rt.expect_batch_verify_seals(infos, Err(anyhow::Error::msg("fail")));
-        rt.expect_validate_caller_addr(vec![*CRON_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
 
         // expect power sends to reward actor
         rt.expect_send(
-            *REWARD_ACTOR_ADDR,
+            REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
-            BigInt::zero(),
+            TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
         rt.set_epoch(0);
-        rt.set_caller(*CRON_ACTOR_CODE_ID, *CRON_ACTOR_ADDR);
+        rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
 
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
         rt.verify();
@@ -1298,8 +1300,8 @@ mod cron_batch_proof_verifies_tests {
 mod submit_porep_for_bulk_verify_tests {
     use super::*;
 
-    use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
-    use fil_actor_power::{
+    use fil_actor_power_state_v8::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
+    use fil_actor_power_state_v8::{
         ERR_TOO_MANY_PROVE_COMMITS, MAX_MINER_PROVE_COMMITS_PER_EPOCH,
         PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
     };

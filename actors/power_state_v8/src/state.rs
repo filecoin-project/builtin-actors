@@ -46,14 +46,12 @@ pub struct State {
     pub total_quality_adj_power: StoragePower,
     #[serde(with = "bigint_ser")]
     pub total_qa_bytes_committed: StoragePower,
-    #[serde(with = "bigint_ser")]
     pub total_pledge_collateral: TokenAmount,
 
     #[serde(with = "bigint_ser")]
     pub this_epoch_raw_byte_power: StoragePower,
     #[serde(with = "bigint_ser")]
     pub this_epoch_quality_adj_power: StoragePower,
-    #[serde(with = "bigint_ser")]
     pub this_epoch_pledge_collateral: TokenAmount,
     pub this_epoch_qa_power_smoothed: FilterEstimate,
 
