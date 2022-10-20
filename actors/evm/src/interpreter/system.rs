@@ -50,6 +50,8 @@ pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
     nonce: u64,
     /// The last saved state root. None if the current state hasn't been saved yet.
     saved_state_root: Option<Cid>,
+    /// Read Only context (staticcall)
+    pub readonly: bool,
 }
 
 impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
@@ -69,11 +71,12 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
             nonce: 1,
             saved_state_root: None,
             bytecode: None,
+            readonly: false,
         })
     }
 
     /// Load the actor from state.
-    pub fn load(rt: &'r mut RT) -> Result<Self, ActorError>
+    pub fn load(rt: &'r mut RT, readonly: bool) -> Result<Self, ActorError>
     where
         BS: Clone,
     {
@@ -91,6 +94,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
             nonce: state.nonce,
             saved_state_root: Some(state_root),
             bytecode: Some(state.bytecode),
+            readonly,
         })
     }
 
@@ -120,6 +124,11 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         if self.saved_state_root.is_some() {
             return Ok(());
         }
+
+        if self.readonly {
+            return Err(ActorError::forbidden("contract invocation is read only".to_string()));
+        }
+
         let bytecode_cid = match self.bytecode {
             Some(cid) => cid,
             None => self.set_bytecode(&[])?,
@@ -147,10 +156,15 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
 
     /// Reload the actor state if changed.
     pub fn reload(&mut self) -> Result<(), ActorError> {
+        if self.readonly {
+            return Ok(());
+        }
+
         let root = self.rt.get_state_root()?;
         if self.saved_state_root == Some(root) {
             return Ok(());
         }
+
         let state: State = self
             .rt
             .store()
@@ -169,21 +183,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
 
     /// Load the bytecode.
     pub fn load_bytecode(&self) -> Result<Option<Bytecode>, ActorError> {
-        match &self.bytecode {
-            Some(cid) => {
-                let bytecode = self
-                    .rt
-                    .store()
-                    .get(cid)
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read state")?
-                    .expect("bytecode not in state tree");
-                if bytecode.is_empty() {
-                    return Ok(None);
-                }
-                Ok(Some(Bytecode::new(bytecode)))
-            }
-            None => Ok(None),
-        }
+        Ok(self.bytecode.as_ref().map(|k| load_bytecode(self.rt.store(), k)).transpose()?.flatten())
     }
 
     /// Set the bytecode.
@@ -276,5 +276,17 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
             // But use an EVM address as the fallback.
             _ => Ok(EthAddress::from_id(actor_id)),
         }
+    }
+}
+
+pub fn load_bytecode<BS: Blockstore>(bs: &BS, cid: &Cid) -> Result<Option<Bytecode>, ActorError> {
+    let bytecode = bs
+        .get(cid)
+        .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
+        .expect("bytecode not in state tree");
+    if bytecode.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(Bytecode::new(bytecode)))
     }
 }

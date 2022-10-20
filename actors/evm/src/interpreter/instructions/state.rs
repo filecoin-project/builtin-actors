@@ -11,7 +11,7 @@ use {
 #[inline]
 pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
+    system: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
     let actor = state.stack.pop();
 
@@ -19,8 +19,8 @@ pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
         .try_into()
         .and_then(|addr: EthAddress| addr.try_into())
         .ok()
-        .and_then(|addr: Address| platform.rt.resolve_address(&addr))
-        .and_then(|id| platform.rt.actor_balance(id).as_ref().map(U256::from))
+        .and_then(|addr: Address| system.rt.resolve_address(&addr))
+        .and_then(|id| system.rt.actor_balance(id).as_ref().map(U256::from))
         .unwrap_or_default();
 
     state.stack.push(balance);
@@ -30,9 +30,9 @@ pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
 #[inline]
 pub fn selfbalance<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
+    system: &'r System<'r, BS, RT>,
 ) {
     // Returns native FIL balance of the receiver. Value precision is identical to Ethereum, so
     // no conversion needed (atto, 1e18).
-    state.stack.push(U256::from(&platform.rt.current_balance()))
+    state.stack.push(U256::from(&system.rt.current_balance()))
 }

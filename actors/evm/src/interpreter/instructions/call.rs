@@ -12,7 +12,7 @@ use {
     crate::interpreter::System,
     crate::interpreter::U256,
     crate::RawBytes,
-    crate::{Method, EVM_CONTRACT_REVERTED},
+    crate::{DelegateCallParams, Method, EVM_CONTRACT_REVERTED},
     fil_actors_runtime::runtime::Runtime,
     fvm_ipld_blockstore::Blockstore,
     fvm_shared::econ::TokenAmount,
@@ -110,7 +110,7 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
 
 pub fn call<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &mut System<BS, RT>,
+    system: &mut System<BS, RT>,
     kind: CallKind,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
@@ -151,26 +151,54 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
         };
 
         if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
-            precompiles::Precompiles::call_precompile(platform.rt, dst, input_data)
+            precompiles::Precompiles::call_precompile(system.rt, dst, input_data)
                 .map_err(|_| StatusCode::PrecompileFailure)?
         } else {
             let dst_addr: EthAddress = dst.try_into()?;
             let dst_addr: Address = dst_addr.try_into()?;
 
             let call_result = match kind {
-                CallKind::Call => platform.send(
+                CallKind::Call => system.send(
                     &dst_addr,
-                    Method::InvokeContract as u64,
+                    // readonly is sticky
+                    if system.readonly {
+                        Method::InvokeContractReadOnly
+                    } else {
+                        Method::InvokeContract
+                    } as u64,
                     // TODO: support IPLD codecs #758
                     RawBytes::serialize(BytesSer(input_data))?,
                     TokenAmount::from(&value),
                 ),
+
                 CallKind::DelegateCall => {
-                    todo!()
+                    // first invoke GetBytecode to get the code CID from the target
+                    let code = crate::interpreter::instructions::ext::get_evm_bytecode_cid(
+                        system.rt, dst,
+                    )?;
+
+                    // and then invoke self with delegate; readonly context is sticky
+                    let params = DelegateCallParams {
+                        code,
+                        input: input_data.to_vec(),
+                        readonly: system.readonly,
+                    };
+                    system.send(
+                        &system.rt.message().receiver(),
+                        Method::InvokeContractDelegate as u64,
+                        RawBytes::serialize(&params)?,
+                        TokenAmount::from(&value),
+                    )
                 }
-                CallKind::StaticCall => {
-                    todo!()
-                }
+
+                CallKind::StaticCall => system.send(
+                    &dst_addr,
+                    Method::InvokeContractReadOnly as u64,
+                    // TODO: support IPLD codecs #758
+                    RawBytes::serialize(BytesSer(input_data))?,
+                    TokenAmount::from(&value),
+                ),
+
                 CallKind::CallCode => {
                     todo!()
                 }
@@ -205,10 +233,17 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
 
 pub fn callactor<BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
-    platform: &System<BS, RT>,
+    system: &System<BS, RT>,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
-    let rt = &*platform.rt; // as immutable reference
+    let rt = &*system.rt; // as immutable reference
+
+    // TODO Until we support readonly (static) calls at the fvm level, we disallow callactor
+    //      when in static mode as it is sticky and there are no guarantee of preserving the
+    //      static invariant
+    if system.readonly {
+        return Err(StatusCode::StaticModeViolation);
+    }
 
     // stack: GAS DEST VALUE METHODNUM INPUT-OFFSET INPUT-SIZE
     // NOTE: we don't need output-offset/output-size (which the CALL instructions have)
