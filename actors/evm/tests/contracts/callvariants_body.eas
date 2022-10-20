@@ -35,8 +35,8 @@
 %dispatch(4, do_write)
 
 # A -> staticcall -> B -> call -> C (read) OK
-#%dispatch(5, do_staticcall6)
-#%dispatch(6, do_call2)
+%dispatch(5, do_staticcall6)
+%dispatch(6, do_call2)
 
 # A -> staticcall -> B -> call -> C (write) FAIL
 %dispatch(7, do_staticcall8)
@@ -111,7 +111,7 @@ push1 0xe0   # shift 224 bits (28 bytes)
 shl
 push1 0x00    # arg1: offset
 mstore        # arg1
-push1 0x24    # arg2: ddress2 offset
+push1 0x24    # arg2: address2 offset
 calldataload  # address2
 push1 0x04    # arg2: offset
 mstore        # arg2
