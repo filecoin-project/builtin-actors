@@ -191,7 +191,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
         } else {
             match &self.bytecode {
                 Some(cid) => {
-                    let bytecode = load_bytecode(self.rt.store(), &cid)?;
+                    let bytecode = load_bytecode(self.rt.store(), cid)?;
                     if bytecode.is_empty() {
                         return Ok(None);
                     }
