@@ -16,7 +16,7 @@ use fvm_shared::{
     deal::DealID,
     econ::TokenAmount,
 };
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 
 use crate::{balance_table::BalanceTable, DealArray, DealMetaArray, State, PROPOSALS_AMT_BITWIDTH};
 
@@ -212,7 +212,6 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
         (Ok(escrow_table), Ok(lock_table)) => {
             let mut locked_total = TokenAmount::zero();
             let ret = lock_table.0.for_each(|key, locked_amount| {
-                let locked_amount = &locked_amount.0;
                 let address = Address::from_bytes(key)?;
 
                 locked_total += locked_amount;

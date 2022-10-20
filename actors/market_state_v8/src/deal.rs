@@ -6,7 +6,6 @@ use fil_actors_runtime::DealWeight;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{BytesSer, Cbor};
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_UNSEALED, SHA2_256_TRUNC254_PADDED};
 use fvm_shared::crypto::signature::Signature;
@@ -108,12 +107,9 @@ pub struct DealProposal {
     // otherwise it is invalid.
     pub start_epoch: ChainEpoch,
     pub end_epoch: ChainEpoch,
-    #[serde(with = "bigint_ser")]
     pub storage_price_per_epoch: TokenAmount,
 
-    #[serde(with = "bigint_ser")]
     pub provider_collateral: TokenAmount,
-    #[serde(with = "bigint_ser")]
     pub client_collateral: TokenAmount,
 }
 
