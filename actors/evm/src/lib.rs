@@ -3,7 +3,7 @@ use std::iter;
 use fil_actors_runtime::{runtime::builtins::Type, EAM_ACTOR_ID};
 use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
 use fvm_shared::address::{Address, Payload};
-use interpreter::address::EthAddress;
+use interpreter::{address::EthAddress, system::load_bytecode};
 
 pub mod interpreter;
 mod state;
@@ -161,9 +161,13 @@ impl EvmContractActor {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
-        let bytecode = match system.load_bytecode(delegate)? {
+        let bytecode = match match delegate {
+            Some(cid) => load_bytecode(system.rt.store(), &cid),
+            None => system.load_bytecode(),
+        }? {
             Some(bytecode) => bytecode,
-            None => return Ok(Vec::new()), // an EVM contract with no code returns immediately
+            // an EVM contract with no code returns immediately
+            None => return Ok(Vec::new()),
         };
 
         // Resolve the caller's ethereum address. If the caller doesn't have one, the caller's ID is used instead.
