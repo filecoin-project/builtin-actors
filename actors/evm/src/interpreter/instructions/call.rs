@@ -1,5 +1,6 @@
 use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::address::Address;
+use fvm_shared::address::Protocol as AddressProtocol;
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
@@ -165,17 +166,16 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
 
             // Special casing for embryo/non-existent actors: we just do a SEND (method 0)
             // which allows us to transfer funds (and create embryos)
-            let is_embryonic = {
-                let maybe_actor_id = system.rt.resolve_address(&dst_addr);
-                if let Some(actor_id) = maybe_actor_id {
-                    if let Some(cid) = system.rt.get_actor_code_cid(&actor_id) {
-                        system.rt.resolve_builtin_actor_type(&cid) == Some(Type::Embryo)
-                    } else {
-                        true
-                    }
+            let is_embryonic = if let Some(actor_id) = system.rt.resolve_address(&dst_addr) {
+                if let Some(cid) = system.rt.get_actor_code_cid(&actor_id) {
+                    system.rt.resolve_builtin_actor_type(&cid) == Some(Type::Embryo)
                 } else {
-                    true
+                    // sanity check: this shouldn't be an ID address, as you can't predict
+                    // what actor is gonna sit there.
+                    dst_addr.protocol() != AddressProtocol::ID
                 }
+            } else {
+                true
             };
 
             let call_result = if is_embryonic {
