@@ -166,13 +166,15 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
 
             // Special casing for embryo/non-existent actors: we just do a SEND (method 0)
             // which allows us to transfer funds (and create embryos)
-            let is_embryonic = if let Some(actor_id) = system.rt.resolve_address(&dst_addr) {
+            let is_embryonic = if dst_addr.protocol() == AddressProtocol::ID {
+                // sanity check: this shouldn't be an ID address, as you can't predict
+                // what actor is gonna sit there.
+                false
+            } else if let Some(actor_id) = system.rt.resolve_address(&dst_addr) {
                 if let Some(cid) = system.rt.get_actor_code_cid(&actor_id) {
                     system.rt.resolve_builtin_actor_type(&cid) == Some(Type::Embryo)
                 } else {
-                    // sanity check: this shouldn't be an ID address, as you can't predict
-                    // what actor is gonna sit there.
-                    dst_addr.protocol() != AddressProtocol::ID
+                    true
                 }
             } else {
                 true
