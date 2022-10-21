@@ -914,7 +914,10 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
             return Some(id);
         }
         if Protocol::Delegated == address.protocol() {
-            return self.delegated_addresses_source.get(address).and_then(|a| self.resolve_address(a));
+            return self
+                .delegated_addresses_source
+                .get(address)
+                .and_then(|a| self.resolve_address(a));
         }
 
         match self.get_id_address(address) {
