@@ -120,6 +120,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub base_fee: TokenAmount,
     pub id_addresses: HashMap<Address, Address>,
     pub delegated_addresses: HashMap<Address, Address>,
+    pub delegated_addresses_source: HashMap<Address, Address>,
     pub actor_code_cids: HashMap<Address, Cid>,
     pub new_actor_addr: Option<Address>,
     pub receiver: Address,
@@ -300,6 +301,7 @@ impl<BS> MockRuntime<BS> {
             base_fee: Default::default(),
             id_addresses: Default::default(),
             delegated_addresses: Default::default(),
+            delegated_addresses_source: Default::default(),
             actor_code_cids: Default::default(),
             new_actor_addr: Default::default(),
             receiver: Address::new_id(0),
@@ -506,6 +508,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         );
         assert_eq!(source.protocol(), Protocol::ID, "source must use ID address protocol");
         self.delegated_addresses.insert(source, target);
+        self.delegated_addresses_source.insert(target, source);
     }
 
     pub fn call<A: ActorCode>(
@@ -909,6 +912,9 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         self.require_in_call();
         if let &Payload::ID(id) = address.payload() {
             return Some(id);
+        }
+        if Protocol::Delegated == address.protocol() {
+            return self.delegated_addresses_source.get(address).and_then(|a| self.resolve_address(a));
         }
 
         match self.get_id_address(address) {
