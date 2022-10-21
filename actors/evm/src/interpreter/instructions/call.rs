@@ -139,6 +139,11 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
         ),
     };
 
+    if system.readonly && value > U256::zero() {
+        // non-zero sends are side-effects and hence a static mode violation
+        return Err(StatusCode::StaticModeViolation);
+    }
+
     let input_region = get_memory_region(memory, input_offset, input_size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
