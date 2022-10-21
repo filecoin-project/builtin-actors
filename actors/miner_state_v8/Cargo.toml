@@ -19,7 +19,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 fil_actors_runtime_common = { version = "9.0.0", path = "../../runtime", features = [
-    "fil-actor",
+    
 ] }
 fvm_shared = { version = "2", default-features = false }
 fvm_ipld_bitfield = "0.5.2"
