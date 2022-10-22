@@ -1961,9 +1961,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "3.0.0-alpha.7"
+version = "3.0.0-alpha.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8bd40254c259463c977799f0e5d5b030d27d7b615c05941175e5ab4e72b67a6"
+checksum = "d9f0722cf399cfde0e2c01f9069d74da758ed01aa859c2f8be0e153bd557ecc9"
 dependencies = [
  "anyhow",
  "blake2b_simd",
