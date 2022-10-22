@@ -1,6 +1,5 @@
 use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::address::Address;
-use fvm_shared::address::Protocol as AddressProtocol;
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
@@ -164,79 +163,72 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
             let dst_addr: EthAddress = dst.try_into()?;
             let dst_addr: Address = dst_addr.try_into()?;
 
-            // Special casing for embryo/non-existent actors: we just do a SEND (method 0)
+            // Special casing for account/embryo/non-existent actors: we just do a SEND (method 0)
             // which allows us to transfer funds (and create embryos)
-            let is_embryonic = if dst_addr.protocol() == AddressProtocol::ID {
-                // sanity check: this shouldn't be an ID address, as you can't predict
-                // what actor is gonna sit there.
-                false
-            } else if let Some(actor_id) = system.rt.resolve_address(&dst_addr) {
-                if let Some(cid) = system.rt.get_actor_code_cid(&actor_id) {
-                    system.rt.resolve_builtin_actor_type(&cid) == Some(Type::Embryo)
+            let target_actor_code = system
+                .rt
+                .resolve_address(&dst_addr)
+                .and_then(|actor_id| system.rt.get_actor_code_cid(&actor_id))
+                .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
+
+            let call_result =
+                if matches!(target_actor_code, Some(Type::Embryo | Type::Account) | None) {
+                    system.send(
+                        &dst_addr,
+                        0,
+                        // we still send the input, even thought it will be ignored, for debugging
+                        // purposes
+                        RawBytes::serialize(BytesSer(input_data))?,
+                        TokenAmount::from(&value),
+                    )
                 } else {
-                    true
-                }
-            } else {
-                true
-            };
-
-            let call_result = if is_embryonic {
-                system.send(
-                    &dst_addr,
-                    0,
-                    // we still send the input, even thought it will be ignored, for debugging
-                    // purposes
-                    RawBytes::serialize(BytesSer(input_data))?,
-                    TokenAmount::from(&value),
-                )
-            } else {
-                match kind {
-                    CallKind::Call => system.send(
-                        &dst_addr,
-                        // readonly is sticky
-                        if system.readonly {
-                            Method::InvokeContractReadOnly
-                        } else {
-                            Method::InvokeContract
-                        } as u64,
-                        // TODO: support IPLD codecs #758
-                        RawBytes::serialize(BytesSer(input_data))?,
-                        TokenAmount::from(&value),
-                    ),
-
-                    CallKind::DelegateCall => {
-                        // first invoke GetBytecode to get the code CID from the target
-                        let code = crate::interpreter::instructions::ext::get_evm_bytecode_cid(
-                            system.rt, dst,
-                        )?;
-
-                        // and then invoke self with delegate; readonly context is sticky
-                        let params = DelegateCallParams {
-                            code,
-                            input: input_data.to_vec(),
-                            readonly: system.readonly,
-                        };
-                        system.send(
-                            &system.rt.message().receiver(),
-                            Method::InvokeContractDelegate as u64,
-                            RawBytes::serialize(&params)?,
+                    match kind {
+                        CallKind::Call => system.send(
+                            &dst_addr,
+                            // readonly is sticky
+                            if system.readonly {
+                                Method::InvokeContractReadOnly
+                            } else {
+                                Method::InvokeContract
+                            } as u64,
+                            // TODO: support IPLD codecs #758
+                            RawBytes::serialize(BytesSer(input_data))?,
                             TokenAmount::from(&value),
-                        )
-                    }
+                        ),
 
-                    CallKind::StaticCall => system.send(
-                        &dst_addr,
-                        Method::InvokeContractReadOnly as u64,
-                        // TODO: support IPLD codecs #758
-                        RawBytes::serialize(BytesSer(input_data))?,
-                        TokenAmount::from(&value),
-                    ),
+                        CallKind::DelegateCall => {
+                            // first invoke GetBytecode to get the code CID from the target
+                            let code = crate::interpreter::instructions::ext::get_evm_bytecode_cid(
+                                system.rt, dst,
+                            )?;
 
-                    CallKind::CallCode => {
-                        todo!()
+                            // and then invoke self with delegate; readonly context is sticky
+                            let params = DelegateCallParams {
+                                code,
+                                input: input_data.to_vec(),
+                                readonly: system.readonly,
+                            };
+                            system.send(
+                                &system.rt.message().receiver(),
+                                Method::InvokeContractDelegate as u64,
+                                RawBytes::serialize(&params)?,
+                                TokenAmount::from(&value),
+                            )
+                        }
+
+                        CallKind::StaticCall => system.send(
+                            &dst_addr,
+                            Method::InvokeContractReadOnly as u64,
+                            // TODO: support IPLD codecs #758
+                            RawBytes::serialize(BytesSer(input_data))?,
+                            TokenAmount::from(&value),
+                        ),
+
+                        CallKind::CallCode => {
+                            todo!()
+                        }
                     }
-                }
-            };
+                };
             match call_result {
                 Ok(result) => {
                     // TODO: support IPLD codecs #758
