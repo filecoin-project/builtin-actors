@@ -9,6 +9,7 @@ use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::METHOD_SEND;
 
 mod util;
 
@@ -64,7 +65,6 @@ fn test_call() {
 
     // construct the proxy
     let mut rt = util::construct_and_verify(contract);
-    MockRuntime::default();
 
     // create a mock target and proxy a call through the proxy
     let target_id = 0x100;
@@ -99,6 +99,76 @@ fn test_call() {
 
     let result = util::invoke_contract(&mut rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
+}
+
+// Test that a zero-value call to an actor that doesn't exist doesn't actually create the actor.
+#[test]
+fn test_empty_call_no_side_effects() {
+    let contract = call_proxy_contract();
+
+    // construct the proxy
+    let mut rt = util::construct_and_verify(contract);
+
+    // create a mock target and proxy a call through the proxy
+    let evm_target = EthAddress(hex_literal::hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
+
+    let evm_target_word = evm_target.as_evm_word();
+
+    // dest + method 0 with no data
+    let mut contract_params = vec![0u8; 36];
+    evm_target_word.to_big_endian(&mut contract_params[..32]);
+
+    // expected return data
+    let mut return_data = vec![0u8; 32];
+    return_data[31] = 0x42;
+
+    let result = util::invoke_contract(&mut rt, &contract_params);
+    assert_eq!(U256::from_big_endian(&result), U256::from(0));
+    // Expect no calls
+    rt.verify();
+}
+
+// Make sure we do bare sends when calling accounts/embryo, and make sure it works.
+#[test]
+fn test_call_convert_to_send() {
+    let contract = call_proxy_contract();
+
+    for code in [*ACCOUNT_ACTOR_CODE_ID, *EMBRYO_ACTOR_CODE_ID] {
+        // construct the proxy
+        let mut rt = util::construct_and_verify(contract.clone());
+
+        // create a mock actor and proxy a call through the proxy
+        let target_id = 0x100;
+        let target = FILAddress::new_id(target_id);
+        rt.actor_code_cids.insert(target, code);
+
+        let evm_target_word = EthAddress::from_id(target_id).as_evm_word();
+
+        // dest + method 0 with no data
+        let mut contract_params = vec![0u8; 36];
+        evm_target_word.to_big_endian(&mut contract_params[..32]);
+
+        let proxy_call_contract_params = vec![0u8; 4];
+        let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
+            .expect("failed to serialize input data");
+
+        // expected return data
+        let mut return_data = vec![0u8; 32];
+        return_data[31] = 0x42;
+
+        rt.expect_send(
+            target,
+            METHOD_SEND,
+            proxy_call_input_data,
+            TokenAmount::zero(),
+            RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
+            ExitCode::OK,
+        );
+
+        let result = util::invoke_contract(&mut rt, &contract_params);
+        assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
+        rt.verify();
+    }
 }
 
 #[allow(dead_code)]
