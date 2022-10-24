@@ -157,13 +157,14 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
         };
 
         if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
+            // TODO: DO NOT FAIL!!!
             precompiles::Precompiles::call_precompile(system.rt, dst, input_data)
                 .map_err(|_| StatusCode::PrecompileFailure)?
         } else {
             let call_result = match kind {
                 CallKind::Call | CallKind::StaticCall => {
-                    let dst_addr: EthAddress = dst.try_into()?;
-                    let dst_addr: Address = dst_addr.try_into()?;
+                    let dst_addr: EthAddress = dst.into();
+                    let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
 
                     // Special casing for account/embryo/non-existent actors: we just do a SEND (method 0)
                     // which allows us to transfer funds (and create embryos)
@@ -294,7 +295,8 @@ pub fn callactor<BS: Blockstore, RT: Runtime<BS>>(
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     let result = {
-        let dst_addr: EthAddress = dst.try_into()?;
+        // TODO: this is wrong https://github.com/filecoin-project/ref-fvm/issues/1018
+        let dst_addr: EthAddress = dst.into();
         let dst_addr: Address = dst_addr.try_into()?;
 
         if method.bits() > 64 {

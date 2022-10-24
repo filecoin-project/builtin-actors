@@ -156,9 +156,8 @@ pub fn selfdestruct<BS: Blockstore, RT: Runtime<BS>>(
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);
     }
-    let beneficiary_addr = state.stack.pop();
+    let beneficiary_addr: EthAddress = state.stack.pop().into();
     // TODO: how do we handle errors here? Just ignore them?
-    state.selfdestroyed =
-        beneficiary_addr.try_into().and_then(|addr: EthAddress| addr.try_into()).ok();
+    state.selfdestroyed = beneficiary_addr.try_into().ok();
     Ok(())
 }

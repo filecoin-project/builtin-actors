@@ -11,19 +11,14 @@ use fvm_shared::ActorID;
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Eq, Clone, Copy)]
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
-impl TryFrom<U256> for EthAddress {
-    type Error = StatusCode;
-
-    fn try_from(v: U256) -> Result<Self, Self::Error> {
-        // top 12 bytes must be 0s;
-        // enforce that constraint so that we validate that the word is a valid address
+/// Converts a U256 to an EthAddress by taking the lower 20 bytes.
+///
+/// Per the EVM spec, this simply discards the high bytes.
+impl From<U256> for EthAddress {
+    fn from(v: U256) -> Self {
         let mut bytes = [0u8; 32];
         v.to_big_endian(&mut bytes);
-        if !bytes[..12].iter().all(|&byte| byte == 0) {
-            Err(StatusCode::BadAddress(format!("invalid address: {}", hex::encode(bytes))))
-        } else {
-            Ok(Self(bytes[12..].try_into().unwrap()))
-        }
+        Self(bytes[12..].try_into().unwrap())
     }
 }
 
