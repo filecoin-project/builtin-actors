@@ -12,7 +12,7 @@ use {
     crate::interpreter::System,
     crate::interpreter::U256,
     crate::RawBytes,
-    crate::{DelegateCallParams, Method, EVM_CONTRACT_REVERTED},
+    crate::{DelegateCallParams, Method},
     fil_actors_runtime::runtime::builtins::Type,
     fil_actors_runtime::runtime::Runtime,
     fvm_shared::econ::TokenAmount,
@@ -207,15 +207,11 @@ pub fn call<RT: Runtime>(
                         result
                     }
                 }
-                Err(ae) => {
-                    return if ae.exit_code() == EVM_CONTRACT_REVERTED {
-                        // reverted -- we don't have return data yet
-                        // push failure
-                        stack.push(U256::zero());
-                        Ok(())
-                    } else {
-                        Err(StatusCode::from(ae))
-                    };
+                Err(_) => {
+                    // reverted -- we don't have return data yet
+                    // push failure
+                    stack.push(U256::zero());
+                    return Ok(());
                 }
             }
         }
@@ -276,20 +272,14 @@ pub fn callactor(
         rt.send(&dst_addr, methodnum, RawBytes::from(input_data), TokenAmount::from(&value))
     };
 
-    if let Err(ae) = result {
-        return if ae.exit_code() == EVM_CONTRACT_REVERTED {
-            // reverted -- we don't have return data yet
-            // push failure
-            stack.push(U256::zero());
-            Ok(())
-        } else {
-            Err(StatusCode::from(ae))
-        };
+    match result {
+        Ok(v) => {
+            state.return_data = Vec::from(v).into();
+            stack.push(U256::from(0));
+        }
+        Err(ae) => {
+            stack.push(U256::from(ae.exit_code().value()));
+        }
     }
-
-    // save return_data
-    state.return_data = result.unwrap().to_vec().into();
-    // push success
-    stack.push(U256::from(1));
     Ok(())
 }
