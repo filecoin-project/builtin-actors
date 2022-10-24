@@ -4,7 +4,9 @@ mod util;
 use cid::Cid;
 use evm::interpreter::{address::EthAddress, U256};
 use fil_actor_evm as evm;
+use fvm_ipld_encoding::DAG_CBOR;
 use fvm_shared::{address::Address, econ::TokenAmount};
+use multihash::Multihash;
 
 #[test]
 fn test_timestamp() {
@@ -34,7 +36,7 @@ fn test_blockhash() {
         "blockhash",
         "",
         r#"
-push1 0x00
+push2 0xffff
 blockhash
 push1 0x00
 mstore
@@ -47,11 +49,37 @@ return
 
     let mut rt = util::construct_and_verify(contract);
 
-    let test_cid =
-        Cid::try_from("bafy2bzacecu7n7wbtogznrtuuvf73dsz7wasgyneqasksdblxupnyovmtwxxu").unwrap();
-    rt.tipset_cids = vec![test_cid];
+    rt.tipset_cids = (0..900)
+        .map(|i| {
+            Cid::new_v1(DAG_CBOR, Multihash::wrap(0, format!("block-{:026}", i).as_ref()).unwrap())
+        })
+        .collect();
+
+    rt.epoch = 0xffff + 2;
     let result = util::invoke_contract(&mut rt, &[]);
-    assert_eq!(result.to_vec(), test_cid.hash().digest());
+    assert_eq!(
+        String::from_utf8_lossy(&result.to_vec()),
+        String::from_utf8_lossy(rt.tipset_cids[2].hash().digest())
+    );
+
+    rt.epoch = 0xffff + 256;
+    let result = util::invoke_contract(&mut rt, &[]);
+    assert_eq!(
+        String::from_utf8_lossy(&result.to_vec()),
+        String::from_utf8_lossy(rt.tipset_cids[256].hash().digest())
+    );
+
+    rt.epoch = 0xffff;
+    let result = util::invoke_contract(&mut rt, &[]);
+    assert_eq!(&result, &[0u8; 32]);
+
+    rt.epoch = 0xffff - 1;
+    let result = util::invoke_contract(&mut rt, &[]);
+    assert_eq!(&result, &[0u8; 32]);
+
+    rt.epoch = 0xffff + 257;
+    let result = util::invoke_contract(&mut rt, &[]);
+    assert_eq!(&result, &[0u8; 32]);
 }
 
 #[test]
