@@ -13,11 +13,10 @@ pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
     state: &mut ExecutionState,
     system: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
-    let actor = state.stack.pop();
+    let actor: EthAddress = state.stack.pop().into();
 
     let balance = actor
         .try_into()
-        .and_then(|addr: EthAddress| addr.try_into())
         .ok()
         .and_then(|addr: Address| system.rt.resolve_address(&addr))
         .and_then(|id| system.rt.actor_balance(id).as_ref().map(U256::from))

@@ -61,7 +61,7 @@ pub fn get_evm_bytecode_cid<BS: Blockstore, RT: Runtime<BS>>(
     rt: &RT,
     addr: U256,
 ) -> Result<Cid, StatusCode> {
-    let addr: EthAddress = addr.try_into()?;
+    let addr: EthAddress = addr.into();
     let addr: Address = addr.try_into()?;
     // TODO: just return none in most of these cases?
     let actor_id = rt.resolve_address(&addr).ok_or_else(|| {
