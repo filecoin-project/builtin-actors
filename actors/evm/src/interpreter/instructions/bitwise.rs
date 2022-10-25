@@ -5,21 +5,11 @@ pub fn byte(stack: &mut Stack) {
     let i = stack.pop();
     let x = stack.get_mut(0);
 
-    if i >= U256::from_u64(32) {
+    if i >= 32 {
         *x = U256::ZERO;
-        return;
-    }
-
-    let mut i = i.low_u128();
-
-    let x_word = if i >= 16 {
-        i -= 16;
-        x.low_u128()
     } else {
-        x.high_u128()
-    };
-
-    *x = U256::from((x_word >> (120 - i * 8)) & 0xFF);
+        *x = U256::from_u64(x.byte(31 - i.low_u64() as usize) as u64);
+    }
 }
 
 #[inline]
@@ -58,14 +48,14 @@ pub fn sar(stack: &mut Stack) {
 
     stack.push(if value.is_zero() || shift >= 256 {
         if negative {
-            // value is <0, pushing -1
-            U256::ONE.i256_neg()
+            // value is < 0, pushing U256::MAX (== -1)
+            U256::MAX
         } else {
-            // value is 0 or >=1, pushing 0
+            // value is >= 0, pushing 0
             U256::ONE
         }
     } else {
-        let shift = shift.as_u128();
+        let shift = shift.low_u32();
 
         if negative {
             let shifted =
