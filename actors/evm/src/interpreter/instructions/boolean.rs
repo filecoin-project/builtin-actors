@@ -8,7 +8,7 @@ pub fn lt(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
 
-    *b = if a.lt(b) { U256::from(1) } else { U256::zero() }
+    *b = U256::from_u64((a < *b).into());
 }
 
 #[inline]
@@ -16,7 +16,7 @@ pub fn gt(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
 
-    *b = if a.gt(b) { U256::from(1) } else { U256::zero() }
+    *b = U256::from_u64((a > *b).into());
 }
 
 #[inline]
@@ -24,7 +24,7 @@ pub(crate) fn slt(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
 
-    *b = if i256_cmp(a, *b) == Ordering::Less { U256::from(1) } else { U256::zero() }
+    *b = U256::from_u64((i256_cmp(a, *b) == Ordering::Less).into());
 }
 
 #[inline]
@@ -32,7 +32,7 @@ pub(crate) fn sgt(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
 
-    *b = if i256_cmp(a, *b) == Ordering::Greater { U256::from(1) } else { U256::zero() }
+    *b = U256::from_u64((i256_cmp(a, *b) == Ordering::Greater).into());
 }
 
 #[inline]
@@ -40,13 +40,13 @@ pub fn eq(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
 
-    *b = if a.eq(b) { U256::from(1) } else { U256::zero() }
+    *b = U256::from_u64((a == *b).into());
 }
 
 #[inline]
 pub fn iszero(stack: &mut Stack) {
     let a = stack.get_mut(0);
-    *a = if *a == U256::zero() { U256::from(1) } else { U256::zero() }
+    *a = U256::from_u64(a.is_zero().into());
 }
 
 #[inline]
