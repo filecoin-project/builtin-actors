@@ -13,7 +13,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fvm_sdk = { version = "3.0.0-alpha.7", optional = true }
+fvm_sdk = { version = "3.0.0-alpha.8", optional = true }
 fvm_shared = { version = "3.0.0-alpha.8", optional = true }
 
 [features]
