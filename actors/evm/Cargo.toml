@@ -26,7 +26,6 @@ anyhow = "1.0.56"
 log = "0.4.14"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.3.0"
-sha3 = { version = "0.10", default-features = false }
 rlp = { version = "0.5.1", default-features = false }
 bytes = { version = "1.1.0", features = ["serde"], default-features = false }
 strum = "0.24"

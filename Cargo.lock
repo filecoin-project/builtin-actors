@@ -1422,7 +1422,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_tuple",
- "sha3",
  "strum",
  "strum_macros",
  "substrate-bn",
