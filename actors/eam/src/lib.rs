@@ -165,13 +165,20 @@ impl EamActor {
 
     /// Create a new contract per the EVM's CREATE rules.
     ///
-    /// Permissions: May only be called by EVM contracts.
+    /// Permissions: May be called by any actor.
     pub fn create<BS, RT>(rt: &mut RT, params: CreateParams) -> Result<CreateReturn, ActorError>
     where
         BS: Blockstore + Clone,
         RT: Runtime<BS>,
     {
-        rt.validate_immediate_caller_type(iter::once(&Type::EVM))?;
+        // TODO: this accepts a nonce from the user, so we _may_ want to limit it to specific
+        // actors. However, we won't deploy over another actor anyways (those constraints are
+        // enforced by the init actor and the FVM itself), so it shouldn't really be an issue in
+        // practice.
+        //
+        // This allows _any_ actor to behave like an Ethereum account, so we'd prefer to keep it
+        // open.
+        rt.validate_immediate_caller_accept_any()?;
 
         let caller_id = rt.message().caller().id().unwrap();
         let caller_addr = match rt.lookup_address(caller_id).unwrap().payload() {
