@@ -31,6 +31,7 @@ impl PartialEq<u64> for U256 {
 }
 
 impl U256 {
+    pub const BITS: u32 = 256;
     pub const ZERO: Self = U256::from_u64(0);
     pub const ONE: Self = U256::from_u64(1);
     pub const I128_MIN: Self = U256([0, 0, 0, i64::MIN as u64]);
@@ -53,27 +54,6 @@ impl U256 {
     #[inline(always)]
     pub const fn i256_is_negative(&self) -> bool {
         (self.0[3] as i64) < 0
-    }
-
-    #[inline(always)]
-    pub const fn i256_sign(&self) -> Sign {
-        if self.i256_is_negative() {
-            Sign::Minus
-        } else if self.is_zero() {
-            Sign::Zero
-        } else {
-            Sign::Plus
-        }
-    }
-
-    #[inline(always)]
-    pub const fn is_even(&self) -> bool {
-        (self.0[0] & 1) == 0
-    }
-
-    #[inline(always)]
-    pub fn clear_low_bit(&mut self) {
-        self.0[0] &= !1
     }
 
     #[inline(always)]
@@ -165,13 +145,6 @@ impl_hamt_hash!(U512);
 // RLP Support
 impl_rlp_codec_uint!(U256, 32);
 impl_rlp_codec_uint!(U512, 64);
-
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
-pub enum Sign {
-    Minus = -1,
-    Zero = 0,
-    Plus = 1,
-}
 
 #[inline]
 pub fn log2floor(value: U256) -> u64 {
@@ -277,10 +250,8 @@ mod tests {
         let one = U256::ONE;
         let one_hundred = U256::from(100);
         let fifty = U256::from(50);
-        let _fifty_sign = Sign::Plus;
         let two = U256::from(2);
         let neg_one_hundred = U256::from(100);
-        let _neg_one_hundred_sign = Sign::Minus;
         let minus_one = U256::from(1);
         let max_value = U256::from(2).pow(255.into()) - 1;
         let neg_max_value = U256::from(2).pow(255.into()) - 1;
@@ -296,10 +267,5 @@ mod tests {
         assert_eq!(i256_div(zero, zero), zero);
         assert_eq!(i256_div(one, zero), zero);
         assert_eq!(i256_div(zero, one), zero);
-    }
-
-    fn cmp_i256() {
-        let neg = U256::zero() - U256::from(1);
-        println!("{:?}", neg.i256_sign());
     }
 }

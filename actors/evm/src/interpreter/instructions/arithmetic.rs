@@ -99,20 +99,79 @@ pub fn signextend(stack: &mut Stack) {
 #[inline]
 pub fn exp(stack: &mut Stack) {
     let mut base = stack.pop();
-    let mut power = stack.pop();
+    let power = stack.pop();
 
     let mut v = U256::ONE;
 
-    // TODO: avoid the shift here to make it even faster.
-    while !power.is_zero() {
-        if !power.is_even() {
-            v = v.overflowing_mul(base).0;
-            // Subtracts one when odd, and is much faster than real subtraction here.
-            power.clear_low_bit();
+    // First, compute the number of remaining significant bits.
+    let mut remaining_bits = U256::BITS - power.leading_zeros();
+
+    // Word by word, least significant to most.
+    for mut word in power.0 {
+        // While we have bits left...
+        for _ in 0..u64::BITS.min(remaining_bits) {
+            if (word & 1) != 0 {
+                v = v.overflowing_mul(base).0;
+            }
+            word >>= 1;
+            base = base.overflowing_mul(base).0;
         }
-        power >>= 1;
-        base = base.overflowing_mul(base).0;
+        remaining_bits = remaining_bits.saturating_sub(u64::BITS);
     }
 
     stack.push(v);
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_exp() {
+        macro_rules! assert_exp {
+            ($base:expr, $exp:expr, $result:expr) => {
+                let mut stack = Stack::new();
+                stack.push(($exp).into());
+                stack.push(($base).into());
+                exp(&mut stack);
+                let res: U256 = ($result).into();
+                assert_eq!(res, stack.pop());
+            };
+        }
+
+        // Basic tests.
+        for (base, exp) in
+            [(0u64, 0u32), (0, 1), (1, 0), (1, 10), (10, 1), (10, 0), (0, 10), (10, 10)]
+        {
+            assert_exp!(base, exp, base.pow(exp));
+        }
+
+        // BIG no-op tests
+        assert_exp!(U256::from_u128_words(1, 0), 1, U256::from_u128_words(1, 0));
+        assert_exp!(U256::from_u128_words(1, 0), 0, 1);
+
+        // BIG actual tests
+        assert_exp!(
+            U256::from_u128_words(0, 1 << 65),
+            2,
+            U256::from_u128_words(4 /* 65 * 2 = 128 + 4 */, 0)
+        );
+
+        // Check overflow.
+        assert_exp!(100, U256::from_u128_words(1, 0), U256::ZERO);
+        assert_exp!(U256::from_u128_words(1, 0), 100, U256::ZERO);
+        // Check big wrapping.
+        assert_exp!(
+            123,
+            U256::from_u128_words(0, 123 << 64),
+            U256::from_u128_words(
+                0x9c4a2f94642e820e0f1d7d4208d629d8,
+                0xd9ae51d86b0ede140000000000000001
+            )
+        );
+        assert_exp!(
+            U256::from_u128_words(0, 1 << 66) - U256::ONE,
+            U256::from_u128_words(0, 1 << 67) - U256::ONE,
+            U256::from_u128_words(0x80000000000000000f, 0xfffffffffffffffbffffffffffffffff)
+        );
+    }
 }
