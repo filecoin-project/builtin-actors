@@ -267,7 +267,7 @@ impl<'r, 'a, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, 'a, BS, RT> 
         }
 
         KECCAK256(m) {
-            hash::keccak256(m.runtime)?;
+            hash::keccak256(m.system, m.runtime)?;
             Ok(ControlFlow::Continue)
         }
 
