@@ -47,11 +47,6 @@ impl U256 {
     }
 
     #[inline(always)]
-    pub const fn high_u128(&self) -> u128 {
-        ((self.0[3] as u128) << u64::BITS) | (self.0[2] as u128)
-    }
-
-    #[inline(always)]
     pub const fn i256_is_negative(&self) -> bool {
         (self.0[3] as i64) < 0
     }
@@ -145,25 +140,6 @@ impl_hamt_hash!(U512);
 // RLP Support
 impl_rlp_codec_uint!(U256, 32);
 impl_rlp_codec_uint!(U512, 64);
-
-#[inline]
-pub fn log2floor(value: U256) -> u64 {
-    debug_assert!(value != U256::zero());
-    let mut l: u64 = 256;
-    for v in [value.high_u128(), value.low_u128()] {
-        if v == 0 {
-            l -= 128;
-        } else {
-            l -= v.leading_zeros() as u64;
-            if l == 0 {
-                return l;
-            } else {
-                return l - 1;
-            }
-        }
-    }
-    l
-}
 
 #[inline(always)]
 pub fn i256_div(mut first: U256, mut second: U256) -> U256 {
