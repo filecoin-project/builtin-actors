@@ -25,9 +25,7 @@ pub fn sub(stack: &mut Stack) {
 pub fn div(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
-    if *b == U256::zero() {
-        *b = U256::zero()
-    } else {
+    if !b.is_zero() {
         *b = a / *b
     }
 }
@@ -44,7 +42,9 @@ pub fn sdiv(stack: &mut Stack) {
 pub fn modulo(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
-    *b = if *b == U256::zero() { U256::zero() } else { a % *b };
+    if !b.is_zero() {
+        *b = a % *b;
+    }
 }
 
 #[inline]
@@ -52,71 +52,36 @@ pub fn smod(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
 
-    if *b == U256::zero() {
-        *b = U256::zero()
-    } else {
-        *b = i256_mod(a, *b);
-    };
+    *b = i256_mod(a, *b);
 }
 
 #[inline]
 pub fn addmod(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.pop();
-    let c = stack.pop();
+    let c = stack.get_mut(0);
 
-    let v = if c == U256::zero() {
-        U256::zero()
-    } else {
-        let mut a_be = [0u8; 32];
-        let mut b_be = [0u8; 32];
-        let mut c_be = [0u8; 32];
+    if !c.is_zero() {
+        let al: U512 = a.into();
+        let bl: U512 = b.into();
+        let cl: U512 = (*c).into();
 
-        a.to_big_endian(&mut a_be);
-        b.to_big_endian(&mut b_be);
-        c.to_big_endian(&mut c_be);
-
-        let a = U512::from_big_endian(&a_be);
-        let b = U512::from_big_endian(&b_be);
-        let c = U512::from_big_endian(&c_be);
-
-        let v = a + b % c;
-        let mut v_be = [0u8; 64];
-        v.to_big_endian(&mut v_be);
-        U256::from_big_endian(&v_be)
-    };
-
-    stack.push(v);
+        *c = (al + bl % cl).low_u256();
+    }
 }
 
 #[inline]
 pub fn mulmod(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.pop();
-    let c = stack.pop();
+    let c = stack.get_mut(0);
 
-    let v = if c == U256::zero() {
-        U256::zero()
-    } else {
-        let mut a_be = [0u8; 32];
-        let mut b_be = [0u8; 32];
-        let mut c_be = [0u8; 32];
-
-        a.to_big_endian(&mut a_be);
-        b.to_big_endian(&mut b_be);
-        c.to_big_endian(&mut c_be);
-
-        let a = U512::from_big_endian(&a_be);
-        let b = U512::from_big_endian(&b_be);
-        let c = U512::from_big_endian(&c_be);
-
-        let v = a * b % c;
-        let mut v_be = [0u8; 64];
-        v.to_big_endian(&mut v_be);
-        U256::from_big_endian(&v_be)
-    };
-
-    stack.push(v);
+    if !c.is_zero() {
+        let al: U512 = a.into();
+        let bl: U512 = b.into();
+        let cl: U512 = (*c).into();
+        *c = (al * bl % cl).low_u256();
+    }
 }
 
 #[inline]
@@ -124,30 +89,115 @@ pub fn signextend(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
 
-    if a < U256::from(32) {
-        let bit_index = (8 * u256_low(a) as u8 + 7) as u16;
-        let hi = u256_high(*b);
-        let lo = u256_low(*b);
-        let bit = if bit_index > 0x7f { hi } else { lo } & (1 << (bit_index % 128)) != 0;
-        let mask = (U256::from(1) << bit_index) - U256::from(1);
-        *b = if bit { *b | !mask } else { *b & mask }
+    if a < 32 {
+        let bit_index = 8 * a.low_u32() + 7;
+        let mask = U256::MAX >> (U256::BITS - bit_index);
+        *b = if b.bit(bit_index as usize) { *b | !mask } else { *b & mask }
     }
 }
 
 #[inline]
 pub fn exp(stack: &mut Stack) {
     let mut base = stack.pop();
-    let mut power = stack.pop();
+    let power = stack.pop();
 
-    let mut v = U256::from(1);
+    let mut v = U256::ONE;
 
-    while power > U256::zero() {
-        if (power & U256::from(1)) != U256::zero() {
-            v = v.overflowing_mul(base).0;
+    // First, compute the number of remaining significant bits.
+    let mut remaining_bits = U256::BITS - power.leading_zeros();
+
+    // Word by word, least significant to most.
+    for mut word in power.0 {
+        // While we have bits left...
+        for _ in 0..u64::BITS.min(remaining_bits) {
+            if (word & 1) != 0 {
+                v = v.overflowing_mul(base).0;
+            }
+            word >>= 1;
+            base = base.overflowing_mul(base).0;
         }
-        power >>= 1;
-        base = base.overflowing_mul(base).0;
+        remaining_bits = remaining_bits.saturating_sub(u64::BITS);
     }
 
     stack.push(v);
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_signextend() {
+        macro_rules! assert_exp {
+            ($num:expr, $byte:expr, $result:expr) => {
+                let mut stack = Stack::new();
+                stack.push(($num).into());
+                stack.push(($byte).into());
+                signextend(&mut stack);
+                let res: U256 = ($result).into();
+                assert_eq!(res, stack.pop());
+            };
+        }
+        assert_exp!(0xff, 0, U256::MAX);
+        assert_exp!(0xff, 1, 0xff);
+        assert_exp!(0xf0, 0, !U256::from_u64(0x0f));
+        // Large
+        assert_exp!(
+            U256::from_u128_words(0x82, 0x1),
+            16,
+            U256::from_u128_words((u128::MAX ^ 0xff) | 0x82, 0x1)
+        );
+        assert_exp!(U256::from_u128_words(0x82, 0x1), 15, U256::from_u128_words(0x0, 0x1));
+        assert_exp!(U256::from_u128_words(0x82, 0x1), 17, U256::from_u128_words(0x82, 0x1));
+        // Not At Boundary
+        assert_exp!(U256::from_u128_words(0x62, 0x1), 16, U256::from_u128_words(0x62, 0x1));
+    }
+    #[test]
+    fn test_exp() {
+        macro_rules! assert_exp {
+            ($base:expr, $exp:expr, $result:expr) => {
+                let mut stack = Stack::new();
+                stack.push(($exp).into());
+                stack.push(($base).into());
+                exp(&mut stack);
+                let res: U256 = ($result).into();
+                assert_eq!(res, stack.pop());
+            };
+        }
+
+        // Basic tests.
+        for (base, exp) in
+            [(0u64, 0u32), (0, 1), (1, 0), (1, 10), (10, 1), (10, 0), (0, 10), (10, 10)]
+        {
+            assert_exp!(base, exp, base.pow(exp));
+        }
+
+        // BIG no-op tests
+        assert_exp!(U256::from_u128_words(1, 0), 1, U256::from_u128_words(1, 0));
+        assert_exp!(U256::from_u128_words(1, 0), 0, 1);
+
+        // BIG actual tests
+        assert_exp!(
+            U256::from_u128_words(0, 1 << 65),
+            2,
+            U256::from_u128_words(4 /* 65 * 2 = 128 + 4 */, 0)
+        );
+
+        // Check overflow.
+        assert_exp!(100, U256::from_u128_words(1, 0), U256::ZERO);
+        assert_exp!(U256::from_u128_words(1, 0), 100, U256::ZERO);
+        // Check big wrapping.
+        assert_exp!(
+            123,
+            U256::from_u128_words(0, 123 << 64),
+            U256::from_u128_words(
+                0x9c4a2f94642e820e0f1d7d4208d629d8,
+                0xd9ae51d86b0ede140000000000000001
+            )
+        );
+        assert_exp!(
+            U256::from_u128_words(0, 1 << 66) - U256::ONE,
+            U256::from_u128_words(0, 1 << 67) - U256::ONE,
+            U256::from_u128_words(0x80000000000000000f, 0xfffffffffffffffbffffffffffffffff)
+        );
+    }
 }
