@@ -1,3 +1,5 @@
+use fvm_shared::clock::ChainEpoch;
+
 use {
     crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::chainid,
@@ -11,20 +13,28 @@ pub fn blockhash<'r, BS: Blockstore, RT: Runtime<BS>>(
     system: &'r System<'r, BS, RT>,
 ) -> Result<(), StatusCode> {
     let bn = state.stack.pop();
-    if bn.bits() > 8 {
-        return Err(StatusCode::ArgumentOutOfRange(format!("invalid epoch lookback: {}", bn)));
-    }
-    let epoch = bn.as_u64() as i64;
-    if let Some(cid) = system.rt.tipset_cid(epoch) {
-        let mut hash = cid.hash().digest();
-        if hash.len() > 32 {
-            hash = &hash[..32]
-        }
-        state.stack.push(U256::from_big_endian(hash));
-        Ok(())
-    } else {
-        Err(StatusCode::InvalidArgument(format!("no tipset for epoch lookback at: {}", epoch)))
-    }
+    let result = bn
+        .try_into()
+        .ok()
+        .filter(|&height: &ChainEpoch| {
+            // The EVM allows fetching blockhashes from the 256 _previous_ blocks.
+            // TODO: we can consider extending this to allow the full range.
+            // Also relates to https://github.com/filecoin-project/ref-fvm/issues/1023 (we might
+            // want to keep some of these restrictions).
+            let curr_epoch = system.rt.curr_epoch();
+            height >= curr_epoch - 256 && height < curr_epoch
+        })
+        .and_then(|height| system.rt.tipset_cid(height))
+        .map(|cid| {
+            let mut hash = cid.hash().digest();
+            if hash.len() > 32 {
+                hash = &hash[..32]
+            }
+            U256::from_big_endian(hash)
+        })
+        .unwrap_or_default();
+    state.stack.push(result);
+    Ok(())
 }
 
 #[inline]
