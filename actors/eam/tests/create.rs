@@ -25,7 +25,7 @@ fn call_create() {
     rt.add_delegated_address(id_addr, f4_eth_addr);
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, id_addr);
-    rt.expect_validate_caller_type(vec![Type::EVM]);
+    rt.expect_validate_caller_any();
 
     let initcode = vec![0xff];
 
