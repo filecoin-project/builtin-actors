@@ -89,9 +89,9 @@ pub fn signextend(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
 
-    if a < U256::from_u64(32) {
-        let bit_index = 8 * a.low_u64() + 7;
-        let mask = (U256::ONE << bit_index) - U256::ONE;
+    if a < 32 {
+        let bit_index = 8 * a.low_u32() + 7;
+        let mask = U256::MAX >> (U256::BITS - bit_index);
         *b = if b.bit(bit_index as usize) { *b | !mask } else { *b & mask }
     }
 }
@@ -125,6 +125,32 @@ pub fn exp(stack: &mut Stack) {
 #[cfg(test)]
 mod test {
     use super::*;
+    #[test]
+    fn test_signextend() {
+        macro_rules! assert_exp {
+            ($num:expr, $byte:expr, $result:expr) => {
+                let mut stack = Stack::new();
+                stack.push(($num).into());
+                stack.push(($byte).into());
+                signextend(&mut stack);
+                let res: U256 = ($result).into();
+                assert_eq!(res, stack.pop());
+            };
+        }
+        assert_exp!(0xff, 0, U256::MAX);
+        assert_exp!(0xff, 1, 0xff);
+        assert_exp!(0xf0, 0, !U256::from_u64(0x0f));
+        // Large
+        assert_exp!(
+            U256::from_u128_words(0x82, 0x1),
+            16,
+            U256::from_u128_words((u128::MAX ^ 0xff) | 0x82, 0x1)
+        );
+        assert_exp!(U256::from_u128_words(0x82, 0x1), 15, U256::from_u128_words(0x0, 0x1));
+        assert_exp!(U256::from_u128_words(0x82, 0x1), 17, U256::from_u128_words(0x82, 0x1));
+        // Not At Boundary
+        assert_exp!(U256::from_u128_words(0x62, 0x1), 16, U256::from_u128_words(0x62, 0x1));
+    }
     #[test]
     fn test_exp() {
         macro_rules! assert_exp {
