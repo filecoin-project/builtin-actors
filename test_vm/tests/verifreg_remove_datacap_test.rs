@@ -15,8 +15,8 @@ use fil_actor_datacap::{
     DestroyParams, Method as DataCapMethod, MintParams, State as DataCapState,
 };
 use fil_actor_verifreg::{
-    AddVerifierClientParams, DataCap, RemoveDataCapParams, RemoveDataCapRequest,
-    RemoveDataCapReturn, SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
+    AddVerifierClientParams, RemoveDataCapParams, RemoveDataCapRequest, RemoveDataCapReturn,
+    SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
 };
 use fil_actor_verifreg::{AddrPairKey, Method as VerifregMethod};
 use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State as VerifregState};
@@ -25,7 +25,7 @@ use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use test_vm::util::{apply_code, apply_ok, create_accounts, verifreg_add_verifier};
+use test_vm::util::{apply_ok, create_accounts, verifreg_add_verifier};
 use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
 
 #[test]
@@ -265,63 +265,6 @@ fn remove_datacap_simple_successful_path() {
         .unwrap();
 
     assert_eq!(2u64, verifier2_proposal_id.id);
-    v.assert_state_invariants();
-}
-#[test]
-fn remove_datacap_fails_on_verifreg() {
-    let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 2, TokenAmount::from_whole(10_000));
-    let (verifier1, verifier2) = (addrs[0], addrs[1]);
-
-    let verifier1_id_addr = v.normalize_address(&verifier1).unwrap();
-    let verifier2_id_addr = v.normalize_address(&verifier2).unwrap();
-    let verifier_allowance = StoragePower::from(2 * 1048576u64);
-    let allowance_to_remove: StoragePower = DataCap::from(100);
-
-    // register verifier1 and verifier2
-    verifreg_add_verifier(&v, verifier1, verifier_allowance.clone());
-    verifreg_add_verifier(&v, verifier2, verifier_allowance);
-
-    let remove_proposal = RemoveDataCapProposal {
-        verified_client: VERIFIED_REGISTRY_ACTOR_ADDR,
-        data_cap_amount: allowance_to_remove.clone(),
-        removal_proposal_id: RemoveDataCapProposalID { id: 0 },
-    };
-
-    let mut remove_proposal_ser = to_vec(&remove_proposal).unwrap();
-    let mut remove_proposal_payload = SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP.to_vec();
-    remove_proposal_payload.append(&mut remove_proposal_ser);
-
-    let remove_datacap_params = RemoveDataCapParams {
-        verified_client_to_remove: VERIFIED_REGISTRY_ACTOR_ADDR,
-        data_cap_amount_to_remove: allowance_to_remove,
-        verifier_request_1: RemoveDataCapRequest {
-            verifier: verifier1_id_addr,
-            signature: Signature {
-                sig_type: SignatureType::Secp256k1,
-                bytes: remove_proposal_payload.clone(),
-            },
-        },
-        verifier_request_2: RemoveDataCapRequest {
-            verifier: verifier2_id_addr,
-            signature: Signature {
-                sig_type: SignatureType::Secp256k1,
-                bytes: remove_proposal_payload,
-            },
-        },
-    };
-
-    apply_code(
-        &v,
-        TEST_VERIFREG_ROOT_ADDR,
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        TokenAmount::zero(),
-        VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        remove_datacap_params,
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-    );
-
     v.assert_state_invariants();
 }
 
