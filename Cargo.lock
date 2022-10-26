@@ -1321,7 +1321,9 @@ dependencies = [
 name = "fil_actor_account"
 version = "10.0.0-alpha.1"
 dependencies = [
+ "anyhow",
  "fil_actors_runtime",
+ "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -1430,6 +1432,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_datacap"
+version = "9.0.0-alpha.1"
+dependencies = [
+ "cid",
+ "fil_actors_runtime",
+ "frc42_dispatch",
+ "frc46_token",
+ "fvm_actor_utils",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "lazy_static",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_init"
 version = "10.0.0-alpha.1"
 dependencies = [
@@ -1456,12 +1478,14 @@ dependencies = [
  "fil_actor_reward",
  "fil_actor_verifreg",
  "fil_actors_runtime",
+ "frc46_token",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
+ "integer-encoding",
  "itertools",
  "libipld-core 0.13.1",
  "log",
@@ -1498,6 +1522,7 @@ dependencies = [
  "num-traits",
  "rand",
  "serde",
+ "test-case",
 ]
 
 [[package]]
@@ -1507,6 +1532,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
+ "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -1595,11 +1621,14 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
+ "frc42_dispatch",
+ "frc46_token",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
  "lazy_static",
+ "log",
  "num-derive",
  "num-traits",
  "serde",
@@ -1615,6 +1644,7 @@ dependencies = [
  "cid",
  "derive_builder",
  "fvm_ipld_amt",
+ "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -1671,6 +1701,7 @@ dependencies = [
  "cid",
  "fil_actor_account",
  "fil_actor_cron",
+ "fil_actor_datacap",
  "fil_actor_init",
  "fil_actor_market",
  "fil_actor_miner",
@@ -1851,6 +1882,23 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
+]
+
+[[package]]
+name = "fvm_actor_utils"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15b2605197066de1548fd18d5c367cd425be4dab83d4c0f5f9f730d0eec6124c"
+dependencies = [
+ "anyhow",
+ "cid",
+ "frc42_dispatch",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_sdk",
+ "fvm_shared",
+ "num-traits",
+ "thiserror",
 ]
 
 [[package]]
@@ -2618,16 +2666,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "578ede34cf02f8924ab9447f50c28075b4d3e5b269972345e7e0372b38c6cdcd"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "num_cpus"
-version = "1.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19e64526ebdee182341572e50e9ad03965aa510cd94427a4549448f285e957a1"
-dependencies = [
- "hermit-abi",
- "libc",
 ]
 
 [[package]]
@@ -3583,6 +3621,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-case"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07aea929e9488998b64adc414c29fe5620398f01c2e3f58164122b17e567a6d5"
+dependencies = [
+ "test-case-macros",
+]
+
+[[package]]
+name = "test-case-macros"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c95968eedc6fc4f5c21920e0f4264f78ec5e4c56bb394f319becc1a5830b3e54"
+dependencies = [
+ "cfg-if",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "test_vm"
 version = "10.0.0-alpha.1"
 dependencies = [
@@ -3606,6 +3666,7 @@ dependencies = [
  "fil_actor_verifreg",
  "fil_actors_runtime",
  "fil_builtin_actors_state",
+ "frc46_token",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -3623,6 +3684,7 @@ dependencies = [
  "rand_chacha",
  "regex",
  "serde",
+ "test-case",
  "thiserror",
 ]
 

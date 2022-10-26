@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use crate::balance_table::BalanceTable;
+use crate::ext::verifreg::AllocationID;
 use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    actor_error, make_empty_map, ActorDowncast, ActorError, Array, Set, SetMultimap,
+    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Array,
+    AsActorError, Map, Set, SetMultimap,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -24,7 +26,7 @@ use super::types::*;
 use super::{DealProposal, DealState};
 
 /// Market actor state
-#[derive(Clone, Default, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Default, Serialize_tuple, Deserialize_tuple, Debug)]
 pub struct State {
     /// Proposals are deals that have been proposed and not yet cleaned up after expiry or termination.
     /// Array<DealID, DealProposal>
@@ -62,6 +64,9 @@ pub struct State {
     pub total_provider_locked_collateral: TokenAmount,
     /// Total storage fee that is locked in escrow -> unlocked when payments are made
     pub total_client_storage_fee: TokenAmount,
+
+    /// Verified registry allocation IDs for deals that are not yet activated.
+    pub pending_deal_allocation_ids: Cid, // HAMT[DealID]AllocationID
 }
 
 impl State {
@@ -80,10 +85,13 @@ impl State {
         let empty_balance_table = BalanceTable::new(store)
             .root()
             .map_err(|e| anyhow!("Failed to create empty balance table map: {}", e))?;
-
         let empty_deal_ops_hamt = SetMultimap::new(store)
             .root()
             .map_err(|e| anyhow!("Failed to create empty multiset: {}", e))?;
+        let empty_pending_deal_allocation_map =
+            make_empty_map::<_, AllocationID>(store, HAMT_BIT_WIDTH).flush().map_err(|e| {
+                anyhow!("Failed to create empty pending deal allocation map: {}", e)
+            })?;
         Ok(Self {
             proposals: empty_proposals_array,
             states: empty_states_array,
@@ -97,6 +105,7 @@ impl State {
             total_client_locked_collateral: TokenAmount::default(),
             total_provider_locked_collateral: TokenAmount::default(),
             total_client_storage_fee: TokenAmount::default(),
+            pending_deal_allocation_ids: empty_pending_deal_allocation_map,
         })
     }
 
@@ -172,6 +181,7 @@ pub(super) struct MarketStateMutation<'bs, 's, BS> {
 
     pub(super) pending_permit: Permission,
     pub(super) pending_deals: Option<Set<'bs, BS>>,
+    pub(super) pending_deal_allocation_ids: Option<Map<'bs, BS, AllocationID>>,
 
     pub(super) dpe_permit: Permission,
     pub(super) deals_by_epoch: Option<SetMultimap<'bs, BS>>,
@@ -202,6 +212,7 @@ where
             escrow_table: None,
             pending_permit: Permission::Invalid,
             pending_deals: None,
+            pending_deal_allocation_ids: None,
             dpe_permit: Permission::Invalid,
             deals_by_epoch: None,
             locked_permit: Permission::Invalid,
@@ -236,6 +247,11 @@ where
 
         if self.pending_permit != Permission::Invalid {
             self.pending_deals = Some(Set::from_root(self.store, &self.st.pending_proposals)?);
+            self.pending_deal_allocation_ids = Some(make_map_with_root_and_bitwidth(
+                &self.st.pending_deal_allocation_ids,
+                self.store,
+                HAMT_BIT_WIDTH,
+            )?);
         }
 
         if self.dpe_permit != Permission::Invalid {
@@ -278,25 +294,28 @@ where
         self
     }
 
-    pub(super) fn commit_state(&mut self) -> anyhow::Result<()> {
+    pub(super) fn commit_state(&mut self) -> Result<(), ActorError> {
         if self.proposal_permit == Permission::Write {
             if let Some(s) = &mut self.deal_proposals {
-                self.st.proposals =
-                    s.flush().map_err(|e| e.downcast_wrap("failed to flush deal proposals"))?;
+                self.st.proposals = s
+                    .flush()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal proposals")?;
             }
         }
 
         if self.state_permit == Permission::Write {
             if let Some(s) = &mut self.deal_states {
-                self.st.states =
-                    s.flush().map_err(|e| e.downcast_wrap("failed to flush deal states"))?;
+                self.st.states = s
+                    .flush()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal states")?;
             }
         }
 
         if self.locked_permit == Permission::Write {
             if let Some(s) = &mut self.locked_table {
-                self.st.locked_table =
-                    s.root().map_err(|e| e.downcast_wrap("failed to flush locked table"))?;
+                self.st.locked_table = s
+                    .root()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush locked table")?;
             }
             if let Some(s) = &mut self.total_client_locked_collateral {
                 self.st.total_client_locked_collateral = s.clone();
@@ -311,22 +330,31 @@ where
 
         if self.escrow_permit == Permission::Write {
             if let Some(s) = &mut self.escrow_table {
-                self.st.escrow_table =
-                    s.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
+                self.st.escrow_table = s
+                    .root()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")?;
             }
         }
 
         if self.pending_permit == Permission::Write {
             if let Some(s) = &mut self.pending_deals {
-                self.st.pending_proposals =
-                    s.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
+                self.st.pending_proposals = s
+                    .root()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")?;
+            }
+            if let Some(s) = &mut self.pending_deal_allocation_ids {
+                self.st.pending_deal_allocation_ids = s.flush().context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "failed to flush pending deal allocation ids",
+                )?;
             }
         }
 
         if self.dpe_permit == Permission::Write {
             if let Some(s) = &mut self.deals_by_epoch {
-                self.st.deal_ops_by_epoch =
-                    s.root().map_err(|e| e.downcast_wrap("failed to flush escrow table"))?;
+                self.st.deal_ops_by_epoch = s
+                    .root()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")?;
             }
         }
 

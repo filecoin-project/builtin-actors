@@ -21,6 +21,7 @@ fn state_control() {
     let addr2 = Address::new_id(2222);
 
     // set actor
+<<<<<<< HEAD
     let a1 = actor(
         *ACCOUNT_ACTOR_CODE_ID,
         make_builtin(b"a1-head"),
@@ -28,11 +29,16 @@ fn state_control() {
         TokenAmount::from_atto(10u8),
         None,
     );
+=======
+    let a1 =
+        actor(*ACCOUNT_ACTOR_CODE_ID, make_builtin(b"a1-head"), 42, TokenAmount::from_atto(10u8));
+>>>>>>> master
     v.set_actor(addr1, a1.clone());
     let out = v.get_actor(addr1).unwrap();
     assert_eq!(out, a1);
     let check = v.checkpoint();
 
+<<<<<<< HEAD
     let a2 = actor(
         *PAYCH_ACTOR_CODE_ID,
         make_builtin(b"a2-head"),
@@ -40,6 +46,9 @@ fn state_control() {
         TokenAmount::from_atto(1u8),
         None,
     );
+=======
+    let a2 = actor(*PAYCH_ACTOR_CODE_ID, make_builtin(b"a2-head"), 88, TokenAmount::from_atto(1u8));
+>>>>>>> master
     v.set_actor(addr2, a2.clone());
     assert_eq!(v.get_actor(addr2).unwrap(), a2);
     // rollback removes a2 but not a1

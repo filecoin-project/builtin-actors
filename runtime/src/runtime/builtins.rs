@@ -22,6 +22,7 @@ pub enum Type {
     Embryo = 12,
     EVM = 13,
     EAM = 14,
+    DataCap = 15,
 }
 
 impl Type {
@@ -41,6 +42,7 @@ impl Type {
             Type::Embryo => "embryo",
             Type::EVM => "evm",
             Type::EAM => "eam",
+            Type::DataCap => "datacap",
         }
     }
 }

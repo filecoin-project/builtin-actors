@@ -121,7 +121,11 @@ impl Actor {
 
         let total_reward = rt.transaction(|st: &mut State, rt| {
             let mut block_reward: TokenAmount =
+<<<<<<< HEAD
                 (&st.this_epoch_reward * params.win_count).div_rem(EXPECTED_LEADERS_PER_EPOCH).0;
+=======
+                (&st.this_epoch_reward * params.win_count).div_floor(EXPECTED_LEADERS_PER_EPOCH);
+>>>>>>> master
             let mut total_reward = &params.gas_reward + &block_reward;
             let curr_balance = rt.current_balance();
             if total_reward > curr_balance {

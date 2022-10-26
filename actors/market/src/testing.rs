@@ -5,6 +5,7 @@ use std::{
 };
 
 use cid::Cid;
+use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, parse_uint_key, MessageAccumulator, SetMultimap,
 };
@@ -15,12 +16,15 @@ use fvm_shared::{
     deal::DealID,
     econ::TokenAmount,
 };
+use integer_encoding::VarInt;
 use num_traits::Zero;
 
 use crate::{
     balance_table::BalanceTable, deal_cid, DealArray, DealMetaArray, State, PROPOSALS_AMT_BITWIDTH,
 };
+use crate::{ext::verifreg::AllocationID, NO_ALLOCATION_ID};
 
+#[derive(Clone)]
 pub struct DealSummary {
     pub provider: Address,
     pub start_epoch: ChainEpoch,
@@ -28,6 +32,7 @@ pub struct DealSummary {
     pub sector_start_epoch: ChainEpoch,
     pub last_update_epoch: ChainEpoch,
     pub slash_epoch: ChainEpoch,
+    pub piece_cid: Option<Cid>,
 }
 
 impl Default for DealSummary {
@@ -39,13 +44,15 @@ impl Default for DealSummary {
             sector_start_epoch: -1,
             last_update_epoch: -1,
             slash_epoch: -1,
+            piece_cid: None,
         }
     }
 }
-
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct StateSummary {
     pub deals: BTreeMap<DealID, DealSummary>,
+    pub claim_id_to_deal_id: BTreeMap<u64, DealID>,
+    pub alloc_id_to_deal_id: BTreeMap<u64, DealID>,
     pub pending_proposal_count: u64,
     pub deal_state_count: u64,
     pub lock_table_count: u64,
@@ -107,6 +114,7 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
                         provider: proposal.provider,
                         start_epoch: proposal.start_epoch,
                         end_epoch: proposal.end_epoch,
+                        piece_cid: Some(proposal.piece_cid),
                         ..Default::default()
                     },
                 );
@@ -138,8 +146,31 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
         ),
     );
 
+    let mut pending_allocations = BTreeMap::<DealID, AllocationID>::new();
+    let mut alloc_id_to_deal_id = BTreeMap::<AllocationID, DealID>::new();
+    match make_map_with_root_and_bitwidth(&state.pending_deal_allocation_ids, store, HAMT_BIT_WIDTH)
+    {
+        Ok(pending_allocations_hamt) => {
+            let ret = pending_allocations_hamt.for_each(|key, allocation_id| {
+                let deal_id: u64 = u64::decode_var(key.0.as_slice()).unwrap().0;
+
+                acc.require(
+                    proposal_stats.get(&deal_id).is_some(),
+                    format!("pending deal allocation {} not found in proposals", deal_id),
+                );
+
+                pending_allocations.insert(deal_id, *allocation_id);
+                alloc_id_to_deal_id.insert(*allocation_id, deal_id);
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating pending allocations");
+        }
+        Err(e) => acc.add(format!("error loading pending allocations: {e}")),
+    };
+
     // deal states
     let mut deal_state_count = 0;
+    let mut claim_id_to_deal_id = BTreeMap::<u64, DealID>::new();
     match DealMetaArray::load(&state.states, store) {
         Ok(deal_states) => {
             let ret = deal_states.for_each(|deal_id, deal_state| {
@@ -172,8 +203,13 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
                 } else {
                     acc.add(format!("no deal proposal for deal state {deal_id}"));
                 }
+                acc.require(!pending_allocations.contains_key(&deal_id), format!("deal {deal_id} has pending allocation"));
 
                 deal_state_count += 1;
+
+                if deal_state.verified_claim != NO_ALLOCATION_ID {
+                    claim_id_to_deal_id.insert(deal_state.verified_claim, deal_id);
+                }
 
                 Ok(())
             });
@@ -184,7 +220,6 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
 
     // pending proposals
     let mut pending_proposal_count = 0;
-
     match make_map_with_root_and_bitwidth::<_, ()>(
         &state.pending_proposals,
         store,
@@ -289,6 +324,8 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
             lock_table_count,
             deal_op_epoch_count,
             deal_op_count,
+            claim_id_to_deal_id,
+            alloc_id_to_deal_id,
         },
         acc,
     )

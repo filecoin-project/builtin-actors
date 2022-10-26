@@ -15,7 +15,7 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_SEND;
+use fvm_shared::{MethodNum, METHOD_SEND};
 
 mod util;
 
@@ -2407,4 +2407,23 @@ mod lock_balance_tests {
         );
         check_state(&rt);
     }
+}
+
+#[test]
+fn token_receiver() {
+    let msig = Address::new_id(1000);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+    h.construct_and_verify(&mut rt, 2, 0, 0, vec![anne, bob]);
+
+    rt.expect_validate_caller_any();
+    let ret = rt.call::<MultisigActor>(
+        Method::UniversalReceiverHook as MethodNum,
+        &RawBytes::new(vec![1, 2, 3]),
+    );
+    assert!(ret.is_ok());
+    assert_eq!(RawBytes::default(), ret.unwrap());
 }

@@ -23,7 +23,7 @@ use fvm_shared::crypto::signature::{
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, RegisteredSealProof,
     ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
@@ -59,6 +59,7 @@ lazy_static::lazy_static! {
     pub static ref EMBRYO_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/embryo");
     pub static ref EVM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/evm");
     pub static ref EAM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/eam");
+    pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/datacap");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -75,6 +76,7 @@ lazy_static::lazy_static! {
         map.insert(*EMBRYO_ACTOR_CODE_ID, Type::Embryo);
         map.insert(*EVM_ACTOR_CODE_ID, Type::EVM);
         map.insert(*EAM_ACTOR_CODE_ID, Type::EAM);
+        map.insert(*DATACAP_TOKEN_ACTOR_CODE_ID, Type::DataCap);
         map
     };
     pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
@@ -92,6 +94,7 @@ lazy_static::lazy_static! {
         (Type::Embryo, *EMBRYO_ACTOR_CODE_ID),
         (Type::EVM, *EVM_ACTOR_CODE_ID),
         (Type::EAM, *EAM_ACTOR_CODE_ID),
+        (Type::DataCap, *DATACAP_TOKEN_ACTOR_CODE_ID),
     ]
     .into_iter()
     .collect();
@@ -391,7 +394,7 @@ pub struct ExpectRandomness {
     tag: DomainSeparationTag,
     epoch: ChainEpoch,
     entropy: Vec<u8>,
-    out: Randomness,
+    out: [u8; RANDOMNESS_LENGTH],
 }
 
 #[derive(Debug)]
@@ -672,7 +675,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
-        out: Randomness,
+        out: [u8; RANDOMNESS_LENGTH],
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_tickets.push_back(a);
@@ -684,7 +687,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
-        out: Randomness,
+        out: [u8; RANDOMNESS_LENGTH],
     ) {
         let a = ExpectRandomness { tag, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_beacon.push_back(a);
@@ -946,7 +949,7 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         let expected = self
             .expectations
             .borrow_mut()
@@ -979,7 +982,7 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         let expected = self
             .expectations
             .borrow_mut()
@@ -1064,7 +1067,7 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
 
         assert!(
             !self.expectations.borrow_mut().expect_sends.is_empty(),
-            "unexpected expectedMessage to: {:?} method: {:?}, value: {:?}, params: {:?}",
+            "unexpected message to: {:?} method: {:?}, value: {:?}, params: {:?}",
             to,
             method,
             value,
@@ -1078,9 +1081,9 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
                 && expected_msg.method == method
                 && expected_msg.params == params
                 && expected_msg.value == value,
-            "expectedMessage being sent does not match expectation.\n\
-             Message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
-             Expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
+            "message sent does not match expectation.\n\
+             message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
+             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
             to,
             method,
             value,
@@ -1271,7 +1274,9 @@ impl<BS> Primitives for MockRuntime<BS> {
         assert_eq!(exp.reg, reg, "Unexpected compute_unsealed_sector_cid : reg mismatch");
         assert!(
             exp.pieces[..].eq(pieces),
-            "Unexpected compute_unsealed_sector_cid : pieces mismatch"
+            "Unexpected compute_unsealed_sector_cid : pieces mismatch, exp: {:?}, got: {:?}",
+            exp.pieces,
+            pieces,
         );
 
         if exp.exit_code != ExitCode::OK {

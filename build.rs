@@ -28,6 +28,7 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("embryo", "embryo"),
     ("evm", "evm"),
     ("eam", "eam"),
+    ("datacap", "datacap"),
 ];
 
 /// Default Cargo features to activate during the build.
@@ -39,6 +40,7 @@ const EXTRA_CARGO_FEATURES: &[(&str, &[&str])] = &[
     /*("devnet-evm", &["m2-fevm"]),*/
     ("wallaby", &["m2-native"]),
 ];
+
 
 const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";
 

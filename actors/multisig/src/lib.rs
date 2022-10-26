@@ -42,6 +42,7 @@ pub enum Method {
     SwapSigner = 7,
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
+    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 /// Multisig Actor
@@ -472,6 +473,19 @@ impl Actor {
 
         execute_transaction_if_approved(rt, &st, tx_id, &txn)
     }
+
+    // Always succeeds, accepting any transfers.
+    pub fn universal_receiver_hook<BS, RT>(
+        rt: &mut RT,
+        _params: &RawBytes,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.validate_immediate_caller_accept_any()?;
+        Ok(())
+    }
 }
 
 fn execute_transaction_if_approved<BS, RT>(
@@ -614,6 +628,10 @@ impl ActorCode for Actor {
             }
             Some(Method::LockBalance) => {
                 Self::lock_balance(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::UniversalReceiverHook) => {
+                Self::universal_receiver_hook(rt, params)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),

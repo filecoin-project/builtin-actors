@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use crate::ext::verifreg::AllocationID;
 use cid::{Cid, Version};
-use fil_actors_runtime::DealWeight;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{BytesSer, Cbor};
 use fvm_shared::address::Address;
@@ -119,10 +119,6 @@ impl DealProposal {
     pub fn duration(&self) -> ChainEpoch {
         self.end_epoch - self.start_epoch
     }
-    /// Computes weight for a deal proposal, which is a function of its size and duration.
-    pub fn weight(&self) -> DealWeight {
-        DealWeight::from(self.duration()) * self.piece_size.0
-    }
     pub fn total_storage_fee(&self) -> TokenAmount {
         self.storage_price_per_epoch.clone() * self.duration() as u64
     }
@@ -151,4 +147,6 @@ pub struct DealState {
     pub last_updated_epoch: ChainEpoch,
     // -1 if deal never slashed
     pub slash_epoch: ChainEpoch,
+    // ID of the verified registry allocation/claim for this deal's data (0 if none).
+    pub verified_claim: AllocationID,
 }
