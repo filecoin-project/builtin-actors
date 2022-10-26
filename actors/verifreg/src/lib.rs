@@ -244,7 +244,10 @@ impl Actor {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
 
             if params.verified_client_to_remove == VERIFIED_REGISTRY_ACTOR_ADDR {
-                return Err(actor_error!(illegal_argument, "cannot remove data cap from root key"));
+                return Err(actor_error!(
+                    illegal_argument,
+                    "cannot remove data cap from verified registry itself"
+                ));
             }
 
             if !is_verifier(rt, st, verifier_1)? {
