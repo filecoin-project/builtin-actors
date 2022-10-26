@@ -24,7 +24,7 @@ use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
     ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 
@@ -242,6 +242,10 @@ impl Actor {
         // Validate and then remove the proposal.
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
+
+            if params.verified_client_to_remove == VERIFIED_REGISTRY_ACTOR_ADDR {
+                return Err(actor_error!(illegal_argument, "cannot remove data cap from root key"));
+            }
 
             if !is_verifier(rt, st, verifier_1)? {
                 return Err(actor_error!(not_found, "{} is not a verifier", verifier_1));
