@@ -34,7 +34,7 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     PubkeyAddress = 2,
-    AuthenticateMessage = 3,
+    AuthenticateMessage = 42,
 }
 
 /// Account Actor

@@ -3,7 +3,7 @@
 
 use anyhow::anyhow;
 use fil_actor_account::types::AuthenticateMessageParams;
-use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, State};
+use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, State, Method};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
@@ -106,7 +106,7 @@ fn authenticate_message() {
         plaintext: vec![],
         result: Ok(()),
     });
-    assert_eq!(RawBytes::default(), rt.call::<AccountActor>(3, &params).unwrap());
+    assert_eq!(RawBytes::default(), rt.call::<AccountActor>(Method::AuthenticateMessage as u64, &params).unwrap());
 
     rt.expect_validate_caller_any();
     rt.expect_verify_signature(ExpectedVerifySig {
@@ -117,7 +117,7 @@ fn authenticate_message() {
     });
     assert_eq!(
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        rt.call::<AccountActor>(3, &params).unwrap_err().exit_code()
+        rt.call::<AccountActor>(Method::AuthenticateMessage as u64, &params).unwrap_err().exit_code()
     );
 
     rt.verify();
