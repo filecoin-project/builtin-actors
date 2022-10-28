@@ -121,3 +121,15 @@ impl Keyer for u64 {
         u64_key(*self)
     }
 }
+
+impl Keyer for String {
+    fn key(&self) -> BytesKey {
+        BytesKey(self.as_bytes().to_owned())
+    }
+}
+
+impl Keyer for &str {
+    fn key(&self) -> BytesKey {
+        BytesKey(self.as_bytes().to_owned())
+    }
+}
