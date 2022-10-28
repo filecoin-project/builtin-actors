@@ -86,6 +86,7 @@ pub enum Method {
     OnMinerSectorsTerminate = 7,
     ComputeDataCommitment = 8,
     CronTick = 9,
+    CheckHealth = 42,
 }
 
 /// Market Actor
@@ -508,6 +509,68 @@ impl Actor {
         }
 
         Ok(VerifyDealsForActivationReturn { sectors: weights })
+    }
+
+    fn check_deal_healthy<BS, RT>(rt: &mut RT, params: DealHealthyParams) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+        RT: Runtime<BS>,
+    {
+        rt.transaction(|st: &mut State, rt| {
+            let mut msm = st.mutator(rt.store());
+            msm.with_deal_states(Permission::ReadOnly)
+                .with_deal_proposals(Permission::ReadOnly)
+                .build()
+                .map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load state")
+                })?;
+
+            let proposal = msm
+                .deal_proposals
+                .as_ref()
+                .unwrap()
+                .get(params.id)
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to get deal_id ({})", params.id),
+                    )
+                })?
+                .ok_or_else(|| actor_error!(not_found, "no such deal_id: {}", params.id))?;
+
+            if proposal.piece_cid != params.piece {
+                return Err(actor_error!(
+                    assertion_failed,
+                    "proposal for deal id {} did not match",
+                    params.id
+                ));
+            }
+
+            let state: DealState = *msm
+                .deal_states
+                .as_ref()
+                .unwrap()
+                .get(params.id)
+                .map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get deal state")
+                })?
+                // A deal with a proposal but no state is not activated, but then it should not be
+                // part of a sector that is terminating.
+                .ok_or_else(|| {
+                    actor_error!(
+                        assertion_failed,
+                        "no state for deal {}, not yet activated",
+                        params.id
+                    )
+                })?;
+
+            if state.slash_epoch != EPOCH_UNDEFINED {
+                return Err(actor_error!(assertion_failed, "deal has been slashed"));
+            }
+
+            Ok(())
+        })?;
+        Ok(())
     }
 
     /// Verify that a given set of storage deals is valid for a sector currently being ProveCommitted,
@@ -1404,6 +1467,10 @@ impl ActorCode for Actor {
             }
             Some(Method::CronTick) => {
                 Self::cron_tick(rt)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::CheckHealth) => {
+                Self::check_deal_healthy(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),

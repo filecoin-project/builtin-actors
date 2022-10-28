@@ -102,6 +102,12 @@ pub struct ComputeDataCommitmentParams {
     pub inputs: Vec<SectorDataSpec>,
 }
 
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct DealHealthyParams {
+    pub piece: Cid,
+    pub id: DealID,
+}
+
 #[derive(Serialize_tuple)]
 pub struct ComputeDataCommitmentParamsRef<'a> {
     pub inputs: &'a [SectorDataSpec],
