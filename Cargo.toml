@@ -1,7 +1,7 @@
 [package]
 name = "fil_builtin_actors_bundle"
 description = "Bundle of FVM-compatible Wasm bytecode for Filecoin builtin actors"
-version = "9.0.2"
+version = "9.0.3"
 license = "MIT OR Apache-2.0"
 authors = ["Protocol Labs", "Filecoin Core Devs"]
 edition = "2021"
@@ -13,23 +13,23 @@ exclude = ["examples", ".github"]
 publish = false
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-fil_actor_account = { version = "9.0.2", path = "./actors/account", features = ["fil-actor"] }
-fil_actor_cron = { version = "9.0.2", path = "./actors/cron", features = ["fil-actor"] }
-fil_actor_datacap = { version = "9.0.2", path = "./actors/datacap", features = ["fil-actor"] }
-fil_actor_init = { version = "9.0.2", path = "./actors/init", features = ["fil-actor"] }
-fil_actor_market = { version = "9.0.2", path = "./actors/market", features = ["fil-actor"] }
-fil_actor_miner = { version = "9.0.2", path = "./actors/miner", features = ["fil-actor"] }
-fil_actor_multisig = { version = "9.0.2", path = "./actors/multisig", features = ["fil-actor"] }
-fil_actor_paych = { version = "9.0.2", path = "./actors/paych", features = ["fil-actor"] }
-fil_actor_power = { version = "9.0.2", path = "./actors/power", features = ["fil-actor"] }
-fil_actor_reward = { version = "9.0.2", path = "./actors/reward", features = ["fil-actor"] }
-fil_actor_system = { version = "9.0.2", path = "./actors/system", features = ["fil-actor"] }
-fil_actor_verifreg = { version = "9.0.2", path = "./actors/verifreg", features = ["fil-actor"] }
+fil_actor_account = { version = "9.0.3", path = "./actors/account", features = ["fil-actor"] }
+fil_actor_cron = { version = "9.0.3", path = "./actors/cron", features = ["fil-actor"] }
+fil_actor_datacap = { version = "9.0.3", path = "./actors/datacap", features = ["fil-actor"] }
+fil_actor_init = { version = "9.0.3", path = "./actors/init", features = ["fil-actor"] }
+fil_actor_market = { version = "9.0.3", path = "./actors/market", features = ["fil-actor"] }
+fil_actor_miner = { version = "9.0.3", path = "./actors/miner", features = ["fil-actor"] }
+fil_actor_multisig = { version = "9.0.3", path = "./actors/multisig", features = ["fil-actor"] }
+fil_actor_paych = { version = "9.0.3", path = "./actors/paych", features = ["fil-actor"] }
+fil_actor_power = { version = "9.0.3", path = "./actors/power", features = ["fil-actor"] }
+fil_actor_reward = { version = "9.0.3", path = "./actors/reward", features = ["fil-actor"] }
+fil_actor_system = { version = "9.0.3", path = "./actors/system", features = ["fil-actor"] }
+fil_actor_verifreg = { version = "9.0.3", path = "./actors/verifreg", features = ["fil-actor"] }
 
 [build-dependencies]
 fil_actor_bundler = "4.0.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-fil_actors_runtime = { version = "9.0.2", path = "runtime" }
+fil_actors_runtime = { version = "9.0.3", path = "runtime" }
 num-traits = "0.2.15"
 
 [dependencies]
