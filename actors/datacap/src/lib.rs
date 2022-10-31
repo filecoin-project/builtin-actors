@@ -67,6 +67,7 @@ pub enum Method {
     RevokeAllowance = 18,
     Burn = 19,
     BurnFrom = 20,
+    Allowance = 21,
 }
 
 pub struct Actor;
@@ -581,6 +582,10 @@ impl ActorCode for Actor {
             Some(Method::BurnFrom) => {
                 let ret = Self::burn_from(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "burn_from result")
+            }
+            Some(Method::Allowance) => {
+                let ret = Self::allowance(rt, cbor::deserialize_params(params)?)?;
+                serialize(&ret, "allowance result")
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
