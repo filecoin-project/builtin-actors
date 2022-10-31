@@ -90,19 +90,21 @@ impl Actor {
         Ok(())
     }
 
-    pub fn name<BS, RT>(_: &RT, _: ()) -> Result<String, ActorError>
+    pub fn name<BS, RT>(rt: &mut RT) -> Result<String, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        rt.validate_immediate_caller_accept_any()?;
         Ok("DataCap".to_string())
     }
 
-    pub fn symbol<BS, RT>(_: &RT, _: ()) -> Result<String, ActorError>
+    pub fn symbol<BS, RT>(rt: &mut RT) -> Result<String, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        rt.validate_immediate_caller_accept_any()?;
         Ok("DCAP".to_string())
     }
 
@@ -537,11 +539,11 @@ impl ActorCode for Actor {
                 serialize(&ret, "destroy result")
             }
             Some(Method::Name) => {
-                let ret = Self::name(rt, cbor::deserialize_params(params)?)?;
+                let ret = Self::name(rt)?;
                 serialize(&ret, "name result")
             }
             Some(Method::Symbol) => {
-                let ret = Self::symbol(rt, cbor::deserialize_params(params)?)?;
+                let ret = Self::symbol(rt)?;
                 serialize(&ret, "symbol result")
             }
             Some(Method::TotalSupply) => {
