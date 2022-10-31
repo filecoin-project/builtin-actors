@@ -15,7 +15,7 @@ use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
 use test_vm::VM;
 
 use fil_actor_datacap::{Method as DataCapMethod, MintParams};
-use frc46_token::token::types::TransferFromParams;
+use frc46_token::token::types::{GetAllowanceParams, TransferFromParams};
 use fvm_ipld_encoding::RawBytes;
 
 /* Mint a token for client and transfer it to a receiver, exercising error cases */
@@ -61,6 +61,17 @@ fn datacap_transfer_scenario() {
         TokenAmount::zero(),
         DataCapMethod::Mint as u64,
         mint_params,
+    );
+
+    // confirm allowance was set to infinity
+    apply_ok(
+        &v,
+        // anyone can call Allowance
+        owner,
+        DATACAP_TOKEN_ACTOR_ADDR,
+        TokenAmount::zero(),
+        DataCapMethod::Allowance as u64,
+        GetAllowanceParams { owner: client, operator },
     );
 
     let alloc = AllocationRequest {
