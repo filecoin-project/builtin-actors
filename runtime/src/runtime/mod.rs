@@ -13,7 +13,7 @@ use fvm_shared::crypto::signature::{
 };
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
@@ -38,6 +38,8 @@ mod randomness;
 mod actor_blockstore;
 #[cfg(feature = "fil-actor")]
 pub mod fvm;
+#[cfg(feature = "fil-actor")]
+pub(crate) mod hash_algorithm;
 
 pub(crate) mod empty;
 pub use empty::EMPTY_ARR_CID;
@@ -98,7 +100,7 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError>;
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 
     /// Randomness returns a (pseudo)random byte array drawing from the latest
     /// beacon from a given epoch and incorporating requisite entropy.
@@ -108,7 +110,7 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError>;
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.

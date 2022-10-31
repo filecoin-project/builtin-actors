@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime", features = ["fil-actor"] }
+fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime" }
 fvm_shared = { version = "3.0.0-alpha.8", default-features = false }
 fvm_ipld_bitfield = "0.5.4"
 fvm_ipld_amt = { version = "0.5.0", features = ["go-interop"] }
@@ -26,13 +26,14 @@ num-derive = "0.3.3"
 lazy_static = "1.4.0"
 log = "0.4.14"
 byteorder = "1.4.3"
-anyhow = "1.0.56"
+anyhow = "1.0.65"
 itertools = "0.10.3"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.3.0"
+multihash = { version = "0.16.2", default-features = false }
 
 [dev-dependencies]
-fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
+fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime", features = ["test_utils", "sector-default"] }
 fil_actor_account = { path = "../account" }
 fil_actor_reward = { path = "../reward" }
 fil_actor_power = { path = "../power" }
@@ -40,5 +41,7 @@ fil_actor_market = { path = "../market" }
 rand = "0.8.5"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false }
+test-case = "2.2.1"
+
 [features]
-fil-actor = []
+fil-actor = ["fil_actors_runtime/fil-actor"]

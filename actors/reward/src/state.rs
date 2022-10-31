@@ -23,7 +23,7 @@ lazy_static! {
 }
 
 /// Reward actor state
-#[derive(Serialize_tuple, Deserialize_tuple, Default)]
+#[derive(Serialize_tuple, Deserialize_tuple, Default, Debug, Clone)]
 pub struct State {
     /// Target CumsumRealized needs to reach for EffectiveNetworkTime to increase
     /// Expressed in byte-epochs.
@@ -174,7 +174,7 @@ impl Reward {
                 if elapsed >= vest_duration {
                     self.value.clone()
                 } else {
-                    (self.value.clone() * elapsed as u64).div_rem(vest_duration).0
+                    (self.value.clone() * elapsed as u64).div_floor(vest_duration)
                 }
             }
         }

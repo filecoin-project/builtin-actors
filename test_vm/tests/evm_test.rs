@@ -58,7 +58,7 @@ fn test_evm_lifecycle() {
     assert!(
         create_result.code.is_success(),
         "failed to create the new actor {}",
-        create_result.error_message.unwrap()
+        create_result.message
     );
 
     let create_return: fil_actor_eam::Create2Return =
@@ -74,11 +74,7 @@ fn test_evm_lifecycle() {
             ContractParams(contract_params.to_vec()),
         )
         .unwrap();
-    assert!(
-        call_result.code.is_success(),
-        "failed to call the new actor {}",
-        call_result.error_message.unwrap()
-    );
+    assert!(call_result.code.is_success(), "failed to call the new actor {}", call_result.message);
     let BytesDe(return_value) =
         call_result.ret.deserialize().expect("failed to deserialize results");
     let evm_ret: u32 = contract
@@ -122,7 +118,7 @@ fn test_evm_staticcall() {
             assert!(
                 create_result.code.is_success(),
                 "failed to create the new actor {}",
-                create_result.error_message.unwrap()
+                create_result.message
             );
 
             let create_return: fil_actor_eam::Create2Return =
@@ -159,7 +155,7 @@ fn test_evm_staticcall() {
         assert!(
             call_result.code.is_success(),
             "failed to call the new actor {}",
-            call_result.error_message.unwrap()
+            call_result.message
         );
         let BytesDe(return_value) =
             call_result.ret.deserialize().expect("failed to deserialize results");
@@ -210,7 +206,7 @@ fn test_evm_staticcall() {
         assert!(
             call_result.code.is_success(),
             "failed to call the new actor {}",
-            call_result.error_message.unwrap()
+            call_result.message
         );
         let BytesDe(return_value) =
             call_result.ret.deserialize().expect("failed to deserialize results");
@@ -276,7 +272,7 @@ fn test_evm_delegatecall() {
             assert!(
                 create_result.code.is_success(),
                 "failed to create the new actor {}",
-                create_result.error_message.unwrap()
+                create_result.message
             );
 
             let create_return: fil_actor_eam::Create2Return =
@@ -313,7 +309,7 @@ fn test_evm_delegatecall() {
         assert!(
             call_result.code.is_success(),
             "failed to call the new actor {}",
-            call_result.error_message.unwrap()
+            call_result.message
         );
         let BytesDe(return_value) =
             call_result.ret.deserialize().expect("failed to deserialize results");
@@ -341,7 +337,7 @@ fn test_evm_delegatecall() {
         assert!(
             call_result.code.is_success(),
             "failed to call the new actor {}",
-            call_result.error_message.unwrap()
+            call_result.message
         );
         let BytesDe(return_value) =
             call_result.ret.deserialize().expect("failed to deserialize results");
@@ -384,7 +380,7 @@ fn test_evm_staticcall_delegatecall() {
             assert!(
                 create_result.code.is_success(),
                 "failed to create the new actor {}",
-                create_result.error_message.unwrap()
+                create_result.message
             );
 
             let create_return: fil_actor_eam::Create2Return =
@@ -423,7 +419,7 @@ fn test_evm_staticcall_delegatecall() {
         assert!(
             call_result.code.is_success(),
             "failed to call the new actor {}",
-            call_result.error_message.unwrap()
+            call_result.message
         );
         let BytesDe(return_value) =
             call_result.ret.deserialize().expect("failed to deserialize results");

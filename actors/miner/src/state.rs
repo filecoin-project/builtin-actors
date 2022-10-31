@@ -27,6 +27,7 @@ use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECT
 use fvm_shared::HAMT_BIT_WIDTH;
 use num_traits::Zero;
 
+use super::beneficiary::*;
 use super::deadlines::new_deadline_info;
 use super::policy::*;
 use super::types::*;
@@ -46,7 +47,7 @@ pub const SECTORS_AMT_BITWIDTH: u32 = 5;
 /// that limits a miner actor's behavior (i.e. no balance withdrawals)
 /// Excess balance as computed by st.GetAvailableBalance will be
 /// withdrawable or usable for pre-commit deposit or pledge lock-up.
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
     /// Contains static info about this miner
     pub info: Cid,
@@ -1250,6 +1251,17 @@ pub struct MinerInfo {
     /// A proposed new owner account for this miner.
     /// Must be confirmed by a message from the pending address itself.
     pub pending_owner_address: Option<Address>,
+
+    /// Account for receive miner benefits, withdraw on miner must send to this address,
+    /// set owner address by default when create miner
+    pub beneficiary: Address,
+
+    /// beneficiary's total quota, how much quota has been withdraw,
+    /// and when this beneficiary expired
+    pub beneficiary_term: BeneficiaryTerm,
+
+    /// A proposal new beneficiary message for this miner
+    pub pending_beneficiary_term: Option<PendingBeneficiaryChange>,
 }
 
 impl MinerInfo {
@@ -1274,6 +1286,9 @@ impl MinerInfo {
             worker,
             control_addresses,
             pending_worker_key: None,
+            beneficiary: owner,
+            beneficiary_term: BeneficiaryTerm::default(),
+            pending_beneficiary_term: None,
             peer_id,
             multi_address,
             window_post_proof_type,

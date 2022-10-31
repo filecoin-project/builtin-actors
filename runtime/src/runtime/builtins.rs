@@ -19,9 +19,10 @@ pub enum Type {
     Multisig = 9,
     Reward = 10,
     VerifiedRegistry = 11,
-    Embryo = 12,
-    EVM = 13,
-    EAM = 14,
+    DataCap = 12,
+    Embryo = 13,
+    EVM = 14,
+    EAM = 15,
 }
 
 impl Type {
@@ -38,6 +39,7 @@ impl Type {
             Type::Multisig => "multisig",
             Type::Reward => "reward",
             Type::VerifiedRegistry => "verifiedregistry",
+            Type::DataCap => "datacap",
             Type::Embryo => "embryo",
             Type::EVM => "evm",
             Type::EAM => "eam",

@@ -1,8 +1,6 @@
 use cid::Cid;
 use fil_actor_miner::{SectorPreCommitInfo, SectorPreCommitOnChainInfo};
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::DealWeight;
-use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::RegisteredSealProof;
@@ -81,11 +79,5 @@ fn new_pre_commit_on_chain(
         expiration: 1,
         ..SectorPreCommitInfo::default()
     };
-    SectorPreCommitOnChainInfo {
-        info,
-        pre_commit_deposit: deposit,
-        pre_commit_epoch: epoch,
-        deal_weight: DealWeight::zero(),
-        verified_deal_weight: DealWeight::zero(),
-    }
+    SectorPreCommitOnChainInfo { info, pre_commit_deposit: deposit, pre_commit_epoch: epoch }
 }

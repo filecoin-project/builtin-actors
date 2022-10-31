@@ -16,6 +16,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 fil_actor_account = { version = "10.0.0-alpha.1", path = "../actors/account"}
 fil_actor_verifreg = { version = "10.0.0-alpha.1", path = "../actors/verifreg"}
+fil_actor_datacap = { version = "10.0.0-alpha.1", path = "../actors/datacap"}
 fil_actor_cron = { version = "10.0.0-alpha.1", path = "../actors/cron"}
 fil_actor_market = { version = "10.0.0-alpha.1", path = "../actors/market"}
 fil_actor_multisig = { version = "10.0.0-alpha.1", path = "../actors/multisig"}
@@ -30,12 +31,13 @@ fvm_shared = { version = "3.0.0-alpha.8", default-features = false }
 fvm_ipld_encoding = "0.3.0"
 fvm_ipld_blockstore = "0.1.1"
 num-traits = "0.2.14"
-anyhow = "1.0.56"
+anyhow = "1.0.65"
 bimap = { version = "0.6.2" }
 num-derive = "0.3.3"
 serde = { version = "1.0.136", features = ["derive"] }
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 
 [dev-dependencies]
+
 [features]
-fil-actor = []
+fil-actor = ["fil_actors_runtime/fil-actor"]

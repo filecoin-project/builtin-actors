@@ -119,6 +119,12 @@ pub fn quality_for_weight(
         .div_floor(&QUALITY_BASE_MULTIPLIER)
 }
 
+/// Returns maximum achievable QA power.
+pub fn qa_power_max(size: SectorSize) -> StoragePower {
+    (BigInt::from(size as u64) * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER)
+        .div_floor(&QUALITY_BASE_MULTIPLIER)
+}
+
 /// Returns the power for a sector size and weight.
 pub fn qa_power_for_weight(
     size: SectorSize,
@@ -140,12 +146,17 @@ pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> Stor
 pub fn sector_deals_max(policy: &Policy, size: SectorSize) -> u64 {
     cmp::max(256, size as u64 / policy.deal_limit_denominator)
 }
+
 /// Specification for a linear vesting schedule.
 pub struct VestSpec {
-    pub initial_delay: ChainEpoch, // Delay before any amount starts vesting.
-    pub vest_period: ChainEpoch, // Period over which the total should vest, after the initial delay.
-    pub step_duration: ChainEpoch, // Duration between successive incremental vests (independent of vesting period).
-    pub quantization: ChainEpoch, // Maximum precision of vesting table (limits cardinality of table).
+    /// Delay before any amount starts vesting.
+    pub initial_delay: ChainEpoch,
+    /// Period over which the total should vest, after the initial delay.
+    pub vest_period: ChainEpoch,
+    /// Duration between successive incremental vests (independent of vesting period).
+    pub step_duration: ChainEpoch,
+    /// Maximum precision of vesting table (limits cardinality of table).
+    pub quantization: ChainEpoch,
 }
 
 pub const REWARD_VESTING_SPEC: VestSpec = VestSpec {

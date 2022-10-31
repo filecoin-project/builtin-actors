@@ -25,6 +25,7 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("multisig", "multisig"),
     ("reward", "reward"),
     ("verifreg", "verifiedregistry"),
+    ("datacap", "datacap"),
     ("embryo", "embryo"),
     ("evm", "evm"),
     ("eam", "eam"),

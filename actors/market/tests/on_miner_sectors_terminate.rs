@@ -163,7 +163,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(&mut rt, &MinerAddresses::default(), &[deal1, deal2.clone()]);
+    let deal_ids = publish_deals(&mut rt, &MinerAddresses::default(), &[deal1, deal2.clone()], 1);
     activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, current_epoch, &deal_ids);
 
     let new_epoch = end_epoch - 1;

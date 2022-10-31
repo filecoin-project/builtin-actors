@@ -1321,7 +1321,9 @@ dependencies = [
 name = "fil_actor_account"
 version = "10.0.0-alpha.1"
 dependencies = [
+ "anyhow",
  "fil_actors_runtime",
+ "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -1357,6 +1359,26 @@ dependencies = [
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "fil_actor_datacap"
+version = "10.0.0-alpha.1"
+dependencies = [
+ "cid",
+ "fil_actors_runtime",
+ "frc42_dispatch",
+ "frc46_token",
+ "fvm_actor_utils",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "lazy_static",
  "log",
  "num-derive",
  "num-traits",
@@ -1455,12 +1477,14 @@ dependencies = [
  "fil_actor_reward",
  "fil_actor_verifreg",
  "fil_actors_runtime",
+ "frc46_token",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
+ "integer-encoding",
  "itertools",
  "libipld-core 0.13.1",
  "log",
@@ -1497,6 +1521,7 @@ dependencies = [
  "num-traits",
  "rand",
  "serde",
+ "test-case",
 ]
 
 [[package]]
@@ -1506,6 +1531,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
+ "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -1594,11 +1620,14 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
+ "frc42_dispatch",
+ "frc46_token",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
  "fvm_shared",
  "lazy_static",
+ "log",
  "num-derive",
  "num-traits",
  "serde",
@@ -1646,6 +1675,7 @@ dependencies = [
  "fil_actor_account",
  "fil_actor_bundler",
  "fil_actor_cron",
+ "fil_actor_datacap",
  "fil_actor_embryo",
  "fil_actor_evm",
  "fil_actor_init",
@@ -1670,6 +1700,7 @@ dependencies = [
  "cid",
  "fil_actor_account",
  "fil_actor_cron",
+ "fil_actor_datacap",
  "fil_actor_init",
  "fil_actor_market",
  "fil_actor_miner",
@@ -1723,6 +1754,63 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a9c384f161156f5260c24a097c56119f9be8c798586aecc13afbcbe7b7e26bf8"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "frc42_dispatch"
+version = "1.0.0"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
+dependencies = [
+ "frc42_hasher",
+ "frc42_macros",
+ "fvm_ipld_encoding",
+ "fvm_sdk",
+ "fvm_shared",
+ "thiserror",
+]
+
+[[package]]
+name = "frc42_hasher"
+version = "1.0.0"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
+dependencies = [
+ "fvm_sdk",
+ "fvm_shared",
+ "thiserror",
+]
+
+[[package]]
+name = "frc42_macros"
+version = "1.0.0"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
+dependencies = [
+ "blake2b_simd",
+ "frc42_hasher",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "frc46_token"
+version = "1.1.0"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
+dependencies = [
+ "anyhow",
+ "cid",
+ "frc42_dispatch",
+ "fvm_actor_utils",
+ "fvm_ipld_amt",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_sdk",
+ "fvm_shared",
+ "integer-encoding",
+ "num-traits",
+ "serde",
+ "serde_tuple",
+ "thiserror",
 ]
 
 [[package]]
@@ -1850,6 +1938,22 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
+]
+
+[[package]]
+name = "fvm_actor_utils"
+version = "0.1.0"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
+dependencies = [
+ "anyhow",
+ "cid",
+ "frc42_dispatch",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_sdk",
+ "fvm_shared",
+ "num-traits",
+ "thiserror",
 ]
 
 [[package]]
@@ -3582,6 +3686,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-case"
+version = "2.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21d6cf5a7dffb3f9dceec8e6b8ca528d9bd71d36c9f074defb548ce161f598c0"
+dependencies = [
+ "test-case-macros",
+]
+
+[[package]]
+name = "test-case-macros"
+version = "2.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e45b7bf6e19353ddd832745c8fcf77a17a93171df7151187f26623f2b75b5b26"
+dependencies = [
+ "cfg-if",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "test_vm"
 version = "10.0.0-alpha.1"
 dependencies = [
@@ -3592,6 +3718,7 @@ dependencies = [
  "ethers",
  "fil_actor_account",
  "fil_actor_cron",
+ "fil_actor_datacap",
  "fil_actor_eam",
  "fil_actor_evm",
  "fil_actor_init",
@@ -3605,6 +3732,7 @@ dependencies = [
  "fil_actor_verifreg",
  "fil_actors_runtime",
  "fil_builtin_actors_state",
+ "frc46_token",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -3622,6 +3750,7 @@ dependencies = [
  "rand_chacha",
  "regex",
  "serde",
+ "test-case",
  "thiserror",
 ]
 
