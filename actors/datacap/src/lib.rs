@@ -7,6 +7,7 @@ use frc46_token::token::types::{
 };
 use frc46_token::token::{Token, TokenError, TOKEN_PRECISION};
 use fvm_actor_utils::messaging::{Messaging, MessagingError};
+use fvm_actor_utils::receiver::ReceiverHookError;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -503,6 +504,12 @@ trait AsActorResult<T> {
 }
 
 impl<T> AsActorResult<T> for Result<T, TokenError> {
+    fn actor_result(self) -> Result<T, ActorError> {
+        self.map_err(|e| ActorError::unchecked(ExitCode::from(&e), e.to_string()))
+    }
+}
+
+impl<T> AsActorResult<T> for Result<T, ReceiverHookError> {
     fn actor_result(self) -> Result<T, ActorError> {
         self.map_err(|e| ActorError::unchecked(ExitCode::from(&e), e.to_string()))
     }

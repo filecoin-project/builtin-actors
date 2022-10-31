@@ -53,7 +53,10 @@ members = [
      "test_vm",
 ]
 
-#[patch.crates-io]
+[patch.crates-io]
+frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin" }
+frc46_token = { git = "https://github.com/helix-onchain/filecoin" }
+fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin" }
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
 #fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm" }
 #fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }

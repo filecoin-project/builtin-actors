@@ -22,7 +22,7 @@ use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{DataCap, State as VerifregState};
 
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ID;
 
 use fil_actors_runtime::Map;
 use fil_actors_runtime::MessageAccumulator;
@@ -397,7 +397,11 @@ fn check_verifreg_against_datacap(
     // Verifier and datacap token holders are distinct.
     for verifier in verifreg_summary.verifiers.keys() {
         acc.require(
-            !datacap_summary.balances.contains_key(&verifier.id().unwrap()),
+            !datacap_summary
+                .balance_map
+                .as_ref()
+                .map(|m| m.contains_key(&verifier.id().unwrap()))
+                .unwrap_or_default(),
             format!("verifier {} is also a datacap token holder", verifier),
         );
     }
@@ -405,9 +409,10 @@ fn check_verifreg_against_datacap(
     let pending_alloc_total: DataCap =
         verifreg_summary.allocations.iter().map(|(_, alloc)| alloc.size.0).sum();
     let verifreg_balance = datacap_summary
-        .balances
-        .get(&VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap())
-        .cloned()
+        .balance_map
+        .as_ref()
+        .map(|m| m.get(&VERIFIED_REGISTRY_ACTOR_ID).cloned())
+        .flatten()
         .unwrap_or_else(TokenAmount::zero);
     acc.require(
         TokenAmount::from_whole(pending_alloc_total.clone()) == verifreg_balance,

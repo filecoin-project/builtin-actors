@@ -1,7 +1,8 @@
 use std::cmp::min;
 
-use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
+use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{BurnParams, TransferFromParams, TransferParams};
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
