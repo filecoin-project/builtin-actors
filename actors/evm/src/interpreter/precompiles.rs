@@ -1,13 +1,18 @@
 use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
 
-use super::U256;
-use fil_actors_runtime::runtime::{Primitives, Runtime};
+use super::{address::EthAddress, U256};
+
+use num_traits::FromPrimitive;
+use fil_actors_runtime::{
+    runtime::{Primitives, Runtime},
+};
 use fvm_shared::{
+    address::Address,
     bigint::BigUint,
     crypto::{
         hash::SupportedHashes,
         signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
-    },
+    }, randomness::Randomness,
 };
 use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
@@ -23,6 +28,7 @@ lazy_static::lazy_static! {
 pub enum PrecompileError {
     EcErr(CurveError),
     EcGroupErr(GroupError),
+    InvalidInput, // TODO merge with below?
     IncorrectInputSize,
     OutOfGas,
 }
@@ -49,7 +55,7 @@ pub type PrecompileFn<RT> = fn(&RT, &[u8]) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont like vec
 
 /// Generates a list of precompile smart contracts, index + 1 is the address (another option is to make an enum)
-const fn gen_precompiles<RT: Primitives>() -> [PrecompileFn<RT>; 9] {
+const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
     [
         ec_recover, // ecrecover 0x01
         sha256,     // SHA2-256 0x02
@@ -60,13 +66,19 @@ const fn gen_precompiles<RT: Primitives>() -> [PrecompileFn<RT>; 9] {
         ec_mul,     // ecMul 0x07
         ec_pairing, // ecPairing 0x08
         blake2f,    // blake2f 0x09
+        // FIL precompiles
+        resolve_address,    // lookup_address 0x0a
+        lookup_address,     // resolve_address 0x0b
+        get_actor_code_cid, // get code cid 0x0c
+        get_randomness,     // rand 0x0d
+        td,                 // context 0x0e
     ]
 }
 
 pub struct Precompiles<RT>(PhantomData<RT>);
 
 impl<RT: Runtime> Precompiles<RT> {
-    const PRECOMPILES: [PrecompileFn<RT>; 9] = gen_precompiles();
+    const PRECOMPILES: [PrecompileFn<RT>; 14] = gen_precompiles();
     const MAX_PRECOMPILE: U256 = {
         let mut limbs = [0u64; 4];
         limbs[0] = Self::PRECOMPILES.len() as u64;
@@ -91,6 +103,73 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
         input.to_mut().resize(len, 0);
     }
     input
+}
+
+fn td<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    todo!()
+}
+
+
+fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    let id = EthAddress(input[..20].try_into().unwrap()).as_id();
+    if id.is_none() {
+        return Err(PrecompileError::InvalidInput)
+    }
+    Ok(rt.get_actor_code_cid(&id.unwrap()).unwrap_or_default().to_bytes())
+
+}
+
+fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    // 1 + 7 (reserved) + 8 + 8 + 8 = 32
+    let word = read_right_pad(input, 32);
+
+    #[derive(num_derive::FromPrimitive)]
+    #[repr(u8)]
+    enum RandomnessType {
+        Chain = 0,
+        Beacon = 1,
+    }
+
+    let randomness_type = RandomnessType::from_u8(word[0]);
+    // 7 bytes reserved
+    let personalization = i64::from_le_bytes(word[8..16].try_into().unwrap());
+    let rand_epoch  = i64::from_le_bytes(word[16..24].try_into().unwrap());
+    let entropy_len = u64::from_le_bytes(word[24..32].try_into().unwrap());
+
+    let entropy = read_right_pad(&input[32..], entropy_len as usize);
+
+    let randomness = match randomness_type {
+        Some(RandomnessType::Chain) => rt.get_randomness_from_tickets(personalization, rand_epoch, &entropy),
+        Some(RandomnessType::Beacon) => rt.get_randomness_from_beacon(personalization, rand_epoch, &entropy),
+        None => Ok(Randomness(Vec::new())),
+    };
+    
+    randomness.map(|r| r.0).map_err(|_| PrecompileError::InvalidInput)
+}
+
+// looks up the other address of an ID address, returns empty array if not found, or the FIL encoded address
+// TODO what is predictable here for lookup address: only f2 and f4? f4 addresses arent always predictable...
+// TODO should we assume raw actor ID or EVM style FIL ID address?
+fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    let id = EthAddress(input[..20].try_into().unwrap()).as_id();
+    if id.is_none() {
+        return Err(PrecompileError::InvalidInput)
+    }
+    let address = rt.lookup_address(id.unwrap());
+    let ab = match address {
+        Some(a) => a.to_bytes(),
+        None => Vec::new(),
+    };
+    Ok(ab)
+}
+
+// TODO i'd like to be able to return with 0 but 0 id address is system, so ima just use empty vec :\
+fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    let addr = match Address::from_bytes(input) {
+        Ok(o) => o,
+        Err(_) => return Ok(Vec::new()),
+    };
+    Ok(rt.resolve_address(&addr).map(|a| EthAddress::from_id(a).0.to_vec()).unwrap_or(Vec::new()))
 }
 
 // https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L165
@@ -165,8 +244,8 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     // be the one responsible for keeping things within reasonable limits.
     // We _also_ will default with 0 (though this is already done with right padding above) since that is expected to be fine.
     // Eth really relies heavily on gas checking being correct and safe for nodes...
-    fn read_bigint_len(input: &[u8], size: usize) -> Result<usize, PrecompileError> {
-        let digits = BigUint::from_bytes_be(&input[size..size + 32]);
+    fn read_bigint_len(input: &[u8], start: usize) -> Result<usize, PrecompileError> {
+        let digits = BigUint::from_bytes_be(&input[start..start + 32]);
         let mut digits = digits.iter_u64_digits();
         // truncate to 64 bits
         digits

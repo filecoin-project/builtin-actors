@@ -554,7 +554,7 @@ fn duplicate_proof_rejected() {
     // From version 7, a duplicate is explicitly rejected.
     rt.expect_validate_caller_addr(h.caller_addrs());
     rt.expect_get_randomness_from_tickets(
-        DomainSeparationTag::PoStChainCommit,
+        DomainSeparationTag::PoStChainCommit as i64,
         dlinfo.challenge,
         Vec::new(),
         commit_rand,
