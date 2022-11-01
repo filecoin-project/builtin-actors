@@ -3,7 +3,7 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, cbor, ActorError, SYSTEM_ACTOR_ADDR};
-use fvm_ipld_blockstore::Blockstore;
+
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
@@ -42,11 +42,7 @@ pub struct ConstructorParams {
 pub struct Actor;
 impl Actor {
     /// Constructor for Cron actor
-    fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         rt.create(&State { entries: params.entries })?;
         Ok(())
@@ -54,11 +50,7 @@ impl Actor {
     /// Executes built-in periodic actions, run at every Epoch.
     /// epoch_tick(r) is called after all other messages in the epoch have been applied.
     /// This can be seen as an implicit last message.
-    fn epoch_tick<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    fn epoch_tick(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st: State = rt.state()?;
@@ -83,14 +75,13 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {

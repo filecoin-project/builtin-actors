@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use frc46_token::token::types::{
     BurnFromParams, BurnFromReturn, BurnParams, BurnReturn, DecreaseAllowanceParams,
     GetAllowanceParams, IncreaseAllowanceParams, MintReturn, RevokeAllowanceParams,
@@ -7,7 +5,6 @@ use frc46_token::token::types::{
 };
 use frc46_token::token::{Token, TokenError, TOKEN_PRECISION};
 use fvm_actor_utils::messaging::{Messaging, MessagingError};
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -74,12 +71,8 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for DataCap Actor
-    pub fn constructor<BS, RT>(rt: &mut RT, governor: Address) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
-        rt.validate_immediate_caller_is(std::iter::once(&*SYSTEM_ACTOR_ADDR))?;
+    pub fn constructor(rt: &mut impl Runtime, governor: Address) -> Result<(), ActorError> {
+        rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // Confirm the governor address is an ID.
         rt.resolve_address(&governor)
@@ -90,60 +83,40 @@ impl Actor {
         Ok(())
     }
 
-    pub fn name<BS, RT>(rt: &mut RT) -> Result<String, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn name(rt: &mut impl Runtime) -> Result<String, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok("DataCap".to_string())
     }
 
-    pub fn symbol<BS, RT>(rt: &mut RT) -> Result<String, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn symbol(rt: &mut impl Runtime) -> Result<String, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok("DCAP".to_string())
     }
 
-    pub fn total_supply<BS, RT>(rt: &mut RT, _: ()) -> Result<TokenAmount, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn total_supply(rt: &mut impl Runtime, _: ()) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
-        let msg = Messenger { rt, dummy: Default::default() };
+        let msg = Messenger { rt };
         let token = as_token(&mut st, &msg);
         Ok(token.total_supply())
     }
 
-    pub fn balance_of<BS, RT>(rt: &mut RT, address: Address) -> Result<TokenAmount, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn balance_of(rt: &mut impl Runtime, address: Address) -> Result<TokenAmount, ActorError> {
         // NOTE: mutability and method caller here are awkward for a read-only call
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
-        let msg = Messenger { rt, dummy: Default::default() };
+        let msg = Messenger { rt };
         let token = as_token(&mut st, &msg);
         token.balance_of(&address).actor_result()
     }
 
-    pub fn allowance<BS, RT>(
-        rt: &mut RT,
+    pub fn allowance(
+        rt: &mut impl Runtime,
         params: GetAllowanceParams,
-    ) -> Result<TokenAmount, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
-        let msg = Messenger { rt, dummy: Default::default() };
+        let msg = Messenger { rt };
         let token = as_token(&mut st, &msg);
         token.allowance(&params.owner, &params.operator).actor_result()
     }
@@ -152,18 +125,14 @@ impl Actor {
     /// Simultaneously sets the allowance for any specified operators to effectively infinite.
     /// Only the governor can call this method.
     /// This method is not part of the fungible token standard.
-    pub fn mint<BS, RT>(rt: &mut RT, params: MintParams) -> Result<MintReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn mint(rt: &mut impl Runtime, params: MintParams) -> Result<MintReturn, ActorError> {
         let mut hook = rt
             .transaction(|st: &mut State, rt| {
                 // Only the governor can mint datacap tokens.
                 rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
                 let operator = st.governor;
 
-                let msg = Messenger { rt, dummy: Default::default() };
+                let msg = Messenger { rt };
                 let mut token = as_token(st, &msg);
                 // Mint tokens "from" the operator to the beneficiary.
                 let ret = token
@@ -188,7 +157,7 @@ impl Actor {
             .context("state transaction failed")?;
 
         let mut st: State = rt.state()?;
-        let msg = Messenger { rt, dummy: Default::default() };
+        let msg = Messenger { rt };
         let intermediate = hook.call(&&msg).actor_result()?;
         as_token(&mut st, &msg).mint_return(intermediate).actor_result()
     }
@@ -197,16 +166,12 @@ impl Actor {
     /// Only the governor can call this method.
     /// This method is not part of the fungible token standard, and is named distinctly from
     /// "burn" to reflect that distinction.
-    pub fn destroy<BS, RT>(rt: &mut RT, params: DestroyParams) -> Result<BurnReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn destroy(rt: &mut impl Runtime, params: DestroyParams) -> Result<BurnReturn, ActorError> {
         rt.transaction(|st: &mut State, rt| {
             // Only the governor can destroy datacap tokens on behalf of a holder.
             rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
 
-            let msg = Messenger { rt, dummy: Default::default() };
+            let msg = Messenger { rt };
             let mut token = as_token(st, &msg);
             // Burn tokens as if the holder had invoked burn() themselves.
             // The governor doesn't need an allowance.
@@ -218,14 +183,10 @@ impl Actor {
     /// Transfers data cap tokens to an address.
     /// Data cap tokens are not generally transferable.
     /// Succeeds if the to or from address is the governor, otherwise always fails.
-    pub fn transfer<BS, RT>(
-        rt: &mut RT,
+    pub fn transfer(
+        rt: &mut impl Runtime,
         params: TransferParams,
-    ) -> Result<TransferReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<TransferReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let operator = &rt.message().caller();
         let from = operator;
@@ -247,7 +208,7 @@ impl Actor {
                     ));
                 }
 
-                let msg = Messenger { rt, dummy: Default::default() };
+                let msg = Messenger { rt };
                 let mut token = as_token(st, &msg);
                 token
                     .transfer(
@@ -262,7 +223,7 @@ impl Actor {
             .context("state transaction failed")?;
 
         let mut st: State = rt.state()?;
-        let msg = Messenger { rt, dummy: Default::default() };
+        let msg = Messenger { rt };
         let intermediate = hook.call(&&msg).actor_result()?;
         as_token(&mut st, &msg).transfer_return(intermediate).actor_result()
     }
@@ -270,14 +231,10 @@ impl Actor {
     /// Transfers data cap tokens between addresses.
     /// Data cap tokens are not generally transferable between addresses.
     /// Succeeds if the to address is the governor, otherwise always fails.
-    pub fn transfer_from<BS, RT>(
-        rt: &mut RT,
+    pub fn transfer_from(
+        rt: &mut impl Runtime,
         params: TransferFromParams,
-    ) -> Result<TransferFromReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<TransferFromReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let operator = rt.message().caller();
         let from = params.from;
@@ -299,7 +256,7 @@ impl Actor {
                     ));
                 }
 
-                let msg = Messenger { rt, dummy: Default::default() };
+                let msg = Messenger { rt };
                 let mut token = as_token(st, &msg);
                 token
                     .transfer_from(
@@ -315,101 +272,81 @@ impl Actor {
             .context("state transaction failed")?;
 
         let mut st: State = rt.state()?;
-        let msg = Messenger { rt, dummy: Default::default() };
+        let msg = Messenger { rt };
         let intermediate = hook.call(&&msg).actor_result()?;
         as_token(&mut st, &msg).transfer_from_return(intermediate).actor_result()
     }
 
-    pub fn increase_allowance<BS, RT>(
-        rt: &mut RT,
+    pub fn increase_allowance(
+        rt: &mut impl Runtime,
         params: IncreaseAllowanceParams,
-    ) -> Result<TokenAmount, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let owner = rt.message().caller();
         let operator = params.operator;
 
         rt.transaction(|st: &mut State, rt| {
-            let msg = Messenger { rt, dummy: Default::default() };
+            let msg = Messenger { rt };
             let mut token = as_token(st, &msg);
             token.increase_allowance(&owner, &operator, &params.increase).actor_result()
         })
         .context("state transaction failed")
     }
 
-    pub fn decrease_allowance<BS, RT>(
-        rt: &mut RT,
+    pub fn decrease_allowance(
+        rt: &mut impl Runtime,
         params: DecreaseAllowanceParams,
-    ) -> Result<TokenAmount, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let owner = &rt.message().caller();
         let operator = &params.operator;
 
         rt.transaction(|st: &mut State, rt| {
-            let msg = Messenger { rt, dummy: Default::default() };
+            let msg = Messenger { rt };
             let mut token = as_token(st, &msg);
             token.decrease_allowance(owner, operator, &params.decrease).actor_result()
         })
         .context("state transaction failed")
     }
 
-    pub fn revoke_allowance<BS, RT>(
-        rt: &mut RT,
+    pub fn revoke_allowance(
+        rt: &mut impl Runtime,
         params: RevokeAllowanceParams,
-    ) -> Result<TokenAmount, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let owner = &rt.message().caller();
         let operator = &params.operator;
 
         rt.transaction(|st: &mut State, rt| {
-            let msg = Messenger { rt, dummy: Default::default() };
+            let msg = Messenger { rt };
             let mut token = as_token(st, &msg);
             token.revoke_allowance(owner, operator).actor_result()
         })
         .context("state transaction failed")
     }
 
-    pub fn burn<BS, RT>(rt: &mut RT, params: BurnParams) -> Result<BurnReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn burn(rt: &mut impl Runtime, params: BurnParams) -> Result<BurnReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let owner = &rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
-            let msg = Messenger { rt, dummy: Default::default() };
+            let msg = Messenger { rt };
             let mut token = as_token(st, &msg);
             token.burn(owner, &params.amount).actor_result()
         })
         .context("state transaction failed")
     }
 
-    pub fn burn_from<BS, RT>(
-        rt: &mut RT,
+    pub fn burn_from(
+        rt: &mut impl Runtime,
         params: BurnFromParams,
-    ) -> Result<BurnFromReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<BurnFromReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let operator = &rt.message().caller();
         let owner = &params.owner;
 
         rt.transaction(|st: &mut State, rt| {
-            let msg = Messenger { rt, dummy: Default::default() };
+            let msg = Messenger { rt };
             let mut token = as_token(st, &msg);
             token.burn_from(operator, owner, &params.amount).actor_result()
         })
@@ -419,24 +356,16 @@ impl Actor {
 
 /// Implementation of the token library's messenger trait in terms of the built-in actors'
 /// runtime library.
-struct Messenger<'a, BS, RT>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
+struct Messenger<'a, RT> {
     rt: &'a mut RT,
-    // Without this, Rust complains the BS parameter is unused.
-    // This might be solved better by having BS as an associated type of the Runtime trait.
-    dummy: PhantomData<BS>,
 }
 
 // The trait is implemented for Messenger _reference_ since the mutable ref to rt has been
 // moved into it and we can't move the messenger instance since callers need to get at the
 // rt that's now in there.
-impl<'a, BS, RT> Messaging for &Messenger<'a, BS, RT>
+impl<'a, RT> Messaging for &Messenger<'a, RT>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     fn actor_id(&self) -> ActorID {
         // The Runtime unhelpfully wraps receiver in an address, while the Messaging trait
@@ -488,13 +417,12 @@ where
 }
 
 // Returns a token instance wrapping the token state.
-fn as_token<'st, BS, RT>(
+fn as_token<'st, RT>(
     st: &'st mut State,
-    msg: &'st Messenger<'st, BS, RT>,
-) -> Token<'st, &'st BS, &'st Messenger<'st, BS, RT>>
+    msg: &'st Messenger<'st, RT>,
+) -> Token<'st, &'st RT::Blockstore, &'st Messenger<'st, RT>>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     Token::wrap(msg.rt.store(), msg, DATACAP_GRANULARITY, &mut st.token)
 }
@@ -513,14 +441,13 @@ impl<T> AsActorResult<T> for Result<T, TokenError> {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // I'm trying to find a fixed template for these blocks so we can macro it.
         // Current blockers:

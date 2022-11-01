@@ -516,10 +516,7 @@ where
         &mut self,
         deal: &DealProposal,
         state: &DealState,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-    {
+    ) -> Result<(), ActorError> {
         if state.sector_start_epoch == EPOCH_UNDEFINED {
             return Err(actor_error!(illegal_state, "start sector epoch undefined"));
         }

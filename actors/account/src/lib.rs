@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::crypto::signature::SignatureType::{Secp256k1, BLS};
@@ -41,11 +40,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Account actor
-    pub fn constructor<BS, RT>(rt: &mut RT, address: Address) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn constructor(rt: &mut impl Runtime, address: Address) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         match address.protocol() {
             Protocol::Secp256k1 | Protocol::BLS => {}
@@ -59,11 +54,7 @@ impl Actor {
     }
 
     /// Fetches the pubkey-type address from this actor.
-    pub fn pubkey_address<BS, RT>(rt: &mut RT) -> Result<Address, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn pubkey_address(rt: &mut impl Runtime) -> Result<Address, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
         Ok(st.address)
@@ -72,14 +63,10 @@ impl Actor {
     /// Authenticates whether the provided signature is valid for the provided message.
     /// Should be called with the raw bytes of a signature, NOT a serialized Signature object that includes a SignatureType.
     /// Errors with USR_ILLEGAL_ARGUMENT if the authentication is invalid.
-    pub fn authenticate_message<BS, RT>(
-        rt: &mut RT,
+    pub fn authenticate_message(
+        rt: &mut impl Runtime,
         params: AuthenticateMessageParams,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
         let address = st.address;
@@ -101,17 +88,25 @@ impl Actor {
 
         Ok(())
     }
+
+    // Always succeeds, accepting any transfers.
+    pub fn universal_receiver_hook(
+        rt: &mut impl Runtime,
+        _params: &RawBytes,
+    ) -> Result<(), ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        Ok(())
+    }
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
