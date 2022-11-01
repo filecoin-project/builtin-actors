@@ -5,7 +5,6 @@ use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_error, cbor, ActorContext, ActorError, SYSTEM_ACTOR_ADDR};
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
@@ -34,11 +33,7 @@ pub enum Method {
 pub struct Actor;
 impl Actor {
     /// Init actor constructor
-    pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         let sys_ref: &Address = &SYSTEM_ACTOR_ADDR;
         rt.validate_immediate_caller_is(std::iter::once(sys_ref))?;
         let state = State::new(rt.store(), params.network_name)?;
@@ -48,11 +43,7 @@ impl Actor {
     }
 
     /// Exec init actor
-    pub fn exec<BS, RT>(rt: &mut RT, params: ExecParams) -> Result<ExecReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn exec(rt: &mut impl Runtime, params: ExecParams) -> Result<ExecReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
@@ -103,14 +94,13 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
@@ -126,11 +116,7 @@ impl ActorCode for Actor {
     }
 }
 
-fn can_exec<BS, RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
+fn can_exec(rt: &impl Runtime, caller: &Cid, exec: &Cid) -> bool {
     rt.resolve_builtin_actor_type(exec)
         .map(|typ| match typ {
             Type::Multisig | Type::PaymentChannel => true,
