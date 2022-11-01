@@ -15,7 +15,8 @@ use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
 use test_vm::VM;
 
 use fil_actor_datacap::{Method as DataCapMethod, MintParams};
-use frc46_token::token::types::TransferFromParams;
+use frc46_token::token::types::{GetAllowanceParams, TransferFromParams};
+use fvm_ipld_encoding::RawBytes;
 
 /* Mint a token for client and transfer it to a receiver, exercising error cases */
 #[test]
@@ -60,6 +61,17 @@ fn datacap_transfer_scenario() {
         TokenAmount::zero(),
         DataCapMethod::Mint as u64,
         mint_params,
+    );
+
+    // confirm allowance was set to infinity
+    apply_ok(
+        &v,
+        // anyone can call Allowance
+        owner,
+        DATACAP_TOKEN_ACTOR_ADDR,
+        TokenAmount::zero(),
+        DataCapMethod::Allowance as u64,
+        GetAllowanceParams { owner: client, operator },
     );
 
     let alloc = AllocationRequest {
@@ -185,4 +197,37 @@ fn datacap_transfer_scenario() {
         transfer_from_params,
         ExitCode::USR_INSUFFICIENT_FUNDS,
     );
+}
+
+/* Call name & symbol */
+#[test]
+fn call_name_symbol() {
+    let store = MemoryBlockstore::new();
+    let v = VM::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
+    let sender = addrs[0];
+
+    let mut ret: String = apply_ok(
+        &v,
+        sender,
+        DATACAP_TOKEN_ACTOR_ADDR,
+        TokenAmount::zero(),
+        DataCapMethod::Name as u64,
+        RawBytes::default(),
+    )
+    .deserialize()
+    .unwrap();
+    assert_eq!("DataCap", ret, "expected name DataCap, got {}", ret);
+
+    ret = apply_ok(
+        &v,
+        sender,
+        DATACAP_TOKEN_ACTOR_ADDR,
+        TokenAmount::zero(),
+        DataCapMethod::Symbol as u64,
+        RawBytes::default(),
+    )
+    .deserialize()
+    .unwrap();
+    assert_eq!("DCAP", ret, "expected name DataCap, got {}", ret);
 }
