@@ -742,7 +742,9 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     }
 }
 
-impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
+impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
+    type Blockstore = &'bs MemoryBlockstore;
+
     fn create_actor(
         &mut self,
         code_id: Cid,
@@ -1079,6 +1081,11 @@ impl Primitives for VM<'_> {
         _pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
         Ok(make_piece_cid(b"unsealed from itest vm"))
+    }
+
+    #[cfg(feature = "m2-native")]
+    fn install_actor(&self, _: &Cid) -> Result<(), anyhow::Error> {
+        panic!("TODO implement me")
     }
 
     fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {

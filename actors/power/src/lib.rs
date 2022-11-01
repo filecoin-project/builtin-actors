@@ -12,7 +12,6 @@ use fil_actors_runtime::{
     actor_error, cbor, make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Multimap,
     CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
@@ -70,11 +69,7 @@ pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
 pub struct Actor;
 impl Actor {
     /// Constructor for StoragePower actor
-    fn constructor<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st = State::new(rt.store()).map_err(|e| {
@@ -84,14 +79,10 @@ impl Actor {
         Ok(())
     }
 
-    fn create_miner<BS, RT>(
-        rt: &mut RT,
+    fn create_miner(
+        rt: &mut impl Runtime,
         params: CreateMinerParams,
-    ) -> Result<CreateMinerReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<CreateMinerReturn, ActorError> {
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let value = rt.message().value_received();
 
@@ -159,14 +150,10 @@ impl Actor {
 
     /// Adds or removes claimed power for the calling actor.
     /// May only be invoked by a miner actor.
-    fn update_claimed_power<BS, RT>(
-        rt: &mut RT,
+    fn update_claimed_power(
+        rt: &mut impl Runtime,
         params: UpdateClaimedPowerParams,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
 
@@ -200,14 +187,10 @@ impl Actor {
         })
     }
 
-    fn enroll_cron_event<BS, RT>(
-        rt: &mut RT,
+    fn enroll_cron_event(
+        rt: &mut impl Runtime,
         params: EnrollCronEventParams,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_event = CronEvent {
             miner_addr: rt.message().caller(),
@@ -244,11 +227,7 @@ impl Actor {
         Ok(())
     }
 
-    fn on_epoch_tick_end<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    fn on_epoch_tick_end(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
         let rewret: ThisEpochRewardReturn = rt
@@ -289,11 +268,10 @@ impl Actor {
         Ok(())
     }
 
-    fn update_pledge_total<BS, RT>(rt: &mut RT, pledge_delta: TokenAmount) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    fn update_pledge_total(
+        rt: &mut impl Runtime,
+        pledge_delta: TokenAmount,
+    ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         rt.transaction(|st: &mut State, rt| {
             st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;
@@ -309,14 +287,10 @@ impl Actor {
         })
     }
 
-    fn submit_porep_for_bulk_verify<BS, RT>(
-        rt: &mut RT,
+    fn submit_porep_for_bulk_verify(
+        rt: &mut impl Runtime,
         seal_info: SealVerifyInfo,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         rt.transaction(|st: &mut State, rt| {
@@ -378,11 +352,7 @@ impl Actor {
     /// The returned values are frozen during the cron tick before this epoch
     /// so that this method returns consistent values while processing all messages
     /// of an epoch.
-    fn current_total_power<BS, RT>(rt: &mut RT) -> Result<CurrentTotalPowerReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    fn current_total_power(rt: &mut impl Runtime) -> Result<CurrentTotalPowerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
 
@@ -394,14 +364,10 @@ impl Actor {
         })
     }
 
-    fn process_batch_proof_verifies<BS, RT>(
-        rt: &mut RT,
+    fn process_batch_proof_verifies(
+        rt: &mut impl Runtime,
         rewret: &ThisEpochRewardReturn,
-    ) -> Result<(), String>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), String> {
         let mut miners: Vec<(Address, usize)> = Vec::new();
         let mut infos: Vec<SealVerifyInfo> = Vec::new();
         let mut st_err: Option<String> = None;
@@ -530,14 +496,10 @@ impl Actor {
         Ok(())
     }
 
-    fn process_deferred_cron_events<BS, RT>(
-        rt: &mut RT,
+    fn process_deferred_cron_events(
+        rt: &mut impl Runtime,
         rewret: ThisEpochRewardReturn,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         let rt_epoch = rt.curr_epoch();
         let mut cron_events = Vec::new();
         let st: State = rt.state()?;
@@ -655,14 +617,13 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {

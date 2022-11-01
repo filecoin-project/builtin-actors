@@ -46,7 +46,9 @@ pub use empty::EMPTY_ARR_CID;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
-pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
+pub trait Runtime: Primitives + Verifier + RuntimePolicy {
+    type Blockstore: Blockstore;
+
     /// The network protocol version number at the current epoch.
     fn network_version(&self) -> NetworkVersion;
 
@@ -156,7 +158,7 @@ pub trait Runtime<BS: Blockstore>: Primitives + Verifier + RuntimePolicy {
         F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>;
 
     /// Returns reference to blockstore
-    fn store(&self) -> &BS;
+    fn store(&self) -> &Self::Blockstore;
 
     /// Sends a message to another actor, returning the exit code and return value envelope.
     /// If the invoked method does not return successfully, its state changes

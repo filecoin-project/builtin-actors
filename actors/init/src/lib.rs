@@ -8,7 +8,6 @@ use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, ActorContext, ActorError, EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
@@ -40,11 +39,7 @@ pub enum Method {
 pub struct Actor;
 impl Actor {
     /// Init actor constructor
-    pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         let sys_ref: &Address = &SYSTEM_ACTOR_ADDR;
         rt.validate_immediate_caller_is(std::iter::once(sys_ref))?;
         let state = State::new(rt.store(), params.network_name)?;
@@ -54,11 +49,7 @@ impl Actor {
     }
 
     /// Exec init actor
-    pub fn exec<BS, RT>(rt: &mut RT, params: ExecParams) -> Result<ExecReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn exec(rt: &mut impl Runtime, params: ExecParams) -> Result<ExecReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
@@ -108,11 +99,7 @@ impl Actor {
     }
 
     /// Exec init actor
-    pub fn exec4<BS, RT>(rt: &mut RT, params: Exec4Params) -> Result<Exec4Return, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn exec4(rt: &mut impl Runtime, params: Exec4Params) -> Result<Exec4Return, ActorError> {
         if cfg!(feature = "m2-native") {
             rt.validate_immediate_caller_accept_any()?;
         } else {
@@ -159,14 +146,13 @@ impl Actor {
     }
 
     #[cfg(feature = "m2-native")]
-    pub fn install<BS, RT>(rt: &mut RT, params: InstallParams) -> Result<InstallReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn install(
+        rt: &mut impl Runtime,
+        params: InstallParams,
+    ) -> Result<InstallReturn, ActorError> {
         use cid::multihash::Code;
         use fil_actors_runtime::AsActorError;
-        use fvm_ipld_blockstore::Block;
+        use fvm_ipld_blockstore::{Block, Blockstore};
         use fvm_shared::error::ExitCode;
 
         rt.validate_immediate_caller_accept_any()?;
@@ -202,14 +188,13 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
@@ -235,13 +220,8 @@ impl ActorCode for Actor {
 }
 
 #[cfg(not(feature = "m2-native"))]
-fn can_exec<BS, RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
+fn can_exec(rt: &impl Runtime, caller: &Cid, exec: &Cid) -> bool {
     use fil_actors_runtime::runtime::builtins::Type;
-
     rt.resolve_builtin_actor_type(exec)
         .map(|typ| match typ {
             Type::Multisig | Type::PaymentChannel => true,
@@ -252,11 +232,7 @@ where
 }
 
 #[cfg(feature = "m2-native")]
-fn can_exec<BS, RT>(_rt: &RT, _caller: &Cid, _exec: &Cid) -> bool
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
+fn can_exec(_rt: &impl Runtime, _caller: &Cid, _exec: &Cid) -> bool {
     // TODO figure out ACLs -- m2-native allows exec for everyone for now
     //      maybe we should leave this as is for production, but at least we should
     //      consider adding relevant ACLs.
