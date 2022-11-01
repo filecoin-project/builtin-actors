@@ -18,7 +18,6 @@ use {
         runtime::{ActorCode, Runtime},
         ActorError,
     },
-    fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::tuple::*,
     fvm_ipld_encoding::RawBytes,
     fvm_shared::error::*,
@@ -49,10 +48,10 @@ pub enum Method {
 
 pub struct EvmContractActor;
 impl EvmContractActor {
-    pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
+        RT::Blockstore: Clone,
     {
         // TODO ideally we would be checking that we are constructed by the EAM actor,
         //   but instead we check for init and then assert that we have a delegated address.
@@ -140,7 +139,7 @@ impl EvmContractActor {
         }
     }
 
-    pub fn invoke_contract<BS, RT>(
+    pub fn invoke_contract<RT>(
         rt: &mut RT,
         method: u64,
         input_data: &[u8],
@@ -148,8 +147,8 @@ impl EvmContractActor {
         with_code: Option<Cid>,
     ) -> Result<Vec<u8>, ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
+        RT::Blockstore: Clone,
     {
         if with_code.is_some() {
             rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
@@ -215,11 +214,7 @@ impl EvmContractActor {
         Ok(exec_status.output_data.to_vec())
     }
 
-    pub fn bytecode<BS, RT>(rt: &mut RT) -> Result<Cid, ActorError>
-    where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
-    {
+    pub fn bytecode(rt: &mut impl Runtime) -> Result<Cid, ActorError> {
         // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
         rt.validate_immediate_caller_accept_any()?;
 
@@ -227,10 +222,10 @@ impl EvmContractActor {
         Ok(state.bytecode)
     }
 
-    pub fn storage_at<BS, RT>(rt: &mut RT, params: GetStorageAtParams) -> Result<U256, ActorError>
+    pub fn storage_at<RT>(rt: &mut RT, params: GetStorageAtParams) -> Result<U256, ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
+        RT::Blockstore: Clone,
     {
         // This method cannot be called on-chain; other on-chain logic should not be able to
         // access arbitrary storage keys from a contract.
@@ -244,14 +239,14 @@ impl EvmContractActor {
 }
 
 impl ActorCode for EvmContractActor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
+        RT::Blockstore: Clone,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {

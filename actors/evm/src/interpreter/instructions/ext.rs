@@ -4,18 +4,18 @@ use crate::U256;
 use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::ActorError;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use num_traits::Zero;
 use {
     crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
 };
 
 #[inline]
-pub fn extcodesize<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn extcodesize(
     state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
+    system: &System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     let addr = state.stack.pop();
     // TODO we're fetching the entire block here just to get its size. We should instead use
@@ -29,9 +29,9 @@ pub fn extcodesize<'r, BS: Blockstore, RT: Runtime<BS>>(
     Ok(())
 }
 
-pub fn extcodehash<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn extcodehash(
     state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
+    system: &System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     let addr = state.stack.pop();
     let cid = get_evm_bytecode_cid(system.rt, addr)?;
@@ -42,9 +42,9 @@ pub fn extcodehash<'r, BS: Blockstore, RT: Runtime<BS>>(
     Ok(())
 }
 
-pub fn extcodecopy<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn extcodecopy(
     state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
+    system: &System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, .. } = state;
     let (addr, dest_offset, data_offset, size) =
@@ -57,10 +57,7 @@ pub fn extcodecopy<'r, BS: Blockstore, RT: Runtime<BS>>(
     Ok(())
 }
 
-pub fn get_evm_bytecode_cid<BS: Blockstore, RT: Runtime<BS>>(
-    rt: &RT,
-    addr: U256,
-) -> Result<Cid, StatusCode> {
+pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: U256) -> Result<Cid, StatusCode> {
     let addr: EthAddress = addr.into();
     let addr: Address = addr.try_into()?;
     // TODO: just return none in most of these cases?
@@ -84,10 +81,7 @@ pub fn get_evm_bytecode_cid<BS: Blockstore, RT: Runtime<BS>>(
     Ok(cid)
 }
 
-pub fn get_evm_bytecode<BS: Blockstore, RT: Runtime<BS>>(
-    rt: &RT,
-    cid: &Cid,
-) -> Result<Vec<u8>, StatusCode> {
+pub fn get_evm_bytecode(rt: &impl Runtime, cid: &Cid) -> Result<Vec<u8>, StatusCode> {
     let raw_bytecode = rt
         .store()
         .get(cid) // TODO this is inefficient; should call stat here.

@@ -39,13 +39,13 @@ pub enum StorageStatus {
 
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
-pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
+pub struct System<'r, RT: Runtime> {
     pub rt: &'r mut RT,
 
     /// The current bytecode. This is usually only "none" when the actor is first constructed.
     bytecode: Option<Cid>,
     /// The contract's EVM storage slots.
-    slots: Hamt<BS, U256, U256>,
+    slots: Hamt<RT::Blockstore, U256, U256>,
     /// The contracts "nonce" (incremented when creating new actors).
     nonce: u64,
     /// The last saved state root. None if the current state hasn't been saved yet.
@@ -54,11 +54,11 @@ pub struct System<'r, BS: Blockstore, RT: Runtime<BS>> {
     pub readonly: bool,
 }
 
-impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
+impl<'r, RT: Runtime> System<'r, RT> {
     /// Create the actor.
     pub fn create(rt: &'r mut RT) -> Result<Self, ActorError>
     where
-        BS: Clone,
+        RT::Blockstore: Clone,
     {
         let state_root = rt.get_state_root()?;
         if state_root != EMPTY_ARR_CID {
@@ -78,7 +78,7 @@ impl<'r, BS: Blockstore, RT: Runtime<BS>> System<'r, BS, RT> {
     /// Load the actor from state.
     pub fn load(rt: &'r mut RT, readonly: bool) -> Result<Self, ActorError>
     where
-        BS: Clone,
+        RT::Blockstore: Clone,
     {
         let store = rt.store().clone();
         let state_root = rt.get_state_root()?;

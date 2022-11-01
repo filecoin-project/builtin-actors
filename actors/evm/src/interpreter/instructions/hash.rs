@@ -2,12 +2,11 @@ use {
     super::memory::get_memory_region,
     crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
     fvm_shared::crypto::hash::SupportedHashes,
 };
 
-pub fn keccak256<'r, BS: Blockstore, RT: Runtime<BS>>(
-    system: &System<'r, BS, RT>,
+pub fn keccak256(
+    system: &System<impl Runtime>,
     state: &mut ExecutionState,
 ) -> Result<(), StatusCode> {
     let index = state.stack.pop();

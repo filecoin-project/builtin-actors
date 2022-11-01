@@ -15,7 +15,6 @@ use {
     crate::interpreter::{Bytecode, Output, System},
     bytes::Bytes,
     fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
 };
 
 /// EVM execution runtime.
@@ -51,8 +50,8 @@ impl ExecutionState {
     }
 }
 
-pub struct Machine<'r, 'a, BS: Blockstore, RT: Runtime<BS>> {
-    system: &'r mut System<'a, BS, RT>,
+pub struct Machine<'r, 'a, RT: Runtime + 'a> {
+    system: &'r mut System<'a, RT>,
     runtime: &'r mut ExecutionState,
     bytecode: &'r Bytecode,
     pc: usize,
@@ -69,9 +68,9 @@ type Instruction<M> = fn(*mut M) -> Result<ControlFlow, StatusCode>;
 
 macro_rules! def_jmptable {
     ($($op:ident)*) => {
-        const fn jmptable() -> [Instruction<Machine<'r, 'a, BS, RT>>; 256] {
-            let mut table: [Instruction<Machine::<'r, 'a, BS, RT>>; 256] = [Machine::<'r, 'a, BS, RT>::UNDEFINED; 256];
-            $(table[OpCode::$op as usize] = Machine::<'r, 'a, BS, RT>::$op;)*
+        const fn jmptable() -> [Instruction<Machine<'r, 'a, RT>>; 256] {
+            let mut table: [Instruction<Machine::<'r, 'a, RT>>; 256] = [Machine::<'r, 'a, RT>::UNDEFINED; 256];
+            $(table[OpCode::$op as usize] = Machine::<'r, 'a, RT>::$op;)*
             table
         }
     }
@@ -102,9 +101,9 @@ macro_rules! def_ins {
     }
 }
 
-impl<'r, 'a, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, 'a, BS, RT> {
+impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     pub fn new(
-        system: &'r mut System<'a, BS, RT>,
+        system: &'r mut System<'a, RT>,
         runtime: &'r mut ExecutionState,
         bytecode: &'r Bytecode,
     ) -> Self {
@@ -867,14 +866,13 @@ impl<'r, 'a, BS: Blockstore + 'r, RT: Runtime<BS> + 'r> Machine<'r, 'a, BS, RT> 
         }
     }
 
-    const JMPTABLE: [Instruction<Machine<'r, 'a, BS, RT>>; 256] =
-        Machine::<'r, 'a, BS, RT>::jmptable();
+    const JMPTABLE: [Instruction<Machine<'r, 'a, RT>>; 256] = Machine::<'r, 'a, RT>::jmptable();
 }
 
-pub fn execute<BS: Blockstore, RT: Runtime<BS>>(
+pub fn execute(
     bytecode: &Bytecode,
     runtime: &mut ExecutionState,
-    system: &mut System<BS, RT>,
+    system: &mut System<impl Runtime>,
 ) -> Result<Output, StatusCode> {
     let mut m = Machine::new(system, runtime, bytecode);
     m.execute()?;

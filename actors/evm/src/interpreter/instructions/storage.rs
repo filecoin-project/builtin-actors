@@ -1,13 +1,12 @@
 use {
     crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
 };
 
 #[inline]
-pub fn sload<BS: Blockstore, RT: Runtime<BS>>(
+pub fn sload(
     state: &mut ExecutionState,
-    system: &mut System<BS, RT>,
+    system: &mut System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     // where?
     let location = state.stack.pop();
@@ -22,9 +21,9 @@ pub fn sload<BS: Blockstore, RT: Runtime<BS>>(
 }
 
 #[inline]
-pub fn sstore<BS: Blockstore, RT: Runtime<BS>>(
+pub fn sstore(
     state: &mut ExecutionState,
-    system: &mut System<BS, RT>,
+    system: &mut System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);

@@ -13,7 +13,6 @@ use {
         runtime::{ActorCode, Runtime},
         ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
     },
-    fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes},
     fvm_shared::{
         address::{Address, Payload, SECP_PUB_LEN},
@@ -108,24 +107,16 @@ pub struct EvmConstructorParams {
 }
 
 /// hash of data with Keccack256, with first 12 bytes cropped
-fn hash_20<BS, RT>(rt: &RT, data: &[u8]) -> [u8; 20]
-where
-    BS: Blockstore + Clone,
-    RT: Runtime<BS>,
-{
+fn hash_20(rt: &impl Runtime, data: &[u8]) -> [u8; 20] {
     rt.hash(SupportedHashes::Keccak256, data)[12..32].try_into().unwrap()
 }
 
-fn create_actor<BS, RT>(
-    rt: &mut RT,
+fn create_actor(
+    rt: &mut impl Runtime,
     creator: EthAddress,
     new_addr: EthAddress,
     initcode: Vec<u8>,
-) -> Result<Return, ActorError>
-where
-    BS: Blockstore + Clone,
-    RT: Runtime<BS>,
-{
+) -> Result<Return, ActorError> {
     let constructor_params =
         RawBytes::serialize(EvmConstructorParams { creator, initcode: initcode.into() })?;
 
@@ -149,11 +140,7 @@ where
 
 pub struct EamActor;
 impl EamActor {
-    pub fn constructor<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
-    where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
-    {
+    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         let actor_id = rt.resolve_address(&rt.message().receiver()).unwrap();
         if actor_id != EAM_ACTOR_ID {
             return Err(ActorError::forbidden(format!(
@@ -166,11 +153,7 @@ impl EamActor {
     /// Create a new contract per the EVM's CREATE rules.
     ///
     /// Permissions: May be called by any actor.
-    pub fn create<BS, RT>(rt: &mut RT, params: CreateParams) -> Result<CreateReturn, ActorError>
-    where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
-    {
+    pub fn create(rt: &mut impl Runtime, params: CreateParams) -> Result<CreateReturn, ActorError> {
         // TODO: this accepts a nonce from the user, so we _may_ want to limit it to specific
         // actors. However, we won't deploy over another actor anyways (those constraints are
         // enforced by the init actor and the FVM itself), so it shouldn't really be an issue in
@@ -197,11 +180,10 @@ impl EamActor {
     /// Create a new contract per the EVM's CREATE2 rules.
     ///
     /// Permissions: May be called by any actor.
-    pub fn create2<BS, RT>(rt: &mut RT, params: Create2Params) -> Result<Create2Return, ActorError>
-    where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
-    {
+    pub fn create2(
+        rt: &mut impl Runtime,
+        params: Create2Params,
+    ) -> Result<Create2Return, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
 
         // CREATE2 logic
@@ -230,14 +212,10 @@ impl EamActor {
         create_actor(rt, caller_addr, eth_addr, params.initcode)
     }
 
-    pub fn create_account<BS, RT>(
-        rt: &mut RT,
+    pub fn create_account(
+        rt: &mut impl Runtime,
         params: InitAccountParams,
-    ) -> Result<Return, ActorError>
-    where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<Return, ActorError> {
         // First, validate that we're receiving this message from the filecoin account that maps to
         // this ethereum account.
         //
@@ -263,14 +241,13 @@ impl EamActor {
 }
 
 impl ActorCode for EamActor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {

@@ -2,7 +2,6 @@ use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
 
 use super::U256;
 use fil_actors_runtime::runtime::{Primitives, Runtime};
-use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{
     bigint::BigUint,
     crypto::{
@@ -64,9 +63,9 @@ const fn gen_precompiles<RT: Primitives>() -> [PrecompileFn<RT>; 9] {
     ]
 }
 
-pub struct Precompiles<BS, RT>(PhantomData<BS>, PhantomData<RT>);
+pub struct Precompiles<RT>(PhantomData<RT>);
 
-impl<BS: Blockstore, RT: Runtime<BS>> Precompiles<BS, RT> {
+impl<RT: Runtime> Precompiles<RT> {
     const PRECOMPILES: [PrecompileFn<RT>; 9] = gen_precompiles();
     const MAX_PRECOMPILE: U256 = {
         let mut limbs = [0u64; 4];

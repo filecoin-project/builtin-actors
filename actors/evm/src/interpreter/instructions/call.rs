@@ -15,7 +15,6 @@ use {
     crate::{DelegateCallParams, Method, EVM_CONTRACT_REVERTED},
     fil_actors_runtime::runtime::builtins::Type,
     fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
     fvm_shared::econ::TokenAmount,
 };
 
@@ -109,9 +108,9 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
     Ok(())
 }
 
-pub fn call<BS: Blockstore, RT: Runtime<BS>>(
+pub fn call<RT: Runtime>(
     state: &mut ExecutionState,
-    system: &mut System<BS, RT>,
+    system: &mut System<RT>,
     kind: CallKind,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
@@ -156,7 +155,7 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
             &[]
         };
 
-        if precompiles::Precompiles::<BS, RT>::is_precompile(&dst) {
+        if precompiles::Precompiles::<RT>::is_precompile(&dst) {
             // TODO: DO NOT FAIL!!!
             precompiles::Precompiles::call_precompile(system.rt, dst, input_data)
                 .map_err(|_| StatusCode::PrecompileFailure)?
@@ -266,9 +265,9 @@ pub fn call<BS: Blockstore, RT: Runtime<BS>>(
     Ok(())
 }
 
-pub fn callactor<BS: Blockstore, RT: Runtime<BS>>(
+pub fn callactor(
     state: &mut ExecutionState,
-    system: &System<BS, RT>,
+    system: &System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, memory, .. } = state;
     let rt = &*system.rt; // as immutable reference

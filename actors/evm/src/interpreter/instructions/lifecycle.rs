@@ -12,7 +12,6 @@ use super::memory::{get_memory_region, MemoryRegion};
 use {
     crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
 };
 
 pub const CREATE_METHOD_NUM: u64 = 2;
@@ -40,9 +39,9 @@ pub struct EamReturn {
 }
 
 #[inline]
-pub fn create<BS: Blockstore, RT: Runtime<BS>>(
+pub fn create(
     state: &mut ExecutionState,
-    system: &mut System<BS, RT>,
+    system: &mut System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);
@@ -70,9 +69,9 @@ pub fn create<BS: Blockstore, RT: Runtime<BS>>(
     create_init(stack, system, RawBytes::serialize(&params)?, CREATE_METHOD_NUM, value)
 }
 
-pub fn create2<BS: Blockstore, RT: Runtime<BS>>(
+pub fn create2(
     state: &mut ExecutionState,
-    system: &mut System<BS, RT>,
+    system: &mut System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);
@@ -107,9 +106,9 @@ pub fn create2<BS: Blockstore, RT: Runtime<BS>>(
 }
 
 /// call into Ethereum Address Manager to make the new account
-fn create_init<BS: Blockstore, RT: Runtime<BS>>(
+fn create_init(
     stack: &mut Stack,
-    system: &mut System<BS, RT>,
+    system: &mut System<impl Runtime>,
     params: RawBytes,
     method: MethodNum,
     value: TokenAmount,
@@ -149,9 +148,9 @@ fn create_init<BS: Blockstore, RT: Runtime<BS>>(
 }
 
 #[inline]
-pub fn selfdestruct<BS: Blockstore, RT: Runtime<BS>>(
+pub fn selfdestruct(
     state: &mut ExecutionState,
-    system: &mut System<BS, RT>,
+    system: &mut System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);

@@ -4,13 +4,12 @@ use {
     crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::chainid,
     fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
 };
 
 #[inline]
-pub fn blockhash<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn blockhash(
     state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
+    system: &System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     let bn = state.stack.pop();
     let result = bn
@@ -38,26 +37,17 @@ pub fn blockhash<'r, BS: Blockstore, RT: Runtime<BS>>(
 }
 
 #[inline]
-pub fn caller<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    _: &'r System<'r, BS, RT>,
-) {
+pub fn caller(state: &mut ExecutionState, _: &System<impl Runtime>) {
     state.stack.push(state.caller.as_evm_word())
 }
 
 #[inline]
-pub fn address<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    _system: &'r System<'r, BS, RT>,
-) {
+pub fn address(state: &mut ExecutionState, _system: &System<impl Runtime>) {
     state.stack.push(state.receiver.as_evm_word())
 }
 
 #[inline]
-pub fn origin<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
-) {
+pub fn origin(state: &mut ExecutionState, system: &System<impl Runtime>) {
     let origin_addr = system
         .resolve_ethereum_address(&system.rt.message().origin())
         .expect("failed to resolve origin address");
@@ -65,84 +55,54 @@ pub fn origin<'r, BS: Blockstore, RT: Runtime<BS>>(
 }
 
 #[inline]
-pub fn call_value<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
-) {
+pub fn call_value(state: &mut ExecutionState, system: &System<impl Runtime>) {
     state.stack.push(U256::from(&system.rt.message().value_received()));
 }
 
 #[inline]
-pub fn coinbase<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    _system: &'r System<'r, BS, RT>,
-) {
+pub fn coinbase(state: &mut ExecutionState, _system: &System<impl Runtime>) {
     // TODO do we want to return the zero ID address, or just a plain 0?
     state.stack.push(U256::zero())
 }
 
 #[inline]
-pub fn gas_price<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
-) {
+pub fn gas_price(state: &mut ExecutionState, system: &System<impl Runtime>) {
     let effective_price = system.rt.base_fee() + system.rt.message().gas_premium();
     state.stack.push(U256::from(&effective_price));
 }
 
 #[inline]
-pub fn gas<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
-) {
+pub fn gas(state: &mut ExecutionState, system: &System<impl Runtime>) {
     state.stack.push(U256::from(system.rt.gas_available()));
 }
 
 #[inline]
-pub fn timestamp<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
-) {
+pub fn timestamp(state: &mut ExecutionState, system: &System<impl Runtime>) {
     state.stack.push(U256::from(system.rt.tipset_timestamp()));
 }
 
 #[inline]
-pub fn block_number<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
-) {
+pub fn block_number(state: &mut ExecutionState, system: &System<impl Runtime>) {
     state.stack.push(U256::from(system.rt.curr_epoch()));
 }
 
 #[inline]
-pub fn difficulty<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    _system: &'r System<'r, BS, RT>,
-) {
+pub fn difficulty(state: &mut ExecutionState, _system: &System<impl Runtime>) {
     state.stack.push(U256::zero());
 }
 
 #[inline]
-pub fn gas_limit<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    _system: &'r System<'r, BS, RT>,
-) {
+pub fn gas_limit(state: &mut ExecutionState, _system: &System<impl Runtime>) {
     const BLOCK_GAS_LIMIT: u64 = 10_000_000_000u64;
     state.stack.push(U256::from(BLOCK_GAS_LIMIT));
 }
 
 #[inline]
-pub fn chain_id<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    _system: &'r System<'r, BS, RT>,
-) {
+pub fn chain_id(state: &mut ExecutionState, _system: &System<impl Runtime>) {
     state.stack.push(U256::from(chainid::CHAINID));
 }
 
 #[inline]
-pub fn base_fee<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
-) {
+pub fn base_fee(state: &mut ExecutionState, system: &System<impl Runtime>) {
     state.stack.push(U256::from(&system.rt.base_fee()))
 }

@@ -1,13 +1,12 @@
 use {
     crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
 };
 
 #[cfg(debug_assertions)]
-pub fn log<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn log(
     _state: &mut ExecutionState,
-    _system: &'r System<'r, BS, RT>,
+    _system: &System<impl Runtime>,
     _num_topics: usize,
 ) -> Result<(), StatusCode> {
     todo!("unimplemented");
@@ -15,9 +14,9 @@ pub fn log<'r, BS: Blockstore, RT: Runtime<BS>>(
 
 #[cfg(not(debug_assertions))]
 #[inline]
-pub fn log<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn log(
     state: &mut ExecutionState,
-    _system: &'r System<'r, BS, RT>,
+    _system: &System<impl Runtime>,
     num_topics: usize,
 ) -> Result<(), StatusCode> {
     // TODO: Right now, we just drop everything. But we implement this in production anyways so

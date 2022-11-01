@@ -5,13 +5,12 @@ use {
     crate::interpreter::address::EthAddress,
     crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
 };
 
 #[inline]
-pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
+pub fn balance(
     state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
+    system: &System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     let actor: EthAddress = state.stack.pop().into();
 
@@ -27,10 +26,7 @@ pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
 }
 
 #[inline]
-pub fn selfbalance<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    system: &'r System<'r, BS, RT>,
-) {
+pub fn selfbalance(state: &mut ExecutionState, system: &System<impl Runtime>) {
     // Returns native FIL balance of the receiver. Value precision is identical to Ethereum, so
     // no conversion needed (atto, 1e18).
     state.stack.push(U256::from(&system.rt.current_balance()))
