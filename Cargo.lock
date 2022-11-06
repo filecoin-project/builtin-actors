@@ -671,6 +671,7 @@ dependencies = [
  "fil_actor_power",
  "fil_actor_reward",
  "fil_actors_runtime",
+ "frc42_dispatch",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore",
