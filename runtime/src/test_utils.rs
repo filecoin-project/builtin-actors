@@ -46,21 +46,21 @@ use fvm_shared::event::ActorEvent;
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
 lazy_static::lazy_static! {
-    pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/system");
-    pub static ref INIT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/init");
-    pub static ref CRON_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/cron");
-    pub static ref ACCOUNT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/account");
-    pub static ref POWER_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storagepower");
-    pub static ref MINER_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storageminer");
-    pub static ref MARKET_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storagemarket");
-    pub static ref PAYCH_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/paymentchannel");
-    pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/multisig");
-    pub static ref REWARD_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/reward");
-    pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/verifiedregistry");
-    pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/datacap");
-    pub static ref EMBRYO_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/embryo");
-    pub static ref EVM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/evm");
-    pub static ref EAM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/eam");
+    pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/system");
+    pub static ref INIT_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/init");
+    pub static ref CRON_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/cron");
+    pub static ref ACCOUNT_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/account");
+    pub static ref POWER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/storagepower");
+    pub static ref MINER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/storageminer");
+    pub static ref MARKET_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/storagemarket");
+    pub static ref PAYCH_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/paymentchannel");
+    pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/multisig");
+    pub static ref REWARD_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/reward");
+    pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/verifiedregistry");
+    pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/datacap");
+    pub static ref EMBRYO_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/embryo");
+    pub static ref EVM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/evm");
+    pub static ref EAM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/eam");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -114,7 +114,7 @@ lazy_static::lazy_static! {
 const IPLD_RAW: u64 = 0x55;
 
 /// Returns an identity CID for bz.
-pub fn make_builtin(bz: &[u8]) -> Cid {
+pub fn make_identity_cid(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
 }
 
