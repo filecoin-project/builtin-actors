@@ -1,5 +1,7 @@
 use fil_actor_account::State as AccountState;
-use fil_actors_runtime::test_utils::{make_builtin, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID};
+use fil_actors_runtime::test_utils::{
+    make_identity_cid, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID,
+};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -18,14 +20,19 @@ fn state_control() {
     let addr2 = Address::new_id(2222);
 
     // set actor
-    let a1 =
-        actor(*ACCOUNT_ACTOR_CODE_ID, make_builtin(b"a1-head"), 42, TokenAmount::from_atto(10u8));
+    let a1 = actor(
+        *ACCOUNT_ACTOR_CODE_ID,
+        make_identity_cid(b"a1-head"),
+        42,
+        TokenAmount::from_atto(10u8),
+    );
     v.set_actor(addr1, a1.clone());
     let out = v.get_actor(addr1).unwrap();
     assert_eq!(out, a1);
     let check = v.checkpoint();
 
-    let a2 = actor(*PAYCH_ACTOR_CODE_ID, make_builtin(b"a2-head"), 88, TokenAmount::from_atto(1u8));
+    let a2 =
+        actor(*PAYCH_ACTOR_CODE_ID, make_identity_cid(b"a2-head"), 88, TokenAmount::from_atto(1u8));
     v.set_actor(addr2, a2.clone());
     assert_eq!(v.get_actor(addr2).unwrap(), a2);
     // rollback removes a2 but not a1
