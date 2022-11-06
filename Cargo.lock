@@ -640,6 +640,7 @@ dependencies = [
  "fil_actor_reward",
  "fil_actor_verifreg",
  "fil_actors_runtime",
+ "frc42_dispatch",
  "frc46_token",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
