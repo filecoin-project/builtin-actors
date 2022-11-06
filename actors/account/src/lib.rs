@@ -12,7 +12,7 @@ use num_traits::FromPrimitive;
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, ActorError};
+use fil_actors_runtime::{actor_error, restrict_internal_api, ActorError};
 use fil_actors_runtime::{cbor, ActorDowncast};
 
 use crate::types::AuthenticateMessageParams;
@@ -33,6 +33,7 @@ pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     PubkeyAddress = 2,
     AuthenticateMessage = 3,
+    AuthenticateMessageExported = frc42_dispatch::method_hash!("AuthenticateMessage"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
@@ -109,6 +110,8 @@ impl ActorCode for Actor {
     where
         RT: Runtime,
     {
+        restrict_internal_api(rt, method)?;
+
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
@@ -118,7 +121,7 @@ impl ActorCode for Actor {
                 let addr = Self::pubkey_address(rt)?;
                 Ok(RawBytes::serialize(addr)?)
             }
-            Some(Method::AuthenticateMessage) => {
+            Some(Method::AuthenticateMessage) | Some(Method::AuthenticateMessageExported) => {
                 Self::authenticate_message(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
