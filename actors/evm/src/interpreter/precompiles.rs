@@ -71,7 +71,8 @@ const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
         lookup_address,     // resolve_address 0x0b
         get_actor_code_cid, // get code cid 0x0c
         get_randomness,     // rand 0x0d
-        td,                 // context 0x0e
+        // TODO till I refactor context
+        todo,                 // context 0x0e 
     ]
 }
 
@@ -95,7 +96,6 @@ impl<RT: Runtime> Precompiles<RT> {
 }
 
 // It is uncomfortable how much Eth pads everything...
-/// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/common/bytes.go#L108
 fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u8]> {
     let mut input: Cow<[u8]> = input.into();
     let input_len = input.len();
@@ -105,7 +105,7 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
     input
 }
 
-fn td<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+fn todo<RT: Runtime>(_: &RT, _: &[u8]) -> PrecompileResult {
     todo!()
 }
 
@@ -116,7 +116,6 @@ fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
         return Err(PrecompileError::InvalidInput)
     }
     Ok(rt.get_actor_code_cid(&id.unwrap()).unwrap_or_default().to_bytes())
-
 }
 
 fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
@@ -163,8 +162,8 @@ fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(ab)
 }
 
-// TODO i'd like to be able to return with 0 but 0 id address is system, so ima just use empty vec :\
-fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+// REMOVEME i'd like to be able to return with 0, but 0 id address is system, so ima just use empty vec :\
+fn resolve_address<RT: Runtime<BS>, BS: Blockstore>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let addr = match Address::from_bytes(input) {
         Ok(o) => o,
         Err(_) => return Ok(Vec::new()),
@@ -172,7 +171,6 @@ fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(rt.resolve_address(&addr).map(|a| EthAddress::from_id(a).0.to_vec()).unwrap_or(Vec::new()))
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L165
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let input = read_right_pad(input, 128);
@@ -215,13 +213,11 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(address)
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L206
 /// hash with sha2-256
 fn sha256<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(rt.hash(SupportedHashes::Sha2_256, input))
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L221
 /// hash with ripemd160
 fn ripemd160<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(rt.hash(SupportedHashes::Ripemd160, input))
@@ -232,7 +228,6 @@ fn identity<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     Ok(Vec::from(input))
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L363
 // https://eips.ethereum.org/EIPS/eip-198
 /// modulus exponent a number
 fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
@@ -310,7 +305,6 @@ fn curve_to_vec(curve: G1) -> Vec<u8> {
         .unwrap_or_else(|| vec![0; 64])
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L413
 /// add 2 points together on an elliptic curve
 fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let input = read_right_pad(input, 128);
@@ -320,7 +314,6 @@ fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     Ok(curve_to_vec(point1 + point2))
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L455
 /// multiply a point on an elliptic curve by a scalar value
 fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let input = read_right_pad(input, 96);
@@ -334,7 +327,6 @@ fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     Ok(curve_to_vec(point * scalar))
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L504
 /// pairs multple groups of twisted bn curves
 fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
@@ -398,7 +390,6 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 }
 
 /// https://eips.ethereum.org/EIPS/eip-152
-/// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L581
 fn blake2f<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     if input.len() != 213 {
         return Err(PrecompileError::IncorrectInputSize);
