@@ -3421,11 +3421,12 @@ pub struct ReplicaUpdateInner {
 }
 
 enum ExtensionKind {
-    ExtendCommittmentLegacy,
     // handle only legacy sectors
-    ExtendCommittment, // handle both Simple QAP and legacy sectors
-                       // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
-                       // ExtendProofValidity
+    ExtendCommittmentLegacy,
+    // handle both Simple QAP and legacy sectors
+    // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
+    // ExtendProofValidity
+    ExtendCommittment,
 }
 
 // ExtendSectorExpiration param

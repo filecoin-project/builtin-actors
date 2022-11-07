@@ -905,20 +905,12 @@ mod allocs_claims {
         let max_term = min_term + 1000;
 
         let claim1 = make_claim("1", CLIENT1, PROVIDER1, size, min_term, max_term, start, sector);
-        let claim2 = make_claim("2", CLIENT1, PROVIDER1, size, min_term, max_term, start, sector);
-        let claim3 = make_claim("3", CLIENT1, PROVIDER2, size, min_term, max_term, start, sector);
 
         let id1 = h.create_claim(&mut rt, &claim1).unwrap();
-        let id2 = h.create_claim(&mut rt, &claim2).unwrap();
-        let id3 = h.create_claim(&mut rt, &claim3).unwrap();
 
         // Extend claim terms and verify return value.
         let params = ExtendClaimTermsParams {
-            terms: vec![
-                ClaimTerm { provider: PROVIDER1, claim_id: id1, term_max: max_term + 1 },
-                ClaimTerm { provider: PROVIDER1, claim_id: id2, term_max: max_term + 2 },
-                ClaimTerm { provider: PROVIDER2, claim_id: id3, term_max: max_term + 3 },
-            ],
+            terms: vec![ClaimTerm { provider: PROVIDER1, claim_id: id1, term_max: max_term + 1 }],
         };
 
         // set caller to not-builtin
@@ -945,12 +937,10 @@ mod allocs_claims {
 
         rt.verify();
 
-        assert_eq!(ret.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK]);
+        assert_eq!(ret.codes(), vec![ExitCode::OK]);
 
         // Verify state directly.
         assert_claim(&rt, PROVIDER1, id1, &Claim { term_max: max_term + 1, ..claim1 });
-        assert_claim(&rt, PROVIDER1, id2, &Claim { term_max: max_term + 2, ..claim2 });
-        assert_claim(&rt, PROVIDER2, id3, &Claim { term_max: max_term + 3, ..claim3 });
         h.check_state(&rt);
     }
 }
