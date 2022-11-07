@@ -3,8 +3,8 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, restrict_internal_api, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 
 use fvm_ipld_encoding::RawBytes;
@@ -223,6 +223,7 @@ impl ActorCode for Actor {
     where
         RT: Runtime,
     {
+        restrict_internal_api(rt, method)?;
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 let param: Option<BigIntDe> = cbor::deserialize_params(params)?;
