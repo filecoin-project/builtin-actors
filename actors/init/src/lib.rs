@@ -6,7 +6,8 @@ use std::iter;
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorError, EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, restrict_internal_api, ActorContext, ActorError, EAM_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -33,6 +34,8 @@ pub enum Method {
     Exec4 = 3,
     #[cfg(feature = "m2-native")]
     InstallCode = 4,
+    // Method numbers derived from FRC-XXXX standards
+    ExecExported = frc42_dispatch::method_hash!("Exec"),
 }
 
 /// Init actor
@@ -196,12 +199,13 @@ impl ActorCode for Actor {
     where
         RT: Runtime,
     {
+        restrict_internal_api(rt, method)?;
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::Exec) => {
+            Some(Method::Exec) | Some(Method::ExecExported) => {
                 let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
