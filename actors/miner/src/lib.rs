@@ -126,6 +126,14 @@ pub enum Method {
     // Method numbers derived from FRC-XXXX standards
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
+    GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
+    GetWorkerExported = frc42_dispatch::method_hash!("GetWorker"),
+    GetControlsExported = frc42_dispatch::method_hash!("GetControls"),
+    GetSectorSizeExported = frc42_dispatch::method_hash!("GetSectorSize"),
+    GetPreCommitDepositExported = frc42_dispatch::method_hash!("GetPreCommitDeposit"),
+    GetInitialPledgeExported = frc42_dispatch::method_hash!("GetInitialPledge"),
+    GetFeeDebtExported = frc42_dispatch::method_hash!("GetFeeDebt"),
+    GetLockedFundsExported = frc42_dispatch::method_hash!("GetLockedFunds"),
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -205,6 +213,7 @@ impl Actor {
         Ok(())
     }
 
+    /// Returns the "controlling" addresses: the owner, the worker, and all control addresses
     fn control_addresses(rt: &mut impl Runtime) -> Result<GetControlAddressesReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
@@ -214,6 +223,69 @@ impl Actor {
             worker: info.worker,
             control_addresses: info.control_addresses,
         })
+    }
+
+    /// Returns the owner address
+    fn get_owner(rt: &mut impl Runtime) -> Result<GetOwnerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let owner = get_miner_info(rt.store(), &state)?.owner;
+        Ok(GetOwnerReturn { owner })
+    }
+
+    /// Returns the worker address
+    fn get_worker(rt: &mut impl Runtime) -> Result<GetWorkerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let worker = get_miner_info(rt.store(), &state)?.worker;
+        Ok(GetWorkerReturn { worker })
+    }
+
+    /// Returns the control addresses
+    fn get_controls(rt: &mut impl Runtime) -> Result<GetControlsReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let controls = get_miner_info(rt.store(), &state)?.control_addresses;
+        Ok(GetControlsReturn { controls })
+    }
+
+    /// Returns the miner's sector size
+    fn get_sector_size(rt: &mut impl Runtime) -> Result<GetSectorSizeReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let sector_size = get_miner_info(rt.store(), &state)?.sector_size;
+        Ok(GetSectorSizeReturn { sector_size })
+    }
+
+    /// Returns the miner's total funds locked as pre_commit_deposit
+    fn get_pre_commit_deposit(
+        rt: &mut impl Runtime,
+    ) -> Result<GetPreCommitDepositReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        Ok(GetPreCommitDepositReturn { pre_commit_deposit: state.pre_commit_deposits })
+    }
+
+    /// Returns the sum of the initial pledge requirements of all active sectors of this miner.
+    fn get_initial_pledge(rt: &mut impl Runtime) -> Result<GetInitialPledgeReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        Ok(GetInitialPledgeReturn { initial_pledge: state.initial_pledge })
+    }
+
+    /// Returns the absolute value of debt this miner owes from unpaid fees.
+    fn get_fee_debt(rt: &mut impl Runtime) -> Result<GetFeeDebtReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        Ok(GetFeeDebtReturn { fee_debt: state.fee_debt })
+    }
+
+    /// Returns the absolute value of the locked funds in this miner's vesting table.
+    /// Note that this does NOT include other types of locked funds like precommit deposits.
+    fn get_locked_funds(rt: &mut impl Runtime) -> Result<GetLockedFundsReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        Ok(GetLockedFundsReturn { locked_funds: state.locked_funds })
     }
 
     /// Will ALWAYS overwrite the existing control addresses with the control addresses passed in the params.
@@ -5001,6 +5073,38 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
+            Some(Method::GetOwnerExported) => {
+                let res = Self::get_owner(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetWorkerExported) => {
+                let res = Self::get_worker(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetControlsExported) => {
+                let res = Self::get_controls(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetSectorSizeExported) => {
+                let res = Self::get_sector_size(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetPreCommitDepositExported) => {
+                let res = Self::get_pre_commit_deposit(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetInitialPledgeExported) => {
+                let res = Self::get_initial_pledge(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetFeeDebtExported) => {
+                let res = Self::get_fee_debt(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetLockedFundsExported) => {
+                let res = Self::get_locked_funds(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
         }
     }
 }

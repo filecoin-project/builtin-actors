@@ -13,7 +13,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
-    StoragePower,
+    SectorSize, StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
 
@@ -482,3 +482,59 @@ pub struct GetBeneficiaryReturn {
 }
 
 impl Cbor for GetBeneficiaryReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetOwnerReturn {
+    pub owner: Address,
+}
+
+impl Cbor for GetOwnerReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetWorkerReturn {
+    pub worker: Address,
+}
+
+impl Cbor for GetWorkerReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetControlsReturn {
+    pub controls: Vec<Address>,
+}
+
+impl Cbor for GetControlsReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetSectorSizeReturn {
+    pub sector_size: SectorSize,
+}
+
+impl Cbor for GetSectorSizeReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetPreCommitDepositReturn {
+    pub pre_commit_deposit: TokenAmount,
+}
+
+impl Cbor for GetPreCommitDepositReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetInitialPledgeReturn {
+    pub initial_pledge: TokenAmount,
+}
+
+impl Cbor for GetInitialPledgeReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetFeeDebtReturn {
+    pub fee_debt: TokenAmount,
+}
+
+impl Cbor for GetFeeDebtReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetLockedFundsReturn {
+    pub locked_funds: TokenAmount,
+}
+
+impl Cbor for GetLockedFundsReturn {}
