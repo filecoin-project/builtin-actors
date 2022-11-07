@@ -41,6 +41,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct_and_verify(&self, rt: &mut MockRuntime, registry: &Address) {
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
             .call::<DataCapActor>(
