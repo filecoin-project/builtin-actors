@@ -101,6 +101,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct(&self, rt: &mut MockRuntime) {
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         rt.call::<PowerActor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
         rt.verify()
