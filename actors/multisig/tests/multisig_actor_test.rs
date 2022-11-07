@@ -1,7 +1,7 @@
 use fil_actor_multisig::testing::check_state_invariants;
 use fil_actor_multisig::{
-    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeReturn, State,
-    Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
+    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeParams,
+    ProposeReturn, State, Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
@@ -11,6 +11,7 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 
+use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -120,7 +121,7 @@ mod constructor_tests {
             RawBytes::default(),
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                &RawBytes::serialize(&params).unwrap()
+                &RawBytes::serialize(&params).unwrap(),
             )
             .unwrap()
         );
@@ -751,6 +752,58 @@ fn test_fail_propose_from_non_signer() {
     check_state(&rt);
 }
 
+#[test]
+fn test_propose_restricted_correctly() {
+    let msig = Address::new_id(1000);
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+    // We will treat Chuck as having code CID b"103"
+    let chuck = Address::new_id(103);
+    let no_unlock_duration = 0;
+    let start_epoch = 0;
+    let signers = vec![anne, bob];
+
+    let send_value = TokenAmount::from_atto(10u8);
+    h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
+
+    // set caller to not-builtin
+    rt.set_caller(make_identity_cid(b"103"), Address::new_id(103));
+    let propose_params = serialize(
+        &ProposeParams {
+            to: chuck,
+            value: send_value,
+            method: METHOD_SEND,
+            params: RawBytes::default(),
+        },
+        "propose params",
+    )
+    .unwrap();
+
+    // cannot call the unexported method num
+
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<MultisigActor>(Method::Propose as u64, &propose_params),
+    );
+
+    rt.verify();
+
+    // can call the exported method num
+    rt.expect_validate_caller_type([Type::Account, Type::Multisig].to_vec());
+    // TODO: This call should succeed: See https://github.com/filecoin-project/builtin-actors/issues/806.
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "forbidden, allowed: [Account, Multisig]",
+        rt.call::<MultisigActor>(Method::ProposeExported as u64, &propose_params),
+    );
+
+    rt.verify();
+}
+
 // AddSigner
 #[test]
 fn test_add_signer() {
@@ -764,7 +817,8 @@ fn test_add_signer() {
         #[allow(dead_code)]
         desc: &'a str,
 
-        id_addr_mapping: Vec<(Address, Address)>, // non-id to id
+        id_addr_mapping: Vec<(Address, Address)>,
+        // non-id to id
         initial_signers: Vec<Address>,
         initial_approvals: u64,
 
@@ -777,7 +831,7 @@ fn test_add_signer() {
     }
 
     let test_cases = vec![
-        TestCase{
+        TestCase {
             desc: "happy path add signer",
             id_addr_mapping: Vec::new(),
             initial_signers: vec![anne, bob],
@@ -788,7 +842,7 @@ fn test_add_signer() {
             expect_approvals: 2,
             code: ExitCode::OK,
         },
-        TestCase{
+        TestCase {
             desc: "add signer and increase threshold",
             id_addr_mapping: Vec::new(),
             initial_signers: vec![anne, bob],
@@ -799,7 +853,7 @@ fn test_add_signer() {
             expect_approvals: 3,
             code: ExitCode::OK,
         },
-        TestCase{
+        TestCase {
             desc: "fail to add signer that already exists",
             id_addr_mapping: Vec::new(),
             initial_signers: vec![anne, bob, chuck],
@@ -810,28 +864,28 @@ fn test_add_signer() {
             expect_approvals: 3,
             code: ExitCode::USR_FORBIDDEN,
         },
-        TestCase{
+        TestCase {
             desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
             id_addr_mapping: vec![(chuck_pubkey, chuck)],
             initial_signers: vec![anne, bob, chuck_pubkey],
             initial_approvals: 3,
             add_signer: chuck,
-            increase:false,
+            increase: false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
             code: ExitCode::USR_FORBIDDEN,
         },
-        TestCase{
+        TestCase {
             desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
             id_addr_mapping: vec![(chuck_pubkey, chuck)],
             initial_signers: vec![anne, bob, chuck],
             initial_approvals: 3,
             add_signer: chuck_pubkey,
-            increase:false,
+            increase: false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
             code: ExitCode::USR_FORBIDDEN,
-        }
+        },
     ];
 
     for tc in test_cases {
@@ -1089,7 +1143,7 @@ fn test_signer_swap() {
             swap_from: anne,
             expect_signers: vec![],
             code: ExitCode::USR_ILLEGAL_ARGUMENT,
-        }
+        },
     ];
 
     for tc in test_cases {
@@ -1448,6 +1502,7 @@ mod approval_tests {
         );
         check_state(&rt);
     }
+
     #[test]
     fn fail_approval_if_not_enough_unlocked_balance_available() {
         let msig = Address::new_id(100);

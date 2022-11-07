@@ -40,9 +40,9 @@ use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_error, cbor, restrict_internal_api, ActorContext, ActorDowncast, ActorError,
+    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 pub use monies::*;
 pub use partition_state::*;
@@ -123,6 +123,9 @@ pub enum Method {
     ChangeBeneficiary = 30,
     GetBeneficiary = 31,
     ExtendSectorExpiration2 = 32,
+    // Method numbers derived from FRC-XXXX standards
+    ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
+    GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -3418,10 +3421,12 @@ pub struct ReplicaUpdateInner {
 }
 
 enum ExtensionKind {
-    ExtendCommittmentLegacy, // handle only legacy sectors
-    ExtendCommittment,       // handle both Simple QAP and legacy sectors
-                             // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
-                             // ExtendProofValidity
+    // handle only legacy sectors
+    ExtendCommittmentLegacy,
+    // handle both Simple QAP and legacy sectors
+    // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
+    // ExtendProofValidity
+    ExtendCommittment,
 }
 
 // ExtendSectorExpiration param
@@ -3637,18 +3642,19 @@ fn extend_simple_qap_sector(
         let old_duration = sector.expiration - sector.activation;
         let deal_space = &sector.deal_weight / old_duration;
         let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
-        let (expected_verified_deal_space, new_verified_deal_space) =
-            match claim_space_by_sector.get(&sector.sector_number) {
-                None => {
-                    return Err(actor_error!(
+        let (expected_verified_deal_space, new_verified_deal_space) = match claim_space_by_sector
+            .get(&sector.sector_number)
+        {
+            None => {
+                return Err(actor_error!(
                         illegal_argument,
                         "claim missing from declaration for sector {} with non-zero verified deal weight {}",
                         sector.sector_number,
                         &sector.verified_deal_weight
-                    ))
-                }
-                Some(space) => space,
-            };
+                    ));
+            }
+            Some(space) => space,
+        };
         // claims must be completely accounted for
         if BigInt::from(*expected_verified_deal_space as i64) != old_verified_deal_space {
             return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, old_verified_deal_space, sector.sector_number));
@@ -4864,6 +4870,7 @@ impl ActorCode for Actor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        restrict_internal_api(rt, method)?;
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
@@ -4981,11 +4988,11 @@ impl ActorCode for Actor {
                 let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::ChangeBeneficiary) => {
+            Some(Method::ChangeBeneficiary) | Some(Method::ChangeBenificiaryExported) => {
                 Self::change_beneficiary(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::GetBeneficiary) => {
+            Some(Method::GetBeneficiary) | Some(Method::GetBeneficiaryExported) => {
                 let res = Self::get_beneficiary(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
