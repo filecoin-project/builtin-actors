@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{actor_error, cbor, restrict_internal_api, ActorError, SYSTEM_ACTOR_ADDR};
 
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
@@ -83,6 +83,7 @@ impl ActorCode for Actor {
     where
         RT: Runtime,
     {
+        restrict_internal_api(rt, method)?;
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
