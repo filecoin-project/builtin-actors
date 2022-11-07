@@ -20,7 +20,8 @@ use num_traits::{FromPrimitive, Zero};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, restrict_internal_api, ActorContext, ActorError, AsActorError,
+    SYSTEM_ACTOR_ADDR,
 };
 
 pub use self::state::State;
@@ -42,9 +43,10 @@ lazy_static! {
             * BigInt::from(1_000_000_000_000_000_000_000_i128)
     );
 }
-/// Static method numbers for builtin-actor private dispatch.
-/// The methods are also expected to be exposed via FRC-XXXX standard calling convention,
-/// with numbers determined by name.
+
+/// Datacap actor methods available
+/// Some methods are available under 2 method nums -- a static number for "private" builtin actor usage,
+/// and via FRC-XXXX calling convention, with number determined by method name.
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
@@ -65,6 +67,19 @@ pub enum Method {
     Burn = 19,
     BurnFrom = 20,
     Allowance = 21,
+    // Method numbers derived from FRC-XXXX standards
+    NameExported = frc42_dispatch::method_hash!("Name"),
+    SymbolExported = frc42_dispatch::method_hash!("Symbol"),
+    TotalSupplyExported = frc42_dispatch::method_hash!("TotalSupply"),
+    BalanceOfExported = frc42_dispatch::method_hash!("BalanceOf"),
+    TransferExported = frc42_dispatch::method_hash!("Transfer"),
+    TransferFromExported = frc42_dispatch::method_hash!("TransferFrom"),
+    IncreaseAllowanceExported = frc42_dispatch::method_hash!("IncreaseAllowance"),
+    DecreaseAllowanceExported = frc42_dispatch::method_hash!("DecreaseAllowance"),
+    RevokeAllowanceExported = frc42_dispatch::method_hash!("RevokeAllowance"),
+    BurnExported = frc42_dispatch::method_hash!("Burn"),
+    BurnFromExported = frc42_dispatch::method_hash!("BurnFrom"),
+    AllowanceExported = frc42_dispatch::method_hash!("Allowance"),
 }
 
 pub struct Actor;
@@ -452,6 +467,7 @@ impl ActorCode for Actor {
     where
         RT: Runtime,
     {
+        restrict_internal_api(rt, method)?;
         // I'm trying to find a fixed template for these blocks so we can macro it.
         // Current blockers:
         // - the serialize method maps () to CBOR null (we want no bytes instead)
@@ -469,51 +485,51 @@ impl ActorCode for Actor {
                 let ret = Self::destroy(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "destroy result")
             }
-            Some(Method::Name) => {
+            Some(Method::Name) | Some(Method::NameExported) => {
                 let ret = Self::name(rt)?;
                 serialize(&ret, "name result")
             }
-            Some(Method::Symbol) => {
+            Some(Method::Symbol) | Some(Method::SymbolExported) => {
                 let ret = Self::symbol(rt)?;
                 serialize(&ret, "symbol result")
             }
-            Some(Method::TotalSupply) => {
+            Some(Method::TotalSupply) | Some(Method::TotalSupplyExported) => {
                 let ret = Self::total_supply(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "total_supply result")
             }
-            Some(Method::BalanceOf) => {
+            Some(Method::BalanceOf) | Some(Method::BalanceOfExported) => {
                 let ret = Self::balance_of(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "balance_of result")
             }
-            Some(Method::Transfer) => {
+            Some(Method::Transfer) | Some(Method::TransferExported) => {
                 let ret = Self::transfer(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "transfer result")
             }
-            Some(Method::TransferFrom) => {
+            Some(Method::TransferFrom) | Some(Method::TransferFromExported) => {
                 let ret = Self::transfer_from(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "transfer_from result")
             }
-            Some(Method::IncreaseAllowance) => {
+            Some(Method::IncreaseAllowance) | Some(Method::IncreaseAllowanceExported) => {
                 let ret = Self::increase_allowance(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "increase_allowance result")
             }
-            Some(Method::DecreaseAllowance) => {
+            Some(Method::DecreaseAllowance) | Some(Method::DecreaseAllowanceExported) => {
                 let ret = Self::decrease_allowance(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "decrease_allowance result")
             }
-            Some(Method::RevokeAllowance) => {
+            Some(Method::RevokeAllowance) | Some(Method::RevokeAllowanceExported) => {
                 Self::revoke_allowance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::Burn) => {
+            Some(Method::Burn) | Some(Method::BurnExported) => {
                 let ret = Self::burn(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "burn result")
             }
-            Some(Method::BurnFrom) => {
+            Some(Method::BurnFrom) | Some(Method::BurnFromExported) => {
                 let ret = Self::burn_from(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "burn_from result")
             }
-            Some(Method::Allowance) => {
+            Some(Method::Allowance) | Some(Method::AllowanceExported) => {
                 let ret = Self::allowance(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "allowance result")
             }
