@@ -18,7 +18,7 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::SealVerifyInfo;
+use fvm_shared::sector::{SealVerifyInfo, StoragePower};
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use log::{debug, error};
 use num_derive::FromPrimitive;
@@ -61,6 +61,9 @@ pub enum Method {
     // OnConsensusFault = 7,
     SubmitPoRepForBulkVerify = 8,
     CurrentTotalPower = 9,
+    // Method numbers derived from FRC-XXXX standards
+    NetworkRawPowerExported = frc42_dispatch::method_hash!("NetworkRawPower"),
+    MinerRawPowerExported = frc42_dispatch::method_hash!("MinerRawPower"),
 }
 
 pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
@@ -364,6 +367,32 @@ impl Actor {
         })
     }
 
+    /// Returns the total raw power of the network.
+    fn network_raw_power(rt: &mut impl Runtime) -> Result<NetworkRawPowerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        Ok(NetworkRawPowerReturn { raw_byte_power: st.total_raw_byte_power })
+    }
+
+    /// Returns the raw power of the specified miner.
+    fn miner_raw_power(
+        rt: &mut impl Runtime,
+        params: MinerRawPowerParams,
+    ) -> Result<MinerRawPowerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        let raw_byte_power = st
+            .get_claim(rt.store(), &params.miner)
+            .map_err(|e| {
+                actor_error!(illegal_state, "failed to get claim for miner {}: {}", params.miner, e)
+            })?
+            .map_or(StoragePower::zero(), |c| c.raw_byte_power);
+
+        Ok(MinerRawPowerReturn { raw_byte_power })
+    }
+
     fn process_batch_proof_verifies(
         rt: &mut impl Runtime,
         rewret: &ThisEpochRewardReturn,
@@ -658,6 +687,14 @@ impl ActorCode for Actor {
             }
             Some(Method::CurrentTotalPower) => {
                 let res = Self::current_total_power(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::NetworkRawPowerExported) => {
+                let res = Self::network_raw_power(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::MinerRawPowerExported) => {
+                let res = Self::miner_raw_power(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

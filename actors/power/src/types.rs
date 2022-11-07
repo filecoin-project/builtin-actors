@@ -32,6 +32,7 @@ pub struct CreateMinerParams {
     pub peer: Vec<u8>,
     pub multiaddrs: Vec<BytesDe>,
 }
+
 impl Cbor for CreateMinerParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -65,3 +66,26 @@ pub struct CurrentTotalPowerReturn {
     pub pledge_collateral: TokenAmount,
     pub quality_adj_power_smoothed: FilterEstimate,
 }
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct NetworkRawPowerReturn {
+    #[serde(with = "bigint_ser")]
+    pub raw_byte_power: StoragePower,
+}
+
+impl Cbor for NetworkRawPowerReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct MinerRawPowerParams {
+    pub miner: Address,
+}
+
+impl Cbor for MinerRawPowerParams {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct MinerRawPowerReturn {
+    #[serde(with = "bigint_ser")]
+    pub raw_byte_power: StoragePower,
+}
+
+impl Cbor for MinerRawPowerReturn {}
