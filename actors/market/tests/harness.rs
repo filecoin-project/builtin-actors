@@ -114,6 +114,7 @@ pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) 
 }
 
 pub fn construct_and_verify(rt: &mut MockRuntime) {
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     assert_eq!(
         RawBytes::default(),

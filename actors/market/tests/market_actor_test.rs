@@ -27,7 +27,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use std::ops::Add;
 
@@ -57,6 +57,7 @@ fn simple_construction() {
         ..Default::default()
     };
 
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
     assert_eq!(
@@ -807,7 +808,17 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     deal.verified_deal = true;
 
     // add funds for client using its BLS address -> will be resolved and persisted
-    add_participant_funds(&mut rt, client_bls, deal.client_balance_requirement());
+    let amount = deal.client_balance_requirement();
+
+    rt.set_value(amount.clone());
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client_resolved);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    assert!(rt
+        .call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(client_bls).unwrap())
+        .is_ok());
+    rt.verify();
+    rt.add_balance(amount);
+
     assert_eq!(
         deal.client_balance_requirement(),
         get_escrow_balance(&rt, &client_resolved).unwrap()
@@ -1951,4 +1962,38 @@ fn insufficient_provider_balance_in_a_batch() {
     rt.verify();
 
     check_state(&rt);
+}
+
+#[test]
+fn add_balance_restricted_correctly() {
+    let mut rt = setup();
+    let amount = TokenAmount::from_atto(1000);
+    rt.set_value(amount);
+
+    // set caller to not-builtin
+    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
+
+    // cannot call the unexported method num
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<MarketActor>(
+            Method::AddBalance as MethodNum,
+            &RawBytes::serialize(CLIENT_ADDR).unwrap(),
+        ),
+    );
+
+    // can call the exported method num
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    // TODO: This call should succeed: See https://github.com/filecoin-project/builtin-actors/issues/806.
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "forbidden, allowed: [Account, Multisig]",
+        rt.call::<MarketActor>(
+            Method::AddBalanceExported as MethodNum,
+            &RawBytes::serialize(CLIENT_ADDR).unwrap(),
+        ),
+    );
+
+    rt.verify();
 }

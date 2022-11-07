@@ -28,9 +28,10 @@ use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorDowncast, ActorError, AsActorError,
-    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_error, cbor, restrict_internal_api, ActorContext, ActorDowncast, ActorError,
+    AsActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 pub use self::deal::*;
@@ -67,6 +68,9 @@ pub enum Method {
     OnMinerSectorsTerminate = 7,
     ComputeDataCommitment = 8,
     CronTick = 9,
+    // Method numbers derived from FRC-XXXX standards
+    AddBalanceExported = frc42_dispatch::method_hash!("AddBalance"),
+    WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
 }
 
 /// Market Actor
@@ -1161,16 +1165,17 @@ impl ActorCode for Actor {
     where
         RT: Runtime,
     {
+        restrict_internal_api(rt, method)?;
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::AddBalance) => {
+            Some(Method::AddBalance) | Some(Method::AddBalanceExported) => {
                 Self::add_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::WithdrawBalance) => {
+            Some(Method::WithdrawBalance) | Some(Method::WithdrawBalanceExported) => {
                 let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
