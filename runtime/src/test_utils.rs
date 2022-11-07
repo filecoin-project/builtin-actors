@@ -430,6 +430,8 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     pub fn set_caller(&mut self, code_id: Cid, address: Address) {
+        // fail if called with a non-ID address, since the caller() method must always return an ID
+        address.id().unwrap();
         self.caller = address;
         self.caller_type = code_id;
         self.actor_code_cids.insert(address, code_id);
@@ -758,11 +760,12 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             types, expected_caller_type,
         );
 
-        let call_type = self.resolve_builtin_actor_type(&self.caller_type).unwrap();
-        for expected in &types {
-            if &call_type == expected {
-                self.expectations.borrow_mut().expect_validate_caller_type = None;
-                return Ok(());
+        if let Some(call_type) = self.resolve_builtin_actor_type(&self.caller_type) {
+            for expected in &types {
+                if &call_type == expected {
+                    self.expectations.borrow_mut().expect_validate_caller_type = None;
+                    return Ok(());
+                }
             }
         }
 
