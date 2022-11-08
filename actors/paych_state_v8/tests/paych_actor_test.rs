@@ -228,7 +228,7 @@ mod paych_constructor {
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(&params).unwrap(),
-            ExitCode::USR_ILLEGAL_STATE,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
         );
     }
 
@@ -265,7 +265,7 @@ mod paych_constructor {
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(&params).unwrap(),
-            ExitCode::USR_ILLEGAL_STATE,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
         );
     }
 }
