@@ -23,6 +23,7 @@ use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use itertools::Itertools;
 use log::{error, info, warn};
 use multihash::Code::Blake2b256;
 use num_derive::FromPrimitive;
@@ -134,6 +135,7 @@ pub enum Method {
     GetInitialPledgeExported = frc42_dispatch::method_hash!("GetInitialPledge"),
     GetFeeDebtExported = frc42_dispatch::method_hash!("GetFeeDebt"),
     GetLockedFundsExported = frc42_dispatch::method_hash!("GetLockedFunds"),
+    GetVestingFundsExported = frc42_dispatch::method_hash!("GetVestingFunds"),
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -303,6 +305,17 @@ impl Actor {
                 actor_error!(illegal_state, "failed to calculate available balance: {}", e)
             })?;
         Ok(GetAvailableBalanceReturn { available_balance })
+    }
+
+    /// Returns the funds vesting in this miner as a list of (vesting_epoch, vesting_amount) tuples.
+    fn get_vesting_funds(rt: &mut impl Runtime) -> Result<GetVestingFundsReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let vesting_funds = state
+            .load_vesting_funds(rt.store())
+            .map_err(|e| actor_error!(illegal_state, "failed to load vesting funds: {}", e))?;
+        let ret = vesting_funds.funds.into_iter().map(|v| (v.epoch, v.amount)).collect_vec();
+        Ok(GetVestingFundsReturn { vesting_funds: ret })
     }
 
     /// Will ALWAYS overwrite the existing control addresses with the control addresses passed in the params.
@@ -5120,6 +5133,10 @@ impl ActorCode for Actor {
             }
             Some(Method::GetLockedFundsExported) => {
                 let res = Self::get_locked_funds(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetVestingFundsExported) => {
+                let res = Self::get_vesting_funds(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
         }

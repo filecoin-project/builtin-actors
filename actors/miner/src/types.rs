@@ -548,3 +548,10 @@ pub struct GetAvailableBalanceReturn {
 }
 
 impl Cbor for GetAvailableBalanceReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetVestingFundsReturn {
+    pub vesting_funds: Vec<(ChainEpoch, TokenAmount)>,
+}
+
+impl Cbor for GetVestingFundsReturn {}
