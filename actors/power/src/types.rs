@@ -68,6 +68,7 @@ pub struct CurrentTotalPowerReturn {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
 pub struct NetworkRawPowerReturn {
     #[serde(with = "bigint_ser")]
     pub raw_byte_power: StoragePower,
@@ -76,6 +77,7 @@ pub struct NetworkRawPowerReturn {
 impl Cbor for NetworkRawPowerReturn {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
 pub struct MinerRawPowerParams {
     pub miner: Address,
 }
