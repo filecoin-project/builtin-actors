@@ -123,7 +123,7 @@ pub enum Method {
     ChangeBeneficiary = 30,
     GetBeneficiary = 31,
     ExtendSectorExpiration2 = 32,
-    // Method numbers derived from FRC-XXXX standards
+    // Method numbers derived from FRC-0042 standards
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
 }

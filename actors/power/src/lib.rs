@@ -61,7 +61,7 @@ pub enum Method {
     // OnConsensusFault = 7,
     SubmitPoRepForBulkVerify = 8,
     CurrentTotalPower = 9,
-    // Method numbers derived from FRC-XXXX standards
+    // Method numbers derived from FRC-0042 standards
     NetworkRawPowerExported = frc42_dispatch::method_hash!("NetworkRawPower"),
     MinerRawPowerExported = frc42_dispatch::method_hash!("MinerRawPower"),
 }

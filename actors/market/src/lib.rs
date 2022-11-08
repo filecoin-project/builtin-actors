@@ -72,7 +72,7 @@ pub enum Method {
     OnMinerSectorsTerminate = 7,
     ComputeDataCommitment = 8,
     CronTick = 9,
-    // Method numbers derived from FRC-XXXX standards
+    // Method numbers derived from FRC-0042 standards
     AddBalanceExported = frc42_dispatch::method_hash!("AddBalance"),
     WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
 }
