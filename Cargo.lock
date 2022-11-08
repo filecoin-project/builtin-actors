@@ -387,6 +387,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_market_state_v9"
+version = "9.0.0"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actor_power_state_v9",
+ "fil_actor_reward_state_v9",
+ "fil_actor_verifreg_state_v9",
+ "fil_actors_runtime_common",
+ "frc46_token",
+ "fvm_ipld_amt",
+ "fvm_ipld_bitfield",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "integer-encoding",
+ "itertools",
+ "libipld-core",
+ "log",
+ "multihash",
+ "num-derive",
+ "num-traits",
+ "regex",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_miner_state_v8"
 version = "8.0.0"
 dependencies = [
