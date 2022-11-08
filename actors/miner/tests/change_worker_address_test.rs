@@ -253,6 +253,7 @@ fn fails_if_control_addresses_length_exceeds_maximum_limit() {
         "control addresses length",
         result,
     );
+    rt.reset();
 
     h.check_state(&rt);
 }
@@ -260,10 +261,10 @@ fn fails_if_control_addresses_length_exceeds_maximum_limit() {
 #[test]
 fn fails_if_unable_to_resolve_control_address() {
     let (h, mut rt) = setup();
-
     let control_address = new_bls_addr(42);
     let result = h.change_worker_address(&mut rt, h.worker, vec![control_address]);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
+    rt.reset();
 
     h.check_state(&rt);
 }
@@ -271,31 +272,28 @@ fn fails_if_unable_to_resolve_control_address() {
 #[test]
 fn fails_if_unable_to_resolve_worker_address() {
     let (h, mut rt) = setup();
-
     let new_worker = new_bls_addr(42);
     let result = h.change_worker_address(&mut rt, new_worker, vec![]);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
-
+    rt.reset();
     h.check_state(&rt);
 }
 
 #[test]
 fn fails_if_worker_public_key_is_not_bls_but_id() {
     let (mut h, mut rt) = setup();
-
     let new_worker = Address::new_id(999);
     h.worker_key = Address::new_id(505);
 
     let result = h.change_worker_address(&mut rt, new_worker, vec![]);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
-
+    rt.reset();
     h.check_state(&rt);
 }
 
 #[test]
 fn fails_if_worker_public_key_is_not_bls_but_secp() {
     let (mut h, mut rt) = setup();
-
     let new_worker = Address::new_id(999);
     h.worker_key = Address::new_secp256k1(&[0x42; 65]).unwrap();
 

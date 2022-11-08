@@ -112,6 +112,7 @@ mod miner_actor_test_commitment {
         let mut h = ActorHarness::new(period_offset);
         h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
         let mut rt = h.new_runtime();
+
         rt.set_balance(insufficient_balance);
         rt.set_received(TokenAmount::zero());
 
@@ -129,6 +130,7 @@ mod miner_actor_test_commitment {
             ExitCode::USR_INSUFFICIENT_FUNDS,
             h.pre_commit_sector(&mut rt, precommit_params, util::PreCommitConfig::default(), true),
         );
+        rt.reset();
         h.check_state(&rt);
     }
 
@@ -169,6 +171,7 @@ mod miner_actor_test_commitment {
 
         let mut h = ActorHarness::new(period_offset);
         let mut rt = h.new_runtime();
+
         rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 
@@ -468,6 +471,7 @@ mod miner_actor_test_commitment {
             let mut h = ActorHarness::new(period_offset);
             h.set_proof_type(proof);
             let mut rt = h.new_runtime();
+
             rt.set_balance(BIG_BALANCE.clone());
             rt.set_received(TokenAmount::zero());
 
@@ -508,6 +512,7 @@ mod miner_actor_test_commitment {
                 "too many deals for sector",
                 ret,
             );
+            rt.reset();
 
             // sector at or below limit succeeds
             let (mut rt, h, _) = setup(proof);
@@ -533,6 +538,7 @@ mod miner_actor_test_commitment {
 
         let h = ActorHarness::new(period_offset);
         let mut rt = h.new_runtime();
+
         rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 

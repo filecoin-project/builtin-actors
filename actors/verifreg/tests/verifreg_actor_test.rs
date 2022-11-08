@@ -110,11 +110,14 @@ mod verifiers {
     #[test]
     fn add_verifier_enforces_min_size() {
         let (h, mut rt) = new_harness();
-        let allowance = rt.policy.minimum_verified_allocation_size.clone() - 1;
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_verifier(&mut rt, &VERIFIER, &allowance),
+        let allowance: DataCap = rt.policy.minimum_verified_allocation_size.clone() - 1;
+
+        let params = AddVerifierParams { address: *VERIFIER, allowance };
+        let result = rt.call::<VerifregActor>(
+            Method::AddVerifier as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
         );
+        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
         h.check_state(&rt);
     }
 
@@ -126,6 +129,7 @@ mod verifiers {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_verifier(&mut rt, &ROOT_ADDR, &allowance),
         );
+        rt.reset();
         h.check_state(&rt);
     }
 
@@ -155,10 +159,14 @@ mod verifiers {
             RawBytes::default(),
             ExitCode::OK,
         );
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_verifier(&mut rt, &verifier_key_address, &allowance),
+
+        let params = AddVerifierParams { address: verifier_key_address, allowance };
+        let result = rt.call::<VerifregActor>(
+            Method::AddVerifier as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
         );
+
+        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
         h.check_state(&rt);
     }
 
@@ -283,7 +291,7 @@ mod clients {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &CLIENT2, &allowance),
         );
-
+        rt.reset();
         h.assert_verifier_allowance(&rt, &VERIFIER, &DataCap::zero());
         h.check_state(&rt);
     }
@@ -341,6 +349,7 @@ mod clients {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &client, &allowance_client),
         );
+        rt.reset();
         h.check_state(&rt);
     }
 
@@ -355,6 +364,7 @@ mod clients {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &CLIENT, &allowance),
         );
+        rt.reset();
         h.check_state(&rt);
     }
 
@@ -443,6 +453,7 @@ mod clients {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &h.root, &allowance),
         );
+        rt.reset();
         h.check_state(&rt);
     }
 
@@ -456,6 +467,7 @@ mod clients {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &h.root, &allowance_client),
         );
+        rt.reset();
         h.check_state(&rt);
     }
 
@@ -476,6 +488,7 @@ mod clients {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&mut rt, &VERIFIER, &VERIFIER2, &allowance_client),
         );
+        rt.reset();
         h.check_state(&rt);
     }
 }
