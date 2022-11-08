@@ -231,12 +231,17 @@ impl Actor {
         Ok(GetOwnerReturn { owner })
     }
 
-    /// Returns the worker address
+    /// Returns whether the provided address is "controlling".
+    /// The "controlling" addresses are the Owner, the Worker, and all Control Addresses.
     fn is_controlling_address(
         rt: &mut impl Runtime,
         params: IsControllingAddressParam,
     ) -> Result<IsControllingAddressReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
+        let input = match rt.resolve_address(&params.address) {
+            Some(a) => Address::new_id(a),
+            None => return Ok(IsControllingAddressReturn { is_controlling: false }),
+        };
         let state: State = rt.state()?;
         let info = get_miner_info(rt.store(), &state)?;
         let is_controlling = info
@@ -244,7 +249,7 @@ impl Actor {
             .iter()
             .chain(&[info.worker, info.owner])
             .into_iter()
-            .any(|a| *a == params.address);
+            .any(|a| *a == input);
 
         Ok(IsControllingAddressReturn { is_controlling })
     }
