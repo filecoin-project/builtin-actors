@@ -257,7 +257,7 @@ impl Actor {
         Ok(GetSectorSizeReturn { sector_size })
     }
 
-    /// Returns the miner's total funds locked as pre_commit_deposit
+    /// Returns the miner's total funds locked as pre-commit deposits
     fn get_pre_commit_deposit(
         rt: &mut impl Runtime,
     ) -> Result<GetPreCommitDepositReturn, ActorError> {
