@@ -10,10 +10,10 @@ use std::{cell::RefCell, collections::HashMap};
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
-    balance_table::BalanceTable, deal_id_key, ext, ext::miner::GetControlAddressesReturnParams,
-    gen_rand_next_epoch, testing::check_state_invariants, ActivateDealsParams, ActivateDealsResult,
+    deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, gen_rand_next_epoch,
+    testing::check_state_invariants, ActivateDealsParams, ActivateDealsResult,
     Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
-    Label, Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
+    GetBalanceReturn, Label, Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
     PublishStorageDealsReturn, SectorDeals, State, VerifyDealsForActivationParams,
     VerifyDealsForActivationReturn, WithdrawBalanceParams, WithdrawBalanceReturn, NO_ALLOCATION_ID,
     PROPOSALS_AMT_BITWIDTH,
@@ -123,13 +123,16 @@ pub fn construct_and_verify(rt: &mut MockRuntime) {
     rt.verify();
 }
 
-pub fn get_escrow_balance(rt: &MockRuntime, addr: &Address) -> Result<TokenAmount, ActorError> {
-    let st: State = rt.get_state();
-
-    let et = BalanceTable::from_root(rt.store(), &st.escrow_table)
-        .expect("failed to construct balance table from blockstore");
-
-    Ok(et.get(addr).expect("address does not exist in escrow balance table"))
+pub fn get_balance(rt: &mut MockRuntime, addr: &Address) -> GetBalanceReturn {
+    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+    rt.expect_validate_caller_any();
+    let ret: GetBalanceReturn = rt
+        .call::<MarketActor>(Method::GetBalanceExported as u64, &RawBytes::serialize(addr).unwrap())
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+    ret
 }
 
 pub fn expect_get_control_addresses(
@@ -316,12 +319,6 @@ pub fn get_pending_deal_allocation(rt: &mut MockRuntime, deal_id: DealID) -> All
     *pending_allocations.get(&deal_id_key(deal_id)).unwrap().unwrap_or(&NO_ALLOCATION_ID)
 }
 
-pub fn get_locked_balance(rt: &mut MockRuntime, addr: Address) -> TokenAmount {
-    let st: State = rt.get_state();
-    let lt = BalanceTable::from_root(&rt.store, &st.locked_table).unwrap();
-    lt.get(&addr).unwrap()
-}
-
 pub fn get_deal_state(rt: &mut MockRuntime, deal_id: DealID) -> DealState {
     let st: State = rt.get_state();
     let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
@@ -359,10 +356,8 @@ pub fn cron_tick_and_assert_balances(
     deal_id: DealID,
 ) -> (TokenAmount, TokenAmount) {
     // fetch current client and provider escrow balances
-    let c_locked = get_locked_balance(rt, client_addr);
-    let c_escrow = get_escrow_balance(rt, &client_addr).unwrap();
-    let p_locked = get_locked_balance(rt, provider_addr);
-    let p_escrow = get_escrow_balance(rt, &provider_addr).unwrap();
+    let c_acct = get_balance(rt, &client_addr);
+    let p_acct = get_balance(rt, &provider_addr);
     let mut amount_slashed = TokenAmount::zero();
 
     let s = get_deal_state(rt, deal_id);
@@ -399,10 +394,10 @@ pub fn cron_tick_and_assert_balances(
     let payment = duration * d.storage_price_per_epoch;
 
     // expected updated amounts
-    let updated_client_escrow = c_escrow - &payment;
-    let updated_provider_escrow = (p_escrow + &payment) - &amount_slashed;
-    let mut updated_client_locked = c_locked - &payment;
-    let mut updated_provider_locked = p_locked;
+    let updated_client_escrow = c_acct.balance - &payment;
+    let updated_provider_escrow = (p_acct.balance + &payment) - &amount_slashed;
+    let mut updated_client_locked = c_acct.locked - &payment;
+    let mut updated_provider_locked = p_acct.locked;
     // if the deal has expired or been slashed, locked amount will be zero for provider and client.
     let is_deal_expired = payment_end == d.end_epoch;
     if is_deal_expired || s.slash_epoch != EPOCH_UNDEFINED {
@@ -412,10 +407,12 @@ pub fn cron_tick_and_assert_balances(
 
     cron_tick(rt);
 
-    assert_eq!(updated_client_escrow, get_escrow_balance(rt, &client_addr).unwrap());
-    assert_eq!(updated_client_locked, get_locked_balance(rt, client_addr));
-    assert_eq!(updated_provider_escrow, get_escrow_balance(rt, &provider_addr).unwrap());
-    assert_eq!(updated_provider_locked, get_locked_balance(rt, provider_addr));
+    let client_acct = get_balance(rt, &client_addr);
+    let provider_acct = get_balance(rt, &provider_addr);
+    assert_eq!(updated_client_escrow, client_acct.balance);
+    assert_eq!(updated_client_locked, client_acct.locked);
+    assert_eq!(updated_provider_escrow, provider_acct.balance);
+    assert_eq!(updated_provider_locked, provider_acct.locked);
     (payment, amount_slashed)
 }
 
@@ -424,19 +421,17 @@ pub fn cron_tick_no_change(rt: &mut MockRuntime, client_addr: Address, provider_
     let epoch_cid = st.deal_ops_by_epoch;
 
     // fetch current client and provider escrow balances
-    let c_locked = get_locked_balance(rt, client_addr);
-    let c_escrow = get_escrow_balance(rt, &client_addr).unwrap();
-    let p_locked = get_locked_balance(rt, provider_addr);
-    let p_escrow = get_escrow_balance(rt, &provider_addr).unwrap();
+    let client_acct = get_balance(rt, &client_addr);
+    let provider_acct = get_balance(rt, &provider_addr);
 
     cron_tick(rt);
 
     let st: State = rt.get_state();
+    let new_client_acct = get_balance(rt, &client_addr);
+    let new_provider_acct = get_balance(rt, &provider_addr);
     assert_eq!(epoch_cid, st.deal_ops_by_epoch);
-    assert_eq!(c_locked, get_locked_balance(rt, client_addr));
-    assert_eq!(c_escrow, get_escrow_balance(rt, &client_addr).unwrap());
-    assert_eq!(p_locked, get_locked_balance(rt, provider_addr));
-    assert_eq!(p_escrow, get_escrow_balance(rt, &provider_addr).unwrap());
+    assert_eq!(client_acct, new_client_acct);
+    assert_eq!(provider_acct, new_provider_acct);
 }
 
 pub fn publish_deals(
@@ -983,8 +978,9 @@ pub fn terminate_deals_raw(
 }
 
 pub fn assert_account_zero(rt: &mut MockRuntime, addr: Address) {
-    assert!(get_escrow_balance(rt, &addr).unwrap().is_zero());
-    assert!(get_locked_balance(rt, addr).is_zero());
+    let account = get_balance(rt, &addr);
+    assert!(account.balance.is_zero());
+    assert!(account.locked.is_zero());
 }
 
 pub fn verify_deals_for_activation<F>(
