@@ -604,6 +604,11 @@ fn get_network_and_miner_power() {
     h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
     h.update_claimed_power(&mut rt, MINER1, power_unit, power_unit);
 
+    // manually update state in lieu of cron running
+    let mut state: State = rt.get_state();
+    state.this_epoch_raw_byte_power = power_unit.clone();
+    rt.replace_state(&state);
+
     // set caller to not-builtin
     rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
 

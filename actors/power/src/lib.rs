@@ -368,11 +368,15 @@ impl Actor {
     }
 
     /// Returns the total raw power of the network.
+    /// This is defined as the sum of the active (i.e. non-faulty) byte commitments
+    /// of all miners that have more than the consensus minimum amount of storage active.
+    /// This value is static over an epoch, and does NOT get updated as messages are executed.
+    /// It is recalculated after all messages at an epoch have been executed.
     fn network_raw_power(rt: &mut impl Runtime) -> Result<NetworkRawPowerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
 
-        Ok(NetworkRawPowerReturn { raw_byte_power: st.total_raw_byte_power })
+        Ok(NetworkRawPowerReturn { raw_byte_power: st.this_epoch_raw_byte_power })
     }
 
     /// Returns the raw power of the specified miner.
