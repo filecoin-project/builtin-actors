@@ -540,3 +540,11 @@ pub struct GetLockedFundsReturn {
 }
 
 impl Cbor for GetLockedFundsReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetAvailableBalanceReturn {
+    pub available_balance: TokenAmount,
+}
+
+impl Cbor for GetAvailableBalanceReturn {}

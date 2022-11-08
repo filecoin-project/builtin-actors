@@ -1,7 +1,7 @@
 use fil_actor_miner::{
-    locked_reward_from_reward, Actor, GetFeeDebtReturn, GetInitialPledgeReturn,
-    GetLockedFundsReturn, GetOwnerReturn, GetPreCommitDepositReturn, GetSectorSizeReturn,
-    IsControllingAddressParam, IsControllingAddressReturn, Method,
+    locked_reward_from_reward, Actor, GetAvailableBalanceReturn, GetFeeDebtReturn,
+    GetInitialPledgeReturn, GetLockedFundsReturn, GetOwnerReturn, GetPreCommitDepositReturn,
+    GetSectorSizeReturn, IsControllingAddressParam, IsControllingAddressReturn, Method,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::make_identity_cid;
@@ -10,6 +10,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, sector::MAX_SECTOR_NUMBER};
 use num_traits::Zero;
+use std::ops::Sub;
 
 mod util;
 
@@ -138,7 +139,8 @@ fn collateral_getters() {
 
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
-    rt.balance.replace(TokenAmount::from_whole(1000));
+    let actor_balance = TokenAmount::from_whole(1000);
+    rt.balance.replace(actor_balance.clone());
     let pcc = ProveCommitConfig::empty();
 
     let sector = h
@@ -181,6 +183,20 @@ fn collateral_getters() {
     // let's be sure we're not vacuously testing this method
     assert!(!sector.initial_pledge.is_zero());
     assert_eq!(sector.initial_pledge, initial_pledge_ret.initial_pledge);
+
+    // query available balance
+
+    rt.expect_validate_caller_any();
+    let available_balance_ret: GetAvailableBalanceReturn = rt
+        .call::<Actor>(Method::GetAvailableBalanceExported as u64, &RawBytes::default())
+        .unwrap()
+        .deserialize()
+        .unwrap();
+
+    rt.verify();
+
+    // let's be sure we're not vacuously testing this method
+    assert_eq!(actor_balance.sub(sector.initial_pledge), available_balance_ret.available_balance);
 
     h.check_state(&rt);
 }

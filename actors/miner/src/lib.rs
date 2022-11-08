@@ -129,6 +129,7 @@ pub enum Method {
     GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
     IsControllingAddressExported = frc42_dispatch::method_hash!("IsControllingAddress"),
     GetSectorSizeExported = frc42_dispatch::method_hash!("GetSectorSize"),
+    GetAvailableBalanceExported = frc42_dispatch::method_hash!("GetAvailableBalance"),
     GetPreCommitDepositExported = frc42_dispatch::method_hash!("GetPreCommitDeposit"),
     GetInitialPledgeExported = frc42_dispatch::method_hash!("GetInitialPledge"),
     GetFeeDebtExported = frc42_dispatch::method_hash!("GetFeeDebt"),
@@ -287,6 +288,21 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         Ok(GetLockedFundsReturn { locked_funds: state.locked_funds })
+    }
+
+    /// Returns the available balance of this miner.
+    /// This is calculated as actor balance - (vesting funds + pre-commit deposit + ip requirement + fee debt)
+    /// Can go negative if the miner is in IP debt.
+    fn get_available_balance(
+        rt: &mut impl Runtime,
+    ) -> Result<GetAvailableBalanceReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let available_balance =
+            state.get_available_balance(&rt.current_balance()).map_err(|e| {
+                actor_error!(illegal_state, "failed to calculate available balance: {}", e)
+            })?;
+        Ok(GetAvailableBalanceReturn { available_balance })
     }
 
     /// Will ALWAYS overwrite the existing control addresses with the control addresses passed in the params.
@@ -5088,6 +5104,10 @@ impl ActorCode for Actor {
             }
             Some(Method::GetPreCommitDepositExported) => {
                 let res = Self::get_pre_commit_deposit(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetAvailableBalanceExported) => {
+                let res = Self::get_available_balance(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::GetInitialPledgeExported) => {
