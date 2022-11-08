@@ -5,7 +5,7 @@ use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, make_identity_cid, ACCOUNT_ACTOR_CODE_ID,
     MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::{runtime::Policy, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
@@ -78,34 +78,6 @@ fn create_miner() {
 }
 
 #[test]
-fn create_miner_given_caller_is_not_of_signable_type_should_fail() {
-    let (h, mut rt) = setup();
-
-    let peer = "miner".as_bytes().to_vec();
-    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
-
-    let create_miner_params = CreateMinerParams {
-        owner: *OWNER,
-        worker: *OWNER,
-        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        peer,
-        multiaddrs,
-    };
-
-    rt.set_caller(*MINER_ACTOR_CODE_ID, *OWNER);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-    expect_abort(
-        ExitCode::USR_FORBIDDEN,
-        rt.call::<PowerActor>(
-            Method::CreateMiner as u64,
-            &RawBytes::serialize(&create_miner_params).unwrap(),
-        ),
-    );
-    rt.verify();
-    h.check_state(&rt);
-}
-
-#[test]
 fn create_miner_given_send_to_init_actor_fails_should_fail() {
     let (h, mut rt) = setup();
 
@@ -124,7 +96,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *OWNER);
     rt.value_received = TokenAmount::from_atto(10);
     rt.set_balance(TokenAmount::from_atto(10));
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
 
     let message_params = ExecParams {
         code_cid: *MINER_ACTOR_CODE_ID,
