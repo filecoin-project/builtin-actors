@@ -327,6 +327,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_datacap_state_v9"
+version = "9.0.0"
+dependencies = [
+ "cid",
+ "fil_actors_runtime_common",
+ "frc42_dispatch",
+ "frc46_token",
+ "fvm_actor_utils",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "lazy_static",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_init_state_v8"
 version = "8.0.0"
 dependencies = [
