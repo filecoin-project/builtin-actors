@@ -37,8 +37,6 @@ const DEFAULT_CARGO_FEATURES: &[&str] = &["fil-actor"];
 /// Extra Cargo-level features to enable per network.
 const EXTRA_CARGO_FEATURES: &[(&str, &[&str])] = &[
     ("devnet-wasm", &["m2-native"]),
-    /*("devnet-evm", &["m2-fevm"]),*/
-    ("wallaby", &["m2-native"]),
 ];
 
 const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";
