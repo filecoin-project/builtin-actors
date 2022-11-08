@@ -131,10 +131,6 @@ pub enum Method {
     IsControllingAddressExported = frc42_dispatch::method_hash!("IsControllingAddress"),
     GetSectorSizeExported = frc42_dispatch::method_hash!("GetSectorSize"),
     GetAvailableBalanceExported = frc42_dispatch::method_hash!("GetAvailableBalance"),
-    GetPreCommitDepositExported = frc42_dispatch::method_hash!("GetPreCommitDeposit"),
-    GetInitialPledgeExported = frc42_dispatch::method_hash!("GetInitialPledge"),
-    GetFeeDebtExported = frc42_dispatch::method_hash!("GetFeeDebt"),
-    GetLockedFundsExported = frc42_dispatch::method_hash!("GetLockedFunds"),
     GetVestingFundsExported = frc42_dispatch::method_hash!("GetVestingFunds"),
 }
 
@@ -259,37 +255,6 @@ impl Actor {
         let state: State = rt.state()?;
         let sector_size = get_miner_info(rt.store(), &state)?.sector_size;
         Ok(GetSectorSizeReturn { sector_size })
-    }
-
-    /// Returns the miner's total funds locked as pre-commit deposits
-    fn get_pre_commit_deposit(
-        rt: &mut impl Runtime,
-    ) -> Result<GetPreCommitDepositReturn, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        let state: State = rt.state()?;
-        Ok(GetPreCommitDepositReturn { pre_commit_deposit: state.pre_commit_deposits })
-    }
-
-    /// Returns the sum of the initial pledge requirements of all active sectors of this miner.
-    fn get_initial_pledge(rt: &mut impl Runtime) -> Result<GetInitialPledgeReturn, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        let state: State = rt.state()?;
-        Ok(GetInitialPledgeReturn { initial_pledge: state.initial_pledge })
-    }
-
-    /// Returns the absolute value of debt this miner owes from unpaid fees.
-    fn get_fee_debt(rt: &mut impl Runtime) -> Result<GetFeeDebtReturn, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        let state: State = rt.state()?;
-        Ok(GetFeeDebtReturn { fee_debt: state.fee_debt })
-    }
-
-    /// Returns the absolute value of the locked funds in this miner's vesting table.
-    /// Note that this does NOT include other types of locked funds like precommit deposits.
-    fn get_locked_funds(rt: &mut impl Runtime) -> Result<GetLockedFundsReturn, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        let state: State = rt.state()?;
-        Ok(GetLockedFundsReturn { locked_funds: state.locked_funds })
     }
 
     /// Returns the available balance of this miner.
@@ -5115,24 +5080,8 @@ impl ActorCode for Actor {
                 let res = Self::get_sector_size(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::GetPreCommitDepositExported) => {
-                let res = Self::get_pre_commit_deposit(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
             Some(Method::GetAvailableBalanceExported) => {
                 let res = Self::get_available_balance(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetInitialPledgeExported) => {
-                let res = Self::get_initial_pledge(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetFeeDebtExported) => {
-                let res = Self::get_fee_debt(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetLockedFundsExported) => {
-                let res = Self::get_locked_funds(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::GetVestingFundsExported) => {

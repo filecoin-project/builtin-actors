@@ -1,7 +1,6 @@
 use fil_actor_miner::{
-    locked_reward_from_reward, Actor, GetAvailableBalanceReturn, GetFeeDebtReturn,
-    GetInitialPledgeReturn, GetLockedFundsReturn, GetOwnerReturn, GetPreCommitDepositReturn,
-    GetSectorSizeReturn, IsControllingAddressParam, IsControllingAddressReturn, Method,
+    Actor, GetAvailableBalanceReturn, GetOwnerReturn, GetSectorSizeReturn,
+    IsControllingAddressParam, IsControllingAddressReturn, Method,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::make_identity_cid;
@@ -9,7 +8,6 @@ use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, sector::MAX_SECTOR_NUMBER};
-use num_traits::Zero;
 use std::ops::Sub;
 
 mod util;
@@ -119,24 +117,6 @@ fn collateral_getters() {
     let precommit =
         h.pre_commit_sector_and_get(&mut rt, precommit_params, PreCommitConfig::empty(), true);
 
-    // Query the total precommit deposit from a non-builtin actor
-
-    // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
-
-    rt.expect_validate_caller_any();
-    let pre_commit_deposit_ret: GetPreCommitDepositReturn = rt
-        .call::<Actor>(Method::GetPreCommitDepositExported as u64, &RawBytes::default())
-        .unwrap()
-        .deserialize()
-        .unwrap();
-
-    rt.verify();
-
-    // let's be sure we're not vacuously testing this method
-    assert!(!precommit.pre_commit_deposit.is_zero());
-    assert_eq!(precommit.pre_commit_deposit, pre_commit_deposit_ret.pre_commit_deposit);
-
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
     let actor_balance = TokenAmount::from_whole(1000);
@@ -151,38 +131,6 @@ fn collateral_getters() {
             pcc,
         )
         .unwrap();
-
-    // Query the total precommit deposits and initial pledge from a non-builtin actor
-
-    // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
-
-    // query PCD
-    rt.expect_validate_caller_any();
-    let pre_commit_deposit_ret: GetPreCommitDepositReturn = rt
-        .call::<Actor>(Method::GetPreCommitDepositExported as u64, &RawBytes::default())
-        .unwrap()
-        .deserialize()
-        .unwrap();
-
-    rt.verify();
-
-    assert!(pre_commit_deposit_ret.pre_commit_deposit.is_zero());
-
-    // query IP
-
-    rt.expect_validate_caller_any();
-    let initial_pledge_ret: GetInitialPledgeReturn = rt
-        .call::<Actor>(Method::GetInitialPledgeExported as u64, &RawBytes::default())
-        .unwrap()
-        .deserialize()
-        .unwrap();
-
-    rt.verify();
-
-    // let's be sure we're not vacuously testing this method
-    assert!(!sector.initial_pledge.is_zero());
-    assert_eq!(sector.initial_pledge, initial_pledge_ret.initial_pledge);
 
     // query available balance
 
@@ -199,52 +147,4 @@ fn collateral_getters() {
     assert_eq!(actor_balance.sub(sector.initial_pledge), available_balance_ret.available_balance);
 
     h.check_state(&rt);
-}
-
-#[test]
-fn debt_and_vesting_getters() {
-    let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
-    h.construct_and_verify(&mut rt);
-
-    let reward_amount: TokenAmount = 4 * &*BIG_BALANCE;
-    let (amount_locked, _) = locked_reward_from_reward(reward_amount.clone());
-    rt.set_balance(amount_locked.clone());
-    h.apply_rewards(&mut rt, reward_amount, TokenAmount::zero());
-
-    // introduce fee debt
-    let mut st = h.get_state(&rt);
-    st.fee_debt = 4 * &*BIG_BALANCE;
-    rt.replace_state(&st);
-
-    // Query the total locked funds & debt from a non-builtin actor
-
-    // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
-
-    // locked funds
-    rt.expect_validate_caller_any();
-    let locked_funds_ret: GetLockedFundsReturn = rt
-        .call::<Actor>(Method::GetLockedFundsExported as u64, &RawBytes::default())
-        .unwrap()
-        .deserialize()
-        .unwrap();
-
-    rt.verify();
-
-    // let's be sure we're not vacuously testing this method
-    assert!(!amount_locked.is_zero());
-    assert_eq!(amount_locked, locked_funds_ret.locked_funds);
-
-    // debt
-    rt.expect_validate_caller_any();
-    let debt_ret: GetFeeDebtReturn = rt
-        .call::<Actor>(Method::GetFeeDebtExported as u64, &RawBytes::default())
-        .unwrap()
-        .deserialize()
-        .unwrap();
-
-    rt.verify();
-
-    assert_eq!(st.fee_debt, debt_ret.fee_debt);
 }

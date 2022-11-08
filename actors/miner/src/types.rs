@@ -514,34 +514,6 @@ pub struct GetSectorSizeReturn {
 impl Cbor for GetSectorSizeReturn {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct GetPreCommitDepositReturn {
-    pub pre_commit_deposit: TokenAmount,
-}
-
-impl Cbor for GetPreCommitDepositReturn {}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct GetInitialPledgeReturn {
-    pub initial_pledge: TokenAmount,
-}
-
-impl Cbor for GetInitialPledgeReturn {}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct GetFeeDebtReturn {
-    pub fee_debt: TokenAmount,
-}
-
-impl Cbor for GetFeeDebtReturn {}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct GetLockedFundsReturn {
-    pub locked_funds: TokenAmount,
-}
-
-impl Cbor for GetLockedFundsReturn {}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct GetAvailableBalanceReturn {
     pub available_balance: TokenAmount,
