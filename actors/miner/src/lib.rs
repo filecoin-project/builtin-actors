@@ -127,8 +127,7 @@ pub enum Method {
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
     GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
-    GetWorkerExported = frc42_dispatch::method_hash!("GetWorker"),
-    GetControlsExported = frc42_dispatch::method_hash!("GetControls"),
+    IsControllingAddressExported = frc42_dispatch::method_hash!("IsControllingAddress"),
     GetSectorSizeExported = frc42_dispatch::method_hash!("GetSectorSize"),
     GetPreCommitDepositExported = frc42_dispatch::method_hash!("GetPreCommitDeposit"),
     GetInitialPledgeExported = frc42_dispatch::method_hash!("GetInitialPledge"),
@@ -234,19 +233,21 @@ impl Actor {
     }
 
     /// Returns the worker address
-    fn get_worker(rt: &mut impl Runtime) -> Result<GetWorkerReturn, ActorError> {
+    fn is_controlling_address(
+        rt: &mut impl Runtime,
+        params: IsControllingAddressParam,
+    ) -> Result<IsControllingAddressReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
-        let worker = get_miner_info(rt.store(), &state)?.worker;
-        Ok(GetWorkerReturn { worker })
-    }
+        let info = get_miner_info(rt.store(), &state)?;
+        let is_controlling = info
+            .control_addresses
+            .iter()
+            .chain(&[info.worker, info.owner])
+            .into_iter()
+            .any(|a| *a == params.address);
 
-    /// Returns the control addresses
-    fn get_controls(rt: &mut impl Runtime) -> Result<GetControlsReturn, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        let state: State = rt.state()?;
-        let controls = get_miner_info(rt.store(), &state)?.control_addresses;
-        Ok(GetControlsReturn { controls })
+        Ok(IsControllingAddressReturn { is_controlling })
     }
 
     /// Returns the miner's sector size
@@ -5077,12 +5078,8 @@ impl ActorCode for Actor {
                 let res = Self::get_owner(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::GetWorkerExported) => {
-                let res = Self::get_worker(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetControlsExported) => {
-                let res = Self::get_controls(rt)?;
+            Some(Method::IsControllingAddressExported) => {
+                let res = Self::is_controlling_address(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::GetSectorSizeExported) => {

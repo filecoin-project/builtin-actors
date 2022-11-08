@@ -491,18 +491,20 @@ pub struct GetOwnerReturn {
 impl Cbor for GetOwnerReturn {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct GetWorkerReturn {
-    pub worker: Address,
+#[serde(transparent)]
+pub struct IsControllingAddressParam {
+    pub address: Address,
 }
 
-impl Cbor for GetWorkerReturn {}
+impl Cbor for IsControllingAddressParam {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct GetControlsReturn {
-    pub controls: Vec<Address>,
+#[serde(transparent)]
+pub struct IsControllingAddressReturn {
+    pub is_controlling: bool,
 }
 
-impl Cbor for GetControlsReturn {}
+impl Cbor for IsControllingAddressReturn {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct GetSectorSizeReturn {

@@ -1,9 +1,11 @@
 use fil_actor_miner::{
-    locked_reward_from_reward, Actor, GetControlsReturn, GetFeeDebtReturn, GetInitialPledgeReturn,
+    locked_reward_from_reward, Actor, GetFeeDebtReturn, GetInitialPledgeReturn,
     GetLockedFundsReturn, GetOwnerReturn, GetPreCommitDepositReturn, GetSectorSizeReturn,
-    GetWorkerReturn, Method,
+    IsControllingAddressParam, IsControllingAddressReturn, Method,
 };
+use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::make_identity_cid;
+use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, sector::MAX_SECTOR_NUMBER};
@@ -41,31 +43,41 @@ fn info_getters() {
 
     assert_eq!(h.owner, owner_ret.owner);
 
-    // worker is good
+    // check that the controlling addresses all return true
+    for control in h.control_addrs.iter().chain(&[h.worker, h.owner]) {
+        rt.expect_validate_caller_any();
+        let is_control_ret: IsControllingAddressReturn = rt
+            .call::<Actor>(
+                Method::IsControllingAddressExported as u64,
+                &serialize(&IsControllingAddressParam { address: *control }, "serializing control")
+                    .unwrap(),
+            )
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        assert!(is_control_ret.is_controlling);
+
+        rt.verify();
+    }
+
+    // check that a non-controlling address doesn't return true
+
     rt.expect_validate_caller_any();
-    let worker_ret: GetWorkerReturn = rt
-        .call::<Actor>(Method::GetWorkerExported as u64, &RawBytes::default())
+    let is_control_ret: IsControllingAddressReturn = rt
+        .call::<Actor>(
+            Method::IsControllingAddressExported as u64,
+            &serialize(
+                &IsControllingAddressParam { address: INIT_ACTOR_ADDR },
+                "serializing control",
+            )
+            .unwrap(),
+        )
         .unwrap()
         .deserialize()
         .unwrap();
+    assert!(!is_control_ret.is_controlling);
 
     rt.verify();
-
-    assert_eq!(h.worker, worker_ret.worker);
-
-    // controls are good
-    rt.expect_validate_caller_any();
-    let control_ret: GetControlsReturn = rt
-        .call::<Actor>(Method::GetControlsExported as u64, &RawBytes::default())
-        .unwrap()
-        .deserialize()
-        .unwrap();
-
-    rt.verify();
-
-    // let's be sure we're not vacuously testing this method
-    assert_ne!(0, h.control_addrs.len());
-    assert_eq!(h.control_addrs, control_ret.controls);
 
     // sector size is good
     rt.expect_validate_caller_any();
