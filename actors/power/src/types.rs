@@ -86,6 +86,7 @@ impl Cbor for MinerRawPowerParams {}
 pub struct MinerRawPowerReturn {
     #[serde(with = "bigint_ser")]
     pub raw_byte_power: StoragePower,
+    pub meets_consensus_minimum: bool,
 }
 
 impl Cbor for MinerRawPowerReturn {}

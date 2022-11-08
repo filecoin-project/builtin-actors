@@ -24,7 +24,7 @@ use fvm_shared::smooth::{AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT
 use fvm_shared::HAMT_BIT_WIDTH;
 use integer_encoding::VarInt;
 use lazy_static::lazy_static;
-use num_traits::Signed;
+use num_traits::{Signed, Zero};
 
 use super::{CONSENSUS_MINER_MIN_MINERS, CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT_BITWIDTH};
 
@@ -104,25 +104,29 @@ impl State {
         policy: &Policy,
         s: &BS,
         miner: &Address,
-    ) -> anyhow::Result<bool> {
+    ) -> anyhow::Result<(StoragePower, bool)> {
         let claims = make_map_with_root_and_bitwidth(&self.claims, s, HAMT_BIT_WIDTH)?;
 
-        let claim =
-            get_claim(&claims, miner)?.ok_or_else(|| anyhow!("no claim for actor: {}", miner))?;
+        let claim = match get_claim(&claims, miner)? {
+            Some(c) => c,
+            None => {
+                return Ok((StoragePower::zero(), false));
+            }
+        };
 
-        let miner_nominal_power = &claim.raw_byte_power;
+        let miner_nominal_power = claim.raw_byte_power.clone();
         let miner_min_power = consensus_miner_min_power(policy, claim.window_post_proof_type)
             .context("could not get miner min power from proof type: {}")?;
 
-        if miner_nominal_power >= &miner_min_power {
+        if miner_nominal_power >= miner_min_power {
             // If miner is larger than min power requirement, valid
-            Ok(true)
+            Ok((miner_nominal_power, true))
         } else if self.miner_above_min_power_count >= CONSENSUS_MINER_MIN_MINERS {
             // if min consensus miners requirement met, return false
-            Ok(false)
+            Ok((miner_nominal_power, false))
         } else {
             // if fewer miners than consensus minimum, return true if non-zero power
-            Ok(miner_nominal_power.is_positive())
+            Ok((miner_nominal_power.clone(), miner_nominal_power.is_positive()))
         }
     }
 

@@ -18,7 +18,7 @@ use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::{SealVerifyInfo, StoragePower};
+use fvm_shared::sector::SealVerifyInfo;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use log::{debug, error};
 use num_derive::FromPrimitive;
@@ -70,6 +70,7 @@ pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
 
 /// Storage Power Actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for StoragePower actor
     fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
@@ -379,7 +380,9 @@ impl Actor {
         Ok(NetworkRawPowerReturn { raw_byte_power: st.this_epoch_raw_byte_power })
     }
 
-    /// Returns the raw power of the specified miner.
+    /// Returns the raw power claimed by the specified miner,
+    /// and whether the miner has more than the consensus minimum amount of storage active.
+    /// The raw power is defined as the active (i.e. non-faulty) byte commitments of the miner.
     fn miner_raw_power(
         rt: &mut impl Runtime,
         params: MinerRawPowerParams,
@@ -387,14 +390,18 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
 
-        let raw_byte_power = st
-            .get_claim(rt.store(), &params.miner)
+        let res = st
+            .miner_nominal_power_meets_consensus_minimum(rt.policy(), rt.store(), &params.miner)
             .map_err(|e| {
-                actor_error!(illegal_state, "failed to get claim for miner {}: {}", params.miner, e)
-            })?
-            .map_or(StoragePower::zero(), |c| c.raw_byte_power);
+                actor_error!(
+                    illegal_state,
+                    "failed to lookup power for miner {}: {}",
+                    params.miner,
+                    e
+                )
+            })?;
 
-        Ok(MinerRawPowerReturn { raw_byte_power })
+        Ok(MinerRawPowerReturn { raw_byte_power: res.0, meets_consensus_minimum: res.1 })
     }
 
     fn process_batch_proof_verifies(
