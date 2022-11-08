@@ -208,10 +208,9 @@ fn adds_to_provider_escrow_funds() {
 
             rt.verify();
 
-            assert_eq!(
-                get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(),
-                TokenAmount::from_atto(tc.total)
-            );
+            let acct = get_balance(&mut rt, &PROVIDER_ADDR);
+            assert_eq!(acct.balance, TokenAmount::from_atto(tc.total));
+            assert_eq!(acct.locked, TokenAmount::zero());
             check_state(&rt);
         }
     }
@@ -223,7 +222,7 @@ fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient()
 
     add_participant_funds(&mut rt, CLIENT_ADDR, TokenAmount::from_atto(20u8));
 
-    assert_eq!(TokenAmount::from_atto(20u8), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
+    assert_eq!(TokenAmount::from_atto(20u8), get_balance(&mut rt, &CLIENT_ADDR).balance);
 
     rt.expect_validate_caller_addr(vec![CLIENT_ADDR]);
 
@@ -244,7 +243,7 @@ fn fails_if_withdraw_from_non_provider_funds_is_not_initiated_by_the_recipient()
     rt.verify();
 
     // verify there was no withdrawal
-    assert_eq!(TokenAmount::from_atto(20u8), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
+    assert_eq!(TokenAmount::from_atto(20u8), get_balance(&mut rt, &CLIENT_ADDR).balance);
 
     check_state(&rt);
 }
@@ -267,8 +266,12 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
         end_epoch,
     );
     let deal = get_deal_proposal(&mut rt, deal_id);
-    assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
-    assert_eq!(deal.client_balance_requirement(), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
+    let provider_acct = get_balance(&mut rt, &PROVIDER_ADDR);
+    assert_eq!(deal.provider_collateral, provider_acct.balance);
+    assert_eq!(deal.provider_collateral, provider_acct.locked);
+    let client_acct = get_balance(&mut rt, &CLIENT_ADDR);
+    assert_eq!(deal.client_balance_requirement(), client_acct.balance);
+    assert_eq!(deal.client_balance_requirement(), client_acct.locked);
 
     let withdraw_amount = TokenAmount::from_atto(1u8);
     let withdrawable_amount = TokenAmount::zero();
@@ -294,6 +297,10 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
     let withdrawable_amount = TokenAmount::from_atto(25u8);
 
     add_provider_funds(&mut rt, withdrawable_amount.clone(), &MinerAddresses::default());
+    let provider_acct = get_balance(&mut rt, &PROVIDER_ADDR);
+    assert_eq!(&deal.provider_collateral + &withdrawable_amount, provider_acct.balance);
+    assert_eq!(deal.provider_collateral, provider_acct.locked);
+
     withdraw_provider_balance(
         &mut rt,
         withdraw_amount.clone(),
@@ -305,6 +312,10 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
 
     // add some more funds to the client & ensure withdrawal is limited by the locked funds
     add_participant_funds(&mut rt, CLIENT_ADDR, withdrawable_amount.clone());
+    let client_acct = get_balance(&mut rt, &CLIENT_ADDR);
+    assert_eq!(deal.client_balance_requirement() + &withdrawable_amount, client_acct.balance);
+    assert_eq!(deal.client_balance_requirement(), client_acct.locked);
+
     withdraw_client_balance(&mut rt, withdraw_amount, withdrawable_amount, CLIENT_ADDR);
     check_state(&rt);
 }
@@ -419,10 +430,7 @@ fn adds_to_non_provider_funds() {
 
             rt.verify();
 
-            assert_eq!(
-                get_escrow_balance(&rt, caller_addr).unwrap(),
-                TokenAmount::from_atto(tc.total)
-            );
+            assert_eq!(get_balance(&mut rt, caller_addr).balance, TokenAmount::from_atto(tc.total));
             check_state(&rt);
         }
     }
@@ -435,7 +443,7 @@ fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
     let amount = TokenAmount::from_atto(20);
     add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
 
-    assert_eq!(amount, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
+    assert_eq!(amount, get_balance(&mut rt, &PROVIDER_ADDR).balance);
 
     // worker calls WithdrawBalance, balance is transferred to owner
     let withdraw_amount = TokenAmount::from_atto(1);
@@ -448,7 +456,7 @@ fn withdraws_from_provider_escrow_funds_and_sends_to_owner() {
         WORKER_ADDR,
     );
 
-    assert_eq!(TokenAmount::from_atto(19), get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
+    assert_eq!(TokenAmount::from_atto(19), get_balance(&mut rt, &PROVIDER_ADDR).balance);
     check_state(&rt);
 }
 
@@ -459,12 +467,12 @@ fn withdraws_from_non_provider_escrow_funds() {
     let amount = TokenAmount::from_atto(20);
     add_participant_funds(&mut rt, CLIENT_ADDR, amount.clone());
 
-    assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), amount);
+    assert_eq!(get_balance(&mut rt, &CLIENT_ADDR).balance, amount);
 
     let withdraw_amount = TokenAmount::from_atto(1);
     withdraw_client_balance(&mut rt, withdraw_amount.clone(), withdraw_amount, CLIENT_ADDR);
 
-    assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::from_atto(19));
+    assert_eq!(get_balance(&mut rt, &CLIENT_ADDR).balance, TokenAmount::from_atto(19));
     check_state(&rt);
 }
 
@@ -479,7 +487,7 @@ fn client_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     let withdraw_amount = TokenAmount::from_atto(25);
     withdraw_client_balance(&mut rt, withdraw_amount, amount, CLIENT_ADDR);
 
-    assert_eq!(get_escrow_balance(&rt, &CLIENT_ADDR).unwrap(), TokenAmount::zero());
+    assert_eq!(get_balance(&mut rt, &CLIENT_ADDR).balance, TokenAmount::zero());
     check_state(&rt);
 }
 
@@ -490,7 +498,7 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
     let amount = TokenAmount::from_atto(20);
     add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
 
-    assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
+    assert_eq!(get_balance(&mut rt, &PROVIDER_ADDR).balance, amount);
 
     let withdraw_amount = TokenAmount::from_atto(25);
     withdraw_provider_balance(
@@ -502,7 +510,7 @@ fn worker_withdrawing_more_than_escrow_balance_limits_to_available_funds() {
         WORKER_ADDR,
     );
 
-    assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), TokenAmount::zero());
+    assert_eq!(get_balance(&mut rt, &PROVIDER_ADDR).balance, TokenAmount::zero());
     check_state(&rt);
 }
 
@@ -553,7 +561,7 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
     let amount = TokenAmount::from_atto(20u8);
     add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
 
-    assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
+    assert_eq!(get_balance(&mut rt, &PROVIDER_ADDR).balance, amount);
 
     // only signing parties can add balance for client AND provider.
     rt.expect_validate_caller_addr(vec![OWNER_ADDR, WORKER_ADDR]);
@@ -576,7 +584,7 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
     rt.verify();
 
     // verify there was no withdrawal
-    assert_eq!(get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap(), amount);
+    assert_eq!(get_balance(&mut rt, &PROVIDER_ADDR).balance, amount);
     check_state(&rt);
 }
 
@@ -819,10 +827,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     rt.verify();
     rt.add_balance(amount);
 
-    assert_eq!(
-        deal.client_balance_requirement(),
-        get_escrow_balance(&rt, &client_resolved).unwrap()
-    );
+    assert_eq!(deal.client_balance_requirement(), get_balance(&mut rt, &client_resolved).balance);
 
     // add funds for provider using it's BLS address -> will be resolved and persisted
     rt.value_received = deal.provider_collateral.clone();
@@ -840,7 +845,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     );
     rt.verify();
     rt.add_balance(deal.provider_collateral.clone());
-    assert_eq!(deal.provider_collateral, get_escrow_balance(&rt, &provider_resolved).unwrap());
+    assert_eq!(deal.provider_collateral, get_balance(&mut rt, &provider_resolved).balance);
 
     // publish deal using the BLS addresses
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -1055,13 +1060,13 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     // assert locked balance for all clients and provider
     let provider_locked_expected =
         &deal1.provider_collateral + &deal2.provider_collateral + &deal3.provider_collateral;
-    let client1_locked = get_locked_balance(&mut rt, client1_addr);
-    let client2_locked = get_locked_balance(&mut rt, client2_addr);
-    let client3_locked = get_locked_balance(&mut rt, client3_addr);
+    let client1_locked = get_balance(&mut rt, &client1_addr).locked;
+    let client2_locked = get_balance(&mut rt, &client2_addr).locked;
+    let client3_locked = get_balance(&mut rt, &client3_addr).locked;
     assert_eq!(deal1.client_balance_requirement(), client1_locked);
     assert_eq!(deal2.client_balance_requirement(), client2_locked);
     assert_eq!(deal3.client_balance_requirement(), client3_locked);
-    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, PROVIDER_ADDR));
+    assert_eq!(provider_locked_expected, get_balance(&mut rt, &PROVIDER_ADDR).locked);
 
     // assert locked funds dealStates
     let st: State = rt.get_state();
@@ -1094,16 +1099,16 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     // assert locked balances for clients and provider
     let provider_locked_expected =
         &provider_locked_expected + &deal4.provider_collateral + &deal5.provider_collateral;
-    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, PROVIDER_ADDR));
+    assert_eq!(provider_locked_expected, get_balance(&mut rt, &PROVIDER_ADDR).locked);
 
-    let client3_locked_updated = get_locked_balance(&mut rt, client3_addr);
+    let client3_locked_updated = get_balance(&mut rt, &client3_addr).locked;
     assert_eq!(
         &client3_locked + &deal4.client_balance_requirement() + &deal5.client_balance_requirement(),
         client3_locked_updated
     );
 
-    let client1_locked = get_locked_balance(&mut rt, client1_addr);
-    let client2_locked = get_locked_balance(&mut rt, client2_addr);
+    let client1_locked = get_balance(&mut rt, &client1_addr).locked;
+    let client2_locked = get_balance(&mut rt, &client2_addr).locked;
     assert_eq!(deal1.client_balance_requirement(), client1_locked);
     assert_eq!(deal2.client_balance_requirement(), client2_locked);
 
@@ -1137,15 +1142,15 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     // assertions
     let st: State = rt.get_state();
     let provider2_locked = &deal6.provider_collateral + &deal7.provider_collateral;
-    assert_eq!(provider2_locked, get_locked_balance(&mut rt, provider2_addr));
-    let client1_locked_updated = get_locked_balance(&mut rt, client1_addr);
+    assert_eq!(provider2_locked, get_balance(&mut rt, &provider2_addr).locked);
+    let client1_locked_updated = get_balance(&mut rt, &client1_addr).locked;
     assert_eq!(
         &deal7.client_balance_requirement() + &client1_locked + &deal6.client_balance_requirement(),
         client1_locked_updated
     );
 
     // assert first provider's balance as well
-    assert_eq!(provider_locked_expected, get_locked_balance(&mut rt, PROVIDER_ADDR));
+    assert_eq!(provider_locked_expected, get_balance(&mut rt, &PROVIDER_ADDR).locked);
 
     let total_client_collateral_locked =
         &total_client_collateral_locked + &deal6.client_collateral + &deal7.client_collateral;
@@ -1675,7 +1680,7 @@ fn market_actor_deals() {
     // test adding provider funds
     let funds = TokenAmount::from_atto(20_000_000);
     add_provider_funds(&mut rt, funds.clone(), &MinerAddresses::default());
-    assert_eq!(funds, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
+    assert_eq!(funds, get_balance(&mut rt, &PROVIDER_ADDR).balance);
 
     add_participant_funds(&mut rt, CLIENT_ADDR, funds);
     let mut deal_proposal =
@@ -1713,7 +1718,7 @@ fn max_deal_label_size() {
     // Test adding provider funds from both worker and owner address
     let funds = TokenAmount::from_atto(20_000_000);
     add_provider_funds(&mut rt, funds.clone(), &MinerAddresses::default());
-    assert_eq!(funds, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
+    assert_eq!(funds, get_balance(&mut rt, &PROVIDER_ADDR).balance);
 
     add_participant_funds(&mut rt, CLIENT_ADDR, funds);
     let mut deal_proposal =
@@ -1778,10 +1783,10 @@ fn insufficient_client_balance_in_a_batch() {
 
     rt.verify();
 
-    assert_eq!(deal2.client_balance_requirement(), get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
+    assert_eq!(deal2.client_balance_requirement(), get_balance(&mut rt, &CLIENT_ADDR).balance);
     assert_eq!(
         deal1.provider_balance_requirement().add(deal2.provider_balance_requirement()),
-        get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap()
+        get_balance(&mut rt, &PROVIDER_ADDR).balance
     );
 
     let buf1 = RawBytes::serialize(&deal1).expect("failed to marshal deal proposal");
@@ -1893,11 +1898,11 @@ fn insufficient_provider_balance_in_a_batch() {
 
     assert_eq!(
         deal1.client_balance_requirement().add(deal2.client_balance_requirement()),
-        get_escrow_balance(&rt, &CLIENT_ADDR).unwrap()
+        get_balance(&mut rt, &CLIENT_ADDR).balance
     );
     assert_eq!(
         deal2.provider_balance_requirement().clone(),
-        get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap()
+        get_balance(&mut rt, &PROVIDER_ADDR).balance
     );
 
     let buf1 = RawBytes::serialize(&deal1).expect("failed to marshal deal proposal");

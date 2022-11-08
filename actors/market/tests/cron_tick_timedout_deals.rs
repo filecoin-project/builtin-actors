@@ -38,7 +38,7 @@ fn timed_out_deal_is_slashed_and_deleted() {
     );
     let deal_proposal = get_deal_proposal(&mut rt, deal_id);
 
-    let c_escrow = get_escrow_balance(&rt, &CLIENT_ADDR).unwrap();
+    let c_escrow = get_balance(&mut rt, &CLIENT_ADDR).balance;
 
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
@@ -52,8 +52,9 @@ fn timed_out_deal_is_slashed_and_deleted() {
     );
     cron_tick(&mut rt);
 
-    assert_eq!(c_escrow, get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
-    assert!(get_locked_balance(&mut rt, CLIENT_ADDR).is_zero());
+    let client_acct = get_balance(&mut rt, &CLIENT_ADDR);
+    assert_eq!(c_escrow, client_acct.balance);
+    assert!(client_acct.locked.is_zero());
     assert_account_zero(&mut rt, PROVIDER_ADDR);
     assert_deal_deleted(&mut rt, deal_id, deal_proposal);
     check_state(&rt);

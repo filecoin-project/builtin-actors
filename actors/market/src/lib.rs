@@ -23,7 +23,7 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
-use crate::ext::verifreg::{AllocationID, AllocationRequest};
+use crate::balance_table::BalanceTable;
 use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
@@ -68,9 +68,10 @@ pub enum Method {
     OnMinerSectorsTerminate = 7,
     ComputeDataCommitment = 8,
     CronTick = 9,
-    // Method numbers derived from FRC-XXXX standards
+    // Method numbers derived from FRC-0042 standards
     AddBalanceExported = frc42_dispatch::method_hash!("AddBalance"),
     WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
+    GetBalanceExported = frc42_dispatch::method_hash!("GetBalance"),
 }
 
 /// Market Actor
@@ -134,6 +135,33 @@ impl Actor {
         rt.send(&recipient, METHOD_SEND, RawBytes::default(), amount_extracted.clone())?;
 
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_extracted })
+    }
+
+    /// Returns the escrow balance and locked amount for an address.
+    fn get_balance(
+        rt: &mut impl Runtime,
+        account: Address,
+    ) -> Result<GetBalanceReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let nominal = rt.resolve_address(&account).ok_or_else(|| {
+            actor_error!(illegal_argument, "failed to resolve address {}", account)
+        })?;
+        let account = Address::new_id(nominal);
+
+        let store = rt.store();
+        let st: State = rt.state()?;
+        let balances = BalanceTable::from_root(store, &st.escrow_table)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
+        let locks = BalanceTable::from_root(store, &st.locked_table)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load locked table")?;
+        let balance = balances
+            .get(&account)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")?;
+        let locked = locks
+            .get(&account)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")?;
+
+        Ok(GetBalanceReturn { balance, locked })
     }
 
     /// Publish a new set of storage deals (not yet included in a sector).
@@ -1202,6 +1230,10 @@ impl ActorCode for Actor {
             Some(Method::CronTick) => {
                 Self::cron_tick(rt)?;
                 Ok(RawBytes::default())
+            }
+            Some(Method::GetBalanceExported) => {
+                let res = Self::get_balance(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
         }
