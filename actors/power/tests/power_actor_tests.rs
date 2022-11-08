@@ -625,8 +625,11 @@ fn get_network_and_miner_power() {
     let miner_power: MinerRawPowerReturn = rt
         .call::<Actor>(
             Method::MinerRawPowerExported as u64,
-            &serialize(&MinerRawPowerParams { miner: MINER1 }, "serializing MinerRawPowerParams")
-                .unwrap(),
+            &serialize(
+                &MinerRawPowerParams { miner: MINER1.id().unwrap() },
+                "serializing MinerRawPowerParams",
+            )
+            .unwrap(),
         )
         .unwrap()
         .deserialize()

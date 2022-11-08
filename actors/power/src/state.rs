@@ -21,10 +21,10 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use fvm_shared::smooth::{AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA};
-use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use integer_encoding::VarInt;
 use lazy_static::lazy_static;
-use num_traits::{Signed, Zero};
+use num_traits::Signed;
 
 use super::{CONSENSUS_MINER_MIN_MINERS, CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT_BITWIDTH};
 
@@ -103,16 +103,12 @@ impl State {
         &self,
         policy: &Policy,
         s: &BS,
-        miner: &Address,
+        miner: ActorID,
     ) -> anyhow::Result<(StoragePower, bool)> {
         let claims = make_map_with_root_and_bitwidth(&self.claims, s, HAMT_BIT_WIDTH)?;
 
-        let claim = match get_claim(&claims, miner)? {
-            Some(c) => c,
-            None => {
-                return Ok((StoragePower::zero(), false));
-            }
-        };
+        let claim = get_claim(&claims, &Address::new_id(miner))?
+            .ok_or_else(|| anyhow!("no claim for actor: {}", miner))?;
 
         let miner_nominal_power = claim.raw_byte_power.clone();
         let miner_min_power = consensus_miner_min_power(policy, claim.window_post_proof_type)
