@@ -155,6 +155,7 @@ pub struct Expectations {
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
+    skip_verification_on_drop: bool,
 }
 
 impl Expectations {
@@ -244,6 +245,10 @@ impl Expectations {
             "expect_gas_charge {:?}, not received",
             self.expect_gas_charge
         );
+    }
+
+    fn skip_verification_on_drop(&mut self) {
+        self.skip_verification_on_drop = true;
     }
 }
 
@@ -469,6 +474,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
 
     /// Clears all mock expectations.
     pub fn reset(&mut self) {
+        self.expectations.borrow_mut().skip_verification_on_drop();
         self.expectations.borrow_mut().reset();
     }
 
@@ -1224,6 +1230,16 @@ impl<BS> Verifier for MockRuntime<BS> {
 impl<BS> RuntimePolicy for MockRuntime<BS> {
     fn policy(&self) -> &Policy {
         &self.policy
+    }
+}
+
+// The Expectations are by default verified on drop().
+// In order to clear the unsatisfied expectations in tests, use MockRuntime#reset().
+impl Drop for Expectations {
+    fn drop(&mut self) {
+        if !self.skip_verification_on_drop {
+            self.verify();
+        }
     }
 }
 
