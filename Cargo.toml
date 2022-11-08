@@ -17,5 +17,6 @@ members = [
     "actors/init_state_v9",
     "actors/multisig_state_v9",
     "actors/paych_state_v9",
+    "actors/reward_state_v9",
 ]
 resolver = "2"
