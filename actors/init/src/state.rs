@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-#[cfg(feature = "m2-native")]
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::{
@@ -11,7 +10,6 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
-#[cfg(feature = "m2-native")]
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::error::ExitCode;
@@ -23,7 +21,6 @@ pub struct State {
     pub address_map: Cid,
     pub next_id: ActorID,
     pub network_name: String,
-    #[cfg(feature = "m2-native")]
     pub installed_actors: Cid,
 }
 
@@ -32,7 +29,6 @@ impl State {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty map")?;
-        #[cfg(feature = "m2-native")]
         let installed_actors = store.put_cbor(&Vec::<Cid>::new(), Code::Blake2b256).context_code(
             ExitCode::USR_ILLEGAL_STATE,
             "failed to create installed actors object",
@@ -41,7 +37,6 @@ impl State {
             address_map: empty_map,
             next_id: FIRST_NON_SINGLETON_ADDR,
             network_name,
-            #[cfg(feature = "m2-native")]
             installed_actors,
         })
     }
