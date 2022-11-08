@@ -437,6 +437,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_miner_state_v9"
+version = "9.0.0"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "cid",
+ "fil_actor_account_state_v9",
+ "fil_actor_market_state_v9",
+ "fil_actor_power_state_v9",
+ "fil_actor_reward_state_v9",
+ "fil_actors_runtime_common",
+ "fvm_ipld_amt",
+ "fvm_ipld_bitfield",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "itertools",
+ "lazy_static",
+ "log",
+ "multihash",
+ "num-derive",
+ "num-traits",
+ "rand",
+ "serde",
+ "test-case",
+]
+
+[[package]]
 name = "fil_actor_multisig_state_v8"
 version = "8.0.0"
 dependencies = [
@@ -1420,6 +1449,28 @@ dependencies = [
  "quote",
  "syn",
  "unicode-xid",
+]
+
+[[package]]
+name = "test-case"
+version = "2.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21d6cf5a7dffb3f9dceec8e6b8ca528d9bd71d36c9f074defb548ce161f598c0"
+dependencies = [
+ "test-case-macros",
+]
+
+[[package]]
+name = "test-case-macros"
+version = "2.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e45b7bf6e19353ddd832745c8fcf77a17a93171df7151187f26623f2b75b5b26"
+dependencies = [
+ "cfg-if",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
