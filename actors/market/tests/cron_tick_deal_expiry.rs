@@ -163,8 +163,8 @@ fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_a
     );
     let deal_proposal = get_deal_proposal(&mut rt, deal_id);
 
-    let c_escrow = get_escrow_balance(&rt, &CLIENT_ADDR).unwrap();
-    let p_escrow = get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap();
+    let c_escrow = get_balance(&mut rt, &CLIENT_ADDR).balance;
+    let p_escrow = get_balance(&mut rt, &PROVIDER_ADDR).balance;
 
     // move the current epoch so that deal is expired
     rt.set_epoch(END_EPOCH + 1000);
@@ -173,11 +173,13 @@ fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_a
     // assert balances
     let payment = deal_proposal.total_storage_fee();
 
-    assert_eq!(c_escrow - &payment, get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
-    assert!(get_locked_balance(&mut rt, CLIENT_ADDR).is_zero());
+    let client_acct = get_balance(&mut rt, &CLIENT_ADDR);
+    assert_eq!(c_escrow - &payment, client_acct.balance);
+    assert!(client_acct.locked.is_zero());
 
-    assert_eq!(p_escrow + &payment, get_escrow_balance(&rt, &PROVIDER_ADDR).unwrap());
-    assert!(get_locked_balance(&mut rt, PROVIDER_ADDR).is_zero());
+    let provider_acct = get_balance(&mut rt, &PROVIDER_ADDR);
+    assert_eq!(p_escrow + &payment, provider_acct.balance);
+    assert!(provider_acct.locked.is_zero());
 
     // deal should be deleted
     assert_deal_deleted(&mut rt, deal_id, deal_proposal);
@@ -201,7 +203,7 @@ fn all_payments_are_made_for_a_deal_client_withdraws_collateral_and_client_accou
     // move the current epoch so that deal is expired
     rt.set_epoch(END_EPOCH + 100);
     cron_tick(&mut rt);
-    assert_eq!(deal_proposal.client_collateral, get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
+    assert_eq!(deal_proposal.client_collateral, get_balance(&mut rt, &CLIENT_ADDR).balance);
 
     // client withdraws collateral -> account should be removed as it now has zero balance
     withdraw_client_balance(
