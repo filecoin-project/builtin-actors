@@ -484,6 +484,7 @@ pub struct GetBeneficiaryReturn {
 impl Cbor for GetBeneficiaryReturn {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
 pub struct GetOwnerReturn {
     pub owner: Address,
 }
@@ -507,6 +508,7 @@ pub struct IsControllingAddressReturn {
 impl Cbor for IsControllingAddressReturn {}
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
 pub struct GetSectorSizeReturn {
     pub sector_size: SectorSize,
 }
