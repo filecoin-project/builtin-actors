@@ -20,5 +20,6 @@ members = [
     "actors/reward_state_v9",
     "actors/power_state_v9",
     "actors/system_state_v9",
+    "actors/verifreg_state_v9",
 ]
 resolver = "2"
