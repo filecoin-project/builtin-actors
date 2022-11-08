@@ -18,5 +18,6 @@ members = [
     "actors/multisig_state_v9",
     "actors/paych_state_v9",
     "actors/reward_state_v9",
+    "actors/power_state_v9",
 ]
 resolver = "2"

@@ -502,6 +502,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_power_state_v9"
+version = "9.0.0"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actor_reward_state_v9",
+ "fil_actors_runtime_common",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "indexmap",
+ "integer-encoding",
+ "lazy_static",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_reward_state_v8"
 version = "8.0.0"
 dependencies = [
