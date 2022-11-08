@@ -623,7 +623,9 @@ mod cron_tests {
         miner::{DeferredCronEventParams, ON_DEFERRED_CRON_EVENT_METHOD},
         reward::UPDATE_NETWORK_KPI,
     };
-    use fil_actors_runtime_common::{test_utils::CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR};
+    use fil_actors_runtime_common::{
+        test_utils::CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    };
     use fvm_shared::bigint::BigInt;
 
     const OWNER: Address = Address::new_id(103);
