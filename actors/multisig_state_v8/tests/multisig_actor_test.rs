@@ -226,7 +226,7 @@ mod constructor_tests {
         );
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
-            ExitCode::USR_ILLEGAL_STATE,
+            ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
                 &RawBytes::serialize(&params).unwrap(),
