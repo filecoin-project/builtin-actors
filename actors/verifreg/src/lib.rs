@@ -58,7 +58,7 @@ pub enum Method {
     GetClaims = 10,
     ExtendClaimTerms = 11,
     RemoveExpiredClaims = 12,
-    // Method numbers derived from FRC-XXXX standards
+    // Method numbers derived from FRC-0042 standards
     RemoveExpiredAllocationsExported = frc42_dispatch::method_hash!("RemoveExpiredAllocations"),
     ExtendClaimTermsExported = frc42_dispatch::method_hash!("ExtendClaimTerms"),
     RemoveExpiredClaimsExported = frc42_dispatch::method_hash!("RemoveExpiredClaims"),

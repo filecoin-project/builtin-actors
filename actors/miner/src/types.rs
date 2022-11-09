@@ -16,7 +16,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
-    StoragePower,
+    SectorSize, StoragePower,
 };
 
 use crate::ext::verifreg::ClaimID;
@@ -480,3 +480,50 @@ pub struct GetBeneficiaryReturn {
 }
 
 impl Cbor for GetBeneficiaryReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetOwnerReturn {
+    pub owner: Address,
+}
+
+impl Cbor for GetOwnerReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct IsControllingAddressParam {
+    pub address: Address,
+}
+
+impl Cbor for IsControllingAddressParam {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct IsControllingAddressReturn {
+    pub is_controlling: bool,
+}
+
+impl Cbor for IsControllingAddressReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetSectorSizeReturn {
+    pub sector_size: SectorSize,
+}
+
+impl Cbor for GetSectorSizeReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetAvailableBalanceReturn {
+    pub available_balance: TokenAmount,
+}
+
+impl Cbor for GetAvailableBalanceReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetVestingFundsReturn {
+    pub vesting_funds: Vec<(ChainEpoch, TokenAmount)>,
+}
+
+impl Cbor for GetVestingFundsReturn {}
