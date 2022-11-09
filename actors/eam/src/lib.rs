@@ -54,6 +54,26 @@ impl rlp::Encodable for RlpCreateAddress {
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
+impl EthAddress {
+    /// Returns true if the EthAddress refers to a precompile.
+    #[inline]
+    fn is_precompile(&self) -> bool {
+        self.0[..19].iter().all(|&i| i == 0)
+    }
+
+    /// Returns true if the EthAddress is an actor ID embedded in an eth address.
+    #[inline]
+    fn is_id(&self) -> bool {
+        self.0[0] == 0xff && self.0[1..12].iter().all(|&i| i == 0)
+    }
+
+    /// Returns true if the EthAddress is "reserved" (cannot be assigned by the EAM).
+    #[inline]
+    fn is_reserved(&self) -> bool {
+        self.is_precompile() || self.is_id()
+    }
+}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CreateParams {
     #[serde(with = "strict_bytes")]
@@ -119,6 +139,12 @@ fn create_actor(
     new_addr: EthAddress,
     initcode: Vec<u8>,
 ) -> Result<Return, ActorError> {
+    // If the new address is reserved (an ID address, or a precompile), reject it. An attacker would
+    // need to brute-force 96bits of a cryptographic hash and convince the target to use an attacker
+    // chosen salt, but we might as well be safe.
+    if new_addr.is_reserved() {
+        return Err(ActorError::forbidden("cannot create address with a reserved prefix".into()));
+    }
     let constructor_params =
         RawBytes::serialize(EvmConstructorParams { creator, initcode: initcode.into() })?;
 
@@ -269,4 +295,32 @@ impl ActorCode for EamActor {
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
+}
+
+#[test]
+fn test_create_actor_rejects() {
+    use fil_actors_runtime::test_utils::MockRuntime;
+    use fvm_shared::error::ExitCode;
+    let mut rt = MockRuntime::default();
+    let mut creator = EthAddress([0; 20]);
+    creator.0[0] = 0xff;
+    creator.0[19] = 0x1;
+
+    // Reject ID.
+    let mut new_addr = EthAddress([0; 20]);
+    new_addr.0[0] = 0xff;
+    new_addr.0[18] = 0x20;
+    new_addr.0[19] = 0x20;
+    assert_eq!(
+        ExitCode::USR_FORBIDDEN,
+        create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+    );
+
+    // Reject Precompile.
+    let mut new_addr = EthAddress([0; 20]);
+    new_addr.0[19] = 0x20;
+    assert_eq!(
+        ExitCode::USR_FORBIDDEN,
+        create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+    );
 }
