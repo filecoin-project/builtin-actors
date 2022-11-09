@@ -85,6 +85,7 @@ pub enum Method {
     GetDealClientCollateralExported = frc42_dispatch::method_hash!("GetDealClientCollateral"),
     GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
     GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
+    GetDealActivationExported = frc42_dispatch::method_hash!("GetDealActivation"),
 }
 
 /// Market Actor
@@ -1148,6 +1149,37 @@ impl Actor {
         let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
         Ok(GetDealVerifiedReturn { verified: found.verified_deal })
     }
+
+    /// Fetches activation state for a deal.
+    /// This will be available from when the proposal is published until an undefined period after
+    /// the deal finishes (either normally or by termination).
+    /// Outside that period, returns USR_NOT_FOUND.
+    fn get_deal_activation(
+        rt: &mut impl Runtime,
+        params: GetDealActivationParams,
+    ) -> Result<GetDealActivationReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_state(rt.store(), params.id)?;
+        match found {
+            // If we have state, the deal has been activated.
+            // It may also have completed normally, or been terminated, but not yet been cleaned up.
+            Some(state) => Ok(GetDealActivationReturn {
+                activated: state.sector_start_epoch,
+                terminated: state.slash_epoch,
+            }),
+            None => {
+                // With no state, the deal may have been published but not activated.
+                // If there's no proposal, we can't distinguish between never existing,
+                // failing to activate, or having been cleaned up after completion/termination.
+                // State::get_proposal will fail with USR_NOT_FOUND in either case.
+                let _proposal = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+                Ok(GetDealActivationReturn {
+                    activated: EPOCH_UNDEFINED,
+                    terminated: EPOCH_UNDEFINED,
+                })
+            }
+        }
+    }
 }
 
 fn compute_data_commitment<BS: Blockstore>(
@@ -1598,6 +1630,10 @@ impl ActorCode for Actor {
             }
             Some(Method::GetDealVerifiedExported) => {
                 let res = Self::get_deal_verified(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealActivationExported) => {
+                let res = Self::get_deal_activation(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
