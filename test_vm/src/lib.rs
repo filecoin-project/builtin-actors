@@ -1,39 +1,44 @@
 use anyhow::anyhow;
+use bimap::BiBTreeMap;
 use cid::multihash::Code;
 use cid::Cid;
-use fil_actor_account::{Actor as AccountActor, State as AccountState};
-use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
-use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
-use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
-use fil_actor_miner::{Actor as MinerActor, State as MinerState};
-use fil_actor_multisig::Actor as MultisigActor;
-use fil_actor_paych::Actor as PaychActor;
-use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as PowerState};
-use fil_actor_reward::{Actor as RewardActor, State as RewardState};
-use fil_actor_system::{Actor as SystemActor, State as SystemState};
-use fil_actor_verifreg::{Actor as VerifregActor, State as VerifRegState};
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::{
-    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier,
+use fil_actor_account_state_v9::{Actor as AccountActor, State as AccountState};
+use fil_actor_cron_state_v9::{Actor as CronActor, Entry as CronEntry, State as CronState};
+use fil_actor_datacap_state_v9::{Actor as DataCapActor, State as DataCapState};
+use fil_actor_init_state_v9::{Actor as InitActor, ExecReturn, State as InitState};
+use fil_actor_market_state_v9::{
+    Actor as MarketActor, Method as MarketMethod, State as MarketState,
 };
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::MessageAccumulator;
-use fil_actors_runtime::{
+use fil_actor_miner_state_v9::{Actor as MinerActor, MinerInfo, State as MinerState};
+use fil_actor_multisig_state_v9::Actor as MultisigActor;
+use fil_actor_paych_state_v9::Actor as PaychActor;
+use fil_actor_power_state_v9::{Actor as PowerActor, Method as MethodPower, State as PowerState};
+use fil_actor_reward_state_v9::{Actor as RewardActor, State as RewardState};
+use fil_actor_system_state_v9::{Actor as SystemActor, State as SystemState};
+use fil_actor_verifreg_state_v9::{Actor as VerifregActor, State as VerifRegState};
+use fil_actors_runtime_common::actor_error;
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::runtime::builtins::Type;
+use fil_actors_runtime_common::runtime::{
+    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
+    Verifier, EMPTY_ARR_CID,
+};
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fil_actors_runtime_common::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
-use fvm_shared::actor::builtin::Manifest;
-use fvm_shared::actor::builtin::Type;
+use fvm_shared::address::Payload;
 use fvm_shared::address::{Address, Protocol};
-use fvm_shared::bigint::{bigint_ser, BigInt, Zero};
+use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::signature::Signature;
@@ -41,6 +46,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     StoragePower, WindowPoStVerifyInfo,
@@ -48,7 +54,6 @@ use fvm_shared::sector::{
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
-use num_traits::Signed;
 use regex::Regex;
 use serde::ser;
 use std::cell::{RefCell, RefMut};
@@ -65,7 +70,6 @@ pub struct VM<'bs> {
     total_fil: TokenAmount,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
-    empty_obj_cid: Cid,
     network_version: NetworkVersion,
     curr_epoch: ChainEpoch,
     invocations: RefCell<Vec<InvocationTrace>>,
@@ -110,14 +114,12 @@ pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
 impl<'bs> VM<'bs> {
     pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
-        let empty = store.put_cbor(&(), Code::Blake2b256).unwrap();
         VM {
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
             total_fil: TokenAmount::zero(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
-            empty_obj_cid: empty,
             network_version: NetworkVersion::V16,
             curr_epoch: ChainEpoch::zero(),
             invocations: RefCell::new(vec![]),
@@ -129,12 +131,8 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
-        // funding
-        let fil = TokenAmount::from(1_000_000_000i32)
-            .checked_mul(&TokenAmount::from(1_000_000_000i32))
-            .unwrap();
-        let reward_total = TokenAmount::from(1_100_000_000i32).checked_mul(&fil).unwrap();
-        let faucet_total = TokenAmount::from(1_000_000_000u32).checked_mul(&fil).unwrap();
+        let reward_total = TokenAmount::from_whole(1_100_000_000i64);
+        let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
         let v = VM::new(store).with_total_fil(&reward_total + &faucet_total);
 
@@ -142,56 +140,50 @@ impl<'bs> VM<'bs> {
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
-        v.set_actor(*SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value));
+        v.set_actor(SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value));
 
         // init
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
-        v.set_actor(
-            *INIT_ACTOR_ADDR,
-            actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero()),
-        );
+        v.set_actor(INIT_ACTOR_ADDR, actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero()));
 
         // reward
 
         let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
-        v.set_actor(*REWARD_ACTOR_ADDR, actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total));
+        v.set_actor(REWARD_ACTOR_ADDR, actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total));
 
         // cron
         let builtin_entries = vec![
             CronEntry {
-                receiver: *STORAGE_POWER_ACTOR_ADDR,
+                receiver: STORAGE_POWER_ACTOR_ADDR,
                 method_num: MethodPower::OnEpochTickEnd as u64,
             },
             CronEntry {
-                receiver: *STORAGE_MARKET_ACTOR_ADDR,
+                receiver: STORAGE_MARKET_ACTOR_ADDR,
                 method_num: MarketMethod::CronTick as u64,
             },
         ];
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
-        v.set_actor(
-            *CRON_ACTOR_ADDR,
-            actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()),
-        );
+        v.set_actor(CRON_ACTOR_ADDR, actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()));
 
         // power
         let power_head = v.put_store(&PowerState::new(&v.store).unwrap());
         v.set_actor(
-            *STORAGE_POWER_ACTOR_ADDR,
+            STORAGE_POWER_ACTOR_ADDR,
             actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero()),
         );
 
         // market
         let market_head = v.put_store(&MarketState::new(&v.store).unwrap());
         v.set_actor(
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero()),
         );
 
         // verifreg
         // initialize verifreg root signer
         v.apply_message(
-            *INIT_ACTOR_ADDR,
+            INIT_ACTOR_ADDR,
             Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
             TokenAmount::zero(),
             METHOD_SEND,
@@ -203,7 +195,7 @@ impl<'bs> VM<'bs> {
         assert_eq!(TEST_VERIFREG_ROOT_SIGNER_ADDR, verifreg_root_signer);
         // verifreg root msig
         let msig_ctor_params = serialize(
-            &fil_actor_multisig::ConstructorParams {
+            &fil_actor_multisig_state_v9::ConstructorParams {
                 signers: vec![verifreg_root_signer],
                 num_approvals_threshold: 1,
                 unlock_duration: 0,
@@ -214,11 +206,11 @@ impl<'bs> VM<'bs> {
         .unwrap();
         let msig_ctor_ret: ExecReturn = v
             .apply_message(
-                *SYSTEM_ACTOR_ADDR,
-                *INIT_ACTOR_ADDR,
-                BigInt::zero(),
-                fil_actor_init::Method::Exec as u64,
-                fil_actor_init::ExecParams {
+                SYSTEM_ACTOR_ADDR,
+                INIT_ACTOR_ADDR,
+                TokenAmount::zero(),
+                fil_actor_init_state_v9::Method::Exec as u64,
+                fil_actor_init_state_v9::ExecParams {
                     code_cid: *MULTISIG_ACTOR_CODE_ID,
                     constructor_params: msig_ctor_params,
                 },
@@ -232,20 +224,28 @@ impl<'bs> VM<'bs> {
         // verifreg
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
-            *VERIFIED_REGISTRY_ACTOR_ADDR,
+            VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero()),
         );
 
-        // burnt funds
-        let burnt_funds_head = v.put_store(&AccountState { address: *BURNT_FUNDS_ACTOR_ADDR });
+        // datacap
+        let datacap_head =
+            v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
         v.set_actor(
-            *BURNT_FUNDS_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
+            actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero()),
+        );
+
+        // burnt funds
+        let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
+        v.set_actor(
+            BURNT_FUNDS_ACTOR_ADDR,
             actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero()),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
         v.apply_message(
-            *SYSTEM_ACTOR_ADDR,
+            SYSTEM_ACTOR_ADDR,
             Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
             faucet_total,
             METHOD_SEND,
@@ -265,7 +265,6 @@ impl<'bs> VM<'bs> {
             total_fil: self.total_fil,
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
-            empty_obj_cid: self.empty_obj_cid,
             network_version: self.network_version,
             curr_epoch: epoch,
             invocations: RefCell::new(vec![]),
@@ -283,10 +282,15 @@ impl<'bs> VM<'bs> {
         }
     }
 
+    pub fn get_miner_info(&self, maddr: Address) -> MinerInfo {
+        let st = self.get_state::<MinerState>(maddr).unwrap();
+        self.store.get_cbor::<MinerInfo>(&st.info).unwrap().unwrap()
+    }
+
     pub fn get_network_stats(&self) -> NetworkStats {
-        let power_state = self.get_state::<PowerState>(*STORAGE_POWER_ACTOR_ADDR).unwrap();
-        let reward_state = self.get_state::<RewardState>(*REWARD_ACTOR_ADDR).unwrap();
-        let market_state = self.get_state::<MarketState>(*STORAGE_MARKET_ACTOR_ADDR).unwrap();
+        let power_state = self.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
+        let reward_state = self.get_state::<RewardState>(REWARD_ACTOR_ADDR).unwrap();
+        let market_state = self.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
 
         NetworkStats {
             total_raw_byte_power: power_state.total_raw_byte_power,
@@ -327,7 +331,11 @@ impl<'bs> VM<'bs> {
             self.store,
         )
         .unwrap();
-        actors.get(&addr.to_bytes()).unwrap().cloned()
+        let actor = actors.get(&addr.to_bytes()).unwrap().cloned();
+        actor.iter().for_each(|a| {
+            self.actors_cache.borrow_mut().insert(addr, a.clone());
+        });
+        actor
     }
 
     // blindly overwrite the actor at this address whether it previously existed or not
@@ -347,8 +355,8 @@ impl<'bs> VM<'bs> {
             actors.set(addr.to_bytes().into(), act.clone()).unwrap();
         }
 
-        // roll "back" to latest head, flushing cache
-        self.rollback(actors.flush().unwrap());
+        self.state_root.replace(actors.flush().unwrap());
+        self.actors_dirty.replace(false);
         *self.state_root.borrow()
     }
 
@@ -359,7 +367,7 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn normalize_address(&self, addr: &Address) -> Option<Address> {
-        let st = self.get_state::<InitState>(*INIT_ACTOR_ADDR).unwrap();
+        let st = self.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
         st.resolve_address::<MemoryBlockstore>(self.store, addr).unwrap()
     }
 
@@ -370,6 +378,18 @@ impl<'bs> VM<'bs> {
         };
         let a = a_opt.unwrap();
         self.store.get_cbor::<C>(&a.head).unwrap()
+    }
+
+    pub fn mutate_state<C, F>(&self, addr: Address, f: F)
+    where
+        C: Cbor,
+        F: FnOnce(&mut C),
+    {
+        let mut a = self.get_actor(addr).unwrap();
+        let mut st = self.store.get_cbor::<C>(&a.head).unwrap().unwrap();
+        f(&mut st);
+        a.head = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
+        self.set_actor(addr, a);
     }
 
     pub fn get_epoch(&self) -> ChainEpoch {
@@ -396,9 +416,9 @@ impl<'bs> VM<'bs> {
         // make top level context with internal context
         let top = TopCtx {
             originator_stable_addr: from,
-            _originator_call_seq: call_seq,
+            originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
-            circ_supply: TokenAmount::from(1e9 as u128 * 1e18 as u128),
+            circ_supply: TokenAmount::from_whole(1_000_000_000),
         };
         let msg = InternalMessage {
             from: from_id,
@@ -425,11 +445,15 @@ impl<'bs> VM<'bs> {
         match res {
             Err(ae) => {
                 self.rollback(prior_root);
-                Ok(MessageResult { code: ae.exit_code(), ret: RawBytes::default() })
+                Ok(MessageResult {
+                    code: ae.exit_code(),
+                    message: ae.msg().to_string(),
+                    ret: RawBytes::default(),
+                })
             }
             Ok(ret) => {
                 self.checkpoint();
-                Ok(MessageResult { code: ExitCode::OK, ret })
+                Ok(MessageResult { code: ExitCode::OK, message: "OK".to_string(), ret })
             }
         }
     }
@@ -447,7 +471,7 @@ impl<'bs> VM<'bs> {
         )
         .unwrap();
 
-        let mut manifest = Manifest::new();
+        let mut manifest = BiBTreeMap::new();
         actors
             .for_each(|_, actor| {
                 manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
@@ -480,10 +504,10 @@ impl<'bs> VM<'bs> {
     pub fn get_total_actor_balance(
         &self,
         store: &MemoryBlockstore,
-    ) -> anyhow::Result<BigInt, anyhow::Error> {
+    ) -> anyhow::Result<TokenAmount, anyhow::Error> {
         let state_tree = Tree::load(store, &self.checkpoint())?;
 
-        let mut total = BigInt::zero();
+        let mut total = TokenAmount::zero();
         state_tree.for_each(|_, actor| {
             total += &actor.balance.clone();
             Ok(())
@@ -495,9 +519,9 @@ impl<'bs> VM<'bs> {
 #[derive(Clone)]
 pub struct TopCtx {
     originator_stable_addr: Address,
-    _originator_call_seq: u64,
+    originator_call_seq: u64,
     new_actor_addr_count: RefCell<u64>,
-    circ_supply: BigInt,
+    circ_supply: TokenAmount,
 }
 
 #[derive(Clone, Debug)]
@@ -527,8 +551,11 @@ impl MessageInfo for InvocationCtx<'_, '_> {
     }
 }
 
-pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
-pub const TEST_VM_INVALID: &str = "i_am_invalid";
+pub const TEST_VM_RAND_ARRAY: [u8; 32] = [
+    1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32,
+];
+pub const TEST_VM_INVALID_POST: &str = "i_am_invalid_post";
 
 pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation VM<'bs>,
@@ -558,15 +585,15 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
             _ => (),
         }
-        let mut st = self.v.get_state::<InitState>(*INIT_ACTOR_ADDR).unwrap();
+        let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
         let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
         let target_id_addr = Address::new_id(target_id);
-        let mut init_actor = self.v.get_actor(*INIT_ACTOR_ADDR).unwrap();
+        let mut init_actor = self.v.get_actor(INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.v.set_actor(*INIT_ACTOR_ADDR, init_actor);
+        self.v.set_actor(INIT_ACTOR_ADDR, init_actor);
 
         let new_actor_msg = InternalMessage {
-            from: *SYSTEM_ACTOR_ADDR,
+            from: SYSTEM_ACTOR_ADDR,
             to: target_id_addr,
             value: TokenAmount::zero(),
             method: METHOD_CONSTRUCTOR,
@@ -596,8 +623,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
     fn gather_trace(&mut self, invoke_result: Result<RawBytes, ActorError>) -> InvocationTrace {
         let (ret, code) = match invoke_result {
-            Ok(rb) => (Some(rb), None),
-            Err(ae) => (None, Some(ae.exit_code())),
+            Ok(rb) => (Some(rb), ExitCode::OK),
+            Err(ae) => (None, ae.exit_code()),
         };
         let mut msg = self.msg.clone();
         msg.to = match self.resolve_target(&self.msg.to) {
@@ -617,13 +644,13 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         // Transfer funds
         let mut from_actor = self.v.get_actor(self.msg.from).unwrap();
         if !self.msg.value.is_zero() {
-            if self.msg.value.lt(&BigInt::zero()) {
+            if self.msg.value.is_negative() {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_ASSERTION_FAILED,
                     "attempt to transfer negative value".to_string(),
                 ));
             }
-            if from_actor.balance.lt(&self.msg.value) {
+            if from_actor.balance < self.msg.value {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INSUFFICIENT_FUNDS,
                     "insufficient balance to transfer".to_string(),
@@ -632,7 +659,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         }
 
         // Load, deduct, store from actor before loading to actor to handle self-send case
-        from_actor.balance = from_actor.balance.abs_sub(&self.msg.value);
+        from_actor.balance -= &self.msg.value;
         self.v.set_actor(self.msg.from, from_actor);
 
         let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
@@ -647,7 +674,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         // call target actor
         let to_actor = self.v.get_actor(to_addr).unwrap();
         let params = self.msg.params.clone();
-        let res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin") {
+        let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
+        {
             Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
             Type::Cron => CronActor::invoke_method(self, self.msg.method, &params),
             Type::Init => InitActor::invoke_method(self, self.msg.method, &params),
@@ -659,10 +687,16 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Power => PowerActor::invoke_method(self, self.msg.method, &params),
             Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
             Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
+            // Type::EVM => panic!("no EVM"),
+            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, &params),
         };
+        if res.is_ok() && !self.caller_validated {
+            res = Err(actor_error!(assertion_failed, "failed to validate caller"));
+        }
         if res.is_err() {
             self.v.rollback(prior_root)
         };
+
         res
     }
 }
@@ -685,7 +719,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "attempt to create new actor at existing address".to_string(),
             ));
         }
-        let a = actor(code_id, self.v.empty_obj_cid, 0, BigInt::zero());
+        let a = actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero());
         self.v.set_actor(addr, a);
         Ok(())
     }
@@ -728,6 +762,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "caller double validated".to_string(),
             ));
         }
+        self.caller_validated = true;
         for addr in addresses {
             if *addr == self.msg.from {
                 return Ok(());
@@ -749,6 +784,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "caller double validated".to_string(),
             ));
         }
+        self.caller_validated = true;
         let to_match = ACTOR_TYPES.get(&self.v.get_actor(self.msg.from).unwrap().code).unwrap();
         if types.into_iter().any(|t| *t == *to_match) {
             return Ok(());
@@ -763,12 +799,17 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         self.v.get_actor(self.to()).unwrap().balance
     }
 
-    fn resolve_address(&self, addr: &Address) -> Option<Address> {
-        self.v.normalize_address(addr)
+    fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
+        if let Some(normalize_addr) = self.v.normalize_address(addr) {
+            if let &Payload::ID(id) = normalize_addr.payload() {
+                return Some(id);
+            }
+        }
+        None
     }
 
-    fn get_actor_code_cid(&self, addr: &Address) -> Option<Cid> {
-        let maybe_act = self.v.get_actor(*addr);
+    fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
+        let maybe_act = self.v.get_actor(Address::new_id(*id));
         match maybe_act {
             None => None,
             Some(act) => Some(act.code),
@@ -777,7 +818,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
 
     fn send(
         &self,
-        to: Address,
+        to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
@@ -789,7 +830,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
             ));
         }
 
-        let new_actor_msg = InternalMessage { from: self.to(), to, value, method, params };
+        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
         let mut new_ctx = InvocationCtx {
             v: self.v,
             top: self.top.clone(),
@@ -814,8 +855,8 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         _personalization: DomainSeparationTag,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
-        Ok(Randomness(TEST_VM_RAND_STRING.as_bytes().to_vec()))
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
     }
 
     fn get_randomness_from_beacon(
@@ -823,8 +864,8 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         _personalization: DomainSeparationTag,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
-        Ok(Randomness(TEST_VM_RAND_STRING.as_bytes().to_vec()))
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
@@ -835,7 +876,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "failed to create state".to_string(),
             )),
             Some(mut act) => {
-                if act.head != self.v.empty_obj_cid {
+                if act.head != EMPTY_ARR_CID {
                     Err(ActorError::unchecked(
                         ExitCode::SYS_ASSERTION_FAILED,
                         "failed to construct state: already initialized".to_string(),
@@ -870,15 +911,12 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
-        let osa_bytes = self.top.originator_stable_addr.to_bytes();
-        let mut seq_num_bytes = self.top.originator_stable_addr.to_bytes();
-        let cnt = self.top.new_actor_addr_count.take();
-        self.top.new_actor_addr_count.replace(cnt + 1);
-        let mut cnt_bytes = serialize(&cnt, "count failed").unwrap().to_vec();
-        let mut out = osa_bytes;
-        out.append(&mut seq_num_bytes);
-        out.append(&mut cnt_bytes);
-        Ok(Address::new_actor(out.as_slice()))
+        let mut b = self.top.originator_stable_addr.to_bytes();
+        b.extend_from_slice(&self.top.originator_call_seq.to_be_bytes());
+        b.extend_from_slice(
+            &self.top.new_actor_addr_count.replace_with(|old| *old + 1).to_be_bytes(),
+        );
+        Ok(Address::new_actor(&b))
     }
 
     fn delete_actor(&mut self, _beneficiary: &Address) -> Result<(), ActorError> {
@@ -905,15 +943,17 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
 }
 
 impl Primitives for VM<'_> {
+    // A "valid" signature has its bytes equal to the plaintext.
+    // Anything else is considered invalid.
     fn verify_signature(
         &self,
         signature: &Signature,
         _signer: &Address,
-        _plaintext: &[u8],
+        plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        if signature.bytes.clone() == TEST_VM_INVALID.as_bytes() {
+        if signature.bytes != plaintext {
             return Err(anyhow::format_err!(
-                "verify signature syscall failing on TEST_VM_INVALID_SIG"
+                "invalid signature (mock sig validation expects siggy bytes to be equal to plaintext)"
             ));
         }
         Ok(())
@@ -969,7 +1009,7 @@ impl Verifier for InvocationCtx<'_, '_> {
 
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         for proof in &verify_info.proofs {
-            if proof.proof_bytes.eq(&TEST_VM_INVALID.as_bytes().to_vec()) {
+            if proof.proof_bytes.eq(&TEST_VM_INVALID_POST.as_bytes().to_vec()) {
                 return Err(anyhow!("invalid proof"));
             }
         }
@@ -1008,18 +1048,18 @@ impl RuntimePolicy for InvocationCtx<'_, '_> {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MessageResult {
     pub code: ExitCode,
+    pub message: String,
     pub ret: RawBytes,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
 pub struct Actor {
     pub code: Cid,
     pub head: Cid,
     pub call_seq_num: u64,
-    #[serde(with = "bigint_ser")]
     pub balance: TokenAmount,
 }
 
@@ -1030,7 +1070,7 @@ pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
 #[derive(Clone)]
 pub struct InvocationTrace {
     pub msg: InternalMessage,
-    pub code: Option<ExitCode>,
+    pub code: ExitCode,
     pub ret: Option<RawBytes>,
     pub subinvocations: Vec<InvocationTrace>,
 }
@@ -1054,48 +1094,37 @@ impl ExpectInvocation {
         let id = format!("[{}:{}]", invoc.msg.to, invoc.msg.method);
         self.quick_match(invoc, String::new());
         if let Some(c) = self.code {
-            assert_ne!(
-                None,
-                invoc.code,
-                "{} unexpected code: expected:{}was:{}",
-                id,
-                c,
-                ExitCode::OK
-            );
             assert_eq!(
-                c,
-                invoc.code.unwrap(),
-                "{} unexpected code expected:{}was:{}",
-                id,
-                c,
-                invoc.code.unwrap()
+                c, invoc.code,
+                "{} unexpected code expected: {}, was: {}",
+                id, c, invoc.code
             );
         }
         if let Some(f) = self.from {
             assert_eq!(
                 f, invoc.msg.from,
-                "{} unexpected from addr: expected:{}was:{} ",
+                "{} unexpected from addr: expected: {}, was: {} ",
                 id, f, invoc.msg.from
             );
         }
         if let Some(v) = &self.value {
             assert_eq!(
                 v, &invoc.msg.value,
-                "{} unexpected value: expected:{}was:{} ",
+                "{} unexpected value: expected: {}, was: {} ",
                 id, v, invoc.msg.value
             );
         }
         if let Some(p) = &self.params {
             assert_eq!(
                 p, &invoc.msg.params,
-                "{} unexpected params: expected:{:x?}was:{:x?}",
+                "{} unexpected params: expected: {:x?}, was: {:x?}",
                 id, p, invoc.msg.params
             );
         }
         if let Some(r) = &self.ret {
-            assert_ne!(None, invoc.ret, "{} unexpected ret: expected:{:x?}was:None", id, r);
+            assert_ne!(None, invoc.ret, "{} unexpected ret: expected: {:x?}, was: None", id, r);
             let ret = &invoc.ret.clone().unwrap();
-            assert_eq!(r, ret, "{} unexpected ret: expected:{:x?}was:{:x?}", id, r, ret);
+            assert_eq!(r, ret, "{} unexpected ret: expected: {:x?}, was: {:x?}", id, r, ret);
         }
         if let Some(expect_subinvocs) = &self.subinvocs {
             let subinvocs = &invoc.subinvocations;
@@ -1136,12 +1165,12 @@ impl ExpectInvocation {
         let id = format!("[{}:{}]", invoc.msg.to, invoc.msg.method);
         assert_eq!(
             self.to, invoc.msg.to,
-            "{} unexpected to addr: expected:{} was:{} \n{}",
+            "{} unexpected to addr: expected: {}, was: {} \n{}",
             id, self.to, invoc.msg.to, extra_msg
         );
         assert_eq!(
             self.method, invoc.msg.method,
-            "{} unexpected method: expected:{}was:{} \n{}",
+            "{} unexpected method: expected: {}, was: {} \n{}",
             id, self.method, invoc.msg.from, extra_msg
         );
     }

@@ -1,14 +1,13 @@
-use fil_actor_market::Method as MarketMethod;
-use fil_actor_market::WithdrawBalanceParams as MarketWithdrawBalanceParams;
-use fil_actor_miner::Method as MinerMethod;
-use fil_actor_miner::WithdrawBalanceParams as MinerWithdrawBalanceParams;
-use fil_actors_runtime::test_utils::{MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID};
-use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
+use fil_actor_market_state_v9::Method as MarketMethod;
+use fil_actor_market_state_v9::WithdrawBalanceParams as MarketWithdrawBalanceParams;
+use fil_actor_miner_state_v9::Method as MinerMethod;
+use fil_actor_miner_state_v9::WithdrawBalanceParams as MinerWithdrawBalanceParams;
+use fil_actors_runtime_common::test_utils::{MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID};
+use fil_actors_runtime_common::STORAGE_MARKET_ACTOR_ADDR;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
-use fvm_shared::bigint::BigInt;
+
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -27,13 +26,13 @@ mod market_tests {
         let store = MemoryBlockstore::new();
         let (v, caller) = market_setup(&store);
 
-        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
+        let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(
             &v,
             three_fil.clone(),
             three_fil.clone(),
             three_fil,
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             caller,
         );
     }
@@ -44,14 +43,14 @@ mod market_tests {
         let (v, caller) = market_setup(&store);
 
         // Add 2 FIL of collateral and attempt to withdraw 3
-        let two_fil = TokenAmount::from(2) * BigInt::from(1e18 as i128);
-        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
+        let two_fil = TokenAmount::from_whole(2);
+        let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(
             &v,
             two_fil.clone(),
             two_fil,
             three_fil,
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             caller,
         );
     }
@@ -62,13 +61,13 @@ mod market_tests {
         let (v, caller) = market_setup(&store);
 
         // Add 0 FIL of collateral and attempt to withdraw 3
-        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
+        let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(
             &v,
             TokenAmount::zero(),
             TokenAmount::zero(),
             three_fil,
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             caller,
         );
     }
@@ -83,7 +82,7 @@ mod miner_tests {
         let store = MemoryBlockstore::new();
         let (v, _, owner, m_addr) = miner_setup(&store);
 
-        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
+        let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(
             &v,
             three_fil.clone(),
@@ -99,8 +98,8 @@ mod miner_tests {
         let store = MemoryBlockstore::new();
         let (v, _, owner, m_addr) = miner_setup(&store);
 
-        let two_fil = TokenAmount::from(2) * BigInt::from(1e18 as i128);
-        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
+        let two_fil = TokenAmount::from_whole(2);
+        let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(&v, two_fil.clone(), two_fil, three_fil, m_addr, owner);
     }
 
@@ -109,7 +108,7 @@ mod miner_tests {
         let store = MemoryBlockstore::new();
         let (v, _, owner, m_addr) = miner_setup(&store);
 
-        let three_fil = TokenAmount::from(3) * BigInt::from(1e18 as i128);
+        let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(
             &v,
             TokenAmount::zero(),
@@ -125,7 +124,7 @@ mod miner_tests {
         let store = MemoryBlockstore::new();
         let (v, worker, _, m_addr) = miner_setup(&store);
 
-        let one_fil = TokenAmount::from(1) * BigInt::from(1e18 as i128);
+        let one_fil = TokenAmount::from_whole(1);
         let params = MinerWithdrawBalanceParams { amount_requested: one_fil };
         apply_code(
             &v,
@@ -163,7 +162,7 @@ fn assert_add_collateral_and_withdraw(
     let caller_initial_balance = c.balance;
 
     // add collateral
-    if collateral > BigInt::zero() {
+    if collateral.is_positive() {
         match a_type {
             x if x == *MINER_ACTOR_CODE_ID => {
                 apply_ok(v, caller, escrow, collateral.clone(), METHOD_SEND, RawBytes::default())
@@ -184,12 +183,19 @@ fn assert_add_collateral_and_withdraw(
     assert_eq!(&caller_initial_balance - &collateral, c.balance);
 
     // attempt to withdraw withdrawal
-    let ret: BigIntDe = match a_type {
+    let withdrawn: TokenAmount = match a_type {
         x if x == *MINER_ACTOR_CODE_ID => {
             let params = MinerWithdrawBalanceParams { amount_requested: requested };
-            apply_ok(v, caller, escrow, BigInt::zero(), MinerMethod::WithdrawBalance as u64, params)
-                .deserialize()
-                .unwrap()
+            apply_ok(
+                v,
+                caller,
+                escrow,
+                TokenAmount::zero(),
+                MinerMethod::WithdrawBalance as u64,
+                params,
+            )
+            .deserialize()
+            .unwrap()
         }
         x if x == *MARKET_ACTOR_CODE_ID => {
             let params =
@@ -198,7 +204,7 @@ fn assert_add_collateral_and_withdraw(
                 v,
                 caller,
                 escrow,
-                BigInt::zero(),
+                TokenAmount::zero(),
                 MarketMethod::WithdrawBalance as u64,
                 params,
             )
@@ -207,7 +213,6 @@ fn assert_add_collateral_and_withdraw(
         }
         _ => panic!("unreachable"),
     };
-    let withdrawn = ret.0;
     assert_eq!(expected_withdrawn, withdrawn);
 
     c = require_actor(v, caller);
@@ -220,7 +225,7 @@ fn require_actor(v: &VM, addr: Address) -> Actor {
 
 fn market_setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Address) {
     let v = VM::new_with_singletons(store);
-    let initial_balance = BigInt::from(6) * BigInt::from(1e18 as i128);
+    let initial_balance = TokenAmount::from_whole(6);
     let addrs = create_accounts(&v, 1, initial_balance);
     let caller = addrs[0];
     (v, caller)
@@ -228,7 +233,7 @@ fn market_setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Address) {
 
 fn miner_setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Address, Address, Address) {
     let mut v = VM::new_with_singletons(store);
-    let initial_balance = BigInt::from(10_000) * BigInt::from(1e18 as i128);
+    let initial_balance = TokenAmount::from_whole(10_000);
     let addrs = create_accounts(&v, 2, initial_balance);
     let (worker, owner) = (addrs[0], addrs[1]);
 
@@ -238,7 +243,7 @@ fn miner_setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Address, Address, Addres
         owner,
         worker,
         RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        TokenAmount::from(0),
+        TokenAmount::zero(),
     );
 
     (v, worker, owner, m_addr)

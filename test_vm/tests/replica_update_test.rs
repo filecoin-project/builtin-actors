@@ -1,17 +1,17 @@
-use fil_actor_cron::Method as MethodsCron;
-use fil_actor_market::Method as MethodsMarket;
-use fil_actor_miner::{
+use fil_actor_cron_state_v9::Method as CronMethod;
+use fil_actor_market_state_v9::Method as MarketMethod;
+use fil_actor_miner_state_v9::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MethodsMiner, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
-    ReplicaUpdate, SectorOnChainInfo, State as MinerState, TerminateSectorsParams,
-    TerminationDeclaration, SECTORS_AMT_BITWIDTH,
+    Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
+    ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo, Sectors,
+    State as MinerState, TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 
-use fil_actors_runtime::test_utils::make_sealed_cid;
+use fil_actors_runtime_common::test_utils::{make_piece_cid, make_sealed_cid};
 use fvm_shared::piece::PaddedPieceSize;
 
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::{
     Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
@@ -25,36 +25,44 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
-use num_traits::sign::Signed;
+use test_case::test_case;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     apply_code, apply_ok, bf_all, check_sector_active, check_sector_faulty, create_accounts,
     create_miner, deadline_state, declare_recovery, invariant_failure_patterns, make_bitfield,
-    miner_power, precommit_sectors, prove_commit_sectors, publish_deal, sector_info,
+    market_publish_deal, miner_power, precommit_sectors, prove_commit_sectors, sector_info,
     submit_invalid_post, submit_windowed_post,
 };
 use test_vm::VM;
-
 // ---- Success cases ----
 
 // Tests that an active CC sector can be correctly upgraded, and the expected state changes occur
-#[test]
-fn replica_update_simple_path_sucess() {
-    create_miner_and_upgrade_sector(&MemoryBlockstore::new()).0.assert_state_invariants();
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn replica_update_simple_path_success(v2: bool) {
+    create_miner_and_upgrade_sector(&MemoryBlockstore::new(), v2).0.assert_state_invariants();
 }
 
 // Tests a successful upgrade, followed by the sector going faulty and recovering
-#[test]
-fn replica_update_full_path_sucess() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn replica_update_full_path_success(v2: bool) {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
-        create_miner_and_upgrade_sector(store);
+        create_miner_and_upgrade_sector(store, v2);
     let sector_number = sector_info.sector_number;
 
     // submit post successfully
     let (mut deadline_info, _, mut v) = advance_to_proving_deadline(v, miner_id, sector_number);
-    submit_windowed_post(&v, worker, miner_id, deadline_info, partition_index, PowerPair::zero());
+    submit_windowed_post(
+        &v,
+        worker,
+        miner_id,
+        deadline_info,
+        partition_index,
+        Some(PowerPair::zero()),
+    );
 
     // move out of the sector's deadline
     v = advance_by_deadline_to_index(
@@ -87,10 +95,10 @@ fn replica_update_full_path_sucess() {
         miner_id,
         deadline_info,
         partition_index,
-        PowerPair {
+        Some(PowerPair {
             raw: StoragePower::from(sector_size as i64),
             qa: StoragePower::from(sector_size as i64),
-        },
+        }),
     );
 
     assert!(check_sector_active(&v, miner_id, sector_number));
@@ -99,12 +107,13 @@ fn replica_update_full_path_sucess() {
     v.assert_state_invariants();
 }
 
-#[test]
-fn upgrade_and_miss_post() {
+#[test_case(false; "v1")]
+#[test_case(true; "v2")]
+fn upgrade_and_miss_post(v2: bool) {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let (mut v, sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
-        create_miner_and_upgrade_sector(store);
+        create_miner_and_upgrade_sector(store, v2);
     let sector_number = sector_info.sector_number;
 
     let power_after_update = miner_power(&v, miner_id);
@@ -141,10 +150,10 @@ fn upgrade_and_miss_post() {
         miner_id,
         deadline_info,
         partition_index,
-        PowerPair {
+        Some(PowerPair {
             raw: StoragePower::from(sector_size as i64),
             qa: StoragePower::from(sector_size as i64),
-        },
+        }),
     );
 
     assert!(check_sector_active(&v, miner_id, sector_number));
@@ -158,7 +167,7 @@ fn prove_replica_update_multi_dline() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(1_000_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, _) = create_miner(
@@ -166,7 +175,7 @@ fn prove_replica_update_multi_dline() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(100_000),
     );
 
     v = v.with_epoch(1440); // something offset far away from deadline 0 and 1
@@ -206,7 +215,7 @@ fn prove_replica_update_multi_dline() {
 
     // first partition shouldn't be active until PoSt
     assert!(!check_sector_active(&v, maddr, deadline_info.index));
-    submit_windowed_post(&v, worker, maddr, deadline_info, partition_index, PowerPair::zero());
+    submit_windowed_post(&v, worker, maddr, deadline_info, partition_index, None);
 
     // move into the next deadline so that the first batch of created sectors are active
     let (v, current_deadline_info) = advance_by_deadline_to_index(
@@ -224,7 +233,7 @@ fn prove_replica_update_multi_dline() {
 
     // second partition shouldn't be active until PoSt
     assert!(!check_sector_active(&v, maddr, first_sector_number_p2));
-    submit_windowed_post(&v, worker, maddr, current_deadline_info, 0, PowerPair::zero());
+    submit_windowed_post(&v, worker, maddr, current_deadline_info, 0, None);
 
     // move into the next deadline so that the second batch of created sectors are active
     let (v, _) = advance_by_deadline_to_index(
@@ -267,7 +276,7 @@ fn prove_replica_update_multi_dline() {
         worker,
         maddr,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] },
     )
     .deserialize()
@@ -297,7 +306,7 @@ fn prove_replica_update_multi_dline() {
 fn immutable_deadline_failure() {
     let store = &MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -305,7 +314,7 @@ fn immutable_deadline_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -336,7 +345,7 @@ fn immutable_deadline_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -348,7 +357,7 @@ fn unhealthy_sector_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -356,7 +365,7 @@ fn unhealthy_sector_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -390,7 +399,7 @@ fn unhealthy_sector_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -403,7 +412,7 @@ fn unhealthy_sector_failure() {
 fn terminated_sector_failure() {
     let store = &MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -411,7 +420,7 @@ fn terminated_sector_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -437,7 +446,7 @@ fn terminated_sector_failure() {
         worker,
         maddr,
         TokenAmount::zero(),
-        MethodsMiner::TerminateSectors as u64,
+        MinerMethod::TerminateSectors as u64,
         terminate_parms,
     );
 
@@ -457,7 +466,7 @@ fn terminated_sector_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -469,7 +478,7 @@ fn bad_batch_size_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -477,7 +486,7 @@ fn bad_batch_size_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -510,7 +519,7 @@ fn bad_batch_size_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -520,7 +529,8 @@ fn bad_batch_size_failure() {
 #[test]
 fn no_dispute_after_upgrade() {
     let store = &MemoryBlockstore::new();
-    let (v, _, worker, miner_id, deadline_index, _, _) = create_miner_and_upgrade_sector(store);
+    let (v, _, worker, miner_id, deadline_index, _, _) =
+        create_miner_and_upgrade_sector(store, false);
 
     let dispute_params = DisputeWindowedPoStParams { deadline: deadline_index, post_index: 0 };
     apply_code(
@@ -528,7 +538,7 @@ fn no_dispute_after_upgrade() {
         worker,
         miner_id,
         TokenAmount::zero(),
-        MethodsMiner::DisputeWindowedPoSt as u64,
+        MinerMethod::DisputeWindowedPoSt as u64,
         dispute_params,
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -540,7 +550,7 @@ fn upgrade_bad_post_dispute() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(store);
+        create_miner_and_upgrade_sector(store, false);
     let sector_number = sector_info.sector_number;
 
     let (deadline_info, _, mut v) = advance_to_proving_deadline(v, miner_id, sector_number);
@@ -559,7 +569,7 @@ fn upgrade_bad_post_dispute() {
         worker,
         miner_id,
         TokenAmount::zero(),
-        MethodsMiner::DisputeWindowedPoSt as u64,
+        MinerMethod::DisputeWindowedPoSt as u64,
         dispute_params,
     );
     v.assert_state_invariants();
@@ -570,7 +580,7 @@ fn bad_post_upgrade_dispute() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -578,7 +588,7 @@ fn bad_post_upgrade_dispute() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -614,7 +624,7 @@ fn bad_post_upgrade_dispute() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update] },
     )
     .deserialize()
@@ -636,7 +646,7 @@ fn bad_post_upgrade_dispute() {
         worker,
         maddr,
         TokenAmount::zero(),
-        MethodsMiner::DisputeWindowedPoSt as u64,
+        MinerMethod::DisputeWindowedPoSt as u64,
         dispute_params,
     );
     v.assert_state_invariants();
@@ -647,7 +657,7 @@ fn bad_post_upgrade_dispute() {
 fn terminate_after_upgrade() {
     let store = &MemoryBlockstore::new();
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(store);
+        create_miner_and_upgrade_sector(store, false);
     let sector_number = sector_info.sector_number;
 
     let terminate_params = TerminateSectorsParams {
@@ -663,7 +673,7 @@ fn terminate_after_upgrade() {
         worker,
         miner_id,
         TokenAmount::zero(),
-        MethodsMiner::TerminateSectors as u64,
+        MinerMethod::TerminateSectors as u64,
         terminate_params,
     );
 
@@ -689,8 +699,17 @@ fn extend_after_upgrade() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(store);
+        create_miner_and_upgrade_sector(store, false);
     let sector_number = sector_info.sector_number;
+    let mut legacy_sector = sector_info;
+    legacy_sector.simple_qa_power = false;
+
+    // TODO change to use extend2
+    v.mutate_state(miner_id, |st: &mut MinerState| {
+        let mut sectors = Sectors::load(&store, &st.sectors).unwrap();
+        sectors.store(vec![legacy_sector]).unwrap();
+        st.sectors = sectors.amt.flush().unwrap();
+    });
 
     let extension_params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
@@ -706,7 +725,7 @@ fn extend_after_upgrade() {
         worker,
         miner_id,
         TokenAmount::zero(),
-        MethodsMiner::ExtendSectorExpiration as u64,
+        MinerMethod::ExtendSectorExpiration as u64,
         extension_params,
     );
 
@@ -724,7 +743,7 @@ fn wrong_deadline_index_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -732,7 +751,7 @@ fn wrong_deadline_index_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -766,7 +785,7 @@ fn wrong_deadline_index_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -781,7 +800,7 @@ fn wrong_partition_index_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -789,7 +808,7 @@ fn wrong_partition_index_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -823,7 +842,7 @@ fn wrong_partition_index_failure() {
         worker,
         robust,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates },
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -838,7 +857,7 @@ fn deal_included_in_multiple_sectors_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, _) = create_miner(
@@ -846,7 +865,7 @@ fn deal_included_in_multiple_sectors_failure() {
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     //
@@ -880,10 +899,10 @@ fn deal_included_in_multiple_sectors_failure() {
     // In the same epoch, trigger cron to validate prove commit
     apply_ok(
         &v,
-        *SYSTEM_ACTOR_ADDR,
-        *CRON_ACTOR_ADDR,
+        SYSTEM_ACTOR_ADDR,
+        CRON_ACTOR_ADDR,
         TokenAmount::zero(),
-        MethodsCron::EpochTick as u64,
+        CronMethod::EpochTick as u64,
         RawBytes::default(),
     );
 
@@ -895,7 +914,7 @@ fn deal_included_in_multiple_sectors_failure() {
     assert!(!check_sector_active(&v, maddr, first_sector_number));
     assert!(!check_sector_active(&v, maddr, first_sector_number + 1));
 
-    submit_windowed_post(&v, worker, maddr, deadline_info, partition_index, PowerPair::zero());
+    submit_windowed_post(&v, worker, maddr, deadline_info, partition_index, None);
 
     // move into the next deadline so that the created sectors are mutable
     v = advance_by_deadline_to_index(
@@ -911,7 +930,7 @@ fn deal_included_in_multiple_sectors_failure() {
 
     // make some unverified deals
 
-    let deal_ids = create_deals(2, &v, worker, worker, maddr);
+    let deal_ids = create_deals_frac(2, &v, worker, worker, maddr, 2);
 
     // replicaUpdate the sector
 
@@ -942,7 +961,7 @@ fn deal_included_in_multiple_sectors_failure() {
         worker,
         maddr,
         TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] },
     )
     .deserialize()
@@ -964,9 +983,10 @@ fn deal_included_in_multiple_sectors_failure() {
 
 fn create_miner_and_upgrade_sector(
     store: &MemoryBlockstore,
+    v2: bool,
 ) -> (VM, SectorOnChainInfo, Address, Address, u64, u64, SectorSize) {
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from(100_000e18 as i128));
+    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, robust) = create_miner(
@@ -974,7 +994,7 @@ fn create_miner_and_upgrade_sector(
         owner,
         worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from(10_000e18 as i128),
+        TokenAmount::from_whole(10_000),
     );
 
     // advance to have seal randomness epoch in the past
@@ -989,23 +1009,44 @@ fn create_miner_and_upgrade_sector(
 
     // replica update
     let new_cid = make_sealed_cid(b"replica1");
-    let replica_update = ReplicaUpdate {
-        sector_number,
-        deadline: d_idx,
-        partition: p_idx,
-        new_sealed_cid: new_cid,
-        deals: deal_ids.clone(),
-        update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
-    };
-    let updated_sectors: BitField = apply_ok(
-        &v,
-        worker,
-        robust,
-        TokenAmount::zero(),
-        MethodsMiner::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates: vec![replica_update] },
-    )
+    let updated_sectors: BitField = if !v2 {
+        let replica_update = ReplicaUpdate {
+            sector_number,
+            deadline: d_idx,
+            partition: p_idx,
+            new_sealed_cid: new_cid,
+            deals: deal_ids.clone(),
+            update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
+            replica_proof: vec![],
+        };
+        apply_ok(
+            &v,
+            worker,
+            robust,
+            TokenAmount::zero(),
+            MinerMethod::ProveReplicaUpdates as u64,
+            ProveReplicaUpdatesParams { updates: vec![replica_update] },
+        )
+    } else {
+        let replica_update = ReplicaUpdate2 {
+            sector_number,
+            deadline: d_idx,
+            partition: p_idx,
+            new_sealed_cid: new_cid,
+            deals: deal_ids.clone(),
+            update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
+            replica_proof: vec![],
+            new_unsealed_cid: make_piece_cid(b"unsealed from itest vm"),
+        };
+        apply_ok(
+            &v,
+            worker,
+            robust,
+            TokenAmount::zero(),
+            MinerMethod::ProveReplicaUpdates2 as u64,
+            ProveReplicaUpdatesParams2 { updates: vec![replica_update] },
+        )
+    }
     .deserialize()
     .unwrap();
     assert_eq!(vec![100], bf_all(updated_sectors));
@@ -1050,15 +1091,15 @@ fn create_sector(
         worker,
         maddr,
         TokenAmount::zero(),
-        MethodsMiner::ProveCommitSector as u64,
+        MinerMethod::ProveCommitSector as u64,
         prove_commit_params,
     );
     let res = v
         .apply_message(
-            *SYSTEM_ACTOR_ADDR,
-            *CRON_ACTOR_ADDR,
+            SYSTEM_ACTOR_ADDR,
+            CRON_ACTOR_ADDR,
             TokenAmount::zero(),
-            MethodsCron::EpochTick as u64,
+            CronMethod::EpochTick as u64,
             RawBytes::default(),
         )
         .unwrap();
@@ -1070,7 +1111,7 @@ fn create_sector(
     let m_st = v.get_state::<MinerState>(maddr).unwrap();
     let sector = m_st.get_sector(v.store, sector_number).unwrap().unwrap();
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
-    submit_windowed_post(&v, worker, maddr, dline_info, p_idx, sector_power);
+    submit_windowed_post(&v, worker, maddr, dline_info, p_idx, Some(sector_power));
 
     // move to next deadline to activate power
     let v = advance_by_deadline_to_index(
@@ -1092,29 +1133,39 @@ fn create_sector(
 
     (v, d_idx, p_idx)
 }
-
 fn create_deals(
-    num_deals: u128,
+    num_deals: u32,
     v: &VM,
     client: Address,
     worker: Address,
     maddr: Address,
 ) -> Vec<DealID> {
-    let collateral = TokenAmount::from(3 * num_deals * 1e18 as u128);
+    create_deals_frac(num_deals, v, client, worker, maddr, 1)
+}
+
+fn create_deals_frac(
+    num_deals: u32,
+    v: &VM,
+    client: Address,
+    worker: Address,
+    maddr: Address,
+    size_frac: u8,
+) -> Vec<DealID> {
+    let collateral = TokenAmount::from_whole(3 * num_deals as i64);
     apply_ok(
         v,
         client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         client,
     );
     apply_ok(
         v,
         worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         collateral,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         maddr,
     );
 
@@ -1122,13 +1173,13 @@ fn create_deals(
     let deal_start = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
 
     for i in 0..num_deals {
-        let deals = publish_deal(
+        let deals = market_publish_deal(
             v,
             worker,
             client,
             maddr,
             format!("deal-label {}", i),
-            PaddedPieceSize(32 << 30),
+            PaddedPieceSize((32 << 30) / size_frac as u64),
             false,
             deal_start,
             180 * EPOCHS_IN_DAY,

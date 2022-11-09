@@ -1,14 +1,24 @@
-use fil_actor_market::{
-    ClientDealProposal, DealProposal, Label, Method as MethodsMarket, PublishStorageDealsParams,
+use fil_actor_market_state_v9::{
+    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
     PublishStorageDealsReturn,
 };
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 
-use fil_actor_miner::max_prove_commit_duration;
-use fil_actor_verifreg::{AddVerifierClientParams, Method as MethodsVerifreg};
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{test_utils::*, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+use fil_actor_account_state_v9::types::AuthenticateMessageParams;
+use fil_actor_account_state_v9::Method as AccountMethod;
+use fil_actor_miner_state_v9::max_prove_commit_duration;
+use fil_actor_miner_state_v9::Method as MinerMethod;
+use fil_actor_power_state_v9::Method as PowerMethod;
+use fil_actor_reward_state_v9::Method as RewardMethod;
+
+use fil_actor_verifreg_state_v9::{AddVerifierClientParams, Method as VerifregMethod};
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::network::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::{
+    test_utils::*, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
+};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -18,9 +28,9 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use test_vm::util::{
-    add_verifier, apply_ok, bf_all, create_accounts, create_accounts_seeded, create_miner,
+    apply_ok, bf_all, create_accounts, create_accounts_seeded, create_miner, verifreg_add_verifier,
 };
-use test_vm::VM;
+use test_vm::{ExpectInvocation, VM};
 
 struct Addrs {
     worker: Address,
@@ -35,22 +45,22 @@ struct Addrs {
 const DEAL_LIFETIME: ChainEpoch = 181 * EPOCHS_IN_DAY;
 
 fn token_defaults() -> (TokenAmount, TokenAmount, TokenAmount) {
-    let price_per_epoch = TokenAmount::from(1 << 20);
-    let provider_collateral = TokenAmount::from(2e18 as u128);
-    let client_collateral = TokenAmount::from(1e18 as u128);
+    let price_per_epoch = TokenAmount::from_atto(1 << 20);
+    let provider_collateral = TokenAmount::from_whole(2);
+    let client_collateral = TokenAmount::from_whole(1);
     (price_per_epoch, provider_collateral, client_collateral)
 }
 
 // create miner and client and add collateral
 fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     let mut v = VM::new_with_singletons(store);
-    let addrs = create_accounts(&v, 7, TokenAmount::from(10_000e18 as i128));
+    let addrs = create_accounts(&v, 7, TokenAmount::from_whole(10_000));
     let (worker, client1, client2, not_miner, cheap_client, verifier, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3], addrs[4], addrs[5], addrs[6]);
     let owner = worker;
 
     // setup provider
-    let miner_balance = TokenAmount::from(100e18 as i128);
+    let miner_balance = TokenAmount::from_whole(100);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let maddr = create_miner(
@@ -63,7 +73,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     .0;
 
     // setup verified client
-    add_verifier(&v, verifier, StoragePower::from((32_u64 << 40) as u128));
+    verifreg_add_verifier(&v, verifier, StoragePower::from((32_u64 << 40) as u128));
     let add_client_params = AddVerifierClientParams {
         address: verified_client,
         allowance: StoragePower::from((1_u64 << 32) as u64),
@@ -71,45 +81,45 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
     apply_ok(
         &v,
         verifier,
-        *VERIFIED_REGISTRY_ACTOR_ADDR,
+        VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
-        MethodsVerifreg::AddVerifiedClient as u64,
+        VerifregMethod::AddVerifiedClient as u64,
         add_client_params,
     );
 
-    let client_collateral = TokenAmount::from(100e18 as i128);
+    let client_collateral = TokenAmount::from_whole(100);
     apply_ok(
         &v,
         client1,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         client_collateral.clone(),
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         client1,
     );
     apply_ok(
         &v,
         client2,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         client_collateral.clone(),
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         client2,
     );
     apply_ok(
         &v,
         verified_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         client_collateral,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         verified_client,
     );
 
-    let miner_collateral = TokenAmount::from(100e18 as i128);
+    let miner_collateral = TokenAmount::from_whole(100);
     apply_ok(
         &v,
         worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         miner_collateral,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         maddr,
     );
 
@@ -229,9 +239,9 @@ fn psd_not_enought_client_lockup_for_batch() {
     apply_ok(
         &v,
         a.cheap_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         one_lifetime_cost,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         a.cheap_client,
     );
 
@@ -255,13 +265,13 @@ fn psd_not_enough_provider_lockup_for_batch() {
     let (mut v, a, deal_start) = setup(&store);
 
     // note different seed, different address
-    let cheap_worker = create_accounts_seeded(&v, 1, TokenAmount::from(10_000e18 as u128), 444)[0];
+    let cheap_worker = create_accounts_seeded(&v, 1, TokenAmount::from_whole(10_000), 444)[0];
     let cheap_maddr = create_miner(
         &mut v,
         cheap_worker,
         cheap_worker,
         fvm_shared::sector::RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        TokenAmount::from(100e18 as u128),
+        TokenAmount::from_whole(100),
     )
     .0;
     // add one deal of collateral to provider's market account
@@ -269,9 +279,9 @@ fn psd_not_enough_provider_lockup_for_batch() {
     apply_ok(
         &v,
         cheap_worker,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         default_provider_collateral,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         cheap_maddr,
     );
     let mut batcher = DealBatcher::new(
@@ -392,9 +402,9 @@ fn psd_random_assortment_of_failures() {
     apply_ok(
         &v,
         a.cheap_client,
-        *STORAGE_MARKET_ACTOR_ADDR,
+        STORAGE_MARKET_ACTOR_ADDR,
         one_lifetime_cost,
-        MethodsMarket::AddBalance as u64,
+        MarketMethod::AddBalance as u64,
         a.cheap_client,
     );
     let broke_client = create_accounts_seeded(&v, 1, TokenAmount::zero(), 555)[0];
@@ -476,6 +486,92 @@ fn psd_all_deals_are_bad() {
     );
 
     batcher.publish_fail(a.worker);
+    v.assert_state_invariants();
+}
+
+#[test]
+fn psd_bad_sig() {
+    let store = MemoryBlockstore::new();
+    let (v, a, deal_start) = setup(&store);
+    let (storage_price_per_epoch, provider_collateral, client_collateral) = token_defaults();
+
+    let deal_label = "deal0".to_string();
+    let proposal = DealProposal {
+        piece_cid: make_piece_cid(deal_label.as_bytes()),
+        piece_size: PaddedPieceSize(1 << 30),
+        verified_deal: false,
+        client: a.client1,
+        provider: a.maddr,
+        label: Label::String(deal_label),
+        start_epoch: deal_start,
+        end_epoch: deal_start + DEAL_LIFETIME,
+        storage_price_per_epoch,
+        provider_collateral,
+        client_collateral,
+    };
+
+    let invalid_sig_bytes = "very_invalid_sig".as_bytes().to_vec();
+    let publish_params = PublishStorageDealsParams {
+        deals: vec![ClientDealProposal {
+            proposal: proposal.clone(),
+            client_signature: Signature {
+                sig_type: SignatureType::BLS,
+                bytes: invalid_sig_bytes.clone(),
+            },
+        }],
+    };
+
+    let ret = v
+        .apply_message(
+            a.worker,
+            STORAGE_MARKET_ACTOR_ADDR,
+            TokenAmount::zero(),
+            MarketMethod::PublishStorageDeals as u64,
+            publish_params,
+        )
+        .unwrap();
+    assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
+
+    ExpectInvocation {
+        to: STORAGE_MARKET_ACTOR_ADDR,
+        method: MarketMethod::PublishStorageDeals as u64,
+        subinvocs: Some(vec![
+            ExpectInvocation {
+                to: a.maddr,
+                method: MinerMethod::ControlAddresses as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: REWARD_ACTOR_ADDR,
+                method: RewardMethod::ThisEpochReward as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::CurrentTotalPower as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: a.client1,
+                method: AccountMethod::AuthenticateMessage as u64,
+                params: Some(
+                    serialize(
+                        &AuthenticateMessageParams {
+                            signature: invalid_sig_bytes,
+                            message: serialize(&proposal, "deal proposal").unwrap().to_vec(),
+                        },
+                        "auth params",
+                    )
+                    .unwrap(),
+                ),
+                code: Some(ExitCode::USR_ILLEGAL_ARGUMENT),
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+
     v.assert_state_invariants();
 }
 
@@ -604,16 +700,19 @@ impl<'bs> DealBatcher<'bs> {
             .iter_mut()
             .map(|deal| ClientDealProposal {
                 proposal: deal.clone(),
-                client_signature: Signature { sig_type: SignatureType::BLS, bytes: vec![] },
+                client_signature: Signature {
+                    sig_type: SignatureType::BLS,
+                    bytes: serialize(deal, "serializing deal proposal").unwrap().to_vec(),
+                },
             })
             .collect();
         let publish_params = PublishStorageDealsParams { deals: params_deals };
         let ret: PublishStorageDealsReturn = apply_ok(
             self.v,
             sender,
-            *STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ADDR,
             TokenAmount::zero(),
-            MethodsMarket::PublishStorageDeals as u64,
+            MarketMethod::PublishStorageDeals as u64,
             publish_params,
         )
         .deserialize()
@@ -627,7 +726,10 @@ impl<'bs> DealBatcher<'bs> {
             .iter_mut()
             .map(|deal| ClientDealProposal {
                 proposal: deal.clone(),
-                client_signature: Signature { sig_type: SignatureType::BLS, bytes: vec![] },
+                client_signature: Signature {
+                    sig_type: SignatureType::BLS,
+                    bytes: serialize(deal, "serializing deal proposal").unwrap().to_vec(),
+                },
             })
             .collect();
         let publish_params = PublishStorageDealsParams { deals: params_deals };
@@ -635,9 +737,9 @@ impl<'bs> DealBatcher<'bs> {
             .v
             .apply_message(
                 sender,
-                *STORAGE_MARKET_ACTOR_ADDR,
+                STORAGE_MARKET_ACTOR_ADDR,
                 TokenAmount::zero(),
-                MethodsMarket::PublishStorageDeals as u64,
+                MarketMethod::PublishStorageDeals as u64,
                 publish_params,
             )
             .unwrap();
