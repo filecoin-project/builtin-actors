@@ -67,6 +67,7 @@ pub enum Method {
     RevokeAllowance = 18,
     Burn = 19,
     BurnFrom = 20,
+    Allowance = 21,
 }
 
 pub struct Actor;
@@ -89,19 +90,21 @@ impl Actor {
         Ok(())
     }
 
-    pub fn name<BS, RT>(_: &RT, _: ()) -> Result<String, ActorError>
+    pub fn name<BS, RT>(rt: &mut RT) -> Result<String, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        rt.validate_immediate_caller_accept_any()?;
         Ok("DataCap".to_string())
     }
 
-    pub fn symbol<BS, RT>(_: &RT, _: ()) -> Result<String, ActorError>
+    pub fn symbol<BS, RT>(rt: &mut RT) -> Result<String, ActorError>
     where
         BS: Blockstore,
         RT: Runtime<BS>,
     {
+        rt.validate_immediate_caller_accept_any()?;
         Ok("DCAP".to_string())
     }
 
@@ -536,11 +539,11 @@ impl ActorCode for Actor {
                 serialize(&ret, "destroy result")
             }
             Some(Method::Name) => {
-                let ret = Self::name(rt, cbor::deserialize_params(params)?)?;
+                let ret = Self::name(rt)?;
                 serialize(&ret, "name result")
             }
             Some(Method::Symbol) => {
-                let ret = Self::symbol(rt, cbor::deserialize_params(params)?)?;
+                let ret = Self::symbol(rt)?;
                 serialize(&ret, "symbol result")
             }
             Some(Method::TotalSupply) => {
@@ -578,6 +581,10 @@ impl ActorCode for Actor {
             Some(Method::BurnFrom) => {
                 let ret = Self::burn_from(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "burn_from result")
+            }
+            Some(Method::Allowance) => {
+                let ret = Self::allowance(rt, cbor::deserialize_params(params)?)?;
+                serialize(&ret, "allowance result")
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }

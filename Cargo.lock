@@ -328,7 +328,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_datacap_state_v9"
-version = "9.0.0"
+version = "9.0.3"
 dependencies = [
  "cid",
  "fil_actors_runtime_common",
