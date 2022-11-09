@@ -10,8 +10,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, make_map_with_root_and_bitwidth, restrict_internal_api, ActorDowncast,
-    ActorError, AsActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    ActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -391,12 +390,8 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
 
-        let (raw_byte_power, meets_consensus_minimum) = st
-            .miner_nominal_power_meets_consensus_minimum(rt.policy(), rt.store(), params.miner)
-            .context_code(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                format!("failed to lookup power for miner {}", params.miner),
-            )?;
+        let (raw_byte_power, meets_consensus_minimum) =
+            st.miner_nominal_power_meets_consensus_minimum(rt.policy(), rt.store(), params.miner)?;
 
         Ok(MinerRawPowerReturn { raw_byte_power, meets_consensus_minimum })
     }

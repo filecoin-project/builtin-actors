@@ -3,12 +3,12 @@
 
 use std::ops::Neg;
 
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root, make_map_with_root_and_bitwidth,
-    ActorDowncast, ActorError, Map, Multimap,
+    ActorDowncast, ActorError, AsActorError, Map, Multimap,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -104,15 +104,26 @@ impl State {
         policy: &Policy,
         s: &BS,
         miner: ActorID,
-    ) -> anyhow::Result<(StoragePower, bool)> {
-        let claims = make_map_with_root_and_bitwidth(&self.claims, s, HAMT_BIT_WIDTH)?;
+    ) -> Result<(StoragePower, bool), ActorError> {
+        let claims = make_map_with_root_and_bitwidth(&self.claims, s, HAMT_BIT_WIDTH)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to load claims for miner: {}", miner)
+            })?;
 
-        let claim = get_claim(&claims, &Address::new_id(miner))?
-            .ok_or_else(|| anyhow!("no claim for actor: {}", miner))?;
+        let claim = get_claim(&claims, &Address::new_id(miner))
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to get claim for miner: {}", miner)
+            })?
+            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                format!("no claim for actor: {}", miner)
+            })?;
 
         let miner_nominal_power = claim.raw_byte_power.clone();
         let miner_min_power = consensus_miner_min_power(policy, claim.window_post_proof_type)
-            .context("could not get miner min power from proof type: {}")?;
+            .context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "could not get miner min power from proof type: {}",
+            )?;
 
         if miner_nominal_power >= miner_min_power {
             // If miner is larger than min power requirement, valid
