@@ -77,6 +77,15 @@ pub enum Method {
     AddBalanceExported = frc42_dispatch::method_hash!("AddBalance"),
     WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
     GetBalanceExported = frc42_dispatch::method_hash!("GetBalance"),
+    GetDealDataCommitmentExported = frc42_dispatch::method_hash!("GetDealDataCommitment"),
+    GetDealClientExported = frc42_dispatch::method_hash!("GetDealClient"),
+    GetDealProviderExported = frc42_dispatch::method_hash!("GetDealProvider"),
+    GetDealLabelExported = frc42_dispatch::method_hash!("GetDealLabel"),
+    GetDealTermExported = frc42_dispatch::method_hash!("GetDealTerm"),
+    GetDealEpochPriceExported = frc42_dispatch::method_hash!("GetDealEpochPrice"),
+    GetDealClientCollateralExported = frc42_dispatch::method_hash!("GetDealClientCollateral"),
+    GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
+    GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
 }
 
 /// Market Actor
@@ -1049,6 +1058,101 @@ impl Actor {
         }
         Ok(())
     }
+
+    /// Returns the data commitment and size of a deal proposal.
+    /// This will be available after the deal is published (whether or not is is activated)
+    /// and up until some undefined period after it is terminated.
+    fn get_deal_data_commitment(
+        rt: &mut impl Runtime,
+        params: GetDealDataCommitmentParams,
+    ) -> Result<GetDealDataCommitmentReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealDataCommitmentReturn { data: found.piece_cid, size: found.piece_size })
+    }
+
+    /// Returns the client of a deal proposal.
+    fn get_deal_client(
+        rt: &mut impl Runtime,
+        params: GetDealClientParams,
+    ) -> Result<GetDealClientReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealClientReturn { client: found.client.id().unwrap() })
+    }
+
+    /// Returns the provider of a deal proposal.
+    fn get_deal_provider(
+        rt: &mut impl Runtime,
+        params: GetDealProviderParams,
+    ) -> Result<GetDealProviderReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealProviderReturn { provider: found.provider.id().unwrap() })
+    }
+
+    /// Returns the label of a deal proposal.
+    fn get_deal_label(
+        rt: &mut impl Runtime,
+        params: GetDealLabelParams,
+    ) -> Result<GetDealLabelReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealLabelReturn { label: found.label })
+    }
+
+    /// Returns the start and end epochs of a deal proposal.
+    /// The deal term is a half-open range, exclusive of the end epoch.
+    fn get_deal_term(
+        rt: &mut impl Runtime,
+        params: GetDealTermParams,
+    ) -> Result<GetDealTermReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealTermReturn { start: found.start_epoch, end: found.end_epoch })
+    }
+
+    /// Returns the per-epoch price of a deal proposal.
+    fn get_deal_epoch_price(
+        rt: &mut impl Runtime,
+        params: GetDealEpochPriceParams,
+    ) -> Result<GetDealEpochPriceReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealEpochPriceReturn { price_per_epoch: found.storage_price_per_epoch })
+    }
+
+    /// Returns the client collateral requirement for a deal proposal.
+    fn get_deal_client_collateral(
+        rt: &mut impl Runtime,
+        params: GetDealClientCollateralParams,
+    ) -> Result<GetDealClientCollateralReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealClientCollateralReturn { collateral: found.client_collateral })
+    }
+
+    /// Returns the provider collateral requirement for a deal proposal.
+    fn get_deal_provider_collateral(
+        rt: &mut impl Runtime,
+        params: GetDealProviderCollateralParams,
+    ) -> Result<GetDealProviderCollateralReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealProviderCollateralReturn { collateral: found.provider_collateral })
+    }
+
+    /// Returns the verified flag for a deal proposal.
+    /// Note that the source of truth for verified allocations and claims is
+    /// the verified registry actor.
+    fn get_deal_verified(
+        rt: &mut impl Runtime,
+        params: GetDealVerifiedParams,
+    ) -> Result<GetDealVerifiedReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealVerifiedReturn { verified: found.verified_deal })
+    }
 }
 
 fn compute_data_commitment<BS: Blockstore>(
@@ -1462,6 +1566,43 @@ impl ActorCode for Actor {
             }
             Some(Method::GetBalanceExported) => {
                 let res = Self::get_balance(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealDataCommitmentExported) => {
+                let res = Self::get_deal_data_commitment(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealClientExported) => {
+                let res = Self::get_deal_client(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealProviderExported) => {
+                let res = Self::get_deal_provider(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealLabelExported) => {
+                let res = Self::get_deal_label(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealTermExported) => {
+                let res = Self::get_deal_term(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealEpochPriceExported) => {
+                let res = Self::get_deal_epoch_price(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealClientCollateralExported) => {
+                let res = Self::get_deal_client_collateral(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealProviderCollateralExported) => {
+                let res =
+                    Self::get_deal_provider_collateral(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealVerifiedExported) => {
+                let res = Self::get_deal_verified(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
