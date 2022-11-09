@@ -1,12 +1,12 @@
 [package]
-name = "fil_actor_market_state_v9"
+name        = "fil_actor_market_state_v9"
 description = "Builtin market actor for Filecoin"
-version = "9.0.0"
-license = "MIT OR Apache-2.0"
-authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
-edition = "2018"
-repository = "https://github.com/filecoin-project/builtin-actors"
-keywords = ["filecoin", "web3", "wasm"]
+version     = "9.0.3"
+license     = "MIT OR Apache-2.0"
+authors     = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
+edition     = "2018"
+repository  = "https://github.com/filecoin-project/builtin-actors"
+keywords    = ["filecoin", "web3", "wasm"]
 
 [lib]
 ## lib is necessary for integration tests
@@ -14,32 +14,32 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime_common = { version = "9.0.0", path = "../../runtime"}
+fil_actors_runtime_common = { version = "9.0.3", path = "../../runtime" }
 
-anyhow = "1.0.65"
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-frc46_token = "1.1.0"
-fvm_ipld_bitfield = "0.5.2"
+anyhow              = "1.0.65"
+cid                 = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+frc46_token         = "1.1.0"
+fvm_ipld_bitfield   = "0.5.2"
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.2.2"
-fvm_ipld_hamt = "0.5.1"
-fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
-integer-encoding = { version = "3.0.3", default-features = false }
-libipld-core = { version = "0.13.1", features = ["serde-codec"] }
-log = "0.4.14"
-num-derive = "0.3.3"
-num-traits = "0.2.14"
-serde = { version = "1.0.136", features = ["derive"] }
+fvm_ipld_encoding   = "0.2.2"
+fvm_ipld_hamt       = "0.5.1"
+fvm_shared          = { version = "2.0.0-alpha.2", default-features = false }
+integer-encoding    = { version = "3.0.3", default-features = false }
+libipld-core        = { version = "0.13.1", features = ["serde-codec"] }
+log                 = "0.4.14"
+num-derive          = "0.3.3"
+num-traits          = "0.2.14"
+serde               = { version = "1.0.136", features = ["derive"] }
 
 [dev-dependencies]
-fil_actors_runtime_common = { version = "9.0.0", path = "../../runtime", features = ["test_utils", "sector-default"] }
-fil_actor_power_state_v9 = { path = "../power_state_v9" }
-fil_actor_reward_state_v9 = { path = "../reward_state_v9" }
+fil_actor_power_state_v9    = { path = "../power_state_v9" }
+fil_actor_reward_state_v9   = { path = "../reward_state_v9" }
 fil_actor_verifreg_state_v9 = { path = "../verifreg_state_v9" }
-fvm_ipld_amt = { version = "0.4.2", features = ["go-interop"] }
-multihash = { version = "0.16.1", default-features = false }
-regex = "1"
-itertools = "0.10"
+fil_actors_runtime_common   = { version = "9.0.3", path = "../../runtime", features = ["test_utils", "sector-default"] }
+fvm_ipld_amt                = { version = "0.4.2", features = ["go-interop"] }
+itertools                   = "0.10"
+multihash                   = { version = "0.16.1", default-features = false }
+regex                       = "1"
 
 [features]
 fil-actor = ["fil_actors_runtime_common/fil-actor"]
