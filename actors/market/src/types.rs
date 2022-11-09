@@ -15,6 +15,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::ActorID;
 
+use crate::Label;
 use fvm_shared::sector::RegisteredSealProof;
 
 use super::deal::{ClientDealProposal, DealProposal, DealState};
@@ -135,4 +136,72 @@ pub type DealMetaArray<'bs, BS> = Array<'bs, DealState, BS>;
 pub struct SectorDataSpec {
     pub deal_ids: Vec<DealID>,
     pub sector_type: RegisteredSealProof,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct DealQueryParams {
+    pub id: DealID,
+}
+
+pub type GetDealDataCommitmentParams = DealQueryParams;
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct GetDealDataCommitmentReturn {
+    pub data: Cid,
+    pub size: PaddedPieceSize,
+}
+
+pub type GetDealClientParams = DealQueryParams;
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct GetDealClientReturn {
+    pub client: ActorID,
+}
+
+pub type GetDealProviderParams = DealQueryParams;
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct GetDealProviderReturn {
+    pub provider: ActorID,
+}
+
+pub type GetDealLabelParams = DealQueryParams;
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct GetDealLabelReturn {
+    pub label: Label,
+}
+
+pub type GetDealTermParams = DealQueryParams;
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct GetDealTermReturn {
+    pub start: ChainEpoch, // First epoch for the deal (inclusive)
+    pub end: ChainEpoch,   // Epoch at which the deal expires (i.e. exclusive).
+}
+
+pub type GetDealEpochPriceParams = DealQueryParams;
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct GetDealEpochPriceReturn {
+    pub price_per_epoch: TokenAmount,
+}
+
+pub type GetDealClientCollateralParams = DealQueryParams;
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct GetDealClientCollateralReturn {
+    pub collateral: TokenAmount,
+}
+
+pub type GetDealProviderCollateralParams = DealQueryParams;
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct GetDealProviderCollateralReturn {
+    pub collateral: TokenAmount,
+}
+
+pub type GetDealVerifiedParams = DealQueryParams;
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct GetDealVerifiedReturn {
+    pub verified: bool,
 }
