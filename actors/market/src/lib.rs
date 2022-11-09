@@ -1101,15 +1101,14 @@ impl Actor {
         Ok(GetDealLabelReturn { label: found.label })
     }
 
-    /// Returns the start and end epochs of a deal proposal.
-    /// The deal term is a half-open range, exclusive of the end epoch.
+    /// Returns the start epoch and duration (in epochs) of a deal proposal.
     fn get_deal_term(
         rt: &mut impl Runtime,
         params: GetDealTermParams,
     ) -> Result<GetDealTermReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
-        Ok(GetDealTermReturn { start: found.start_epoch, end: found.end_epoch })
+        Ok(GetDealTermReturn { start: found.start_epoch, duration: found.duration() })
     }
 
     /// Returns the per-epoch price of a deal proposal.

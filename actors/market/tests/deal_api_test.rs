@@ -52,7 +52,7 @@ fn proposal_data() {
 
     let term: GetDealTermReturn = query_deal(&mut rt, Method::GetDealTermExported, id);
     assert_eq!(proposal.start_epoch, term.start);
-    assert_eq!(proposal.end_epoch, term.end);
+    assert_eq!(proposal.duration(), term.duration);
 
     let price: GetDealEpochPriceReturn = query_deal(&mut rt, Method::GetDealEpochPriceExported, id);
     assert_eq!(proposal.storage_price_per_epoch, price.price_per_epoch);
