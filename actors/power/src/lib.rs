@@ -61,12 +61,16 @@ pub enum Method {
     // OnConsensusFault = 7,
     SubmitPoRepForBulkVerify = 8,
     CurrentTotalPower = 9,
+    // Method numbers derived from FRC-0042 standards
+    NetworkRawPowerExported = frc42_dispatch::method_hash!("NetworkRawPower"),
+    MinerRawPowerExported = frc42_dispatch::method_hash!("MinerRawPower"),
 }
 
 pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
 
 /// Storage Power Actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for StoragePower actor
     fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
@@ -364,6 +368,34 @@ impl Actor {
         })
     }
 
+    /// Returns the total raw power of the network.
+    /// This is defined as the sum of the active (i.e. non-faulty) byte commitments
+    /// of all miners that have more than the consensus minimum amount of storage active.
+    /// This value is static over an epoch, and does NOT get updated as messages are executed.
+    /// It is recalculated after all messages at an epoch have been executed.
+    fn network_raw_power(rt: &mut impl Runtime) -> Result<NetworkRawPowerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        Ok(NetworkRawPowerReturn { raw_byte_power: st.this_epoch_raw_byte_power })
+    }
+
+    /// Returns the raw power claimed by the specified miner,
+    /// and whether the miner has more than the consensus minimum amount of storage active.
+    /// The raw power is defined as the active (i.e. non-faulty) byte commitments of the miner.
+    fn miner_raw_power(
+        rt: &mut impl Runtime,
+        params: MinerRawPowerParams,
+    ) -> Result<MinerRawPowerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        let (raw_byte_power, meets_consensus_minimum) =
+            st.miner_nominal_power_meets_consensus_minimum(rt.policy(), rt.store(), params.miner)?;
+
+        Ok(MinerRawPowerReturn { raw_byte_power, meets_consensus_minimum })
+    }
+
     fn process_batch_proof_verifies(
         rt: &mut impl Runtime,
         rewret: &ThisEpochRewardReturn,
@@ -658,6 +690,14 @@ impl ActorCode for Actor {
             }
             Some(Method::CurrentTotalPower) => {
                 let res = Self::current_total_power(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::NetworkRawPowerExported) => {
+                let res = Self::network_raw_power(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::MinerRawPowerExported) => {
+                let res = Self::miner_raw_power(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
