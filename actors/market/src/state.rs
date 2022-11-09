@@ -115,6 +115,22 @@ impl State {
             + &self.total_client_storage_fee
     }
 
+    pub fn get_proposal<BS: Blockstore>(
+        &self,
+        store: &BS,
+        id: DealID,
+    ) -> Result<DealProposal, ActorError> {
+        let proposals = DealArray::load(&self.proposals, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")?;
+        let found = proposals
+            .get(id)
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to load deal proposal {}", id)
+            })?
+            .with_context_code(ExitCode::USR_NOT_FOUND, || format!("no such deal {}", id))?;
+        Ok(found.clone())
+    }
+
     pub(super) fn mutator<'bs, BS: Blockstore>(
         &mut self,
         store: &'bs BS,
