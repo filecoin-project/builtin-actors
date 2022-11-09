@@ -680,7 +680,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_verifreg_state_v9"
-version = "9.0.0"
+version = "9.0.3"
 dependencies = [
  "anyhow",
  "cid",
