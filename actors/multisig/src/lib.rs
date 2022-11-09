@@ -42,7 +42,7 @@ pub enum Method {
     SwapSigner = 7,
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
-    // Method numbers derived from FRC-XXXX standards
+    // Method numbers derived from FRC-0042 standards
     ProposeExported = frc42_dispatch::method_hash!("Propose"),
     ApproveExported = frc42_dispatch::method_hash!("Approve"),
     CancelExported = frc42_dispatch::method_hash!("Cancel"),

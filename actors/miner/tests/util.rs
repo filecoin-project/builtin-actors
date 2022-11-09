@@ -22,14 +22,14 @@ use fil_actor_miner::{
     CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
-    FaultDeclaration, GetBeneficiaryReturn, GetControlAddressesReturn, Method,
-    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
-    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
-    PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration,
-    ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
-    VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
-    CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
+    FaultDeclaration, GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
+    Method, MinerConstructorParams as ConstructorParams, MinerInfo, Partition,
+    PendingBeneficiaryChange, PoStPartition, PowerPair, PreCommitSectorBatchParams,
+    PreCommitSectorBatchParams2, PreCommitSectorParams, ProveCommitSectorParams,
+    RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
+    TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
+    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -861,6 +861,7 @@ impl ActorHarness {
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
     ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let seal_rand = TEST_RANDOMNESS_ARRAY_FROM_ONE;
         let seal_int_rand = TEST_RANDOMNESS_ARRAY_FROM_TWO;
         let interactive_epoch = pc.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
@@ -2531,6 +2532,17 @@ impl ActorHarness {
             rt.reset();
         }
         ret
+    }
+
+    pub fn get_available_balance(&self, rt: &mut MockRuntime) -> Result<TokenAmount, ActorError> {
+        // set caller to non-builtin
+        rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+        rt.expect_validate_caller_any();
+        let available_balance_ret: GetAvailableBalanceReturn = rt
+            .call::<Actor>(Method::GetAvailableBalanceExported as u64, &RawBytes::default())?
+            .deserialize()?;
+        rt.verify();
+        Ok(available_balance_ret.available_balance)
     }
 }
 
