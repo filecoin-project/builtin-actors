@@ -120,18 +120,26 @@ impl State {
         store: &BS,
         id: DealID,
     ) -> Result<DealProposal, ActorError> {
-        let proposals = DealArray::load(&self.proposals, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")?;
-        let found = proposals
-            .get(id)
-            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("failed to load deal proposal {}", id)
-            })?
+        let found = self
+            .find_proposal(store, id)?
             .with_context_code(ExitCode::USR_NOT_FOUND, || format!("no such deal {}", id))?;
-        Ok(found.clone())
+        Ok(found)
     }
 
-    pub fn get_state<BS: Blockstore>(
+    pub fn find_proposal<BS: Blockstore>(
+        &self,
+        store: &BS,
+        id: DealID,
+    ) -> Result<Option<DealProposal>, ActorError> {
+        let proposals = DealArray::load(&self.proposals, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")?;
+        let maybe = proposals.get(id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to load deal proposal {}", id)
+        })?;
+        Ok(maybe.cloned())
+    }
+
+    pub fn find_state<BS: Blockstore>(
         &self,
         store: &BS,
         id: DealID,
