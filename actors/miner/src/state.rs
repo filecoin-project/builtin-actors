@@ -983,7 +983,7 @@ impl State {
         &self,
         actor_balance: &TokenAmount,
     ) -> anyhow::Result<TokenAmount> {
-        // (actor_balance - &self.locked_funds) - &self.pre_commit_deposit
+        // (actor_balance - &self.locked_funds) - &self.pre_commit_deposit - &self.initial_pledge
         Ok(self.get_unlocked_balance(actor_balance)? - &self.fee_debt)
     }
 
