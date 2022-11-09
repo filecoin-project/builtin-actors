@@ -2,56 +2,59 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use anyhow::bail;
+use bimap::BiBTreeMap;
 use cid::Cid;
-use fil_actor_account::State as AccountState;
-use fil_actor_cron::State as CronState;
-use fil_actor_init::State as InitState;
-use fil_actor_market::State as MarketState;
-use fil_actor_miner::CronEventPayload;
-use fil_actor_miner::PowerPair;
-use fil_actor_miner::State as MinerState;
-use fil_actor_miner::CRON_EVENT_PROCESS_EARLY_TERMINATIONS;
-use fil_actor_miner::CRON_EVENT_PROVING_DEADLINE;
-use fil_actor_multisig::State as MultisigState;
-use fil_actor_paych::State as PaychState;
-use fil_actor_power::testing::MinerCronEvent;
-use fil_actor_power::State as PowerState;
-use fil_actor_reward::State as RewardState;
-use fil_actor_verifreg::State as VerifregState;
+use fil_actor_account_state_v9::State as AccountState;
+use fil_actor_cron_state_v9::State as CronState;
+use fil_actor_datacap_state_v9::State as DataCapState;
+use fil_actor_init_state_v9::State as InitState;
+use fil_actor_market_state_v9::State as MarketState;
+use fil_actor_miner_state_v9::CronEventPayload;
+use fil_actor_miner_state_v9::PowerPair;
+use fil_actor_miner_state_v9::State as MinerState;
+use fil_actor_miner_state_v9::CRON_EVENT_PROCESS_EARLY_TERMINATIONS;
+use fil_actor_miner_state_v9::CRON_EVENT_PROVING_DEADLINE;
+use fil_actor_multisig_state_v9::State as MultisigState;
+use fil_actor_paych_state_v9::State as PaychState;
+use fil_actor_power_state_v9::testing::MinerCronEvent;
+use fil_actor_power_state_v9::State as PowerState;
+use fil_actor_reward_state_v9::State as RewardState;
+use fil_actor_verifreg_state_v9::{DataCap, State as VerifregState};
 
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::Map;
-use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::VERIFIED_REGISTRY_ACTOR_ADDR;
+
+use fil_actors_runtime_common::Map;
+use fil_actors_runtime_common::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::from_slice;
 use fvm_ipld_encoding::CborStore;
-use fvm_shared::actor::builtin::Manifest;
-use fvm_shared::actor::builtin::Type;
 use fvm_shared::address::Address;
 use fvm_shared::address::Protocol;
-use fvm_shared::bigint::BigInt;
+
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 
 use anyhow::anyhow;
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::bigint::bigint_ser;
 
-use fil_actor_account::testing as account;
-use fil_actor_cron::testing as cron;
-use fil_actor_init::testing as init;
-use fil_actor_market::testing as market;
-use fil_actor_miner::testing as miner;
-use fil_actor_multisig::testing as multisig;
-use fil_actor_paych::testing as paych;
-use fil_actor_power::testing as power;
-use fil_actor_reward::testing as reward;
-use fil_actor_verifreg::testing as verifreg;
+use fil_actor_account_state_v9::testing as account;
+use fil_actor_cron_state_v9::testing as cron;
+use fil_actor_datacap_state_v9::testing as datacap;
+use fil_actor_init_state_v9::testing as init;
+use fil_actor_market_state_v9::testing as market;
+use fil_actor_miner_state_v9::testing as miner;
+use fil_actor_multisig_state_v9::testing as multisig;
+use fil_actor_paych_state_v9::testing as paych;
+use fil_actor_power_state_v9::testing as power;
+use fil_actor_reward_state_v9::testing as reward;
+use fil_actor_verifreg_state_v9::testing as verifreg;
+use fil_actors_runtime_common::runtime::builtins::Type;
 
 /// Value type of the top level of the state tree.
 /// Represents the on-chain state of a single actor.
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
 pub struct Actor {
     /// CID representing the code associated with the actor
     pub code: Cid,
@@ -59,7 +62,6 @@ pub struct Actor {
     pub head: Cid,
     /// `call_seq_num` for the next message to be received by the actor (non-zero for accounts only)
     pub call_seq_num: u64,
-    #[serde(with = "bigint_ser")]
     /// Token balance of the actor
     pub balance: TokenAmount,
 }
@@ -103,15 +105,19 @@ macro_rules! get_state {
     };
 }
 
+// Note: BiBTreeMap is an overly constrained type for what we are doing here, but chosen
+// to match the Manifest implementation in the FVM.
+// It could be replaced with a custom mapping trait (while Rust doesn't support
+// abstract collection traits).
 pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
-    manifest: &Manifest,
+    manifest: &BiBTreeMap<Cid, Type>,
     policy: &Policy,
     tree: Tree<'a, BS>,
     expected_balance_total: &TokenAmount,
     prior_epoch: ChainEpoch,
 ) -> anyhow::Result<MessageAccumulator> {
     let acc = MessageAccumulator::default();
-    let mut total_fil = BigInt::zero();
+    let mut total_fil = TokenAmount::zero();
 
     let mut init_summary: Option<init::StateSummary> = None;
     let mut cron_summary: Option<cron::StateSummary> = None;
@@ -123,6 +129,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
     let mut multisig_summaries = Vec::<multisig::StateSummary>::new();
     let mut reward_summary: Option<reward::StateSummary> = None;
     let mut verifreg_summary: Option<verifreg::StateSummary> = None;
+    let mut datacap_summary: Option<datacap::StateSummary> = None;
 
     tree.for_each(|key, actor| {
         let acc = acc.with_prefix(format!("{key} "));
@@ -198,9 +205,16 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
             }
             Some(Type::VerifiedRegistry) => {
                 let state = get_state!(tree, actor, VerifregState);
-                let (summary, msgs) = verifreg::check_state_invariants(&state, tree.store);
+                let (summary, msgs) =
+                    verifreg::check_state_invariants(&state, tree.store, prior_epoch);
                 acc.with_prefix("verifreg: ").add_all(&msgs);
                 verifreg_summary = Some(summary);
+            }
+            Some(Type::DataCap) => {
+                let state = get_state!(tree, actor, DataCapState);
+                let (summary, msgs) = datacap::check_state_invariants(&state, tree.store);
+                acc.with_prefix("datacap: ").add_all(&msgs);
+                datacap_summary = Some(summary);
             }
             None => {
                 bail!("unexpected actor code CID {} for address {}", actor.code, key);
@@ -217,6 +231,12 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
 
     if let Some(market_summary) = market_summary {
         check_deal_states_against_sectors(&acc, &miner_summaries, &market_summary);
+    }
+
+    if let Some(verifreg_summary) = verifreg_summary {
+        if let Some(datacap_summary) = datacap_summary {
+            check_verifreg_against_datacap(&acc, &verifreg_summary, &datacap_summary);
+        }
     }
 
     acc.require(
@@ -363,4 +383,33 @@ fn check_deal_states_against_sectors(
             ),
         );
     }
+}
+
+fn check_verifreg_against_datacap(
+    acc: &MessageAccumulator,
+    verifreg_summary: &verifreg::StateSummary,
+    datacap_summary: &datacap::StateSummary,
+) {
+    // Verifier and datacap token holders are distinct.
+    for verifier in verifreg_summary.verifiers.keys() {
+        acc.require(
+            !datacap_summary.balances.contains_key(&verifier.id().unwrap()),
+            format!("verifier {} is also a datacap token holder", verifier),
+        );
+    }
+    // Verifreg token balance matches unclaimed allocations.
+    let pending_alloc_total: DataCap =
+        verifreg_summary.allocations.iter().map(|(_, alloc)| alloc.size.0).sum();
+    let verifreg_balance = datacap_summary
+        .balances
+        .get(&VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap())
+        .cloned()
+        .unwrap_or_else(TokenAmount::zero);
+    acc.require(
+        TokenAmount::from_whole(pending_alloc_total.clone()) == verifreg_balance,
+        format!(
+            "verifreg datacap balance {} does not match pending allocation size {}",
+            verifreg_balance, pending_alloc_total
+        ),
+    );
 }

@@ -59,6 +59,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "bimap"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc0455254eb5c6964c4545d8bac815e1a1be4f3afe0ae695ea539c12d728d44b"
+
+[[package]]
 name = "blake2b_simd"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -733,6 +739,34 @@ dependencies = [
  "sha2",
  "thiserror",
  "unsigned-varint",
+]
+
+[[package]]
+name = "fil_builtin_actors_state"
+version = "9.0.3"
+dependencies = [
+ "anyhow",
+ "bimap",
+ "cid",
+ "fil_actor_account_state_v9",
+ "fil_actor_cron_state_v9",
+ "fil_actor_datacap_state_v9",
+ "fil_actor_init_state_v9",
+ "fil_actor_market_state_v9",
+ "fil_actor_miner_state_v9",
+ "fil_actor_multisig_state_v9",
+ "fil_actor_paych_state_v9",
+ "fil_actor_power_state_v9",
+ "fil_actor_reward_state_v9",
+ "fil_actor_system_state_v9",
+ "fil_actor_verifreg_state_v9",
+ "fil_actors_runtime_common",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "num-derive",
+ "num-traits",
+ "serde",
 ]
 
 [[package]]

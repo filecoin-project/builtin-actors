@@ -1,12 +1,12 @@
 [package]
-name = "fil_builtin_actors_state"
+name        = "fil_builtin_actors_state"
 description = "Builtin Actor state utils for Filecoin"
-version = "8.0.0"
-license = "MIT OR Apache-2.0"
-authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
-edition = "2018"
-repository = "https://github.com/filecoin-project/builtin-actors"
-keywords = ["filecoin", "web3", "wasm"]
+version     = "9.0.3"
+license     = "MIT OR Apache-2.0"
+authors     = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
+edition     = "2018"
+repository  = "https://github.com/filecoin-project/builtin-actors"
+keywords    = ["filecoin", "web3", "wasm"]
 
 [lib]
 ## lib is necessary for integration tests
@@ -14,28 +14,30 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actor_account = { version = "8.0.0", path = "../actors/account"}
-fil_actor_verifreg = { version = "8.0.0", path = "../actors/verifreg"}
-fil_actor_cron = { version = "8.0.0", path = "../actors/cron"}
-fil_actor_market = { version = "8.0.0", path = "../actors/market"}
-fil_actor_multisig = { version = "8.0.0", path = "../actors/multisig"}
-fil_actor_paych = { version = "8.0.0", path = "../actors/paych"}
-fil_actor_power = { version = "8.0.0", path = "../actors/power"}
-fil_actor_miner = { version = "8.0.0", path = "../actors/miner"}
-fil_actor_reward = { version = "8.0.0", path = "../actors/reward"}
-fil_actor_system = { version = "8.0.0", path = "../actors/system"}
-fil_actor_init = { version = "8.0.0", path = "../actors/init"}
-fil_actors_runtime = { version = "8.0.0", path = "../runtime"}
-fvm_shared = { version = "0.8.0", default-features = false }
-fvm_ipld_encoding = "0.2.2"
-fvm_ipld_blockstore = "0.1.1"
-num-traits = "0.2.14"
-anyhow = "1.0.56"
-num-derive = "0.3.3"
-serde = { version = "1.0.136", features = ["derive"] }
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+anyhow                      = "1.0.65"
+bimap                       = { version = "0.6.2" }
+cid                         = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+fil_actor_account_state_v9  = { version = "9.0.3", path = "../actors/account_state_v9" }
+fil_actor_cron_state_v9     = { version = "9.0.3", path = "../actors/cron_state_v9" }
+fil_actor_datacap_state_v9  = { version = "9.0.3", path = "../actors/datacap_state_v9" }
+fil_actor_init_state_v9     = { version = "9.0.3", path = "../actors/init_state_v9" }
+fil_actor_market_state_v9   = { version = "9.0.3", path = "../actors/market_state_v9" }
+fil_actor_miner_state_v9    = { version = "9.0.3", path = "../actors/miner_state_v9" }
+fil_actor_multisig_state_v9 = { version = "9.0.3", path = "../actors/multisig_state_v9" }
+fil_actor_paych_state_v9    = { version = "9.0.3", path = "../actors/paych_state_v9" }
+fil_actor_power_state_v9    = { version = "9.0.3", path = "../actors/power_state_v9" }
+fil_actor_reward_state_v9   = { version = "9.0.3", path = "../actors/reward_state_v9" }
+fil_actor_system_state_v9   = { version = "9.0.3", path = "../actors/system_state_v9" }
+fil_actor_verifreg_state_v9 = { version = "9.0.3", path = "../actors/verifreg_state_v9" }
+fil_actors_runtime_common   = { version = "9.0.3", path = "../runtime" }
+fvm_ipld_blockstore         = "0.1.1"
+fvm_ipld_encoding           = "0.2.2"
+fvm_shared                  = { version = "2.0.0-alpha.2", default-features = false }
+num-derive                  = "0.3.3"
+num-traits                  = "0.2.14"
+serde                       = { version = "1.0.136", features = ["derive"] }
 
 [dev-dependencies]
-[features]
-fil-actor = []
 
+[features]
+fil-actor = ["fil_actors_runtime_common/fil-actor"]

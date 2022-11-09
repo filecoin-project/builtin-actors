@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "runtime",
+    "state",
     "actors/account_state_v8",
     "actors/cron_state_v8",
     "actors/init_state_v8",
