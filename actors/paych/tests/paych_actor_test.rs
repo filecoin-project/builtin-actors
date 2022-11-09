@@ -4,14 +4,15 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use anyhow::anyhow;
 use cid::Cid;
 use derive_builder::Builder;
+use fil_actor_paych::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_paych::testing::check_state_invariants;
 use fil_actor_paych::{
     Actor as PaychActor, ConstructorParams, LaneState, Merge, Method, ModVerifyParams,
     SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE, SETTLE_DELAY,
 };
+
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
@@ -23,7 +24,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_CONSTRUCTOR;
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
 use num_traits::Zero;
 
 const PAYCH_ID: u64 = 100;
@@ -70,14 +71,11 @@ fn check_state(rt: &MockRuntime) {
 mod paych_constructor {
     use fil_actors_runtime::runtime::builtins::Type;
     use fvm_shared::METHOD_CONSTRUCTOR;
-    use fvm_shared::METHOD_SEND;
-    use num_traits::Zero;
 
     use super::*;
 
     const TEST_PAYCH_ADDR: u64 = 100;
     const TEST_PAYER_ADDR: u64 = 101;
-    const TEST_PAYEE_ADDR: u64 = 102;
     const TEST_CALLER_ADDR: u64 = 102;
 
     fn construct_runtime() -> MockRuntime {
@@ -112,13 +110,13 @@ mod paych_constructor {
         rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams {
             to: Address::new_id(TEST_PAYCH_ADDR),
-            from: Address::new_id(TEST_PAYER_ADDR),
+            from: Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap(),
         };
         expect_abort(
             &mut rt,
             METHOD_CONSTRUCTOR,
             &RawBytes::serialize(params).unwrap(),
-            ExitCode::USR_ILLEGAL_ARGUMENT,
+            ExitCode::USR_NOT_FOUND,
         );
     }
 
@@ -138,142 +136,6 @@ mod paych_constructor {
 
         construct_and_verify(&mut rt, payer_non_id, payee_non_id);
         check_state(&rt);
-    }
-
-    #[test]
-    fn actor_constructor_fails() {
-        let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
-        let payer_addr = Address::new_id(TEST_PAYER_ADDR);
-        let payee_addr = Address::new_id(TEST_PAYEE_ADDR);
-        let caller_addr = Address::new_id(TEST_CALLER_ADDR);
-
-        struct TestCase {
-            from_code: Cid,
-            from_addr: Address,
-            to_code: Cid,
-            to_addr: Address,
-            expected_exit_code: ExitCode,
-        }
-
-        let test_cases: Vec<TestCase> = vec![
-            // fails if target (to) is not account actor
-            TestCase {
-                from_code: *ACCOUNT_ACTOR_CODE_ID,
-                from_addr: payer_addr,
-                to_code: *MULTISIG_ACTOR_CODE_ID,
-                to_addr: payee_addr,
-                expected_exit_code: ExitCode::USR_FORBIDDEN,
-            },
-            // fails if sender (from) is not account actor
-            TestCase {
-                from_code: *MULTISIG_ACTOR_CODE_ID,
-                from_addr: payer_addr,
-                to_code: *ACCOUNT_ACTOR_CODE_ID,
-                to_addr: payee_addr,
-                expected_exit_code: ExitCode::USR_FORBIDDEN,
-            },
-        ];
-
-        for test_case in test_cases {
-            let mut actor_code_cids = HashMap::default();
-            actor_code_cids.insert(paych_addr, *PAYCH_ACTOR_CODE_ID);
-            actor_code_cids.insert(test_case.to_addr, test_case.to_code);
-            actor_code_cids.insert(test_case.from_addr, test_case.from_code);
-
-            let mut rt = MockRuntime {
-                receiver: paych_addr,
-                caller: caller_addr,
-                caller_type: *INIT_ACTOR_CODE_ID,
-                actor_code_cids,
-                ..Default::default()
-            };
-
-            rt.expect_validate_caller_type(vec![Type::Init]);
-            let params = ConstructorParams { to: test_case.to_addr, from: test_case.from_addr };
-            expect_abort(
-                &mut rt,
-                METHOD_CONSTRUCTOR,
-                &RawBytes::serialize(params).unwrap(),
-                test_case.expected_exit_code,
-            );
-        }
-    }
-
-    #[test]
-    fn sendr_addr_not_resolvable_to_id_addr() {
-        const TO_ADDR: u64 = 101;
-        let to_addr = Address::new_id(TO_ADDR);
-        let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
-        let caller_addr = Address::new_id(TEST_CALLER_ADDR);
-        let non_id_addr = Address::new_bls(&[111; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-
-        let mut actor_code_cids = HashMap::default();
-        actor_code_cids.insert(to_addr, *ACCOUNT_ACTOR_CODE_ID);
-
-        let mut rt = MockRuntime {
-            receiver: paych_addr,
-            caller: caller_addr,
-            caller_type: *INIT_ACTOR_CODE_ID,
-            actor_code_cids,
-            ..Default::default()
-        };
-
-        rt.expect_send(
-            non_id_addr,
-            METHOD_SEND,
-            Default::default(),
-            TokenAmount::zero(),
-            Default::default(),
-            ExitCode::OK,
-        );
-
-        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
-        rt.expect_validate_caller_type(vec![Type::Init]);
-        let params = ConstructorParams { from: non_id_addr, to: to_addr };
-        expect_abort(
-            &mut rt,
-            METHOD_CONSTRUCTOR,
-            &RawBytes::serialize(&params).unwrap(),
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-        );
-    }
-
-    #[test]
-    fn target_addr_not_resolvable_to_id_addr() {
-        let from_addr = Address::new_id(5555_u64);
-        let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
-        let caller_addr = Address::new_id(TEST_CALLER_ADDR);
-        let non_id_addr = Address::new_bls(&[111; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-
-        let mut actor_code_cids = HashMap::default();
-        actor_code_cids.insert(from_addr, *ACCOUNT_ACTOR_CODE_ID);
-
-        let mut rt = MockRuntime {
-            receiver: paych_addr,
-            caller: caller_addr,
-            caller_type: *INIT_ACTOR_CODE_ID,
-            actor_code_cids,
-            ..Default::default()
-        };
-
-        rt.expect_send(
-            non_id_addr,
-            METHOD_SEND,
-            Default::default(),
-            TokenAmount::zero(),
-            Default::default(),
-            ExitCode::OK,
-        );
-
-        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
-        rt.expect_validate_caller_type(vec![Type::Init]);
-        let params = ConstructorParams { from: from_addr, to: non_id_addr };
-        expect_abort(
-            &mut rt,
-            METHOD_CONSTRUCTOR,
-            &RawBytes::serialize(&params).unwrap(),
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-        );
     }
 }
 
@@ -447,17 +309,26 @@ mod create_lane_tests {
             rt.expect_validate_caller_addr(vec![payer_addr, payee_addr]);
 
             if test_case.sig.is_some() && test_case.secret_preimage.is_empty() {
-                let exp_exit_code =
-                    if !test_case.verify_sig { Err(anyhow!("bad signature")) } else { Ok(()) };
-                rt.expect_verify_signature(ExpectedVerifySig {
-                    sig: sv.clone().signature.unwrap(),
-                    signer: payer_addr,
-                    plaintext: sv.signing_bytes().unwrap(),
-                    result: exp_exit_code,
-                });
+                let exp_exit_code = if !test_case.verify_sig {
+                    ExitCode::USR_ILLEGAL_ARGUMENT
+                } else {
+                    ExitCode::OK
+                };
+                rt.expect_send(
+                    payer_addr,
+                    AUTHENTICATE_MESSAGE_METHOD,
+                    RawBytes::serialize(AuthenticateMessageParams {
+                        signature: sv.clone().signature.unwrap().bytes,
+                        message: sv.signing_bytes().unwrap(),
+                    })
+                    .unwrap(),
+                    TokenAmount::zero(),
+                    RawBytes::default(),
+                    exp_exit_code,
+                );
             }
 
-            if test_case.exp_exit_code == ExitCode::OK {
+            if test_case.exp_exit_code.is_success() {
                 call(
                     &mut rt,
                     Method::UpdateChannelState as u64,
@@ -479,7 +350,7 @@ mod create_lane_tests {
                     &RawBytes::serialize(ucp).unwrap(),
                     test_case.exp_exit_code,
                 );
-                verify_initial_state(&rt, payer_addr, payee_addr);
+                verify_initial_state(&rt, PAYER_ADDR, PAYEE_ADDR);
             }
             rt.verify();
         }
@@ -502,12 +373,18 @@ mod update_channel_state_redeem {
 
         let payer_addr = Address::new_id(PAYER_ID);
 
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.clone().signature.unwrap(),
-            signer: payer_addr,
-            plaintext: sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+        rt.expect_send(
+            payer_addr,
+            AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(AuthenticateMessageParams {
+                signature: sv.clone().signature.unwrap().bytes,
+                message: sv.signing_bytes().unwrap(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
 
         call(
             &mut rt,
@@ -545,12 +422,18 @@ mod update_channel_state_redeem {
         sv.nonce = ls_to_update.nonce + 1;
         let payer_addr = Address::new_id(PAYER_ID);
 
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.clone().signature.unwrap(),
-            signer: payer_addr,
-            plaintext: sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+        rt.expect_send(
+            payer_addr,
+            AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(AuthenticateMessageParams {
+                signature: sv.clone().signature.unwrap().bytes,
+                message: sv.signing_bytes().unwrap(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
 
         call(
             &mut rt,
@@ -585,12 +468,18 @@ mod update_channel_state_redeem {
 
         let payer_addr = Address::new_id(PAYER_ID);
 
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.clone().signature.unwrap(),
-            signer: payer_addr,
-            plaintext: sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+        rt.expect_send(
+            payer_addr,
+            AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(AuthenticateMessageParams {
+                signature: sv.clone().signature.unwrap().bytes,
+                message: sv.signing_bytes().unwrap(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
 
         expect_abort(
             &mut rt,
@@ -617,12 +506,18 @@ mod merge_tests {
 
     fn failure_end(rt: &mut MockRuntime, sv: SignedVoucher, exp_exit_code: ExitCode) {
         let payee_addr = Address::new_id(PAYEE_ID);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.clone().signature.unwrap(),
-            signer: payee_addr,
-            plaintext: sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+        rt.expect_send(
+            payee_addr,
+            AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(AuthenticateMessageParams {
+                signature: sv.clone().signature.unwrap().bytes,
+                message: sv.signing_bytes().unwrap(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
         expect_abort(
             rt,
             Method::UpdateChannelState as u64,
@@ -645,12 +540,18 @@ mod merge_tests {
 
         sv.merges = vec![Merge { lane: 1, nonce: merge_nonce }];
         let payee_addr = Address::new_id(PAYEE_ID);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.clone().signature.unwrap(),
-            signer: payee_addr,
-            plaintext: sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+        rt.expect_send(
+            payee_addr,
+            AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(AuthenticateMessageParams {
+                signature: sv.clone().signature.unwrap().bytes,
+                message: sv.signing_bytes().unwrap(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
 
         call(
             &mut rt,
@@ -770,12 +671,18 @@ mod update_channel_state_extra {
             method: Method::UpdateChannelState as u64,
             data: fake_params.clone(),
         });
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.clone().signature.unwrap(),
-            signer: state.to,
-            plaintext: sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+        rt.expect_send(
+            state.to,
+            AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(AuthenticateMessageParams {
+                signature: sv.clone().signature.unwrap().bytes,
+                message: sv.signing_bytes().unwrap(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
 
         rt.expect_send(
             other_addr,
@@ -852,12 +759,20 @@ fn update_channel_settling() {
     for tc in test_cases {
         ucp.sv.min_settle_height = tc.min_settle;
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.clone().signature.unwrap(),
-            signer: state.to,
-            plaintext: ucp.sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+
+        rt.expect_send(
+            state.to,
+            AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(AuthenticateMessageParams {
+                signature: sv.clone().signature.unwrap().bytes,
+                message: ucp.sv.signing_bytes().unwrap(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
         call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(&ucp).unwrap());
         let new_state: PState = rt.get_state();
         assert_eq!(tc.exp_settling_at, new_state.settling_at);
@@ -878,12 +793,18 @@ mod secret_preimage {
 
         let ucp = UpdateChannelStateParams::from(sv.clone());
 
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.clone().signature.unwrap(),
-            signer: state.to,
-            plaintext: sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+        rt.expect_send(
+            state.to,
+            AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(AuthenticateMessageParams {
+                signature: sv.clone().signature.unwrap().bytes,
+                message: sv.signing_bytes().unwrap(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
 
         call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(ucp).unwrap());
 
@@ -903,12 +824,20 @@ mod secret_preimage {
         ucp.sv.secret_pre_image = mag;
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.signature.unwrap(),
-            signer: state.to,
-            plaintext: ucp.sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+
+        rt.expect_send(
+            state.to,
+            AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(AuthenticateMessageParams {
+                signature: sv.signature.unwrap().bytes,
+                message: ucp.sv.signing_bytes().unwrap(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
         expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
@@ -971,12 +900,19 @@ mod actor_settle {
         let ucp = UpdateChannelStateParams::from(sv.clone());
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: ucp.sv.signature.clone().unwrap(),
-            signer: state.to,
-            plaintext: sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+        rt.expect_send(
+            state.to,
+            AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(AuthenticateMessageParams {
+                signature: sv.clone().signature.unwrap().bytes,
+                message: sv.signing_bytes().unwrap(),
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
         call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(&ucp).unwrap());
 
         state = rt.get_state();
@@ -1186,12 +1122,20 @@ fn require_add_new_lane(rt: &mut MockRuntime, param: LaneParams) -> SignedVouche
     };
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, param.from);
     rt.expect_validate_caller_addr(vec![param.from, param.to]);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: payee_addr,
-        plaintext: sv.signing_bytes().unwrap(),
-        result: Ok(()),
-    });
+
+    rt.expect_send(
+        payee_addr,
+        AUTHENTICATE_MESSAGE_METHOD,
+        RawBytes::serialize(AuthenticateMessageParams {
+            signature: sig.bytes,
+            message: sv.signing_bytes().unwrap(),
+        })
+        .unwrap(),
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
     call(
         rt,
         Method::UpdateChannelState as u64,
@@ -1208,12 +1152,12 @@ fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address
     rt.expect_validate_caller_type(vec![Type::Init]);
     call(rt, METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap());
     rt.verify();
-    let sender_id = rt.id_addresses.get(&sender).unwrap_or(&sender);
-    let receiver_id = rt.id_addresses.get(&receiver).unwrap_or(&receiver);
-    verify_initial_state(rt, *sender_id, *receiver_id);
+    let sender_id = rt.id_addresses.get(&sender).unwrap_or(&sender).id().unwrap();
+    let receiver_id = rt.id_addresses.get(&receiver).unwrap_or(&receiver).id().unwrap();
+    verify_initial_state(rt, sender_id, receiver_id);
 }
 
-fn verify_initial_state(rt: &MockRuntime, sender: Address, receiver: Address) {
+fn verify_initial_state(rt: &MockRuntime, sender: ActorID, receiver: ActorID) {
     let _state: PState = rt.get_state();
     let empt_arr_cid = Amt::<(), _>::new(&rt.store).flush().unwrap();
     let expected_state = PState::new(sender, receiver, empt_arr_cid);
