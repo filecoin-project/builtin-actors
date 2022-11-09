@@ -2268,10 +2268,12 @@ impl ActorHarness {
             new_expiration: beneficiary_term.expiration,
         };
         let raw_bytes = &RawBytes::serialize(param).unwrap();
+        rt.expect_validate_caller_any();
         rt.call::<Actor>(Method::ChangeBeneficiary as u64, raw_bytes)?;
         rt.verify();
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, beneficiary_id_addr);
+        rt.expect_validate_caller_any();
         rt.call::<Actor>(Method::ChangeBeneficiary as u64, raw_bytes)?;
         rt.verify();
 
@@ -2286,6 +2288,7 @@ impl ActorHarness {
         beneficiary_change: &BeneficiaryChange,
         expect_beneficiary_addr: Option<Address>,
     ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_any();
         rt.set_address_actor_type(
             beneficiary_change.beneficiary_addr.clone(),
             *ACCOUNT_ACTOR_CODE_ID,
