@@ -1,7 +1,9 @@
 use std::iter;
 
 use ext::init::{Exec4Params, Exec4Return};
+use fil_actors_runtime::AsActorError;
 use fvm_ipld_encoding::Cbor;
+use fvm_shared::error::ExitCode;
 use rlp::Encodable;
 
 pub mod ext;
@@ -138,6 +140,23 @@ fn create_actor(
     Ok(Return::from_exec4(ret, new_addr))
 }
 
+fn resolve_caller(rt: &mut impl Runtime) -> Result<EthAddress, ActorError> {
+    let caller_id = rt.message().caller().id().unwrap();
+    Ok(match rt.lookup_address(caller_id).map(|a| *a.payload()) {
+        Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => EthAddress(
+            addr.subaddress()
+                .try_into()
+                .context_code(ExitCode::USR_FORBIDDEN, "caller's eth address isn't valid")?,
+        ),
+        _ => {
+            let mut bytes = [0u8; 20];
+            bytes[0] = 0xff;
+            bytes[12..].copy_from_slice(&caller_id.to_be_bytes());
+            EthAddress(bytes)
+        }
+    })
+}
+
 pub struct EamActor;
 impl EamActor {
     pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
@@ -162,12 +181,7 @@ impl EamActor {
         // This allows _any_ actor to behave like an Ethereum account, so we'd prefer to keep it
         // open.
         rt.validate_immediate_caller_accept_any()?;
-
-        let caller_id = rt.message().caller().id().unwrap();
-        let caller_addr = match rt.lookup_address(caller_id).unwrap().payload() {
-            Payload::Delegated(addr) => EthAddress(addr.subaddress().try_into().unwrap()),
-            _ => unreachable!(),
-        };
+        let caller_addr = resolve_caller(rt)?;
 
         // CREATE logic
         let rlp = RlpCreateAddress { address: caller_addr, nonce: params.nonce };
@@ -190,18 +204,7 @@ impl EamActor {
         let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);
 
         // Try to lookup the caller's EVM address, but otherwise derive one from the ID address.
-        let caller_id = rt.message().caller().id().unwrap();
-        let caller_addr = match rt.lookup_address(caller_id).map(|a| *a.payload()) {
-            Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => {
-                EthAddress(addr.subaddress().try_into().expect("eth address has an invalid size"))
-            }
-            _ => {
-                let mut bytes = [0u8; 20];
-                bytes[0] = 0xff;
-                bytes[12..].copy_from_slice(&caller_id.to_be_bytes());
-                EthAddress(bytes)
-            }
-        };
+        let caller_addr = resolve_caller(rt)?;
 
         let eth_addr = EthAddress(hash_20(
             rt,
