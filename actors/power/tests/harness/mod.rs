@@ -222,9 +222,7 @@ impl Harness {
 
     pub fn get_claim(&self, rt: &MockRuntime, miner: &Address) -> Option<Claim> {
         let st: State = rt.get_state();
-        let claims =
-            make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).unwrap();
-        claims.get(&miner.to_bytes()).unwrap().cloned()
+        st.get_claim(rt.store(), miner).unwrap()
     }
 
     pub fn delete_claim(&mut self, rt: &mut MockRuntime, miner: &Address) {

@@ -23,6 +23,7 @@ use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use itertools::Itertools;
 use log::{error, info, warn};
 use multihash::Code::Blake2b256;
 use num_derive::FromPrimitive;
@@ -123,9 +124,14 @@ pub enum Method {
     ChangeBeneficiary = 30,
     GetBeneficiary = 31,
     ExtendSectorExpiration2 = 32,
-    // Method numbers derived from FRC-XXXX standards
+    // Method numbers derived from FRC-0042 standards
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
+    GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
+    IsControllingAddressExported = frc42_dispatch::method_hash!("IsControllingAddress"),
+    GetSectorSizeExported = frc42_dispatch::method_hash!("GetSectorSize"),
+    GetAvailableBalanceExported = frc42_dispatch::method_hash!("GetAvailableBalance"),
+    GetVestingFundsExported = frc42_dispatch::method_hash!("GetVestingFunds"),
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -205,6 +211,7 @@ impl Actor {
         Ok(())
     }
 
+    /// Returns the "controlling" addresses: the owner, the worker, and all control addresses
     fn control_addresses(rt: &mut impl Runtime) -> Result<GetControlAddressesReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
@@ -214,6 +221,71 @@ impl Actor {
             worker: info.worker,
             control_addresses: info.control_addresses,
         })
+    }
+
+    /// Returns the owner address
+    fn get_owner(rt: &mut impl Runtime) -> Result<GetOwnerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let owner = get_miner_info(rt.store(), &state)?.owner;
+        Ok(GetOwnerReturn { owner })
+    }
+
+    /// Returns whether the provided address is "controlling".
+    /// The "controlling" addresses are the Owner, the Worker, and all Control Addresses.
+    fn is_controlling_address(
+        rt: &mut impl Runtime,
+        params: IsControllingAddressParam,
+    ) -> Result<IsControllingAddressReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let input = match rt.resolve_address(&params.address) {
+            Some(a) => Address::new_id(a),
+            None => return Ok(IsControllingAddressReturn { is_controlling: false }),
+        };
+        let state: State = rt.state()?;
+        let info = get_miner_info(rt.store(), &state)?;
+        let is_controlling = info
+            .control_addresses
+            .iter()
+            .chain(&[info.worker, info.owner])
+            .into_iter()
+            .any(|a| *a == input);
+
+        Ok(IsControllingAddressReturn { is_controlling })
+    }
+
+    /// Returns the miner's sector size
+    fn get_sector_size(rt: &mut impl Runtime) -> Result<GetSectorSizeReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let sector_size = get_miner_info(rt.store(), &state)?.sector_size;
+        Ok(GetSectorSizeReturn { sector_size })
+    }
+
+    /// Returns the available balance of this miner.
+    /// This is calculated as actor balance - (vesting funds + pre-commit deposit + ip requirement + fee debt)
+    /// Can go negative if the miner is in IP debt.
+    fn get_available_balance(
+        rt: &mut impl Runtime,
+    ) -> Result<GetAvailableBalanceReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let available_balance =
+            state.get_available_balance(&rt.current_balance()).map_err(|e| {
+                actor_error!(illegal_state, "failed to calculate available balance: {}", e)
+            })?;
+        Ok(GetAvailableBalanceReturn { available_balance })
+    }
+
+    /// Returns the funds vesting in this miner as a list of (vesting_epoch, vesting_amount) tuples.
+    fn get_vesting_funds(rt: &mut impl Runtime) -> Result<GetVestingFundsReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let vesting_funds = state
+            .load_vesting_funds(rt.store())
+            .map_err(|e| actor_error!(illegal_state, "failed to load vesting funds: {}", e))?;
+        let ret = vesting_funds.funds.into_iter().map(|v| (v.epoch, v.amount)).collect_vec();
+        Ok(GetVestingFundsReturn { vesting_funds: ret })
     }
 
     /// Will ALWAYS overwrite the existing control addresses with the control addresses passed in the params.
@@ -5000,6 +5072,26 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
+            Some(Method::GetOwnerExported) => {
+                let res = Self::get_owner(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::IsControllingAddressExported) => {
+                let res = Self::is_controlling_address(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetSectorSizeExported) => {
+                let res = Self::get_sector_size(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetAvailableBalanceExported) => {
+                let res = Self::get_available_balance(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetVestingFundsExported) => {
+                let res = Self::get_vesting_funds(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
         }
     }
 }
