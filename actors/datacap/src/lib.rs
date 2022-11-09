@@ -46,7 +46,7 @@ lazy_static! {
 
 /// Datacap actor methods available
 /// Some methods are available under 2 method nums -- a static number for "private" builtin actor usage,
-/// and via FRC-XXXX calling convention, with number determined by method name.
+/// and via FRC-0042 calling convention, with number determined by method name.
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
@@ -67,7 +67,7 @@ pub enum Method {
     Burn = 19,
     BurnFrom = 20,
     Allowance = 21,
-    // Method numbers derived from FRC-XXXX standards
+    // Method numbers derived from FRC-0042 standards
     NameExported = frc42_dispatch::method_hash!("Name"),
     SymbolExported = frc42_dispatch::method_hash!("Symbol"),
     TotalSupplyExported = frc42_dispatch::method_hash!("TotalSupply"),
