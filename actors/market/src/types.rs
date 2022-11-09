@@ -179,10 +179,11 @@ pub struct GetDealTermReturn {
     pub duration: ChainEpoch, // Duration of the deal.
 }
 
-pub type GetDealEpochPriceParams = DealQueryParams;
+pub type GetDealTotalPriceParams = DealQueryParams;
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct GetDealEpochPriceReturn {
-    pub price_per_epoch: TokenAmount,
+#[serde(transparent)]
+pub struct GetDealTotalPriceReturn {
+    pub total_price: TokenAmount,
 }
 
 pub type GetDealClientCollateralParams = DealQueryParams;
