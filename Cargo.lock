@@ -700,7 +700,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_runtime_common"
-version = "9.0.0"
+version = "9.0.3"
 dependencies = [
  "anyhow",
  "base64",
