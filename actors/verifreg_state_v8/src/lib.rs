@@ -45,10 +45,9 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Registry Actor
-    pub fn constructor<BS, RT>(rt: &mut RT, root_key: Address) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &mut RT, root_key: Address) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
@@ -65,10 +64,9 @@ impl Actor {
         Ok(())
     }
 
-    pub fn add_verifier<BS, RT>(rt: &mut RT, params: AddVerifierParams) -> Result<(), ActorError>
+    pub fn add_verifier<RT>(rt: &mut RT, params: AddVerifierParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         if params.allowance < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
@@ -133,10 +131,9 @@ impl Actor {
         Ok(())
     }
 
-    pub fn remove_verifier<BS, RT>(rt: &mut RT, verifier_addr: Address) -> Result<(), ActorError>
+    pub fn remove_verifier<RT>(rt: &mut RT, verifier_addr: Address) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let verifier = Address::new_id(resolve_to_actor_id(rt, &verifier_addr)?);
 
@@ -170,13 +167,12 @@ impl Actor {
         Ok(())
     }
 
-    pub fn add_verified_client<BS, RT>(
+    pub fn add_verified_client<RT>(
         rt: &mut RT,
         params: AddVerifierClientParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // The caller will be verified by checking table below
         rt.validate_immediate_caller_accept_any()?;
@@ -299,10 +295,9 @@ impl Actor {
     /// Called by StorageMarketActor during PublishStorageDeals.
     /// Do not allow partially verified deals (DealSize must be greater than equal to allowed cap).
     /// Delete VerifiedClient if remaining DataCap is smaller than minimum VerifiedDealSize.
-    pub fn use_bytes<BS, RT>(rt: &mut RT, params: UseBytesParams) -> Result<(), ActorError>
+    pub fn use_bytes<RT>(rt: &mut RT, params: UseBytesParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_MARKET_ACTOR_ADDR))?;
 
@@ -395,10 +390,9 @@ impl Actor {
 
     /// Called by HandleInitTimeoutDeals from StorageMarketActor when a VerifiedDeal fails to init.
     /// Restore allowable cap for the client, creating new entry if the client has been deleted.
-    pub fn restore_bytes<BS, RT>(rt: &mut RT, params: RestoreBytesParams) -> Result<(), ActorError>
+    pub fn restore_bytes<RT>(rt: &mut RT, params: RestoreBytesParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_MARKET_ACTOR_ADDR))?;
         if params.deal_size < rt.policy().minimum_verified_allocation_size {
@@ -477,13 +471,12 @@ impl Actor {
     }
 
     /// Removes DataCap allocated to a verified client.
-    pub fn remove_verified_client_data_cap<BS, RT>(
+    pub fn remove_verified_client_data_cap<RT>(
         rt: &mut RT,
         params: RemoveDataCapParams,
     ) -> Result<RemoveDataCapReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let client = Address::new_id(resolve_to_actor_id(rt, &params.verified_client_to_remove)?);
 
@@ -628,10 +621,9 @@ impl Actor {
     }
 }
 
-fn is_verifier<BS, RT>(rt: &RT, st: &State, address: Address) -> Result<bool, ActorError>
+fn is_verifier<RT>(rt: &RT, st: &State, address: Address) -> Result<bool, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let verifiers = make_map_with_root_and_bitwidth::<_, BigIntDe>(
         &st.verifiers,
@@ -688,7 +680,7 @@ where
     Ok(curr_id)
 }
 
-fn remove_data_cap_request_is_valid<BS, RT>(
+fn remove_data_cap_request_is_valid<RT>(
     rt: &RT,
     request: &RemoveDataCapRequest,
     id: RemoveDataCapProposalID,
@@ -696,8 +688,7 @@ fn remove_data_cap_request_is_valid<BS, RT>(
     client: Address,
 ) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let proposal = RemoveDataCapProposal {
         removal_proposal_id: id,
@@ -719,14 +710,13 @@ where
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {

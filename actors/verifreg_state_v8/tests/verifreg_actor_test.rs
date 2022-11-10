@@ -79,7 +79,7 @@ mod verifiers {
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
 
-    use fil_actor_verifreg_state_v8::{Actor as VerifregActor, AddVerifierParams, Method};
+    use fil_actor_verifreg_state_v8::{Actor as VerifregActor, AddVerifierParams, DataCap, Method};
     use fil_actors_runtime_common::test_utils::*;
 
     use crate::*;
@@ -106,11 +106,14 @@ mod verifiers {
     #[test]
     fn add_verifier_enforces_min_size() {
         let (h, mut rt) = new_harness();
-        let allowance = rt.policy.minimum_verified_allocation_size.clone() - 1;
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_verifier(&mut rt, &VERIFIER, &allowance),
+        let allowance: DataCap = rt.policy.minimum_verified_allocation_size.clone() - 1;
+
+        let params = AddVerifierParams { address: *VERIFIER, allowance };
+        let result = rt.call::<VerifregActor>(
+            Method::AddVerifier as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
         );
+        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
         h.check_state(&rt);
     }
 
@@ -149,10 +152,14 @@ mod verifiers {
             RawBytes::default(),
             ExitCode::OK,
         );
-        expect_abort(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_verifier(&mut rt, &verifier_key_address, &allowance),
+
+        let params = AddVerifierParams { address: verifier_key_address, allowance };
+        let result = rt.call::<VerifregActor>(
+            Method::AddVerifier as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
         );
+
+        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
         h.check_state(&rt);
     }
 
