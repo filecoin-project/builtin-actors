@@ -49,10 +49,9 @@ pub enum Method {
 pub struct Actor;
 impl Actor {
     /// Constructor for Multisig actor
-    pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
@@ -122,10 +121,9 @@ impl Actor {
     }
 
     /// Multisig actor propose function
-    pub fn propose<BS, RT>(rt: &mut RT, params: ProposeParams) -> Result<ProposeReturn, ActorError>
+    pub fn propose<RT>(rt: &mut RT, params: ProposeParams) -> Result<ProposeReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let proposer: Address = rt.message().caller();
@@ -176,10 +174,9 @@ impl Actor {
     }
 
     /// Multisig actor approve function
-    pub fn approve<BS, RT>(rt: &mut RT, params: TxnIDParams) -> Result<ApproveReturn, ActorError>
+    pub fn approve<RT>(rt: &mut RT, params: TxnIDParams) -> Result<ApproveReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let approver: Address = rt.message().caller();
@@ -212,10 +209,9 @@ impl Actor {
     }
 
     /// Multisig actor cancel function
-    pub fn cancel<BS, RT>(rt: &mut RT, params: TxnIDParams) -> Result<(), ActorError>
+    pub fn cancel<RT>(rt: &mut RT, params: TxnIDParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let caller_addr: Address = rt.message().caller();
@@ -261,10 +257,9 @@ impl Actor {
     }
 
     /// Multisig actor function to add signers to multisig
-    pub fn add_signer<BS, RT>(rt: &mut RT, params: AddSignerParams) -> Result<(), ActorError>
+    pub fn add_signer<RT>(rt: &mut RT, params: AddSignerParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
@@ -293,10 +288,9 @@ impl Actor {
     }
 
     /// Multisig actor function to remove signers to multisig
-    pub fn remove_signer<BS, RT>(rt: &mut RT, params: RemoveSignerParams) -> Result<(), ActorError>
+    pub fn remove_signer<RT>(rt: &mut RT, params: RemoveSignerParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
@@ -344,10 +338,9 @@ impl Actor {
     }
 
     /// Multisig actor function to swap signers to multisig
-    pub fn swap_signer<BS, RT>(rt: &mut RT, params: SwapSignerParams) -> Result<(), ActorError>
+    pub fn swap_signer<RT>(rt: &mut RT, params: SwapSignerParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
@@ -377,13 +370,12 @@ impl Actor {
     }
 
     /// Multisig actor function to change number of approvals needed
-    pub fn change_num_approvals_threshold<BS, RT>(
+    pub fn change_num_approvals_threshold<RT>(
         rt: &mut RT,
         params: ChangeNumApprovalsThresholdParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
@@ -403,10 +395,9 @@ impl Actor {
     }
 
     /// Multisig actor function to change number of approvals needed
-    pub fn lock_balance<BS, RT>(rt: &mut RT, params: LockBalanceParams) -> Result<(), ActorError>
+    pub fn lock_balance<RT>(rt: &mut RT, params: LockBalanceParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
@@ -430,14 +421,13 @@ impl Actor {
         Ok(())
     }
 
-    fn approve_transaction<BS, RT>(
+    fn approve_transaction<RT>(
         rt: &mut RT,
         tx_id: TxnID,
         mut txn: Transaction,
     ) -> Result<(bool, RawBytes, ExitCode), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         for previous_approver in &txn.approved {
             if *previous_approver == rt.message().caller() {
@@ -475,28 +465,23 @@ impl Actor {
     }
 
     // Always succeeds, accepting any transfers.
-    pub fn universal_receiver_hook<BS, RT>(
-        rt: &mut RT,
-        _params: &RawBytes,
-    ) -> Result<(), ActorError>
+    pub fn universal_receiver_hook<RT>(rt: &mut RT, _params: &RawBytes) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_accept_any()?;
         Ok(())
     }
 }
 
-fn execute_transaction_if_approved<BS, RT>(
+fn execute_transaction_if_approved<RT>(
     rt: &mut RT,
     st: &State,
     txn_id: TxnID,
     txn: &Transaction,
 ) -> Result<(bool, RawBytes, ExitCode), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let mut out = RawBytes::default();
     let mut code = ExitCode::OK;
@@ -543,7 +528,7 @@ fn get_transaction<'bs, 'm, BS, RT>(
 ) -> Result<&'m Transaction, ActorError>
 where
     BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let txn = ptx
         .get(&txn_id.key())
@@ -584,14 +569,13 @@ pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow:
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
