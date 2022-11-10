@@ -305,6 +305,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_account_state_v9"
+version = "9.0.3"
+dependencies = [
+ "anyhow",
+ "fil_actors_runtime_common",
+ "frc42_dispatch",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_cron"
 version = "10.0.0-alpha.1"
 dependencies = [
