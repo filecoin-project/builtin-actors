@@ -1001,12 +1001,6 @@ mod actor_settle {
         state = rt.get_state();
         rt.epoch = state.settling_at + 40;
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.clone().signature.unwrap(),
-            signer: Address::new_id(PAYEE_ID),
-            plaintext: sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
         expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
@@ -1096,14 +1090,17 @@ mod actor_collect {
 
             // "wait" for SettlingAt epoch
             rt.epoch = state.settling_at + 1;
-            rt.expect_send(
-                state.to,
-                METHOD_SEND,
-                Default::default(),
-                state.to_send.clone(),
-                Default::default(),
-                tc.exp_send_to,
-            );
+
+            if !tc.dont_settle {
+                rt.expect_send(
+                    state.to,
+                    METHOD_SEND,
+                    Default::default(),
+                    state.to_send.clone(),
+                    Default::default(),
+                    tc.exp_send_to,
+                );
+            }
 
             // Collect.
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
