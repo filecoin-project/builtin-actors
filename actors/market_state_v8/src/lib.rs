@@ -50,13 +50,12 @@ mod types;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime_common::wasm_trampoline!(Actor);
 
-fn request_miner_control_addrs<BS, RT>(
+fn request_miner_control_addrs<RT>(
     rt: &mut RT,
     miner_addr: ActorID,
 ) -> Result<(Address, Address, Vec<Address>), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let ret = rt.send(
         &Address::new_id(miner_addr),
@@ -90,10 +89,9 @@ pub enum Method {
 pub struct Actor;
 
 impl Actor {
-    pub fn constructor<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &mut RT) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
@@ -105,10 +103,9 @@ impl Actor {
     }
 
     /// Deposits the received value into the balance held in escrow.
-    fn add_balance<BS, RT>(rt: &mut RT, provider_or_client: Address) -> Result<(), ActorError>
+    fn add_balance<RT>(rt: &mut RT, provider_or_client: Address) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let msg_value = rt.message().value_received();
 
@@ -153,13 +150,12 @@ impl Actor {
 
     /// Attempt to withdraw the specified amount from the balance held in escrow.
     /// If less than the specified amount is available, yields the entire available balance.
-    fn withdraw_balance<BS, RT>(
+    fn withdraw_balance<RT>(
         rt: &mut RT,
         params: WithdrawBalanceParams,
     ) -> Result<WithdrawBalanceReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         if params.amount < TokenAmount::zero() {
             return Err(actor_error!(illegal_argument, "negative amount: {}", params.amount));
@@ -211,13 +207,12 @@ impl Actor {
     }
 
     /// Publish a new set of storage deals (not yet included in a sector).
-    fn publish_storage_deals<BS, RT>(
+    fn publish_storage_deals<RT>(
         rt: &mut RT,
         params: PublishStorageDealsParams,
     ) -> Result<PublishStorageDealsReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // Deal message must have a From field identical to the provider of all the deals.
         // This allows us to retain and verify only the client's signature in each deal proposal itself.
@@ -470,13 +465,12 @@ impl Actor {
     /// and return DealWeight of the set of storage deals given.
     /// The weight is defined as the sum, over all deals in the set, of the product of deal size
     /// and duration.
-    fn verify_deals_for_activation<BS, RT>(
+    fn verify_deals_for_activation<RT>(
         rt: &mut RT,
         params: VerifyDealsForActivationParams,
     ) -> Result<VerifyDealsForActivationReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
@@ -510,10 +504,9 @@ impl Actor {
 
     /// Verify that a given set of storage deals is valid for a sector currently being ProveCommitted,
     /// update the market's internal state accordingly.
-    fn activate_deals<BS, RT>(rt: &mut RT, params: ActivateDealsParams) -> Result<(), ActorError>
+    fn activate_deals<RT>(rt: &mut RT, params: ActivateDealsParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
@@ -626,13 +619,12 @@ impl Actor {
     /// Terminate a set of deals in response to their containing sector being terminated.
     /// Slash provider collateral, refund client collateral, and refund partial unpaid escrow
     /// amount to client.
-    fn on_miner_sectors_terminate<BS, RT>(
+    fn on_miner_sectors_terminate<RT>(
         rt: &mut RT,
         params: OnMinerSectorsTerminateParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
@@ -712,13 +704,12 @@ impl Actor {
         Ok(())
     }
 
-    fn compute_data_commitment<BS, RT>(
+    fn compute_data_commitment<RT>(
         rt: &mut RT,
         params: ComputeDataCommitmentParams,
     ) -> Result<ComputeDataCommitmentReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
@@ -757,10 +748,9 @@ impl Actor {
         Ok(ComputeDataCommitmentReturn { commds })
     }
 
-    fn cron_tick<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
+    fn cron_tick<RT>(rt: &mut RT) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
@@ -1169,15 +1159,14 @@ fn validate_deal_can_activate(
     Ok(())
 }
 
-fn validate_deal<BS, RT>(
+fn validate_deal<RT>(
     rt: &RT,
     deal: &ClientDealProposal,
     network_raw_power: &StoragePower,
     baseline_power: &StoragePower,
 ) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     deal_proposal_is_internally_valid(rt, deal)?;
 
@@ -1247,13 +1236,12 @@ where
     Ok(())
 }
 
-fn deal_proposal_is_internally_valid<BS, RT>(
+fn deal_proposal_is_internally_valid<RT>(
     rt: &RT,
     proposal: &ClientDealProposal,
 ) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     // Generate unsigned bytes
     let sv_bz = serialize_vec(&proposal.proposal, "deal proposal")?;
@@ -1266,13 +1254,12 @@ where
 
 /// Resolves a provider or client address to the canonical form against which a balance should be held, and
 /// the designated recipient address of withdrawals (which is the same, for simple account parties).
-fn escrow_address<BS, RT>(
+fn escrow_address<RT>(
     rt: &mut RT,
     addr: &Address,
 ) -> Result<(Address, Address, Vec<Address>), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     // Resolve the provided address to the canonical form against which the balance is held.
     let nominal = rt
@@ -1295,10 +1282,9 @@ where
 }
 
 /// Requests the current epoch target block reward from the reward actor.
-fn request_current_baseline_power<BS, RT>(rt: &mut RT) -> Result<StoragePower, ActorError>
+fn request_current_baseline_power<RT>(rt: &mut RT) -> Result<StoragePower, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let rwret = rt.send(
         &REWARD_ACTOR_ADDR,
@@ -1312,12 +1298,11 @@ where
 
 /// Requests the current network total power and pledge from the power actor.
 /// Returns a tuple of (raw_power, qa_power).
-fn request_current_network_power<BS, RT>(
+fn request_current_network_power<RT>(
     rt: &mut RT,
 ) -> Result<(StoragePower, StoragePower), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let rwret = rt.send(
         &STORAGE_POWER_ACTOR_ADDR,
@@ -1330,14 +1315,13 @@ where
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
