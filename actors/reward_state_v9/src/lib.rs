@@ -6,7 +6,6 @@ use fil_actors_runtime_common::{
     actor_error, cbor, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
@@ -53,13 +52,12 @@ pub enum Method {
 pub struct Actor;
 impl Actor {
     /// Constructor for Reward actor
-    fn constructor<BS, RT>(
+    fn constructor<RT>(
         rt: &mut RT,
         curr_realized_power: Option<StoragePower>,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
@@ -81,13 +79,9 @@ impl Actor {
     ///
     /// The reward is reduced before the residual is credited to the block producer, by:
     /// - a penalty amount, provided as a parameter, which is burnt,
-    fn award_block_reward<BS, RT>(
-        rt: &mut RT,
-        params: AwardBlockRewardParams,
-    ) -> Result<(), ActorError>
+    fn award_block_reward<RT>(rt: &mut RT, params: AwardBlockRewardParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         let prior_balance = rt.current_balance();
@@ -185,10 +179,9 @@ impl Actor {
     /// The award value used for the current epoch, updated at the end of an epoch
     /// through cron tick.  In the case previous epochs were null blocks this
     /// is the reward value as calculated at the last non-null epoch.
-    fn this_epoch_reward<BS, RT>(rt: &mut RT) -> Result<ThisEpochRewardReturn, ActorError>
+    fn this_epoch_reward<RT>(rt: &mut RT) -> Result<ThisEpochRewardReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
@@ -201,13 +194,12 @@ impl Actor {
     /// Called at the end of each epoch by the power actor (in turn by its cron hook).
     /// This is only invoked for non-empty tipsets, but catches up any number of null
     /// epochs to compute the next epoch reward.
-    fn update_network_kpi<BS, RT>(
+    fn update_network_kpi<RT>(
         rt: &mut RT,
         curr_realized_power: Option<StoragePower>,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
         let curr_realized_power = curr_realized_power
@@ -231,14 +223,13 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {

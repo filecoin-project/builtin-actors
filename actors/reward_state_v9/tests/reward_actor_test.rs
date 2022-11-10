@@ -90,19 +90,17 @@ mod test_award_block_reward {
 
         rt.set_balance(TokenAmount::from_atto(9));
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-        assert_eq!(
-            ExitCode::USR_ILLEGAL_STATE,
-            award_block_reward(
-                &mut rt,
-                *WINNER,
-                TokenAmount::zero(),
-                TokenAmount::from_atto(10),
-                1,
-                TokenAmount::zero()
-            )
-            .unwrap_err()
-            .exit_code()
-        );
+        let params = AwardBlockRewardParams {
+            miner: *WINNER,
+            penalty: TokenAmount::zero(),
+            gas_reward: TokenAmount::from_atto(10),
+            win_count: 1,
+        };
+
+        let serialized_params = RawBytes::serialize(params).unwrap();
+        let result = rt.call::<RewardActor>(Method::AwardBlockReward as u64, &serialized_params);
+
+        expect_abort(ExitCode::USR_ILLEGAL_STATE, result);
     }
 
     #[test]
