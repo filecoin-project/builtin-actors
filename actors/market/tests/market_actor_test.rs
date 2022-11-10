@@ -32,7 +32,9 @@ use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use std::ops::Add;
 
-use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
+use fil_actor_market::ext::account::{
+    AuthenticateMessageParams, AUTHENTICATE_MESSAGE_EXPORTED_METHOD,
+};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use num_traits::{FromPrimitive, Zero};
 
@@ -871,7 +873,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
 
     rt.expect_send(
         deal.client,
-        AUTHENTICATE_MESSAGE_METHOD,
+        AUTHENTICATE_MESSAGE_EXPORTED_METHOD,
         auth_param,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -1415,7 +1417,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
 
     rt.expect_send(
         d2.client,
-        AUTHENTICATE_MESSAGE_METHOD,
+        AUTHENTICATE_MESSAGE_EXPORTED_METHOD,
         auth_param,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -1819,7 +1821,7 @@ fn insufficient_client_balance_in_a_batch() {
 
     rt.expect_send(
         deal1.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_EXPORTED_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -1827,7 +1829,7 @@ fn insufficient_client_balance_in_a_batch() {
     );
     rt.expect_send(
         deal2.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_EXPORTED_METHOD as u64,
         authenticate_param2,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -1936,7 +1938,7 @@ fn insufficient_provider_balance_in_a_batch() {
 
     rt.expect_send(
         deal1.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_EXPORTED_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -1944,7 +1946,7 @@ fn insufficient_provider_balance_in_a_batch() {
     );
     rt.expect_send(
         deal2.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_EXPORTED_METHOD as u64,
         authenticate_param2,
         TokenAmount::zero(),
         RawBytes::default(),

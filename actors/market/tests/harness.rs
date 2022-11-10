@@ -7,7 +7,9 @@ use regex::Regex;
 use std::cmp::min;
 use std::{cell::RefCell, collections::HashMap};
 
-use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
+use fil_actor_market::ext::account::{
+    AuthenticateMessageParams, AUTHENTICATE_MESSAGE_EXPORTED_METHOD,
+};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
     deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, gen_rand_next_epoch,
@@ -477,7 +479,7 @@ pub fn publish_deals(
         .unwrap();
         rt.expect_send(
             deal.client,
-            ext::account::AUTHENTICATE_MESSAGE_METHOD as u64,
+            ext::account::AUTHENTICATE_MESSAGE_EXPORTED_METHOD as u64,
             param,
             TokenAmount::zero(),
             RawBytes::default(),
@@ -585,7 +587,7 @@ pub fn publish_deals_expect_abort(
 
     rt.expect_send(
         proposal.client,
-        AUTHENTICATE_MESSAGE_METHOD,
+        AUTHENTICATE_MESSAGE_EXPORTED_METHOD,
         auth_param,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -762,7 +764,7 @@ where
 
     rt.expect_send(
         deal_proposal.client,
-        AUTHENTICATE_MESSAGE_METHOD,
+        AUTHENTICATE_MESSAGE_EXPORTED_METHOD,
         auth_param,
         TokenAmount::zero(),
         RawBytes::default(),
