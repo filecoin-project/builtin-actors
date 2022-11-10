@@ -15,5 +15,6 @@ members = [
   "actors/market",
   "actors/miner",
   "actors/datacap",
+  "actors/account_state_v8",
 ]
 resolver = "2"

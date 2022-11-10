@@ -292,6 +292,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_account_state_v8"
+version = "8.0.0"
+dependencies = [
+ "fil_actors_runtime_common",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_cron"
 version = "10.0.0-alpha.1"
 dependencies = [
@@ -764,9 +777,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "2.0.0-alpha.4"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6c411761095958091282ca45aa1c3febc044ad25603609617abc2fd8cc44efa"
+checksum = "ff7d1de62b7b74909d6e4816de83c4e6b46017bba9a31bb0de82b6b26b11cf74"
 dependencies = [
  "anyhow",
  "blake2b_simd",
