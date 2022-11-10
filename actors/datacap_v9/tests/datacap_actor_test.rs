@@ -87,6 +87,7 @@ mod mint {
             "must be a multiple of 1000000000000000000",
             h.mint(&mut rt, &*ALICE, &amt, vec![]),
         );
+        rt.reset();
         h.check_state(&rt);
     }
 }
