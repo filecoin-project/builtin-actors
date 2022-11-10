@@ -35,5 +35,6 @@ members = [
   "actors/power_state_v9",
   "actors/system_state_v9",
   "actors/verifreg_state_v9",
+  "actors/market_state_v8",
 ]
 resolver = "2"
