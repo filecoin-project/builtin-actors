@@ -132,13 +132,9 @@ pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
 pub struct Actor;
 
 impl Actor {
-    pub fn constructor<BS, RT>(
-        rt: &mut RT,
-        params: MinerConstructorParams,
-    ) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &mut RT, params: MinerConstructorParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
@@ -206,10 +202,9 @@ impl Actor {
         Ok(())
     }
 
-    fn control_addresses<BS, RT>(rt: &mut RT) -> Result<GetControlAddressesReturn, ActorError>
+    fn control_addresses<RT>(rt: &mut RT) -> Result<GetControlAddressesReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
@@ -224,13 +219,12 @@ impl Actor {
     /// Will ALWAYS overwrite the existing control addresses with the control addresses passed in the params.
     /// If an empty addresses vector is passed, the control addresses will be cleared.
     /// A worker change will be scheduled if the worker passed in the params is different from the existing worker.
-    fn change_worker_address<BS, RT>(
+    fn change_worker_address<RT>(
         rt: &mut RT,
         params: ChangeWorkerAddressParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         check_control_addresses(rt.policy(), &params.new_control_addresses)?;
 
@@ -269,10 +263,9 @@ impl Actor {
     }
 
     /// Triggers a worker address change if a change has been requested and its effective epoch has arrived.
-    fn confirm_update_worker_key<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
+    fn confirm_update_worker_key<RT>(rt: &mut RT) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.transaction(|state: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), state)?;
@@ -290,10 +283,9 @@ impl Actor {
     /// current owner address, revokes any existing proposal.
     /// If invoked by the previously proposed address, with the same proposal, changes the current owner address to be
     /// that proposed address.
-    fn change_owner_address<BS, RT>(rt: &mut RT, new_address: Address) -> Result<(), ActorError>
+    fn change_owner_address<RT>(rt: &mut RT, new_address: Address) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // * Cannot match go checking for undef address, does go impl allow this to be
         // * deserialized over the wire? If so, a workaround will be needed
@@ -346,10 +338,9 @@ impl Actor {
         })
     }
 
-    fn change_peer_id<BS, RT>(rt: &mut RT, params: ChangePeerIDParams) -> Result<(), ActorError>
+    fn change_peer_id<RT>(rt: &mut RT, params: ChangePeerIDParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let policy = rt.policy();
         check_peer_info(policy, &params.new_id, &[])?;
@@ -371,13 +362,12 @@ impl Actor {
         Ok(())
     }
 
-    fn change_multiaddresses<BS, RT>(
+    fn change_multiaddresses<RT>(
         rt: &mut RT,
         params: ChangeMultiaddrsParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let policy = rt.policy();
         check_peer_info(policy, &[], &params.new_multi_addrs)?;
@@ -400,13 +390,12 @@ impl Actor {
     }
 
     /// Invoked by miner's worker address to submit their fallback post
-    fn submit_windowed_post<BS, RT>(
+    fn submit_windowed_post<RT>(
         rt: &mut RT,
         mut params: SubmitWindowedPoStParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let current_epoch = rt.curr_epoch();
 
@@ -676,13 +665,12 @@ impl Actor {
     /// Checks state of the corresponding sector pre-commitments and verifies aggregate proof of replication
     /// of these sectors. If valid, the sectors' deals are activated, sectors are assigned a deadline and charged pledge
     /// and precommit state is removed.
-    fn prove_commit_aggregate<BS, RT>(
+    fn prove_commit_aggregate<RT>(
         rt: &mut RT,
         params: ProveCommitAggregateParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let sector_numbers = params.sector_numbers.validate().map_err(|e| {
             actor_error!(illegal_state, "Failed to validate bitfield for aggregated sectors: {}", e)
@@ -857,15 +845,15 @@ impl Actor {
         Ok(())
     }
 
-    fn prove_replica_updates<BS, RT>(
+    fn prove_replica_updates<RT>(
         rt: &mut RT,
         params: ProveReplicaUpdatesParams,
     ) -> Result<BitField, ActorError>
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
         // https://github.com/filecoin-project/builtin-actors/issues/133
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT::Blockstore: Clone,
+        RT: Runtime,
     {
         // In this entry point, the unsealed CID is computed from deals via the market actor.
         // A future entry point will take the unsealed CID as parameter
@@ -886,15 +874,15 @@ impl Actor {
         Self::prove_replica_updates_inner(rt, updates)
     }
 
-    fn prove_replica_updates2<BS, RT>(
+    fn prove_replica_updates2<RT>(
         rt: &mut RT,
         params: ProveReplicaUpdatesParams2,
     ) -> Result<BitField, ActorError>
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
         // https://github.com/filecoin-project/builtin-actors/issues/133
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT::Blockstore: Clone,
+        RT: Runtime,
     {
         let updates = params
             .updates
@@ -912,15 +900,15 @@ impl Actor {
             .collect();
         Self::prove_replica_updates_inner(rt, updates)
     }
-    fn prove_replica_updates_inner<BS, RT>(
+    fn prove_replica_updates_inner<RT>(
         rt: &mut RT,
         updates: Vec<ReplicaUpdateInner>,
     ) -> Result<BitField, ActorError>
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
         // https://github.com/filecoin-project/builtin-actors/issues/133
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT::Blockstore: Clone,
+        RT: Runtime,
     {
         // Validate inputs
 
@@ -1376,13 +1364,12 @@ impl Actor {
         Ok(succeeded_sectors)
     }
 
-    fn dispute_windowed_post<BS, RT>(
+    fn dispute_windowed_post<RT>(
         rt: &mut RT,
         params: DisputeWindowedPoStParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
         let reporter = rt.message().caller();
@@ -1592,13 +1579,9 @@ impl Actor {
 
     /// Pledges to seal and commit a single sector.
     /// See PreCommitSectorBatch for details.
-    fn pre_commit_sector<BS, RT>(
-        rt: &mut RT,
-        params: PreCommitSectorParams,
-    ) -> Result<(), ActorError>
+    fn pre_commit_sector<RT>(rt: &mut RT, params: PreCommitSectorParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let batch_params = PreCommitSectorBatchParams { sectors: vec![params] };
         Self::pre_commit_sector_batch(rt, batch_params)
@@ -1612,13 +1595,12 @@ impl Actor {
     /// when proven.
     /// This method calculates the sector's power, locks a pre-commit deposit for the sector, stores information about the
     /// sector in state and waits for it to be proven or expire.
-    fn pre_commit_sector_batch<BS, RT>(
+    fn pre_commit_sector_batch<RT>(
         rt: &mut RT,
         params: PreCommitSectorBatchParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let sectors = params
             .sectors
@@ -1653,13 +1635,12 @@ impl Actor {
     /// to the storage market actor.
     /// This method calculates the sector's power, locks a pre-commit deposit for the sector, stores information about the
     /// sector in state and waits for it to be proven or expire.
-    fn pre_commit_sector_batch2<BS, RT>(
+    fn pre_commit_sector_batch2<RT>(
         rt: &mut RT,
         params: PreCommitSectorBatchParams2,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         Self::pre_commit_sector_batch_inner(
             rt,
@@ -1682,13 +1663,12 @@ impl Actor {
 
     /// This function combines old and new flows for PreCommit with use Option<CommpactCommD>
     /// The old PreCommits will call this with None, new ones with Some(CompactCommD).
-    fn pre_commit_sector_batch_inner<BS, RT>(
+    fn pre_commit_sector_batch_inner<RT>(
         rt: &mut RT,
         sectors: Vec<SectorPreCommitInfoInner>,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let curr_epoch = rt.curr_epoch();
         {
@@ -1948,13 +1928,12 @@ impl Actor {
     /// Checks state of the corresponding sector pre-commitment, then schedules the proof to be verified in bulk
     /// by the power actor.
     /// If valid, the power actor will call ConfirmSectorProofsValid at the end of the same epoch as this message.
-    fn prove_commit_sector<BS, RT>(
+    fn prove_commit_sector<RT>(
         rt: &mut RT,
         params: ProveCommitSectorParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_accept_any()?;
 
@@ -2036,13 +2015,12 @@ impl Actor {
         Ok(())
     }
 
-    fn confirm_sector_proofs_valid<BS, RT>(
+    fn confirm_sector_proofs_valid<RT>(
         rt: &mut RT,
         params: ConfirmSectorProofsParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
@@ -2074,13 +2052,12 @@ impl Actor {
         )
     }
 
-    fn check_sector_proven<BS, RT>(
+    fn check_sector_proven<RT>(
         rt: &mut RT,
         params: CheckSectorProvenParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_accept_any()?;
 
@@ -2106,13 +2083,12 @@ impl Actor {
     /// The sector must not be terminated or faulty.
     /// The sector's power is recomputed for the new expiration.
     /// This method is legacy and should be replaced with calls to extend_sector_expiration2
-    fn extend_sector_expiration<BS, RT>(
+    fn extend_sector_expiration<RT>(
         rt: &mut RT,
         params: ExtendSectorExpirationParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let extend_expiration_inner =
             validate_legacy_extension_declarations(&params.extensions, rt.policy())?;
@@ -2126,13 +2102,12 @@ impl Actor {
     // Up to date version of extend_sector_expiration that correctly handles simple qap sectors
     // with FIL+ claims. Extension is only allowed if all claim max terms extend past new expiration
     // or claims are dropped.  Power only changes when claims are dropped.
-    fn extend_sector_expiration2<BS, RT>(
+    fn extend_sector_expiration2<RT>(
         rt: &mut RT,
         params: ExtendSectorExpiration2Params,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let extend_expiration_inner = validate_extension_declarations(rt, params.extensions)?;
         Self::extend_sector_expiration_inner(
@@ -2142,14 +2117,13 @@ impl Actor {
         )
     }
 
-    fn extend_sector_expiration_inner<BS, RT>(
+    fn extend_sector_expiration_inner<RT>(
         rt: &mut RT,
         inner: ExtendExpirationsInner,
         kind: ExtensionKind,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let curr_epoch = rt.curr_epoch();
 
@@ -2368,13 +2342,12 @@ impl Actor {
     ///
     /// This function may be invoked with no new sectors to explicitly process the
     /// next batch of sectors.
-    fn terminate_sectors<BS, RT>(
+    fn terminate_sectors<RT>(
         rt: &mut RT,
         params: TerminateSectorsParams,
     ) -> Result<TerminateSectorsReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // Note: this cannot terminate pre-committed but un-proven sectors.
         // They must be allowed to expire (and deposit burnt).
@@ -2525,10 +2498,9 @@ impl Actor {
         Ok(TerminateSectorsReturn { done: !more })
     }
 
-    fn declare_faults<BS, RT>(rt: &mut RT, params: DeclareFaultsParams) -> Result<(), ActorError>
+    fn declare_faults<RT>(rt: &mut RT, params: DeclareFaultsParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         {
             let policy = rt.policy();
@@ -2665,13 +2637,12 @@ impl Actor {
         Ok(())
     }
 
-    fn declare_faults_recovered<BS, RT>(
+    fn declare_faults_recovered<RT>(
         rt: &mut RT,
         params: DeclareFaultsRecoveredParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         {
             let policy = rt.policy();
@@ -2810,13 +2781,12 @@ impl Actor {
     /// The final partition in the deadline is always included in the compaction, whether or not explicitly requested.
     /// Removed sectors are removed from state entirely.
     /// May not be invoked if the deadline has any un-processed early terminations.
-    fn compact_partitions<BS, RT>(
+    fn compact_partitions<RT>(
         rt: &mut RT,
         params: CompactPartitionsParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         {
             let policy = rt.policy();
@@ -2951,13 +2921,12 @@ impl Actor {
     /// can be called to mask out (throw away) entire ranges of unused sector IDs.
     /// For example, if sectors 1-99 and 101-200 have been allocated, sector number
     /// 99 can be masked out to collapse these two ranges into one.
-    fn compact_sector_numbers<BS, RT>(
+    fn compact_sector_numbers<RT>(
         rt: &mut RT,
         params: CompactSectorNumbersParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let mask_sector_numbers = params
             .mask_sector_numbers
@@ -2995,10 +2964,9 @@ impl Actor {
     }
 
     /// Locks up some amount of a the miner's unlocked balance (including funds received alongside the invoking message).
-    fn apply_rewards<BS, RT>(rt: &mut RT, params: ApplyRewardParams) -> Result<(), ActorError>
+    fn apply_rewards<RT>(rt: &mut RT, params: ApplyRewardParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         if params.reward.is_negative() {
             return Err(actor_error!(
@@ -3076,13 +3044,12 @@ impl Actor {
         Ok(())
     }
 
-    fn report_consensus_fault<BS, RT>(
+    fn report_consensus_fault<RT>(
         rt: &mut RT,
         params: ReportConsensusFaultParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // Note: only the first report of any fault is processed because it sets the
         // ConsensusFaultElapsed state variable to an epoch after the fault, and reports prior to
@@ -3183,13 +3150,12 @@ impl Actor {
         Ok(())
     }
 
-    fn withdraw_balance<BS, RT>(
+    fn withdraw_balance<RT>(
         rt: &mut RT,
         params: WithdrawBalanceParams,
     ) -> Result<WithdrawBalanceReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         if params.amount_requested.is_negative() {
             return Err(actor_error!(
@@ -3289,13 +3255,12 @@ impl Actor {
     /// A proposal must be submitted by the owner, and takes effect after approval of both the proposed beneficiary and current beneficiary,
     /// if applicable, any current beneficiary that has time and quota remaining.
     //// See FIP-0029, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0029.md
-    fn change_beneficiary<BS, RT>(
+    fn change_beneficiary<RT>(
         rt: &mut RT,
         params: ChangeBeneficiaryParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_accept_any()?;
         let caller = rt.message().caller();
@@ -3423,10 +3388,9 @@ impl Actor {
     // GetBeneficiary retrieves the currently active and proposed beneficiary information.
     // This method is for use by other actors (such as those acting as beneficiaries),
     // and to abstract the state representation for clients.
-    fn get_beneficiary<BS, RT>(rt: &mut RT) -> Result<GetBeneficiaryReturn, ActorError>
+    fn get_beneficiary<RT>(rt: &mut RT) -> Result<GetBeneficiaryReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_accept_any()?;
         let info = rt.transaction(|state: &mut State, rt| get_miner_info(rt.store(), state))?;
@@ -3440,10 +3404,9 @@ impl Actor {
         })
     }
 
-    fn repay_debt<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
+    fn repay_debt<RT>(rt: &mut RT) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let (from_vesting, from_balance, state) = rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
@@ -3473,13 +3436,12 @@ impl Actor {
         Ok(())
     }
 
-    fn on_deferred_cron_event<BS, RT>(
+    fn on_deferred_cron_event<RT>(
         rt: &mut RT,
         params: DeferredCronEventParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
@@ -3613,13 +3575,12 @@ fn validate_legacy_extension_declarations(
     Ok(ExtendExpirationsInner { extensions: vec_validated, claims: None })
 }
 
-fn validate_extension_declarations<BS, RT>(
+fn validate_extension_declarations<RT>(
     rt: &mut RT,
     extensions: Vec<ExpirationExtension2>,
 ) -> Result<ExtendExpirationsInner, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let mut claim_space_by_sector = BTreeMap::<SectorNumber, (u64, u64)>::new();
 
@@ -3829,14 +3790,13 @@ fn extend_non_simple_qap_sector(
 // TODO: We're using the current power+epoch reward. Technically, we
 // should use the power/reward at the time of termination.
 // https://github.com/filecoin-project/specs-actors/v6/pull/648
-fn process_early_terminations<BS, RT>(
+fn process_early_terminations<RT>(
     rt: &mut RT,
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result</* more */ bool, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let (result, more, deals_to_terminate, penalty, pledge_delta) =
         rt.transaction(|state: &mut State, rt| {
@@ -3956,14 +3916,13 @@ where
 }
 
 /// Invoked at the end of the last epoch for each proving deadline.
-fn handle_proving_deadline<BS, RT>(
+fn handle_proving_deadline<RT>(
     rt: &mut RT,
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let curr_epoch = rt.curr_epoch();
 
@@ -4152,14 +4111,13 @@ fn validate_expiration(
     Ok(())
 }
 
-fn enroll_cron_event<BS, RT>(
+fn enroll_cron_event<RT>(
     rt: &mut RT,
     event_epoch: ChainEpoch,
     cb: CronEventPayload,
 ) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let payload = serialize(&cb, "cron payload")?;
     let ser_params =
@@ -4174,10 +4132,9 @@ where
     Ok(())
 }
 
-fn request_update_power<BS, RT>(rt: &mut RT, delta: PowerPair) -> Result<(), ActorError>
+fn request_update_power<RT>(rt: &mut RT, delta: PowerPair) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     if delta.is_zero() {
         return Ok(());
@@ -4199,14 +4156,13 @@ where
     Ok(())
 }
 
-fn request_terminate_deals<BS, RT>(
+fn request_terminate_deals<RT>(
     rt: &mut RT,
     epoch: ChainEpoch,
     deal_ids: Vec<DealID>,
 ) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     const MAX_LENGTH: usize = 8192;
 
@@ -4225,10 +4181,9 @@ where
     Ok(())
 }
 
-fn schedule_early_termination_work<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
+fn schedule_early_termination_work<RT>(rt: &mut RT) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     info!("scheduling early terminations with cron...");
     enroll_cron_event(
@@ -4244,15 +4199,14 @@ fn have_pending_early_terminations(state: &State) -> bool {
 }
 
 // returns true if valid, false if invalid, error if failed to validate either way!
-fn verify_windowed_post<BS, RT>(
+fn verify_windowed_post<RT>(
     rt: &RT,
     challenge_epoch: ChainEpoch,
     sectors: &[SectorOnChainInfo],
     proofs: Vec<PoStProof>,
 ) -> Result<bool, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
         *i
@@ -4294,14 +4248,13 @@ where
     Ok(result.is_ok())
 }
 
-fn get_verify_info<BS, RT>(
+fn get_verify_info<RT>(
     rt: &mut RT,
     params: SealVerifyParams,
     unsealed_cid: CompactCommD,
 ) -> Result<SealVerifyInfo, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     if rt.curr_epoch() <= params.interactive_epoch {
         return Err(actor_error!(forbidden, "too early to prove sector"));
@@ -4342,13 +4295,12 @@ where
     })
 }
 
-fn request_deal_data<BS, RT>(
+fn request_deal_data<RT>(
     rt: &mut RT,
     sectors: &[ext::market::SectorDeals],
 ) -> Result<ext::market::VerifyDealsForActivationReturn, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     // Short-circuit if there are no deals in any of the sectors.
     let mut deal_count = 0;
@@ -4373,12 +4325,9 @@ where
 
 /// Requests the current epoch target block reward from the reward actor.
 /// return value includes reward, smoothed estimate of reward, and baseline power
-fn request_current_epoch_block_reward<BS, RT>(
-    rt: &mut RT,
-) -> Result<ThisEpochRewardReturn, ActorError>
+fn request_current_epoch_block_reward<RT>(rt: &mut RT) -> Result<ThisEpochRewardReturn, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let ret = rt
         .send(
@@ -4394,12 +4343,11 @@ where
 }
 
 /// Requests the current network total power and pledge from the power actor.
-fn request_current_total_power<BS, RT>(
+fn request_current_total_power<RT>(
     rt: &mut RT,
 ) -> Result<ext::power::CurrentTotalPowerReturn, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let ret = rt
         .send(
@@ -4415,10 +4363,9 @@ where
 }
 
 /// Resolves an address to an ID address and verifies that it is address of an account or multisig actor.
-fn resolve_control_address<BS, RT>(rt: &RT, raw: Address) -> Result<Address, ActorError>
+fn resolve_control_address<RT>(rt: &RT, raw: Address) -> Result<Address, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let resolved = rt
         .resolve_address(&raw)
@@ -4447,10 +4394,9 @@ where
 
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
 /// The worker must be BLS since the worker key will be used alongside a BLS-VRF.
-fn resolve_worker_address<BS, RT>(rt: &mut RT, raw: Address) -> Result<Address, ActorError>
+fn resolve_worker_address<RT>(rt: &mut RT, raw: Address) -> Result<Address, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let resolved = rt
         .resolve_address(&raw)
@@ -4487,10 +4433,9 @@ where
     Ok(Address::new_id(resolved))
 }
 
-fn burn_funds<BS, RT>(rt: &mut RT, amount: TokenAmount) -> Result<(), ActorError>
+fn burn_funds<RT>(rt: &mut RT, amount: TokenAmount) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     log::debug!("storage provder {} burning {}", rt.message().receiver(), amount);
     if amount.is_positive() {
@@ -4499,10 +4444,9 @@ where
     Ok(())
 }
 
-fn notify_pledge_changed<BS, RT>(rt: &mut RT, pledge_delta: &TokenAmount) -> Result<(), ActorError>
+fn notify_pledge_changed<RT>(rt: &mut RT, pledge_delta: &TokenAmount) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     if !pledge_delta.is_zero() {
         rt.send(
@@ -4515,13 +4459,12 @@ where
     Ok(())
 }
 
-fn get_claims<BS, RT>(
+fn get_claims<RT>(
     rt: &mut RT,
     ids: &Vec<ext::verifreg::ClaimID>,
 ) -> Result<Vec<ext::verifreg::Claim>, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let params = ext::verifreg::GetClaimsParams {
         provider: rt.message().receiver().id().unwrap(),
@@ -4687,14 +4630,13 @@ where
         .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "could not read miner info"))
 }
 
-fn process_pending_worker<BS, RT>(
+fn process_pending_worker<RT>(
     info: &mut MinerInfo,
     rt: &RT,
     state: &mut State,
 ) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let pending_worker_key = if let Some(k) = &info.pending_worker_key {
         k
@@ -4721,10 +4663,9 @@ where
 /// may be slightly lower than the true amount. Computing vesting here would be
 /// almost always redundant since vesting is quantized to ~daily units.  Vesting
 /// will be at most one proving period old if computed in the cron callback.
-fn repay_debts_or_abort<BS, RT>(rt: &RT, state: &mut State) -> Result<TokenAmount, ActorError>
+fn repay_debts_or_abort<RT>(rt: &RT, state: &mut State) -> Result<TokenAmount, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let res = state.repay_debts(&rt.current_balance()).map_err(|e| {
         e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "unlocked balance can not repay fee debt")
@@ -4795,7 +4736,7 @@ fn check_peer_info(
     Ok(())
 }
 
-fn confirm_sector_proofs_valid_internal<BS, RT>(
+fn confirm_sector_proofs_valid_internal<RT>(
     rt: &mut RT,
     pre_commits: Vec<SectorPreCommitOnChainInfo>,
     this_epoch_baseline_power: &BigInt,
@@ -4803,8 +4744,7 @@ fn confirm_sector_proofs_valid_internal<BS, RT>(
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     // get network stats from other actors
     let circulating_supply = rt.total_fil_circ_supply();
@@ -4982,15 +4922,14 @@ where
 // activate deals with builtin market and claim allocations with verified registry actor
 // returns an error in case of a fatal programmer error
 // returns Ok(None) in case deal activation or verified allocation claim fails
-fn activate_deals_and_claim_allocations<RT, BS>(
+fn activate_deals_and_claim_allocations<RT>(
     rt: &mut RT,
     deal_ids: Vec<DealID>,
     sector_expiry: ChainEpoch,
     sector_number: SectorNumber,
 ) -> Result<Option<crate::ext::market::DealSpaces>, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     if deal_ids.is_empty() {
         return Ok(Some(ext::market::DealSpaces::default()));
@@ -5061,14 +5000,14 @@ fn balance_invariants_broken(e: Error) -> ActorError {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
+        RT::Blockstore: Clone,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {

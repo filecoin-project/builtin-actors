@@ -1290,6 +1290,6 @@ fn bad_post_fails_when_verified() {
         "invalid post was submitted",
         result,
     );
-
+    rt.reset();
     h.check_state(&rt);
 }

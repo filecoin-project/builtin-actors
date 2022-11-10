@@ -359,6 +359,7 @@ mod miner_actor_precommit_batch {
             proving_period_offset: period_offset,
         });
         let mut rt = h.new_runtime();
+
         rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 
@@ -433,6 +434,7 @@ mod miner_actor_precommit_batch {
                 "and passed CompactCommD",
                 result,
             );
+            rt.reset();
         }
     }
 }

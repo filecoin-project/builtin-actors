@@ -194,7 +194,7 @@ fn fails_if_deadline_out_of_range() {
         &format!("invalid deadline {w_post_period_deadlines}"),
         result,
     );
-
+    rt.reset();
     h.check_state(&rt);
 }
 

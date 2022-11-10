@@ -26,6 +26,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
 #[test]
 fn invalid_report_rejected() {
     let (h, mut rt) = setup();
+
     rt.set_epoch(1);
 
     let test_addr = Address::new_actor("satoshi".as_bytes());
@@ -33,6 +34,7 @@ fn invalid_report_rejected() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         h.report_consensus_fault(&mut rt, test_addr, None),
     );
+    rt.reset();
     check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
 
@@ -55,6 +57,7 @@ fn mistargeted_report_rejected() {
             }),
         ),
     );
+    rt.reset();
     check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
 
@@ -210,5 +213,6 @@ fn double_report_of_consensus_fault_fails() {
             }),
         ),
     );
+    rt.reset();
     check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }

@@ -123,7 +123,6 @@ mod compact_sector_numbers_test {
     #[test]
     fn sector_number_range_limits() {
         let (h, mut rt) = setup();
-
         // Limits ok
         h.compact_sector_numbers(&mut rt, h.worker, bitfield_from_slice(&[0, MAX_SECTOR_NUMBER]));
 
@@ -136,18 +135,19 @@ mod compact_sector_numbers_test {
                 bitfield_from_slice(&[MAX_SECTOR_NUMBER + 1]),
             ),
         );
+        rt.reset();
         check_state_invariants_from_mock_runtime(&rt);
     }
 
     #[test]
     fn compacting_no_sector_numbers_aborts() {
         let (h, mut rt) = setup();
-
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             // compact nothing
             h.compact_sector_numbers_raw(&mut rt, h.worker, bitfield_from_slice(&[])),
         );
+        rt.reset();
         check_state_invariants_from_mock_runtime(&rt);
     }
 }
