@@ -1,44 +1,54 @@
 SHELL=/usr/bin/env bash
 
+ORDERED_PACKAGES:=fil_actors_runtime \
+                  fil_actor_account \
+                  fil_actor_cron \
+                  fil_actor_init \
+                  fil_actor_market \
+                  fil_actor_miner \
+                  fil_actor_multisig \
+                  fil_actor_paych \
+                  fil_actor_power \
+                  fil_actor_reward \
+                  fil_actor_system \
+                  fil_actor_verifreg \
+                  fil_builtin_actors_state \
+                  fil_builtin_actors_bundle
+
 # How much to "bump" the version by on release.
 BUMP ?= patch
 VERSION ?= $(error VERSION environment variable must be set)
 
-# Run cargo fmt
-rustfmt: deps-build
-	cargo fmt --all --check
-
-# NOTE: Check all targets, then check the build target specifically. Otherwise, it might build for
-# testing but not otherwise due to feature resolution shenanigans.
-
 # Run cargo check
 check: deps-build
-	cargo clippy --all --all-targets -- -D warnings
-	cargo clippy --all -- -D warnings
+	cargo check --workspace --tests --benches --lib --bins --examples
 
 # Ensure we have the build dependencies
 deps-build:
 	rustup target add wasm32-unknown-unknown
-	rustup component add clippy rustfmt
+
+# Print out the current "bundle" version.
+version: deps-release
+	@cargo metadata -q --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "fil_builtin_actors_bundle") | .version'
 
 # Run cargo test
 test: deps-build
 	cargo test --workspace
 
 # Release a new version. Specify the version "bump" with BUMP
-bump-version: check-clean deps-release check
-	cargo set-version --workspace --bump $(BUMP)
+bump-version: check-clean deps-release check test
+	echo "$(ORDERED_PACKAGES)" | xargs -n1 cargo set-version --bump $(BUMP) -p
 	cargo update --workspace
 	@echo "Bumped actors to version $$($(MAKE) --quiet version)"
 
-set-version: check-clean deps-release check
-	cargo set-version --workspace $(VERSION)
+set-version: check-clean deps-release check test
+	echo "$(ORDERED_PACKAGES)" | xargs -n1 cargo set-version $(VERSION) -p
 	cargo update --workspace
 	@echo "Set actors to version $(VERSION)"
 
 # Publish the current version to crates.io
 publish:
-	cargo workspaces publish --from-git
+	for pkg in "$(ORDERED_PACKAGES)"; do cargo publish -p "$$pkg" && sleep 5; done
 
 # Create a bundle in a deterministic location
 bundle: deps-build
@@ -77,12 +87,12 @@ check-clean:
 
 # Check if we have the required deps.
 deps-release:
-	@which cargo-set-version >/dev/null 2>&1 || { \
-		echo "Please install cargo-edit: 'cargo install cargo-edit'."; \
+	@which jq >/dev/null 2>&1 || { \
+		echo "Please install jq"; \
 		exit 1; \
 	}
-	@which cargo-workspaces >/dev/null 2>&1 || { \
-		echo "Please install cargo-workspaces: 'cargo install cargo-workspaces'."; \
+	@which cargo-set-version >/dev/null 2>&1 || { \
+		echo "Please install cargo-edit: 'cargo install cargo-edit'."; \
 		exit 1; \
 	}
 

@@ -1,12 +1,12 @@
 [package]
-name = "fil_actor_system"
+name        = "fil_actor_system"
 description = "Builtin system actor for Filecoin"
-version = "10.0.0-alpha.1"
-license = "MIT OR Apache-2.0"
-authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
-edition = "2018"
-repository = "https://github.com/filecoin-project/builtin-actors"
-keywords = ["filecoin", "web3", "wasm"]
+version     = "10.0.0-alpha.1"
+license     = "MIT OR Apache-2.0"
+authors     = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
+edition     = "2018"
+repository  = "https://github.com/filecoin-project/builtin-actors"
+keywords    = ["filecoin", "web3", "wasm"]
 
 [lib]
 ## lib is necessary for integration tests
@@ -14,15 +14,15 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime" }
-fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
-fvm_ipld_encoding = "0.2.2"
+anyhow              = "1.0.65"
+cid                 = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+fil_actors_runtime  = { version = "10.0.0-alpha.1", path = "../../runtime" }
 fvm_ipld_blockstore = "0.1.1"
-num-traits = "0.2.14"
-anyhow = "1.0.65"
-num-derive = "0.3.3"
-serde = { version = "1.0.136", features = ["derive"] }
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+fvm_ipld_encoding   = "0.2.2"
+fvm_shared          = { version = "2.0.0-alpha.2", default-features = false }
+num-derive          = "0.3.3"
+num-traits          = "0.2.14"
+serde               = { version = "1.0.136", features = ["derive"] }
 
 [dev-dependencies]
 fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime", features = ["test_utils", "sector-default"] }

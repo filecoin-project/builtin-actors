@@ -35,17 +35,28 @@ characteristics:
   entry represents a built-in actor.
 - Manifest keys (CID) point to the Wasm bytecode of an actor as a single block.
 - Manifest values (i32) identify the actor type, to be parsed as the
-  `runtime::builtins::Type` enum.
+  `fvm_shared::actor::builtin::Type` enum:
+    - System = 1
+    - Init = 2
+    - Cron = 3
+    - Account = 4
+    - Power = 5
+    - Miner = 6
+    - Market = 7
+    - PaymentChannel = 8
+    - Multisig = 9
+    - Reward = 10
+    - VerifiedRegistry = 11
 
-Precompiled actor bundles are provided as [release binaries][releases] in this repo. The
-[`fil_builtin_actors_bundle`](https://crates.io/crates/fil_builtin_actors_bundle) crate on
-[crates.io](https://crates.io) will not be updated.
+The CARv1 is embedded as a byte slice at the root of the library, and exported
+under the `BUNDLE_CAR` public const, for easier consumption by Rust code.
 
-[releases]: https://github.com/filecoin-project/builtin-actors/releases
+Precompiled actor bundles may also be provided as release binaries in this repo,
+if requested by implementors.
 
 ## Releasing
 
-We usually release all actors, the runtime, and the state abstraction at the same time. That means releasing:
+We usually release all actors, the runtime, and the bundle at the same time. That means releasing:
 
 - `fil_actors_runtime`
 - `fil_actor_account`
@@ -59,9 +70,9 @@ We usually release all actors, the runtime, and the state abstraction at the sam
 - `fil_actor_reward`
 - `fil_actor_system`
 - `fil_actor_verifreg`
-- `fil_builtin_actors_state`
+- `fil_builtin_actors_bundle`
 
-We do not publish the "bundle" _crate_, but instead build it in CI and publish the bundle itself as a [release][releases].
+(in that order)
 
 To make this easier, we've added some helper scripts to the Makefile. Instructions follow.
 
