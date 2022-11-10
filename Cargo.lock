@@ -553,6 +553,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_reward_state_v8"
+version = "8.0.0"
+dependencies = [
+ "fil_actors_runtime_common",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "lazy_static",
+ "log",
+ "num",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_system"
 version = "10.0.0-alpha.1"
 dependencies = [
