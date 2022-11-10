@@ -67,10 +67,9 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Registry Actor
-    pub fn constructor<BS, RT>(rt: &mut RT, root_key: Address) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &mut RT, root_key: Address) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
@@ -86,10 +85,9 @@ impl Actor {
         Ok(())
     }
 
-    pub fn add_verifier<BS, RT>(rt: &mut RT, params: AddVerifierParams) -> Result<(), ActorError>
+    pub fn add_verifier<RT>(rt: &mut RT, params: AddVerifierParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         if params.allowance < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
@@ -129,10 +127,9 @@ impl Actor {
         })
     }
 
-    pub fn remove_verifier<BS, RT>(rt: &mut RT, verifier_addr: Address) -> Result<(), ActorError>
+    pub fn remove_verifier<RT>(rt: &mut RT, verifier_addr: Address) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let verifier = resolve_to_actor_id(rt, &verifier_addr)?;
         let verifier = Address::new_id(verifier);
@@ -145,13 +142,12 @@ impl Actor {
         })
     }
 
-    pub fn add_verified_client<BS, RT>(
+    pub fn add_verified_client<RT>(
         rt: &mut RT,
         params: AddVerifierClientParams,
     ) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // The caller will be verified by checking table below
         rt.validate_immediate_caller_accept_any()?;
@@ -215,13 +211,12 @@ impl Actor {
     }
 
     /// Removes DataCap allocated to a verified client.
-    pub fn remove_verified_client_data_cap<BS, RT>(
+    pub fn remove_verified_client_data_cap<RT>(
         rt: &mut RT,
         params: RemoveDataCapParams,
     ) -> Result<RemoveDataCapReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let client = resolve_to_actor_id(rt, &params.verified_client_to_remove)?;
         let client = Address::new_id(client);
@@ -310,13 +305,12 @@ impl Actor {
     // An allocation may be removed after its expiration epoch has passed (by anyone).
     // When removed, the DataCap tokens are transferred back to the client.
     // If no allocations are specified, all eligible allocations are removed.
-    pub fn remove_expired_allocations<BS, RT>(
+    pub fn remove_expired_allocations<RT>(
         rt: &mut RT,
         params: RemoveExpiredAllocationsParams,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // Since the allocations are expired, this is safe to be called by anyone.
         rt.validate_immediate_caller_accept_any()?;
@@ -377,13 +371,12 @@ impl Actor {
     // Called by storage provider actor to claim allocations for data provably committed to storage.
     // For each allocation claim, the registry checks that the provided piece CID
     // and size match that of the allocation.
-    pub fn claim_allocations<BS, RT>(
+    pub fn claim_allocations<RT>(
         rt: &mut RT,
         params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let provider = rt.message().caller().id().unwrap();
@@ -479,13 +472,12 @@ impl Actor {
     }
 
     // get claims for a provider
-    pub fn get_claims<BS, RT>(
+    pub fn get_claims<RT>(
         rt: &mut RT,
         params: GetClaimsParams,
     ) -> Result<GetClaimsReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_accept_any()?;
         let mut batch_gen = BatchReturnGen::new(params.claim_ids.len());
@@ -519,13 +511,12 @@ impl Actor {
     /// Can extend the term even if the claim has already expired.
     /// Note that this method can't extend the term past the original limit,
     /// even if the term has previously been extended past that by spending new datacap.
-    pub fn extend_claim_terms<BS, RT>(
+    pub fn extend_claim_terms<RT>(
         rt: &mut RT,
         params: ExtendClaimTermsParams,
     ) -> Result<ExtendClaimTermsReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // Permissions are checked per-claim.
         rt.validate_immediate_caller_accept_any()?;
@@ -586,13 +577,12 @@ impl Actor {
 
     // A claim may be removed after its maximum term has elapsed (by anyone).
     // If no claims are specified, all eligible claims are removed.
-    pub fn remove_expired_claims<BS, RT>(
+    pub fn remove_expired_claims<RT>(
         rt: &mut RT,
         params: RemoveExpiredClaimsParams,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // Since the claims are expired, this is safe to be called by anyone.
         rt.validate_immediate_caller_accept_any()?;
@@ -639,13 +629,12 @@ impl Actor {
     // This method does not support partial success (yet): all allocations must succeed,
     // or the transfer will be rejected.
     // Returns the ids of the created allocations.
-    pub fn universal_receiver_hook<BS, RT>(
+    pub fn universal_receiver_hook<RT>(
         rt: &mut RT,
         params: UniversalReceiverParams,
     ) -> Result<AllocationsResponse, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         // Accept only the data cap token.
         rt.validate_immediate_caller_is(&[DATACAP_TOKEN_ACTOR_ADDR])?;
@@ -738,10 +727,9 @@ impl Actor {
 }
 
 // Checks whether an address has a verifier entry (which could be zero).
-fn is_verifier<BS, RT>(rt: &RT, st: &State, address: Address) -> Result<bool, ActorError>
+fn is_verifier<RT>(rt: &RT, st: &State, address: Address) -> Result<bool, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let verifiers =
         make_map_with_root_and_bitwidth::<_, BigIntDe>(&st.verifiers, rt.store(), HAMT_BIT_WIDTH)
@@ -756,10 +744,9 @@ where
 }
 
 // Invokes BalanceOf on the data cap token actor, and converts the result to whole units of data cap.
-fn balance_of<BS, RT>(rt: &mut RT, owner: &Address) -> Result<DataCap, ActorError>
+fn balance_of<RT>(rt: &mut RT, owner: &Address) -> Result<DataCap, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let params = serialize(owner, "owner address")?;
     let ret = rt
@@ -775,15 +762,14 @@ where
 }
 
 // Invokes Mint on a data cap token actor for whole units of data cap.
-fn mint<BS, RT>(
+fn mint<RT>(
     rt: &mut RT,
     to: &Address,
     amount: &DataCap,
     operators: Vec<Address>,
 ) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let token_amt = datacap_to_tokens(amount);
     let params = MintParams { to: *to, amount: token_amt, operators };
@@ -798,10 +784,9 @@ where
 }
 
 // Invokes Burn on a data cap token actor for whole units of data cap.
-fn burn<BS, RT>(rt: &mut RT, amount: &DataCap) -> Result<(), ActorError>
+fn burn<RT>(rt: &mut RT, amount: &DataCap) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     if amount.is_zero() {
         return Ok(());
@@ -822,10 +807,9 @@ where
 }
 
 // Invokes Destroy on a data cap token actor for whole units of data cap.
-fn destroy<BS, RT>(rt: &mut RT, owner: &Address, amount: &DataCap) -> Result<(), ActorError>
+fn destroy<RT>(rt: &mut RT, owner: &Address, amount: &DataCap) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     if amount.is_zero() {
         return Ok(());
@@ -843,10 +827,9 @@ where
 }
 
 // Invokes transfer on a data cap token actor for whole units of data cap.
-fn transfer<BS, RT>(rt: &mut RT, to: ActorID, amount: &DataCap) -> Result<(), ActorError>
+fn transfer<RT>(rt: &mut RT, to: ActorID, amount: &DataCap) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let token_amt = datacap_to_tokens(amount);
     let params = TransferParams {
@@ -912,7 +895,7 @@ where
     Ok(curr_id)
 }
 
-fn remove_data_cap_request_is_valid<BS, RT>(
+fn remove_data_cap_request_is_valid<RT>(
     rt: &RT,
     request: &RemoveDataCapRequest,
     id: RemoveDataCapProposalID,
@@ -920,8 +903,7 @@ fn remove_data_cap_request_is_valid<BS, RT>(
     client: Address,
 ) -> Result<(), ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let proposal = RemoveDataCapProposal {
         removal_proposal_id: id,
@@ -1083,10 +1065,9 @@ fn validate_claim_extension(
 }
 
 // Checks that an address corresponsds to a miner actor.
-fn resolve_miner_id<BS, RT>(rt: &mut RT, addr: &Address) -> Result<ActorID, ActorError>
+fn resolve_miner_id<RT>(rt: &mut RT, addr: &Address) -> Result<ActorID, ActorError>
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     let id = rt.resolve_address(addr).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
         format!("failed to resolve provider address {}", addr)
@@ -1129,14 +1110,13 @@ fn can_claim_alloc(
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
