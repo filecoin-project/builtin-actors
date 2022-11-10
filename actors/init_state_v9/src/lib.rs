@@ -5,7 +5,6 @@ use cid::Cid;
 use fil_actors_runtime_common::runtime::builtins::Type;
 use fil_actors_runtime_common::runtime::{ActorCode, Runtime};
 use fil_actors_runtime_common::{actor_error, cbor, ActorContext, ActorError, SYSTEM_ACTOR_ADDR};
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
@@ -34,10 +33,9 @@ pub enum Method {
 pub struct Actor;
 impl Actor {
     /// Init actor constructor
-    pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         let sys_ref: &Address = &SYSTEM_ACTOR_ADDR;
         rt.validate_immediate_caller_is(std::iter::once(sys_ref))?;
@@ -48,10 +46,9 @@ impl Actor {
     }
 
     /// Exec init actor
-    pub fn exec<BS, RT>(rt: &mut RT, params: ExecParams) -> Result<ExecReturn, ActorError>
+    pub fn exec<RT>(rt: &mut RT, params: ExecParams) -> Result<ExecReturn, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         rt.validate_immediate_caller_accept_any()?;
 
@@ -103,14 +100,13 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
@@ -126,10 +122,9 @@ impl ActorCode for Actor {
     }
 }
 
-fn can_exec<BS, RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
+fn can_exec<RT>(rt: &RT, caller: &Cid, exec: &Cid) -> bool
 where
-    BS: Blockstore,
-    RT: Runtime<BS>,
+    RT: Runtime,
 {
     rt.resolve_builtin_actor_type(exec)
         .map(|typ| match typ {
