@@ -566,6 +566,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_miner_state_v9"
+version = "9.0.3"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "cid",
+ "fil_actor_account_state_v9",
+ "fil_actor_market_state_v9",
+ "fil_actor_power_state_v9",
+ "fil_actor_reward_state_v9",
+ "fil_actors_runtime_common",
+ "fvm_ipld_amt",
+ "fvm_ipld_bitfield",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "itertools",
+ "lazy_static",
+ "log",
+ "multihash",
+ "num-derive",
+ "num-traits",
+ "rand",
+ "serde",
+ "test-case",
+]
+
+[[package]]
 name = "fil_actor_multisig"
 version = "10.0.0-alpha.1"
 dependencies = [
