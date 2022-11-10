@@ -499,6 +499,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_paych_state_v8"
+version = "8.0.0"
+dependencies = [
+ "anyhow",
+ "cid",
+ "derive_builder",
+ "fil_actors_runtime_common",
+ "fvm_ipld_amt",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_power"
 version = "10.0.0-alpha.1"
 dependencies = [
