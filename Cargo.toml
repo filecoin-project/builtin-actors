@@ -22,5 +22,6 @@ members = [
   "actors/paych_state_v8",
   "actors/reward_state_v8",
   "actors/power_state_v8",
+  "actors/system_state_v8",
 ]
 resolver = "2"
