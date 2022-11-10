@@ -511,7 +511,7 @@ mod vesting_tests {
 
         rt.set_balance(TokenAmount::from_atto(MSIG_INITIAL_BALANCE));
         rt.set_received(TokenAmount::from_atto(MSIG_INITIAL_BALANCE));
-        h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
@@ -523,6 +523,7 @@ mod vesting_tests {
             RawBytes::default(),
             ExitCode::OK,
         );
+        h.propose_ok(&mut rt, BOB, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
 
