@@ -4,10 +4,10 @@
 use std::convert::TryInto;
 
 use fil_actor_market::{Actor as MarketActor, Method, OnMinerSectorsTerminateParams};
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime_common::network::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::runtime::builtins::Type;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;

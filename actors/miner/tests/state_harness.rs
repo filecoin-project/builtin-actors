@@ -4,7 +4,7 @@ use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::VestSpec;
 use fil_actor_miner::VestingFunds;
 use fil_actor_miner::{BitFieldQueue, CollisionPolicy, SectorOnChainInfo, State};
-use fil_actors_runtime::{runtime::Policy, ActorError};
+use fil_actors_runtime_common::{runtime::Policy, ActorError};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
@@ -16,7 +16,7 @@ use fvm_shared::sector::{SectorNumber, SectorSize};
 use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
 use multihash::Code::Blake2b256;
 
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime_common::test_utils::*;
 
 pub struct StateHarness {
     pub st: State,

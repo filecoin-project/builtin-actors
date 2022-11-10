@@ -1,5 +1,5 @@
 use fil_actor_miner::State;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     runtime::{Runtime, RuntimePolicy},
     test_utils::MockRuntime,
 };

@@ -1,4 +1,4 @@
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime_common::test_utils::*;
 
 use fvm_ipld_encoding::BytesDe;
 

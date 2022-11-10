@@ -21,11 +21,11 @@ use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{DataCap, State as VerifregState};
 
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::VERIFIED_REGISTRY_ACTOR_ADDR;
 
-use fil_actors_runtime::Map;
-use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime_common::Map;
+use fil_actors_runtime_common::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::from_slice;
 use fvm_ipld_encoding::CborStore;
@@ -50,7 +50,7 @@ use fil_actor_paych::testing as paych;
 use fil_actor_power::testing as power;
 use fil_actor_reward::testing as reward;
 use fil_actor_verifreg::testing as verifreg;
-use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime_common::runtime::builtins::Type;
 
 /// Value type of the top level of the state tree.
 /// Represents the on-chain state of a single actor.

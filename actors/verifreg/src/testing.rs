@@ -1,12 +1,12 @@
 use frc46_token::token::state::decode_actor_id;
 use std::collections::HashMap;
 
-use fil_actors_runtime::runtime::policy_constants::{
+use fil_actors_runtime_common::runtime::policy_constants::{
     MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION, MAXIMUM_VERIFIED_ALLOCATION_TERM,
     MINIMUM_VERIFIED_ALLOCATION_SIZE, MINIMUM_VERIFIED_ALLOCATION_TERM,
 };
-use fil_actors_runtime::shared::HAMT_BIT_WIDTH;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::shared::HAMT_BIT_WIDTH;
+use fil_actors_runtime_common::{
     make_map_with_root_and_bitwidth, parse_uint_key, Map, MessageAccumulator,
 };
 use fvm_ipld_blockstore::Blockstore;

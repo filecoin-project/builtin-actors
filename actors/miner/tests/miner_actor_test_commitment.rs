@@ -2,8 +2,8 @@ use fil_actor_miner::{
     max_prove_commit_duration, pre_commit_deposit_for_power, qa_power_max, DeadlineInfo, State,
     VestSpec,
 };
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime_common::network::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::test_utils::*;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};

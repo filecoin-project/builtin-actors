@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime_common::runtime::Policy;
 use fvm_shared::clock::ChainEpoch;
 
 mod util;

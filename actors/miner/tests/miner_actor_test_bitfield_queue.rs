@@ -1,5 +1,5 @@
 use fil_actor_miner::BitFieldQueue;
-use fil_actors_runtime::test_utils::MockRuntime;
+use fil_actors_runtime_common::test_utils::MockRuntime;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::MaybeBitField;

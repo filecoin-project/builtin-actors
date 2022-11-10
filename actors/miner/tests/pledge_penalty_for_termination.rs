@@ -3,7 +3,7 @@ use fil_actor_miner::{
     INITIAL_PLEDGE_FACTOR, TERMINATION_LIFETIME_CAP, TERMINATION_REWARD_FACTOR_DENOM,
     TERMINATION_REWARD_FACTOR_NUM,
 };
-use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::EPOCHS_IN_DAY;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;

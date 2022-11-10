@@ -1,10 +1,10 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
+use fil_actors_runtime_common::network::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;

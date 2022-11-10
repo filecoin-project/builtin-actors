@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use super::*;
-use fil_actors_runtime::DealWeight;
+use fil_actors_runtime_common::DealWeight;
 use fvm_shared::clock::NO_QUANTIZATION;
 use fvm_shared::sector::StoragePower;
 

@@ -36,10 +36,10 @@ pub use deadline_info::*;
 pub use deadline_state::*;
 pub use deadlines::*;
 pub use expiration_queue::*;
-use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
-use fil_actors_runtime::{
+use fil_actors_runtime_common::cbor::{deserialize, serialize, serialize_vec};
+use fil_actors_runtime_common::runtime::builtins::Type;
+use fil_actors_runtime_common::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
+use fil_actors_runtime_common::{
     actor_error, cbor, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
     CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -59,7 +59,7 @@ pub use vesting_state::*;
 // diagnose the problem.
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+fil_actors_runtime_common::wasm_trampoline!(Actor);
 
 mod beneficiary;
 mod bitfield_queue;
@@ -1191,7 +1191,7 @@ impl Actor {
                         &rew.this_epoch_reward_smoothed,
                         &pow.quality_adj_power_smoothed,
                         &qa_pow,
-                        fil_actors_runtime::network::EPOCHS_IN_DAY,
+                        fil_actors_runtime_common::network::EPOCHS_IN_DAY,
                     );
                     new_sector_info.expected_storage_pledge = expected_reward_for_power(
                         &rew.this_epoch_reward_smoothed,
@@ -4673,7 +4673,7 @@ fn confirm_sector_proofs_valid_internal(
                 this_epoch_reward_smoothed,
                 quality_adj_power_smoothed,
                 &power,
-                fil_actors_runtime::EPOCHS_IN_DAY,
+                fil_actors_runtime_common::EPOCHS_IN_DAY,
             );
 
             // The storage pledge is recorded for use in computing the penalty if this sector is terminated

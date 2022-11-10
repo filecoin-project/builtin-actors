@@ -1,6 +1,6 @@
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{Actor, ChangeWorkerAddressParams, Method};
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     runtime::RuntimePolicy,
     test_utils::{
         expect_abort, expect_abort_contains_message, new_bls_addr, MockRuntime,

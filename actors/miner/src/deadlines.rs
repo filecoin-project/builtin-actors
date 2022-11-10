@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::Array;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::Array;
 
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};

@@ -2,9 +2,9 @@
 
 use fil_actor_miner as miner;
 use fil_actor_miner::PowerPair;
-use fil_actors_runtime::runtime::DomainSeparationTag;
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::CALLER_TYPES_SIGNABLE;
+use fil_actors_runtime_common::runtime::DomainSeparationTag;
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::CALLER_TYPES_SIGNABLE;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;

@@ -5,9 +5,9 @@ use fil_actor_reward::{
     ext, Actor as RewardActor, AwardBlockRewardParams, Method, State, ThisEpochRewardReturn,
     BASELINE_INITIAL_VALUE, PENALTY_MULTIPLIER,
 };
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::EXPECTED_LEADERS_PER_EPOCH;
+use fil_actors_runtime_common::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };

@@ -1,5 +1,5 @@
 use cid::Cid;
-use fil_actors_runtime::BatchReturn;
+use fil_actors_runtime_common::BatchReturn;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{bigint_ser, BigInt};

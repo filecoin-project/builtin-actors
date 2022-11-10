@@ -1,6 +1,6 @@
 use cid::Cid;
 use fil_actor_miner::{SectorPreCommitInfo, SectorPreCommitOnChainInfo};
-use fil_actors_runtime::test_utils::make_sealed_cid;
+use fil_actors_runtime_common::test_utils::make_sealed_cid;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::RegisteredSealProof;

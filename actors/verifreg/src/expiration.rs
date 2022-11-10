@@ -1,5 +1,5 @@
 use crate::{Allocation, Claim};
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     parse_uint_key, ActorError, AsActorError, BatchReturn, BatchReturnGen, MapMap,
 };
 use fvm_ipld_blockstore::Blockstore;

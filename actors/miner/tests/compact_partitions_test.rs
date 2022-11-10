@@ -2,7 +2,7 @@ use fil_actor_miner::{
     expected_reward_for_power, new_deadline_info, pledge_penalty_for_termination,
     qa_power_for_sector, State, INITIAL_PLEDGE_PROJECTION_PERIOD,
 };
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     runtime::{Runtime, RuntimePolicy},
     test_utils::{expect_abort, expect_abort_contains_message, MockRuntime},
     EPOCHS_IN_DAY,

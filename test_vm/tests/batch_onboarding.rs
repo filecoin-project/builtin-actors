@@ -1,12 +1,12 @@
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::{power_for_sector, State as MinerState};
-use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
-use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
-use fil_actors_runtime::runtime::policy_constants::{
+use fil_actors_runtime_common::builtin::SYSTEM_ACTOR_ADDR;
+use fil_actors_runtime_common::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
+use fil_actors_runtime_common::runtime::policy_constants::{
     MAX_AGGREGATED_SECTORS, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
 };
-use fil_actors_runtime::CRON_ACTOR_ADDR;
+use fil_actors_runtime_common::CRON_ACTOR_ADDR;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{BigInt, Zero};

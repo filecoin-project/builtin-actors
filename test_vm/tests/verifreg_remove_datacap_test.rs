@@ -20,8 +20,8 @@ use fil_actor_verifreg::{
 };
 use fil_actor_verifreg::{AddrPairKey, Method as VerifregMethod};
 use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State as VerifregState};
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::{
     make_map_with_root_and_bitwidth, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };

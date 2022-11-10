@@ -1,7 +1,7 @@
 use fil_actor_miner::pledge_penalty_for_continued_fault;
 use fil_actor_miner::power_for_sectors;
-use fil_actors_runtime::test_utils::expect_abort_contains_message;
-use fil_actors_runtime::test_utils::MockRuntime;
+use fil_actors_runtime_common::test_utils::expect_abort_contains_message;
+use fil_actors_runtime_common::test_utils::MockRuntime;
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::address::Address;
 

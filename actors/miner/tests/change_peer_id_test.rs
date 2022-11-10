@@ -1,4 +1,4 @@
-use fil_actors_runtime::test_utils::MockRuntime;
+use fil_actors_runtime_common::test_utils::MockRuntime;
 
 mod util;
 use util::*;

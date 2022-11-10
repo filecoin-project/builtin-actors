@@ -3,8 +3,8 @@ use fil_actor_miner::{
     initial_pledge_for_power, max_prove_commit_duration, pre_commit_deposit_for_power,
     qa_power_for_weight, qa_power_max, PowerPair, PreCommitSectorBatchParams, VestSpec,
 };
-use fil_actors_runtime::test_utils::make_piece_cid;
-use fil_actors_runtime::{runtime::Runtime, test_utils::expect_abort, DealWeight};
+use fil_actors_runtime_common::test_utils::make_piece_cid;
+use fil_actors_runtime_common::{runtime::Runtime, test_utils::expect_abort, DealWeight};
 use fvm_shared::{
     bigint::{BigInt, Zero},
     clock::ChainEpoch,

@@ -1,4 +1,4 @@
-use fil_actors_runtime::test_utils::{
+use fil_actors_runtime_common::test_utils::{
     expect_abort, new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
 };
 use fvm_shared::econ::TokenAmount;

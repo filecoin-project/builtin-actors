@@ -14,20 +14,20 @@ use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as Power
 use fil_actor_reward::{Actor as RewardActor, State as RewardState};
 use fil_actor_system::{Actor as SystemActor, State as SystemState};
 use fil_actor_verifreg::{Actor as VerifregActor, State as VerifRegState};
-use fil_actors_runtime::actor_error;
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::{
+use fil_actors_runtime_common::actor_error;
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::runtime::builtins::Type;
+use fil_actors_runtime_common::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier, EMPTY_ARR_CID,
 };
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::{
     ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
+use fil_actors_runtime_common::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;

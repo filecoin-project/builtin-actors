@@ -5,10 +5,10 @@ use fil_actor_miner::{
     power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, SectorOnChainInfo,
     TerminationResult,
 };
-use fil_actors_runtime::runtime::{Policy, Runtime};
-use fil_actors_runtime::test_utils::MockRuntime;
-use fil_actors_runtime::ActorError;
-use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime_common::runtime::{Policy, Runtime};
+use fil_actors_runtime_common::test_utils::MockRuntime;
+use fil_actors_runtime_common::ActorError;
+use fil_actors_runtime_common::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;

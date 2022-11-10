@@ -14,34 +14,37 @@ keywords    = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-anyhow              = "1.0.65"
-byteorder           = "1.4.3"
-cid                 = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-fil_actors_runtime  = { version = "10.0.0-alpha.1", path = "../../runtime" }
-fvm_ipld_amt        = { version = "0.4.2", features = ["go-interop"] }
-fvm_ipld_bitfield   = "0.5.2"
-fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding   = "0.2.2"
-fvm_ipld_hamt       = "0.5.1"
-fvm_shared          = { version = "2.0.0-alpha.2", default-features = false }
-itertools           = "0.10.3"
-lazy_static         = "1.4.0"
-log                 = "0.4.14"
-multihash           = { version = "0.16.2", default-features = false }
-num-derive          = "0.3.3"
-num-traits          = "0.2.14"
-serde               = { version = "1.0.136", features = ["derive"] }
+anyhow                    = "1.0.65"
+byteorder                 = "1.4.3"
+cid                       = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+fil_actors_runtime_common = { version = "10.0.0-alpha.1", path = "../../runtime" }
+fvm_ipld_amt              = { version = "0.4.2", features = ["go-interop"] }
+fvm_ipld_bitfield         = "0.5.2"
+fvm_ipld_blockstore       = "0.1.1"
+fvm_ipld_encoding         = "0.2.2"
+fvm_ipld_hamt             = "0.5.1"
+fvm_shared                = { version = "2.0.0-alpha.2", default-features = false }
+itertools                 = "0.10.3"
+lazy_static               = "1.4.0"
+log                       = "0.4.14"
+multihash                 = { version = "0.16.2", default-features = false }
+num-derive                = "0.3.3"
+num-traits                = "0.2.14"
+serde                     = { version = "1.0.136", features = ["derive"] }
 
 [dev-dependencies]
-cid                = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-fil_actor_account  = { path = "../account" }
-fil_actor_market   = { path = "../market" }
-fil_actor_power    = { path = "../power" }
-fil_actor_reward   = { path = "../reward" }
-fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime", features = ["test_utils", "sector-default"] }
-multihash          = { version = "0.16.1", default-features = false }
-rand               = "0.8.5"
-test-case          = "2.2.1"
+cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+fil_actor_account = { path = "../account" }
+fil_actor_market = { path = "../market" }
+fil_actor_power = { path = "../power" }
+fil_actor_reward = { path = "../reward" }
+fil_actors_runtime_common = { version = "10.0.0-alpha.1", path = "../../runtime", features = [
+  "test_utils",
+  "sector-default",
+] }
+multihash = { version = "0.16.1", default-features = false }
+rand = "0.8.5"
+test-case = "2.2.1"
 
 [features]
-fil-actor = ["fil_actors_runtime/fil-actor"]
+fil-actor = ["fil_actors_runtime_common/fil-actor"]

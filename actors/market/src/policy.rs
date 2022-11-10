@@ -3,8 +3,8 @@
 
 use std::cmp::max;
 
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime_common::network::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::runtime::Policy;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;

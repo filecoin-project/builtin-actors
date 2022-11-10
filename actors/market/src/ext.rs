@@ -37,7 +37,7 @@ pub mod miner {
 pub mod verifreg {
     use super::*;
     use cid::Cid;
-    use fil_actors_runtime::BatchReturn;
+    use fil_actors_runtime_common::BatchReturn;
     use fvm_shared::clock::ChainEpoch;
     use fvm_shared::piece::PaddedPieceSize;
 

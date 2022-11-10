@@ -45,8 +45,8 @@ use fil_actor_verifreg::{
     AddVerifierClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     GetClaimsParams, Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
 };
-use fil_actors_runtime::cbor::deserialize;
-use fil_actors_runtime::runtime::policy_constants::{
+use fil_actors_runtime_common::cbor::deserialize;
+use fil_actors_runtime_common::runtime::policy_constants::{
     MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
 

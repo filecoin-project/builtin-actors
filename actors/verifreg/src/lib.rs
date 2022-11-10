@@ -18,15 +18,15 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
-use fil_actors_runtime::cbor::{deserialize, serialize};
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
-use fil_actors_runtime::{
+use fil_actors_runtime_common::cbor::{deserialize, serialize};
+use fil_actors_runtime_common::runtime::builtins::Type;
+use fil_actors_runtime_common::runtime::{ActorCode, Policy, Runtime};
+use fil_actors_runtime_common::{
     actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
     ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
+use fil_actors_runtime_common::{ActorContext, AsActorError, BatchReturnGen};
 
 use crate::ext::datacap::{DestroyParams, MintParams};
 
@@ -36,7 +36,7 @@ pub use self::state::State;
 pub use self::types::*;
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+fil_actors_runtime_common::wasm_trampoline!(Actor);
 
 pub mod expiration;
 pub mod ext;

@@ -10,11 +10,13 @@ use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime_common::runtime::{ActorCode, Runtime};
+use fil_actors_runtime_common::{
+    actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+};
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(Actor);
+fil_actors_runtime_common::wasm_trampoline!(Actor);
 
 /// System actor methods.
 #[derive(FromPrimitive)]
@@ -88,8 +90,8 @@ mod tests {
     use fvm_ipld_encoding::RawBytes;
     use fvm_shared::MethodNum;
 
-    use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
-    use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
+    use fil_actors_runtime_common::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
+    use fil_actors_runtime_common::SYSTEM_ACTOR_ADDR;
 
     use crate::{Actor, Method, State};
 

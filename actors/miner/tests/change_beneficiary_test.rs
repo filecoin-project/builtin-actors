@@ -1,5 +1,7 @@
 use fil_actor_miner::BeneficiaryTerm;
-use fil_actors_runtime::test_utils::{expect_abort, expect_abort_contains_message, MockRuntime};
+use fil_actors_runtime_common::test_utils::{
+    expect_abort, expect_abort_contains_message, MockRuntime,
+};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
 use num_traits::Zero;

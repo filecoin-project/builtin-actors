@@ -17,7 +17,7 @@ lazy_static! {
 mod util {
     use fvm_shared::sector::StoragePower;
 
-    use fil_actors_runtime::test_utils::MockRuntime;
+    use fil_actors_runtime_common::test_utils::MockRuntime;
 
     pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
         rt.policy.minimum_verified_allocation_size.clone() + 42
@@ -35,8 +35,8 @@ mod construction {
     use fvm_shared::MethodNum;
 
     use fil_actor_verifreg::{Actor as VerifregActor, Method};
-    use fil_actors_runtime::test_utils::*;
-    use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
+    use fil_actors_runtime_common::test_utils::*;
+    use fil_actors_runtime_common::SYSTEM_ACTOR_ADDR;
     use harness::*;
 
     use crate::*;
@@ -83,7 +83,7 @@ mod verifiers {
     use fvm_shared::{MethodNum, METHOD_SEND};
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierParams, DataCap, Method};
-    use fil_actors_runtime::test_utils::*;
+    use fil_actors_runtime_common::test_utils::*;
     use harness::*;
     use util::*;
 
@@ -246,7 +246,7 @@ mod clients {
     use num_traits::Zero;
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierClientParams, DataCap, Method};
-    use fil_actors_runtime::test_utils::*;
+    use fil_actors_runtime_common::test_utils::*;
     use harness::*;
     use util::*;
 
@@ -445,12 +445,12 @@ mod allocs_claims {
 
     use fil_actor_verifreg::Claim;
     use fil_actor_verifreg::{AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, State};
-    use fil_actors_runtime::runtime::policy_constants::{
+    use fil_actors_runtime_common::runtime::policy_constants::{
         MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_SIZE,
         MINIMUM_VERIFIED_ALLOCATION_TERM,
     };
-    use fil_actors_runtime::test_utils::ACCOUNT_ACTOR_CODE_ID;
-    use fil_actors_runtime::FailCode;
+    use fil_actors_runtime_common::test_utils::ACCOUNT_ACTOR_CODE_ID;
+    use fil_actors_runtime_common::FailCode;
     use harness::*;
 
     use crate::*;
@@ -912,13 +912,13 @@ mod datacap {
     use fvm_shared::{ActorID, MethodNum};
 
     use fil_actor_verifreg::{Actor as VerifregActor, Claim, Method, State};
-    use fil_actors_runtime::cbor::serialize;
-    use fil_actors_runtime::runtime::policy_constants::{
+    use fil_actors_runtime_common::cbor::serialize;
+    use fil_actors_runtime_common::runtime::policy_constants::{
         MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION, MAXIMUM_VERIFIED_ALLOCATION_TERM,
         MINIMUM_VERIFIED_ALLOCATION_SIZE, MINIMUM_VERIFIED_ALLOCATION_TERM,
     };
-    use fil_actors_runtime::test_utils::*;
-    use fil_actors_runtime::{
+    use fil_actors_runtime_common::test_utils::*;
+    use fil_actors_runtime_common::{
         BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR,
     };
     use harness::*;

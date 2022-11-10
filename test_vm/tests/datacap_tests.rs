@@ -5,11 +5,11 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::RegisteredSealProof;
 
 use fil_actor_verifreg::{AllocationRequest, AllocationRequests};
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::make_piece_cid;
-use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::runtime::policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::test_utils::make_piece_cid;
+use fil_actors_runtime_common::{DATACAP_TOKEN_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_shared::error::ExitCode;
 use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
 use test_vm::VM;

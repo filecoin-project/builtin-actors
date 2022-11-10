@@ -12,10 +12,10 @@ use fil_actor_paych::{
     Actor as PaychActor, ConstructorParams, LaneState, Merge, Method, ModVerifyParams,
     SignedVoucher, State as PState, UpdateChannelStateParams, MAX_LANE, SETTLE_DELAY,
 };
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime_common::runtime::builtins::Type;
+use fil_actors_runtime_common::runtime::Runtime;
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::INIT_ACTOR_ADDR;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -68,7 +68,7 @@ fn check_state(rt: &MockRuntime) {
 }
 
 mod paych_constructor {
-    use fil_actors_runtime::runtime::builtins::Type;
+    use fil_actors_runtime_common::runtime::builtins::Type;
     use fvm_shared::METHOD_CONSTRUCTOR;
     use fvm_shared::METHOD_SEND;
     use num_traits::Zero;

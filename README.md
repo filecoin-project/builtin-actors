@@ -58,7 +58,7 @@ if requested by implementors.
 
 We usually release all actors, the runtime, and the bundle at the same time. That means releasing:
 
-- `fil_actors_runtime`
+- `fil_actors_runtime_common`
 - `fil_actor_account`
 - `fil_actor_cron`
 - `fil_actor_init`

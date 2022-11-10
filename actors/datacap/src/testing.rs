@@ -5,7 +5,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::ActorID;
 use std::collections::HashMap;
 
-use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime_common::MessageAccumulator;
 
 use crate::State;
 

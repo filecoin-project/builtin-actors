@@ -17,7 +17,7 @@ use fvm_shared::sector::{
 };
 use fvm_shared::smooth::FilterEstimate;
 
-use fil_actors_runtime::DealWeight;
+use fil_actors_runtime_common::DealWeight;
 
 use crate::commd::CompactCommD;
 use crate::ext::verifreg::ClaimID;

@@ -14,14 +14,14 @@ use fil_actor_verifreg::{
     AllocationID, Claim, Method as VerifregMethod, RemoveExpiredClaimsParams,
     RemoveExpiredClaimsReturn, State as VerifregState,
 };
-use fil_actors_runtime::cbor::deserialize;
-use fil_actors_runtime::runtime::policy_constants::{
+use fil_actors_runtime_common::cbor::deserialize;
+use fil_actors_runtime_common::runtime::policy_constants::{
     DEAL_UPDATES_INTERVAL, MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
 };
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::shared::HAMT_BIT_WIDTH;
-use fil_actors_runtime::test_utils::make_piece_cid;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::shared::HAMT_BIT_WIDTH;
+use fil_actors_runtime_common::test_utils::make_piece_cid;
+use fil_actors_runtime_common::{
     make_map_with_root_and_bitwidth, DealWeight, Map, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_DAY,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };

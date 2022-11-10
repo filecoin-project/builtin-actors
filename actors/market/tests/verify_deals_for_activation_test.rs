@@ -4,12 +4,12 @@
 mod harness;
 
 use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams};
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::test_utils::{
+use fil_actors_runtime_common::runtime::builtins::Type;
+use fil_actors_runtime_common::test_utils::{
     expect_abort, expect_abort_contains_message, make_piece_cid, ACCOUNT_ACTOR_CODE_ID,
     MINER_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::EPOCHS_IN_DAY;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;

@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 use anyhow::anyhow;
 use cid::Cid;
-use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
+use fil_actors_runtime_common::{actor_error, ActorDowncast, ActorError, Array};
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;

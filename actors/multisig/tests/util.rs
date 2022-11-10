@@ -4,9 +4,9 @@ use fil_actor_multisig::{
     TxnIDParams,
 };
 use fil_actor_multisig::{ChangeNumApprovalsThresholdParams, LockBalanceParams};
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{make_map_with_root, ActorError};
-use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR};
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::{make_map_with_root, ActorError};
+use fil_actors_runtime_common::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;

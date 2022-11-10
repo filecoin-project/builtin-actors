@@ -4,8 +4,8 @@ use fil_actor_miner::{
     qa_power_max, PreCommitSectorBatchParams, PreCommitSectorParams, State,
 };
 use fil_actor_power::Method as PowerMethod;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::test_utils::*;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -155,7 +155,7 @@ mod miner_actor_precommit_batch {
     use fil_actor_miner::{
         new_deadline_info_from_offset_and_epoch, Actor, Method, PreCommitSectorBatchParams2,
     };
-    use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
+    use fil_actors_runtime_common::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
     use fvm_ipld_encoding::RawBytes;
     use test_case::test_case;
 

@@ -5,12 +5,12 @@ use fil_actor_miner::{
     initial_pledge_for_power, qa_power_for_weight, PowerPair, QUALITY_BASE_MULTIPLIER,
     VERIFIED_DEAL_WEIGHT_MULTIPLIER,
 };
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime_common::runtime::Runtime;
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{bigint::BigInt, clock::ChainEpoch, econ::TokenAmount};
 
 mod util;
-use fil_actors_runtime::test_utils::make_piece_cid;
+use fil_actors_runtime_common::test_utils::make_piece_cid;
 use num_traits::Zero;
 use util::*;
 

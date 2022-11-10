@@ -1,5 +1,5 @@
 [package]
-name        = "fil_actors_runtime"
+name        = "fil_actors_runtime_common"
 description = "System actors for the Filecoin protocol"
 version     = "10.0.0-alpha.1"
 license     = "MIT OR Apache-2.0"

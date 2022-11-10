@@ -5,11 +5,11 @@ use fil_actor_miner::{
 };
 use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
-use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime_common::cbor::serialize;
 
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::test_utils::make_sealed_cid;
+use fil_actors_runtime_common::{
     CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;

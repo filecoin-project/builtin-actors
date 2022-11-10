@@ -3,9 +3,9 @@ use fil_actor_multisig::{
     compute_proposal_hash, Method as MsigMethod, ProposeParams, RemoveSignerParams,
     State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams,
 };
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{make_map_with_root, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::{make_map_with_root, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;

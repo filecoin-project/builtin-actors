@@ -3,7 +3,7 @@ use fil_actor_miner::{
     DEAL_WEIGHT_MULTIPLIER, QUALITY_BASE_MULTIPLIER, SECTOR_QUALITY_PRECISION,
     VERIFIED_DEAL_WEIGHT_MULTIPLIER,
 };
-use fil_actors_runtime::{EPOCHS_IN_DAY, SECONDS_IN_DAY};
+use fil_actors_runtime_common::{EPOCHS_IN_DAY, SECONDS_IN_DAY};
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::SectorSize;

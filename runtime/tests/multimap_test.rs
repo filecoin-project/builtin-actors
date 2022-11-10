@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::{parse_uint_key, u64_key, Multimap};
+use fil_actors_runtime_common::{parse_uint_key, u64_key, Multimap};
 use fvm_ipld_amt::Amt;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::address::Address;

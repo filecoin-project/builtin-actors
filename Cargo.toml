@@ -1,6 +1,8 @@
 [workspace]
 members = [
   "runtime",
+  "state",
+  "test_vm",
   "actors/account",
   "actors/cron",
   "actors/init",

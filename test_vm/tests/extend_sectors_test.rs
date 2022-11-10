@@ -4,9 +4,9 @@ use fil_actor_miner::{
     Sectors, State as MinerState,
 };
 use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, STORAGE_POWER_ACTOR_ADDR};
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::{DealWeight, EPOCHS_IN_DAY, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;

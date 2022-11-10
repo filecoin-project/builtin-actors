@@ -8,11 +8,11 @@ use fil_actor_market::{
     DealMetaArray, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn, State,
     WithdrawBalanceParams, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
-use fil_actors_runtime::cbor::{deserialize, serialize};
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::{builtins::Type, Policy, Runtime};
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::cbor::{deserialize, serialize};
+use fil_actors_runtime_common::network::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::runtime::{builtins::Type, Policy, Runtime};
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::{
     make_empty_map, make_map_with_root_and_bitwidth, ActorError, BatchReturn, Map, SetMultimap,
     BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,

@@ -20,9 +20,9 @@ use fil_actor_market::{
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
-use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::builtin::HAMT_BIT_WIDTH;
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::{
     make_map_with_root_and_bitwidth,
     network::EPOCHS_IN_DAY,
     runtime::{builtins::Type, Policy, Runtime},
@@ -701,7 +701,7 @@ pub fn assert_deals_not_terminated(rt: &mut MockRuntime, deal_ids: &[DealID]) {
 pub fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposal) {
     use cid::multihash::Code;
     use cid::multihash::MultihashDigest;
-    use fil_actors_runtime::Map;
+    use fil_actors_runtime_common::Map;
     use fvm_ipld_hamt::BytesKey;
 
     let st: State = rt.get_state();
@@ -720,7 +720,7 @@ pub fn assert_deal_deleted(rt: &mut MockRuntime, deal_id: DealID, p: DealProposa
     let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&p).unwrap()));
     // Check that the deal_id is not in st.pending_proposals.
     let pending_deals: Map<fvm_ipld_blockstore::MemoryBlockstore, DealProposal> =
-        fil_actors_runtime::make_map_with_root_and_bitwidth::<
+        fil_actors_runtime_common::make_map_with_root_and_bitwidth::<
             fvm_ipld_blockstore::MemoryBlockstore,
             DealProposal,
         >(&st.pending_proposals, &*rt.store, PROPOSALS_AMT_BITWIDTH)

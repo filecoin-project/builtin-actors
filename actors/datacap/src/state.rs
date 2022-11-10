@@ -7,7 +7,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::ActorID;
 
-use fil_actors_runtime::{ActorError, AsActorError};
+use fil_actors_runtime_common::{ActorError, AsActorError};
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct State {

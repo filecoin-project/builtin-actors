@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use fil_actor_miner::DeadlineSectorMap;
 use fil_actor_miner::PartitionSectorMap;
-use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime_common::runtime::Policy;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::BitField;
 use itertools::Itertools;

@@ -4,9 +4,9 @@
 use std::cmp;
 
 use cid::{Cid, Version};
-use fil_actors_runtime::network::*;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{DealWeight, EXPECTED_LEADERS_PER_EPOCH};
+use fil_actors_runtime_common::network::*;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::{DealWeight, EXPECTED_LEADERS_PER_EPOCH};
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, POSEIDON_BLS12_381_A1_FC1};

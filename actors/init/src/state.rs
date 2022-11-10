@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError,
     FIRST_NON_SINGLETON_ADDR,
 };

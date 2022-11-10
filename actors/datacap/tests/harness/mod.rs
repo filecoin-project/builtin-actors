@@ -11,10 +11,10 @@ use num_traits::Zero;
 
 use fil_actor_datacap::testing::check_state_invariants;
 use fil_actor_datacap::{Actor as DataCapActor, DestroyParams, Method, MintParams, State};
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::runtime::Runtime;
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::{
     ActorError, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 

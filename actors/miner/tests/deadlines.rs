@@ -1,6 +1,6 @@
 use fil_actor_miner::{new_deadline_info, new_deadline_info_from_offset_and_epoch};
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::EPOCHS_IN_DAY;
 
 #[test]
 fn quantization_spec_rounds_to_the_next_deadline() {

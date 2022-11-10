@@ -3,12 +3,12 @@ use fil_actor_miner::ApplyRewardParams;
 use fil_actor_miner::REWARD_VESTING_SPEC;
 use fil_actor_miner::{Actor, Method};
 use fil_actor_power::Method as PowerMethod;
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::runtime::RuntimePolicy;
-use fil_actors_runtime::test_utils::REWARD_ACTOR_CODE_ID;
-use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
-use fil_actors_runtime::REWARD_ACTOR_ADDR;
-use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
+use fil_actors_runtime_common::runtime::Runtime;
+use fil_actors_runtime_common::runtime::RuntimePolicy;
+use fil_actors_runtime_common::test_utils::REWARD_ACTOR_CODE_ID;
+use fil_actors_runtime_common::BURNT_FUNDS_ACTOR_ADDR;
+use fil_actors_runtime_common::REWARD_ACTOR_ADDR;
+use fil_actors_runtime_common::STORAGE_POWER_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 
 use fvm_shared::bigint::Zero;

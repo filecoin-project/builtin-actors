@@ -4,7 +4,7 @@ use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
     pre_commit_deposit_for_power, qa_power_max, PreCommitSectorBatchParams, State,
 };
-use fil_actors_runtime::test_utils::{expect_abort, expect_abort_contains_message};
+use fil_actors_runtime_common::test_utils::{expect_abort, expect_abort_contains_message};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, error::ExitCode};
 use lazy_static::lazy_static;

@@ -3,10 +3,10 @@ use fil_actor_multisig::{
     compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeReturn, State,
     Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
 };
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::runtime::Runtime;
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, BLS_PUB_LEN};

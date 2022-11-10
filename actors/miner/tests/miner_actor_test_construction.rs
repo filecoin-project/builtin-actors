@@ -1,5 +1,5 @@
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::INIT_ACTOR_ADDR;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{

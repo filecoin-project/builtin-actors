@@ -7,9 +7,9 @@ use fil_actor_miner::{
 };
 use fil_actor_power::{Method as PowerMethod, State as PowerState};
 use fil_actor_reward::Method as RewardMethod;
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::{
     BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };

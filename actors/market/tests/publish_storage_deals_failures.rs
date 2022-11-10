@@ -6,10 +6,10 @@ use fil_actor_market::{
     Actor as MarketActor, ClientDealProposal, DealProposal, Method, PublishStorageDealsParams,
     PublishStorageDealsReturn,
 };
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::CALLER_TYPES_SIGNABLE;
+use fil_actors_runtime_common::network::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::CALLER_TYPES_SIGNABLE;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;

@@ -13,7 +13,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError, Map,
     MapMap,
 };

@@ -5,8 +5,8 @@ use fil_actor_miner::{
     ExpirationExtension2, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
     PoStPartition, SectorClaim, SectorOnChainInfo, State,
 };
-use fil_actors_runtime::DealWeight;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::DealWeight;
+use fil_actors_runtime_common::{
     actor_error,
     runtime::{Runtime, RuntimePolicy},
     test_utils::{expect_abort_contains_message, make_piece_cid, MockRuntime},
@@ -23,7 +23,7 @@ use fvm_shared::{
 use std::collections::HashMap;
 
 mod util;
-use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime_common::runtime::Policy;
 use itertools::Itertools;
 use test_case::test_case;
 use util::*;

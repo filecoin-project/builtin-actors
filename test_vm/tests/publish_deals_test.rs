@@ -12,10 +12,10 @@ use fil_actor_power::Method as PowerMethod;
 use fil_actor_reward::Method as RewardMethod;
 
 use fil_actor_verifreg::{AddVerifierClientParams, Method as VerifregMethod};
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::network::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::{
     test_utils::*, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };

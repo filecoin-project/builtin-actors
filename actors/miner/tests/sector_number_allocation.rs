@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::test_utils::*;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::MAX_SECTOR_NUMBER;

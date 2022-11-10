@@ -6,7 +6,7 @@ use std::collections::BinaryHeap;
 
 use anyhow::anyhow;
 
-use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime_common::runtime::Policy;
 
 use super::{Deadline, SectorOnChainInfo};
 

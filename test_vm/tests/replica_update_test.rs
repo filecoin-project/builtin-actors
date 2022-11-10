@@ -9,15 +9,15 @@ use fil_actor_miner::{
 use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::Method as VerifregMethod;
-use fil_actors_runtime::{STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+use fil_actors_runtime_common::{STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use test_vm::ExpectInvocation;
 
-use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
+use fil_actors_runtime_common::test_utils::{make_piece_cid, make_sealed_cid};
 use fvm_shared::piece::PaddedPieceSize;
 
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::{
     Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };

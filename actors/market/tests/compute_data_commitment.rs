@@ -5,9 +5,9 @@ use fil_actor_market::{
     Actor as MarketActor, ComputeDataCommitmentParams, ComputeDataCommitmentReturn, Method,
     SectorDataSpec,
 };
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime_common::network::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::runtime::builtins::Type;
+use fil_actors_runtime_common::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;

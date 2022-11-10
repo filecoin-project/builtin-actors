@@ -21,14 +21,14 @@ use fil_actor_verifreg::{
     RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RemoveExpiredClaimsParams,
     RemoveExpiredClaimsReturn, SectorAllocationClaim, State,
 };
-use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::policy_constants::{
+use fil_actors_runtime_common::cbor::serialize;
+use fil_actors_runtime_common::runtime::builtins::Type;
+use fil_actors_runtime_common::runtime::policy_constants::{
     MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_TERM,
 };
-use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{
+use fil_actors_runtime_common::runtime::Runtime;
+use fil_actors_runtime_common::test_utils::*;
+use fil_actors_runtime_common::{
     make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };

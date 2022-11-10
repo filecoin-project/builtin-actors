@@ -10,8 +10,8 @@ use fvm_shared::MethodNum;
 
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, Method, State};
-use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime_common::builtin::SYSTEM_ACTOR_ADDR;
+use fil_actors_runtime_common::test_utils::*;
 
 #[test]
 fn construction() {

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actor_market::{ActivateDealsParams, Actor as MarketActor, Method};
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime_common::network::EPOCHS_IN_DAY;
+use fil_actors_runtime_common::runtime::builtins::Type;
+use fil_actors_runtime_common::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;

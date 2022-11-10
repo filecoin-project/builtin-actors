@@ -41,9 +41,9 @@ use fil_actor_miner::ext::verifreg::{
     Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn,
 };
 
-use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
-use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
-use fil_actors_runtime::{
+use fil_actors_runtime_common::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
+use fil_actors_runtime_common::{test_utils::*, BatchReturn, BatchReturnGen};
+use fil_actors_runtime_common::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,

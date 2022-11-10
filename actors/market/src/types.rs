@@ -3,7 +3,7 @@
 
 use super::ext::verifreg::AllocationID;
 use cid::Cid;
-use fil_actors_runtime::Array;
+use fil_actors_runtime_common::Array;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;

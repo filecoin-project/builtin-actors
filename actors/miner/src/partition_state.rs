@@ -6,8 +6,8 @@ use std::ops::{self, Neg};
 
 use anyhow::{anyhow, Context};
 use cid::Cid;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{actor_error, ActorDowncast, Array};
+use fil_actors_runtime_common::runtime::Policy;
+use fil_actors_runtime_common::{actor_error, ActorDowncast, Array};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;

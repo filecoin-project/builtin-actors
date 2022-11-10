@@ -1,7 +1,7 @@
 use fil_actor_miner::{
     power_for_sectors, ExpirationQueue, ExpirationSet, PowerPair, SectorOnChainInfo,
 };
-use fil_actors_runtime::{
+use fil_actors_runtime_common::{
     test_utils::{make_sealed_cid, MockRuntime},
     DealWeight,
 };
