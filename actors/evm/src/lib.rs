@@ -36,8 +36,8 @@ const MAX_CODE_SIZE: usize = 24 << 10;
 pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
 
 const EVM_MAX_RESERVED_METHOD: u64 = 1023;
-pub const NATIVE_METHOD_SIGNATURE: &str = "filecoin_fallback(uint64,uint64,bytes)";
-pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x18, 0x8a, 0x45, 0x3f];
+pub const NATIVE_METHOD_SIGNATURE: &str = "handle_filecoin_method(uint64,uint64,bytes)";
+pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x86, 0x8e, 0x10, 0xc4];
 
 #[test]
 fn test_method_selector() {
@@ -217,7 +217,7 @@ impl EvmContractActor {
         Ok(exec_status.output_data.to_vec())
     }
 
-    pub fn filecoin_fallback<RT>(
+    pub fn handle_filecoin_method<RT>(
         rt: &mut RT,
         method: u64,
         codec: u64,
@@ -227,7 +227,7 @@ impl EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        let input = filecoin_fallback_input(method, codec, params);
+        let input = handle_filecoin_method_input(method, codec, params);
         Self::invoke_contract(rt, &input, false, None)
     }
 
@@ -255,7 +255,7 @@ impl EvmContractActor {
 }
 
 /// Format "filecoin_native_method" input parameters.
-fn filecoin_fallback_input(method: u64, codec: u64, params: &[u8]) -> Vec<u8> {
+fn handle_filecoin_method_input(method: u64, codec: u64, params: &[u8]) -> Vec<u8> {
     let static_args = [method, codec, 32 * 3 /* start of params */, params.len() as u64];
     let total_words = static_args.len() + (params.len() / 32) + (params.len() % 32 > 0) as usize;
     let len = 4 + total_words * 32;
@@ -289,7 +289,7 @@ impl ActorCode for EvmContractActor {
             // FIXME: we need the actual codec.
             // See https://github.com/filecoin-project/ref-fvm/issues/987
             let codec = if params.is_empty() { 0 } else { DAG_CBOR };
-            return Self::filecoin_fallback(rt, method, codec, params).map(RawBytes::new);
+            return Self::handle_filecoin_method(rt, method, codec, params).map(RawBytes::new);
         }
 
         match FromPrimitive::from_u64(method) {
