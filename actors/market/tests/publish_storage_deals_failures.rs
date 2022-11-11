@@ -22,9 +22,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::TOTAL_FILECOIN;
 
 use cid::Cid;
-use fil_actor_market::ext::account::{
-    AuthenticateMessageParams, AUTHENTICATE_MESSAGE_EXPORTED,
-};
+use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 
 mod harness;
 
@@ -270,7 +268,7 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
 
     rt.expect_send(
         deal1.client,
-        AUTHENTICATE_MESSAGE_EXPORTED,
+        AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -334,7 +332,7 @@ fn fail_when_deals_have_different_providers() {
 
     rt.expect_send(
         deal1.client,
-        AUTHENTICATE_MESSAGE_EXPORTED as u64,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -342,7 +340,7 @@ fn fail_when_deals_have_different_providers() {
     );
     rt.expect_send(
         deal2.client,
-        AUTHENTICATE_MESSAGE_EXPORTED as u64,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param2,
         TokenAmount::zero(),
         RawBytes::default(),

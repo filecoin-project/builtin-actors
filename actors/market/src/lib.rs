@@ -1412,7 +1412,7 @@ fn deal_proposal_is_internally_valid(
 
     rt.send(
         &proposal.proposal.client,
-        ext::account::AUTHENTICATE_MESSAGE_EXPORTED,
+        ext::account::AUTHENTICATE_MESSAGE_METHOD,
         RawBytes::serialize(ext::account::AuthenticateMessageParams {
             signature: signature_bytes,
             message: proposal_bytes,
