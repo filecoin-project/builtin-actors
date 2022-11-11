@@ -23,20 +23,6 @@ use {
     fvm_ipld_hamt::Hamt,
 };
 
-#[derive(Clone, Copy, Debug)]
-pub enum StorageStatus {
-    /// The value of a storage item has been left unchanged: 0 -> 0 and X -> X.
-    Unchanged,
-    /// The value of a storage item has been modified: X -> Y.
-    Modified,
-    /// A storage item has been modified after being modified before: X -> Y -> Z.
-    ModifiedAgain,
-    /// A new storage item has been added: 0 -> X.
-    Added,
-    /// A storage item has been deleted: X -> 0.
-    Deleted,
-}
-
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
 pub struct System<'r, RT: Runtime> {
@@ -205,40 +191,28 @@ impl<'r, RT: Runtime> System<'r, RT> {
     }
 
     /// Get value of a storage key.
-    pub fn get_storage(&mut self, key: U256) -> Result<Option<U256>, StatusCode> {
-        let mut key_bytes = [0u8; 32];
-        key.to_big_endian(&mut key_bytes);
-
-        Ok(self.slots.get(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?.cloned())
+    pub fn get_storage(&mut self, key: U256) -> Result<U256, StatusCode> {
+        Ok(self
+            .slots
+            .get(&key)
+            .map_err(|e| StatusCode::InternalError(e.to_string()))?
+            .cloned()
+            .unwrap_or_default())
     }
 
     /// Set value of a storage key.
-    pub fn set_storage(
-        &mut self,
-        key: U256,
-        value: Option<U256>,
-    ) -> Result<StorageStatus, StatusCode> {
-        self.saved_state_root = None; // dirty.
-
-        let mut key_bytes = [0u8; 32];
-        key.to_big_endian(&mut key_bytes);
-
-        let prev_value =
-            self.slots.get(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?.cloned();
-
-        let mut storage_status =
-            if prev_value == value { StorageStatus::Unchanged } else { StorageStatus::Modified };
-
-        if value.is_none() {
-            self.slots.delete(&key).map_err(|e| StatusCode::InternalError(e.to_string()))?;
-            storage_status = StorageStatus::Deleted;
+    pub fn set_storage(&mut self, key: U256, value: U256) -> Result<(), StatusCode> {
+        let changed = if value.is_zero() {
+            self.slots.delete(&key).map(|v| v.is_some())
         } else {
-            self.slots
-                .set(key, value.unwrap())
-                .map_err(|e| StatusCode::InternalError(e.to_string()))?;
+            self.slots.set(key, value).map(|v| v != Some(value))
         }
+        .map_err(|e| StatusCode::InternalError(e.to_string()))?;
 
-        Ok(storage_status)
+        if changed {
+            self.saved_state_root = None; // dirty.
+        };
+        Ok(())
     }
 
     /// Resolve the address to the ethereum equivalent, if possible.
