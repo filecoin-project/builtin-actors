@@ -1,5 +1,5 @@
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -12,11 +12,7 @@ pub fn sload(
     let location = state.stack.pop();
 
     // get from storage and place on stack
-    let value = match system.get_storage(location)? {
-        Some(val) => val,
-        None => U256::zero(),
-    };
-    state.stack.push(value);
+    state.stack.push(system.get_storage(location)?);
     Ok(())
 }
 
@@ -29,10 +25,6 @@ pub fn sstore(
         return Err(StatusCode::StaticModeViolation);
     }
 
-    let location = state.stack.pop();
-    let value = state.stack.pop();
-    let opt_value = if value == U256::zero() { None } else { Some(value) };
-
-    system.set_storage(location, opt_value)?;
+    system.set_storage(state.stack.pop(), state.stack.pop())?;
     Ok(())
 }

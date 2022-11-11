@@ -1,6 +1,6 @@
 use std::iter;
 
-use fil_actors_runtime::{runtime::builtins::Type, EAM_ACTOR_ID};
+use fil_actors_runtime::{runtime::builtins::Type, AsActorError, EAM_ACTOR_ID};
 use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
 use fvm_shared::address::{Address, Payload};
 use interpreter::{address::EthAddress, system::load_bytecode};
@@ -233,8 +233,7 @@ impl EvmContractActor {
 
         System::load(rt, true)?
             .get_storage(params.storage_key)
-            .map_err(|st| ActorError::unspecified(format!("failed to get storage key: {}", &st)))?
-            .ok_or_else(|| ActorError::not_found(String::from("storage key not found")))
+            .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")
     }
 }
 
