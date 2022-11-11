@@ -28,7 +28,7 @@ use sha2::{Digest, Sha256};
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::builtins::Type;
 use crate::runtime::{
-    ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
+    ActorCode, ConsensusFault, MessageInfo, Policy, Primitives, RuntimePolicy,
     Verifier,
 };
 use crate::{actor_error, ActorError, Runtime};

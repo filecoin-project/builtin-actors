@@ -21,7 +21,7 @@ use fil_actors_runtime::actor_error;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
-    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
+    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier, EMPTY_ARR_CID,
 };
 use fil_actors_runtime::test_utils::*;
@@ -948,7 +948,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn get_randomness_from_tickets(
         &self,
-        _personalization: DomainSeparationTag,
+        _personalization: i64,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
@@ -957,7 +957,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn get_randomness_from_beacon(
         &self,
-        _personalization: DomainSeparationTag,
+        _personalization: i64,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {

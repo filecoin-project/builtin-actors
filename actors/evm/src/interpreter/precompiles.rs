@@ -2,18 +2,16 @@ use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
 
 use super::{address::EthAddress, U256};
 
-use num_traits::FromPrimitive;
-use fil_actors_runtime::{
-    runtime::{Primitives, Runtime},
-};
+use fil_actors_runtime::runtime::{Primitives, Runtime};
 use fvm_shared::{
     address::Address,
     bigint::BigUint,
     crypto::{
         hash::SupportedHashes,
         signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
-    }, randomness::Randomness,
+    },
 };
+use num_traits::FromPrimitive;
 use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
@@ -72,7 +70,7 @@ const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
         get_actor_code_cid, // get code cid 0x0c
         get_randomness,     // rand 0x0d
         // TODO till I refactor context
-        todo,                 // context 0x0e 
+        todo, // context 0x0e
     ]
 }
 
@@ -109,11 +107,10 @@ fn todo<RT: Runtime>(_: &RT, _: &[u8]) -> PrecompileResult {
     todo!()
 }
 
-
 fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let id = EthAddress(input[..20].try_into().unwrap()).as_id();
     if id.is_none() {
-        return Err(PrecompileError::InvalidInput)
+        return Err(PrecompileError::InvalidInput);
     }
     Ok(rt.get_actor_code_cid(&id.unwrap()).unwrap_or_default().to_bytes())
 }
@@ -132,18 +129,22 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let randomness_type = RandomnessType::from_u8(word[0]);
     // 7 bytes reserved
     let personalization = i64::from_le_bytes(word[8..16].try_into().unwrap());
-    let rand_epoch  = i64::from_le_bytes(word[16..24].try_into().unwrap());
+    let rand_epoch = i64::from_le_bytes(word[16..24].try_into().unwrap());
     let entropy_len = u64::from_le_bytes(word[24..32].try_into().unwrap());
 
     let entropy = read_right_pad(&input[32..], entropy_len as usize);
 
     let randomness = match randomness_type {
-        Some(RandomnessType::Chain) => rt.get_randomness_from_tickets(personalization, rand_epoch, &entropy),
-        Some(RandomnessType::Beacon) => rt.get_randomness_from_beacon(personalization, rand_epoch, &entropy),
-        None => Ok(Randomness(Vec::new())),
+        Some(RandomnessType::Chain) => rt
+            .get_randomness_from_tickets(personalization, rand_epoch, &entropy)
+            .map(|a| a.to_vec()),
+        Some(RandomnessType::Beacon) => {
+            rt.get_randomness_from_beacon(personalization, rand_epoch, &entropy).map(|a| a.to_vec())
+        }
+        None => Ok(Vec::new()),
     };
-    
-    randomness.map(|r| r.0).map_err(|_| PrecompileError::InvalidInput)
+
+    randomness.map_err(|_| PrecompileError::InvalidInput)
 }
 
 // looks up the other address of an ID address, returns empty array if not found, or the FIL encoded address
@@ -152,7 +153,7 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
 fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let id = EthAddress(input[..20].try_into().unwrap()).as_id();
     if id.is_none() {
-        return Err(PrecompileError::InvalidInput)
+        return Err(PrecompileError::InvalidInput);
     }
     let address = rt.lookup_address(id.unwrap());
     let ab = match address {
@@ -163,12 +164,12 @@ fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
 }
 
 // REMOVEME i'd like to be able to return with 0, but 0 id address is system, so ima just use empty vec :\
-fn resolve_address<RT: Runtime<BS>, BS: Blockstore>(rt: &RT, input: &[u8]) -> PrecompileResult {
+fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let addr = match Address::from_bytes(input) {
         Ok(o) => o,
         Err(_) => return Ok(Vec::new()),
     };
-    Ok(rt.resolve_address(&addr).map(|a| EthAddress::from_id(a).0.to_vec()).unwrap_or(Vec::new()))
+    Ok(rt.resolve_address(&addr).map(|a| EthAddress::from_id(a).0.to_vec()).unwrap_or_default())
 }
 
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature

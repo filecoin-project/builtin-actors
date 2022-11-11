@@ -38,7 +38,7 @@ use rand::prelude::*;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{
-    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
+    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier, EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError};
