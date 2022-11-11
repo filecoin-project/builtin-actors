@@ -21,8 +21,7 @@ use fil_actors_runtime::actor_error;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
-    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier, EMPTY_ARR_CID,
+    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier, EMPTY_ARR_CID,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{

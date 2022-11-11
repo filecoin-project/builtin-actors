@@ -38,8 +38,7 @@ use rand::prelude::*;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{
-    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier, EMPTY_ARR_CID,
+    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier, EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
