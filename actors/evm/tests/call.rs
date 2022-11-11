@@ -172,13 +172,13 @@ fn test_call_convert_to_send() {
 }
 
 #[allow(dead_code)]
-pub fn filecoin_native_contract() -> Vec<u8> {
-    hex::decode(include_str!("contracts/FilecoinNative.hex")).unwrap()
+pub fn filecoin_fallback_contract() -> Vec<u8> {
+    hex::decode(include_str!("contracts/FilecoinFallback.hex")).unwrap()
 }
 
 #[test]
 fn test_reserved_method() {
-    let contract = filecoin_native_contract();
+    let contract = filecoin_fallback_contract();
     let mut rt = util::construct_and_verify(contract);
 
     // invoke the contract
@@ -191,7 +191,7 @@ fn test_reserved_method() {
 
 #[test]
 fn test_native_call() {
-    let contract = filecoin_native_contract();
+    let contract = filecoin_fallback_contract();
     let mut rt = util::construct_and_verify(contract);
 
     // invoke the contract
