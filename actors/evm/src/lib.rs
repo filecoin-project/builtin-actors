@@ -1,6 +1,6 @@
 use std::iter;
 
-use fil_actors_runtime::{runtime::builtins::Type, AsActorError, EAM_ACTOR_ID};
+use fil_actors_runtime::{actor_error, runtime::builtins::Type, AsActorError, EAM_ACTOR_ID};
 use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
 use fvm_shared::address::{Address, Payload};
 use interpreter::{address::EthAddress, system::load_bytecode};
@@ -34,6 +34,8 @@ fil_actors_runtime::wasm_trampoline!(EvmContractActor);
 const MAX_CODE_SIZE: usize = 24 << 10;
 
 pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
+
+const EVM_MAX_RESERVED_METHOD: u64 = 1023;
 
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -247,6 +249,12 @@ impl ActorCode for EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a _subset_ of
+        // those reserved by FRC0042.
+        if method > EVM_MAX_RESERVED_METHOD {
+            return Self::invoke_contract(rt, method, params, false, None).map(RawBytes::new);
+        }
+
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
@@ -288,9 +296,7 @@ impl ActorCode for EvmContractActor {
                 )?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
-
-            // Otherwise, we take the bytes as CBOR.
-            None => Self::invoke_contract(rt, method, params, false, None).map(RawBytes::new),
+            None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
 }

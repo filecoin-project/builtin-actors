@@ -189,6 +189,20 @@ return
 }
 
 #[test]
+fn test_reserved_method() {
+    let contract = methodnum_contract();
+
+    let mut rt = util::construct_and_verify(contract);
+
+    // invoke the contract
+    rt.expect_validate_caller_any();
+
+    let code =
+        rt.call::<evm::EvmContractActor>(0x42, &RawBytes::default()).unwrap_err().exit_code();
+    assert_eq!(ExitCode::USR_UNHANDLED_MESSAGE, code);
+}
+
+#[test]
 fn test_methodnum() {
     let contract = methodnum_contract();
 
@@ -197,8 +211,8 @@ fn test_methodnum() {
     // invoke the contract
     rt.expect_validate_caller_any();
 
-    let result = rt.call::<evm::EvmContractActor>(0x42, &RawBytes::default()).unwrap();
-    assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
+    let result = rt.call::<evm::EvmContractActor>(1024, &RawBytes::default()).unwrap();
+    assert_eq!(U256::from_big_endian(&result), U256::from(1024));
 }
 
 #[allow(dead_code)]
