@@ -127,7 +127,7 @@ fn authenticate_message() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, &params),
+        rt.call::<AccountActor>(Method::AuthenticateMessage as MethodNum, &params),
     );
 
     // Ok to call exported method number
