@@ -351,7 +351,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         }
 
         BLOCKHASH(m) {
-            context::blockhash(m.runtime, m.system)?;
+            context::blockhash(m.runtime, m.system);
             Ok(ControlFlow::Continue)
         }
 
