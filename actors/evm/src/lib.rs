@@ -1,7 +1,7 @@
 use std::iter;
 
 use fil_actors_runtime::{actor_error, runtime::builtins::Type, AsActorError, EAM_ACTOR_ID};
-use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
 use fvm_shared::address::{Address, Payload};
 use interpreter::{address::EthAddress, system::load_bytecode};
 
@@ -36,6 +36,17 @@ const MAX_CODE_SIZE: usize = 24 << 10;
 pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
 
 const EVM_MAX_RESERVED_METHOD: u64 = 1023;
+pub const NATIVE_METHOD_SIGNATURE: &str = "filecoin_native_method(uint64,uint64,bytes)";
+pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x17, 0x62, 0x41, 0x12];
+
+#[test]
+fn test_method_selector() {
+    // We could just _generate_ this method selector with a proc macro, but this is easier.
+    use cid::multihash::MultihashDigest;
+    let hash = cid::multihash::Code::Keccak256.digest(NATIVE_METHOD_SIGNATURE.as_bytes());
+    let computed_selector = &hash.digest()[..4];
+    assert_eq!(computed_selector, NATIVE_METHOD_SELECTOR);
+}
 
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -102,12 +113,7 @@ impl EvmContractActor {
         let mut system = System::create(rt)?;
 
         // create a new execution context
-        let mut exec_state = ExecutionState::new(
-            params.creator,
-            receiver_eth_addr,
-            Method::Constructor as u64,
-            Bytes::new(),
-        );
+        let mut exec_state = ExecutionState::new(params.creator, receiver_eth_addr, Bytes::new());
 
         // identify bytecode valid jump destinations
         let initcode = Bytecode::new(params.initcode.into());
@@ -143,7 +149,6 @@ impl EvmContractActor {
 
     pub fn invoke_contract<RT>(
         rt: &mut RT,
-        method: u64,
         input_data: &[u8],
         readonly: bool,
         with_code: Option<Cid>,
@@ -179,12 +184,8 @@ impl EvmContractActor {
         let receiver_fil_addr = system.rt.message().receiver();
         let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).unwrap();
 
-        let mut exec_state = ExecutionState::new(
-            caller_eth_addr,
-            receiver_eth_addr,
-            method,
-            input_data.to_vec().into(),
-        );
+        let mut exec_state =
+            ExecutionState::new(caller_eth_addr, receiver_eth_addr, input_data.to_vec().into());
 
         let exec_status =
             execute(&bytecode, &mut exec_state, &mut system).map_err(|e| match e {
@@ -216,6 +217,21 @@ impl EvmContractActor {
         Ok(exec_status.output_data.to_vec())
     }
 
+    pub fn invoke_method<RT>(
+        rt: &mut RT,
+        method: u64,
+        codec: u64,
+        params: &[u8],
+    ) -> Result<Vec<u8>, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        let input = filecoin_native_method_input(method, codec, params);
+        println!("{:x?}", input);
+        Self::invoke_contract(rt, &input, false, None)
+    }
+
     pub fn bytecode(rt: &mut impl Runtime) -> Result<Cid, ActorError> {
         // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
         rt.validate_immediate_caller_accept_any()?;
@@ -239,6 +255,25 @@ impl EvmContractActor {
     }
 }
 
+/// Format "filecoin_native_method" input parameters.
+fn filecoin_native_method_input(method: u64, codec: u64, params: &[u8]) -> Vec<u8> {
+    let static_args = [method, codec, 32 * 3 /* start of params */, params.len() as u64];
+    let total_words = static_args.len() + (params.len() / 32) + (params.len() % 32 > 0) as usize;
+    let len = 4 + total_words * 32;
+    let mut buf = Vec::with_capacity(len);
+    buf.extend_from_slice(&NATIVE_METHOD_SELECTOR);
+    for n in static_args {
+        // Left-pad to 32 bytes, then be-encode the value.
+        let encoded = n.to_be_bytes();
+        buf.resize(buf.len() + (32 - encoded.len()), 0);
+        buf.extend_from_slice(&encoded);
+    }
+    // Extend with the params, then right-pad with zeros.
+    buf.extend_from_slice(params);
+    buf.resize(len, 0);
+    buf
+}
+
 impl ActorCode for EvmContractActor {
     fn invoke_method<RT>(
         rt: &mut RT,
@@ -252,7 +287,9 @@ impl ActorCode for EvmContractActor {
         // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a _subset_ of
         // those reserved by FRC0042.
         if method > EVM_MAX_RESERVED_METHOD {
-            return Self::invoke_contract(rt, method, params, false, None).map(RawBytes::new);
+            // FIXME: we need the actual codec.
+            let codec = if params.is_empty() { 0 } else { DAG_CBOR };
+            return Self::invoke_method(rt, method, codec, params).map(RawBytes::new);
         }
 
         match FromPrimitive::from_u64(method) {
@@ -262,8 +299,7 @@ impl ActorCode for EvmContractActor {
             }
             Some(Method::InvokeContract) => {
                 let BytesDe(params) = params.deserialize()?;
-                let value =
-                    Self::invoke_contract(rt, Method::InvokeContract as u64, &params, false, None)?;
+                let value = Self::invoke_contract(rt, &params, false, None)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
@@ -276,24 +312,13 @@ impl ActorCode for EvmContractActor {
             }
             Some(Method::InvokeContractReadOnly) => {
                 let BytesDe(params) = params.deserialize()?;
-                let value = Self::invoke_contract(
-                    rt,
-                    Method::InvokeContractReadOnly as u64,
-                    &params,
-                    true,
-                    None,
-                )?;
+                let value = Self::invoke_contract(rt, &params, true, None)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::InvokeContractDelegate) => {
                 let params: DelegateCallParams = cbor::deserialize_params(params)?;
-                let value = Self::invoke_contract(
-                    rt,
-                    Method::InvokeContractDelegate as u64,
-                    &params.input,
-                    params.readonly,
-                    Some(params.code),
-                )?;
+                let value =
+                    Self::invoke_contract(rt, &params.input, params.readonly, Some(params.code))?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

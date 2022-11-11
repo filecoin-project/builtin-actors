@@ -172,26 +172,13 @@ fn test_call_convert_to_send() {
 }
 
 #[allow(dead_code)]
-pub fn methodnum_contract() -> Vec<u8> {
-    // a simple contract that just returns the invocation methodnum
-    let init = "";
-    let body = r#"
-@methodnum
-push1 0x00
-mstore
-
-push1 0x20
-push1 0x00
-return
-"#;
-
-    asm::new_contract("methodnum", init, body).unwrap()
+pub fn filecoin_native_contract() -> Vec<u8> {
+    hex::decode(include_str!("contracts/FilecoinNative.hex")).unwrap()
 }
 
 #[test]
 fn test_reserved_method() {
-    let contract = methodnum_contract();
-
+    let contract = filecoin_native_contract();
     let mut rt = util::construct_and_verify(contract);
 
     // invoke the contract
@@ -203,9 +190,8 @@ fn test_reserved_method() {
 }
 
 #[test]
-fn test_methodnum() {
-    let contract = methodnum_contract();
-
+fn test_native_call() {
+    let contract = filecoin_native_contract();
     let mut rt = util::construct_and_verify(contract);
 
     // invoke the contract

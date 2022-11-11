@@ -1,0 +1,1 @@
+[{"inputs":[{"internalType":"uint64","name":"method","type":"uint64"},{"internalType":"uint64","name":"codec","type":"uint64"},{"internalType":"bytes","name":"params","type":"bytes"}],"name":"filecoin_native_method","outputs":[{"internalType":"uint64","name":"","type":"uint64"}],"stateMutability":"pure","type":"function"}]

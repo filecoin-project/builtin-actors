@@ -329,7 +329,3 @@ pub fn callactor(
     stack.push(U256::from(1));
     Ok(())
 }
-
-pub fn methodnum(state: &mut ExecutionState) {
-    state.stack.push(U256::from(state.method));
-}
