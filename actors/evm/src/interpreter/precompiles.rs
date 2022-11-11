@@ -53,7 +53,7 @@ pub type PrecompileFn<RT> = fn(&RT, &[u8]) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont like vec
 
 /// Generates a list of precompile smart contracts, index + 1 is the address (another option is to make an enum)
-const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
+const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 13] {
     [
         ec_recover, // ecrecover 0x01
         sha256,     // SHA2-256 0x02
@@ -69,15 +69,13 @@ const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
         lookup_address,     // resolve_address 0x0b
         get_actor_code_cid, // get code cid 0x0c
         get_randomness,     // rand 0x0d
-        // TODO till I refactor context
-        todo, // context 0x0e
     ]
 }
 
 pub struct Precompiles<RT>(PhantomData<RT>);
 
 impl<RT: Runtime> Precompiles<RT> {
-    const PRECOMPILES: [PrecompileFn<RT>; 14] = gen_precompiles();
+    const PRECOMPILES: [PrecompileFn<RT>; 13] = gen_precompiles();
     const MAX_PRECOMPILE: U256 = {
         let mut limbs = [0u64; 4];
         limbs[0] = Self::PRECOMPILES.len() as u64;
@@ -104,10 +102,6 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
 }
 
 // --- Precompiles ---
-
-fn todo<RT: Runtime>(_: &RT, _: &[u8]) -> PrecompileResult {
-    todo!()
-}
 
 /// Read right padded BE encoded u64 ID address
 /// returns encoded CID or an empty array if actor not found
