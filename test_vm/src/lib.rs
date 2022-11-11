@@ -21,7 +21,8 @@ use fil_actors_runtime::actor_error;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
-    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier, EMPTY_ARR_CID,
+    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
+    Verifier, EMPTY_ARR_CID,
 };
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
@@ -947,7 +948,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn get_randomness_from_tickets(
         &self,
-        _personalization: i64,
+        _personalization: DomainSeparationTag,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
@@ -956,8 +957,26 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn get_randomness_from_beacon(
         &self,
-        _personalization: i64,
+        _personalization: DomainSeparationTag,
         _rand_epoch: ChainEpoch,
+        _entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
+    }
+
+    fn user_get_beacon_randomness(
+        &self,
+        _personalization: i64,
+        _epoch: ChainEpoch,
+        _entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
+    }
+
+    fn user_get_chain_randomness(
+        &self,
+        _personalization: i64,
+        _epoch: ChainEpoch,
         _entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         Ok(TEST_VM_RAND_ARRAY)

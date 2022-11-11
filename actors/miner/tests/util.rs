@@ -868,13 +868,13 @@ impl ActorHarness {
         // Prepare for and receive call to ProveCommitSector
         let entropy = RawBytes::serialize(self.receiver).unwrap();
         rt.expect_get_randomness_from_tickets(
-            DomainSeparationTag::SealRandomness as i64,
+            DomainSeparationTag::SealRandomness,
             pc.info.seal_rand_epoch,
             entropy.to_vec(),
             seal_rand.clone(),
         );
         rt.expect_get_randomness_from_beacon(
-            DomainSeparationTag::InteractiveSealChallengeSeed as i64,
+            DomainSeparationTag::InteractiveSealChallengeSeed,
             interactive_epoch,
             entropy.to_vec(),
             seal_int_rand.clone(),
@@ -939,13 +939,13 @@ impl ActorHarness {
             let receiver = rt.receiver;
             let buf = receiver.marshal_cbor()?;
             rt.expect_get_randomness_from_tickets(
-                DomainSeparationTag::SealRandomness as i64,
+                DomainSeparationTag::SealRandomness,
                 precommit.info.seal_rand_epoch,
                 buf.clone(),
                 seal_rand,
             );
             rt.expect_get_randomness_from_beacon(
-                DomainSeparationTag::InteractiveSealChallengeSeed as i64,
+                DomainSeparationTag::InteractiveSealChallengeSeed,
                 interactive_epoch,
                 buf,
                 seal_int_rand.clone(),
@@ -1318,7 +1318,7 @@ impl ActorHarness {
             None => TEST_RANDOMNESS_ARRAY_FROM_ONE.into(),
         };
         rt.expect_get_randomness_from_tickets(
-            DomainSeparationTag::PoStChainCommit as i64,
+            DomainSeparationTag::PoStChainCommit,
             params.chain_commit_epoch,
             Vec::new(),
             chain_commit_rand,
@@ -1355,7 +1355,7 @@ impl ActorHarness {
             if let Some(good_info) = maybe_good_info {
                 let entropy = RawBytes::serialize(self.receiver).unwrap();
                 rt.expect_get_randomness_from_beacon(
-                    DomainSeparationTag::WindowedPoStChallengeSeed as i64,
+                    DomainSeparationTag::WindowedPoStChallengeSeed,
                     deadline.challenge,
                     entropy.to_vec(),
                     challenge_rand.clone(),
@@ -1462,7 +1462,7 @@ impl ActorHarness {
 
         let entropy = RawBytes::serialize(self.receiver).unwrap();
         rt.expect_get_randomness_from_beacon(
-            DomainSeparationTag::WindowedPoStChallengeSeed as i64,
+            DomainSeparationTag::WindowedPoStChallengeSeed,
             deadline.challenge,
             entropy.to_vec(),
             challenge_rand.clone(),

@@ -135,11 +135,11 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let entropy = read_right_pad(&input[32..], entropy_len as usize);
 
     let randomness = match randomness_type {
-        Some(RandomnessType::Chain) => rt
-            .get_randomness_from_tickets(personalization, rand_epoch, &entropy)
-            .map(|a| a.to_vec()),
+        Some(RandomnessType::Chain) => {
+            rt.user_get_chain_randomness(personalization, rand_epoch, &entropy).map(|a| a.to_vec())
+        }
         Some(RandomnessType::Beacon) => {
-            rt.get_randomness_from_beacon(personalization, rand_epoch, &entropy).map(|a| a.to_vec())
+            rt.user_get_beacon_randomness(personalization, rand_epoch, &entropy).map(|a| a.to_vec())
         }
         None => Ok(Vec::new()),
     };
@@ -148,8 +148,6 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
 }
 
 // looks up the other address of an ID address, returns empty array if not found, or the FIL encoded address
-// TODO what is predictable here for lookup address: only f2 and f4? f4 addresses arent always predictable...
-// TODO should we assume raw actor ID or EVM style FIL ID address?
 fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let id = EthAddress(input[..20].try_into().unwrap()).as_id();
     if id.is_none() {

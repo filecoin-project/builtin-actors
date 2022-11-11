@@ -28,7 +28,8 @@ use sha2::{Digest, Sha256};
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::builtins::Type;
 use crate::runtime::{
-    ActorCode, ConsensusFault, MessageInfo, Policy, Primitives, RuntimePolicy, Verifier,
+    ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
+    Verifier,
 };
 use crate::{actor_error, ActorError, Runtime};
 
@@ -212,7 +213,7 @@ where
 
     fn get_randomness_from_tickets(
         &self,
-        personalization: i64,
+        personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
@@ -226,7 +227,7 @@ where
         //
         // Since that behaviour changes, we may as well abort with a more appropriate exit code
         // explicitly.
-        fvm::rand::get_chain_randomness(personalization, rand_epoch, entropy)
+        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy)
             .map_err(|e| {
             if self.network_version() < NetworkVersion::V16 {
                 ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
@@ -244,12 +245,12 @@ where
 
     fn get_randomness_from_beacon(
         &self,
-        personalization: i64,
+        personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
         // See note on exit codes in get_randomness_from_tickets.
-        fvm::rand::get_beacon_randomness(personalization, rand_epoch, entropy)
+        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy)
             .map_err(|e| {
             if self.network_version() < NetworkVersion::V16 {
                 ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
@@ -261,6 +262,38 @@ where
                     }
                     e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                 }
+            }
+        })
+    }
+
+    fn user_get_beacon_randomness(
+        &self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        fvm::rand::get_beacon_randomness(personalization, epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                }
+                e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
+            }
+        })
+    }
+
+    fn user_get_chain_randomness(
+        &self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        fvm::rand::get_chain_randomness(personalization, epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                }
+                e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
             }
         })
     }

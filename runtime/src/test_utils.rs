@@ -31,6 +31,8 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
+use num_traits::FromPrimitive;
+
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
@@ -38,7 +40,8 @@ use rand::prelude::*;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{
-    ActorCode, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy, Verifier, EMPTY_ARR_CID,
+    ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
+    Verifier, EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
@@ -182,6 +185,8 @@ pub struct Expectations {
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
     pub expect_get_randomness_tickets: VecDeque<ExpectRandomness>,
     pub expect_get_randomness_beacon: VecDeque<ExpectRandomness>,
+    pub expect_user_get_chain_randomness: VecDeque<ExpectRandomness>,
+    pub expect_user_get_beacon_randomness: VecDeque<ExpectRandomness>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
@@ -671,25 +676,47 @@ impl<BS: Blockstore> MockRuntime<BS> {
 
     pub fn expect_get_randomness_from_tickets(
         &mut self,
-        tag: i64,
+        tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
         out: [u8; RANDOMNESS_LENGTH],
     ) {
-        let a = ExpectRandomness { tag, epoch, entropy, out };
+        let a = ExpectRandomness { tag: tag as i64, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_tickets.push_back(a);
     }
 
     #[allow(dead_code)]
     pub fn expect_get_randomness_from_beacon(
         &mut self,
-        tag: i64,
+        tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
         out: [u8; RANDOMNESS_LENGTH],
     ) {
-        let a = ExpectRandomness { tag, epoch, entropy, out };
+        let a = ExpectRandomness { tag: tag as i64, epoch, entropy, out };
         self.expectations.borrow_mut().expect_get_randomness_beacon.push_back(a);
+    }
+
+    pub fn expect_user_get_beacon_randomness(
+        &mut self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: Vec<u8>,
+        out: [u8; RANDOMNESS_LENGTH],
+    ) {
+        let a = ExpectRandomness { tag: personalization, epoch, entropy, out };
+        self.expectations.borrow_mut().expect_user_get_beacon_randomness.push_back(a);
+    }
+
+    pub fn expect_user_get_chain_randomness(
+        &mut self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: Vec<u8>,
+        out: [u8; RANDOMNESS_LENGTH],
+    ) {
+        let a = ExpectRandomness { tag: personalization, epoch, entropy, out };
+        self.expectations.borrow_mut().expect_user_get_chain_randomness.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -947,7 +974,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn get_randomness_from_tickets(
         &self,
-        tag: i64,
+        tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
@@ -960,9 +987,11 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
         assert_eq!(
-            expected.tag, tag,
+            expected.tag,
+            tag as i64,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
-            expected.tag, tag
+            DomainSeparationTag::from_i64(expected.tag),
+            tag
         );
         assert_eq!(
             expected.epoch, epoch,
@@ -980,7 +1009,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn get_randomness_from_beacon(
         &self,
-        tag: i64,
+        tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
@@ -993,9 +1022,11 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
         assert!(epoch <= self.epoch, "attempt to get randomness from future");
         assert_eq!(
-            expected.tag, tag,
+            expected.tag,
+            tag as i64,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
-            expected.tag, tag
+            DomainSeparationTag::from_i64(expected.tag),
+            tag
         );
         assert_eq!(
             expected.epoch, epoch,
@@ -1203,6 +1234,72 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             return None;
         }
         self.tipset_cids.get((self.epoch - epoch) as usize).copied()
+    }
+
+    fn user_get_chain_randomness(
+        &self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        let expected = self
+            .expectations
+            .borrow_mut()
+            .expect_user_get_beacon_randomness
+            .pop_front()
+            .expect("unexpected call to user_get_chain_randomness");
+
+        assert!(epoch <= self.epoch, "attempt to get randomness from future");
+        assert_eq!(
+            expected.tag, personalization,
+            "unexpected domain personalization tag, expected: {:?}, actual: {:?}",
+            expected.tag, personalization
+        );
+        assert_eq!(
+            expected.epoch, epoch,
+            "unexpected epoch, expected: {:?}, actual: {:?}",
+            expected.epoch, epoch
+        );
+        assert_eq!(
+            expected.entropy, *entropy,
+            "unexpected entroy, expected {:?}, actual: {:?}",
+            expected.entropy, entropy
+        );
+
+        Ok(expected.out)
+    }
+
+    fn user_get_beacon_randomness(
+        &self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        let expected = self
+            .expectations
+            .borrow_mut()
+            .expect_user_get_beacon_randomness
+            .pop_front()
+            .expect("unexpected call to user_get_beacon_randomness");
+
+        assert!(epoch <= self.epoch, "attempt to get randomness from future");
+        assert_eq!(
+            expected.tag, personalization,
+            "unexpected domain personalization tag, expected: {:?}, actual: {:?}",
+            expected.tag, personalization
+        );
+        assert_eq!(
+            expected.epoch, epoch,
+            "unexpected epoch, expected: {:?}, actual: {:?}",
+            expected.epoch, epoch
+        );
+        assert_eq!(
+            expected.entropy, *entropy,
+            "unexpected entroy, expected {:?}, actual: {:?}",
+            expected.entropy, entropy
+        );
+
+        Ok(expected.out)
     }
 }
 

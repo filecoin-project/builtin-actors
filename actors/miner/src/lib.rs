@@ -514,7 +514,7 @@ impl Actor {
 
             // Verify the chain commit randomness
             let comm_rand = rt.get_randomness_from_tickets(
-                DomainSeparationTag::PoStChainCommit as i64,
+                DomainSeparationTag::PoStChainCommit,
                 params.chain_commit_epoch,
                 &[],
             )?;
@@ -750,12 +750,12 @@ impl Actor {
                 ));
             }
             let sv_info_randomness = rt.get_randomness_from_tickets(
-                DomainSeparationTag::SealRandomness as i64,
+                DomainSeparationTag::SealRandomness,
                 precommit.info.seal_rand_epoch,
                 &receiver_bytes,
             )?;
             let sv_info_interactive_randomness = rt.get_randomness_from_beacon(
-                DomainSeparationTag::InteractiveSealChallengeSeed as i64,
+                DomainSeparationTag::InteractiveSealChallengeSeed,
                 interactive_epoch,
                 &receiver_bytes,
             )?;
@@ -4110,7 +4110,7 @@ fn verify_windowed_post(
     // Regenerate challenge randomness, which must match that generated for the proof.
     let entropy = serialize(&rt.message().receiver(), "address for window post challenge")?;
     let randomness = rt.get_randomness_from_beacon(
-        DomainSeparationTag::WindowedPoStChallengeSeed as i64,
+        DomainSeparationTag::WindowedPoStChallengeSeed,
         challenge_epoch,
         &entropy,
     )?;
@@ -4157,12 +4157,12 @@ fn get_verify_info(
     };
     let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
     let randomness = rt.get_randomness_from_tickets(
-        DomainSeparationTag::SealRandomness as i64,
+        DomainSeparationTag::SealRandomness,
         params.seal_rand_epoch,
         &entropy,
     )?;
     let interactive_randomness = rt.get_randomness_from_beacon(
-        DomainSeparationTag::InteractiveSealChallengeSeed as i64,
+        DomainSeparationTag::InteractiveSealChallengeSeed,
         params.interactive_epoch,
         &entropy,
     )?;
