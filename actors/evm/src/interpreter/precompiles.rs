@@ -1,6 +1,6 @@
 use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
 
-use super::{address::EthAddress, U256};
+use super::U256;
 
 use fil_actors_runtime::runtime::{Primitives, Runtime};
 use fvm_shared::{
@@ -103,18 +103,33 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
     input
 }
 
+// --- Precompiles ---
+
 fn todo<RT: Runtime>(_: &RT, _: &[u8]) -> PrecompileResult {
     todo!()
 }
 
+/// Read right padded BE encoded u64 ID address
+/// returns encoded CID or an empty array if actor not found
 fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    let id = EthAddress(input[..20].try_into().unwrap()).as_id();
-    if id.is_none() {
-        return Err(PrecompileError::InvalidInput);
-    }
-    Ok(rt.get_actor_code_cid(&id.unwrap()).unwrap_or_default().to_bytes())
+    let id_bytes = read_right_pad(input, 8);
+    let id = u64::from_be_bytes(id_bytes.as_ref().try_into().unwrap());
+    Ok(rt.get_actor_code_cid(&id).unwrap_or_default().to_bytes())
 }
 
+/// Params:
+/// 
+/// | Param            | Value                     | Byte Length |
+/// |------------------|---------------------------|---|
+/// | randomness_type  | `Chain`(0) OR `Beacon`(1) | 1 |
+/// | RESERVED         | must be zeroes            | 7 |
+/// | personalization  | `i64` (LE encoded)        | 8 |
+/// | randomness_epoch | `i64` (LE encoded)        | 8 |
+/// | entropy_length   | `u64` (LE encoded)        | 8 |
+/// | entropy          | input\[32..] (right padded)| entropy_length |
+/// 
+/// Returns empty array if invalid randomness type
+/// Errors if unable to fetch randomness or bits are in reserved zone
 fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     // 1 + 7 (reserved) + 8 + 8 + 8 = 32
     let word = read_right_pad(input, 32);
@@ -127,7 +142,12 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     }
 
     let randomness_type = RandomnessType::from_u8(word[0]);
+    
     // 7 bytes reserved
+    if &word[1..8] != &[0u8; 7] {
+        return Err(PrecompileError::InvalidInput)
+    }
+
     let personalization = i64::from_le_bytes(word[8..16].try_into().unwrap());
     let rand_epoch = i64::from_le_bytes(word[16..24].try_into().unwrap());
     let entropy_len = u64::from_le_bytes(word[24..32].try_into().unwrap());
@@ -147,13 +167,13 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     randomness.map_err(|_| PrecompileError::InvalidInput)
 }
 
-// looks up the other address of an ID address, returns empty array if not found, or the FIL encoded address
+/// Reads right padded BE encoded u64
+/// Looks up and returns the other address (encoded f2 or f4 addresses) of an ID address, returning empty array if not found
 fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    let id = EthAddress(input[..20].try_into().unwrap()).as_id();
-    if id.is_none() {
-        return Err(PrecompileError::InvalidInput);
-    }
-    let address = rt.lookup_address(id.unwrap());
+    let id_bytes = read_right_pad(input, 8);
+    let id = u64::from_be_bytes(id_bytes.as_ref().try_into().unwrap());
+
+    let address = rt.lookup_address(id);
     let ab = match address {
         Some(a) => a.to_bytes(),
         None => Vec::new(),
@@ -161,13 +181,16 @@ fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(ab)
 }
 
-// REMOVEME i'd like to be able to return with 0, but 0 id address is system, so ima just use empty vec :\
+
+/// Reads a FIL encoded address
+/// Resolves a FIL encoded address into an ID address
+/// returns BE encoded u64 or empty array if nothing found
 fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let addr = match Address::from_bytes(input) {
         Ok(o) => o,
         Err(_) => return Ok(Vec::new()),
     };
-    Ok(rt.resolve_address(&addr).map(|a| EthAddress::from_id(a).0.to_vec()).unwrap_or_default())
+    Ok(rt.resolve_address(&addr).map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
 }
 
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
@@ -233,11 +256,10 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let input = read_right_pad(input, 96);
 
     // Follows go-ethereum by truncating bits to u64, ignoring other all other values in the first 24 bytes.
-    // We also need to try converting into u32 since we are running in WASM, and since we don't have any complexity
-    // functions or specific gas measurements of modexp in FEVM, we let values be whatever and have FEVM gas accounting
-    // be the one responsible for keeping things within reasonable limits.
+    // Since we don't have any complexity functions or specific gas measurements of modexp in FEVM,
+    // we let values be whatever and have FEVM gas accounting be the one responsible for keeping things within reasonable limits.
     // We _also_ will default with 0 (though this is already done with right padding above) since that is expected to be fine.
-    // Eth really relies heavily on gas checking being correct and safe for nodes...
+    // Eth really relies heavily on gas checking being correct and safe for client nodes...
     fn read_bigint_len(input: &[u8], start: usize) -> Result<usize, PrecompileError> {
         let digits = BigUint::from_bytes_be(&input[start..start + 32]);
         let mut digits = digits.iter_u64_digits();
@@ -893,7 +915,7 @@ mod tests {
         // NOTE:
         //  original test case ran ffffffff rounds of blake2b
         //  with an expected output of fc59093aafa9ab43daae0e914c57635c5402d8e3d2130eb9b3cc181de7f0ecf9b22bf99a7815ce16419e200e01846e6b5df8cc7703041bbceb571de6631d2615
-        //  I ran this sucessfully while grabbing a cup of coffee, so if you fee like wasting u32::MAX rounds of hash time, (25-ish min on Ryzen5 2600) you can test it as such.
+        //  I ran this successfully while grabbing a cup of coffee, so if you fee like wasting u32::MAX rounds of hash time, (25-ish min on Ryzen5 2600) you can test it as such.
         //  For my and CI's sanity however, we are capping it at 0000ffff.
         let expected = &hex!("183ed9b1e5594bcdd715a4e4fd7b0dc2eaa2ef9bda48242af64c687081142156621bc94bb2d5aa99d83c2f1a5d9c426e1b6a1755a5e080f6217e2a5f3b9c4624");
         let input = &hex!(
