@@ -25,6 +25,9 @@ pub fn sstore(
         return Err(StatusCode::StaticModeViolation);
     }
 
-    system.set_storage(state.stack.pop(), state.stack.pop())?;
+    let key = state.stack.pop();
+    let value = state.stack.pop();
+
+    system.set_storage(key, value)?;
     Ok(())
 }
