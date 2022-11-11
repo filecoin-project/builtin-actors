@@ -22,7 +22,6 @@ use {
 pub struct ExecutionState {
     pub stack: Stack,
     pub memory: Memory,
-    pub method: u64,
     pub input_data: Bytes,
     pub return_data: Bytes,
     pub output_data: Bytes,
@@ -35,11 +34,10 @@ pub struct ExecutionState {
 }
 
 impl ExecutionState {
-    pub fn new(caller: EthAddress, receiver: EthAddress, method: u64, input_data: Bytes) -> Self {
+    pub fn new(caller: EthAddress, receiver: EthAddress, input_data: Bytes) -> Self {
         Self {
             stack: Stack::default(),
             memory: Memory::default(),
-            method,
             input_data,
             return_data: Default::default(),
             output_data: Bytes::new(),
@@ -857,11 +855,6 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         // FEVM extensions opcodes
         CALLACTOR(m) {
             call::callactor(m.runtime, m.system)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        METHODNUM(m) {
-            call::methodnum(m.runtime);
             Ok(ControlFlow::Continue)
         }
     }

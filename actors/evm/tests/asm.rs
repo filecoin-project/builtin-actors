@@ -95,7 +95,5 @@ pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_a
 // So f*ck it, we'll just hack this until there is support.
 // See also https://github.com/quilt/etk/issues/110
 fn with_fevm_extensions(body: &str) -> String {
-    body.to_owned()
-        .replace("@callactor", "%include_hex(\"tests/opcodes/callactor.hex\")")
-        .replace("@methodnum", "%include_hex(\"tests/opcodes/methodnum.hex\")")
+    body.to_owned().replace("@callactor", "%include_hex(\"tests/opcodes/callactor.hex\")")
 }
