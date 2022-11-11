@@ -10,7 +10,7 @@ use fvm_shared::smooth::FilterEstimate;
 pub mod account {
     use super::*;
 
-    pub const AUTHENTICATE_MESSAGE_EXPORTED_METHOD: u64 =
+    pub const AUTHENTICATE_MESSAGE_EXPORTED: u64 =
         frc42_dispatch::method_hash!("AuthenticateMessage");
 
     #[derive(Serialize_tuple, Deserialize_tuple)]

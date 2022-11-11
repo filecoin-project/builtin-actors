@@ -103,7 +103,7 @@ fn authenticate_message() {
     });
     assert_eq!(
         RawBytes::default(),
-        rt.call::<AccountActor>(Method::AuthenticateMessage as MethodNum, &params).unwrap()
+        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, &params).unwrap()
     );
     rt.verify();
 
@@ -118,7 +118,7 @@ fn authenticate_message() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "bad signature",
-        rt.call::<AccountActor>(Method::AuthenticateMessage as MethodNum, &params),
+        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, &params),
     );
     rt.verify();
 
@@ -127,7 +127,7 @@ fn authenticate_message() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<AccountActor>(Method::AuthenticateMessage as MethodNum, &params),
+        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, &params),
     );
 
     // Ok to call exported method number

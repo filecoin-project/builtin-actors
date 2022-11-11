@@ -15,7 +15,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
 use fil_actor_market::ext::account::{
-    AuthenticateMessageParams, AUTHENTICATE_MESSAGE_EXPORTED_METHOD,
+    AuthenticateMessageParams, AUTHENTICATE_MESSAGE_EXPORTED,
 };
 use num_traits::Zero;
 
@@ -98,7 +98,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
 
     rt.expect_send(
         deal_proposal2.client,
-        AUTHENTICATE_MESSAGE_EXPORTED_METHOD,
+        AUTHENTICATE_MESSAGE_EXPORTED,
         auth_param,
         TokenAmount::zero(),
         RawBytes::default(),
