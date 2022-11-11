@@ -553,7 +553,7 @@ fn psd_bad_sig() {
             },
             ExpectInvocation {
                 to: a.client1,
-                method: AccountMethod::AuthenticateMessage as u64,
+                method: AccountMethod::AuthenticateMessageExported as u64,
                 params: Some(
                     serialize(
                         &AuthenticateMessageParams {

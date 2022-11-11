@@ -1137,7 +1137,7 @@ pub fn market_publish_deal(
         },
         ExpectInvocation {
             to: deal_client,
-            method: AccountMethod::AuthenticateMessage as u64,
+            method: AccountMethod::AuthenticateMessageExported as u64,
             ..Default::default()
         },
     ];
