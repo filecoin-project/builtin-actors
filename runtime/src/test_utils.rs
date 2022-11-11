@@ -181,8 +181,8 @@ pub struct Expectations {
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
-    pub expect_get_chain_randomness: VecDeque<ExpectRandomness>,
-    pub expect_get_beacon_randomness: VecDeque<ExpectRandomness>,
+    pub expect_get_randomness_from_chain: VecDeque<ExpectRandomness>,
+    pub expect_get_randomness_from_beacon: VecDeque<ExpectRandomness>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
@@ -253,14 +253,14 @@ impl Expectations {
             self.expect_verify_consensus_fault
         );
         assert!(
-            self.expect_get_beacon_randomness.is_empty(),
-            "expect_get_randomness_tickets {:?}, not received",
-            self.expect_get_beacon_randomness
+            self.expect_get_randomness_from_beacon.is_empty(),
+            "expect_get_randomness_from_beacon {:?}, not received",
+            self.expect_get_randomness_from_beacon
         );
         assert!(
-            self.expect_get_chain_randomness.is_empty(),
-            "expect_get_randomness_beacon {:?}, not received",
-            self.expect_get_chain_randomness
+            self.expect_get_randomness_from_chain.is_empty(),
+            "expect_get_randomness_from_chain {:?}, not received",
+            self.expect_get_randomness_from_chain
         );
         assert!(
             self.expect_batch_verify_seals.is_none(),
@@ -677,7 +677,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         entropy: Vec<u8>,
         out: [u8; RANDOMNESS_LENGTH],
     ) {
-        self.expect_get_chain_randomness(tag as i64, epoch, entropy, out)
+        self.expect_user_get_randomness_from_chain(tag as i64, epoch, entropy, out)
     }
 
     #[allow(dead_code)]
@@ -688,10 +688,10 @@ impl<BS: Blockstore> MockRuntime<BS> {
         entropy: Vec<u8>,
         out: [u8; RANDOMNESS_LENGTH],
     ) {
-        self.expect_get_beacon_randomness(tag as i64, epoch, entropy, out)
+        self.expect_user_get_randomness_from_beacon(tag as i64, epoch, entropy, out)
     }
 
-    pub fn expect_get_beacon_randomness(
+    pub fn expect_user_get_randomness_from_beacon(
         &mut self,
         personalization: i64,
         epoch: ChainEpoch,
@@ -699,10 +699,10 @@ impl<BS: Blockstore> MockRuntime<BS> {
         out: [u8; RANDOMNESS_LENGTH],
     ) {
         let a = ExpectRandomness { tag: personalization, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_beacon_randomness.push_back(a);
+        self.expectations.borrow_mut().expect_get_randomness_from_beacon.push_back(a);
     }
 
-    pub fn expect_get_chain_randomness(
+    pub fn expect_user_get_randomness_from_chain(
         &mut self,
         personalization: i64,
         epoch: ChainEpoch,
@@ -710,7 +710,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         out: [u8; RANDOMNESS_LENGTH],
     ) {
         let a = ExpectRandomness { tag: personalization, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_chain_randomness.push_back(a);
+        self.expectations.borrow_mut().expect_get_randomness_from_chain.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -972,7 +972,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_chain_randomness(tag as i64, epoch, entropy)
+        self.user_get_randomness_from_chain(tag as i64, epoch, entropy)
     }
 
     fn get_randomness_from_beacon(
@@ -981,7 +981,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_beacon_randomness(tag as i64, epoch, entropy)
+        self.user_get_randomness_from_beacon(tag as i64, epoch, entropy)
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
@@ -1178,7 +1178,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         self.tipset_cids.get((self.epoch - epoch) as usize).copied()
     }
 
-    fn user_get_chain_randomness(
+    fn user_get_randomness_from_chain(
         &self,
         personalization: i64,
         epoch: ChainEpoch,
@@ -1187,7 +1187,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         let expected = self
             .expectations
             .borrow_mut()
-            .expect_get_beacon_randomness
+            .expect_get_randomness_from_chain
             .pop_front()
             .expect("unexpected call to get_chain_randomness");
 
@@ -1211,7 +1211,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(expected.out)
     }
 
-    fn user_get_beacon_randomness(
+    fn user_get_randomness_from_beacon(
         &self,
         personalization: i64,
         epoch: ChainEpoch,
@@ -1220,7 +1220,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         let expected = self
             .expectations
             .borrow_mut()
-            .expect_get_beacon_randomness
+            .expect_get_randomness_from_beacon
             .pop_front()
             .expect("unexpected call to get_beacon_randomness");
 

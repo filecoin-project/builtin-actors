@@ -217,7 +217,7 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_chain_randomness(personalization as i64, rand_epoch, entropy)
+        self.user_get_randomness_from_chain(personalization as i64, rand_epoch, entropy)
     }
 
     fn get_randomness_from_beacon(
@@ -226,10 +226,10 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_beacon_randomness(personalization as i64, rand_epoch, entropy)
+        self.user_get_randomness_from_beacon(personalization as i64, rand_epoch, entropy)
     }
 
-    fn user_get_beacon_randomness(
+    fn user_get_randomness_from_beacon(
         &self,
         personalization: i64,
         epoch: ChainEpoch,
@@ -245,7 +245,7 @@ where
         })
     }
 
-    fn user_get_chain_randomness(
+    fn user_get_randomness_from_chain(
         &self,
         personalization: i64,
         epoch: ChainEpoch,

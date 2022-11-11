@@ -150,10 +150,10 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
 
     let randomness = match randomness_type {
         Some(RandomnessType::Chain) => {
-            rt.user_get_chain_randomness(personalization, rand_epoch, &entropy).map(|a| a.to_vec())
+            rt.user_get_randomness_from_chain(personalization, rand_epoch, &entropy).map(|a| a.to_vec())
         }
         Some(RandomnessType::Beacon) => {
-            rt.user_get_beacon_randomness(personalization, rand_epoch, &entropy).map(|a| a.to_vec())
+            rt.user_get_randomness_from_beacon(personalization, rand_epoch, &entropy).map(|a| a.to_vec())
         }
         None => Ok(Vec::new()),
     };

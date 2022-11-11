@@ -114,14 +114,14 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 
-    fn user_get_chain_randomness(
+    fn user_get_randomness_from_chain(
         &self,
         personalization: i64,
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 
-    fn user_get_beacon_randomness(
+    fn user_get_randomness_from_beacon(
         &self,
         personalization: i64,
         epoch: ChainEpoch,

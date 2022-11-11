@@ -964,7 +964,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(TEST_VM_RAND_ARRAY)
     }
 
-    fn user_get_beacon_randomness(
+    fn user_get_randomness_from_beacon(
         &self,
         _personalization: i64,
         _epoch: ChainEpoch,
@@ -973,7 +973,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(TEST_VM_RAND_ARRAY)
     }
 
-    fn user_get_chain_randomness(
+    fn user_get_randomness_from_chain(
         &self,
         _personalization: i64,
         _epoch: ChainEpoch,
