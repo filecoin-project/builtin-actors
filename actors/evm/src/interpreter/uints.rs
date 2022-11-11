@@ -3,11 +3,12 @@
 // see https://github.com/paritytech/parity-common/issues/660
 #![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern)]
 
+use serde::{Deserialize, Serialize};
 use substrate_bn::arith;
 
 use {
-    fvm_shared::bigint::BigInt, fvm_shared::econ::TokenAmount, impl_serde::impl_uint_serde,
-    std::cmp::Ordering, uint::construct_uint,
+    fvm_shared::bigint::BigInt, fvm_shared::econ::TokenAmount, std::cmp::Ordering, std::fmt,
+    uint::construct_uint,
 };
 
 construct_uint! { pub struct U256(4); } // ethereum word size
@@ -92,11 +93,43 @@ impl From<&U256> for TokenAmount {
     }
 }
 
-// make ETH uints serde serializable,
-// so it can work with Hamt and other
-// IPLD structures seamlessly
-impl_uint_serde!(U256, 4);
-impl_uint_serde!(U512, 8);
+impl Serialize for U256 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut bytes = [0u8; 32];
+        self.to_big_endian(&mut bytes);
+        serializer.serialize_bytes(zeroless_view(&bytes))
+    }
+}
+
+impl<'de> Deserialize<'de> for U256 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = U256;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                write!(formatter, "at most 32 bytes")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if v.len() > 32 {
+                    return Err(serde::de::Error::invalid_length(v.len(), &self));
+                }
+                Ok(U256::from_big_endian(v))
+            }
+        }
+        deserializer.deserialize_bytes(Visitor)
+    }
+}
 
 macro_rules! impl_hamt_hash {
     ($type:ident) => {
@@ -215,6 +248,8 @@ pub fn i256_cmp(first: U256, second: U256) -> Ordering {
 
 #[cfg(test)]
 mod tests {
+    use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
+
     use {super::*, core::num::Wrapping};
 
     #[test]
@@ -243,5 +278,27 @@ mod tests {
         assert_eq!(i256_div(zero, zero), zero);
         assert_eq!(i256_div(one, zero), zero);
         assert_eq!(i256_div(zero, one), zero);
+    }
+
+    #[test]
+    fn u256_serde() {
+        let encoded = RawBytes::serialize(U256::from(0x4d2)).unwrap();
+        let BytesDe(bytes) = encoded.deserialize().unwrap();
+        assert_eq!(bytes, &[0x04, 0xd2]);
+        let decoded: U256 = encoded.deserialize().unwrap();
+        assert_eq!(decoded, 0x4d2);
+    }
+
+    #[test]
+    fn u256_empty() {
+        let encoded = RawBytes::serialize(U256::from(0)).unwrap();
+        let BytesDe(bytes) = encoded.deserialize().unwrap();
+        assert!(bytes.is_empty());
+    }
+
+    #[test]
+    fn u256_overflow() {
+        let encoded = RawBytes::serialize(BytesSer(&[1; 33])).unwrap();
+        encoded.deserialize::<U256>().expect_err("should have failed to decode an over-large u256");
     }
 }
