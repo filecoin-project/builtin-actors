@@ -36,8 +36,8 @@ const MAX_CODE_SIZE: usize = 24 << 10;
 pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
 
 const EVM_MAX_RESERVED_METHOD: u64 = 1023;
-pub const NATIVE_METHOD_SIGNATURE: &str = "filecoin_native_method(uint64,uint64,bytes)";
-pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x17, 0x62, 0x41, 0x12];
+pub const NATIVE_METHOD_SIGNATURE: &str = "filecoin_fallback(uint64,uint64,bytes)";
+pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x18, 0x8a, 0x45, 0x3f];
 
 #[test]
 fn test_method_selector() {
@@ -227,8 +227,7 @@ impl EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        let input = filecoin_native_method_input(method, codec, params);
-        println!("{:x?}", input);
+        let input = filecoin_fallback_input(method, codec, params);
         Self::invoke_contract(rt, &input, false, None)
     }
 
@@ -256,7 +255,7 @@ impl EvmContractActor {
 }
 
 /// Format "filecoin_native_method" input parameters.
-fn filecoin_native_method_input(method: u64, codec: u64, params: &[u8]) -> Vec<u8> {
+fn filecoin_fallback_input(method: u64, codec: u64, params: &[u8]) -> Vec<u8> {
     let static_args = [method, codec, 32 * 3 /* start of params */, params.len() as u64];
     let total_words = static_args.len() + (params.len() / 32) + (params.len() % 32 > 0) as usize;
     let len = 4 + total_words * 32;
