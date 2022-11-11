@@ -1,16 +1,13 @@
 use fvm_shared::clock::ChainEpoch;
 
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    crate::interpreter::{ExecutionState, System, U256},
     fil_actors_runtime::runtime::chainid,
     fil_actors_runtime::runtime::Runtime,
 };
 
 #[inline]
-pub fn blockhash(
-    state: &mut ExecutionState,
-    system: &System<impl Runtime>,
-) -> Result<(), StatusCode> {
+pub fn blockhash(state: &mut ExecutionState, system: &System<impl Runtime>) {
     let bn = state.stack.pop();
     let result = bn
         .try_into()
@@ -33,7 +30,6 @@ pub fn blockhash(
         })
         .unwrap_or_default();
     state.stack.push(result);
-    Ok(())
 }
 
 #[inline]
