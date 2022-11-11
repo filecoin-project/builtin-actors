@@ -118,7 +118,7 @@ fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
 }
 
 /// Params:
-/// 
+///
 /// | Param            | Value                     | Byte Length |
 /// |------------------|---------------------------|---|
 /// | randomness_type  | `Chain`(0) OR `Beacon`(1) | 1 |
@@ -127,7 +127,7 @@ fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
 /// | randomness_epoch | `i64` (LE encoded)        | 8 |
 /// | entropy_length   | `u64` (LE encoded)        | 8 |
 /// | entropy          | input\[32..] (right padded)| entropy_length |
-/// 
+///
 /// Returns empty array if invalid randomness type
 /// Errors if unable to fetch randomness or bits are in reserved zone
 fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
@@ -142,10 +142,10 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     }
 
     let randomness_type = RandomnessType::from_u8(word[0]);
-    
+
     // 7 bytes reserved
-    if &word[1..8] != &[0u8; 7] {
-        return Err(PrecompileError::InvalidInput)
+    if word[1..8] != [0u8; 7] {
+        return Err(PrecompileError::InvalidInput);
     }
 
     let personalization = i64::from_le_bytes(word[8..16].try_into().unwrap());
@@ -180,7 +180,6 @@ fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     };
     Ok(ab)
 }
-
 
 /// Reads a FIL encoded address
 /// Resolves a FIL encoded address into an ID address
