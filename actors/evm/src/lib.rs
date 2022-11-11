@@ -287,6 +287,7 @@ impl ActorCode for EvmContractActor {
         // those reserved by FRC0042.
         if method > EVM_MAX_RESERVED_METHOD {
             // FIXME: we need the actual codec.
+            // See https://github.com/filecoin-project/ref-fvm/issues/987
             let codec = if params.is_empty() { 0 } else { DAG_CBOR };
             return Self::invoke_method(rt, method, codec, params).map(RawBytes::new);
         }
