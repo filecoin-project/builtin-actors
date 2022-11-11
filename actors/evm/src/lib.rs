@@ -217,7 +217,7 @@ impl EvmContractActor {
         Ok(exec_status.output_data.to_vec())
     }
 
-    pub fn invoke_method<RT>(
+    pub fn filecoin_fallback<RT>(
         rt: &mut RT,
         method: u64,
         codec: u64,
@@ -289,7 +289,7 @@ impl ActorCode for EvmContractActor {
             // FIXME: we need the actual codec.
             // See https://github.com/filecoin-project/ref-fvm/issues/987
             let codec = if params.is_empty() { 0 } else { DAG_CBOR };
-            return Self::invoke_method(rt, method, codec, params).map(RawBytes::new);
+            return Self::filecoin_fallback(rt, method, codec, params).map(RawBytes::new);
         }
 
         match FromPrimitive::from_u64(method) {
