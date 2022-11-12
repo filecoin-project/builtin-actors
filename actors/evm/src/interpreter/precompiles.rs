@@ -120,7 +120,7 @@ fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
 /// | randomness_epoch | U256 - low i64             |
 /// | entropy_length   | U256 - low u64             |
 /// | entropy          | input\[32..] (right padded)|
-/// 
+///
 /// any bytes in between values are ignored
 ///
 /// Returns empty array if invalid randomness type
@@ -141,8 +141,8 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let epoch_bytes = &input[64..96];
     let entropy_len_bytes = &input[96..128];
 
-
-    let randomness_type = RandomnessType::from_i32(i32::from_be_bytes(randomness_word[28..32].try_into().unwrap()));    
+    let randomness_type =
+        RandomnessType::from_i32(i32::from_be_bytes(randomness_word[28..32].try_into().unwrap()));
     let personalization = i64::from_be_bytes(personalization_bytes[24..32].try_into().unwrap());
     let rand_epoch = i64::from_be_bytes(epoch_bytes[24..32].try_into().unwrap());
     let entropy_len = u64::from_be_bytes(entropy_len_bytes[24..32].try_into().unwrap());
