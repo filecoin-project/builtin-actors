@@ -1,14 +1,17 @@
 use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
 
 use super::U256;
+
 use fil_actors_runtime::runtime::{Primitives, Runtime};
 use fvm_shared::{
+    address::Address,
     bigint::BigUint,
     crypto::{
         hash::SupportedHashes,
         signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
     },
 };
+use num_traits::FromPrimitive;
 use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
@@ -23,6 +26,7 @@ lazy_static::lazy_static! {
 pub enum PrecompileError {
     EcErr(CurveError),
     EcGroupErr(GroupError),
+    InvalidInput, // TODO merge with below?
     IncorrectInputSize,
     OutOfGas,
 }
@@ -49,7 +53,7 @@ pub type PrecompileFn<RT> = fn(&RT, &[u8]) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont like vec
 
 /// Generates a list of precompile smart contracts, index + 1 is the address (another option is to make an enum)
-const fn gen_precompiles<RT: Primitives>() -> [PrecompileFn<RT>; 9] {
+const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 13] {
     [
         ec_recover, // ecrecover 0x01
         sha256,     // SHA2-256 0x02
@@ -60,13 +64,18 @@ const fn gen_precompiles<RT: Primitives>() -> [PrecompileFn<RT>; 9] {
         ec_mul,     // ecMul 0x07
         ec_pairing, // ecPairing 0x08
         blake2f,    // blake2f 0x09
+        // FIL precompiles
+        resolve_address,    // lookup_address 0x0a
+        lookup_address,     // resolve_address 0x0b
+        get_actor_code_cid, // get code cid 0x0c
+        get_randomness,     // rand 0x0d
     ]
 }
 
 pub struct Precompiles<RT>(PhantomData<RT>);
 
 impl<RT: Runtime> Precompiles<RT> {
-    const PRECOMPILES: [PrecompileFn<RT>; 9] = gen_precompiles();
+    const PRECOMPILES: [PrecompileFn<RT>; 13] = gen_precompiles();
     const MAX_PRECOMPILE: U256 = {
         let mut limbs = [0u64; 4];
         limbs[0] = Self::PRECOMPILES.len() as u64;
@@ -83,7 +92,6 @@ impl<RT: Runtime> Precompiles<RT> {
 }
 
 // It is uncomfortable how much Eth pads everything...
-/// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/common/bytes.go#L108
 fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u8]> {
     let mut input: Cow<[u8]> = input.into();
     let input_len = input.len();
@@ -93,7 +101,91 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
     input
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L165
+// --- Precompiles ---
+
+/// Read right padded BE encoded u64 ID address
+/// returns encoded CID or an empty array if actor not found
+fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    let id_bytes = read_right_pad(input, 8);
+    let id = u64::from_be_bytes(id_bytes.as_ref().try_into().unwrap());
+    Ok(rt.get_actor_code_cid(&id).unwrap_or_default().to_bytes())
+}
+
+/// Params:
+///
+/// | Param            | Value                     | Byte Length |
+/// |------------------|---------------------------|---|
+/// | randomness_type  | `Chain`(0) OR `Beacon`(1) | 1 |
+/// | RESERVED         | must be zeroes            | 7 |
+/// | personalization  | `i64` (LE encoded)        | 8 |
+/// | randomness_epoch | `i64` (LE encoded)        | 8 |
+/// | entropy_length   | `u64` (LE encoded)        | 8 |
+/// | entropy          | input\[32..] (right padded)| entropy_length |
+///
+/// Returns empty array if invalid randomness type
+/// Errors if unable to fetch randomness or bits are in reserved zone
+fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    // 1 + 7 (reserved) + 8 + 8 + 8 = 32
+    let word = read_right_pad(input, 32);
+
+    #[derive(num_derive::FromPrimitive)]
+    #[repr(u8)]
+    enum RandomnessType {
+        Chain = 0,
+        Beacon = 1,
+    }
+
+    let randomness_type = RandomnessType::from_u8(word[0]);
+
+    // 7 bytes reserved
+    if word[1..8] != [0u8; 7] {
+        return Err(PrecompileError::InvalidInput);
+    }
+
+    let personalization = i64::from_le_bytes(word[8..16].try_into().unwrap());
+    let rand_epoch = i64::from_le_bytes(word[16..24].try_into().unwrap());
+    let entropy_len = u64::from_le_bytes(word[24..32].try_into().unwrap());
+
+    let entropy = read_right_pad(&input[32..], entropy_len as usize);
+
+    let randomness = match randomness_type {
+        Some(RandomnessType::Chain) => rt
+            .user_get_randomness_from_chain(personalization, rand_epoch, &entropy)
+            .map(|a| a.to_vec()),
+        Some(RandomnessType::Beacon) => rt
+            .user_get_randomness_from_beacon(personalization, rand_epoch, &entropy)
+            .map(|a| a.to_vec()),
+        None => Ok(Vec::new()),
+    };
+
+    randomness.map_err(|_| PrecompileError::InvalidInput)
+}
+
+/// Reads right padded BE encoded u64
+/// Looks up and returns the other address (encoded f2 or f4 addresses) of an ID address, returning empty array if not found
+fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    let id_bytes = read_right_pad(input, 8);
+    let id = u64::from_be_bytes(id_bytes.as_ref().try_into().unwrap());
+
+    let address = rt.lookup_address(id);
+    let ab = match address {
+        Some(a) => a.to_bytes(),
+        None => Vec::new(),
+    };
+    Ok(ab)
+}
+
+/// Reads a FIL encoded address
+/// Resolves a FIL encoded address into an ID address
+/// returns BE encoded u64 or empty array if nothing found
+fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    let addr = match Address::from_bytes(input) {
+        Ok(o) => o,
+        Err(_) => return Ok(Vec::new()),
+    };
+    Ok(rt.resolve_address(&addr).map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
+}
+
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let input = read_right_pad(input, 128);
@@ -136,13 +228,11 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(address)
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L206
 /// hash with sha2-256
 fn sha256<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(rt.hash(SupportedHashes::Sha2_256, input))
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L221
 /// hash with ripemd160
 fn ripemd160<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(rt.hash(SupportedHashes::Ripemd160, input))
@@ -153,20 +243,18 @@ fn identity<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     Ok(Vec::from(input))
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L363
 // https://eips.ethereum.org/EIPS/eip-198
 /// modulus exponent a number
 fn modexp<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let input = read_right_pad(input, 96);
 
     // Follows go-ethereum by truncating bits to u64, ignoring other all other values in the first 24 bytes.
-    // We also need to try converting into u32 since we are running in WASM, and since we don't have any complexity
-    // functions or specific gas measurements of modexp in FEVM, we let values be whatever and have FEVM gas accounting
-    // be the one responsible for keeping things within reasonable limits.
+    // Since we don't have any complexity functions or specific gas measurements of modexp in FEVM,
+    // we let values be whatever and have FEVM gas accounting be the one responsible for keeping things within reasonable limits.
     // We _also_ will default with 0 (though this is already done with right padding above) since that is expected to be fine.
-    // Eth really relies heavily on gas checking being correct and safe for nodes...
-    fn read_bigint_len(input: &[u8], size: usize) -> Result<usize, PrecompileError> {
-        let digits = BigUint::from_bytes_be(&input[size..size + 32]);
+    // Eth really relies heavily on gas checking being correct and safe for client nodes...
+    fn read_bigint_len(input: &[u8], start: usize) -> Result<usize, PrecompileError> {
+        let digits = BigUint::from_bytes_be(&input[start..start + 32]);
         let mut digits = digits.iter_u64_digits();
         // truncate to 64 bits
         digits
@@ -231,7 +319,6 @@ fn curve_to_vec(curve: G1) -> Vec<u8> {
         .unwrap_or_else(|| vec![0; 64])
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L413
 /// add 2 points together on an elliptic curve
 fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let input = read_right_pad(input, 128);
@@ -241,7 +328,6 @@ fn ec_add<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     Ok(curve_to_vec(point1 + point2))
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L455
 /// multiply a point on an elliptic curve by a scalar value
 fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     let input = read_right_pad(input, 96);
@@ -255,7 +341,6 @@ fn ec_mul<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     Ok(curve_to_vec(point * scalar))
 }
 
-// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L504
 /// pairs multple groups of twisted bn curves
 fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
@@ -319,7 +404,6 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
 }
 
 /// https://eips.ethereum.org/EIPS/eip-152
-/// https://github.com/ethereum/go-ethereum/blob/25b35c97289a8db4753cdf5ab7f2b306ec71794d/core/vm/contracts.go#L581
 fn blake2f<RT: Primitives>(_: &RT, input: &[u8]) -> PrecompileResult {
     if input.len() != 213 {
         return Err(PrecompileError::IncorrectInputSize);
@@ -824,7 +908,7 @@ mod tests {
         // NOTE:
         //  original test case ran ffffffff rounds of blake2b
         //  with an expected output of fc59093aafa9ab43daae0e914c57635c5402d8e3d2130eb9b3cc181de7f0ecf9b22bf99a7815ce16419e200e01846e6b5df8cc7703041bbceb571de6631d2615
-        //  I ran this sucessfully while grabbing a cup of coffee, so if you fee like wasting u32::MAX rounds of hash time, (25-ish min on Ryzen5 2600) you can test it as such.
+        //  I ran this successfully while grabbing a cup of coffee, so if you fee like wasting u32::MAX rounds of hash time, (25-ish min on Ryzen5 2600) you can test it as such.
         //  For my and CI's sanity however, we are capping it at 0000ffff.
         let expected = &hex!("183ed9b1e5594bcdd715a4e4fd7b0dc2eaa2ef9bda48242af64c687081142156621bc94bb2d5aa99d83c2f1a5d9c426e1b6a1755a5e080f6217e2a5f3b9c4624");
         let input = &hex!(

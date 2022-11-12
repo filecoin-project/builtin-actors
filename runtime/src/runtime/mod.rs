@@ -88,7 +88,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     fn resolve_address(&self, address: &Address) -> Option<ActorID>;
 
     /// Looks-up the "predictable" address of an actor by ID, if any. Returns None if either the
-    /// target actor doesn't exist, or if the target actord doesn't have a predictable address.
+    /// target actor doesn't exist, or if the target actor doesn't have either a f2 or f4 address.
     fn lookup_address(&self, id: ActorID) -> Option<Address>;
 
     /// Look up the code ID at an actor address.
@@ -111,6 +111,20 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         &self,
         personalization: DomainSeparationTag,
         rand_epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
+
+    fn user_get_randomness_from_chain(
+        &self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
+
+    fn user_get_randomness_from_beacon(
+        &self,
+        personalization: i64,
+        epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 

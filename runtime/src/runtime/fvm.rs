@@ -217,30 +217,7 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        // Note: For Go actors, Lotus treated all failures to get randomness as "fatal" errors,
-        // which it then translated into exit code SysErrReserved1 (= 4, and now known as
-        // SYS_ILLEGAL_INSTRUCTION), rather than just aborting with an appropriate exit code.
-        //
-        // We can replicate that here prior to network v16, but from nv16 onwards the FVM will
-        // override the attempt to use a system exit code, and produce
-        // SYS_ILLEGAL_EXIT_CODE (9) instead.
-        //
-        // Since that behaviour changes, we may as well abort with a more appropriate exit code
-        // explicitly.
-        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy)
-            .map_err(|e| {
-            if self.network_version() < NetworkVersion::V16 {
-                ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
-                    "failed to get chain randomness".into())
-            } else {
-                match e {
-                    ErrorNumber::LimitExceeded => {
-                        actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                    }
-                    e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
-                }
-            }
-        })
+        self.user_get_randomness_from_chain(personalization as i64, rand_epoch, entropy)
     }
 
     fn get_randomness_from_beacon(
@@ -249,19 +226,37 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        // See note on exit codes in get_randomness_from_tickets.
-        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy)
-            .map_err(|e| {
-            if self.network_version() < NetworkVersion::V16 {
-                ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
-                    "failed to get chain randomness".into())
-            } else {
-                match e {
-                    ErrorNumber::LimitExceeded => {
-                        actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                    }
-                    e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
+        self.user_get_randomness_from_beacon(personalization as i64, rand_epoch, entropy)
+    }
+
+    fn user_get_randomness_from_beacon(
+        &self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        fvm::rand::get_beacon_randomness(personalization, epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
+                e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
+            }
+        })
+    }
+
+    fn user_get_randomness_from_chain(
+        &self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        fvm::rand::get_chain_randomness(personalization, epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                }
+                e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
             }
         })
     }
