@@ -103,50 +103,51 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
 
 // --- Precompiles ---
 
-/// Read right padded BE encoded u64 ID address
+/// Read right padded BE encoded low u64 ID address from a u256 word
 /// returns encoded CID or an empty array if actor not found
 fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    let id_bytes = read_right_pad(input, 8);
-    let id = u64::from_be_bytes(id_bytes.as_ref().try_into().unwrap());
+    let id_bytes = read_right_pad(input, 32);
+    let id = U256::from_big_endian(&id_bytes).low_u64();
     Ok(rt.get_actor_code_cid(&id).unwrap_or_default().to_bytes())
 }
 
 /// Params:
 ///
-/// | Param            | Value                     | Byte Length |
-/// |------------------|---------------------------|---|
-/// | randomness_type  | `Chain`(0) OR `Beacon`(1) | 1 |
-/// | RESERVED         | must be zeroes            | 7 |
-/// | personalization  | `i64` (LE encoded)        | 8 |
-/// | randomness_epoch | `i64` (LE encoded)        | 8 |
-/// | entropy_length   | `u64` (LE encoded)        | 8 |
-/// | entropy          | input\[32..] (right padded)| entropy_length |
+/// | Param            | Value                     |
+/// |------------------|---------------------------|
+/// | randomness_type  | U256 - low i32: `Chain`(0) OR `Beacon`(1) |
+/// | personalization  | U256 - low i64             |
+/// | randomness_epoch | U256 - low i64             |
+/// | entropy_length   | U256 - low u64             |
+/// | entropy          | input\[32..] (right padded)|
+///
+/// any bytes in between values are ignored
 ///
 /// Returns empty array if invalid randomness type
-/// Errors if unable to fetch randomness or bits are in reserved zone
+/// Errors if unable to fetch randomness
 fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    // 1 + 7 (reserved) + 8 + 8 + 8 = 32
-    let word = read_right_pad(input, 32);
+    // 32 * 4 = 128
+    let input = read_right_pad(input, 128);
 
     #[derive(num_derive::FromPrimitive)]
-    #[repr(u8)]
+    #[repr(i32)]
     enum RandomnessType {
         Chain = 0,
         Beacon = 1,
     }
 
-    let randomness_type = RandomnessType::from_u8(word[0]);
+    let randomness_word = &input[0..32];
+    let personalization_bytes = &input[32..64];
+    let epoch_bytes = &input[64..96];
+    let entropy_len_bytes = &input[96..128];
 
-    // 7 bytes reserved
-    if word[1..8] != [0u8; 7] {
-        return Err(PrecompileError::InvalidInput);
-    }
+    let randomness_type =
+        RandomnessType::from_i32(i32::from_be_bytes(randomness_word[28..32].try_into().unwrap()));
+    let personalization = i64::from_be_bytes(personalization_bytes[24..32].try_into().unwrap());
+    let rand_epoch = i64::from_be_bytes(epoch_bytes[24..32].try_into().unwrap());
+    let entropy_len = u64::from_be_bytes(entropy_len_bytes[24..32].try_into().unwrap());
 
-    let personalization = i64::from_le_bytes(word[8..16].try_into().unwrap());
-    let rand_epoch = i64::from_le_bytes(word[16..24].try_into().unwrap());
-    let entropy_len = u64::from_le_bytes(word[24..32].try_into().unwrap());
-
-    let entropy = read_right_pad(&input[32..], entropy_len as usize);
+    let entropy = read_right_pad(&input[128..], entropy_len as usize);
 
     let randomness = match randomness_type {
         Some(RandomnessType::Chain) => rt
@@ -161,11 +162,11 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     randomness.map_err(|_| PrecompileError::InvalidInput)
 }
 
-/// Reads right padded BE encoded u64
+/// Read right padded BE encoded low u64 ID address from a u256 word
 /// Looks up and returns the other address (encoded f2 or f4 addresses) of an ID address, returning empty array if not found
 fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
-    let id_bytes = read_right_pad(input, 8);
-    let id = u64::from_be_bytes(id_bytes.as_ref().try_into().unwrap());
+    let id_bytes = read_right_pad(input, 32);
+    let id = U256::from_big_endian(&id_bytes).low_u64();
 
     let address = rt.lookup_address(id);
     let ab = match address {
