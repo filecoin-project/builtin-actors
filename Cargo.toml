@@ -57,8 +57,8 @@ members = [
 ]
 
 [patch.crates-io]
-frc42_dispatch = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
-frc46_token = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
+#frc42_dispatch = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
+#frc46_token = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
 
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/events" }
 #fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "raulk/events" }
@@ -92,6 +92,9 @@ fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
 fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
 fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
 fvm_actor_utils = { path = "../filecoin-actor-utils/fvm_actor_utils" }
+frc42_dispatch = { path = "../filecoin-actor-utils/frc42_dispatch" }
+frc46_token = { path = "../filecoin-actor-utils/frc46_token" }
+
 
 [profile.wasm]
 inherits = "release"

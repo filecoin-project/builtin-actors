@@ -1334,7 +1334,7 @@ version = "10.0.0-alpha.1"
 dependencies = [
  "anyhow",
  "fil_actors_runtime",
- "frc42_dispatch 1.0.0 (git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2)",
+ "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -1382,9 +1382,9 @@ version = "10.0.0-alpha.1"
 dependencies = [
  "cid",
  "fil_actors_runtime",
- "frc42_dispatch 1.0.0 (git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2)",
+ "frc42_dispatch",
  "frc46_token",
- "fvm_actor_utils 0.1.0",
+ "fvm_actor_utils",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -1542,7 +1542,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
- "frc42_dispatch 1.0.0 (git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2)",
+ "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_hamt",
@@ -1631,7 +1631,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actors_runtime",
- "frc42_dispatch 1.0.0 (git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2)",
+ "frc42_dispatch",
  "frc46_token",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -1771,21 +1771,8 @@ dependencies = [
 name = "frc42_dispatch"
 version = "1.0.0"
 dependencies = [
- "frc42_hasher 1.0.0",
- "frc42_macros 1.0.0",
- "fvm_ipld_encoding",
- "fvm_sdk",
- "fvm_shared",
- "thiserror",
-]
-
-[[package]]
-name = "frc42_dispatch"
-version = "1.0.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
-dependencies = [
- "frc42_hasher 1.0.0 (git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2)",
- "frc42_macros 1.0.0 (git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2)",
+ "frc42_hasher",
+ "frc42_macros",
  "fvm_ipld_encoding",
  "fvm_sdk",
  "fvm_shared",
@@ -1802,33 +1789,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "frc42_hasher"
-version = "1.0.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
-dependencies = [
- "fvm_sdk",
- "fvm_shared",
- "thiserror",
-]
-
-[[package]]
 name = "frc42_macros"
 version = "1.0.0"
 dependencies = [
  "blake2b_simd",
- "frc42_hasher 1.0.0",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "frc42_macros"
-version = "1.0.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
-dependencies = [
- "blake2b_simd",
- "frc42_hasher 1.0.0 (git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2)",
+ "frc42_hasher",
  "proc-macro2",
  "quote",
  "syn",
@@ -1837,12 +1802,11 @@ dependencies = [
 [[package]]
 name = "frc46_token"
 version = "1.1.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
 dependencies = [
  "anyhow",
  "cid",
- "frc42_dispatch 1.0.0 (git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2)",
- "fvm_actor_utils 0.1.0 (git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2)",
+ "frc42_dispatch",
+ "fvm_actor_utils",
  "fvm_ipld_amt",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -1989,23 +1953,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cid",
- "frc42_dispatch 1.0.0",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "fvm_sdk",
- "fvm_shared",
- "num-traits",
- "thiserror",
-]
-
-[[package]]
-name = "fvm_actor_utils"
-version = "0.1.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
-dependencies = [
- "anyhow",
- "cid",
- "frc42_dispatch 1.0.0 (git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2)",
+ "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_sdk",
