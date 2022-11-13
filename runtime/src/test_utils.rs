@@ -42,6 +42,7 @@ use crate::runtime::{
     Verifier, EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError};
+use fvm_shared::event::ActorEvent;
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
 lazy_static::lazy_static! {
@@ -188,6 +189,7 @@ pub struct Expectations {
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
     pub expect_gas_available: VecDeque<u64>,
+    pub expect_emitted_events: VecDeque<ActorEvent>,
 }
 
 impl Expectations {
@@ -750,6 +752,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.expectations.borrow_mut().expect_gas_available.push_back(value);
     }
 
+    #[allow(dead_code)]
+    pub fn expect_emitted_event(&mut self, event: ActorEvent) {
+        self.expectations.borrow_mut().expect_emitted_events.push_back(event)
+    }
+
     ///// Private helpers /////
 
     fn require_in_call(&self) {
@@ -1242,6 +1249,19 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         );
 
         Ok(expected.out)
+    }
+
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        let expected = self
+            .expectations
+            .borrow_mut()
+            .expect_emitted_events
+            .pop_front()
+            .expect("unexpected call to emit_evit");
+
+        assert_eq!(*event, expected);
+
+        Ok(())
     }
 }
 

@@ -13,6 +13,7 @@ use fvm_shared::crypto::signature::{
 };
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
+use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
@@ -419,6 +420,11 @@ where
 
     fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
         fvm::network::tipset_cid(epoch).ok()
+    }
+
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        fvm::event::emit_event(event)
+            .map_err(|e| actor_error!(assertion_failed; "failed to emit event: {}", e))
     }
 }
 

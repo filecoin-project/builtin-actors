@@ -47,6 +47,7 @@ use fvm_shared::crypto::signature::{
 };
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
@@ -1062,6 +1063,11 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn tipset_cid(&self, _epoch: i64) -> Option<Cid> {
         Some(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
+    }
+
+    // TODO No support for events yet.
+    fn emit_event(&self, _event: &ActorEvent) -> Result<(), ActorError> {
+        Ok(())
     }
 }
 

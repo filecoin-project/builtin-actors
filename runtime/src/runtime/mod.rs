@@ -12,6 +12,7 @@ use fvm_shared::crypto::signature::{
     Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
 };
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
@@ -240,6 +241,8 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// The hash of on of the last 256 blocks
     fn tipset_cid(&self, epoch: i64) -> Option<Cid>;
+
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError>;
 }
 
 /// Message information available to the actor about executing message.
