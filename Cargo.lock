@@ -1770,6 +1770,7 @@ dependencies = [
 [[package]]
 name = "frc42_dispatch"
 version = "1.0.0"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=raulk/events#7783857bbb1f67036128387e3d60fbc2523e3486"
 dependencies = [
  "frc42_hasher",
  "frc42_macros",
@@ -1782,6 +1783,7 @@ dependencies = [
 [[package]]
 name = "frc42_hasher"
 version = "1.0.0"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=raulk/events#7783857bbb1f67036128387e3d60fbc2523e3486"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
@@ -1791,6 +1793,7 @@ dependencies = [
 [[package]]
 name = "frc42_macros"
 version = "1.0.0"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=raulk/events#7783857bbb1f67036128387e3d60fbc2523e3486"
 dependencies = [
  "blake2b_simd",
  "frc42_hasher",
@@ -1802,6 +1805,7 @@ dependencies = [
 [[package]]
 name = "frc46_token"
 version = "1.1.0"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=raulk/events#7783857bbb1f67036128387e3d60fbc2523e3486"
 dependencies = [
  "anyhow",
  "cid",
@@ -1950,6 +1954,7 @@ dependencies = [
 [[package]]
 name = "fvm_actor_utils"
 version = "0.1.0"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=raulk/events#7783857bbb1f67036128387e3d60fbc2523e3486"
 dependencies = [
  "anyhow",
  "cid",
@@ -1965,6 +1970,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.5.0"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
 dependencies = [
  "anyhow",
  "cid",
@@ -1979,6 +1985,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_bitfield"
 version = "0.5.4"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
 dependencies = [
  "fvm_ipld_encoding",
  "serde",
@@ -1989,6 +1996,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_blockstore"
 version = "0.1.1"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
 dependencies = [
  "anyhow",
  "cid",
@@ -2013,6 +2021,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_encoding"
 version = "0.3.0"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
 dependencies = [
  "anyhow",
  "cid",
@@ -2028,6 +2037,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_hamt"
 version = "0.6.0"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -2046,6 +2056,7 @@ dependencies = [
 [[package]]
 name = "fvm_sdk"
 version = "3.0.0-alpha.9"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -2059,6 +2070,7 @@ dependencies = [
 [[package]]
 name = "fvm_shared"
 version = "3.0.0-alpha.9"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
 dependencies = [
  "anyhow",
  "bitflags",
