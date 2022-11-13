@@ -289,6 +289,11 @@ impl Expectations {
             "expect_gas_charge {:?}, not received",
             self.expect_gas_available
         );
+        assert!(
+            self.expect_emitted_events.is_empty(),
+            "expect_emitted_events {:?}, not received",
+            self.expect_emitted_events
+        );
     }
 }
 

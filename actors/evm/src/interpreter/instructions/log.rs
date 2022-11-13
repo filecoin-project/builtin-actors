@@ -1,5 +1,5 @@
 use crate::interpreter::instructions::memory::get_memory_region;
-use fvm_ipld_encoding::to_vec;
+use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::event::{Entry, Flags};
 use {
     crate::interpreter::{ExecutionState, StatusCode, System},
@@ -35,7 +35,7 @@ pub fn log(
         let entry = Entry {
             flags: Flags::FLAG_INDEXED_VALUE,
             key: (*key).to_owned(),
-            value: to_vec(&topic)?,
+            value: to_vec(&topic)?, // U256 serializes as a byte string.
         };
         entries.push(entry);
     }
@@ -46,7 +46,7 @@ pub fn log(
         let entry = Entry {
             flags: Flags::FLAG_INDEXED_VALUE,
             key: EVENT_DATA_KEY.to_owned(),
-            value: to_vec(&data)?,
+            value: to_vec(&RawBytes::new(data))?,
         };
         entries.push(entry);
     }
