@@ -1970,7 +1970,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.5.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#3d2b971c40cc81fde4598afab6aac06770f5a9ba"
 dependencies = [
  "anyhow",
  "cid",
@@ -1985,7 +1985,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_bitfield"
 version = "0.5.4"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#3d2b971c40cc81fde4598afab6aac06770f5a9ba"
 dependencies = [
  "fvm_ipld_encoding",
  "serde",
@@ -1996,7 +1996,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_blockstore"
 version = "0.1.1"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#3d2b971c40cc81fde4598afab6aac06770f5a9ba"
 dependencies = [
  "anyhow",
  "cid",
@@ -2021,7 +2021,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_encoding"
 version = "0.3.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#3d2b971c40cc81fde4598afab6aac06770f5a9ba"
 dependencies = [
  "anyhow",
  "cid",
@@ -2036,8 +2036,8 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_hamt"
-version = "0.6.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
+version = "0.6.1"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#3d2b971c40cc81fde4598afab6aac06770f5a9ba"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -2055,8 +2055,8 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "3.0.0-alpha.9"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
+version = "3.0.0-alpha.10"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#3d2b971c40cc81fde4598afab6aac06770f5a9ba"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -2069,8 +2069,8 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "3.0.0-alpha.9"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#fa75d193b8c7f6f5b5d3580aeaba8c238d358ad5"
+version = "3.0.0-alpha.10"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=raulk/events#3d2b971c40cc81fde4598afab6aac06770f5a9ba"
 dependencies = [
  "anyhow",
  "bitflags",
