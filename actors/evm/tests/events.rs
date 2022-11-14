@@ -1,6 +1,5 @@
 mod asm;
 
-use fil_actor_evm as evm;
 use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::event::{ActorEvent, Entry, Flags};
 
