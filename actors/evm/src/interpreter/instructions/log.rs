@@ -35,7 +35,7 @@ pub fn log(
         let entry = Entry {
             flags: Flags::FLAG_INDEXED_VALUE,
             key: (*key).to_owned(),
-            value: to_vec(&topic)?, // U256 serializes as a byte string.
+            value: to_vec(&topic)?.into(), // U256 serializes as a byte string.
         };
         entries.push(entry);
     }
@@ -46,7 +46,7 @@ pub fn log(
         let entry = Entry {
             flags: Flags::FLAG_INDEXED_VALUE,
             key: EVENT_DATA_KEY.to_owned(),
-            value: to_vec(&RawBytes::new(data))?,
+            value: to_vec(&RawBytes::new(data))?.into(),
         };
         entries.push(entry);
     }

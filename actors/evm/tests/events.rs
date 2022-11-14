@@ -81,7 +81,8 @@ fn test_events() {
             value: to_vec(&RawBytes::from(
                 [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].to_vec(),
             ))
-            .unwrap(),
+            .unwrap()
+            .into(),
         }],
     });
     util::invoke_contract(&mut rt, &contract_params);
@@ -98,22 +99,22 @@ fn test_events() {
             Entry {
                 flags: Flags::FLAG_INDEXED_VALUE,
                 key: "topic1".to_string(),
-                value: to_vec(&RawBytes::from([0x11, 0x11].to_vec())).unwrap(),
+                value: to_vec(&RawBytes::from([0x11, 0x11].to_vec())).unwrap().into(),
             },
             Entry {
                 flags: Flags::FLAG_INDEXED_VALUE,
                 key: "topic2".to_string(),
-                value: to_vec(&RawBytes::from([0x22, 0x22].to_vec())).unwrap(),
+                value: to_vec(&RawBytes::from([0x22, 0x22].to_vec())).unwrap().into(),
             },
             Entry {
                 flags: Flags::FLAG_INDEXED_VALUE,
                 key: "topic3".to_string(),
-                value: to_vec(&RawBytes::from([0x33, 0x33].to_vec())).unwrap(),
+                value: to_vec(&RawBytes::from([0x33, 0x33].to_vec())).unwrap().into(),
             },
             Entry {
                 flags: Flags::FLAG_INDEXED_VALUE,
                 key: "topic4".to_string(),
-                value: to_vec(&RawBytes::from([0x44, 0x44].to_vec())).unwrap(),
+                value: to_vec(&RawBytes::from([0x44, 0x44].to_vec())).unwrap().into(),
             },
             Entry {
                 flags: Flags::FLAG_INDEXED_VALUE,
@@ -121,7 +122,8 @@ fn test_events() {
                 value: to_vec(&RawBytes::from(
                     [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].to_vec(),
                 ))
-                .unwrap(),
+                .unwrap()
+                .into(),
             },
         ],
     });
