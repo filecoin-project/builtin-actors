@@ -6,8 +6,8 @@ use std::iter;
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorError, EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    actor_error, cbor, restrict_internal_api, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, restrict_internal_api, ActorContext, ActorError, EAM_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;

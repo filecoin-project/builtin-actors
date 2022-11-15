@@ -313,7 +313,8 @@ fn call_exec4() {
         ExitCode::OK,
     );
     // Return should have been successful. Check the returned addresses
-    let exec_ret = exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
+    let exec_ret =
+        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
 
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
@@ -328,6 +329,7 @@ fn call_exec4() {
     assert_eq!(expected_id_addr, resolved_id, "f4 address not assigned to the right actor");
 }
 
+#[test]
 fn exec_restricted_correctly() {
     let mut rt = construct_runtime();
     construct_and_verify(&mut rt);
