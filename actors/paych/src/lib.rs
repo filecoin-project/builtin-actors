@@ -8,7 +8,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
+use fvm_shared::address::{Address, Protocol};
 
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -51,15 +51,14 @@ impl Actor {
         // behalf of the payer/payee.
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
 
-        // Resolve both parties if necessary.
-        // Note that this does NOT guarantee that the parties exist in state yet.
-        let to =
-            rt.resolve_address(&params.to).with_context_code(ExitCode::USR_NOT_FOUND, || {
+        // Resolve both parties, confirming they exist in the state tree.
+        let to = Self::resolve_address(rt, params.to)
+            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
                 format!("to address not found {}", params.to)
             })?;
 
-        let from =
-            rt.resolve_address(&params.from).with_context_code(ExitCode::USR_NOT_FOUND, || {
+        let from = Self::resolve_address(rt, params.from)
+            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
                 format!("to address not found {}", params.to)
             })?;
 
@@ -72,6 +71,30 @@ impl Actor {
 
         rt.create(&State::new(from, to, empty_arr_cid))?;
         Ok(())
+    }
+
+    /// Resolves an address to a canonical ID address and confirms it exists in the state tree.
+    fn resolve_address(rt: &mut impl Runtime, raw: Address) -> Result<Address, ActorError> {
+        match raw.protocol() {
+            // if raw was an ID address, we need to confirm that it actually exists in the state tree
+            Protocol::ID => {
+                let resolved = raw.id().map_err(|_| {
+                    actor_error!(illegal_state, "failed to convert ID address to ID")
+                })?;
+                rt.get_actor_code_cid(&resolved)
+                    .map(|_| raw)
+                    .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                        format!("no code for address {}", raw)
+                    })
+            }
+            // just resolve all other cases, will fail if not in state tree
+            _ => rt
+                .resolve_address(&raw)
+                .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                    format!("failed to resolve address {}", raw)
+                })
+                .map(Address::new_id),
+        }
     }
 
     pub fn update_channel_state(

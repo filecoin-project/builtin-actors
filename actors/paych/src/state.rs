@@ -5,7 +5,6 @@ use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
-use fvm_shared::ActorID;
 
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -30,10 +29,10 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(from: ActorID, to: ActorID, empty_arr_cid: Cid) -> Self {
+    pub fn new(from: Address, to: Address, empty_arr_cid: Cid) -> Self {
         Self {
-            from: Address::new_id(from),
-            to: Address::new_id(to),
+            from,
+            to,
             to_send: Default::default(),
             settling_at: 0,
             min_settle_height: 0,
@@ -58,5 +57,7 @@ pub struct Merge {
 }
 
 impl Cbor for State {}
+
 impl Cbor for LaneState {}
+
 impl Cbor for Merge {}
