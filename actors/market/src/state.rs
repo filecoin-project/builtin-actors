@@ -139,7 +139,7 @@ impl State {
         Ok(maybe.cloned())
     }
 
-    pub fn find_state<BS: Blockstore>(
+    pub fn find_deal_state<BS: Blockstore>(
         &self,
         store: &BS,
         id: DealID,

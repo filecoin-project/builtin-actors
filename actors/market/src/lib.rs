@@ -1156,14 +1156,15 @@ impl Actor {
     /// Fetches activation state for a deal.
     /// This will be available from when the proposal is published until an undefined period after
     /// the deal finishes (either normally or by termination).
-    /// Outside that period, returns USR_NOT_FOUND.
+    /// Returns USR_NOT_FOUND if the deal doesn't exist (yet), or EX_DEAL_EXPIRED if the deal
+    /// has been removed from state.
     fn get_deal_activation(
         rt: &mut impl Runtime,
         params: GetDealActivationParams,
     ) -> Result<GetDealActivationReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st = rt.state::<State>()?;
-        let found = st.find_state(rt.store(), params.id)?;
+        let found = st.find_deal_state(rt.store(), params.id)?;
         match found {
             Some(state) => Ok(GetDealActivationReturn {
                 // If we have state, the deal has been activated.
