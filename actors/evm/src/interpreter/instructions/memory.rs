@@ -107,6 +107,14 @@ pub fn copy_to_memory(
             .get_mut(..copy_len)
             .ok_or(StatusCode::InvalidMemoryAccess)?
             .copy_from_slice(&data[data_offset_usize..][..copy_len]);
+
+        // if the memory region is bigger than the input, memset to 0 the rest
+        if output_usize > copy_len {
+            output_data
+                .get_mut(copy_len..)
+                .ok_or(StatusCode::InvalidMemoryAccess)?
+                .fill(0);
+        }
     }
 
     Ok(())
@@ -206,4 +214,15 @@ mod tests {
         assert_eq!(mem.len(), 32);
         assert_eq!(&mem[0..4], result_data);
     }
+
+    #[test]
+    fn copy_to_memory_some_memzero() {
+        let mut mem: Memory = Default::default();
+        let data_small = &[1u8, 2u8];
+        let result_data_small = &[1u8, 2u8, 0u8, 0u8];
+        let result = copy_to_memory(&mut mem, U256::zero(), U256::from(4), U256::zero(), data_small);
+        assert_eq!(result, Ok(()));
+        assert_eq!(&mem[0..4], result_data_small);
+    }
+
 }
