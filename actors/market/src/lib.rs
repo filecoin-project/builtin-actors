@@ -81,7 +81,7 @@ pub enum Method {
     GetDealProviderExported = frc42_dispatch::method_hash!("GetDealProvider"),
     GetDealLabelExported = frc42_dispatch::method_hash!("GetDealLabel"),
     GetDealTermExported = frc42_dispatch::method_hash!("GetDealTerm"),
-    GetDealEpochPriceExported = frc42_dispatch::method_hash!("GetDealEpochPrice"),
+    GetDealTotalPriceExported = frc42_dispatch::method_hash!("GetDealTotalPrice"),
     GetDealClientCollateralExported = frc42_dispatch::method_hash!("GetDealClientCollateral"),
     GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
     GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
@@ -1097,25 +1097,24 @@ impl Actor {
         Ok(GetDealLabelReturn { label: found.label })
     }
 
-    /// Returns the start and end epochs of a deal proposal.
-    /// The deal term is a half-open range, exclusive of the end epoch.
+    /// Returns the start epoch and duration (in epochs) of a deal proposal.
     fn get_deal_term(
         rt: &mut impl Runtime,
         params: GetDealTermParams,
     ) -> Result<GetDealTermReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
-        Ok(GetDealTermReturn { start: found.start_epoch, end: found.end_epoch })
+        Ok(GetDealTermReturn { start: found.start_epoch, duration: found.duration() })
     }
 
     /// Returns the per-epoch price of a deal proposal.
-    fn get_deal_epoch_price(
+    fn get_deal_total_price(
         rt: &mut impl Runtime,
-        params: GetDealEpochPriceParams,
-    ) -> Result<GetDealEpochPriceReturn, ActorError> {
+        params: GetDealTotalPriceParams,
+    ) -> Result<GetDealTotalPriceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
-        Ok(GetDealEpochPriceReturn { price_per_epoch: found.storage_price_per_epoch })
+        Ok(GetDealTotalPriceReturn { total_price: found.total_storage_fee() })
     }
 
     /// Returns the client collateral requirement for a deal proposal.
@@ -1584,8 +1583,8 @@ impl ActorCode for Actor {
                 let res = Self::get_deal_term(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::GetDealEpochPriceExported) => {
-                let res = Self::get_deal_epoch_price(rt, cbor::deserialize_params(params)?)?;
+            Some(Method::GetDealTotalPriceExported) => {
+                let res = Self::get_deal_total_price(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::GetDealClientCollateralExported) => {
