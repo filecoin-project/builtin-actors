@@ -59,6 +59,9 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 
 pub const NO_ALLOCATION_ID: u64 = 0;
 
+// An exit code indicating that information about a past deal is no longer available.
+pub const EX_DEAL_EXPIRED: ExitCode = ExitCode::new(32);
+
 /// Market actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -85,6 +88,7 @@ pub enum Method {
     GetDealClientCollateralExported = frc42_dispatch::method_hash!("GetDealClientCollateral"),
     GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
     GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
+    GetDealActivationExported = frc42_dispatch::method_hash!("GetDealActivation"),
 }
 
 /// Market Actor
@@ -1148,6 +1152,53 @@ impl Actor {
         let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
         Ok(GetDealVerifiedReturn { verified: found.verified_deal })
     }
+
+    /// Fetches activation state for a deal.
+    /// This will be available from when the proposal is published until an undefined period after
+    /// the deal finishes (either normally or by termination).
+    /// Returns USR_NOT_FOUND if the deal doesn't exist (yet), or EX_DEAL_EXPIRED if the deal
+    /// has been removed from state.
+    fn get_deal_activation(
+        rt: &mut impl Runtime,
+        params: GetDealActivationParams,
+    ) -> Result<GetDealActivationReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st = rt.state::<State>()?;
+        let found = st.find_deal_state(rt.store(), params.id)?;
+        match found {
+            Some(state) => Ok(GetDealActivationReturn {
+                // If we have state, the deal has been activated.
+                // It may also have completed normally, or been terminated,
+                // but not yet been cleaned up.
+                activated: state.sector_start_epoch,
+                terminated: state.slash_epoch,
+            }),
+            None => {
+                // State::get_proposal will fail with USR_NOT_FOUND in either case.
+                let maybe_proposal = st.find_proposal(rt.store(), params.id)?;
+                match maybe_proposal {
+                    Some(_) => Ok(GetDealActivationReturn {
+                        // The proposal has been published, but not activated.
+                        activated: EPOCH_UNDEFINED,
+                        terminated: EPOCH_UNDEFINED,
+                    }),
+                    None => {
+                        if params.id < st.next_id {
+                            // If the deal ID has been used, it must have been cleaned up.
+                            Err(ActorError::unchecked(
+                                EX_DEAL_EXPIRED,
+                                format!("deal {} expired", params.id),
+                            ))
+                        } else {
+                            // We can't distinguish between failing to activate, or having been
+                            // cleaned up after completion/termination.
+                            Err(ActorError::not_found(format!("no such deal {}", params.id)))
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn compute_data_commitment<BS: Blockstore>(
@@ -1598,6 +1649,10 @@ impl ActorCode for Actor {
             }
             Some(Method::GetDealVerifiedExported) => {
                 let res = Self::get_deal_verified(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetDealActivationExported) => {
+                let res = Self::get_deal_activation(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
