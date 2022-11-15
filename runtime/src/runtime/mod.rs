@@ -242,6 +242,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// The hash of on of the last 256 blocks
     fn tipset_cid(&self, epoch: i64) -> Option<Cid>;
 
+    /// Emits an event denoting that something externally noteworthy has ocurred.
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError>;
 }
 

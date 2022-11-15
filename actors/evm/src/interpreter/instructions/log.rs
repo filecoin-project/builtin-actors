@@ -1,5 +1,5 @@
 use crate::interpreter::instructions::memory::get_memory_region;
-use fvm_ipld_encoding::{to_vec, RawBytes};
+use fvm_ipld_encoding::{to_vec, BytesSer, RawBytes};
 use fvm_shared::event::{Entry, Flags};
 use {
     crate::interpreter::{ExecutionState, StatusCode, System},
@@ -46,7 +46,7 @@ pub fn log(
         let entry = Entry {
             flags: Flags::FLAG_INDEXED_VALUE,
             key: EVENT_DATA_KEY.to_owned(),
-            value: to_vec(&RawBytes::new(data))?.into(),
+            value: RawBytes::serialize(BytesSer(&data))?,
         };
         entries.push(entry);
     }

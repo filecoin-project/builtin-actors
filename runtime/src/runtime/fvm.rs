@@ -32,7 +32,7 @@ use crate::runtime::{
     ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
     Verifier,
 };
-use crate::{actor_error, ActorError, Runtime};
+use crate::{actor_error, ActorError, AsActorError, Runtime};
 
 /// A runtime that bridges to the FVM environment through the FVM SDK.
 pub struct FvmRuntime<B = ActorBlockstore> {
@@ -424,7 +424,7 @@ where
 
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
         fvm::event::emit_event(event)
-            .map_err(|e| actor_error!(assertion_failed; "failed to emit event: {}", e))
+            .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to emit event")
     }
 }
 
