@@ -120,15 +120,36 @@ impl State {
         store: &BS,
         id: DealID,
     ) -> Result<DealProposal, ActorError> {
+        let found = self
+            .find_proposal(store, id)?
+            .with_context_code(ExitCode::USR_NOT_FOUND, || format!("no such deal {}", id))?;
+        Ok(found)
+    }
+
+    pub fn find_proposal<BS: Blockstore>(
+        &self,
+        store: &BS,
+        id: DealID,
+    ) -> Result<Option<DealProposal>, ActorError> {
         let proposals = DealArray::load(&self.proposals, store)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")?;
-        let found = proposals
-            .get(id)
-            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("failed to load deal proposal {}", id)
-            })?
-            .with_context_code(ExitCode::USR_NOT_FOUND, || format!("no such deal {}", id))?;
-        Ok(found.clone())
+        let maybe = proposals.get(id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to load deal proposal {}", id)
+        })?;
+        Ok(maybe.cloned())
+    }
+
+    pub fn find_deal_state<BS: Blockstore>(
+        &self,
+        store: &BS,
+        id: DealID,
+    ) -> Result<Option<DealState>, ActorError> {
+        let states = DealMetaArray::load(&self.states, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal states")?;
+        let found = states.get(id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to load deal state {}", id)
+        })?;
+        Ok(found.cloned())
     }
 
     pub(super) fn mutator<'bs, BS: Blockstore>(
