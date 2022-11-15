@@ -6,12 +6,11 @@ use fil_actor_multisig::{
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 
-use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -759,8 +758,8 @@ fn test_propose_restricted_correctly() {
     let h = util::ActorHarness::new();
 
     let anne = Address::new_id(101);
+    // We will treat Bob as having code CID b"102"
     let bob = Address::new_id(102);
-    // We will treat Chuck as having code CID b"103"
     let chuck = Address::new_id(103);
     let no_unlock_duration = 0;
     let start_epoch = 0;
@@ -770,7 +769,7 @@ fn test_propose_restricted_correctly() {
     h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
 
     // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"103"), Address::new_id(103));
+    rt.set_caller(make_identity_cid(b"102"), Address::new_id(102));
     let propose_params = serialize(
         &ProposeParams {
             to: chuck,
@@ -793,13 +792,8 @@ fn test_propose_restricted_correctly() {
     rt.verify();
 
     // can call the exported method num
-    rt.expect_validate_caller_type([Type::Account, Type::Multisig].to_vec());
-    // TODO: This call should succeed: See https://github.com/filecoin-project/builtin-actors/issues/806.
-    expect_abort_contains_message(
-        ExitCode::USR_FORBIDDEN,
-        "forbidden, allowed: [Account, Multisig]",
-        rt.call::<MultisigActor>(Method::ProposeExported as u64, &propose_params),
-    );
+    rt.expect_validate_caller_any();
+    rt.call::<MultisigActor>(Method::ProposeExported as u64, &propose_params).unwrap();
 
     rt.verify();
 }
@@ -1605,7 +1599,7 @@ mod approval_tests {
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
         let params = TxnIDParams { id: TxnID(0), proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
             .unwrap();
@@ -1667,7 +1661,7 @@ mod approval_tests {
         h.construct_and_verify(&mut rt, 1, 0, 0, signers);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
         let params = TxnIDParams { id: dne_tx_id, proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
             .expect_err("should fail on approve of non existent tx id");

@@ -87,7 +87,7 @@ impl Actor {
         rt: &mut impl Runtime,
         params: CreateMinerParams,
     ) -> Result<CreateMinerReturn, ActorError> {
-        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
+        rt.validate_immediate_caller_accept_any()?;
         let value = rt.message().value_received();
 
         let constructor_params = RawBytes::serialize(ext::miner::MinerConstructorParams {
