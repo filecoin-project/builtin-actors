@@ -8,7 +8,7 @@ use thiserror::Error;
 #[error("ActorError(exit_code: {exit_code:?}, msg: {msg})")]
 pub struct ActorError {
     /// The exit code for this invocation.
-    /// Codes less than `FIRST_ACTOR_EXIT_CODE` are prohibited and will be overwritten by the VM.
+    /// Codes less than `FIRST_USER_EXIT_CODE` are prohibited and will be overwritten by the VM.
     exit_code: ExitCode,
     /// Message for debugging purposes,
     msg: String,

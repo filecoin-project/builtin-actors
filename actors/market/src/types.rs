@@ -206,3 +206,13 @@ pub type GetDealVerifiedParams = DealQueryParams;
 pub struct GetDealVerifiedReturn {
     pub verified: bool,
 }
+
+pub type GetDealActivationParams = DealQueryParams;
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct GetDealActivationReturn {
+    /// Epoch at which the deal was activated, or -1.
+    /// This may be before the proposed start epoch.
+    pub activated: ChainEpoch,
+    /// Epoch at which the deal was terminated abnormally, or -1.
+    pub terminated: ChainEpoch,
+}
