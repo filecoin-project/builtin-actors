@@ -14,7 +14,7 @@ use fil_actors_runtime::runtime::{builtins::Type, Policy, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, make_map_with_root_and_bitwidth, ActorError, BatchReturn, Map, SetMultimap,
-    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
@@ -195,7 +195,7 @@ fn adds_to_provider_escrow_funds() {
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
             rt.set_value(TokenAmount::from_atto(tc.delta));
-            rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+            rt.expect_validate_caller_any();
             expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
             assert_eq!(
@@ -379,28 +379,6 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
 }
 
 #[test]
-fn fails_unless_called_by_an_account_actor() {
-    let mut rt = setup();
-
-    rt.set_value(TokenAmount::from_atto(10));
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-
-    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    assert_eq!(
-        ExitCode::USR_FORBIDDEN,
-        rt.call::<MarketActor>(
-            Method::AddBalance as u64,
-            &RawBytes::serialize(PROVIDER_ADDR).unwrap(),
-        )
-        .unwrap_err()
-        .exit_code()
-    );
-
-    rt.verify();
-    check_state(&rt);
-}
-
-#[test]
 fn adds_to_non_provider_funds() {
     struct TestCase {
         delta: u64,
@@ -418,8 +396,7 @@ fn adds_to_non_provider_funds() {
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
             rt.set_value(TokenAmount::from_atto(tc.delta));
-            rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-
+            rt.expect_validate_caller_any();
             assert_eq!(
                 RawBytes::default(),
                 rt.call::<MarketActor>(
@@ -564,7 +541,6 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
 
     assert_eq!(get_balance(&mut rt, &PROVIDER_ADDR).balance, amount);
 
-    // only signing parties can add balance for client AND provider.
     rt.expect_validate_caller_addr(vec![OWNER_ADDR, WORKER_ADDR]);
     let params = WithdrawBalanceParams {
         provider_or_client: PROVIDER_ADDR,
@@ -821,7 +797,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
 
     rt.set_value(amount.clone());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client_resolved);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     assert!(rt
         .call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(client_bls).unwrap())
         .is_ok());
@@ -833,7 +809,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     // add funds for provider using it's BLS address -> will be resolved and persisted
     rt.value_received = deal.provider_collateral.clone();
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
 
     assert_eq!(
@@ -850,7 +826,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
 
     // publish deal using the BLS addresses
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
 
     expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
@@ -1402,7 +1378,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
     let params = PublishStorageDealsParams {
         deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig }],
     };
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -1770,7 +1746,7 @@ fn insufficient_client_balance_in_a_batch() {
         deal1.provider_balance_requirement().add(deal2.provider_balance_requirement());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.set_value(provider_funds);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
     assert_eq!(
@@ -1802,7 +1778,7 @@ fn insufficient_client_balance_in_a_batch() {
         ],
     };
 
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
 
@@ -1883,7 +1859,7 @@ fn insufficient_provider_balance_in_a_batch() {
     // Provider has enough for only the second deal
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.set_value(deal2.provider_balance_requirement().clone());
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
     assert_eq!(
@@ -1919,7 +1895,7 @@ fn insufficient_provider_balance_in_a_batch() {
         ],
     };
 
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
 
@@ -1990,16 +1966,12 @@ fn add_balance_restricted_correctly() {
     );
 
     // can call the exported method num
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-    // TODO: This call should succeed: See https://github.com/filecoin-project/builtin-actors/issues/806.
-    expect_abort_contains_message(
-        ExitCode::USR_FORBIDDEN,
-        "forbidden, allowed: [Account, Multisig]",
-        rt.call::<MarketActor>(
-            Method::AddBalanceExported as MethodNum,
-            &RawBytes::serialize(CLIENT_ADDR).unwrap(),
-        ),
-    );
+    rt.expect_validate_caller_any();
+    rt.call::<MarketActor>(
+        Method::AddBalanceExported as MethodNum,
+        &RawBytes::serialize(CLIENT_ADDR).unwrap(),
+    )
+    .unwrap();
 
     rt.verify();
 }
