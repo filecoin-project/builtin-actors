@@ -22,7 +22,7 @@ use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use itertools::Itertools;
 use log::{error, info, warn};
 use multihash::Code::Blake2b256;
@@ -42,8 +42,8 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_error, cbor, restrict_internal_api, ActorContext, ActorDowncast, ActorError,
-    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 pub use monies::*;
 pub use partition_state::*;
@@ -151,12 +151,19 @@ impl Actor {
         check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
         check_valid_post_proof_type(rt.policy(), params.window_post_proof_type)?;
 
-        let owner = resolve_control_address(rt, params.owner)?;
+        let owner = rt.resolve_address(&params.owner).ok_or_else(|| {
+            actor_error!(illegal_argument, "unable to resolve owner address: {}", params.owner)
+        })?;
+
         let worker = resolve_worker_address(rt, params.worker)?;
         let control_addresses: Vec<_> = params
             .control_addresses
             .into_iter()
-            .map(|address| resolve_control_address(rt, address))
+            .map(|address| {
+                rt.resolve_address(&address).ok_or_else(|| {
+                    actor_error!(illegal_argument, "unable to resolve control address: {}", address)
+                })
+            })
             .collect::<Result<_, _>>()?;
 
         let policy = rt.policy();
@@ -297,11 +304,16 @@ impl Actor {
     ) -> Result<(), ActorError> {
         check_control_addresses(rt.policy(), &params.new_control_addresses)?;
 
-        let new_worker = resolve_worker_address(rt, params.new_worker)?;
+        let new_worker = Address::new_id(resolve_worker_address(rt, params.new_worker)?);
         let control_addresses: Vec<Address> = params
             .new_control_addresses
             .into_iter()
-            .map(|address| resolve_control_address(rt, address))
+            .map(|address| {
+                rt.resolve_address(&address).ok_or_else(|| {
+                    actor_error!(illegal_argument, "unable to resolve control address: {}", address)
+                })
+            })
+            .map(|id_result| id_result.map(Address::new_id))
             .collect::<Result<_, _>>()?;
 
         rt.transaction(|state: &mut State, rt| {
@@ -1419,7 +1431,7 @@ impl Actor {
         rt: &mut impl Runtime,
         params: DisputeWindowedPoStParams,
     ) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_accept_any()?;
         let reporter = rt.message().caller();
 
         {
@@ -3057,7 +3069,7 @@ impl Actor {
         // Note: only the first report of any fault is processed because it sets the
         // ConsensusFaultElapsed state variable to an epoch after the fault, and reports prior to
         // that epoch are no longer valid
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_accept_any()?;
         let reporter = rt.message().caller();
 
         let fault = rt
@@ -4318,36 +4330,9 @@ fn request_current_total_power(
     Ok(power)
 }
 
-/// Resolves an address to an ID address and verifies that it is address of an account or multisig actor.
-fn resolve_control_address(rt: &impl Runtime, raw: Address) -> Result<Address, ActorError> {
-    let resolved = rt
-        .resolve_address(&raw)
-        .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
-
-    let owner_code = rt
-        .get_actor_code_cid(&resolved)
-        .ok_or_else(|| actor_error!(illegal_argument, "no code for address: {}", resolved))?;
-
-    let is_principal = rt
-        .resolve_builtin_actor_type(&owner_code)
-        .as_ref()
-        .map(|t| CALLER_TYPES_SIGNABLE.contains(t))
-        .unwrap_or(false);
-
-    if !is_principal {
-        return Err(actor_error!(
-            illegal_argument,
-            "owner actor type must be a principal, was {}",
-            owner_code
-        ));
-    }
-
-    Ok(Address::new_id(resolved))
-}
-
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
 /// The worker must be BLS since the worker key will be used alongside a BLS-VRF.
-fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<Address, ActorError> {
+fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<ActorID, ActorError> {
     let resolved = rt
         .resolve_address(&raw)
         .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
@@ -4380,7 +4365,7 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<Address
             ));
         }
     }
-    Ok(Address::new_id(resolved))
+    Ok(resolved)
 }
 
 fn burn_funds(rt: &mut impl Runtime, amount: TokenAmount) -> Result<(), ActorError> {
