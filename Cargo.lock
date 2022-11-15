@@ -1770,7 +1770,7 @@ dependencies = [
 [[package]]
 name = "frc42_dispatch"
 version = "1.0.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#aa39d65847a57cea2fcf04bab464bac75cf99b97"
 dependencies = [
  "frc42_hasher",
  "frc42_macros",
@@ -1783,7 +1783,7 @@ dependencies = [
 [[package]]
 name = "frc42_hasher"
 version = "1.0.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#aa39d65847a57cea2fcf04bab464bac75cf99b97"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
@@ -1793,7 +1793,7 @@ dependencies = [
 [[package]]
 name = "frc42_macros"
 version = "1.0.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#aa39d65847a57cea2fcf04bab464bac75cf99b97"
 dependencies = [
  "blake2b_simd",
  "frc42_hasher",
@@ -1805,7 +1805,7 @@ dependencies = [
 [[package]]
 name = "frc46_token"
 version = "1.1.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#aa39d65847a57cea2fcf04bab464bac75cf99b97"
 dependencies = [
  "anyhow",
  "cid",
@@ -1954,7 +1954,7 @@ dependencies = [
 [[package]]
 name = "fvm_actor_utils"
 version = "0.1.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#93f90c3cd340a2396ee2e0344fe09bb476362a92"
+source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=feat/fvm-m2#aa39d65847a57cea2fcf04bab464bac75cf99b97"
 dependencies = [
  "anyhow",
  "cid",
@@ -2060,9 +2060,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "3.0.0-alpha.10"
+version = "3.0.0-alpha.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55159c44e404ab1fc9e0e2d15aa8513f71e5e4c3f38363a3f7644d5b7a7a906e"
+checksum = "2ee761116262c35151071675ec3345d821b0b90143616dec348c74e46116e150"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -2075,11 +2075,12 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "3.0.0-alpha.10"
+version = "3.0.0-alpha.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcd5f36e5c1628da1a002931f96a8cc3ea8fc517a6984e8d42457786528b88f0"
+checksum = "d66b85f8971273def3bb366008319f8dc855be3172210c3b83b7b20353709b29"
 dependencies = [
  "anyhow",
+ "bitflags",
  "blake2b_simd",
  "byteorder",
  "cid",
@@ -2295,9 +2296,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.23.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d87c48c02e0dc5e3b849a2041db3029fd066650f8f717c07bf8ed78ccb895cac"
+checksum = "59df7c4e19c950e6e0e868dcc0a300b09a9b88e9ec55bd879ca819087a77355d"
 dependencies = [
  "http",
  "hyper",
@@ -2444,9 +2445,12 @@ dependencies = [
 
 [[package]]
 name = "keccak"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9b7d56ba4a8344d6be9729995e6b06f928af29998cdf79fe390cbf6b1fee838"
+checksum = "3afef3b6eff9ce9d8ff9b3601125eec7f0c8cbac7abd14f355d053fa56c98768"
+dependencies = [
+ "cpufeatures",
+]
 
 [[package]]
 name = "kv-log-macro"

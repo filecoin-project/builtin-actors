@@ -390,15 +390,19 @@ where
         let res = self.rt.send(to, method, params.clone(), value.clone());
 
         let rec = match res {
-            Ok(bytes) => {
-                Receipt { exit_code: ExitCode::OK, return_data: bytes, gas_used: fake_gas_used }
-            }
+            Ok(bytes) => Receipt {
+                exit_code: ExitCode::OK,
+                return_data: bytes,
+                gas_used: fake_gas_used,
+                events_root: None,
+            },
             Err(ae) => {
                 info!("datacap messenger failed: {}", ae.msg());
                 Receipt {
                     exit_code: ae.exit_code(),
                     return_data: RawBytes::default(),
                     gas_used: fake_gas_used,
+                    events_root: None,
                 }
             }
         };
