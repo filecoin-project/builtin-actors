@@ -13,10 +13,10 @@ use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
 use fil_actors_runtime::cbor::serialize_vec;
-use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Primitives, Runtime};
+use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id, ActorContext,
-    ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
+    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id,
+    restrict_internal_api, ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
 };
 
 pub use self::state::*;
@@ -42,6 +42,16 @@ pub enum Method {
     SwapSigner = 7,
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
+    // Method numbers derived from FRC-0042 standards
+    ProposeExported = frc42_dispatch::method_hash!("Propose"),
+    ApproveExported = frc42_dispatch::method_hash!("Approve"),
+    CancelExported = frc42_dispatch::method_hash!("Cancel"),
+    AddSignerExported = frc42_dispatch::method_hash!("AddSigner"),
+    RemoveSignerExported = frc42_dispatch::method_hash!("RemoveSigner"),
+    SwapSignerExported = frc42_dispatch::method_hash!("SwapSigner"),
+    ChangeNumApprovalsThresholdExported =
+        frc42_dispatch::method_hash!("ChangeNumApprovalsThreshold"),
+    LockBalanceExported = frc42_dispatch::method_hash!("LockBalance"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
@@ -122,7 +132,7 @@ impl Actor {
         rt: &mut impl Runtime,
         params: ProposeParams,
     ) -> Result<ProposeReturn, ActorError> {
-        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
+        rt.validate_immediate_caller_accept_any()?;
         let proposer: Address = rt.message().caller();
 
         if params.value.is_negative() {
@@ -175,7 +185,7 @@ impl Actor {
         rt: &mut impl Runtime,
         params: TxnIDParams,
     ) -> Result<ApproveReturn, ActorError> {
-        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
+        rt.validate_immediate_caller_accept_any()?;
         let approver: Address = rt.message().caller();
 
         let id = params.id;
@@ -207,7 +217,7 @@ impl Actor {
 
     /// Multisig actor cancel function
     pub fn cancel(rt: &mut impl Runtime, params: TxnIDParams) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
+        rt.validate_immediate_caller_accept_any()?;
         let caller_addr: Address = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
@@ -556,40 +566,42 @@ impl ActorCode for Actor {
     where
         RT: Runtime,
     {
+        restrict_internal_api(rt, method)?;
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::Propose) => {
+            Some(Method::Propose) | Some(Method::ProposeExported) => {
                 let res = Self::propose(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::Approve) => {
+            Some(Method::Approve) | Some(Method::ApproveExported) => {
                 let res = Self::approve(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::Cancel) => {
+            Some(Method::Cancel) | Some(Method::CancelExported) => {
                 Self::cancel(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::AddSigner) => {
+            Some(Method::AddSigner) | Some(Method::AddSignerExported) => {
                 Self::add_signer(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::RemoveSigner) => {
+            Some(Method::RemoveSigner) | Some(Method::RemoveSignerExported) => {
                 Self::remove_signer(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::SwapSigner) => {
+            Some(Method::SwapSigner) | Some(Method::SwapSignerExported) => {
                 Self::swap_signer(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::ChangeNumApprovalsThreshold) => {
+            Some(Method::ChangeNumApprovalsThreshold)
+            | Some(Method::ChangeNumApprovalsThresholdExported) => {
                 Self::change_num_approvals_threshold(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::LockBalance) => {
+            Some(Method::LockBalance) | Some(Method::LockBalanceExported) => {
                 Self::lock_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }

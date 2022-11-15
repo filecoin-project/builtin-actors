@@ -22,7 +22,8 @@ use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use itertools::Itertools;
 use log::{error, info, warn};
 use multihash::Code::Blake2b256;
 use num_derive::FromPrimitive;
@@ -40,8 +41,8 @@ use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    actor_error, cbor, restrict_internal_api, ActorContext, ActorDowncast, ActorError,
+    BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 pub use monies::*;
@@ -123,6 +124,14 @@ pub enum Method {
     ChangeBeneficiary = 30,
     GetBeneficiary = 31,
     ExtendSectorExpiration2 = 32,
+    // Method numbers derived from FRC-0042 standards
+    ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
+    GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
+    GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
+    IsControllingAddressExported = frc42_dispatch::method_hash!("IsControllingAddress"),
+    GetSectorSizeExported = frc42_dispatch::method_hash!("GetSectorSize"),
+    GetAvailableBalanceExported = frc42_dispatch::method_hash!("GetAvailableBalance"),
+    GetVestingFundsExported = frc42_dispatch::method_hash!("GetVestingFunds"),
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -142,12 +151,19 @@ impl Actor {
         check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
         check_valid_post_proof_type(rt.policy(), params.window_post_proof_type)?;
 
-        let owner = resolve_control_address(rt, params.owner)?;
+        let owner = rt.resolve_address(&params.owner).ok_or_else(|| {
+            actor_error!(illegal_argument, "unable to resolve owner address: {}", params.owner)
+        })?;
+
         let worker = resolve_worker_address(rt, params.worker)?;
         let control_addresses: Vec<_> = params
             .control_addresses
             .into_iter()
-            .map(|address| resolve_control_address(rt, address))
+            .map(|address| {
+                rt.resolve_address(&address).ok_or_else(|| {
+                    actor_error!(illegal_argument, "unable to resolve control address: {}", address)
+                })
+            })
             .collect::<Result<_, _>>()?;
 
         let policy = rt.policy();
@@ -202,6 +218,7 @@ impl Actor {
         Ok(())
     }
 
+    /// Returns the "controlling" addresses: the owner, the worker, and all control addresses
     fn control_addresses(rt: &mut impl Runtime) -> Result<GetControlAddressesReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
@@ -213,6 +230,71 @@ impl Actor {
         })
     }
 
+    /// Returns the owner address
+    fn get_owner(rt: &mut impl Runtime) -> Result<GetOwnerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let owner = get_miner_info(rt.store(), &state)?.owner;
+        Ok(GetOwnerReturn { owner })
+    }
+
+    /// Returns whether the provided address is "controlling".
+    /// The "controlling" addresses are the Owner, the Worker, and all Control Addresses.
+    fn is_controlling_address(
+        rt: &mut impl Runtime,
+        params: IsControllingAddressParam,
+    ) -> Result<IsControllingAddressReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let input = match rt.resolve_address(&params.address) {
+            Some(a) => Address::new_id(a),
+            None => return Ok(IsControllingAddressReturn { is_controlling: false }),
+        };
+        let state: State = rt.state()?;
+        let info = get_miner_info(rt.store(), &state)?;
+        let is_controlling = info
+            .control_addresses
+            .iter()
+            .chain(&[info.worker, info.owner])
+            .into_iter()
+            .any(|a| *a == input);
+
+        Ok(IsControllingAddressReturn { is_controlling })
+    }
+
+    /// Returns the miner's sector size
+    fn get_sector_size(rt: &mut impl Runtime) -> Result<GetSectorSizeReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let sector_size = get_miner_info(rt.store(), &state)?.sector_size;
+        Ok(GetSectorSizeReturn { sector_size })
+    }
+
+    /// Returns the available balance of this miner.
+    /// This is calculated as actor balance - (vesting funds + pre-commit deposit + ip requirement + fee debt)
+    /// Can go negative if the miner is in IP debt.
+    fn get_available_balance(
+        rt: &mut impl Runtime,
+    ) -> Result<GetAvailableBalanceReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let available_balance =
+            state.get_available_balance(&rt.current_balance()).map_err(|e| {
+                actor_error!(illegal_state, "failed to calculate available balance: {}", e)
+            })?;
+        Ok(GetAvailableBalanceReturn { available_balance })
+    }
+
+    /// Returns the funds vesting in this miner as a list of (vesting_epoch, vesting_amount) tuples.
+    fn get_vesting_funds(rt: &mut impl Runtime) -> Result<GetVestingFundsReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let vesting_funds = state
+            .load_vesting_funds(rt.store())
+            .map_err(|e| actor_error!(illegal_state, "failed to load vesting funds: {}", e))?;
+        let ret = vesting_funds.funds.into_iter().map(|v| (v.epoch, v.amount)).collect_vec();
+        Ok(GetVestingFundsReturn { vesting_funds: ret })
+    }
+
     /// Will ALWAYS overwrite the existing control addresses with the control addresses passed in the params.
     /// If an empty addresses vector is passed, the control addresses will be cleared.
     /// A worker change will be scheduled if the worker passed in the params is different from the existing worker.
@@ -222,11 +304,16 @@ impl Actor {
     ) -> Result<(), ActorError> {
         check_control_addresses(rt.policy(), &params.new_control_addresses)?;
 
-        let new_worker = resolve_worker_address(rt, params.new_worker)?;
+        let new_worker = Address::new_id(resolve_worker_address(rt, params.new_worker)?);
         let control_addresses: Vec<Address> = params
             .new_control_addresses
             .into_iter()
-            .map(|address| resolve_control_address(rt, address))
+            .map(|address| {
+                rt.resolve_address(&address).ok_or_else(|| {
+                    actor_error!(illegal_argument, "unable to resolve control address: {}", address)
+                })
+            })
+            .map(|id_result| id_result.map(Address::new_id))
             .collect::<Result<_, _>>()?;
 
         rt.transaction(|state: &mut State, rt| {
@@ -1344,7 +1431,7 @@ impl Actor {
         rt: &mut impl Runtime,
         params: DisputeWindowedPoStParams,
     ) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_accept_any()?;
         let reporter = rt.message().caller();
 
         {
@@ -2982,7 +3069,7 @@ impl Actor {
         // Note: only the first report of any fault is processed because it sets the
         // ConsensusFaultElapsed state variable to an epoch after the fault, and reports prior to
         // that epoch are no longer valid
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_accept_any()?;
         let reporter = rt.message().caller();
 
         let fault = rt
@@ -3418,10 +3505,12 @@ pub struct ReplicaUpdateInner {
 }
 
 enum ExtensionKind {
-    ExtendCommittmentLegacy, // handle only legacy sectors
-    ExtendCommittment,       // handle both Simple QAP and legacy sectors
-                             // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
-                             // ExtendProofValidity
+    // handle only legacy sectors
+    ExtendCommittmentLegacy,
+    // handle both Simple QAP and legacy sectors
+    // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
+    // ExtendProofValidity
+    ExtendCommittment,
 }
 
 // ExtendSectorExpiration param
@@ -3637,18 +3726,19 @@ fn extend_simple_qap_sector(
         let old_duration = sector.expiration - sector.activation;
         let deal_space = &sector.deal_weight / old_duration;
         let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
-        let (expected_verified_deal_space, new_verified_deal_space) =
-            match claim_space_by_sector.get(&sector.sector_number) {
-                None => {
-                    return Err(actor_error!(
+        let (expected_verified_deal_space, new_verified_deal_space) = match claim_space_by_sector
+            .get(&sector.sector_number)
+        {
+            None => {
+                return Err(actor_error!(
                         illegal_argument,
                         "claim missing from declaration for sector {} with non-zero verified deal weight {}",
                         sector.sector_number,
                         &sector.verified_deal_weight
-                    ))
-                }
-                Some(space) => space,
-            };
+                    ));
+            }
+            Some(space) => space,
+        };
         // claims must be completely accounted for
         if BigInt::from(*expected_verified_deal_space as i64) != old_verified_deal_space {
             return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, old_verified_deal_space, sector.sector_number));
@@ -4241,36 +4331,9 @@ fn request_current_total_power(
     Ok(power)
 }
 
-/// Resolves an address to an ID address and verifies that it is address of an account or multisig actor.
-fn resolve_control_address(rt: &impl Runtime, raw: Address) -> Result<Address, ActorError> {
-    let resolved = rt
-        .resolve_address(&raw)
-        .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
-
-    let owner_code = rt
-        .get_actor_code_cid(&resolved)
-        .ok_or_else(|| actor_error!(illegal_argument, "no code for address: {}", resolved))?;
-
-    let is_principal = rt
-        .resolve_builtin_actor_type(&owner_code)
-        .as_ref()
-        .map(|t| CALLER_TYPES_SIGNABLE.contains(t))
-        .unwrap_or(false);
-
-    if !is_principal {
-        return Err(actor_error!(
-            illegal_argument,
-            "owner actor type must be a principal, was {}",
-            owner_code
-        ));
-    }
-
-    Ok(Address::new_id(resolved))
-}
-
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
 /// The worker must be BLS since the worker key will be used alongside a BLS-VRF.
-fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<Address, ActorError> {
+fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<ActorID, ActorError> {
     let resolved = rt
         .resolve_address(&raw)
         .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
@@ -4303,7 +4366,7 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<Address
             ));
         }
     }
-    Ok(Address::new_id(resolved))
+    Ok(resolved)
 }
 
 fn burn_funds(rt: &mut impl Runtime, amount: TokenAmount) -> Result<(), ActorError> {
@@ -4864,6 +4927,7 @@ impl ActorCode for Actor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        restrict_internal_api(rt, method)?;
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
@@ -4981,11 +5045,11 @@ impl ActorCode for Actor {
                 let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::ChangeBeneficiary) => {
+            Some(Method::ChangeBeneficiary) | Some(Method::ChangeBenificiaryExported) => {
                 Self::change_beneficiary(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::GetBeneficiary) => {
+            Some(Method::GetBeneficiary) | Some(Method::GetBeneficiaryExported) => {
                 let res = Self::get_beneficiary(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
@@ -4994,6 +5058,26 @@ impl ActorCode for Actor {
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
+            Some(Method::GetOwnerExported) => {
+                let res = Self::get_owner(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::IsControllingAddressExported) => {
+                let res = Self::is_controlling_address(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetSectorSizeExported) => {
+                let res = Self::get_sector_size(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetAvailableBalanceExported) => {
+                let res = Self::get_available_balance(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetVestingFundsExported) => {
+                let res = Self::get_vesting_funds(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
         }
     }
 }

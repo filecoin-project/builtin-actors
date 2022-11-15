@@ -2,10 +2,10 @@ use fil_actor_power::ext::init::{ExecParams, EXEC_METHOD};
 use fil_actor_power::ext::miner::MinerConstructorParams;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
-    SYSTEM_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, make_identity_cid, ACCOUNT_ACTOR_CODE_ID,
+    MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::{runtime::Policy, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
@@ -17,9 +17,11 @@ use num_traits::Zero;
 use std::ops::Neg;
 
 use fil_actor_power::{
-    consensus_miner_min_power, Actor as PowerActor, CreateMinerParams, EnrollCronEventParams,
-    Method, State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
+    consensus_miner_min_power, Actor as PowerActor, Actor, CreateMinerParams,
+    EnrollCronEventParams, Method, MinerRawPowerParams, MinerRawPowerReturn, NetworkRawPowerReturn,
+    State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
 };
+use fil_actors_runtime::cbor::serialize;
 
 use crate::harness::*;
 
@@ -76,34 +78,6 @@ fn create_miner() {
 }
 
 #[test]
-fn create_miner_given_caller_is_not_of_signable_type_should_fail() {
-    let (h, mut rt) = setup();
-
-    let peer = "miner".as_bytes().to_vec();
-    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
-
-    let create_miner_params = CreateMinerParams {
-        owner: *OWNER,
-        worker: *OWNER,
-        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        peer,
-        multiaddrs,
-    };
-
-    rt.set_caller(*MINER_ACTOR_CODE_ID, *OWNER);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-    expect_abort(
-        ExitCode::USR_FORBIDDEN,
-        rt.call::<PowerActor>(
-            Method::CreateMiner as u64,
-            &RawBytes::serialize(&create_miner_params).unwrap(),
-        ),
-    );
-    rt.verify();
-    h.check_state(&rt);
-}
-
-#[test]
 fn create_miner_given_send_to_init_actor_fails_should_fail() {
     let (h, mut rt) = setup();
 
@@ -122,7 +96,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *OWNER);
     rt.value_received = TokenAmount::from_atto(10);
     rt.set_balance(TokenAmount::from_atto(10));
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
 
     let message_params = ExecParams {
         code_cid: *MINER_ACTOR_CODE_ID,
@@ -586,6 +560,55 @@ fn claimed_power_is_externally_available() {
 
     assert_eq!(power_unit, &claim.raw_byte_power);
     assert_eq!(power_unit, &claim.quality_adj_power);
+    h.check_state(&rt);
+}
+
+#[test]
+fn get_network_and_miner_power() {
+    let power_unit = &consensus_miner_min_power(
+        &Policy::default(),
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+    )
+    .unwrap();
+
+    let (mut h, mut rt) = setup();
+
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
+    h.update_claimed_power(&mut rt, MINER1, power_unit, power_unit);
+
+    // manually update state in lieu of cron running
+    let mut state: State = rt.get_state();
+    state.this_epoch_raw_byte_power = power_unit.clone();
+    rt.replace_state(&state);
+
+    // set caller to not-builtin
+    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+
+    rt.expect_validate_caller_any();
+    let network_power: NetworkRawPowerReturn = rt
+        .call::<Actor>(Method::NetworkRawPowerExported as u64, &RawBytes::default())
+        .unwrap()
+        .deserialize()
+        .unwrap();
+
+    assert_eq!(power_unit, &network_power.raw_byte_power);
+
+    rt.expect_validate_caller_any();
+    let miner_power: MinerRawPowerReturn = rt
+        .call::<Actor>(
+            Method::MinerRawPowerExported as u64,
+            &serialize(
+                &MinerRawPowerParams { miner: MINER1.id().unwrap() },
+                "serializing MinerRawPowerParams",
+            )
+            .unwrap(),
+        )
+        .unwrap()
+        .deserialize()
+        .unwrap();
+
+    assert_eq!(power_unit, &miner_power.raw_byte_power);
+
     h.check_state(&rt);
 }
 

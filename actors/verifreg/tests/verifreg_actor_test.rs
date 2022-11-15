@@ -64,6 +64,7 @@ mod construction {
         let mut rt = new_runtime();
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
 
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -426,17 +427,22 @@ mod allocs_claims {
     use fvm_shared::bigint::BigInt;
     use fvm_shared::error::ExitCode;
     use fvm_shared::piece::PaddedPieceSize;
-    use fvm_shared::ActorID;
+    use fvm_shared::{ActorID, MethodNum};
     use num_traits::Zero;
     use std::str::FromStr;
 
-    use fil_actor_verifreg::Claim;
-    use fil_actor_verifreg::{AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, State};
+    use fil_actor_verifreg::{
+        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, Method, State,
+    };
+    use fil_actor_verifreg::{Claim, ExtendClaimTermsReturn};
+    use fil_actors_runtime::cbor::serialize;
     use fil_actors_runtime::runtime::policy_constants::{
         MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_SIZE,
         MINIMUM_VERIFIED_ALLOCATION_TERM,
     };
-    use fil_actors_runtime::test_utils::ACCOUNT_ACTOR_CODE_ID;
+    use fil_actors_runtime::test_utils::{
+        expect_abort_contains_message, make_identity_cid, ACCOUNT_ACTOR_CODE_ID,
+    };
     use fil_actors_runtime::FailCode;
     use harness::*;
 
@@ -886,6 +892,55 @@ mod allocs_claims {
         assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
         assert!(h.load_claim(&mut rt, PROVIDER1, id1).is_none()); // removed
         assert!(h.load_claim(&mut rt, PROVIDER1, id2).is_none()); // removed
+        h.check_state(&rt);
+    }
+
+    #[test]
+    fn extend_claims_restricted_correctly() {
+        let (h, mut rt) = new_harness();
+        let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
+        let sector = 0;
+        let start = 0;
+        let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
+        let max_term = min_term + 1000;
+
+        let claim1 = make_claim("1", CLIENT1, PROVIDER1, size, min_term, max_term, start, sector);
+
+        let id1 = h.create_claim(&mut rt, &claim1).unwrap();
+
+        // Extend claim terms and verify return value.
+        let params = ExtendClaimTermsParams {
+            terms: vec![ClaimTerm { provider: PROVIDER1, claim_id: id1, term_max: max_term + 1 }],
+        };
+
+        // set caller to not-builtin
+        rt.set_caller(make_identity_cid(b"1234"), Address::new_id(CLIENT1));
+
+        // cannot call the unexported method num
+        expect_abort_contains_message(
+            ExitCode::USR_FORBIDDEN,
+            "must be built-in",
+            h.extend_claim_terms(&mut rt, &params),
+        );
+
+        // can call the exported method num
+
+        rt.expect_validate_caller_any();
+        let ret: ExtendClaimTermsReturn = rt
+            .call::<Actor>(
+                Method::ExtendClaimTermsExported as MethodNum,
+                &serialize(&params, "extend claim terms params").unwrap(),
+            )
+            .unwrap()
+            .deserialize()
+            .expect("failed to deserialize extend claim terms return");
+
+        rt.verify();
+
+        assert_eq!(ret.codes(), vec![ExitCode::OK]);
+
+        // Verify state directly.
+        assert_claim(&rt, PROVIDER1, id1, &Claim { term_max: max_term + 1, ..claim1 });
         h.check_state(&rt);
     }
 }
