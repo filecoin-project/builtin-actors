@@ -1634,6 +1634,7 @@ dependencies = [
  "cid",
  "derive_builder",
  "fil_actors_runtime",
+ "frc42_dispatch",
  "fvm_ipld_amt",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
