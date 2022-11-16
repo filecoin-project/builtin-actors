@@ -57,5 +57,7 @@ pub struct Merge {
 }
 
 impl Cbor for State {}
+
 impl Cbor for LaneState {}
+
 impl Cbor for Merge {}
