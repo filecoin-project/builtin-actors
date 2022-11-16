@@ -56,26 +56,7 @@ pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
     let input_index = state.stack.pop();
     let size = state.stack.pop();
 
-    let region = get_memory_region(&mut state.memory, mem_index, size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
-
-    if let Some(region) = &region {
-        let input_len = U256::from(state.input_data.len());
-        let src = core::cmp::min(input_len, input_index);
-        let copy_size = core::cmp::min(size, input_len - src).as_usize();
-        let src = src.as_usize();
-
-        if copy_size > 0 {
-            state.memory[region.offset..region.offset + copy_size]
-                .copy_from_slice(&state.input_data[src..src + copy_size]);
-        }
-
-        if region.size.get() > copy_size {
-            state.memory[region.offset + copy_size..region.offset + region.size.get()].fill(0);
-        }
-    }
-
-    Ok(())
+    copy_to_memory(&mut state.memory, mem_index, size, input_index, &state.input_data, true)
 }
 
 #[inline]
@@ -88,24 +69,7 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
     let input_index = state.stack.pop();
     let size = state.stack.pop();
 
-    let region = get_memory_region(&mut state.memory, mem_index, size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
-
-    if let Some(region) = region {
-        let src = core::cmp::min(U256::from(code.len()), input_index).as_usize();
-        let copy_size = core::cmp::min(region.size.get(), code.len() - src);
-
-        if copy_size > 0 {
-            state.memory[region.offset..region.offset + copy_size]
-                .copy_from_slice(&code[src..src + copy_size]);
-        }
-
-        if region.size.get() > copy_size {
-            state.memory[region.offset + copy_size..region.offset + region.size.get()].fill(0);
-        }
-    }
-
-    Ok(())
+    copy_to_memory(&mut state.memory, mem_index, size, input_index, code, true)
 }
 
 pub fn call<RT: Runtime>(
@@ -259,7 +223,7 @@ pub fn call<RT: Runtime>(
     .into();
 
     // copy return data to output region if it is non-zero
-    copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data)?;
+    copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
 
     stack.push(U256::from(1));
     Ok(())
