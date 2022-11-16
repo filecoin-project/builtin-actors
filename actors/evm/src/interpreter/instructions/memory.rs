@@ -73,40 +73,33 @@ pub fn copy_to_memory(
     dest_size: U256,
     data_offset: U256,
     data: &[u8],
+    zero_fill: bool,
 ) -> Result<(), StatusCode> {
-    // TODO this limits addressable output to 2G (31 bits full),
-    //      but it is still probably too much and we should consistently limit further.
-    //      See also https://github.com/filecoin-project/ref-fvm/issues/851
-    if dest_size.bits() >= 32 {
-        return Err(StatusCode::InvalidMemoryAccess);
-    }
-    let output_usize = dest_size.as_usize();
+    let region = get_memory_region(memory, dest_offset, dest_size)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    if data_offset.bits() >= 32 {
-        return Err(StatusCode::InvalidMemoryAccess);
-    }
-    let data_offset_usize = data_offset.as_usize();
-    if data_offset_usize > data.len() {
-        return Err(StatusCode::InvalidMemoryAccess);
+    #[inline(always)]
+    fn min(a: U256, b: usize) -> usize {
+        if a < (b as u64) {
+            a.as_usize()
+        } else {
+            b
+        }
     }
 
-    if output_usize > 0 {
-        // Limit the size if we're copying less than the data length.
-        let mut copy_len = data.len() - data_offset_usize;
-        if output_usize < copy_len {
-            copy_len = output_usize;
+    if let Some(region) = &region {
+        let data_len = data.len();
+        let data_offset = min(data_offset, data_len);
+        let copy_size = min(dest_size, data_len - data_offset);
+
+        if copy_size > 0 {
+            memory[region.offset..region.offset + copy_size]
+                .copy_from_slice(&data[data_offset..data_offset + copy_size]);
         }
 
-        let output_region = get_memory_region(memory, dest_offset, dest_size)
-            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
-        let output_data = output_region
-            .map(|MemoryRegion { offset, size }| &mut memory[offset..][..size.get()])
-            .ok_or(StatusCode::InvalidMemoryAccess)?;
-
-        output_data
-            .get_mut(..copy_len)
-            .ok_or(StatusCode::InvalidMemoryAccess)?
-            .copy_from_slice(&data[data_offset_usize..][..copy_len]);
+        if zero_fill && region.size.get() > copy_size {
+            memory[region.offset + copy_size..region.offset + region.size.get()].fill(0);
+        }
     }
 
     Ok(())
@@ -171,16 +164,28 @@ mod tests {
     #[test]
     fn copy_to_memory_big() {
         let mut mem: Memory = Default::default();
-        let result =
-            copy_to_memory(&mut mem, U256::zero(), U256::from(1u128 << 40), U256::zero(), &[]);
+        let result = copy_to_memory(
+            &mut mem,
+            U256::zero(),
+            U256::from(1u128 << 40),
+            U256::zero(),
+            &[],
+            true,
+        );
         assert_eq!(result, Err(StatusCode::InvalidMemoryAccess));
     }
 
     #[test]
     fn copy_to_memory_zero() {
         let mut mem: Memory = Default::default();
-        let result =
-            copy_to_memory(&mut mem, U256::zero(), U256::zero(), U256::zero(), &[1u8, 2u8, 3u8]);
+        let result = copy_to_memory(
+            &mut mem,
+            U256::zero(),
+            U256::zero(),
+            U256::zero(),
+            &[1u8, 2u8, 3u8],
+            true,
+        );
         assert_eq!(result, Ok(()));
         assert!(mem.is_empty());
     }
@@ -189,7 +194,8 @@ mod tests {
     fn copy_to_memory_some() {
         let data = &[1u8, 2u8, 3u8];
         let mut mem: Memory = Default::default();
-        let result = copy_to_memory(&mut mem, U256::zero(), U256::from(3), U256::zero(), data);
+        let result =
+            copy_to_memory(&mut mem, U256::zero(), U256::from(3), U256::zero(), data, true);
         assert_eq!(result, Ok(()));
         assert_eq!(mem.len(), 32);
         assert_eq!(&mem[0..3], data);
@@ -201,7 +207,8 @@ mod tests {
         let result_data = &[1u8, 2u8, 3u8, 0u8];
 
         let mut mem: Memory = Default::default();
-        let result = copy_to_memory(&mut mem, U256::zero(), U256::from(3), U256::zero(), data);
+        let result =
+            copy_to_memory(&mut mem, U256::zero(), U256::from(3), U256::zero(), data, true);
         assert_eq!(result, Ok(()));
         assert_eq!(mem.len(), 32);
         assert_eq!(&mem[0..4], result_data);

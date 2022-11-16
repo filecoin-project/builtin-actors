@@ -52,9 +52,7 @@ pub fn extcodecopy(
     let bytecode =
         get_evm_bytecode_cid(system.rt, addr).and_then(|cid| get_evm_bytecode(system.rt, &cid))?;
 
-    copy_to_memory(&mut state.memory, dest_offset, size, data_offset, bytecode.as_slice())?;
-
-    Ok(())
+    copy_to_memory(&mut state.memory, dest_offset, size, data_offset, bytecode.as_slice(), true)
 }
 
 pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: U256) -> Result<Cid, StatusCode> {
