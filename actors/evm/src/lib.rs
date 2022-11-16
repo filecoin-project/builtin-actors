@@ -29,10 +29,6 @@ use {
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EvmContractActor);
 
-/// Maximum allowed EVM bytecode size.
-/// The contract code size limit is 24kB.
-const MAX_CODE_SIZE: usize = 24 << 10;
-
 pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
 
 const EVM_MAX_RESERVED_METHOD: u64 = 1023;
@@ -101,16 +97,11 @@ impl EvmContractActor {
             EthAddress(subaddr)
         };
 
-        if params.initcode.len() > MAX_CODE_SIZE {
-            return Err(ActorError::illegal_argument(format!(
-                "EVM byte code length ({}) is exceeding the maximum allowed of {MAX_CODE_SIZE}",
-                params.initcode.len()
-            )));
-        } else if params.initcode.is_empty() {
-            return Err(ActorError::illegal_argument("no initcode provided".into()));
-        }
-
         let mut system = System::create(rt)?;
+        // If we have no code, save the state and return.
+        if params.initcode.is_empty() {
+            return system.flush();
+        }
 
         // create a new execution context
         let mut exec_state = ExecutionState::new(params.creator, receiver_eth_addr, Bytes::new());
@@ -129,16 +120,7 @@ impl EvmContractActor {
         if exec_status.reverted {
             Err(ActorError::unchecked(EVM_CONTRACT_REVERTED, "constructor reverted".to_string()))
         } else if exec_status.status_code == StatusCode::Success {
-            if exec_status.output_data.is_empty() {
-                return Err(ActorError::unspecified(
-                    "EVM constructor returned empty contract".to_string(),
-                ));
-            }
-            // constructor ran to completion successfully and returned
-            // the resulting bytecode.
-            let contract_bytecode = exec_status.output_data;
-
-            system.set_bytecode(&contract_bytecode)?;
+            system.set_bytecode(&exec_status.output_data)?;
             system.flush()
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             Err(e)
