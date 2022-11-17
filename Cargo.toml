@@ -34,6 +34,7 @@ default = [] ## translates to mainnet
 mainnet = []
 caterpillarnet = []
 butterflynet = []
+wallaby = []
 calibrationnet = []
 devnet = []
 testing = []
