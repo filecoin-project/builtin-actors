@@ -84,6 +84,29 @@ fn test_evm_lifecycle() {
 }
 
 #[test]
+fn test_evm_empty_initcode() {
+    let store = MemoryBlockstore::new();
+    let v = VM::new_with_singletons(&store);
+
+    let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
+    let create_result = v
+        .apply_message(
+            account,
+            EAM_ACTOR_ADDR,
+            TokenAmount::zero(),
+            fil_actor_eam::Method::Create2 as u64,
+            fil_actor_eam::Create2Params { initcode: vec![], salt: [0u8; 32] },
+        )
+        .unwrap();
+
+    assert!(
+        create_result.code.is_success(),
+        "failed to create the new actor {}",
+        create_result.message
+    );
+}
+
+#[test]
 #[allow(non_snake_case)]
 fn test_evm_staticcall() {
     // test scenarios:

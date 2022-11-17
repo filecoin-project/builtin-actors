@@ -23,6 +23,10 @@ use {
     fvm_ipld_hamt::Hamt,
 };
 
+/// Maximum allowed EVM bytecode size.
+/// The contract code size limit is 24kB.
+const MAX_CODE_SIZE: usize = 24 << 10;
+
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
 pub struct System<'r, RT: Runtime> {
@@ -175,8 +179,13 @@ impl<'r, RT: Runtime> System<'r, RT> {
     /// Set the bytecode.
     pub fn set_bytecode(&mut self, bytecode: &[u8]) -> Result<Cid, ActorError> {
         self.saved_state_root = None;
-        // Reject code starting with 0xEF, EIP-3541
-        if bytecode.first() == Some(&0xEF) {
+        if bytecode.len() > MAX_CODE_SIZE {
+            return Err(ActorError::illegal_argument(format!(
+                "EVM byte code length ({}) is exceeding the maximum allowed of {MAX_CODE_SIZE}",
+                bytecode.len()
+            )));
+        } else if bytecode.first() == Some(&0xEF) {
+            // Reject code starting with 0xEF, EIP-3541
             return Err(ActorError::illegal_argument(
                 "EIP-3541: Contract code starting with the 0xEF byte is disallowed.".into(),
             ));
