@@ -648,6 +648,7 @@ dependencies = [
  "fvm_shared",
  "integer-encoding",
  "itertools",
+ "lazy_static",
  "libipld-core",
  "log",
  "multihash",

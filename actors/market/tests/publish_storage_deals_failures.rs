@@ -18,8 +18,7 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-
-use fvm_shared::TOTAL_FILECOIN;
+use lazy_static::lazy_static;
 
 use cid::Cid;
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
@@ -28,6 +27,10 @@ mod harness;
 
 use harness::*;
 use num_traits::Zero;
+
+lazy_static! {
+    static ref TOTAL_FILECOIN: TokenAmount = TokenAmount::from_whole(2_000_000_000);
+}
 
 #[test]
 fn deal_end_after_deal_start() {

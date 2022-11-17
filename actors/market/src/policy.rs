@@ -10,12 +10,17 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::TOTAL_FILECOIN;
+use lazy_static::lazy_static;
 use num_traits::Zero;
 
 pub mod detail {
     /// Maximum length of a deal label.
     pub const DEAL_MAX_LABEL_SIZE: usize = 256;
+}
+
+lazy_static! {
+    /// Total Filecoin available to the network.
+    static ref TOTAL_FILECOIN: TokenAmount = TokenAmount::from_whole(2_000_000_000);
 }
 
 /// Bounds (inclusive) on deal duration.
@@ -47,7 +52,10 @@ pub fn deal_provider_collateral_bounds(
 
     let num: BigInt = power_share_num * lock_target_num.atto();
     let denom: BigInt = power_share_denom * policy.prov_collateral_percent_supply_denom;
-    (TokenAmount::from_atto(num.div_floor(&denom)), TOTAL_FILECOIN.clone())
+    (
+        TokenAmount::from_atto(num.div_floor(&denom)),
+        TOTAL_FILECOIN.clone(),
+    )
 }
 
 pub(super) fn deal_client_collateral_bounds(
