@@ -32,7 +32,8 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     PubkeyAddress = 2,
-    AuthenticateMessage = 3,
+    // Deprecated in v10
+    // AuthenticateMessage = 3,
     AuthenticateMessageExported = frc42_dispatch::method_hash!("AuthenticateMessage"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
@@ -121,7 +122,7 @@ impl ActorCode for Actor {
                 let addr = Self::pubkey_address(rt)?;
                 Ok(RawBytes::serialize(addr)?)
             }
-            Some(Method::AuthenticateMessage) | Some(Method::AuthenticateMessageExported) => {
+            Some(Method::AuthenticateMessageExported) => {
                 Self::authenticate_message(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }

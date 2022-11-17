@@ -122,14 +122,6 @@ fn authenticate_message() {
     );
     rt.verify();
 
-    // Invalid caller of internal method number
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
-    expect_abort_contains_message(
-        ExitCode::USR_FORBIDDEN,
-        "must be built-in",
-        rt.call::<AccountActor>(Method::AuthenticateMessage as MethodNum, &params),
-    );
-
     // Ok to call exported method number
     rt.expect_validate_caller_any();
     rt.expect_verify_signature(ExpectedVerifySig {
