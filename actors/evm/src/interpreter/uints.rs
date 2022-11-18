@@ -56,6 +56,13 @@ impl U256 {
     pub fn i256_neg(&self) -> U256 {
         !*self + U256::ONE
     }
+
+    pub fn to_bytes(&self) -> [u8; 32] {
+        use uint::byteorder::{ByteOrder, BE};
+        let mut buf = [0u8; 32];
+        BE::write_u64_into(&self.0, &mut buf);
+        buf
+    }
 }
 
 impl U512 {

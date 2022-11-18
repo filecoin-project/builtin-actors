@@ -10,7 +10,8 @@ use fvm_shared::{
     crypto::{
         hash::SupportedHashes,
         signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
-    }, econ::TokenAmount,
+    },
+    econ::TokenAmount,
 };
 use num_traits::FromPrimitive;
 use num_traits::{One, Zero};
@@ -165,7 +166,7 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     randomness.map_err(|_| PrecompileError::InvalidInput)
 }
 
-/// Read right padded BE encoded low u64 ID address from a u256 word
+/// Read BE encoded low u64 ID address from a u256 word
 /// Looks up and returns the other address (encoded f2 or f4 addresses) of an ID address, returning empty array if not found
 fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let id_bytes = read_right_pad(input, 32);
@@ -190,42 +191,74 @@ fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     Ok(rt.resolve_address(&addr).map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
 }
 
-
+/// Errors:
+///    TODO should just give 0s?
+/// - `IncorrectInputSize` if offset is larger than total input length
+/// - `InvalidInput` if supplied address bytes isnt a filecoin address
+///
+/// Returns:
+/// 
+/// `[int256 exit_code, uint codec, uint offset, uint size, []bytes <actor return value>]`
+/// 
+/// for exit_code: 
+/// - negative values are system errors
+/// - positive are user errors (from the called actor)
+/// - 0 is success 
 pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    /// read a u64 from a be encoded "u256" returning an error if u256 bits > 64
+    /// slice must be len 32 or will panic
+    #[inline]
+    fn read_u64(input: &[u8]) -> Result<u64, PrecompileError> {
+        if input[..24] == [0u8; 24] {
+            Err(PrecompileError::InvalidInput)
+        } else {
+            Ok(u64::from_be_bytes(input[24..].try_into().unwrap()))
+        }
+    }
+
     // TODO Until we support readonly (static) calls at the fvm level, we disallow callactor
     //      when in static mode as it is sticky and there are no guarantee of preserving the
     //      static invariant
 
-    // TODO 2 re-enable when the precompile is called with static call 
-    
-    // REMOVEME: we can fake this inside of `call` and just return an error, should we? 
+    // TODO 2 re-enable when the precompile is called with static call
+
+    // REMOVEME: we can fake this inside of `call` and just return an error, should we?
 
     // if system.readonly {
     //     return Err(StatusCode::StaticModeViolation);
     // }
 
-    // stack: GAS DEST VALUE METHODNUM INPUT-OFFSET INPUT-SIZE
-    // NOTE: we don't need output-offset/output-size (which the CALL instructions have)
-    //       becase these are kinda useless; we can just use RETURNDATA anyway.
-    // NOTE: gas is currently ignored
+    let input_params = read_right_pad(input, 32 * 6);
 
-    // TODO check for garbage in gaps
-    let input_params = read_right_pad(input, 32*6);
-    // let _gas = stack.pop();
-    let dst = U256::from_big_endian(&input_params[..32]).as_u64();
-    let value = U256::from_big_endian(&input_params[32..64]);
-    let method = U256::from_big_endian(&input_params[64..96]).as_u64();
-    let input_offset = U256::from_big_endian(&input_params[96..128]).as_usize();
-    let input_size = U256::from_big_endian(&input_params[128..160]).as_usize();
+    // TODO we dont use gas parameter since the FVM doesnt support it yet
+    let _gas = read_u64(&input_params[..32])?;
+    let method = read_u64(&input_params[32..64])?;
+    let value = U256::from_big_endian(&input_params[64..96]);
+    // TODO we dont use codec since FVM doesnt support it yet
+    let _codec = read_u64(&input_params[96..128])?;
+
+    let address_offset = read_u64(&input_params[128..160])? as usize;
+    let address_size = read_u64(&input_params[160..192])? as usize;
+
+    let send_data_offset = read_u64(&input_params[192..224])? as usize;
+    let send_data_size = read_u64(&input_params[224..256])? as usize;
 
     let result = {
-        // TODO: closes https://github.com/filecoin-project/ref-fvm/issues/1018
-        // TODO this offset might be a yikes
-        let input_data = read_right_pad(&input[input_offset..], input_size);
+        // REMOVEME: closes https://github.com/filecoin-project/ref-fvm/issues/1018
 
-        rt.send(&Address::new_id(dst), method, RawBytes::from(input_data.to_vec()), TokenAmount::from(&value))
+        let send_data_offset =
+            input.get(send_data_offset..).ok_or(PrecompileError::IncorrectInputSize)?;
+        let input_data = read_right_pad(send_data_offset, send_data_size);
+
+        // REMOVEME: send should poke address into existence as needed, right?
+        let address_offset =
+            input.get(address_offset..).ok_or(PrecompileError::IncorrectInputSize)?;
+        let address = read_right_pad(address_offset, address_size);
+        let address = Address::from_bytes(&address).map_err(|_| PrecompileError::InvalidInput)?;
+
+        rt.send(&address, method, RawBytes::from(input_data.to_vec()), TokenAmount::from(&value))
     };
-    
+
     // TODO
     // // precompile calls outside VM which is odd
     // if let Err(ae) = result {
@@ -240,11 +273,47 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     // }
     // // TODO system errs should kill this here no?
     // TODO return with err ok?
-    
-    Ok(result.unwrap().to_vec())
+
+    let output = {
+        // exit_code, codec, offset, size
+        const VALUES_LEN: usize = 4 * 32;
+
+        // negative is syscall
+        // user exit is positive
+        // success is 0
+        let (exit_code, data) = match result {
+            Err(ae) => {
+                let exit_code = U256::from(ae.exit_code().value());
+                let exit_code = if ae.exit_code().is_system_error() {
+                    exit_code.i256_neg()
+                } else {
+                    U256::zero()
+                };
+
+                // no return only exit code
+                (exit_code, RawBytes::default())
+            }
+            Ok(ret) => (U256::zero(), ret),
+        };
+
+        // codec of return data
+        // TODO hardcoded to CBOR for now
+        let codec = U256::from(fvm_ipld_encoding::DAG_CBOR);
+        let offset = U256::from(VALUES_LEN);
+        let size = U256::from(data.len());
+
+        let mut output = Vec::with_capacity(VALUES_LEN + data.len());
+        output.extend_from_slice(
+            &[exit_code.to_bytes(), codec.to_bytes(), offset.to_bytes(), size.to_bytes()].concat(),
+        );
+        output.extend_from_slice(&data);
+        output
+    };
+
+    Ok(output)
 }
 
-// ---------------- Normal EVM Precompiles ------------------ 
+// ---------------- Normal EVM Precompiles ------------------
 
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
