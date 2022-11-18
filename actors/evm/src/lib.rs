@@ -31,17 +31,19 @@ const MAX_CODE_SIZE: usize = 24 << 10;
 pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
 
 lazy_static::lazy_static! {
+    // The Solidity compiler creates contiguous array item keys.
+    // To prevent the tree from going very deep we use extensions,
+    // which the Kamt supports and does in all cases.
+    // There are maximum 32 levels in the tree with the default bit width of 8.
+    // The top few levels will have a higher level of overlap in their hashes.
+    // Intuitively these levels should be used for routing, not storing data.
+    // The only exception to this is the top level variables in the contract
+    // which solidity puts in the first few slots. There having to do extra
+    // lookups is burdensome, and they will always be accessed even for arrays
+    // because that's where the array length is stored.
+    // The following values have been set by looking at how the charts evolved
+    // with the test contract. They might not be the best for other contracts.
     static ref KAMT_CONFIG: KamtConfig = KamtConfig {
-        // The Solidity compiler creates contiguous array item keys.
-        // To prevent the tree from going very deep we use extensions.
-        use_extensions: true,
-        // There are maximum 32 levels in the tree with the default bit width of 8.
-        // The top few levels will have a higher level of overlap in their hashes.
-        // Intuitively these levels should be used for routing, not storing data.
-        // The only exception to this is the top level variables in the contract
-        // which solidity puts in the first few slots. There having to do extra
-        // lookups is burdensome, and they will always be accessed even for arrays
-        // because that's where the array length is stored.
         min_data_depth: 2,
         bit_width: 5,
         max_array_width: 3
