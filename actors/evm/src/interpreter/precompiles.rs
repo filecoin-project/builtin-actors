@@ -197,13 +197,13 @@ fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
 /// - `InvalidInput` if supplied address bytes isnt a filecoin address
 ///
 /// Returns:
-/// 
+///
 /// `[int256 exit_code, uint codec, uint offset, uint size, []bytes <actor return value>]`
-/// 
-/// for exit_code: 
+///
+/// for exit_code:
 /// - negative values are system errors
 /// - positive are user errors (from the called actor)
-/// - 0 is success 
+/// - 0 is success
 pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     /// read a u64 from a be encoded "u256" returning an error if u256 bits > 64
     /// slice must be len 32 or will panic
