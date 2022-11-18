@@ -1,6 +1,8 @@
 use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::{address::Address, METHOD_SEND};
 
+use crate::interpreter::precompiles::PrecompileContext;
+
 use {
     super::memory::{copy_to_memory, get_memory_region},
     crate::interpreter::address::EthAddress,
@@ -120,8 +122,14 @@ pub fn call<RT: Runtime>(
         };
 
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
+            let context = PrecompileContext {
+                is_static: matches!(kind, CallKind::StaticCall),
+                gas: U256::zero(), // TODO gas
+                value: value,
+            };
+
             // TODO: DO NOT FAIL!!!
-            precompiles::Precompiles::call_precompile(system.rt, dst, input_data)
+            precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
                 .map_err(|_| StatusCode::PrecompileFailure)?
         } else {
             let call_result = match kind {
