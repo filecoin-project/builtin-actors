@@ -3,13 +3,14 @@ use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
 use super::U256;
 
 use fil_actors_runtime::runtime::{Primitives, Runtime};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{
     address::Address,
     bigint::BigUint,
     crypto::{
         hash::SupportedHashes,
         signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
-    },
+    }, econ::TokenAmount,
 };
 use num_traits::FromPrimitive;
 use num_traits::{One, Zero};
@@ -141,6 +142,8 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     let epoch_bytes = &input[64..96];
     let entropy_len_bytes = &input[96..128];
 
+    // TODO assert gaps are zeroed
+
     let randomness_type =
         RandomnessType::from_i32(i32::from_be_bytes(randomness_word[28..32].try_into().unwrap()));
     let personalization = i64::from_be_bytes(personalization_bytes[24..32].try_into().unwrap());
@@ -186,6 +189,62 @@ fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
     };
     Ok(rt.resolve_address(&addr).map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
 }
+
+
+pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8]) -> PrecompileResult {
+    // TODO Until we support readonly (static) calls at the fvm level, we disallow callactor
+    //      when in static mode as it is sticky and there are no guarantee of preserving the
+    //      static invariant
+
+    // TODO 2 re-enable when the precompile is called with static call 
+    
+    // REMOVEME: we can fake this inside of `call` and just return an error, should we? 
+
+    // if system.readonly {
+    //     return Err(StatusCode::StaticModeViolation);
+    // }
+
+    // stack: GAS DEST VALUE METHODNUM INPUT-OFFSET INPUT-SIZE
+    // NOTE: we don't need output-offset/output-size (which the CALL instructions have)
+    //       becase these are kinda useless; we can just use RETURNDATA anyway.
+    // NOTE: gas is currently ignored
+
+    // TODO check for garbage in gaps
+    let input_params = read_right_pad(input, 32*6);
+    // let _gas = stack.pop();
+    let dst = U256::from_big_endian(&input_params[..32]).as_u64();
+    let value = U256::from_big_endian(&input_params[32..64]);
+    let method = U256::from_big_endian(&input_params[64..96]).as_u64();
+    let input_offset = U256::from_big_endian(&input_params[96..128]).as_usize();
+    let input_size = U256::from_big_endian(&input_params[128..160]).as_usize();
+
+    let result = {
+        // TODO: closes https://github.com/filecoin-project/ref-fvm/issues/1018
+        // TODO this offset might be a yikes
+        let input_data = read_right_pad(&input[input_offset..], input_size);
+
+        rt.send(&Address::new_id(dst), method, RawBytes::from(input_data.to_vec()), TokenAmount::from(&value))
+    };
+    
+    // TODO
+    // // precompile calls outside VM which is odd
+    // if let Err(ae) = result {
+    //     return if ae.exit_code() == EVM_CONTRACT_REVERTED {
+    //         // reverted -- we don't have return data yet
+    //         // push failure
+    //         Ok(Vec::new())
+    //     } else {
+    //         // TODO actor err encoding? idk
+    //         Err(StatusCode::from(ae))
+    //     };
+    // }
+    // // TODO system errs should kill this here no?
+    // TODO return with err ok?
+    
+    Ok(result.unwrap().to_vec())
+}
+
+// ---------------- Normal EVM Precompiles ------------------ 
 
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8]) -> PrecompileResult {
