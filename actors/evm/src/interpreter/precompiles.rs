@@ -36,9 +36,12 @@ impl<'a, T: Sized, const N: usize> ArrayChunks<'a, T, N> {
 
     pub fn next(&mut self) -> Option<&[T; N]> {
         let index = self.cursor * N;
-        self.src.get(index..index + N).map(|slice| match slice.try_into() {
-            Ok(a) => a,
-            Err(_) => unreachable!(),
+        self.src.get(index..index + N).map(|slice| {
+            self.cursor += 1;
+            match slice.try_into() {
+                Ok(a) => a,
+                Err(_) => unreachable!(),
+            }
         })
     }
 }
@@ -305,16 +308,25 @@ pub fn call_actor<RT: Runtime>(
         return Err(PrecompileError::CallActorError(StatusCode::StaticModeViolation));
     }
 
+    // ----- Input Parameters -------
+
     let input_read = &read_right_pad(input, 32 * 5);
     let mut input_params: ArrayChunks<u8, 32> = ArrayChunks::new(&input_read);
 
     let method = read_u64(input_params.next().unwrap())?;
+    let codec = read_u64(input_params.next().unwrap())?;
+    // TODO only CBOR for now
+    if codec != fvm_ipld_encoding::DAG_CBOR {
+        return Err(PrecompileError::InvalidInput)
+    }
 
     let address_offset = read_u64(input_params.next().unwrap())? as usize;
     let send_data_offset = read_u64(input_params.next().unwrap())? as usize;
 
     let address_size = read_u64(input_params.next().unwrap())? as usize;
     let send_data_size = read_u64(input_params.next().unwrap())? as usize;
+
+    // ------ Begin Call -------
 
     let result = {
         // REMOVEME: closes https://github.com/filecoin-project/ref-fvm/issues/1018
