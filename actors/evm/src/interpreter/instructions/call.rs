@@ -130,7 +130,7 @@ pub fn call<RT: Runtime>(
 
             // TODO: DO NOT FAIL!!!
             precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
-                .map_err(|_| StatusCode::PrecompileFailure)?
+                .map_err(|e| StatusCode::from(e))?
         } else {
             let call_result = match kind {
                 CallKind::Call | CallKind::StaticCall => {

@@ -52,6 +52,7 @@ impl U256 {
         (self.0[3] as i64) < 0
     }
 
+    /// turns a i256 value to negative
     #[inline(always)]
     pub fn i256_neg(&self) -> U256 {
         !*self + U256::ONE

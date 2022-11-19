@@ -1,6 +1,6 @@
 use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
 
-use super::U256;
+use super::{StatusCode, U256};
 
 use fil_actors_runtime::runtime::{Primitives, Runtime};
 use fvm_ipld_encoding::RawBytes;
@@ -24,6 +24,25 @@ lazy_static::lazy_static! {
     pub(crate) static ref SECP256K1: BigUint = BigUint::from_bytes_be(&hex_literal::hex!("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"));
 }
 
+struct ArrayChunks<'a, T: Sized, const CHUNK_SIZE: usize> {
+    src: &'a [T],
+    cursor: usize,
+}
+
+impl<'a, T: Sized, const N: usize> ArrayChunks<'a, T, N> {
+    pub(super) fn new(slice: &'a [T]) -> Self {
+        Self { src: slice, cursor: 0 }
+    }
+
+    pub fn next(&mut self) -> Option<&[T; N]> {
+        let index = self.cursor * N;
+        self.src.get(index..index + N).map(|slice| match slice.try_into() {
+            Ok(a) => a,
+            Err(_) => unreachable!(),
+        })
+    }
+}
+
 #[derive(Debug)]
 pub enum PrecompileError {
     EcErr(CurveError),
@@ -31,6 +50,16 @@ pub enum PrecompileError {
     InvalidInput, // TODO merge with below?
     IncorrectInputSize,
     OutOfGas,
+    CallActorError(StatusCode),
+}
+
+impl From<PrecompileError> for StatusCode {
+    fn from(src: PrecompileError) -> Self {
+        match src {
+            PrecompileError::CallActorError(e) => e,
+            _ => StatusCode::PrecompileFailure,
+        }
+    }
 }
 
 impl From<CurveError> for PrecompileError {
@@ -94,12 +123,14 @@ impl<RT: Runtime> Precompiles<RT> {
     };
 
     // Precompile Context will be flattened to None if not calling the call_actor precompile
-    pub fn call_precompile(runtime: &RT, precompile_addr: U256, input: &[u8], context: PrecompileContext) -> PrecompileResult {
-        let context = if Self::is_call_actor_precompile(&precompile_addr) {
-            Some(context)
-        } else {
-            None
-        };
+    pub fn call_precompile(
+        runtime: &RT,
+        precompile_addr: U256,
+        input: &[u8],
+        context: PrecompileContext,
+    ) -> PrecompileResult {
+        let context =
+            if Self::is_call_actor_precompile(&precompile_addr) { Some(context) } else { None };
 
         Self::PRECOMPILES[precompile_addr.0[0] as usize - 1](runtime, input, context)
     }
@@ -129,7 +160,11 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
 
 /// Read right padded BE encoded low u64 ID address from a u256 word
 /// returns encoded CID or an empty array if actor not found
-fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
+fn get_actor_code_cid<RT: Runtime>(
+    rt: &RT,
+    input: &[u8],
+    o: Option<PrecompileContext>,
+) -> PrecompileResult {
     assert_eq!(o, None, "no context should reach this precompile");
     let id_bytes = read_right_pad(input, 32);
     let id = U256::from_big_endian(&id_bytes).low_u64();
@@ -150,7 +185,11 @@ fn get_actor_code_cid<RT: Runtime>(rt: &RT, input: &[u8], o: Option<PrecompileCo
 ///
 /// Returns empty array if invalid randomness type
 /// Errors if unable to fetch randomness
-fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
+fn get_randomness<RT: Runtime>(
+    rt: &RT,
+    input: &[u8],
+    o: Option<PrecompileContext>,
+) -> PrecompileResult {
     assert_eq!(o, None, "no context should reach this precompile");
     // 32 * 4 = 128
     let input = read_right_pad(input, 128);
@@ -192,7 +231,11 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8], o: Option<PrecompileContex
 
 /// Read BE encoded low u64 ID address from a u256 word
 /// Looks up and returns the other address (encoded f2 or f4 addresses) of an ID address, returning empty array if not found
-fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
+fn lookup_address<RT: Runtime>(
+    rt: &RT,
+    input: &[u8],
+    o: Option<PrecompileContext>,
+) -> PrecompileResult {
     assert_eq!(o, None, "no context should reach this precompile");
     let id_bytes = read_right_pad(input, 32);
     let id = U256::from_big_endian(&id_bytes).low_u64();
@@ -208,7 +251,11 @@ fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8], o: Option<PrecompileContex
 /// Reads a FIL encoded address
 /// Resolves a FIL encoded address into an ID address
 /// returns BE encoded u64 or empty array if nothing found
-fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
+fn resolve_address<RT: Runtime>(
+    rt: &RT,
+    input: &[u8],
+    o: Option<PrecompileContext>,
+) -> PrecompileResult {
     assert_eq!(o, None, "no context should reach this precompile");
     let addr = match Address::from_bytes(input) {
         Ok(o) => o,
@@ -230,8 +277,12 @@ fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8], o: Option<PrecompileConte
 /// - negative values are system errors
 /// - positive are user errors (from the called actor)
 /// - 0 is success
-pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: Option<PrecompileContext>) -> PrecompileResult {
-    let _ctx = ctx.unwrap();    
+pub fn call_actor<RT: Runtime>(
+    rt: &RT,
+    input: &[u8],
+    ctx: Option<PrecompileContext>,
+) -> PrecompileResult {
+    let ctx = ctx.unwrap();
 
     // exit_code, codec, offset, size
     const VALUES_LEN: usize = 4 * 32;
@@ -250,29 +301,20 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: Option<PrecompileCont
     // TODO Until we support readonly (static) calls at the fvm level, we disallow callactor
     //      when in static mode as it is sticky and there are no guarantee of preserving the
     //      static invariant
+    if ctx.is_static {
+        return Err(PrecompileError::CallActorError(StatusCode::StaticModeViolation));
+    }
 
-    // TODO 2 re-enable when the precompile is called with static call
+    let input_read = &read_right_pad(input, 32 * 5);
+    let mut input_params: ArrayChunks<u8, 32> = ArrayChunks::new(&input_read);
 
-    // REMOVEME: we can fake this inside of `call` and just return an error, should we?
+    let method = read_u64(input_params.next().unwrap())?;
 
-    // if system.readonly {
-    //     return Err(StatusCode::StaticModeViolation);
-    // }
+    let address_offset = read_u64(input_params.next().unwrap())? as usize;
+    let send_data_offset = read_u64(input_params.next().unwrap())? as usize;
 
-    let input_params = read_right_pad(input, 32 * 6);
-
-    // TODO we dont use gas parameter since the FVM doesnt support it yet
-    let _gas = read_u64(&input_params[..32])?;
-    let method = read_u64(&input_params[32..64])?;
-    let value = U256::from_big_endian(&input_params[64..96]);
-    // TODO we dont use codec since FVM doesnt support it yet
-    let _codec = read_u64(&input_params[96..128])?;
-
-    let address_offset = read_u64(&input_params[128..160])? as usize;
-    let address_size = read_u64(&input_params[160..192])? as usize;
-
-    let send_data_offset = read_u64(&input_params[192..224])? as usize;
-    let send_data_size = read_u64(&input_params[224..256])? as usize;
+    let address_size = read_u64(input_params.next().unwrap())? as usize;
+    let send_data_size = read_u64(input_params.next().unwrap())? as usize;
 
     let result = {
         // REMOVEME: closes https://github.com/filecoin-project/ref-fvm/issues/1018
@@ -281,36 +323,27 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: Option<PrecompileCont
             input.get(send_data_offset..).ok_or(PrecompileError::IncorrectInputSize)?;
         let input_data = read_right_pad(send_data_offset, send_data_size);
 
-        // REMOVEME: send should poke address into existence as needed, right?
         let address_offset =
             input.get(address_offset..).ok_or(PrecompileError::IncorrectInputSize)?;
         let address = read_right_pad(address_offset, address_size);
         let address = Address::from_bytes(&address).map_err(|_| PrecompileError::InvalidInput)?;
 
-        rt.send(&address, method, RawBytes::from(input_data.to_vec()), TokenAmount::from(&value))
+        // TODO passing underlying gas into send when implemented in FVM
+        rt.send(
+            &address,
+            method,
+            RawBytes::from(input_data.to_vec()),
+            TokenAmount::from(&ctx.value),
+        )
     };
 
-    // TODO
-    // // precompile calls outside VM which is odd
-    // if let Err(ae) = result {
-    //     return if ae.exit_code() == EVM_CONTRACT_REVERTED {
-    //         // reverted -- we don't have return data yet
-    //         // push failure
-    //         Ok(Vec::new())
-    //     } else {
-    //         // TODO actor err encoding? idk
-    //         Err(StatusCode::from(ae))
-    //     };
-    // }
-    // // TODO system errs should kill this here no?
-    // TODO return with err ok?
-
     let output = {
-        // negative is syscall
-        // user exit is positive
+        // negative values are syscall errors
+        // positive values are user/actor errors
         // success is 0
         let (exit_code, data) = match result {
             Err(ae) => {
+                // TODO handle revert
                 let exit_code = U256::from(ae.exit_code().value());
                 let exit_code = if ae.exit_code().is_system_error() {
                     exit_code.i256_neg()
@@ -334,6 +367,9 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: Option<PrecompileCont
         output.extend_from_slice(
             &[exit_code.to_bytes(), codec.to_bytes(), offset.to_bytes(), size.to_bytes()].concat(),
         );
+        // NOTE:
+        // we dont pad out to 32 bytes here, the idea being that users will already be in the "everythig is bytes" mode
+        // and will want re-pack align and whatever else by themselves
         output.extend_from_slice(&data);
         output
     };
@@ -344,7 +380,11 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: Option<PrecompileCont
 // ---------------- Normal EVM Precompiles ------------------
 
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
-fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
+fn ec_recover<RT: Primitives>(
+    rt: &RT,
+    input: &[u8],
+    o: Option<PrecompileContext>,
+) -> PrecompileResult {
     assert_eq!(o, None, "no context should reach this precompile");
     let input = read_right_pad(input, 128);
 
@@ -393,13 +433,21 @@ fn sha256<RT: Primitives>(rt: &RT, input: &[u8], o: Option<PrecompileContext>) -
 }
 
 /// hash with ripemd160
-fn ripemd160<RT: Primitives>(rt: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
+fn ripemd160<RT: Primitives>(
+    rt: &RT,
+    input: &[u8],
+    o: Option<PrecompileContext>,
+) -> PrecompileResult {
     assert_eq!(o, None, "no context should reach this precompile");
     Ok(rt.hash(SupportedHashes::Ripemd160, input))
 }
 
 /// data copy
-fn identity<RT: Primitives>(_: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
+fn identity<RT: Primitives>(
+    _: &RT,
+    input: &[u8],
+    o: Option<PrecompileContext>,
+) -> PrecompileResult {
     assert_eq!(o, None, "no context should reach this precompile");
     Ok(Vec::from(input))
 }
@@ -506,7 +554,11 @@ fn ec_mul<RT: Primitives>(_: &RT, input: &[u8], o: Option<PrecompileContext>) ->
 }
 
 /// pairs multple groups of twisted bn curves
-fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
+fn ec_pairing<RT: Primitives>(
+    _: &RT,
+    input: &[u8],
+    o: Option<PrecompileContext>,
+) -> PrecompileResult {
     assert_eq!(o, None, "no context should reach this precompile");
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
         /// read 32 bytes (u256) from buffer or error
