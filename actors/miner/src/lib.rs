@@ -126,6 +126,7 @@ pub enum Method {
     ExtendSectorExpiration2 = 32,
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
+    ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
     GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
@@ -4942,7 +4943,7 @@ impl ActorCode for Actor {
                 Self::change_worker_address(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::ChangePeerID) => {
+            Some(Method::ChangePeerID) | Some(Method::ChangePeerIDExported) => {
                 Self::change_peer_id(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
