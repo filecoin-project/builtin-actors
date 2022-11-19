@@ -122,15 +122,12 @@ pub fn call<RT: Runtime>(
         };
 
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
-            let context = PrecompileContext {
-                is_static: matches!(kind, CallKind::StaticCall),
-                gas,
-                value: value,
-            };
+            let context =
+                PrecompileContext { is_static: matches!(kind, CallKind::StaticCall), gas, value };
 
             // TODO: DO NOT FAIL!!!
             precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
-                .map_err(|e| StatusCode::from(e))?
+                .map_err(StatusCode::from)?
         } else {
             let call_result = match kind {
                 CallKind::Call | CallKind::StaticCall => {

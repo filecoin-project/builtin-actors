@@ -24,6 +24,80 @@ lazy_static::lazy_static! {
     pub(crate) static ref SECP256K1: BigUint = BigUint::from_bytes_be(&hex_literal::hex!("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"));
 }
 
+/// ensures top bits are zeroed
+fn assert_empty_bits<const S: usize>(src: &[u8]) -> Result<(), PrecompileError> {
+    if src[..S] != [0u8; S] {
+        Err(PrecompileError::InvalidInput)
+    } else {
+        Ok(())
+    }
+}
+
+struct Parameter<T>(pub T);
+
+impl<'a> From<&'a [u8; 32]> for Parameter<[u8; 32]> {
+    fn from(value: &'a [u8; 32]) -> Self {
+        Self(*value)
+    }
+}
+
+impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u32> {
+    type Error = PrecompileError;
+
+    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
+        assert_empty_bits::<28>(value)?;
+        // SAFETY: Type ensures our remaining len == 4
+        Ok(Self(u32::from_be_bytes(value[28..].try_into().unwrap())))
+    }
+}
+
+impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i32> {
+    type Error = PrecompileError;
+
+    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
+        assert_empty_bits::<28>(value)?;
+        // SAFETY: Type ensures our remaining len == 4
+        Ok(Self(i32::from_be_bytes(value[28..].try_into().unwrap())))
+    }
+}
+
+impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u8> {
+    type Error = PrecompileError;
+
+    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
+        assert_empty_bits::<31>(value)?;
+        Ok(Self(value[31]))
+    }
+}
+
+impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u64> {
+    type Error = PrecompileError;
+
+    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
+        assert_empty_bits::<24>(value)?;
+        // SAFETY: Type ensures our remaining len == 8
+        Ok(Self(u64::from_be_bytes(value[24..].try_into().unwrap())))
+    }
+}
+
+impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i64> {
+    type Error = PrecompileError;
+
+    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
+        assert_empty_bits::<24>(value)?;
+        // SAFETY: Type ensures our remaining len == 8
+        Ok(Self(i64::from_be_bytes(value[24..].try_into().unwrap())))
+    }
+}
+
+impl<'a> TryFrom<&'a [u8; 32]> for Parameter<U256> {
+    type Error = PrecompileError;
+
+    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
+        Ok(Self(U256::from_big_endian(value)))
+    }
+}
+
 struct ArrayChunks<'a, T: Sized, const CHUNK_SIZE: usize> {
     src: &'a [T],
     cursor: usize,
@@ -43,6 +117,27 @@ impl<'a, T: Sized, const N: usize> ArrayChunks<'a, T, N> {
                 Err(_) => unreachable!(),
             }
         })
+    }
+
+    pub fn bytes_read(&self) -> usize {
+        self.cursor * N
+    }
+
+    // pub fn next_param_into<V>(&mut self) -> Result<V, PrecompileError>
+    // where
+    //     T: Copy,
+    //     Parameter<V>: for<'from> From<&'from [T; N]>,
+    // {
+    //     Ok(Parameter::<V>::from(self.next().ok_or(PrecompileError::IncorrectInputSize)?).0)
+    // }
+
+    pub fn next_param<V>(&mut self) -> Result<V, PrecompileError>
+    where
+        T: Copy,
+        Parameter<V>: for<'from> TryFrom<&'from [T; N], Error = PrecompileError>,
+    {
+        Parameter::<V>::try_from(self.next().ok_or(PrecompileError::IncorrectInputSize)?)
+            .map(|a| a.0)
     }
 }
 
@@ -83,7 +178,7 @@ impl From<GroupError> for PrecompileError {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Default)]
 pub struct PrecompileContext {
     pub is_static: bool,
     pub gas: U256,
@@ -91,7 +186,7 @@ pub struct PrecompileContext {
 }
 
 // really I'd want to have context as a type parameter, but since the table we generate must have the same types (or dyn) its messy
-pub type PrecompileFn<RT> = fn(&RT, &[u8], Option<PrecompileContext>) -> PrecompileResult;
+pub type PrecompileFn<RT> = fn(&RT, &[u8], PrecompileContext) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont like vec
 
 /// Generates a list of precompile smart contracts, index + 1 is the address (another option is to make an enum)
@@ -132,15 +227,7 @@ impl<RT: Runtime> Precompiles<RT> {
         input: &[u8],
         context: PrecompileContext,
     ) -> PrecompileResult {
-        let context =
-            if Self::is_call_actor_precompile(&precompile_addr) { Some(context) } else { None };
-
         Self::PRECOMPILES[precompile_addr.0[0] as usize - 1](runtime, input, context)
-    }
-
-    #[inline]
-    pub fn is_call_actor_precompile(addr: &U256) -> bool {
-        addr.0[0] == 0x0e
     }
 
     #[inline]
@@ -166,11 +253,10 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
 fn get_actor_code_cid<RT: Runtime>(
     rt: &RT,
     input: &[u8],
-    o: Option<PrecompileContext>,
+    _: PrecompileContext,
 ) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
-    let id_bytes = read_right_pad(input, 32);
-    let id = U256::from_big_endian(&id_bytes).low_u64();
+    let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
+    let id = Parameter::<u64>::try_from(&id_bytes)?.0;
     Ok(rt.get_actor_code_cid(&id).unwrap_or_default().to_bytes())
 }
 
@@ -188,14 +274,11 @@ fn get_actor_code_cid<RT: Runtime>(
 ///
 /// Returns empty array if invalid randomness type
 /// Errors if unable to fetch randomness
-fn get_randomness<RT: Runtime>(
-    rt: &RT,
-    input: &[u8],
-    o: Option<PrecompileContext>,
-) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
-    // 32 * 4 = 128
-    let input = read_right_pad(input, 128);
+fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+    let parameter_len = 32 * 4;
+
+    let input = read_right_pad(input, parameter_len);
+    let mut input_params: ArrayChunks<u8, 32> = ArrayChunks::new(&input);
 
     #[derive(num_derive::FromPrimitive)]
     #[repr(i32)]
@@ -204,31 +287,12 @@ fn get_randomness<RT: Runtime>(
         Beacon = 1,
     }
 
-    /// ensures top bits are zeroed
-    fn assert_empty_bits<const S: usize>(src: &[u8]) -> Result<(), PrecompileError> {
-        if src[..S] != [0u8; S] {
-            Err(PrecompileError::InvalidInput)
-        } else {
-            Ok(())
-        }
-    }
+    let randomness_type = RandomnessType::from_i32(input_params.next_param::<i32>()?);
+    let personalization = input_params.next_param::<i64>()?;
+    let rand_epoch = input_params.next_param::<i64>()?;
+    let entropy_len = input_params.next_param::<u64>()?;
 
-    let randomness_word = &input[0..32];
-    let personalization_bytes = &input[32..64];
-    let epoch_bytes = &input[64..96];
-    let entropy_len_bytes = &input[96..128];
-
-    assert_empty_bits::<28>(randomness_word)?;
-    let randomness_type =
-        RandomnessType::from_i32(i32::from_be_bytes(randomness_word[28..32].try_into().unwrap()));
-    assert_empty_bits::<24>(personalization_bytes)?;
-    let personalization = i64::from_be_bytes(personalization_bytes[24..32].try_into().unwrap());
-    assert_empty_bits::<24>(epoch_bytes)?;
-    let rand_epoch = i64::from_be_bytes(epoch_bytes[24..32].try_into().unwrap());
-    assert_empty_bits::<24>(entropy_len_bytes)?;
-    let entropy_len = u64::from_be_bytes(entropy_len_bytes[24..32].try_into().unwrap());
-
-    let entropy = read_right_pad(&input[128..], entropy_len as usize);
+    let entropy = read_right_pad(&input[parameter_len..], entropy_len as usize);
 
     let randomness = match randomness_type {
         Some(RandomnessType::Chain) => rt
@@ -245,14 +309,9 @@ fn get_randomness<RT: Runtime>(
 
 /// Read BE encoded low u64 ID address from a u256 word
 /// Looks up and returns the other address (encoded f2 or f4 addresses) of an ID address, returning empty array if not found
-fn lookup_address<RT: Runtime>(
-    rt: &RT,
-    input: &[u8],
-    o: Option<PrecompileContext>,
-) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
-    let id_bytes = read_right_pad(input, 32);
-    let id = U256::from_big_endian(&id_bytes).low_u64();
+fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+    let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
+    let id = Parameter::<u64>::try_from(&id_bytes)?.0;
 
     let address = rt.lookup_address(id);
     let ab = match address {
@@ -265,13 +324,13 @@ fn lookup_address<RT: Runtime>(
 /// Reads a FIL encoded address
 /// Resolves a FIL encoded address into an ID address
 /// returns BE encoded u64 or empty array if nothing found
-fn resolve_address<RT: Runtime>(
-    rt: &RT,
-    input: &[u8],
-    o: Option<PrecompileContext>,
-) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
-    let addr = match Address::from_bytes(input) {
+fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+    let param_bytes = read_right_pad(input, 32);
+    let mut input_params: ArrayChunks<u8, 32> = ArrayChunks::new(&param_bytes);
+
+    let len = input_params.next_param::<u32>()? as usize;
+    let addr = match Address::from_bytes(&read_right_pad(&input[input_params.bytes_read()..], len))
+    {
         Ok(o) => o,
         Err(_) => return Ok(Vec::new()),
     };
@@ -291,26 +350,9 @@ fn resolve_address<RT: Runtime>(
 /// - negative values are system errors
 /// - positive are user errors (from the called actor)
 /// - 0 is success
-pub fn call_actor<RT: Runtime>(
-    rt: &RT,
-    input: &[u8],
-    ctx: Option<PrecompileContext>,
-) -> PrecompileResult {
-    let ctx = ctx.unwrap();
-
+pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) -> PrecompileResult {
     // exit_code, codec, offset, size
     const VALUES_LEN: usize = 4 * 32;
-
-    /// read a u64 from a be encoded "u256" returning an error if u256 bits > 64
-    /// slice must be len 32 or will panic
-    #[inline]
-    fn read_u64(input: &[u8]) -> Result<u64, PrecompileError> {
-        if input[..24] == [0u8; 24] {
-            Err(PrecompileError::InvalidInput)
-        } else {
-            Ok(u64::from_be_bytes(input[24..].try_into().unwrap()))
-        }
-    }
 
     // TODO Until we support readonly (static) calls at the fvm level, we disallow callactor
     //      when in static mode as it is sticky and there are no guarantee of preserving the
@@ -321,34 +363,28 @@ pub fn call_actor<RT: Runtime>(
 
     // ----- Input Parameters -------
 
-    let input_read = &read_right_pad(input, 32 * 5);
+    let input_read = read_right_pad(input, 32 * 4);
     let mut input_params: ArrayChunks<u8, 32> = ArrayChunks::new(&input_read);
 
-    let method = read_u64(input_params.next().unwrap())?;
-    let codec = read_u64(input_params.next().unwrap())?;
+    let method: u64 = input_params.next_param()?;
+    let codec: u64 = input_params.next_param()?;
     // TODO only CBOR for now
     if codec != fvm_ipld_encoding::DAG_CBOR {
         return Err(PrecompileError::InvalidInput);
     }
 
-    let address_offset = read_u64(input_params.next().unwrap())? as usize;
-    let send_data_offset = read_u64(input_params.next().unwrap())? as usize;
-
-    let address_size = read_u64(input_params.next().unwrap())? as usize;
-    let send_data_size = read_u64(input_params.next().unwrap())? as usize;
+    let address_size = input_params.next_param::<u32>()? as usize;
+    let send_data_size = input_params.next_param::<u32>()? as usize;
 
     // ------ Begin Call -------
 
     let result = {
         // REMOVEME: closes https://github.com/filecoin-project/ref-fvm/issues/1018
 
-        let send_data_offset =
-            input.get(send_data_offset..).ok_or(PrecompileError::IncorrectInputSize)?;
-        let input_data = read_right_pad(send_data_offset, send_data_size);
+        let start = input_params.bytes_read();
 
-        let address_offset =
-            input.get(address_offset..).ok_or(PrecompileError::IncorrectInputSize)?;
-        let address = read_right_pad(address_offset, address_size);
+        let input_data = read_right_pad(&input_read[start..], send_data_size);
+        let address = read_right_pad(&input_read[start + send_data_size..], address_size);
         let address = Address::from_bytes(&address).map_err(|_| PrecompileError::InvalidInput)?;
 
         // TODO passing underlying gas into send when implemented in FVM
@@ -367,6 +403,7 @@ pub fn call_actor<RT: Runtime>(
         let (exit_code, data) = match result {
             Err(ae) => {
                 // TODO handle revert
+                // put error number from call into revert
                 let exit_code = U256::from(ae.exit_code().value());
                 let exit_code = if ae.exit_code().is_system_error() {
                     exit_code.i256_neg()
@@ -403,24 +440,25 @@ pub fn call_actor<RT: Runtime>(
 // ---------------- Normal EVM Precompiles ------------------
 
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
-fn ec_recover<RT: Primitives>(
-    rt: &RT,
-    input: &[u8],
-    o: Option<PrecompileContext>,
-) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
+fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     let input = read_right_pad(input, 128);
+    let mut input_params: ArrayChunks<u8, 32> = ArrayChunks::new(&input);
 
-    let hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE] = input[0..32].try_into().unwrap();
-    let r = BigUint::from_bytes_be(&input[64..96]);
-    let s = BigUint::from_bytes_be(&input[96..128]);
-    let recovery_byte = input[63];
+    let hash: [u8; SECP_SIG_MESSAGE_HASH_SIZE] = *input_params.next().unwrap();
+    let recovery_byte = input_params.next_param::<u8>();
+    let r = BigUint::from_bytes_be(input_params.next().unwrap());
+    let s = BigUint::from_bytes_be(input_params.next().unwrap());
 
     // recovery byte is a single byte value but is represented with 32 bytes, sad
-    let v = if input[32..63] == [0u8; 31] && matches!(recovery_byte, 27 | 28) {
-        recovery_byte - 27
-    } else {
-        return Ok(Vec::new());
+    let v = match recovery_byte {
+        Ok(re) => {
+            if matches!(re, 27 | 28) {
+                re - 27
+            } else {
+                return Ok(Vec::new());
+            }
+        }
+        _ => return Ok(Vec::new()),
     };
 
     let valid = if r <= BigUint::one() || s <= BigUint::one() {
@@ -437,7 +475,7 @@ fn ec_recover<RT: Primitives>(
     sig[..64].copy_from_slice(&input[64..128]);
     sig[64] = v;
 
-    let pubkey = if let Ok(key) = rt.recover_secp_public_key(hash, &sig) {
+    let pubkey = if let Ok(key) = rt.recover_secp_public_key(&hash, &sig) {
         key
     } else {
         return Ok(Vec::new());
@@ -450,35 +488,23 @@ fn ec_recover<RT: Primitives>(
 }
 
 /// hash with sha2-256
-fn sha256<RT: Primitives>(rt: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
+fn sha256<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     Ok(rt.hash(SupportedHashes::Sha2_256, input))
 }
 
 /// hash with ripemd160
-fn ripemd160<RT: Primitives>(
-    rt: &RT,
-    input: &[u8],
-    o: Option<PrecompileContext>,
-) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
+fn ripemd160<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     Ok(rt.hash(SupportedHashes::Ripemd160, input))
 }
 
 /// data copy
-fn identity<RT: Primitives>(
-    _: &RT,
-    input: &[u8],
-    o: Option<PrecompileContext>,
-) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
+fn identity<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     Ok(Vec::from(input))
 }
 
 // https://eips.ethereum.org/EIPS/eip-198
 /// modulus exponent a number
-fn modexp<RT: Primitives>(_: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
+fn modexp<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     let input = read_right_pad(input, 96);
 
     // Follows go-ethereum by truncating bits to u64, ignoring other all other values in the first 24 bytes.
@@ -553,8 +579,7 @@ fn curve_to_vec(curve: G1) -> Vec<u8> {
 }
 
 /// add 2 points together on an elliptic curve
-fn ec_add<RT: Primitives>(_: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
+fn ec_add<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     let input = read_right_pad(input, 128);
     let point1 = curve_point(&input)?;
     let point2 = curve_point(&input[64..128])?;
@@ -563,8 +588,7 @@ fn ec_add<RT: Primitives>(_: &RT, input: &[u8], o: Option<PrecompileContext>) ->
 }
 
 /// multiply a point on an elliptic curve by a scalar value
-fn ec_mul<RT: Primitives>(_: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
+fn ec_mul<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     let input = read_right_pad(input, 96);
     let point = curve_point(&input)?;
 
@@ -577,12 +601,7 @@ fn ec_mul<RT: Primitives>(_: &RT, input: &[u8], o: Option<PrecompileContext>) ->
 }
 
 /// pairs multple groups of twisted bn curves
-fn ec_pairing<RT: Primitives>(
-    _: &RT,
-    input: &[u8],
-    o: Option<PrecompileContext>,
-) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
+fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
         /// read 32 bytes (u256) from buffer or error
         fn read_u256(input: &[u8], start: usize) -> Result<U256, PrecompileError> {
@@ -644,8 +663,7 @@ fn ec_pairing<RT: Primitives>(
 }
 
 /// https://eips.ethereum.org/EIPS/eip-152
-fn blake2f<RT: Primitives>(_: &RT, input: &[u8], o: Option<PrecompileContext>) -> PrecompileResult {
-    assert_eq!(o, None, "no context should reach this precompile");
+fn blake2f<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     if input.len() != 213 {
         return Err(PrecompileError::IncorrectInputSize);
     }
@@ -730,7 +748,7 @@ mod tests {
         );
 
         let expected = hex!("0000000000000000000000007156526fbd7a3c72969b54f64e42c10fbb768c8a");
-        let res = ec_recover(&rt, input, None).unwrap();
+        let res = ec_recover(&rt, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
 
         let input = &hex!(
@@ -741,7 +759,7 @@ mod tests {
             "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
         );
         // wrong signature
-        let res = ec_recover(&rt, input, None).unwrap();
+        let res = ec_recover(&rt, input, PrecompileContext::default()).unwrap();
         assert_eq!(res, Vec::new());
 
         let input = &hex!(
@@ -752,7 +770,7 @@ mod tests {
             "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
         );
         // invalid recovery byte
-        let res = ec_recover(&rt, input, None).unwrap();
+        let res = ec_recover(&rt, input, PrecompileContext::default()).unwrap();
         assert_eq!(res, Vec::new());
     }
 
@@ -764,7 +782,7 @@ mod tests {
         let rt = MockRuntime::default();
 
         let expected = hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");
-        let res = hash(&rt, input, None).unwrap();
+        let res = hash(&rt, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
     }
 
@@ -776,7 +794,7 @@ mod tests {
         let rt = MockRuntime::default();
 
         let expected = hex!("4cd7a0452bd3d682e4cbd5fa90f446d7285b156a");
-        let res = hash(&rt, input, None).unwrap();
+        let res = hash(&rt, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
     }
 
@@ -794,7 +812,7 @@ mod tests {
         let rt = MockRuntime::default();
 
         let expected = hex!("08");
-        let res = modexp(&rt, input, None).unwrap();
+        let res = modexp(&rt, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
 
         let input = &hex!(
@@ -806,7 +824,7 @@ mod tests {
             "012345678910" // mod
         );
         let expected = hex!("00358eac8f30"); // left padding & 230026940208
-        let res = modexp(&rt, input, None).unwrap();
+        let res = modexp(&rt, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
 
         let expected = hex!("000000"); // invalid values will just be [0; mod_len]
@@ -819,7 +837,7 @@ mod tests {
             "03" // mod
         );
         // input smaller than expected
-        let res = modexp(&rt, input, None).unwrap();
+        let res = modexp(&rt, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
 
         let input = &hex!(
@@ -830,14 +848,16 @@ mod tests {
             "09" // exp
         );
         // no mod is invalid
-        let res = modexp(&rt, input, None).unwrap();
+        let res = modexp(&rt, input, PrecompileContext::default()).unwrap();
         assert_eq!(res, Vec::new());
     }
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
         use super::{GroupError, MockRuntime};
-        use crate::interpreter::precompiles::{ec_add, ec_mul, ec_pairing, PrecompileError};
+        use crate::interpreter::precompiles::{
+            ec_add, ec_mul, ec_pairing, PrecompileContext, PrecompileError,
+        };
 
         #[test]
         fn bn_add() {
@@ -857,7 +877,7 @@ mod tests {
                 301d1d33be6da8e509df21cc35964723180eed7532537db9ae5e7d48f195c915",
             )
             .unwrap();
-            let res = ec_add(&rt, &input, None).unwrap();
+            let res = ec_add(&rt, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // zero sum test
             let input = hex::decode(
@@ -874,7 +894,7 @@ mod tests {
                 0000000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_add(&rt, &input, None).unwrap();
+            let res = ec_add(&rt, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
 
             // no input test
@@ -885,7 +905,7 @@ mod tests {
                 0000000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_add(&rt, &input, None).unwrap();
+            let res = ec_add(&rt, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // point not on curve fail
             let input = hex::decode(
@@ -896,7 +916,7 @@ mod tests {
                 1111111111111111111111111111111111111111111111111111111111111111",
             )
             .unwrap();
-            let res = ec_add(&rt, &input, None);
+            let res = ec_add(&rt, &input, PrecompileContext::default());
             assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
         }
 
@@ -917,7 +937,7 @@ mod tests {
                 031b8ce914eba3a9ffb989f9cdd5b0f01943074bf4f0f315690ec3cec6981afc",
             )
             .unwrap();
-            let res = ec_mul(&rt, &input, None).unwrap();
+            let res = ec_mul(&rt, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
 
             // out of gas test
@@ -928,7 +948,7 @@ mod tests {
                 0200000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_mul(&rt, &input, None).unwrap();
+            let res = ec_mul(&rt, &input, PrecompileContext::default()).unwrap();
             assert_eq!(&res, &vec![0; 64]);
 
             // no input test
@@ -939,7 +959,7 @@ mod tests {
                 0000000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_mul(&rt, &input, None).unwrap();
+            let res = ec_mul(&rt, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // point not on curve fail
             let input = hex::decode(
@@ -949,7 +969,7 @@ mod tests {
                 0f00000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_mul(&rt, &input, None);
+            let res = ec_mul(&rt, &input, PrecompileContext::default());
             assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
         }
 
@@ -978,7 +998,7 @@ mod tests {
                 hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                     .unwrap();
 
-            let res = ec_pairing(&rt, &input, None).unwrap();
+            let res = ec_pairing(&rt, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
 
             // out of gas test
@@ -998,14 +1018,14 @@ mod tests {
                 12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
             )
             .unwrap();
-            let res = ec_pairing(&rt, &input, None).unwrap();
+            let res = ec_pairing(&rt, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // no input test
             let input = [0u8; 0];
             let expected =
                 hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                     .unwrap();
-            let res = ec_pairing(&rt, &input, None).unwrap();
+            let res = ec_pairing(&rt, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // point not on curve fail
             let input = hex::decode(
@@ -1018,7 +1038,7 @@ mod tests {
                 1111111111111111111111111111111111111111111111111111111111111111",
             )
             .unwrap();
-            let res = ec_pairing(&rt, &input, None);
+            let res = ec_pairing(&rt, &input, PrecompileContext::default());
             assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
             // invalid input length
             let input = hex::decode(
@@ -1029,7 +1049,7 @@ mod tests {
             ",
             )
             .unwrap();
-            let res = ec_pairing(&rt, &input, None);
+            let res = ec_pairing(&rt, &input, PrecompileContext::default());
             assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
         }
     }
@@ -1060,7 +1080,10 @@ mod tests {
         // }
 
         // T0 invalid input len
-        assert!(matches!(blake2f(&rt, &[], None), Err(PrecompileError::IncorrectInputSize)));
+        assert!(matches!(
+            blake2f(&rt, &[], PrecompileContext::default()),
+            Err(PrecompileError::IncorrectInputSize)
+        ));
 
         // T1 too small
         let input = &hex!(
@@ -1071,7 +1094,10 @@ mod tests {
             "0000000000000000"
             "02"
         );
-        assert!(matches!(blake2f(&rt, input, None), Err(PrecompileError::IncorrectInputSize)));
+        assert!(matches!(
+            blake2f(&rt, input, PrecompileContext::default()),
+            Err(PrecompileError::IncorrectInputSize)
+        ));
 
         // T2 too large
         let input = &hex!(
@@ -1082,7 +1108,10 @@ mod tests {
             "0000000000000000"
             "02"
         );
-        assert!(matches!(blake2f(&rt, input, None), Err(PrecompileError::IncorrectInputSize)));
+        assert!(matches!(
+            blake2f(&rt, input, PrecompileContext::default()),
+            Err(PrecompileError::IncorrectInputSize)
+        ));
 
         // T3 final block indicator invalid
         let input = &hex!(
@@ -1093,7 +1122,10 @@ mod tests {
             "0000000000000000"
             "02"
         );
-        assert!(matches!(blake2f(&rt, input, None), Err(PrecompileError::IncorrectInputSize)));
+        assert!(matches!(
+            blake2f(&rt, input, PrecompileContext::default()),
+            Err(PrecompileError::IncorrectInputSize)
+        ));
 
         // outputs
 
@@ -1107,7 +1139,9 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert!(matches!(blake2f(&rt, input, None), Ok(v) if v == expected));
+        assert!(
+            matches!(blake2f(&rt, input, PrecompileContext::default()), Ok(v) if v == expected)
+        );
 
         // T5
         let expected = &hex!("ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923");
@@ -1119,7 +1153,9 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert!(matches!(blake2f(&rt, input, None), Ok(v) if v == expected));
+        assert!(
+            matches!(blake2f(&rt, input, PrecompileContext::default()), Ok(v) if v == expected)
+        );
 
         // T6
         let expected = &hex!("75ab69d3190a562c51aef8d88f1c2775876944407270c42c9844252c26d2875298743e7f6d5ea2f2d3e8d226039cd31b4e426ac4f2d3d666a610c2116fde4735");
@@ -1131,7 +1167,9 @@ mod tests {
             "0000000000000000"
             "00"
         );
-        assert!(matches!(blake2f(&rt, input, None), Ok(v) if v == expected));
+        assert!(
+            matches!(blake2f(&rt, input, PrecompileContext::default()), Ok(v) if v == expected)
+        );
 
         // T7
         let expected = &hex!("b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421");
@@ -1143,7 +1181,9 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert!(matches!(blake2f(&rt, input, None), Ok(v) if v == expected));
+        assert!(
+            matches!(blake2f(&rt, input, PrecompileContext::default()), Ok(v) if v == expected)
+        );
 
         // T8
         // NOTE:
@@ -1160,6 +1200,8 @@ mod tests {
             "0000000000000000"
             "01"
         );
-        assert!(matches!(blake2f(&rt, input, None), Ok(v) if v == expected));
+        assert!(
+            matches!(blake2f(&rt, input, PrecompileContext::default()), Ok(v) if v == expected)
+        );
     }
 }
