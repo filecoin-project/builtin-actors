@@ -204,17 +204,28 @@ fn get_randomness<RT: Runtime>(
         Beacon = 1,
     }
 
+    /// ensures top bits are zeroed
+    fn assert_empty_bits<const S: usize>(src: &[u8]) -> Result<(), PrecompileError> {
+        if src[..S] != [0u8; S] {
+            Err(PrecompileError::InvalidInput)
+        } else {
+            Ok(())
+        }
+    }
+
     let randomness_word = &input[0..32];
     let personalization_bytes = &input[32..64];
     let epoch_bytes = &input[64..96];
     let entropy_len_bytes = &input[96..128];
 
-    // TODO assert gaps are zeroed
-
+    assert_empty_bits::<28>(randomness_word)?;
     let randomness_type =
         RandomnessType::from_i32(i32::from_be_bytes(randomness_word[28..32].try_into().unwrap()));
+    assert_empty_bits::<24>(personalization_bytes)?;
     let personalization = i64::from_be_bytes(personalization_bytes[24..32].try_into().unwrap());
+    assert_empty_bits::<24>(epoch_bytes)?;
     let rand_epoch = i64::from_be_bytes(epoch_bytes[24..32].try_into().unwrap());
+    assert_empty_bits::<24>(entropy_len_bytes)?;
     let entropy_len = u64::from_be_bytes(entropy_len_bytes[24..32].try_into().unwrap());
 
     let entropy = read_right_pad(&input[128..], entropy_len as usize);
@@ -317,7 +328,7 @@ pub fn call_actor<RT: Runtime>(
     let codec = read_u64(input_params.next().unwrap())?;
     // TODO only CBOR for now
     if codec != fvm_ipld_encoding::DAG_CBOR {
-        return Err(PrecompileError::InvalidInput)
+        return Err(PrecompileError::InvalidInput);
     }
 
     let address_offset = read_u64(input_params.next().unwrap())? as usize;

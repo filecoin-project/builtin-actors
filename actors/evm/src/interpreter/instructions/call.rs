@@ -83,7 +83,7 @@ pub fn call<RT: Runtime>(
 
     // NOTE gas is currently ignored as FVM's send doesn't allow the caller to specify a gas
     //      limit (external invocation gas limit applies). This may changed in the future.
-    let (_gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
+    let (gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
         CallKind::Call | CallKind::CallCode => (
             stack.pop(),
             stack.pop(),
@@ -124,7 +124,7 @@ pub fn call<RT: Runtime>(
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
             let context = PrecompileContext {
                 is_static: matches!(kind, CallKind::StaticCall),
-                gas: U256::zero(), // TODO gas
+                gas,
                 value: value,
             };
 
