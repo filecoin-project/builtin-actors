@@ -11,6 +11,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
 
 mod util;
+use fil_actors_runtime::test_utils::make_identity_cid;
 use itertools::Itertools;
 use num_traits::Zero;
 use util::*;
@@ -69,6 +70,54 @@ fn successfully_change_only_the_worker_address() {
     // assert control addresses are unchanged
     assert!(!info.control_addresses.is_empty());
     assert_eq!(original_control_addresses, info.control_addresses);
+
+    h.check_state(&rt);
+}
+
+#[test]
+fn change_worker_address_restricted_correctly() {
+    let (h, mut rt) = setup();
+
+    let original_control_addresses = h.control_addrs.clone();
+    let new_worker = Address::new_id(999);
+
+    rt.set_address_actor_type(new_worker, *ACCOUNT_ACTOR_CODE_ID);
+
+    let params = RawBytes::serialize(ChangeWorkerAddressParams {
+        new_worker,
+        new_control_addresses: original_control_addresses,
+    })
+    .unwrap();
+
+    rt.set_caller(make_identity_cid(b"1234"), h.owner);
+
+    // fail to call the unexported method
+
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<Actor>(Method::ChangeWorkerAddress as u64, &params),
+    );
+
+    // call the exported method
+    rt.expect_send(
+        new_worker,
+        AccountMethod::PubkeyAddress as u64,
+        RawBytes::default(),
+        TokenAmount::zero(),
+        RawBytes::serialize(h.worker_key).unwrap(),
+        ExitCode::OK,
+    );
+
+    rt.expect_validate_caller_addr(vec![h.owner]);
+
+    rt.call::<Actor>(Method::ChangeWorkerAddressExported as u64, &params).unwrap();
+
+    rt.verify();
+
+    // assert change has been made in state
+    let pending_worker_key = h.get_info(&rt).pending_worker_key.unwrap();
+    assert_eq!(pending_worker_key.new_worker, new_worker);
 
     h.check_state(&rt);
 }
