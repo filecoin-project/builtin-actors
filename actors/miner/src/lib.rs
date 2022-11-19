@@ -127,6 +127,7 @@ pub enum Method {
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
+    WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
     GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
@@ -4991,7 +4992,7 @@ impl ActorCode for Actor {
                 Self::report_consensus_fault(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::WithdrawBalance) => {
+            Some(Method::WithdrawBalance) | Some(Method::WithdrawBalanceExported) => {
                 let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(&res)?)
             }

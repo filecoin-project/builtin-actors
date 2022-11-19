@@ -1,10 +1,16 @@
-use fil_actor_miner::BeneficiaryTerm;
-use fil_actors_runtime::test_utils::{expect_abort, expect_abort_contains_message};
+use fil_actor_miner::{
+    Actor, BeneficiaryTerm, Method, WithdrawBalanceParams, WithdrawBalanceReturn,
+};
+use fil_actors_runtime::test_utils::{
+    expect_abort, expect_abort_contains_message, make_identity_cid,
+};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::METHOD_SEND;
 
 mod util;
 use util::*;
@@ -26,6 +32,51 @@ fn happy_path_withdraws_funds() {
         &TokenAmount::zero(),
     )
     .unwrap();
+    h.check_state(&rt);
+}
+
+#[test]
+fn withdraw_funds_restricted_correctly() {
+    let (h, mut rt) = setup();
+    rt.set_balance(BIG_BALANCE.clone());
+    let amount_requested = ONE_PERCENT_BALANCE.clone();
+
+    let params =
+        &RawBytes::serialize(WithdrawBalanceParams { amount_requested: amount_requested.clone() })
+            .unwrap();
+
+    rt.set_caller(make_identity_cid(b"1234"), h.owner);
+
+    // fail to call the unexported method
+
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<Actor>(Method::WithdrawBalance as u64, params),
+    );
+
+    // call the exported method
+
+    rt.expect_validate_caller_addr(vec![h.owner, h.beneficiary]);
+    rt.expect_send(
+        h.beneficiary,
+        METHOD_SEND,
+        RawBytes::default(),
+        amount_requested.clone(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
+    let ret = rt
+        .call::<Actor>(Method::WithdrawBalanceExported as u64, params)
+        .unwrap()
+        .deserialize::<WithdrawBalanceReturn>()
+        .unwrap();
+
+    assert_eq!(amount_requested, ret.amount_withdrawn,);
+
+    rt.verify();
+
     h.check_state(&rt);
 }
 
