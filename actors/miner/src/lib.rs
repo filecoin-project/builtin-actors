@@ -128,6 +128,7 @@ pub enum Method {
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
     WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
+    ChangeMultiaddrsExported = frc42_dispatch::method_hash!("ChangeMultiaddrs"),
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
     GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
@@ -5000,7 +5001,7 @@ impl ActorCode for Actor {
                 Self::confirm_sector_proofs_valid(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::ChangeMultiaddrs) => {
+            Some(Method::ChangeMultiaddrs) | Some(Method::ChangeMultiaddrsExported) => {
                 Self::change_multiaddresses(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
