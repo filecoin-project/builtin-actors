@@ -73,6 +73,7 @@ pub enum Method {
     // Method numbers derived from FRC-0042 standards
     AddBalanceExported = frc42_dispatch::method_hash!("AddBalance"),
     WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
+    PublishStorageDealsExported = frc42_dispatch::method_hash!("PublishStorageDeals"),
     GetBalanceExported = frc42_dispatch::method_hash!("GetBalance"),
     GetDealDataCommitmentExported = frc42_dispatch::method_hash!("GetDealDataCommitment"),
     GetDealClientExported = frc42_dispatch::method_hash!("GetDealClient"),
@@ -1357,7 +1358,7 @@ impl ActorCode for Actor {
                 let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::PublishStorageDeals) => {
+            Some(Method::PublishStorageDeals) | Some(Method::PublishStorageDealsExported) => {
                 let res = Self::publish_storage_deals(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
