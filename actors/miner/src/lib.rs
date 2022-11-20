@@ -130,6 +130,7 @@ pub enum Method {
     WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
     ChangeMultiaddrsExported = frc42_dispatch::method_hash!("ChangeMultiaddrs"),
     ConfirmUpdateWorkerKeyExported = frc42_dispatch::method_hash!("ConfirmUpdateWorkerKey"),
+    RepayDebtExported = frc42_dispatch::method_hash!("RepayDebt"),
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
     GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
@@ -5018,7 +5019,7 @@ impl ActorCode for Actor {
                 Self::confirm_update_worker_key(rt)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::RepayDebt) => {
+            Some(Method::RepayDebt) | Some(Method::RepayDebtExported) => {
                 Self::repay_debt(rt)?;
                 Ok(RawBytes::default())
             }
