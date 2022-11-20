@@ -75,7 +75,7 @@ fn successfully_change_only_the_worker_address() {
 }
 
 #[test]
-fn change_worker_address_restricted_correctly() {
+fn change_and_confirm_worker_address_restricted_correctly() {
     let (h, mut rt) = setup();
 
     let original_control_addresses = h.control_addrs.clone();
@@ -118,6 +118,28 @@ fn change_worker_address_restricted_correctly() {
     // assert change has been made in state
     let pending_worker_key = h.get_info(&rt).pending_worker_key.unwrap();
     assert_eq!(pending_worker_key.new_worker, new_worker);
+
+    // confirmation time
+
+    // move to deadline containing effective epoch
+    rt.set_epoch(rt.epoch + rt.policy.worker_key_change_delay);
+
+    // fail to call the unexported method
+
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, &RawBytes::default()),
+    );
+
+    // call the exported method
+    rt.expect_validate_caller_addr(vec![h.owner]);
+    rt.call::<Actor>(Method::ConfirmUpdateWorkerKeyExported as u64, &RawBytes::default()).unwrap();
+    rt.verify();
+
+    // assert address has changed
+    let info = h.get_info(&rt);
+    assert_eq!(new_worker, info.worker);
 
     h.check_state(&rt);
 }
