@@ -1,6 +1,6 @@
 use fil_actors_runtime::test_utils::*;
 
-use fil_actor_miner::{Actor, ChangeMultiaddrsParams, Method};
+use fil_actor_miner::{Actor, ChangeMultiaddrsParams, GetMultiaddrsReturn, Method};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::error::ExitCode;
 
@@ -113,7 +113,7 @@ fn cant_set_large_multiaddrs() {
 }
 
 #[test]
-fn change_multiaddrs_restricted_correctly() {
+fn get_and_change_multiaddrs_restricted_correctly() {
     let mut rt = MockRuntime::default();
     let h = util::ActorHarness::new(0);
 
@@ -127,7 +127,7 @@ fn change_multiaddrs_restricted_correctly() {
 
     rt.set_caller(make_identity_cid(b"1234"), h.worker);
 
-    // fail to call the unexported method
+    // fail to call the unexported setter
 
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
@@ -135,17 +135,24 @@ fn change_multiaddrs_restricted_correctly() {
         rt.call::<Actor>(Method::ChangeMultiaddrs as u64, params),
     );
 
-    // call the exported method
+    // call the exported setter
 
     rt.expect_validate_caller_addr(h.caller_addrs());
 
     rt.call::<Actor>(Method::ChangeMultiaddrsExported as u64, params).unwrap();
     rt.verify();
 
-    let state = h.get_state(&rt);
-    let info = state.get_info(&rt.store).unwrap();
+    // call the exported getter
 
-    assert_eq!(new_multiaddrs, info.multi_address);
+    rt.expect_validate_caller_any();
+    let ret: GetMultiaddrsReturn = rt
+        .call::<Actor>(Method::GetMultiaddrsExported as u64, &RawBytes::default())
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+
+    assert_eq!(new_multiaddrs, ret.multi_addrs);
 
     h.check_state(&rt);
 }

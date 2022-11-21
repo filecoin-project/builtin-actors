@@ -1,5 +1,4 @@
-use fil_actor_miner::{Actor, ChangePeerIDParams, Method, State};
-use fil_actors_runtime::runtime::Runtime;
+use fil_actor_miner::{Actor, ChangePeerIDParams, GetPeerIDReturn, Method};
 use fil_actors_runtime::test_utils::{
     expect_abort_contains_message, make_identity_cid, MockRuntime,
 };
@@ -41,7 +40,7 @@ fn change_peer_id_restricted_correctly() {
 
     rt.set_caller(make_identity_cid(b"1234"), h.worker);
 
-    // fail to call the unexported method
+    // fail to call the unexported setter
 
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
@@ -49,18 +48,23 @@ fn change_peer_id_restricted_correctly() {
         rt.call::<Actor>(Method::ChangePeerID as u64, &params),
     );
 
-    // call the exported method
+    // call the exported setter
 
     rt.expect_validate_caller_addr(h.caller_addrs());
 
     rt.call::<Actor>(Method::ChangePeerIDExported as u64, &params).unwrap();
 
-    let state: State = rt.get_state();
-    let info = state.get_info(rt.store()).unwrap();
+    // call the exported getter
 
-    assert_eq!(new_id, info.peer_id);
-
+    rt.expect_validate_caller_any();
+    let ret: GetPeerIDReturn = rt
+        .call::<Actor>(Method::GetPeerIDExported as u64, &RawBytes::default())
+        .unwrap()
+        .deserialize()
+        .unwrap();
     rt.verify();
+
+    assert_eq!(new_id, ret.peer_id);
 
     h.check_state(&rt);
 }

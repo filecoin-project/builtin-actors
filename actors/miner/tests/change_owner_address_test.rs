@@ -67,7 +67,7 @@ fn change_owner_address_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::ChangeOwnerAddress as u64, &params),
+        rt.call::<Actor>(Method::ChangeOwnerAddress as u64, params),
     );
 
     // can call the exported method

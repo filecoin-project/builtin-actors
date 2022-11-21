@@ -23,13 +23,14 @@ use fil_actor_miner::{
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
     FaultDeclaration, GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
-    Method, MinerConstructorParams as ConstructorParams, MinerInfo, Partition,
-    PendingBeneficiaryChange, PoStPartition, PowerPair, PreCommitSectorBatchParams,
-    PreCommitSectorBatchParams2, PreCommitSectorParams, ProveCommitSectorParams,
-    RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
-    TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
-    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
+    GetMultiaddrsReturn, GetPeerIDReturn, Method, MinerConstructorParams as ConstructorParams,
+    MinerInfo, Partition, PendingBeneficiaryChange, PoStPartition, PowerPair,
+    PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
+    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
+    SectorPreCommitInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams,
+    TerminateSectorsParams, TerminationDeclaration, VestingFunds, WindowedPoSt,
+    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
+    SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -288,10 +289,15 @@ impl ActorHarness {
         expect_empty(result);
         rt.verify();
 
-        let state = self.get_state(rt);
-        let info = state.get_info(&rt.store).unwrap();
+        rt.expect_validate_caller_any();
+        let ret: GetPeerIDReturn = rt
+            .call::<Actor>(Method::GetPeerIDExported as u64, &RawBytes::default())
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
 
-        assert_eq!(new_id, info.peer_id);
+        assert_eq!(new_id, ret.peer_id);
     }
 
     pub fn set_peer_id_fail(&self, rt: &mut MockRuntime, new_id: Vec<u8>) {
@@ -318,10 +324,15 @@ impl ActorHarness {
         expect_empty(result);
         rt.verify();
 
-        let state = self.get_state(rt);
-        let info = state.get_info(&rt.store).unwrap();
+        rt.expect_validate_caller_any();
+        let ret: GetMultiaddrsReturn = rt
+            .call::<Actor>(Method::GetMultiaddrsExported as u64, &RawBytes::default())
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
 
-        assert_eq!(new_multiaddrs, info.multi_address);
+        assert_eq!(new_multiaddrs, ret.multi_addrs);
     }
 
     pub fn set_multiaddr_fail(&self, rt: &mut MockRuntime, new_multiaddrs: Vec<BytesDe>) {
@@ -2084,10 +2095,15 @@ impl ActorHarness {
             .unwrap();
         rt.verify();
 
-        let state: State = rt.get_state();
-        let info = state.get_info(rt.store()).unwrap();
+        rt.expect_validate_caller_any();
+        let ret: GetPeerIDReturn = rt
+            .call::<Actor>(Method::GetPeerIDExported as u64, &RawBytes::default())
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
 
-        assert_eq!(new_id, info.peer_id);
+        assert_eq!(new_id, ret.peer_id);
     }
 
     pub fn repay_debts(

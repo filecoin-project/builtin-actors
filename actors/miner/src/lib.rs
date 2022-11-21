@@ -139,6 +139,8 @@ pub enum Method {
     GetSectorSizeExported = frc42_dispatch::method_hash!("GetSectorSize"),
     GetAvailableBalanceExported = frc42_dispatch::method_hash!("GetAvailableBalance"),
     GetVestingFundsExported = frc42_dispatch::method_hash!("GetVestingFunds"),
+    GetPeerIDExported = frc42_dispatch::method_hash!("GetPeerID"),
+    GetMultiaddrsExported = frc42_dispatch::method_hash!("GetMultiaddrs"),
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -420,6 +422,13 @@ impl Actor {
         })
     }
 
+    fn get_peer_id(rt: &mut impl Runtime) -> Result<GetPeerIDReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let peer_id = get_miner_info(rt.store(), &state)?.peer_id;
+        Ok(GetPeerIDReturn { peer_id })
+    }
+
     fn change_peer_id(rt: &mut impl Runtime, params: ChangePeerIDParams) -> Result<(), ActorError> {
         let policy = rt.policy();
         check_peer_info(policy, &params.new_id, &[])?;
@@ -439,6 +448,13 @@ impl Actor {
             Ok(())
         })?;
         Ok(())
+    }
+
+    fn get_multiaddresses(rt: &mut impl Runtime) -> Result<GetMultiaddrsReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let multi_addrs = get_miner_info(rt.store(), &state)?.multi_address;
+        Ok(GetMultiaddrsReturn { multi_addrs })
     }
 
     fn change_multiaddresses(
@@ -5083,6 +5099,14 @@ impl ActorCode for Actor {
             }
             Some(Method::GetVestingFundsExported) => {
                 let res = Self::get_vesting_funds(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetPeerIDExported) => {
+                let res = Self::get_peer_id(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetMultiaddrsExported) => {
+                let res = Self::get_multiaddresses(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
         }

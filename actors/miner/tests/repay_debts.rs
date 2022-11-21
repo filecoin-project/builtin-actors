@@ -85,7 +85,7 @@ fn repay_debt_restricted_correctly() {
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         RawBytes::default(),
-        fee_debt.clone(),
+        fee_debt,
         RawBytes::default(),
         ExitCode::OK,
     );
