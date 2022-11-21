@@ -62,6 +62,7 @@ pub enum Method {
     SubmitPoRepForBulkVerify = 8,
     CurrentTotalPower = 9,
     // Method numbers derived from FRC-0042 standards
+    CreateMinerExported = frc42_dispatch::method_hash!("CreateMiner"),
     NetworkRawPowerExported = frc42_dispatch::method_hash!("NetworkRawPower"),
     MinerRawPowerExported = frc42_dispatch::method_hash!("MinerRawPower"),
 }
@@ -663,7 +664,7 @@ impl ActorCode for Actor {
                 Self::constructor(rt)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::CreateMiner) => {
+            Some(Method::CreateMiner) | Some(Method::CreateMinerExported) => {
                 let res = Self::create_miner(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }

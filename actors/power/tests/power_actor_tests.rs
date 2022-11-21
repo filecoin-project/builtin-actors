@@ -13,11 +13,12 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
+use fvm_shared::MethodNum;
 use num_traits::Zero;
 use std::ops::Neg;
 
 use fil_actor_power::{
-    consensus_miner_min_power, Actor as PowerActor, Actor, CreateMinerParams,
+    consensus_miner_min_power, Actor as PowerActor, Actor, CreateMinerParams, CreateMinerReturn,
     EnrollCronEventParams, Method, MinerRawPowerParams, MinerRawPowerReturn, NetworkRawPowerReturn,
     State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
 };
@@ -1440,4 +1441,73 @@ mod submit_porep_for_bulk_verify_tests {
         );
         h.check_state(&rt);
     }
+}
+
+#[test]
+fn create_miner_restricted_correctly() {
+    let (h, mut rt) = setup();
+
+    let peer = "miner".as_bytes().to_vec();
+    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
+
+    let params = serialize(
+        &CreateMinerParams {
+            owner: *OWNER,
+            worker: *OWNER,
+            window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
+            peer: peer.clone(),
+            multiaddrs: multiaddrs.clone(),
+        },
+        "create miner params",
+    )
+    .unwrap();
+
+    rt.set_caller(make_identity_cid(b"1234"), *OWNER);
+
+    // cannot call the unexported method
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<PowerActor>(Method::CreateMiner as MethodNum, &params),
+    );
+
+    // can call the exported method
+
+    rt.expect_validate_caller_any();
+    let expected_init_params = ExecParams {
+        code_cid: *MINER_ACTOR_CODE_ID,
+        constructor_params: serialize(
+            &MinerConstructorParams {
+                owner: *OWNER,
+                worker: *OWNER,
+                control_addresses: vec![],
+                window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
+                peer_id: peer,
+                multi_addresses: multiaddrs,
+            },
+            "minerctor params",
+        )
+        .unwrap(),
+    };
+    let create_miner_ret = CreateMinerReturn { id_address: *MINER, robust_address: *ACTOR };
+    rt.expect_send(
+        INIT_ACTOR_ADDR,
+        EXEC_METHOD,
+        RawBytes::serialize(expected_init_params).unwrap(),
+        TokenAmount::zero(),
+        RawBytes::serialize(create_miner_ret).unwrap(),
+        ExitCode::OK,
+    );
+
+    let ret: CreateMinerReturn = rt
+        .call::<PowerActor>(Method::CreateMinerExported as MethodNum, &params)
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+
+    assert_eq!(ret.id_address, *MINER);
+    assert_eq!(ret.robust_address, *ACTOR);
+
+    h.check_state(&rt);
 }
