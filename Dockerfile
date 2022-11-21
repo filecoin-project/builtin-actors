@@ -1,4 +1,4 @@
-FROM rust:1-buster AS build-env
+FROM rust:1.63.0-buster
 
 # Install dependencies
 RUN apt-get update && apt-get install --no-install-recommends -y build-essential clang
@@ -6,6 +6,6 @@ RUN apt-get update && apt-get install --no-install-recommends -y build-essential
 WORKDIR /usr/src/builtin-actors
 
 # Grab the correct toolchain
-RUN rustup toolchain install nightly && rustup target add wasm32-unknown-unknown
+RUN rustup target add wasm32-unknown-unknown
 
 ENTRYPOINT ["/bin/bash", "-c"]
