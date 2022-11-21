@@ -2060,9 +2060,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "3.0.0-alpha.13"
+version = "3.0.0-alpha.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8679ff3d1f3c306b4974e53aae3f22bd007201db80fbeeb8ba5d1a727478ae29"
+checksum = "6f2af95e6a8d41b4335686f83897756cb984299c789803325a1a62abcb5df2e0"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
