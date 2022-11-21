@@ -122,8 +122,11 @@ pub fn call<RT: Runtime>(
         };
 
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
-            let context =
-                PrecompileContext { is_static: matches!(kind, CallKind::StaticCall), gas, value };
+            let context = PrecompileContext {
+                is_static: matches!(kind, CallKind::StaticCall) || system.readonly,
+                gas,
+                value,
+            };
 
             // TODO: DO NOT FAIL!!!
             precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)

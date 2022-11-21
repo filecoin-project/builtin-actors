@@ -1,4 +1,4 @@
-use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
+use std::{borrow::Cow, convert::TryInto, marker::PhantomData, slice::ChunksExact};
 
 use super::{StatusCode, U256};
 
@@ -35,6 +35,21 @@ fn assert_empty_bits<const S: usize>(src: &[u8]) -> Result<(), PrecompileError> 
 
 struct Parameter<T>(pub T);
 
+impl<'a> TryFrom<&'a [u8; 64]> for Parameter<G1> {
+    type Error = PrecompileError;
+
+    fn try_from(value: &'a [u8; 64]) -> Result<Self, Self::Error> {
+        let x = Fq::from_u256(U256::from_big_endian(&value[0..32]).into())?;
+        let y = Fq::from_u256(U256::from_big_endian(&value[32..64]).into())?;
+
+        Ok(if x.is_zero() && y.is_zero() {
+            Parameter(G1::zero())
+        } else {
+            Parameter(AffineG1::new(x, y)?.into())
+        })
+    }
+}
+
 impl<'a> From<&'a [u8; 32]> for Parameter<[u8; 32]> {
     fn from(value: &'a [u8; 32]) -> Self {
         Self(*value)
@@ -46,7 +61,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u32> {
 
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
         assert_empty_bits::<28>(value)?;
-        // SAFETY: Type ensures our remaining len == 4
+        // Type ensures our remaining len == 4
         Ok(Self(u32::from_be_bytes(value[28..].try_into().unwrap())))
     }
 }
@@ -56,7 +71,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i32> {
 
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
         assert_empty_bits::<28>(value)?;
-        // SAFETY: Type ensures our remaining len == 4
+        // Type ensures our remaining len == 4
         Ok(Self(i32::from_be_bytes(value[28..].try_into().unwrap())))
     }
 }
@@ -75,7 +90,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u64> {
 
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
         assert_empty_bits::<24>(value)?;
-        // SAFETY: Type ensures our remaining len == 8
+        // Type ensures our remaining len == 8
         Ok(Self(u64::from_be_bytes(value[24..].try_into().unwrap())))
     }
 }
@@ -85,59 +100,103 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i64> {
 
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
         assert_empty_bits::<24>(value)?;
-        // SAFETY: Type ensures our remaining len == 8
+        // Type ensures our remaining len == 8
         Ok(Self(i64::from_be_bytes(value[24..].try_into().unwrap())))
     }
 }
 
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<U256> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        Ok(Self(U256::from_big_endian(value)))
+impl<'a> From<&'a [u8; 32]> for Parameter<U256> {
+    fn from(value: &'a [u8; 32]) -> Self {
+        Self(U256::from_big_endian(value))
     }
 }
 
-struct ArrayChunks<'a, T: Sized, const CHUNK_SIZE: usize> {
-    src: &'a [T],
-    cursor: usize,
+type U256Reader<'a> = PaddedChunks<'a, u8, 32>;
+
+// will be nicer with https://github.com/rust-lang/rust/issues/74985
+/// Wrapper around `ChunksExact` that pads instead of overflowing.
+/// Also provides a nice API interface for reading Parameters from input
+struct PaddedChunks<'a, T: Sized + Copy, const CHUNK_SIZE: usize> {
+    slice: &'a [T],
+    chunks: ChunksExact<'a, T>,
+    exhausted: bool,
 }
 
-impl<'a, T: Sized, const N: usize> ArrayChunks<'a, T, N> {
+impl<'a, T: Sized + Copy, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZE> {
     pub(super) fn new(slice: &'a [T]) -> Self {
-        Self { src: slice, cursor: 0 }
+        Self { slice, chunks: slice.chunks_exact(CHUNK_SIZE), exhausted: false }
     }
 
-    pub fn next(&mut self) -> Option<&[T; N]> {
-        let index = self.cursor * N;
-        self.src.get(index..index + N).map(|slice| {
-            self.cursor += 1;
-            match slice.try_into() {
-                Ok(a) => a,
-                Err(_) => unreachable!(),
-            }
-        })
+    pub fn next(&mut self) -> Option<&[T; CHUNK_SIZE]> {
+        self.chunks.next().map(|s| s.try_into().unwrap())
     }
 
-    pub fn bytes_read(&self) -> usize {
-        self.cursor * N
+    pub fn next_padded(&mut self) -> [T; CHUNK_SIZE]
+    where
+        T: Default,
+    {
+        if self.chunks.len() > 0 {
+            self.next().copied().unwrap_or([T::default(); CHUNK_SIZE])
+        } else if self.exhausted() {
+            [T::default(); CHUNK_SIZE]
+        } else {
+            self.exhausted = true;
+            let mut buf = [T::default(); CHUNK_SIZE];
+            let remainder = self.chunks.remainder();
+            buf[..remainder.len()].copy_from_slice(remainder);
+            buf
+        }
     }
 
-    // pub fn next_param_into<V>(&mut self) -> Result<V, PrecompileError>
-    // where
-    //     T: Copy,
-    //     Parameter<V>: for<'from> From<&'from [T; N]>,
-    // {
-    //     Ok(Parameter::<V>::from(self.next().ok_or(PrecompileError::IncorrectInputSize)?).0)
-    // }
+    pub fn exhausted(&self) -> bool {
+        self.exhausted
+    }
 
+    pub fn remaining_len(&self) -> usize {
+        if self.exhausted {
+            0
+        } else {
+            self.chunks.len() * CHUNK_SIZE + self.chunks.remainder().len()
+        }
+    }
+
+    pub fn chunks_read(&self) -> usize {
+        let total_chunks = self.slice.len() / CHUNK_SIZE;
+        let unread_chunks = self.chunks.len();
+        total_chunks - unread_chunks
+    }
+
+    // remaining unpadded slice of unread items
+    pub fn remaining_slice(&self) -> &[T] {
+        let start = self.slice.len() - self.remaining_len();
+        &self.slice[start..]
+    }
+
+    // tries to read an unpadded and exact (aligned) parameter
     pub fn next_param<V>(&mut self) -> Result<V, PrecompileError>
     where
-        T: Copy,
-        Parameter<V>: for<'from> TryFrom<&'from [T; N], Error = PrecompileError>,
+        Parameter<V>: for<'from> TryFrom<&'from [T; CHUNK_SIZE], Error = PrecompileError>,
     {
         Parameter::<V>::try_from(self.next().ok_or(PrecompileError::IncorrectInputSize)?)
             .map(|a| a.0)
+    }
+
+    // tries to read a parameter with padding
+    pub fn next_param_padded<V>(&mut self) -> Result<V, PrecompileError>
+    where
+        T: Default,
+        Parameter<V>: for<'from> TryFrom<&'from [T; CHUNK_SIZE], Error = PrecompileError>,
+    {
+        Parameter::<V>::try_from(&self.next_padded()).map(|a| a.0)
+    }
+
+    // read a parameter with padding
+    pub fn next_into_param_padded<V>(&mut self) -> V
+    where
+        T: Default,
+        Parameter<V>: for<'from> From<&'from [T; CHUNK_SIZE]>,
+    {
+        Parameter::<V>::from(&self.next_padded()).0
     }
 }
 
@@ -267,7 +326,7 @@ fn get_actor_code_cid<RT: Runtime>(
 /// | randomness_type  | U256 - low i32: `Chain`(0) OR `Beacon`(1) |
 /// | personalization  | U256 - low i64             |
 /// | randomness_epoch | U256 - low i64             |
-/// | entropy_length   | U256 - low u64             |
+/// | entropy_length   | U256 - low u32             |
 /// | entropy          | input\[32..] (right padded)|
 ///
 /// any bytes in between values are ignored
@@ -275,10 +334,7 @@ fn get_actor_code_cid<RT: Runtime>(
 /// Returns empty array if invalid randomness type
 /// Errors if unable to fetch randomness
 fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
-    let parameter_len = 32 * 4;
-
-    let input = read_right_pad(input, parameter_len);
-    let mut input_params: ArrayChunks<u8, 32> = ArrayChunks::new(&input);
+    let mut input_params = U256Reader::new(input);
 
     #[derive(num_derive::FromPrimitive)]
     #[repr(i32)]
@@ -287,12 +343,14 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> P
         Beacon = 1,
     }
 
-    let randomness_type = RandomnessType::from_i32(input_params.next_param::<i32>()?);
-    let personalization = input_params.next_param::<i64>()?;
-    let rand_epoch = input_params.next_param::<i64>()?;
-    let entropy_len = input_params.next_param::<u64>()?;
+    let randomness_type = RandomnessType::from_i32(input_params.next_param_padded::<i32>()?);
+    let personalization = input_params.next_param_padded::<i64>()?;
+    let rand_epoch = input_params.next_param_padded::<i64>()?;
+    let entropy_len = input_params.next_param_padded::<u32>()?;
 
-    let entropy = read_right_pad(&input[parameter_len..], entropy_len as usize);
+    debug_assert_eq!(input_params.chunks_read(), 4);
+
+    let entropy = read_right_pad(input_params.remaining_slice(), entropy_len as usize);
 
     let randomness = match randomness_type {
         Some(RandomnessType::Chain) => rt
@@ -310,8 +368,8 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> P
 /// Read BE encoded low u64 ID address from a u256 word
 /// Looks up and returns the other address (encoded f2 or f4 addresses) of an ID address, returning empty array if not found
 fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
-    let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
-    let id = Parameter::<u64>::try_from(&id_bytes)?.0;
+    let mut id_bytes = U256Reader::new(input);
+    let id = id_bytes.next_param_padded::<u64>()?;
 
     let address = rt.lookup_address(id);
     let ab = match address {
@@ -325,12 +383,10 @@ fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> P
 /// Resolves a FIL encoded address into an ID address
 /// returns BE encoded u64 or empty array if nothing found
 fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
-    let param_bytes = read_right_pad(input, 32);
-    let mut input_params: ArrayChunks<u8, 32> = ArrayChunks::new(&param_bytes);
+    let mut input_params = U256Reader::new(input);
 
-    let len = input_params.next_param::<u32>()? as usize;
-    let addr = match Address::from_bytes(&read_right_pad(&input[input_params.bytes_read()..], len))
-    {
+    let len = input_params.next_param_padded::<u32>()? as usize;
+    let addr = match Address::from_bytes(&read_right_pad(input_params.remaining_slice(), len)) {
         Ok(o) => o,
         Err(_) => return Ok(Vec::new()),
     };
@@ -351,9 +407,6 @@ fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> 
 /// - positive are user errors (from the called actor)
 /// - 0 is success
 pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) -> PrecompileResult {
-    // exit_code, codec, offset, size
-    const VALUES_LEN: usize = 4 * 32;
-
     // TODO Until we support readonly (static) calls at the fvm level, we disallow callactor
     //      when in static mode as it is sticky and there are no guarantee of preserving the
     //      static invariant
@@ -363,29 +416,29 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
 
     // ----- Input Parameters -------
 
-    let input_read = read_right_pad(input, 32 * 4);
-    let mut input_params: ArrayChunks<u8, 32> = ArrayChunks::new(&input_read);
+    let mut input_params = U256Reader::new(input);
 
-    let method: u64 = input_params.next_param()?;
-    let codec: u64 = input_params.next_param()?;
+    let method: u64 = input_params.next_param_padded()?;
+    let codec: u64 = input_params.next_param_padded()?;
     // TODO only CBOR for now
     if codec != fvm_ipld_encoding::DAG_CBOR {
         return Err(PrecompileError::InvalidInput);
     }
 
-    let address_size = input_params.next_param::<u32>()? as usize;
-    let send_data_size = input_params.next_param::<u32>()? as usize;
+    let address_size = input_params.next_param_padded::<u32>()? as usize;
+    let send_data_size = input_params.next_param_padded::<u32>()? as usize;
 
     // ------ Begin Call -------
 
     let result = {
         // REMOVEME: closes https://github.com/filecoin-project/ref-fvm/issues/1018
 
-        let start = input_params.bytes_read();
+        let start = input_params.remaining_slice();
+        let bytes = read_right_pad(start, send_data_size + address_size);
 
-        let input_data = read_right_pad(&input_read[start..], send_data_size);
-        let address = read_right_pad(&input_read[start + send_data_size..], address_size);
-        let address = Address::from_bytes(&address).map_err(|_| PrecompileError::InvalidInput)?;
+        let input_data = &bytes[..send_data_size];
+        let address = &bytes[send_data_size..address_size];
+        let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
 
         // TODO passing underlying gas into send when implemented in FVM
         rt.send(
@@ -395,6 +448,8 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
             TokenAmount::from(&ctx.value),
         )
     };
+
+    // ------ Build Output -------
 
     let output = {
         // negative values are syscall errors
@@ -417,13 +472,15 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
             Ok(ret) => (U256::zero(), ret),
         };
 
+        let num_output_params = 3;
+
         // codec of return data
         // TODO hardcoded to CBOR for now
         let codec = U256::from(fvm_ipld_encoding::DAG_CBOR);
-        let offset = U256::from(VALUES_LEN);
+        let offset = U256::from(num_output_params * 32);
         let size = U256::from(data.len());
 
-        let mut output = Vec::with_capacity(VALUES_LEN + data.len());
+        let mut output = Vec::with_capacity(num_output_params * 32 + data.len());
         output.extend_from_slice(
             &[exit_code.to_bytes(), codec.to_bytes(), offset.to_bytes(), size.to_bytes()].concat(),
         );
@@ -442,7 +499,7 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     let input = read_right_pad(input, 128);
-    let mut input_params: ArrayChunks<u8, 32> = ArrayChunks::new(&input);
+    let mut input_params = U256Reader::new(&input);
 
     let hash: [u8; SECP_SIG_MESSAGE_HASH_SIZE] = *input_params.next().unwrap();
     let recovery_byte = input_params.next_param::<u8>();
@@ -557,16 +614,6 @@ fn modexp<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> Precomp
     Ok(output)
 }
 
-/// reads a point from 2, 32 byte coordinates with right padding
-/// exits with EcErr for any failed operation
-/// panics if input.len() < 64
-fn curve_point(input: &[u8]) -> Result<G1, PrecompileError> {
-    let x = Fq::from_u256(U256::from_big_endian(&input[0..32]).into())?;
-    let y = Fq::from_u256(U256::from_big_endian(&input[32..64]).into())?;
-
-    Ok(if x.is_zero() && y.is_zero() { G1::zero() } else { AffineG1::new(x, y)?.into() })
-}
-
 fn curve_to_vec(curve: G1) -> Vec<u8> {
     AffineG1::from_jacobian(curve)
         .map(|product| {
@@ -580,9 +627,9 @@ fn curve_to_vec(curve: G1) -> Vec<u8> {
 
 /// add 2 points together on an elliptic curve
 fn ec_add<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
-    let input = read_right_pad(input, 128);
-    let point1 = curve_point(&input)?;
-    let point2 = curve_point(&input[64..128])?;
+    let mut input_params: PaddedChunks<u8, 64> = PaddedChunks::new(input);
+    let point1 = input_params.next_param_padded()?;
+    let point2 = input_params.next_param_padded()?;
 
     Ok(curve_to_vec(point1 + point2))
 }
@@ -590,10 +637,11 @@ fn ec_add<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> Precomp
 /// multiply a point on an elliptic curve by a scalar value
 fn ec_mul<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     let input = read_right_pad(input, 96);
-    let point = curve_point(&input)?;
+    let mut input_params: PaddedChunks<u8, 64> = PaddedChunks::new(&input);
+    let point = input_params.next_param_padded()?;
 
     let scalar = {
-        let data = U256::from_big_endian(&input[64..96]);
+        let data = U256::from_big_endian(&input_params.remaining_slice()[..32]);
         Fr::new_mul_factor(data.into())
     };
 
@@ -603,23 +651,19 @@ fn ec_mul<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> Precomp
 /// pairs multple groups of twisted bn curves
 fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
-        /// read 32 bytes (u256) from buffer or error
-        fn read_u256(input: &[u8], start: usize) -> Result<U256, PrecompileError> {
-            let slice = input.get(start..start + 32).ok_or(PrecompileError::IncorrectInputSize)?;
-            Ok(U256::from_big_endian(slice))
-        }
+        let mut i_in = U256Reader::new(input);
 
-        let x = Fq::from_u256(read_u256(input, 0)?.into())?;
-        let y = Fq::from_u256(read_u256(input, 32)?.into())?;
+        let x = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
+        let y = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
 
         let twisted_x = {
-            let b = Fq::from_u256(read_u256(input, 64)?.into())?;
-            let a = Fq::from_u256(read_u256(input, 96)?.into())?;
+            let b = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
+            let a = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
             Fq2::new(a, b)
         };
         let twisted_y = {
-            let b = Fq::from_u256(read_u256(input, 128)?.into())?;
-            let a = Fq::from_u256(read_u256(input, 160)?.into())?;
+            let b = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
+            let a = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
             Fq2::new(a, b)
         };
 
