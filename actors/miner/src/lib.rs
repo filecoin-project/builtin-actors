@@ -131,6 +131,7 @@ pub enum Method {
     ChangeMultiaddrsExported = frc42_dispatch::method_hash!("ChangeMultiaddrs"),
     ConfirmUpdateWorkerKeyExported = frc42_dispatch::method_hash!("ConfirmUpdateWorkerKey"),
     RepayDebtExported = frc42_dispatch::method_hash!("RepayDebt"),
+    ChangeOwnerAddressExported = frc42_dispatch::method_hash!("ChangeOwnerAddress"),
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
     GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
@@ -5023,7 +5024,7 @@ impl ActorCode for Actor {
                 Self::repay_debt(rt)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::ChangeOwnerAddress) => {
+            Some(Method::ChangeOwnerAddress) | Some(Method::ChangeOwnerAddressExported) => {
                 Self::change_owner_address(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }

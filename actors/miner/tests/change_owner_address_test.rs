@@ -1,6 +1,9 @@
+use fil_actor_miner::{Actor, Method};
 use fil_actors_runtime::test_utils::{
-    expect_abort, new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, make_identity_cid, new_bls_addr, MockRuntime,
+    ACCOUNT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
 };
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::{address::Address, error::ExitCode};
 
@@ -44,6 +47,47 @@ fn successful_change() {
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, NEW_ADDRESS);
     h.change_owner_address(&mut rt, NEW_ADDRESS).unwrap();
 
+    let info = h.get_info(&rt);
+    assert_eq!(NEW_ADDRESS, info.owner);
+    assert_eq!(NEW_ADDRESS, info.beneficiary);
+    assert!(info.pending_owner_address.is_none());
+
+    h.check_state(&rt);
+}
+
+#[test]
+fn change_owner_address_restricted_correctly() {
+    let (h, mut rt) = setup();
+
+    let params = &RawBytes::serialize(NEW_ADDRESS).unwrap();
+    rt.set_caller(make_identity_cid(b"1234"), h.owner);
+
+    // fail to call the unexported method
+
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<Actor>(Method::ChangeOwnerAddress as u64, &params),
+    );
+
+    // can call the exported method
+
+    rt.expect_validate_caller_addr(vec![h.owner]);
+    rt.call::<Actor>(Method::ChangeOwnerAddressExported as u64, params).unwrap();
+
+    rt.verify();
+
+    let info = h.get_info(&rt);
+    assert_eq!(h.owner, info.owner);
+    assert_eq!(NEW_ADDRESS, info.pending_owner_address.unwrap());
+
+    // new owner can also call the exported method
+
+    rt.expect_validate_caller_addr(vec![NEW_ADDRESS]);
+    rt.set_caller(make_identity_cid(b"1234"), NEW_ADDRESS);
+    rt.call::<Actor>(Method::ChangeOwnerAddressExported as u64, params).unwrap();
+
+    rt.verify();
     let info = h.get_info(&rt);
     assert_eq!(NEW_ADDRESS, info.owner);
     assert_eq!(NEW_ADDRESS, info.beneficiary);
