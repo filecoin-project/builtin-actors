@@ -118,7 +118,7 @@ pub fn make_builtin(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
 }
 
-struct ActorExit {
+pub struct ActorExit {
     code: u32,
     data: RawBytes,
     msg: Option<String>,
@@ -174,7 +174,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub tipset_cids: Vec<Cid>,
 
     // actor exits
-    actor_exit: RefCell<Option<ActorExit>>,
+    pub actor_exit: RefCell<Option<ActorExit>>,
 }
 
 #[derive(Default)]
