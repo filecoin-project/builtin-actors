@@ -536,7 +536,7 @@ pub struct GetPeerIDReturn {
     pub peer_id: Vec<u8>,
 }
 
-#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct GetMultiaddrsReturn {
     pub multi_addrs: Vec<BytesDe>,
 }
