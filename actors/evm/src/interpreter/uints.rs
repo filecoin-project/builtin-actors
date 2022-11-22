@@ -52,9 +52,16 @@ impl U256 {
         (self.0[3] as i64) < 0
     }
 
+    /// turns a i256 value to negative
     #[inline(always)]
     pub fn i256_neg(&self) -> U256 {
         !*self + U256::ONE
+    }
+
+    pub fn to_bytes(&self) -> [u8; 32] {
+        let mut buf = [0u8; 32];
+        self.to_big_endian(&mut buf);
+        buf
     }
 }
 

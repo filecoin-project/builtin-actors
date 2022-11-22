@@ -1,6 +1,8 @@
 use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::{address::Address, METHOD_SEND};
 
+use crate::interpreter::precompiles::PrecompileContext;
+
 use {
     super::memory::{copy_to_memory, get_memory_region},
     crate::interpreter::address::EthAddress,
@@ -81,7 +83,7 @@ pub fn call<RT: Runtime>(
 
     // NOTE gas is currently ignored as FVM's send doesn't allow the caller to specify a gas
     //      limit (external invocation gas limit applies). This may changed in the future.
-    let (_gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
+    let (gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
         CallKind::Call | CallKind::CallCode => (
             stack.pop(),
             stack.pop(),
@@ -120,9 +122,15 @@ pub fn call<RT: Runtime>(
         };
 
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
+            let context = PrecompileContext {
+                is_static: matches!(kind, CallKind::StaticCall) || system.readonly,
+                gas,
+                value,
+            };
+
             // TODO: DO NOT FAIL!!!
-            precompiles::Precompiles::call_precompile(system.rt, dst, input_data)
-                .map_err(|_| StatusCode::PrecompileFailure)?
+            precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
+                .map_err(StatusCode::from)?
         } else {
             let call_result = match kind {
                 CallKind::Call | CallKind::StaticCall => {
