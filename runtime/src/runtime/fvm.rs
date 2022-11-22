@@ -426,6 +426,10 @@ where
         fvm::event::emit_event(event)
             .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to emit event")
     }
+
+    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
+        fvm::vm::exit(code, data, msg)
+    }
 }
 
 impl<B> Primitives for FvmRuntime<B>
