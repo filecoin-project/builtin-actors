@@ -456,25 +456,7 @@ impl<'bs> VM<'bs> {
             subinvocations: RefCell::new(vec![]),
             actor_exit: RefCell::new(None),
         };
-        let res: Result<RawBytes, ActorError> =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| new_ctx.invoke()))
-                .unwrap_or_else(|panic| {
-                    if new_ctx.actor_exit.borrow().is_some() {
-                        let exit = new_ctx.actor_exit.take().unwrap();
-                        new_ctx.actor_exit.replace(None);
-                        if exit.code == 0 {
-                            Ok(exit.data)
-                        } else {
-                            Err(ActorError::unchecked_with_data(
-                                ExitCode::new(exit.code),
-                                exit.msg.unwrap_or_else(|| "actor exited".to_owned()),
-                                exit.data,
-                            ))
-                        }
-                    } else {
-                        std::panic::resume_unwind(panic)
-                    }
-                });
+        let res = new_ctx.invoke_actor();
 
         let invoc = new_ctx.gather_trace(res.clone());
         RefMut::map(self.invocations.borrow_mut(), |invocs| {
@@ -702,6 +684,27 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
     fn to(&'_ self) -> Address {
         self.resolve_target(&self.msg.to).unwrap().1
+    }
+
+    fn invoke_actor(&mut self) -> Result<RawBytes, ActorError> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.invoke()))
+            .unwrap_or_else(|panic| {
+                if self.actor_exit.borrow().is_some() {
+                    let exit = self.actor_exit.take().unwrap();
+                    self.actor_exit.replace(None);
+                    if exit.code == 0 {
+                        Ok(exit.data)
+                    } else {
+                        Err(ActorError::unchecked_with_data(
+                            ExitCode::new(exit.code),
+                            exit.msg.unwrap_or_else(|| "actor exited".to_owned()),
+                            exit.data,
+                        ))
+                    }
+                } else {
+                    std::panic::resume_unwind(panic)
+                }
+            })
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
@@ -966,26 +969,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             subinvocations: RefCell::new(vec![]),
             actor_exit: RefCell::new(None),
         };
-        let res: Result<RawBytes, ActorError> =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| new_ctx.invoke()))
-                .unwrap_or_else(|panic| {
-                    if new_ctx.actor_exit.borrow().is_some() {
-                        let exit = new_ctx.actor_exit.take().unwrap();
-                        new_ctx.actor_exit.replace(None);
-                        if exit.code == 0 {
-                            Ok(exit.data)
-                        } else {
-                            Err(ActorError::unchecked_with_data(
-                                ExitCode::new(exit.code),
-                                exit.msg.unwrap_or_else(|| "actor exited".to_owned()),
-                                exit.data,
-                            ))
-                        }
-                    } else {
-                        std::panic::resume_unwind(panic)
-                    }
-                });
-
+        let res = new_ctx.invoke_actor();
         let invoc = new_ctx.gather_trace(res.clone());
         RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
             subinvocs.push(invoc);
