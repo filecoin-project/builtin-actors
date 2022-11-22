@@ -17,7 +17,8 @@ push1 0x04
 push1 0x1c # skip top 28 bytes
 revert
 "#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let mut rt = util::construct_and_verify(contract);
     rt.expect_validate_caller_any();
@@ -30,10 +31,7 @@ revert
     let e = result.unwrap_err();
     assert_eq!(e.exit_code(), evm::EVM_CONTRACT_REVERTED);
     assert_eq!(e.data(), RawBytes::from(vec![0xde, 0xad, 0xbe, 0xef]));
-
 }
 
 #[test]
-fn call_revert() {
-
-}
+fn call_revert() {}
