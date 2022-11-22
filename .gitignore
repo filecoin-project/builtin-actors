@@ -3,4 +3,4 @@ target
 *.wasm
 .idea/
 **/.DS_Store
-output/builtin-actors.car
+output/*
