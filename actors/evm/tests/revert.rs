@@ -5,7 +5,7 @@ mod asm;
 mod util;
 
 #[test]
-fn naked_revert() {
+fn test_revert() {
     let contract = asm::new_contract(
         "naked-revert",
         "",
@@ -32,6 +32,3 @@ revert
     assert_eq!(e.exit_code(), evm::EVM_CONTRACT_REVERTED);
     assert_eq!(e.data(), RawBytes::from(vec![0xde, 0xad, 0xbe, 0xef]));
 }
-
-#[test]
-fn call_revert() {}
