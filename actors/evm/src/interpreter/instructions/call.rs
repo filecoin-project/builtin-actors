@@ -14,9 +14,10 @@ use {
     crate::interpreter::System,
     crate::interpreter::U256,
     crate::RawBytes,
-    crate::{DelegateCallParams, Method, EVM_CONTRACT_REVERTED},
+    crate::{DelegateCallParams, Method, EVM_CONTRACT_EXECUTION_ERROR, EVM_CONTRACT_REVERTED},
     fil_actors_runtime::runtime::builtins::Type,
     fil_actors_runtime::runtime::Runtime,
+    fil_actors_runtime::ActorError,
     fvm_shared::econ::TokenAmount,
 };
 
@@ -113,7 +114,7 @@ pub fn call<RT: Runtime>(
     let input_region = get_memory_region(memory, input_offset, input_size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    state.return_data = {
+    let (call_result, return_data) = {
         // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
             &memory[offset..][..size.get()]
@@ -128,9 +129,15 @@ pub fn call<RT: Runtime>(
                 value,
             };
 
-            // TODO: DO NOT FAIL!!!
-            precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
-                .map_err(StatusCode::from)?
+            match precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
+                .map_err(StatusCode::from)
+            {
+                Ok(return_data) => (1, return_data),
+                Err(status) => {
+                    let msg = format!("{}", status);
+                    (0, msg.as_bytes().to_vec())
+                }
+            }
         } else {
             let call_result = match kind {
                 CallKind::Call | CallKind::StaticCall => {
@@ -199,41 +206,47 @@ pub fn call<RT: Runtime>(
                     )
                 }
 
-                CallKind::CallCode => {
-                    todo!()
-                }
+                CallKind::CallCode => Err(ActorError::unchecked(
+                    EVM_CONTRACT_EXECUTION_ERROR,
+                    "unsupported opcode".to_string(),
+                )),
             };
             match call_result {
                 Ok(result) => {
                     // Support the "empty" result. We often use this to mean "returned nothing" and
                     // it's important to support, e.g., sending to accounts.
                     if result.is_empty() {
-                        Vec::new()
+                        (1, Vec::new())
                     } else {
                         // TODO: support IPLD codecs #758
                         let BytesDe(result) = result.deserialize()?;
-                        result
+                        (1, result)
                     }
                 }
-                Err(ae) => {
-                    return if ae.exit_code() == EVM_CONTRACT_REVERTED {
-                        // reverted -- we don't have return data yet
-                        // push failure
-                        stack.push(U256::zero());
-                        Ok(())
-                    } else {
-                        Err(StatusCode::from(ae))
-                    };
-                }
+                Err(ae) => match ae.exit_code() {
+                    EVM_CONTRACT_REVERTED | EVM_CONTRACT_EXECUTION_ERROR => (0, ae.data().to_vec()),
+                    _ => {
+                        let msg_data = {
+                            let data = ae.data();
+                            if data.is_empty() {
+                                ae.msg().as_bytes().to_vec()
+                            } else {
+                                data.to_vec()
+                            }
+                        };
+                        (0, msg_data)
+                    }
+                },
             }
         }
-    }
-    .into();
+    };
+
+    state.return_data = return_data.into();
 
     // copy return data to output region if it is non-zero
     copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
 
-    stack.push(U256::from(1));
+    stack.push(U256::from(call_result));
     Ok(())
 }
 
