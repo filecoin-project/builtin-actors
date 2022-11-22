@@ -23,7 +23,7 @@
 %end
 
 %macro check()
-  not
+  iszero
   %push(call_failed)
   jumpi
 %end
