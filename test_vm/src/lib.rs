@@ -687,8 +687,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     }
 
     fn invoke_actor(&mut self) -> Result<RawBytes, ActorError> {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.invoke()))
-            .unwrap_or_else(|panic| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.invoke())).unwrap_or_else(
+            |panic| {
                 if self.actor_exit.borrow().is_some() {
                     let exit = self.actor_exit.take().unwrap();
                     self.actor_exit.replace(None);
@@ -704,7 +704,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 } else {
                     std::panic::resume_unwind(panic)
                 }
-            })
+            },
+        )
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
