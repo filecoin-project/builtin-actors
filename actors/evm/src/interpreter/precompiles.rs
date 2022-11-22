@@ -173,13 +173,14 @@ impl<'a, T: Sized + Copy, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZ
     }
 
     // // tries to read an unpadded and exact (aligned) parameter
-    // pub fn next_param<V>(&mut self) -> Result<V, PrecompileError>
-    // where
-    //     Parameter<V>: for<'from> TryFrom<&'from [T; CHUNK_SIZE], Error = PrecompileError>,
-    // {
-    //     Parameter::<V>::try_from(self.next().ok_or(PrecompileError::IncorrectInputSize)?)
-    //         .map(|a| a.0)
-    // }
+    #[allow(unused)]
+    pub fn next_param<V>(&mut self) -> Result<V, PrecompileError>
+    where
+        Parameter<V>: for<'from> TryFrom<&'from [T; CHUNK_SIZE], Error = PrecompileError>,
+    {
+        Parameter::<V>::try_from(self.next().ok_or(PrecompileError::IncorrectInputSize)?)
+            .map(|a| a.0)
+    }
 
     // tries to read a parameter with padding
     pub fn next_param_padded<V>(&mut self) -> Result<V, PrecompileError>
@@ -190,14 +191,14 @@ impl<'a, T: Sized + Copy, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZ
         Parameter::<V>::try_from(&self.next_padded()).map(|a| a.0)
     }
 
-    // // read a parameter with padding
-    // pub fn next_into_param_padded<V>(&mut self) -> V
-    // where
-    //     T: Default,
-    //     Parameter<V>: for<'from> From<&'from [T; CHUNK_SIZE]>,
-    // {
-    //     Parameter::<V>::from(&self.next_padded()).0
-    // }
+    #[allow(unused)]
+    pub fn next_into_param_padded<V>(&mut self) -> V
+    where
+        T: Default,
+        Parameter<V>: for<'from> From<&'from [T; CHUNK_SIZE]>,
+    {
+        Parameter::<V>::from(&self.next_padded()).0
+    }
 
     // read a parameter with padding
     pub fn next_into_param<V>(&mut self) -> Result<V, PrecompileError>
