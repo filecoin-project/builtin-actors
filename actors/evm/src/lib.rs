@@ -123,7 +123,7 @@ impl EvmContractActor {
                 EVM_CONTRACT_REVERTED.value(),
                 RawBytes::from(exec_status.output_data.to_vec()),
                 Some("constructor reverted"),
-            );
+            )
         } else if exec_status.status_code == StatusCode::Success {
             system.set_bytecode(&exec_status.output_data)?;
             system.flush()
@@ -189,7 +189,7 @@ impl EvmContractActor {
             rt.exit(
                 EVM_CONTRACT_REVERTED.value(),
                 RawBytes::from(exec_status.output_data.to_vec()),
-                Some("constructor reverted"),
+                Some("contract reverted"),
             );
         } else if exec_status.status_code == StatusCode::Success {
             system.flush()?;
@@ -200,8 +200,8 @@ impl EvmContractActor {
             rt.exit(
                 EVM_CONTRACT_EXECUTION_ERROR.value(),
                 RawBytes::from(msg.as_bytes().to_vec()),
-                Some("constructor failed"),
-            )
+                Some("contract execution error"),
+            );
         }
 
         if let Some(addr) = exec_status.selfdestroyed {
