@@ -32,7 +32,7 @@ fn successfully_changes_the_worker_address() {
 
     // confirm at effective epoch
     rt.set_epoch(effective_epoch);
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     let state: State = rt.get_state();
     let info = state.get_info(rt.store()).unwrap();
@@ -52,7 +52,7 @@ fn does_nothing_before_the_effective_date() {
 
     // confirm right before the effective epoch
     rt.set_epoch(effective_epoch - 1);
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     let state: State = rt.get_state();
     let info = state.get_info(rt.store()).unwrap();
@@ -70,7 +70,7 @@ fn does_nothing_before_the_effective_date() {
 fn does_nothing_when_no_update_is_set() {
     let (h, mut rt) = setup();
 
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     let state: State = rt.get_state();
     let info = state.get_info(rt.store()).unwrap();

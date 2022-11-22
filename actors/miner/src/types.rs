@@ -527,3 +527,14 @@ pub struct GetVestingFundsReturn {
 }
 
 impl Cbor for GetVestingFundsReturn {}
+
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct GetPeerIDReturn {
+    #[serde(with = "serde_bytes")]
+    pub peer_id: Vec<u8>,
+}
+
+#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct GetMultiaddrsReturn {
+    pub multi_addrs: Vec<BytesDe>,
+}
