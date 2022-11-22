@@ -118,6 +118,12 @@ pub fn make_builtin(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
 }
 
+struct ActorExit {
+    code: u32,
+    data: RawBytes,
+    msg: Option<String>,
+}
+
 pub struct MockRuntime<BS = MemoryBlockstore> {
     pub epoch: ChainEpoch,
     pub miner: Address,
@@ -166,6 +172,9 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub actor_balances: HashMap<ActorID, TokenAmount>,
     pub tipset_timestamp: u64,
     pub tipset_cids: Vec<Cid>,
+
+    // actor exits
+    actor_exit: RefCell<Option<ActorExit>>,
 }
 
 #[derive(Default)]
@@ -335,6 +344,7 @@ impl<BS> MockRuntime<BS> {
             actor_balances: Default::default(),
             tipset_timestamp: Default::default(),
             tipset_cids: Default::default(),
+            actor_exit: Default::default(),
         }
     }
 }
@@ -528,7 +538,27 @@ impl<BS: Blockstore> MockRuntime<BS> {
     ) -> Result<RawBytes, ActorError> {
         self.in_call = true;
         let prev_state = self.state;
-        let res = A::invoke_method(self, method_num, params);
+        let res: Result<RawBytes, ActorError> =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                A::invoke_method(self, method_num, params)
+            }))
+            .unwrap_or_else(|panic| {
+                if self.actor_exit.borrow().is_some() {
+                    let exit = self.actor_exit.take().unwrap();
+                    self.actor_exit.replace(None);
+                    if exit.code == 0 {
+                        Ok(exit.data)
+                    } else {
+                        Err(ActorError::unchecked_with_data(
+                            ExitCode::new(exit.code),
+                            exit.msg.unwrap_or_else(|| "actor exited".to_owned()),
+                            exit.data,
+                        ))
+                    }
+                } else {
+                    std::panic::resume_unwind(panic)
+                }
+            });
 
         if res.is_err() {
             self.state = prev_state;
@@ -1267,6 +1297,11 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         assert_eq!(*event, expected);
 
         Ok(())
+    }
+
+    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
+        self.actor_exit.replace(Some(ActorExit { code, data, msg: msg.map(|s| s.to_owned()) }));
+        std::panic::panic_any("actor exit");
     }
 }
 
