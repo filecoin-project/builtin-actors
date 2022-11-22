@@ -25,7 +25,7 @@ lazy_static::lazy_static! {
 }
 
 /// ensures top bits are zeroed
-fn assert_empty_bits<const S: usize>(src: &[u8]) -> Result<(), PrecompileError> {
+fn assert_zero_bytes<const S: usize>(src: &[u8]) -> Result<(), PrecompileError> {
     if src[..S] != [0u8; S] {
         Err(PrecompileError::InvalidInput)
     } else {
@@ -60,7 +60,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u32> {
     type Error = PrecompileError;
 
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_empty_bits::<28>(value)?;
+        assert_zero_bytes::<28>(value)?;
         // Type ensures our remaining len == 4
         Ok(Self(u32::from_be_bytes(value[28..].try_into().unwrap())))
     }
@@ -70,7 +70,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i32> {
     type Error = PrecompileError;
 
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_empty_bits::<28>(value)?;
+        assert_zero_bytes::<28>(value)?;
         // Type ensures our remaining len == 4
         Ok(Self(i32::from_be_bytes(value[28..].try_into().unwrap())))
     }
@@ -80,7 +80,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u8> {
     type Error = PrecompileError;
 
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_empty_bits::<31>(value)?;
+        assert_zero_bytes::<31>(value)?;
         Ok(Self(value[31]))
     }
 }
@@ -89,7 +89,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u64> {
     type Error = PrecompileError;
 
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_empty_bits::<24>(value)?;
+        assert_zero_bytes::<24>(value)?;
         // Type ensures our remaining len == 8
         Ok(Self(u64::from_be_bytes(value[24..].try_into().unwrap())))
     }
@@ -99,7 +99,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i64> {
     type Error = PrecompileError;
 
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_empty_bits::<24>(value)?;
+        assert_zero_bytes::<24>(value)?;
         // Type ensures our remaining len == 8
         Ok(Self(i64::from_be_bytes(value[24..].try_into().unwrap())))
     }
@@ -172,14 +172,14 @@ impl<'a, T: Sized + Copy, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZ
         &self.slice[start..]
     }
 
-    // tries to read an unpadded and exact (aligned) parameter
-    pub fn next_param<V>(&mut self) -> Result<V, PrecompileError>
-    where
-        Parameter<V>: for<'from> TryFrom<&'from [T; CHUNK_SIZE], Error = PrecompileError>,
-    {
-        Parameter::<V>::try_from(self.next().ok_or(PrecompileError::IncorrectInputSize)?)
-            .map(|a| a.0)
-    }
+    // // tries to read an unpadded and exact (aligned) parameter
+    // pub fn next_param<V>(&mut self) -> Result<V, PrecompileError>
+    // where
+    //     Parameter<V>: for<'from> TryFrom<&'from [T; CHUNK_SIZE], Error = PrecompileError>,
+    // {
+    //     Parameter::<V>::try_from(self.next().ok_or(PrecompileError::IncorrectInputSize)?)
+    //         .map(|a| a.0)
+    // }
 
     // tries to read a parameter with padding
     pub fn next_param_padded<V>(&mut self) -> Result<V, PrecompileError>
@@ -190,13 +190,22 @@ impl<'a, T: Sized + Copy, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZ
         Parameter::<V>::try_from(&self.next_padded()).map(|a| a.0)
     }
 
+    // // read a parameter with padding
+    // pub fn next_into_param_padded<V>(&mut self) -> V
+    // where
+    //     T: Default,
+    //     Parameter<V>: for<'from> From<&'from [T; CHUNK_SIZE]>,
+    // {
+    //     Parameter::<V>::from(&self.next_padded()).0
+    // }
+
     // read a parameter with padding
-    pub fn next_into_param_padded<V>(&mut self) -> V
+    pub fn next_into_param<V>(&mut self) -> Result<V, PrecompileError>
     where
         T: Default,
         Parameter<V>: for<'from> From<&'from [T; CHUNK_SIZE]>,
     {
-        Parameter::<V>::from(&self.next_padded()).0
+        self.next().map(|p| Parameter::<V>::from(p).0).ok_or(PrecompileError::IncorrectInputSize)
     }
 }
 
@@ -458,13 +467,9 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
         let (exit_code, data) = match result {
             Err(ae) => {
                 // TODO handle revert
+                // TODO https://github.com/filecoin-project/ref-fvm/issues/1020
                 // put error number from call into revert
                 let exit_code = U256::from(ae.exit_code().value());
-                let exit_code = if ae.exit_code().is_system_error() {
-                    exit_code.i256_neg()
-                } else {
-                    U256::zero()
-                };
 
                 // no return only exit code
                 (exit_code, RawBytes::default())
@@ -472,18 +477,19 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
             Ok(ret) => (U256::zero(), ret),
         };
 
-        let num_output_params = 3;
+        const NUM_OUTPUT_PARAMS: usize = 3;
 
         // codec of return data
         // TODO hardcoded to CBOR for now
         let codec = U256::from(fvm_ipld_encoding::DAG_CBOR);
-        let offset = U256::from(num_output_params * 32);
+        let offset = U256::from(NUM_OUTPUT_PARAMS * 32);
         let size = U256::from(data.len());
 
-        let mut output = Vec::with_capacity(num_output_params * 32 + data.len());
-        output.extend_from_slice(
-            &[exit_code.to_bytes(), codec.to_bytes(), offset.to_bytes(), size.to_bytes()].concat(),
-        );
+        let mut output = Vec::with_capacity(NUM_OUTPUT_PARAMS * 32 + data.len());
+        output.extend_from_slice(&exit_code.to_bytes());
+        output.extend_from_slice(&codec.to_bytes());
+        output.extend_from_slice(&offset.to_bytes());
+        output.extend_from_slice(&size.to_bytes());
         // NOTE:
         // we dont pad out to 32 bytes here, the idea being that users will already be in the "everythig is bytes" mode
         // and will want re-pack align and whatever else by themselves
@@ -498,13 +504,14 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
 
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
 fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
-    let input = read_right_pad(input, 128);
-    let mut input_params = U256Reader::new(&input);
+    let mut input_params = U256Reader::new(input);
 
-    let hash: [u8; SECP_SIG_MESSAGE_HASH_SIZE] = *input_params.next().unwrap();
-    let recovery_byte = input_params.next_param::<u8>();
-    let r = BigUint::from_bytes_be(input_params.next().unwrap());
-    let s = BigUint::from_bytes_be(input_params.next().unwrap());
+    let hash: [u8; SECP_SIG_MESSAGE_HASH_SIZE] = input_params.next_padded();
+    let recovery_byte = input_params.next_param_padded::<u8>();
+    let r = input_params.next_padded();
+    let s = input_params.next_padded();
+    let big_r = BigUint::from_bytes_be(&r);
+    let big_s = BigUint::from_bytes_be(&s);
 
     // recovery byte is a single byte value but is represented with 32 bytes, sad
     let v = match recovery_byte {
@@ -518,10 +525,10 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> Pr
         _ => return Ok(Vec::new()),
     };
 
-    let valid = if r <= BigUint::one() || s <= BigUint::one() {
+    let valid = if big_r <= BigUint::one() || big_s <= BigUint::one() {
         false
     } else {
-        r <= *SECP256K1 && s <= *SECP256K1 && (v == 0 || v == 1)
+        big_r <= *SECP256K1 && big_s <= *SECP256K1 && (v == 0 || v == 1)
     };
 
     if !valid {
@@ -529,7 +536,8 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> Pr
     }
 
     let mut sig: [u8; SECP_SIG_LEN] = [0u8; 65];
-    sig[..64].copy_from_slice(&input[64..128]);
+    sig[..32].copy_from_slice(&r);
+    sig[32..64].copy_from_slice(&s);
     sig[64] = v;
 
     let pubkey = if let Ok(key) = rt.recover_secp_public_key(&hash, &sig) {
@@ -653,17 +661,17 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> Pre
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
         let mut i_in = U256Reader::new(input);
 
-        let x = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
-        let y = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
+        let x = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
+        let y = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
 
         let twisted_x = {
-            let b = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
-            let a = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
+            let b = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
+            let a = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
             Fq2::new(a, b)
         };
         let twisted_y = {
-            let b = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
-            let a = Fq::from_u256(i_in.next_into_param_padded::<U256>().into())?;
+            let b = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
+            let a = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
             Fq2::new(a, b)
         };
 

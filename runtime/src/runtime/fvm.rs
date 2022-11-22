@@ -366,7 +366,7 @@ where
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
-        Ok(fvm::actor::new_actor_address())
+        Ok(fvm::actor::next_actor_address())
     }
 
     fn create_actor(
