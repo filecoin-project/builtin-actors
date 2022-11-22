@@ -51,7 +51,7 @@ fn successfully_change_only_the_worker_address() {
     rt.set_epoch(deadline.period_end());
     assert!(deadline.period_end() < effective_epoch);
 
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     let info = h.get_info(&rt);
     assert_eq!(info.pending_worker_key.unwrap().new_worker, new_worker);
@@ -61,7 +61,7 @@ fn successfully_change_only_the_worker_address() {
     rt.set_epoch(effective_epoch);
 
     // enact worker change
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     // assert address has changed
     let info = h.get_info(&rt);
@@ -129,12 +129,13 @@ fn change_and_confirm_worker_address_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, &RawBytes::default()),
+        rt.call::<Actor>(Method::ConfirmChangeWorkerAddress as u64, &RawBytes::default()),
     );
 
     // call the exported method
     rt.expect_validate_caller_addr(vec![h.owner]);
-    rt.call::<Actor>(Method::ConfirmUpdateWorkerKeyExported as u64, &RawBytes::default()).unwrap();
+    rt.call::<Actor>(Method::ConfirmChangeWorkerAddressExported as u64, &RawBytes::default())
+        .unwrap();
     rt.verify();
 
     // assert address has changed
@@ -171,7 +172,7 @@ fn change_cannot_be_overridden() {
     assert_eq!(pending_worker_key.effective_at, effective_epoch);
 
     rt.set_epoch(effective_epoch);
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     // assert original change is effected
     assert_eq!(new_worker_1, h.get_info(&rt).worker);
@@ -217,7 +218,7 @@ fn successfully_change_both_worker_and_control_addresses() {
 
     // set current epoch and update worker key
     rt.set_epoch(effective_epoch);
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     // assert both worker and control addresses have changed
     let info = h.get_info(&rt);

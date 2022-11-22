@@ -2260,10 +2260,10 @@ impl ActorHarness {
         ret
     }
 
-    pub fn confirm_update_worker_key(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
+    pub fn confirm_change_worker_address(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.owner]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
-        rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, &RawBytes::default())?;
+        rt.call::<Actor>(Method::ConfirmChangeWorkerAddress as u64, &RawBytes::default())?;
         rt.verify();
 
         Ok(())

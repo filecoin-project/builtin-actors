@@ -112,7 +112,7 @@ pub enum Method {
     ChangeMultiaddrs = 18,
     CompactPartitions = 19,
     CompactSectorNumbers = 20,
-    ConfirmUpdateWorkerKey = 21,
+    ConfirmChangeWorkerAddress = 21,
     RepayDebt = 22,
     ChangeOwnerAddress = 23,
     DisputeWindowedPoSt = 24,
@@ -129,7 +129,7 @@ pub enum Method {
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
     WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
     ChangeMultiaddrsExported = frc42_dispatch::method_hash!("ChangeMultiaddrs"),
-    ConfirmUpdateWorkerKeyExported = frc42_dispatch::method_hash!("ConfirmUpdateWorkerKey"),
+    ConfirmChangeWorkerAddressExported = frc42_dispatch::method_hash!("ConfirmChangeWorkerAddress"),
     RepayDebtExported = frc42_dispatch::method_hash!("RepayDebt"),
     ChangeOwnerAddressExported = frc42_dispatch::method_hash!("ChangeOwnerAddress"),
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
@@ -353,7 +353,7 @@ impl Actor {
     }
 
     /// Triggers a worker address change if a change has been requested and its effective epoch has arrived.
-    fn confirm_update_worker_key(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn confirm_change_worker_address(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.transaction(|state: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), state)?;
 
@@ -5032,8 +5032,9 @@ impl ActorCode for Actor {
                 Self::compact_sector_numbers(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::ConfirmUpdateWorkerKey) | Some(Method::ConfirmUpdateWorkerKeyExported) => {
-                Self::confirm_update_worker_key(rt)?;
+            Some(Method::ConfirmChangeWorkerAddress)
+            | Some(Method::ConfirmChangeWorkerAddressExported) => {
+                Self::confirm_change_worker_address(rt)?;
                 Ok(RawBytes::default())
             }
             Some(Method::RepayDebt) | Some(Method::RepayDebtExported) => {
