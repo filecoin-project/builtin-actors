@@ -329,12 +329,13 @@ where
                         // Otherwise, pass it through.
                         code => code,
                     };
-                    Err(ActorError::unchecked(
+                    Err(ActorError::unchecked_with_data(
                         exit_code,
                         format!(
                             "send to {} method {} aborted with code {}",
                             to, method, ret.exit_code
                         ),
+                        ret.return_data,
                     ))
                 }
             }

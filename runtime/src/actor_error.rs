@@ -18,14 +18,14 @@ pub struct ActorError {
 }
 
 impl ActorError {
-    pub fn new(exit_code: ExitCode, msg: String, data: RawBytes) -> Self {
-        Self { exit_code, msg, data }
-    }
-
     /// Creates a new ActorError. This method does not check that the code is in the
     /// range of valid actor abort codes.
     pub fn unchecked(code: ExitCode, msg: String) -> Self {
         Self { exit_code: code, msg, data: RawBytes::default() }
+    }
+
+    pub fn unchecked_with_data(code: ExitCode, msg: String, data: RawBytes) -> Self {
+        Self { exit_code: code, msg, data }
     }
 
     pub fn illegal_argument(msg: String) -> Self {
@@ -64,6 +64,11 @@ impl ActorError {
     /// Error message of the actor error.
     pub fn msg(&self) -> &str {
         &self.msg
+    }
+
+    /// Returns the optional data that might be associated with the error
+    pub fn data(&self) -> RawBytes {
+        self.data.clone()
     }
 
     /// Prefix error message with a string message.
