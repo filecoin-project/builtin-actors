@@ -112,7 +112,7 @@ pub enum Method {
     ChangeMultiaddrs = 18,
     CompactPartitions = 19,
     CompactSectorNumbers = 20,
-    ConfirmUpdateWorkerKey = 21,
+    ConfirmChangeWorkerAddress = 21,
     RepayDebt = 22,
     ChangeOwnerAddress = 23,
     DisputeWindowedPoSt = 24,
@@ -125,6 +125,13 @@ pub enum Method {
     GetBeneficiary = 31,
     ExtendSectorExpiration2 = 32,
     // Method numbers derived from FRC-0042 standards
+    ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
+    ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
+    WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
+    ChangeMultiaddrsExported = frc42_dispatch::method_hash!("ChangeMultiaddrs"),
+    ConfirmChangeWorkerAddressExported = frc42_dispatch::method_hash!("ConfirmChangeWorkerAddress"),
+    RepayDebtExported = frc42_dispatch::method_hash!("RepayDebt"),
+    ChangeOwnerAddressExported = frc42_dispatch::method_hash!("ChangeOwnerAddress"),
     ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
     GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
@@ -132,6 +139,8 @@ pub enum Method {
     GetSectorSizeExported = frc42_dispatch::method_hash!("GetSectorSize"),
     GetAvailableBalanceExported = frc42_dispatch::method_hash!("GetAvailableBalance"),
     GetVestingFundsExported = frc42_dispatch::method_hash!("GetVestingFunds"),
+    GetPeerIDExported = frc42_dispatch::method_hash!("GetPeerID"),
+    GetMultiaddrsExported = frc42_dispatch::method_hash!("GetMultiaddrs"),
 }
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
@@ -344,7 +353,7 @@ impl Actor {
     }
 
     /// Triggers a worker address change if a change has been requested and its effective epoch has arrived.
-    fn confirm_update_worker_key(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn confirm_change_worker_address(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.transaction(|state: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), state)?;
 
@@ -413,6 +422,13 @@ impl Actor {
         })
     }
 
+    fn get_peer_id(rt: &mut impl Runtime) -> Result<GetPeerIDReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let peer_id = get_miner_info(rt.store(), &state)?.peer_id;
+        Ok(GetPeerIDReturn { peer_id })
+    }
+
     fn change_peer_id(rt: &mut impl Runtime, params: ChangePeerIDParams) -> Result<(), ActorError> {
         let policy = rt.policy();
         check_peer_info(policy, &params.new_id, &[])?;
@@ -432,6 +448,13 @@ impl Actor {
             Ok(())
         })?;
         Ok(())
+    }
+
+    fn get_multiaddresses(rt: &mut impl Runtime) -> Result<GetMultiaddrsReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let state: State = rt.state()?;
+        let multi_addrs = get_miner_info(rt.store(), &state)?.multi_address;
+        Ok(GetMultiaddrsReturn { multi_addrs })
     }
 
     fn change_multiaddresses(
@@ -4936,11 +4959,11 @@ impl ActorCode for Actor {
                 let res = Self::control_addresses(rt)?;
                 Ok(RawBytes::serialize(&res)?)
             }
-            Some(Method::ChangeWorkerAddress) => {
+            Some(Method::ChangeWorkerAddress) | Some(Method::ChangeWorkerAddressExported) => {
                 Self::change_worker_address(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::ChangePeerID) => {
+            Some(Method::ChangePeerID) | Some(Method::ChangePeerIDExported) => {
                 Self::change_peer_id(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
@@ -4988,7 +5011,7 @@ impl ActorCode for Actor {
                 Self::report_consensus_fault(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::WithdrawBalance) => {
+            Some(Method::WithdrawBalance) | Some(Method::WithdrawBalanceExported) => {
                 let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(&res)?)
             }
@@ -4996,7 +5019,7 @@ impl ActorCode for Actor {
                 Self::confirm_sector_proofs_valid(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::ChangeMultiaddrs) => {
+            Some(Method::ChangeMultiaddrs) | Some(Method::ChangeMultiaddrsExported) => {
                 Self::change_multiaddresses(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
@@ -5008,15 +5031,16 @@ impl ActorCode for Actor {
                 Self::compact_sector_numbers(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::ConfirmUpdateWorkerKey) => {
-                Self::confirm_update_worker_key(rt)?;
+            Some(Method::ConfirmChangeWorkerAddress)
+            | Some(Method::ConfirmChangeWorkerAddressExported) => {
+                Self::confirm_change_worker_address(rt)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::RepayDebt) => {
+            Some(Method::RepayDebt) | Some(Method::RepayDebtExported) => {
                 Self::repay_debt(rt)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::ChangeOwnerAddress) => {
+            Some(Method::ChangeOwnerAddress) | Some(Method::ChangeOwnerAddressExported) => {
                 Self::change_owner_address(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
@@ -5075,6 +5099,14 @@ impl ActorCode for Actor {
             }
             Some(Method::GetVestingFundsExported) => {
                 let res = Self::get_vesting_funds(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetPeerIDExported) => {
+                let res = Self::get_peer_id(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::GetMultiaddrsExported) => {
+                let res = Self::get_multiaddresses(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
         }
