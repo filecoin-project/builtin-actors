@@ -22,6 +22,12 @@
   revert
 %end
 
+%macro check()
+  not
+  %push(call_failed)
+  jumpi
+%end
+
 # method dispatch
 %dispatch_begin()
 
@@ -77,6 +83,7 @@ push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
 push1 0x00    # staticcall gas (ignored)
 staticcall    # do it!
+%check()
 push1 0x20    # ret length
 push1 0x00    # ret offset
 return
@@ -97,6 +104,7 @@ push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
 push1 0x00    # staticcall gas (ignored)
 staticcall    # do it!
+%check()
 push1 0x20    # ret length
 push1 0x00    # ret offset
 return
@@ -121,6 +129,7 @@ push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
 push1 0x00    # staticcall gas (ignored)
 staticcall    # do it!
+%check()
 push1 0x20    # ret length
 push1 0x00    # ret offset
 return
@@ -142,6 +151,7 @@ push1 0x04    # input (dest) offset
 calldataload  # call dest
 push1 0x00    # call gas (ignored)
 call          # do it!
+%check()
 push1 0x20    # ret length
 push1 0x00    # ret offset
 return
@@ -166,6 +176,7 @@ push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
 push1 0x00    # staticcall gas (ignored)
 staticcall    # do it!
+%check()
 push1 0x20    # ret length
 push1 0x00    # ret offset
 return
@@ -187,6 +198,7 @@ push1 0x04    # input (dest) offset
 calldataload  # icall dest
 push1 0x00    # call gas (ignored)
 call          # do it!
+%check()
 push1 0x20    # ret length
 push1 0x00    # ret offset
 return
@@ -207,6 +219,7 @@ push1 0x04    # input (dest) offset
 calldataload  # delegate dest
 push1 0x00    # delegate gas (ignored)
 delegatecall  # do it!
+%check()
 push1 0x20    # ret length
 push1 0x00    # ret offset
 return
@@ -227,6 +240,7 @@ push1 0x04    # input (dest) offset
 calldataload  # delegate dest
 push1 0x00    # delegate gas (ignored)
 delegatecall  # do it!
+%check()
 push1 0x00    # slot
 sload         # read
 push1 0x00    # ret offset
@@ -255,6 +269,7 @@ push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
 push1 0x00    # staticcall gas (ignored)
 staticcall    # do it!
+%check()
 push1 0x20    # ret length
 push1 0x00    # ret offset
 return
@@ -279,6 +294,7 @@ push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
 push1 0x00    # staticcall gas (ignored)
 staticcall    # do it!
+%check()
 push1 0x20    # ret length
 push1 0x00    # ret offset
 return
@@ -310,3 +326,13 @@ mstore
 push1 0x20
 push1 0x00
 return
+
+# call_failed
+call_failed:
+jumpdest
+%push(0xdeadbeef)
+push1 0x00
+mstore
+push1 0x04
+push1 0x1c
+revert
