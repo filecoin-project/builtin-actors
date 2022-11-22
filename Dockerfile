@@ -5,7 +5,9 @@ RUN apt-get update && apt-get install --no-install-recommends -y build-essential
 
 WORKDIR /usr/src/builtin-actors
 
+COPY . .
+
 # Grab the correct toolchain
-RUN rustup target add wasm32-unknown-unknown
+RUN make deps-build
 
 ENTRYPOINT ["/bin/bash", "-c"]
