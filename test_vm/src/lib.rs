@@ -454,7 +454,7 @@ impl<'bs> VM<'bs> {
             caller_validated: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
-            actor_exit: Default::default(),
+            actor_exit: RefCell::new(None),
         };
         let res = new_ctx.invoke();
         let invoc = new_ctx.gather_trace(res.clone());
@@ -650,7 +650,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 caller_validated: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
-                actor_exit: Default::default(),
+                actor_exit: RefCell::new(None),
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
@@ -945,14 +945,14 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             caller_validated: false,
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
-            actor_exit: Default::default(),
+            actor_exit: RefCell::new(None),
         };
         let res: Result<RawBytes, ActorError> =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| new_ctx.invoke()))
                 .unwrap_or_else(|panic| {
-                    if self.actor_exit.borrow().is_some() {
-                        let exit = self.actor_exit.take().unwrap();
-                        self.actor_exit.replace(None);
+                    if new_ctx.actor_exit.borrow().is_some() {
+                        let exit = new_ctx.actor_exit.take().unwrap();
+                        new_ctx.actor_exit.replace(None);
                         if exit.code == 0 {
                             Ok(exit.data)
                         } else {
