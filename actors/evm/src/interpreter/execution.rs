@@ -851,12 +851,6 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             lifecycle::selfdestruct(m.runtime, m.system)?;
             Ok(ControlFlow::Exit) // selfdestruct halts the current context
         }
-
-        // FEVM extensions opcodes
-        CALLACTOR(m) {
-            call::callactor(m.runtime, m.system)?;
-            Ok(ControlFlow::Continue)
-        }
     }
 
     const JMPTABLE: [Instruction<Machine<'r, 'a, RT>>; 256] = Machine::<'r, 'a, RT>::jmptable();
