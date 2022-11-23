@@ -25,7 +25,7 @@ lazy_static::lazy_static! {
 }
 
 /// ensures top bits are zeroed
-fn assert_zero_bytes<const S: usize>(src: &[u8]) -> Result<(), PrecompileError> {
+pub fn assert_zero_bytes<const S: usize>(src: &[u8]) -> Result<(), PrecompileError> {
     if src[..S] != [0u8; S] {
         Err(PrecompileError::InvalidInput)
     } else {
@@ -478,15 +478,15 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
             Ok(ret) => (U256::zero(), ret),
         };
 
-        const NUM_OUTPUT_PARAMS: usize = 3;
+        const NUM_OUTPUT_PARAMS: u32 = 4;
 
         // codec of return data
         // TODO hardcoded to CBOR for now
         let codec = U256::from(fvm_ipld_encoding::DAG_CBOR);
         let offset = U256::from(NUM_OUTPUT_PARAMS * 32);
-        let size = U256::from(data.len());
+        let size = U256::from(data.len() as u32);
 
-        let mut output = Vec::with_capacity(NUM_OUTPUT_PARAMS * 32 + data.len());
+        let mut output = Vec::with_capacity(NUM_OUTPUT_PARAMS as usize * 32 + data.len());
         output.extend_from_slice(&exit_code.to_bytes());
         output.extend_from_slice(&codec.to_bytes());
         output.extend_from_slice(&offset.to_bytes());
