@@ -327,8 +327,7 @@ fn new_miner_updates_miner_above_min_power_count() {
         h.window_post_proof = test.proof;
         h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
 
-        let st: State = rt.get_state();
-        assert_eq!(test.expected_miners, st.miner_above_min_power_count);
+        h.expect_miners_above_min_power(&mut rt, test.expected_miners);
         h.check_state(&rt);
     }
 }
@@ -373,8 +372,7 @@ fn power_accounting_crossing_threshold() {
     let expected_total_above = &(power_unit * 4);
     h.expect_total_power_eager(&mut rt, expected_total_above, &(expected_total_above * 10));
 
-    let st: State = rt.get_state();
-    assert_eq!(4, st.miner_above_min_power_count);
+    h.expect_miners_above_min_power(&mut rt, 4);
 
     // Less than 4 miners above threshold again small miner power is counted again
     h.update_claimed_power(&mut rt, MINER4, &delta.neg(), &(delta.neg() * 10));
@@ -1012,7 +1010,7 @@ mod cron_tests {
         assert!(h.get_claim(&rt, &miner1).is_none());
 
         // miner count has been reduced to 1
-        assert_eq!(h.miner_count(&rt), 1);
+        assert_eq!(h.miner_count(&mut rt), 1);
 
         // next epoch, only the reward actor is invoked
         rt.set_epoch(3);

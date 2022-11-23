@@ -65,6 +65,8 @@ pub enum Method {
     CreateMinerExported = frc42_dispatch::method_hash!("CreateMiner"),
     NetworkRawPowerExported = frc42_dispatch::method_hash!("NetworkRawPower"),
     MinerRawPowerExported = frc42_dispatch::method_hash!("MinerRawPower"),
+    MinerCountExported = frc42_dispatch::method_hash!("MinerCount"),
+    MinerConsensusCountExported = frc42_dispatch::method_hash!("MinerConsensusCountExported"),
 }
 
 pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
@@ -397,6 +399,26 @@ impl Actor {
         Ok(MinerRawPowerReturn { raw_byte_power, meets_consensus_minimum })
     }
 
+    /// Returns the total number of miners created, regardless of whether or not
+    /// they have any pledged storage.
+    fn miner_count(rt: &mut impl Runtime) -> Result<MinerCountReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        Ok(MinerCountReturn { miner_count: st.miner_count })
+    }
+
+    /// Returns the total number of miners that have more than the consensus minimum amount of storage active.
+    /// Active means that the storage must not be faulty.
+    fn miner_consensus_count(
+        rt: &mut impl Runtime,
+    ) -> Result<MinerConsensusCountReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        Ok(MinerConsensusCountReturn { miner_consensus_count: st.miner_above_min_power_count })
+    }
+
     fn process_batch_proof_verifies(
         rt: &mut impl Runtime,
         rewret: &ThisEpochRewardReturn,
@@ -699,6 +721,14 @@ impl ActorCode for Actor {
             }
             Some(Method::MinerRawPowerExported) => {
                 let res = Self::miner_raw_power(rt, cbor::deserialize_params(params)?)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::MinerCountExported) => {
+                let res = Self::miner_count(rt)?;
+                Ok(RawBytes::serialize(res)?)
+            }
+            Some(Method::MinerConsensusCountExported) => {
+                let res = Self::miner_consensus_count(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
