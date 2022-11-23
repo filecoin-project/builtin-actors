@@ -691,7 +691,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             |panic| {
                 if self.actor_exit.borrow().is_some() {
                     let exit = self.actor_exit.take().unwrap();
-                    self.actor_exit.replace(None);
                     if exit.code == 0 {
                         Ok(exit.data)
                     } else {
