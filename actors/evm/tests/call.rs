@@ -263,10 +263,10 @@ fn test_callactor() {
 
     // dest + method 0x42 with no data
     let mut contract_params = Vec::new();
-    
+
     let method = U256::from(0x42);
     let codec = U256::from(DAG_CBOR);
-    
+
     let target_bytes = target.to_bytes();
     let target_size = U256::from(target_bytes.len());
 
@@ -340,13 +340,7 @@ fn test_callactor() {
             };
             let data = Vec::from(&src[offset as usize..(offset + size) as usize]);
 
-            Self {
-                exit_code,
-                codec,
-                data_offset: offset,
-                data_size: size,
-                data
-            }
+            Self { exit_code, codec, data_offset: offset, data_size: size, data }
         }
     }
 
