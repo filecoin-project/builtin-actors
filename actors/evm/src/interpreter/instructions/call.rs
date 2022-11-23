@@ -225,17 +225,7 @@ pub fn call<RT: Runtime>(
                 }
                 Err(ae) => match ae.exit_code() {
                     EVM_CONTRACT_REVERTED | EVM_CONTRACT_EXECUTION_ERROR => (0, ae.data().to_vec()),
-                    _ => {
-                        let msg_data = {
-                            let data = ae.data();
-                            if data.is_empty() {
-                                ae.msg().as_bytes().to_vec()
-                            } else {
-                                data.to_vec()
-                            }
-                        };
-                        (0, msg_data)
-                    }
+                    _ => (0, ae.data().to_vec())
                 },
             }
         }
