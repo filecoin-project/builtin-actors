@@ -13,11 +13,12 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
+use fvm_shared::MethodNum;
 use num_traits::Zero;
 use std::ops::Neg;
 
 use fil_actor_power::{
-    consensus_miner_min_power, Actor as PowerActor, Actor, CreateMinerParams,
+    consensus_miner_min_power, Actor as PowerActor, Actor, CreateMinerParams, CreateMinerReturn,
     EnrollCronEventParams, Method, MinerRawPowerParams, MinerRawPowerReturn, NetworkRawPowerReturn,
     State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
 };
@@ -326,8 +327,7 @@ fn new_miner_updates_miner_above_min_power_count() {
         h.window_post_proof = test.proof;
         h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
 
-        let st: State = rt.get_state();
-        assert_eq!(test.expected_miners, st.miner_above_min_power_count);
+        h.expect_miners_above_min_power(&mut rt, test.expected_miners);
         h.check_state(&rt);
     }
 }
@@ -372,8 +372,7 @@ fn power_accounting_crossing_threshold() {
     let expected_total_above = &(power_unit * 4);
     h.expect_total_power_eager(&mut rt, expected_total_above, &(expected_total_above * 10));
 
-    let st: State = rt.get_state();
-    assert_eq!(4, st.miner_above_min_power_count);
+    h.expect_miners_above_min_power(&mut rt, 4);
 
     // Less than 4 miners above threshold again small miner power is counted again
     h.update_claimed_power(&mut rt, MINER4, &delta.neg(), &(delta.neg() * 10));
@@ -1011,7 +1010,7 @@ mod cron_tests {
         assert!(h.get_claim(&rt, &miner1).is_none());
 
         // miner count has been reduced to 1
-        assert_eq!(h.miner_count(&rt), 1);
+        assert_eq!(h.miner_count(&mut rt), 1);
 
         // next epoch, only the reward actor is invoked
         rt.set_epoch(3);
@@ -1439,4 +1438,73 @@ mod submit_porep_for_bulk_verify_tests {
         expect_abort(ExitCode::USR_FORBIDDEN, h.submit_porep_for_bulk_verify(&mut rt, MINER, info));
         h.check_state(&rt);
     }
+}
+
+#[test]
+fn create_miner_restricted_correctly() {
+    let (h, mut rt) = setup();
+
+    let peer = "miner".as_bytes().to_vec();
+    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
+
+    let params = serialize(
+        &CreateMinerParams {
+            owner: *OWNER,
+            worker: *OWNER,
+            window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
+            peer: peer.clone(),
+            multiaddrs: multiaddrs.clone(),
+        },
+        "create miner params",
+    )
+    .unwrap();
+
+    rt.set_caller(make_identity_cid(b"1234"), *OWNER);
+
+    // cannot call the unexported method
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<PowerActor>(Method::CreateMiner as MethodNum, &params),
+    );
+
+    // can call the exported method
+
+    rt.expect_validate_caller_any();
+    let expected_init_params = ExecParams {
+        code_cid: *MINER_ACTOR_CODE_ID,
+        constructor_params: serialize(
+            &MinerConstructorParams {
+                owner: *OWNER,
+                worker: *OWNER,
+                control_addresses: vec![],
+                window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
+                peer_id: peer,
+                multi_addresses: multiaddrs,
+            },
+            "minerctor params",
+        )
+        .unwrap(),
+    };
+    let create_miner_ret = CreateMinerReturn { id_address: *MINER, robust_address: *ACTOR };
+    rt.expect_send(
+        INIT_ACTOR_ADDR,
+        EXEC_METHOD,
+        RawBytes::serialize(expected_init_params).unwrap(),
+        TokenAmount::zero(),
+        RawBytes::serialize(create_miner_ret).unwrap(),
+        ExitCode::OK,
+    );
+
+    let ret: CreateMinerReturn = rt
+        .call::<PowerActor>(Method::CreateMinerExported as MethodNum, &params)
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+
+    assert_eq!(ret.id_address, *MINER);
+    assert_eq!(ret.robust_address, *ACTOR);
+
+    h.check_state(&rt);
 }
