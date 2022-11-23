@@ -469,7 +469,7 @@ impl<'bs> VM<'bs> {
                 Ok(MessageResult {
                     code: ae.exit_code(),
                     message: ae.msg().to_string(),
-                    ret: RawBytes::default(),
+                    ret: ae.data(),
                 })
             }
             Ok(ret) => {
