@@ -93,3 +93,15 @@ pub struct MinerRawPowerReturn {
 }
 
 impl Cbor for MinerRawPowerReturn {}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct MinerCountReturn {
+    pub miner_count: i64,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct MinerConsensusCountReturn {
+    pub miner_consensus_count: i64,
+}
