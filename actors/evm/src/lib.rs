@@ -119,23 +119,21 @@ impl EvmContractActor {
 
         // TODO this does not return revert data yet, but it has correct semantics.
         if exec_status.reverted {
-            rt.exit(
-                EVM_CONTRACT_REVERTED.value(),
+            Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_REVERTED,
+                "constructor reverted".to_string(),
                 RawBytes::from(exec_status.output_data.to_vec()),
-                Some("constructor reverted"),
-            )
+            ))
         } else if exec_status.status_code == StatusCode::Success {
             system.set_bytecode(&exec_status.output_data)?;
             system.flush()
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             Err(e)
         } else {
-            let msg = format!("{}", exec_status.status_code);
-            rt.exit(
-                EVM_CONTRACT_EXECUTION_ERROR.value(),
-                RawBytes::from(msg.as_bytes().to_vec()),
-                Some("constructor failed"),
-            )
+            Err(ActorError::unchecked(
+                EVM_CONTRACT_EXECUTION_ERROR,
+                format!("constructor execution error: {}", exec_status.status_code),
+            ))
         }
     }
 
@@ -186,22 +184,20 @@ impl EvmContractActor {
             })?;
 
         if exec_status.reverted {
-            rt.exit(
-                EVM_CONTRACT_REVERTED.value(),
+            return Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_REVERTED,
+                "contract reverted".to_string(),
                 RawBytes::from(exec_status.output_data.to_vec()),
-                Some("contract reverted"),
-            );
+            ));
         } else if exec_status.status_code == StatusCode::Success {
             system.flush()?;
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             return Err(e);
         } else {
-            let msg = format!("{}", exec_status.status_code);
-            rt.exit(
-                EVM_CONTRACT_EXECUTION_ERROR.value(),
-                RawBytes::from(msg.as_bytes().to_vec()),
-                Some("contract execution error"),
-            );
+            return Err(ActorError::unchecked(
+                EVM_CONTRACT_EXECUTION_ERROR,
+                format!("contract execution error: {}", exec_status.status_code),
+            ));
         }
 
         if let Some(addr) = exec_status.selfdestroyed {
