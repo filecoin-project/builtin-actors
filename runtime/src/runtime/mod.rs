@@ -244,6 +244,10 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// Emits an event denoting that something externally noteworthy has ocurred.
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError>;
+
+    /// Exit the current computation with an error code and optionally data and a debugging
+    /// message.
+    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> !;
 }
 
 /// Message information available to the actor about executing message.

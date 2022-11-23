@@ -29,7 +29,8 @@ use {
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EvmContractActor);
 
-pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
+pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(33);
+pub const EVM_CONTRACT_EXECUTION_ERROR: ExitCode = ExitCode::new(34);
 
 const EVM_MAX_RESERVED_METHOD: u64 = 1023;
 pub const NATIVE_METHOD_SIGNATURE: &str = "handle_filecoin_method(uint64,uint64,bytes)";
@@ -118,14 +119,21 @@ impl EvmContractActor {
 
         // TODO this does not return revert data yet, but it has correct semantics.
         if exec_status.reverted {
-            Err(ActorError::unchecked(EVM_CONTRACT_REVERTED, "constructor reverted".to_string()))
+            Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_REVERTED,
+                "constructor reverted".to_string(),
+                RawBytes::from(exec_status.output_data.to_vec()),
+            ))
         } else if exec_status.status_code == StatusCode::Success {
             system.set_bytecode(&exec_status.output_data)?;
             system.flush()
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             Err(e)
         } else {
-            Err(ActorError::unspecified("EVM constructor failed".to_string()))
+            Err(ActorError::unchecked(
+                EVM_CONTRACT_EXECUTION_ERROR,
+                format!("constructor execution error: {}", exec_status.status_code),
+            ))
         }
     }
 
@@ -175,21 +183,21 @@ impl EvmContractActor {
                 _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
             })?;
 
-        // TODO this does not return revert data yet, but it has correct semantics.
         if exec_status.reverted {
-            return Err(ActorError::unchecked(
+            return Err(ActorError::unchecked_with_data(
                 EVM_CONTRACT_REVERTED,
                 "contract reverted".to_string(),
+                RawBytes::from(exec_status.output_data.to_vec()),
             ));
         } else if exec_status.status_code == StatusCode::Success {
             system.flush()?;
         } else if let StatusCode::ActorError(e) = exec_status.status_code {
             return Err(e);
         } else {
-            return Err(ActorError::unspecified(format!(
-                "EVM contract invocation failed: status: {}",
-                exec_status.status_code
-            )));
+            return Err(ActorError::unchecked(
+                EVM_CONTRACT_EXECUTION_ERROR,
+                format!("contract execution error: {}", exec_status.status_code),
+            ));
         }
 
         if let Some(addr) = exec_status.selfdestroyed {

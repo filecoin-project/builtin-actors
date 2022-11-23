@@ -454,8 +454,10 @@ impl<'bs> VM<'bs> {
             caller_validated: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
+            actor_exit: RefCell::new(None),
         };
-        let res = new_ctx.invoke();
+        let res = new_ctx.invoke_actor();
+
         let invoc = new_ctx.gather_trace(res.clone());
         RefMut::map(self.invocations.borrow_mut(), |invocs| {
             invocs.push(invoc);
@@ -467,7 +469,7 @@ impl<'bs> VM<'bs> {
                 Ok(MessageResult {
                     code: ae.exit_code(),
                     message: ae.msg().to_string(),
-                    ret: RawBytes::default(),
+                    ret: ae.data(),
                 })
             }
             Ok(ret) => {
@@ -593,6 +595,13 @@ pub struct InvocationCtx<'invocation, 'bs> {
     caller_validated: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
+    actor_exit: RefCell<Option<ActorExit>>,
+}
+
+struct ActorExit {
+    code: u32,
+    data: RawBytes,
+    msg: Option<String>,
 }
 
 impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
@@ -642,6 +651,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 caller_validated: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
+                actor_exit: RefCell::new(None),
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
@@ -674,6 +684,27 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
     fn to(&'_ self) -> Address {
         self.resolve_target(&self.msg.to).unwrap().1
+    }
+
+    fn invoke_actor(&mut self) -> Result<RawBytes, ActorError> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.invoke())).unwrap_or_else(
+            |panic| {
+                if self.actor_exit.borrow().is_some() {
+                    let exit = self.actor_exit.take().unwrap();
+                    if exit.code == 0 {
+                        Ok(exit.data)
+                    } else {
+                        Err(ActorError::unchecked_with_data(
+                            ExitCode::new(exit.code),
+                            exit.msg.unwrap_or_else(|| "actor exited".to_owned()),
+                            exit.data,
+                        ))
+                    }
+                } else {
+                    std::panic::resume_unwind(panic)
+                }
+            },
+        )
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
@@ -936,9 +967,9 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             caller_validated: false,
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
+            actor_exit: RefCell::new(None),
         };
-        let res = new_ctx.invoke();
-
+        let res = new_ctx.invoke_actor();
         let invoc = new_ctx.gather_trace(res.clone());
         RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
             subinvocs.push(invoc);
@@ -1068,6 +1099,11 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     // TODO No support for events yet.
     fn emit_event(&self, _event: &ActorEvent) -> Result<(), ActorError> {
         Ok(())
+    }
+
+    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
+        self.actor_exit.replace(Some(ActorExit { code, data, msg: msg.map(|s| s.to_owned()) }));
+        std::panic::panic_any("actor exit");
     }
 }
 

@@ -6,8 +6,8 @@ use {
 
 #[inline]
 pub fn ret(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let offset = *state.stack.get(0);
-    let size = *state.stack.get(1);
+    let offset = state.stack.pop();
+    let size = state.stack.pop();
 
     if let Some(region) = super::memory::get_memory_region(&mut state.memory, offset, size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?

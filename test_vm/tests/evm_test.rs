@@ -203,7 +203,7 @@ fn test_evm_staticcall() {
                 ContractParams(params.to_vec()),
             )
             .unwrap();
-        assert!(!call_result.code.is_success(), "static call mutation succeeded");
+        assert_eq!(call_result.code.value(), 33, "static call mutation did not revert");
     }
 
     // A -> staticcall -> B -> call -> C (read) OK
@@ -256,7 +256,7 @@ fn test_evm_staticcall() {
                 ContractParams(params.to_vec()),
             )
             .unwrap();
-        assert!(!call_result.code.is_success(), "static call mutation succeeded",);
+        assert_eq!(call_result.code.value(), 33, "static call mutation did not revert");
     }
 }
 
@@ -470,6 +470,6 @@ fn test_evm_staticcall_delegatecall() {
                 ContractParams(params.to_vec()),
             )
             .unwrap();
-        assert!(!call_result.code.is_success(), "static call mutation succeeded",);
+        assert_eq!(call_result.code.value(), 33, "static call mutation did not revert");
     }
 }

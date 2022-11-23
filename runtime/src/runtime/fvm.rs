@@ -329,12 +329,13 @@ where
                         // Otherwise, pass it through.
                         code => code,
                     };
-                    Err(ActorError::unchecked(
+                    Err(ActorError::unchecked_with_data(
                         exit_code,
                         format!(
                             "send to {} method {} aborted with code {}",
                             to, method, ret.exit_code
                         ),
+                        ret.return_data,
                     ))
                 }
             }
@@ -425,6 +426,10 @@ where
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
         fvm::event::emit_event(event)
             .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to emit event")
+    }
+
+    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
+        fvm::vm::exit(code, data, msg)
     }
 }
 
@@ -634,7 +639,7 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     let mut rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
     let ret = C::invoke_method(&mut rt, method, &params)
-        .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));
+        .unwrap_or_else(|err| fvm::vm::exit(err.exit_code().value(), err.data(), Some(err.msg())));
 
     // Abort with "assertion failed" if the actor failed to validate the caller somewhere.
     // We do this after handling the error, because the actor may have encountered an error before

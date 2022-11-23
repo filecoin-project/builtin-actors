@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use thiserror::Error;
 
@@ -12,41 +13,47 @@ pub struct ActorError {
     exit_code: ExitCode,
     /// Message for debugging purposes,
     msg: String,
+    /// Optional exit data
+    data: RawBytes,
 }
 
 impl ActorError {
     /// Creates a new ActorError. This method does not check that the code is in the
     /// range of valid actor abort codes.
     pub fn unchecked(code: ExitCode, msg: String) -> Self {
-        Self { exit_code: code, msg }
+        Self { exit_code: code, msg, data: RawBytes::default() }
+    }
+
+    pub fn unchecked_with_data(code: ExitCode, msg: String, data: RawBytes) -> Self {
+        Self { exit_code: code, msg, data }
     }
 
     pub fn illegal_argument(msg: String) -> Self {
-        Self { exit_code: ExitCode::USR_ILLEGAL_ARGUMENT, msg }
+        Self { exit_code: ExitCode::USR_ILLEGAL_ARGUMENT, msg, data: RawBytes::default() }
     }
     pub fn not_found(msg: String) -> Self {
-        Self { exit_code: ExitCode::USR_NOT_FOUND, msg }
+        Self { exit_code: ExitCode::USR_NOT_FOUND, msg, data: RawBytes::default() }
     }
     pub fn forbidden(msg: String) -> Self {
-        Self { exit_code: ExitCode::USR_FORBIDDEN, msg }
+        Self { exit_code: ExitCode::USR_FORBIDDEN, msg, data: RawBytes::default() }
     }
     pub fn insufficient_funds(msg: String) -> Self {
-        Self { exit_code: ExitCode::USR_INSUFFICIENT_FUNDS, msg }
+        Self { exit_code: ExitCode::USR_INSUFFICIENT_FUNDS, msg, data: RawBytes::default() }
     }
     pub fn illegal_state(msg: String) -> Self {
-        Self { exit_code: ExitCode::USR_ILLEGAL_STATE, msg }
+        Self { exit_code: ExitCode::USR_ILLEGAL_STATE, msg, data: RawBytes::default() }
     }
     pub fn serialization(msg: String) -> Self {
-        Self { exit_code: ExitCode::USR_SERIALIZATION, msg }
+        Self { exit_code: ExitCode::USR_SERIALIZATION, msg, data: RawBytes::default() }
     }
     pub fn unhandled_message(msg: String) -> Self {
-        Self { exit_code: ExitCode::USR_UNHANDLED_MESSAGE, msg }
+        Self { exit_code: ExitCode::USR_UNHANDLED_MESSAGE, msg, data: RawBytes::default() }
     }
     pub fn unspecified(msg: String) -> Self {
-        Self { exit_code: ExitCode::USR_UNSPECIFIED, msg }
+        Self { exit_code: ExitCode::USR_UNSPECIFIED, msg, data: RawBytes::default() }
     }
     pub fn assertion_failed(msg: String) -> Self {
-        Self { exit_code: ExitCode::USR_ASSERTION_FAILED, msg }
+        Self { exit_code: ExitCode::USR_ASSERTION_FAILED, msg, data: RawBytes::default() }
     }
 
     /// Returns the exit code of the error.
@@ -59,6 +66,11 @@ impl ActorError {
         &self.msg
     }
 
+    /// Returns the optional data that might be associated with the error
+    pub fn data(&self) -> RawBytes {
+        self.data.clone()
+    }
+
     /// Prefix error message with a string message.
     pub fn wrap(mut self, msg: impl AsRef<str>) -> Self {
         self.msg = format!("{}: {}", msg.as_ref(), self.msg);
@@ -69,7 +81,11 @@ impl ActorError {
 /// Converts a raw encoding error into an ErrSerialization.
 impl From<fvm_ipld_encoding::Error> for ActorError {
     fn from(e: fvm_ipld_encoding::Error) -> Self {
-        Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string() }
+        Self {
+            exit_code: ExitCode::USR_SERIALIZATION,
+            msg: e.to_string(),
+            data: RawBytes::default(),
+        }
     }
 }
 
@@ -78,7 +94,11 @@ impl From<fvm_ipld_encoding::Error> for ActorError {
 #[cfg(feature = "fil-actor")]
 impl From<fvm_sdk::error::ActorDeleteError> for ActorError {
     fn from(e: fvm_sdk::error::ActorDeleteError) -> Self {
-        Self { exit_code: ExitCode::USR_ILLEGAL_ARGUMENT, msg: e.to_string() }
+        Self {
+            exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
+            msg: e.to_string(),
+            data: RawBytes::default(),
+        }
     }
 }
 
@@ -87,7 +107,11 @@ impl From<fvm_sdk::error::ActorDeleteError> for ActorError {
 #[cfg(feature = "fil-actor")]
 impl From<fvm_sdk::error::NoStateError> for ActorError {
     fn from(e: fvm_sdk::error::NoStateError) -> Self {
-        Self { exit_code: ExitCode::USR_ILLEGAL_STATE, msg: e.to_string() }
+        Self {
+            exit_code: ExitCode::USR_ILLEGAL_STATE,
+            msg: e.to_string(),
+            data: RawBytes::default(),
+        }
     }
 }
 
@@ -163,14 +187,22 @@ pub trait AsActorError<T>: Sized {
 // Note: E should be std::error::Error, revert to this after anyhow:Error is no longer used.
 impl<T, E: Display> AsActorError<T> for Result<T, E> {
     fn exit_code(self, code: ExitCode) -> Result<T, ActorError> {
-        self.map_err(|err| ActorError { exit_code: code, msg: err.to_string() })
+        self.map_err(|err| ActorError {
+            exit_code: code,
+            msg: err.to_string(),
+            data: RawBytes::default(),
+        })
     }
 
     fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
     where
         C: Display + 'static,
     {
-        self.map_err(|err| ActorError { exit_code: code, msg: format!("{}: {}", context, err) })
+        self.map_err(|err| ActorError {
+            exit_code: code,
+            msg: format!("{}: {}", context, err),
+            data: RawBytes::default(),
+        })
     }
 
     fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
@@ -178,20 +210,32 @@ impl<T, E: Display> AsActorError<T> for Result<T, E> {
         C: Display + 'static,
         F: FnOnce() -> C,
     {
-        self.map_err(|err| ActorError { exit_code: code, msg: format!("{}: {}", f(), err) })
+        self.map_err(|err| ActorError {
+            exit_code: code,
+            msg: format!("{}: {}", f(), err),
+            data: RawBytes::default(),
+        })
     }
 }
 
 impl<T> AsActorError<T> for Option<T> {
     fn exit_code(self, code: ExitCode) -> Result<T, ActorError> {
-        self.ok_or_else(|| ActorError { exit_code: code, msg: "None".to_string() })
+        self.ok_or_else(|| ActorError {
+            exit_code: code,
+            msg: "None".to_string(),
+            data: RawBytes::default(),
+        })
     }
 
     fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
     where
         C: Display + 'static,
     {
-        self.ok_or_else(|| ActorError { exit_code: code, msg: context.to_string() })
+        self.ok_or_else(|| ActorError {
+            exit_code: code,
+            msg: context.to_string(),
+            data: RawBytes::default(),
+        })
     }
 
     fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
@@ -199,6 +243,10 @@ impl<T> AsActorError<T> for Option<T> {
         C: Display + 'static,
         F: FnOnce() -> C,
     {
-        self.ok_or_else(|| ActorError { exit_code: code, msg: f().to_string() })
+        self.ok_or_else(|| ActorError {
+            exit_code: code,
+            msg: f().to_string(),
+            data: RawBytes::default(),
+        })
     }
 }
