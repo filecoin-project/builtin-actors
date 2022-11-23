@@ -1,13 +1,12 @@
 //! ## Implementer's notes
-//! 
+//!
 //! All operations are done with overflowing math
 //! TODO (simple?) add, mul, sub div
-//! 
+//!
 //! ### Non-critical TODOs
 //! Many operations can simply mutate the last value on stack instead of pop/push.
 
 use {crate::interpreter::stack::Stack, crate::interpreter::uints::*, crate::interpreter::U256};
-
 
 #[inline]
 pub fn add(stack: &mut Stack) {
@@ -35,7 +34,7 @@ pub fn div(stack: &mut Stack) {
     let a = stack.pop();
     let b = stack.get_mut(0);
     // TODO shortcut optimizations from go's lib (our doesn't)
-    // https://github.com/holiman/uint256/blob/6f8ccba90ce6cba9727ad5aa26bb925a25b50d29/uint256.go#L544  
+    // https://github.com/holiman/uint256/blob/6f8ccba90ce6cba9727ad5aa26bb925a25b50d29/uint256.go#L544
     if !b.is_zero() {
         *b = a / *b
     }
@@ -158,7 +157,7 @@ mod test {
         fn add() {
             let mut s = Stack::default();
             let s = &mut s;
-            
+
             push_2(s, 0, 0);
             super::add(s);
             expect_stack_value(s, 0, "add nothing to nothing");
@@ -191,7 +190,7 @@ mod test {
         fn mul() {
             let mut s = Stack::default();
             let s = &mut s;
-            
+
             push_2(s, 0, 0);
             super::mul(s);
             expect_stack_value(s, 0, "multiply nothing by nothing");
@@ -209,7 +208,7 @@ mod test {
         fn sub() {
             let mut s = Stack::default();
             let s = &mut s;
-            
+
             push_2(s, 0, 0);
             super::sub(s);
             expect_stack_value(s, 0, "subtract nothing by nothing");
@@ -237,7 +236,7 @@ mod test {
         fn div() {
             let mut s = Stack::default();
             let s = &mut s;
-            
+
             push_2(s, 0, 0);
             super::div(s);
             expect_stack_value(s, 0, "divide nothing by nothing (yes)");
