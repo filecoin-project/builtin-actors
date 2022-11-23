@@ -66,7 +66,7 @@ pub enum Method {
     NetworkRawPowerExported = frc42_dispatch::method_hash!("NetworkRawPower"),
     MinerRawPowerExported = frc42_dispatch::method_hash!("MinerRawPower"),
     MinerCountExported = frc42_dispatch::method_hash!("MinerCount"),
-    MinerConsensusCountExported = frc42_dispatch::method_hash!("MinerConsensusCountExported"),
+    MinerConsensusCountExported = frc42_dispatch::method_hash!("MinerConsensusCount"),
 }
 
 pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
