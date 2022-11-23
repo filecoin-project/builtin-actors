@@ -225,7 +225,7 @@ pub fn call<RT: Runtime>(
                 }
                 Err(ae) => match ae.exit_code() {
                     EVM_CONTRACT_REVERTED | EVM_CONTRACT_EXECUTION_ERROR => (0, ae.data().to_vec()),
-                    _ => (0, ae.data().to_vec())
+                    _ => (0, ae.data().to_vec()),
                 },
             }
         }
