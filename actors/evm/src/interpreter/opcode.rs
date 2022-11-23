@@ -213,12 +213,6 @@ def_opcodes! {
     0xa2: LOG2(4, -4),
     0xa3: LOG3(5, -5),
     0xa4: LOG4(6, -6),
-    //////////////////////////////////////////////////////////
-    // FEVM extension opcodes
-    // FIL call conventions
-    0xb0: CALLACTOR(6, -5),
-    0xb1: METHODNUM(0, 1),
-    //////////////////////////////////////////////////////////
     // 0xEF Reserved for EIP-3541
     0xf0: CREATE(3, -2),
     0xf1: CALL(7, -6),

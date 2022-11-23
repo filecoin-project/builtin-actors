@@ -4,7 +4,7 @@ use evm::interpreter::address::EthAddress;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
-use fvm_ipld_encoding::{BytesSer, RawBytes};
+use fvm_ipld_encoding::{BytesSer, RawBytes, DAG_CBOR};
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -205,41 +205,43 @@ fn test_native_call() {
 pub fn callactor_proxy_contract() -> Vec<u8> {
     let init = "";
     let body = r#"
-# this contract takes an address, method and the call payload and proxies a CALLACTOR call
-# to that address
 # get call payload size
-push1 0x40
 calldatasize
-sub
 # store payload to mem 0x00
-push1 0x40
+push1 0x00
 push1 0x00
 calldatacopy
 
 # prepare the proxy call
-# input offset and size
-push1 0x40
-calldatasize
-sub
-push1 0x00
-# method
+
+# out size
+# out off
 push1 0x20
-calldataload
+push1 0xa0
+
+# in size
+# in off
+calldatasize
+push1 0x00
+
 # value
 push1 0x00
-# dest address
-push1 0x00
-calldataload
+
+# dst (callactor precompile)
+push1 0x0e
+
 # gas
 push1 0x00
-# do the call
-@callactor
 
-# return result through
+call
+
+# copy result to mem 0x00 (overwrites input data)
 returndatasize
 push1 0x00
 push1 0x00
 returndatacopy
+
+# return
 returndatasize
 push1 0x00
 return
@@ -254,21 +256,31 @@ fn test_callactor() {
 
     // construct the proxy
     let mut rt = util::construct_and_verify(contract);
-
     // create a mock target and proxy a call through the proxy
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
     rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
 
-    let evm_target = EthAddress::from_id(target_id);
-    let evm_target_word = evm_target.as_evm_word();
-
     // dest + method 0x42 with no data
-    let mut contract_params = vec![0u8; 64];
-    evm_target_word.to_big_endian(&mut contract_params[..32]);
-    contract_params[63] = 0x42;
+    let mut contract_params = Vec::new();
+
+    let method = U256::from(0x42);
+    let codec = U256::from(DAG_CBOR);
+
+    let target_bytes = target.to_bytes();
+    let target_size = U256::from(target_bytes.len());
 
     let proxy_call_input_data = RawBytes::default();
+    let data_size = U256::from(proxy_call_input_data.len());
+
+    contract_params.extend_from_slice(&method.to_bytes());
+    contract_params.extend_from_slice(&codec.to_bytes());
+    contract_params.extend_from_slice(&target_size.to_bytes());
+    contract_params.extend_from_slice(&data_size.to_bytes());
+    contract_params.extend_from_slice(&target_bytes);
+    contract_params.extend_from_slice(&proxy_call_input_data);
+
+    assert_eq!(32 * 4 + target_bytes.len() + proxy_call_input_data.len(), contract_params.len());
 
     // expected return data
     let mut return_data = vec![0u8; 32];
@@ -282,7 +294,64 @@ fn test_callactor() {
         RawBytes::from(return_data),
         ExitCode::OK,
     );
+
+    // invoke
+
     let result = util::invoke_contract(&mut rt, &contract_params);
 
-    assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
+    // assert return
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct CallActorReturn {
+        exit_code: ExitCode,
+        codec: u64,
+        data_offset: u32,
+        data_size: u32,
+        data: Vec<u8>,
+    }
+
+    impl CallActorReturn {
+        pub fn read(src: &[u8]) -> Self {
+            use fil_actor_evm::interpreter::precompiles::assert_zero_bytes;
+            assert!(src.len() >= 4 * 32, "expected to read at least 4 U256 values");
+
+            let bytes = &src[..32];
+            let exit_code = {
+                assert_zero_bytes::<4>(bytes).unwrap();
+                ExitCode::new(u32::from_be_bytes(bytes[28..32].try_into().unwrap()))
+            };
+
+            let bytes = &src[32..64];
+            let codec = {
+                assert_zero_bytes::<8>(bytes).unwrap();
+                u64::from_be_bytes(bytes[24..32].try_into().unwrap())
+            };
+
+            let bytes = &src[64..96];
+            let offset = {
+                assert_zero_bytes::<4>(bytes).unwrap();
+                u32::from_be_bytes(bytes[28..32].try_into().unwrap())
+            };
+
+            let bytes = &src[96..128];
+            let size = {
+                assert_zero_bytes::<4>(bytes).unwrap();
+                u32::from_be_bytes(bytes[28..32].try_into().unwrap())
+            };
+            let data = Vec::from(&src[offset as usize..(offset + size) as usize]);
+
+            Self { exit_code, codec, data_offset: offset, data_size: size, data }
+        }
+    }
+
+    let result = CallActorReturn::read(&result);
+    let expected = CallActorReturn {
+        exit_code: ExitCode::new(0),
+        codec: DAG_CBOR,
+        data_offset: 128,
+        data_size: 32,
+        data: U256::from(0x42).to_bytes().to_vec(),
+    };
+
+    assert_eq!(result, expected);
 }
