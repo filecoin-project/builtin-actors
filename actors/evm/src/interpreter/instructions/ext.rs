@@ -18,12 +18,57 @@ pub fn extcodesize(
     system: &System<impl Runtime>,
     addr: U256,
 ) -> Result<U256, StatusCode> {
-    // TODO we're fetching the entire block here just to get its size. We should instead use
+    // TODO (M2.2) we're fetching the entire block here just to get its size. We should instead use
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
-    let len = get_evm_bytecode_cid(system.rt, addr)
-        .and_then(|cid| get_evm_bytecode(system.rt, &cid))
-        .map(|bytecode| bytecode.len())?;
+    let len = {
+        // first try to get EVM contract len
+        match get_evm_bytecode_cid(system.rt, addr) {
+            Ok(cid) => {
+                // TODO this is part of account abstraction hack where EOAs are Embryos
+                if cid == system.rt.get_code_cid_for_type(Type::Embryo) {
+                    Ok(0)
+                } else {
+                    get_evm_bytecode(system.rt, &cid).map(|bytecode| bytecode.len())
+                }
+                
+            },
+            Err(_) => {
+                // TODO merge with util methods
+                let id = match EthAddress::from(addr).as_id() {
+                    Some(a) => Some(a),
+                    // not an eth style id address
+                    None => {
+                        // convert address to f4 & resolve
+                        let a = Address::try_from(EthAddress::from(addr))?;
+                        system
+                            .rt
+                            .resolve_address(&a)
+                    }
+                };
+                
+                if let Some(id) = id {
+                    if let Some(cid) = system.rt.get_actor_code_cid(&id) {
+                        if cid == system.rt.get_code_cid_for_type(Type::Account) {
+                            // system account has no code
+                            Ok(0)
+                        } else {
+                            // native actor code
+                            // TODO bikeshed this, needs to be at least non-zero though. 
+                            // https://github.com/filecoin-project/ref-fvm/issues/1134
+                            Ok(1)
+                        }
+                    } else {
+                        // no CID
+                        Ok(0)
+                    }
+                } else {
+                    // actor doesn't exist
+                    Ok(0)
+                }
+            }
+        }?
+    };
 
     Ok(len.into())
 }
@@ -48,6 +93,9 @@ pub fn extcodecopy(
     data_offset: U256,
     size: U256,
 ) -> Result<(), StatusCode> {
+    let ExecutionState { stack, .. } = state;
+
+    // TODO err trying to copy native code
     let bytecode =
         get_evm_bytecode_cid(system.rt, addr).and_then(|cid| get_evm_bytecode(system.rt, &cid))?;
 
