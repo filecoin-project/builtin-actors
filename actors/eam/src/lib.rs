@@ -1,16 +1,17 @@
 use std::iter;
 
 use ext::init::{Exec4Params, Exec4Return};
-use fil_actors_runtime::AsActorError;
+use fil_actors_runtime::{decode_params, AsActorError};
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::error::ExitCode;
 use rlp::Encodable;
 
 pub mod ext;
 
+use fvm_shared::ipld_block::IpldBlock;
 use {
     fil_actors_runtime::{
-        actor_error, cbor,
+        actor_error,
         runtime::builtins::Type,
         runtime::{ActorCode, Runtime},
         ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
@@ -96,6 +97,7 @@ pub struct InitAccountParams {
     #[serde(with = "strict_bytes")]
     pub pubkey: [u8; SECP_PUB_LEN],
 }
+
 impl Cbor for InitAccountParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
@@ -158,7 +160,7 @@ fn create_actor(
         .send(
             &INIT_ACTOR_ADDR,
             ext::init::EXEC4_METHOD,
-            RawBytes::serialize(&init_params)?,
+            Some(IpldBlock::serialize_cbor(&init_params)?),
             rt.message().value_received(),
         )?
         .deserialize()?;
@@ -184,8 +186,10 @@ fn resolve_caller(rt: &mut impl Runtime) -> Result<EthAddress, ActorError> {
 }
 
 pub struct EamActor;
+
 impl EamActor {
-    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
+        // TODO: NO_PARAMS
         let actor_id = rt.resolve_address(&rt.message().receiver()).unwrap();
         if actor_id != EAM_ACTOR_ID {
             return Err(ActorError::forbidden(format!(
@@ -198,7 +202,11 @@ impl EamActor {
     /// Create a new contract per the EVM's CREATE rules.
     ///
     /// Permissions: May be called by any actor.
-    pub fn create(rt: &mut impl Runtime, params: CreateParams) -> Result<CreateReturn, ActorError> {
+    pub fn create(
+        rt: &mut impl Runtime,
+        args: Option<IpldBlock>,
+    ) -> Result<CreateReturn, ActorError> {
+        let params: CreateParams = decode_params!(args);
         // TODO: this accepts a nonce from the user, so we _may_ want to limit it to specific
         // actors. However, we won't deploy over another actor anyways (those constraints are
         // enforced by the init actor and the FVM itself), so it shouldn't really be an issue in
@@ -222,8 +230,9 @@ impl EamActor {
     /// Permissions: May be called by any actor.
     pub fn create2(
         rt: &mut impl Runtime,
-        params: Create2Params,
+        args: Option<IpldBlock>,
     ) -> Result<Create2Return, ActorError> {
+        let params: Create2Params = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
 
         // CREATE2 logic
@@ -243,8 +252,9 @@ impl EamActor {
 
     pub fn create_account(
         rt: &mut impl Runtime,
-        params: InitAccountParams,
+        args: Option<IpldBlock>,
     ) -> Result<Return, ActorError> {
+        let params: InitAccountParams = decode_params!(args);
         // First, validate that we're receiving this message from the filecoin account that maps to
         // this ethereum account.
         //
@@ -273,22 +283,18 @@ impl ActorCode for EamActor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt)?;
+                Self::constructor(rt, args)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::Create) => {
-                Ok(RawBytes::serialize(Self::create(rt, cbor::deserialize_params(params)?)?)?)
-            }
-            Some(Method::Create2) => {
-                Ok(RawBytes::serialize(Self::create2(rt, cbor::deserialize_params(params)?)?)?)
-            }
+            Some(Method::Create) => Ok(RawBytes::serialize(Self::create(rt, args)?)?),
+            Some(Method::Create2) => Ok(RawBytes::serialize(Self::create2(rt, args)?)?),
             // Some(Method::CreateAccount) => {
             //     Self::create_account(rt, cbor::deserialize_params(params)?)
             // }

@@ -48,6 +48,7 @@ use fvm_shared::crypto::signature::{
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::event::ActorEvent;
+use fvm_shared::ipld_block::IpldBlock;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
@@ -207,16 +208,15 @@ impl<'bs> VM<'bs> {
             v.normalize_address(&Address::new_bls(VERIFREG_ROOT_KEY).unwrap()).unwrap();
         assert_eq!(TEST_VERIFREG_ROOT_SIGNER_ADDR, verifreg_root_signer);
         // verifreg root msig
-        let msig_ctor_params = serialize(
-            &fil_actor_multisig::ConstructorParams {
+        let msig_ctor_params = Some(
+            IpldBlock::serialize_cbor(&fil_actor_multisig::ConstructorParams {
                 signers: vec![verifreg_root_signer],
                 num_approvals_threshold: 1,
                 unlock_duration: 0,
                 start_epoch: 0,
-            },
-            "multisig ctor params",
-        )
-        .unwrap();
+            })
+            .unwrap(),
+        );
         let msig_ctor_ret: ExecReturn = v
             .apply_message(
                 SYSTEM_ACTOR_ADDR,
@@ -444,7 +444,7 @@ impl<'bs> VM<'bs> {
             to,
             value,
             method,
-            params: serialize(&params, "params for apply message").unwrap(),
+            params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         };
         let mut new_ctx = InvocationCtx {
             v: self,
@@ -551,7 +551,7 @@ pub struct InternalMessage {
     to: Address,
     value: TokenAmount,
     method: MethodNum,
-    params: RawBytes,
+    params: Option<IpldBlock>,
 }
 
 impl InternalMessage {
@@ -640,7 +640,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             to: target_id_addr,
             value: TokenAmount::zero(),
             method: METHOD_CONSTRUCTOR,
-            params: serialize::<Address>(target, "address").unwrap(),
+            params: Some(IpldBlock::serialize_cbor(target).unwrap()),
         };
         {
             let mut new_ctx = InvocationCtx {
@@ -745,23 +745,23 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let params = self.msg.params.clone();
         let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
         {
-            Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
-            Type::Cron => CronActor::invoke_method(self, self.msg.method, &params),
-            Type::Init => InitActor::invoke_method(self, self.msg.method, &params),
-            Type::Market => MarketActor::invoke_method(self, self.msg.method, &params),
-            Type::Miner => MinerActor::invoke_method(self, self.msg.method, &params),
-            Type::Multisig => MultisigActor::invoke_method(self, self.msg.method, &params),
-            Type::System => SystemActor::invoke_method(self, self.msg.method, &params),
-            Type::Reward => RewardActor::invoke_method(self, self.msg.method, &params),
-            Type::Power => PowerActor::invoke_method(self, self.msg.method, &params),
-            Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
-            Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
-            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, &params),
+            Type::Account => AccountActor::invoke_method(self, self.msg.method, params),
+            Type::Cron => CronActor::invoke_method(self, self.msg.method, params),
+            Type::Init => InitActor::invoke_method(self, self.msg.method, params),
+            Type::Market => MarketActor::invoke_method(self, self.msg.method, params),
+            Type::Miner => MinerActor::invoke_method(self, self.msg.method, params),
+            Type::Multisig => MultisigActor::invoke_method(self, self.msg.method, params),
+            Type::System => SystemActor::invoke_method(self, self.msg.method, params),
+            Type::Reward => RewardActor::invoke_method(self, self.msg.method, params),
+            Type::Power => PowerActor::invoke_method(self, self.msg.method, params),
+            Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, params),
+            Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, params),
+            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, params),
             Type::Embryo => {
                 Err(ActorError::unhandled_message("embryo actors only handle method 0".into()))
             }
-            Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, &params),
-            Type::EAM => EamActor::invoke_method(self, self.msg.method, &params),
+            Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, params),
+            Type::EAM => EamActor::invoke_method(self, self.msg.method, params),
         };
         if res.is_ok() && !self.caller_validated {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));
@@ -948,7 +948,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         if !self.allow_side_effects {
@@ -1300,7 +1300,7 @@ pub struct ExpectInvocation {
     pub code: Option<ExitCode>,
     pub from: Option<Address>,
     pub value: Option<TokenAmount>,
-    pub params: Option<RawBytes>,
+    pub params: Option<Option<IpldBlock>>,
     pub ret: Option<RawBytes>,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
 }

@@ -1,8 +1,9 @@
 use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
 use fil_actors_runtime::{runtime::builtins::Type, test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
-use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
+use fvm_ipld_encoding::BytesDe;
 use fvm_shared::address::Address;
+use fvm_shared::ipld_block::IpldBlock;
 
 #[allow(dead_code)]
 pub fn construct_and_verify(initcode: Vec<u8>) -> MockRuntime {
@@ -37,7 +38,7 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     assert!(rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         )
         .unwrap()
         .is_empty());
@@ -52,7 +53,7 @@ pub fn invoke_contract(rt: &mut MockRuntime, input_data: &[u8]) -> Vec<u8> {
     let BytesDe(res) = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,
-            &RawBytes::serialize(BytesSer(input_data)).unwrap(),
+            Some(IpldBlock::serialize_cbor(&input_data).unwrap()),
         )
         .unwrap()
         .deserialize()

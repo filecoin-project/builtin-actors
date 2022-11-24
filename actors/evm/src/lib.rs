@@ -1,20 +1,22 @@
 use std::iter;
 
-use fil_actors_runtime::{actor_error, runtime::builtins::Type, AsActorError, EAM_ACTOR_ID};
-use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
+use fil_actors_runtime::{
+    actor_error, decode_params, runtime::builtins::Type, AsActorError, EAM_ACTOR_ID,
+};
+use fvm_ipld_encoding::{strict_bytes, BytesSer};
 use fvm_shared::address::{Address, Payload};
 use interpreter::{address::EthAddress, system::load_bytecode};
 
 pub mod interpreter;
 mod state;
 
+use fvm_shared::ipld_block::IpldBlock;
 use {
     crate::interpreter::{execute, Bytecode, ExecutionState, StatusCode, System, U256},
     crate::state::State,
     bytes::Bytes,
     cid::Cid,
     fil_actors_runtime::{
-        cbor,
         runtime::{ActorCode, Runtime},
         ActorError,
     },
@@ -57,12 +59,14 @@ pub enum Method {
 }
 
 pub struct EvmContractActor;
+
 impl EvmContractActor {
-    pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &mut RT, args: Option<IpldBlock>) -> Result<(), ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        let params: ConstructorParams = decode_params!(args);
         // TODO ideally we would be checking that we are constructed by the EAM actor,
         //   but instead we check for init and then assert that we have a delegated address.
         //   https://github.com/filecoin-project/ref-fvm/issues/746
@@ -210,18 +214,21 @@ impl EvmContractActor {
     pub fn handle_filecoin_method<RT>(
         rt: &mut RT,
         method: u64,
-        codec: u64,
-        params: &[u8],
+        args: Option<IpldBlock>,
     ) -> Result<Vec<u8>, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        let input = handle_filecoin_method_input(method, codec, params);
+        let input = match args {
+            None => handle_filecoin_method_input(method, 0, &[]),
+            Some(a) => handle_filecoin_method_input(method, a.codec, a.data.as_slice()),
+        };
         Self::invoke_contract(rt, &input, false, None)
     }
 
-    pub fn bytecode(rt: &mut impl Runtime) -> Result<Cid, ActorError> {
+    pub fn bytecode(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<Cid, ActorError> {
+        // TODO: NO_PARAMS
         // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
         rt.validate_immediate_caller_accept_any()?;
 
@@ -229,11 +236,12 @@ impl EvmContractActor {
         Ok(state.bytecode)
     }
 
-    pub fn storage_at<RT>(rt: &mut RT, params: GetStorageAtParams) -> Result<U256, ActorError>
+    pub fn storage_at<RT>(rt: &mut RT, args: Option<IpldBlock>) -> Result<U256, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        let params: GetStorageAtParams = decode_params!(args);
         // This method cannot be called on-chain; other on-chain logic should not be able to
         // access arbitrary storage keys from a contract.
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
@@ -267,7 +275,7 @@ impl ActorCode for EvmContractActor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
@@ -278,38 +286,41 @@ impl ActorCode for EvmContractActor {
         if method > EVM_MAX_RESERVED_METHOD {
             // FIXME: we need the actual codec.
             // See https://github.com/filecoin-project/ref-fvm/issues/987
-            let codec = if params.is_empty() { 0 } else { DAG_CBOR };
-            return Self::handle_filecoin_method(rt, method, codec, params).map(RawBytes::new);
+            return Self::handle_filecoin_method(rt, method, args).map(RawBytes::new);
         }
 
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
+                Self::constructor(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::InvokeContract) => {
-                let BytesDe(params) = params.deserialize()?;
-                let value = Self::invoke_contract(rt, &params, false, None)?;
+                // TODO: FIXME
+                // let BytesDe(params) = params.deserialize()?;
+                let value = Self::invoke_contract(rt, &[], false, None)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
-                let cid = Self::bytecode(rt)?;
+                let cid = Self::bytecode(rt, args)?;
                 Ok(RawBytes::serialize(cid)?)
             }
             Some(Method::GetStorageAt) => {
-                let value = Self::storage_at(rt, cbor::deserialize_params(params)?)?;
+                let value = Self::storage_at(rt, args)?;
                 Ok(RawBytes::serialize(value)?)
             }
             Some(Method::InvokeContractReadOnly) => {
-                let BytesDe(params) = params.deserialize()?;
-                let value = Self::invoke_contract(rt, &params, true, None)?;
+                // TODO: FIXME
+                // let BytesDe(params) = params.deserialize()?;
+                let value = Self::invoke_contract(rt, &[], true, None)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::InvokeContractDelegate) => {
-                let params: DelegateCallParams = cbor::deserialize_params(params)?;
-                let value =
-                    Self::invoke_contract(rt, &params.input, params.readonly, Some(params.code))?;
-                Ok(RawBytes::serialize(BytesSer(&value))?)
+                // TODO: FIXME
+                Err(actor_error!(unhandled_message; "aayush broke me"))
+                // let params: DelegateCallParams = cbor::deserialize_params(params)?;
+                // let value =
+                //     Self::invoke_contract(rt, &params.input, params.readonly, Some(params.code))?;
+                // Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }

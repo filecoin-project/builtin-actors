@@ -6,10 +6,12 @@ use std::iter;
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorError, EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, decode_params, ActorContext, ActorError, AsActorError, EAM_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::ipld_block::IpldBlock;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -39,7 +41,8 @@ pub enum Method {
 pub struct Actor;
 impl Actor {
     /// Init actor constructor
-    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: ConstructorParams = decode_params!(args);
         let sys_ref: &Address = &SYSTEM_ACTOR_ADDR;
         rt.validate_immediate_caller_is(std::iter::once(sys_ref))?;
         let state = State::new(rt.store(), params.network_name)?;
@@ -49,7 +52,8 @@ impl Actor {
     }
 
     /// Exec init actor
-    pub fn exec(rt: &mut impl Runtime, params: ExecParams) -> Result<ExecReturn, ActorError> {
+    pub fn exec(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<ExecReturn, ActorError> {
+        let params: ExecParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
@@ -99,7 +103,11 @@ impl Actor {
     }
 
     /// Exec init actor
-    pub fn exec4(rt: &mut impl Runtime, params: Exec4Params) -> Result<Exec4Return, ActorError> {
+    pub fn exec4(
+        rt: &mut impl Runtime,
+        args: Option<IpldBlock>,
+    ) -> Result<Exec4Return, ActorError> {
+        let params: Exec4Params = decode_params!(args);
         if cfg!(feature = "m2-native") {
             rt.validate_immediate_caller_accept_any()?;
         } else {
@@ -148,12 +156,13 @@ impl Actor {
     #[cfg(feature = "m2-native")]
     pub fn install(
         rt: &mut impl Runtime,
-        params: InstallParams,
+        args: Option<IpldBlock>,
     ) -> Result<InstallReturn, ActorError> {
         use cid::multihash::Code;
         use fil_actors_runtime::AsActorError;
         use fvm_ipld_blockstore::{Block, Blockstore};
         use fvm_shared::error::ExitCode;
+        let params: InstallParams = decode_params!(args);
 
         rt.validate_immediate_caller_accept_any()?;
 
@@ -191,27 +200,27 @@ impl ActorCode for Actor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
+                Self::constructor(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::Exec) => {
-                let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::exec(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::Exec4) => {
-                let res = Self::exec4(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::exec4(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             #[cfg(feature = "m2-native")]
             Some(Method::InstallCode) => {
-                let res = Self::install(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::install(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

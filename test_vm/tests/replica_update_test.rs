@@ -15,7 +15,6 @@ use test_vm::ExpectInvocation;
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fvm_shared::piece::PaddedPieceSize;
 
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
@@ -30,6 +29,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::ipld_block::IpldBlock;
 use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
@@ -1095,10 +1095,9 @@ fn replica_update_verified_deal() {
             ExpectInvocation {
                 to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::UpdateClaimedPower as u64,
-                params: Some(
-                    serialize(&expected_update_claimed_power_params, "update_claimed_power params")
-                        .unwrap(),
-                ),
+                params: Some(Some(
+                    IpldBlock::serialize_cbor(&expected_update_claimed_power_params).unwrap(),
+                )),
                 ..Default::default()
             },
         ]),

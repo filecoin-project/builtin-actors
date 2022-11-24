@@ -12,6 +12,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::ipld_block::IpldBlock;
 use fvm_shared::METHOD_SEND;
 use integer_encoding::VarInt;
 use std::collections::HashSet;
@@ -275,16 +276,15 @@ fn swap_self_2_of_3() {
 
 fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
     assert!(!signers.is_empty());
-    let msig_ctor_params = serialize(
-        &fil_actor_multisig::ConstructorParams {
+    let msig_ctor_params = Some(
+        IpldBlock::serialize_cbor(&fil_actor_multisig::ConstructorParams {
             signers: signers.clone(),
             num_approvals_threshold: threshold,
             unlock_duration: 0,
             start_epoch: 0,
-        },
-        "multisig ctor params",
-    )
-    .unwrap();
+        })
+        .unwrap(),
+    );
     let msig_ctor_ret: ExecReturn = apply_ok(
         v,
         signers[0],

@@ -1,6 +1,6 @@
 use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{strict_bytes, BytesDe, RawBytes};
+use fvm_ipld_encoding::{strict_bytes, BytesDe};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, StoragePower};
@@ -10,6 +10,7 @@ use num_derive::FromPrimitive;
 
 pub mod init {
     use super::*;
+    use fvm_shared::ipld_block::IpldBlock;
 
     pub const EXEC_METHOD: u64 = 2;
 
@@ -17,7 +18,7 @@ pub mod init {
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct ExecParams {
         pub code_cid: Cid,
-        pub constructor_params: RawBytes,
+        pub constructor_params: Option<IpldBlock>,
     }
 
     /// Init actor Exec Return value

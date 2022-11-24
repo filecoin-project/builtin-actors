@@ -18,15 +18,16 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Signed, Zero};
 
-use fil_actors_runtime::cbor::{deserialize, serialize};
+use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
-    ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_error, decode_params, make_map_with_root_and_bitwidth, resolve_to_actor_id,
+    ActorDowncast, ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
+use fvm_shared::ipld_block::IpldBlock;
 
 use crate::ext::datacap::{DestroyParams, MintParams};
 
@@ -67,12 +68,13 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Registry Actor
-    pub fn constructor(rt: &mut impl Runtime, root_key: Address) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: Address = decode_params!(args);
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // root should be an ID address
         let id_addr = rt
-            .resolve_address(&root_key)
+            .resolve_address(&params)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "root should be an ID address")?;
 
         let st = State::new(rt.store(), Address::new_id(id_addr))
@@ -82,10 +84,8 @@ impl Actor {
         Ok(())
     }
 
-    pub fn add_verifier(
-        rt: &mut impl Runtime,
-        params: AddVerifierParams,
-    ) -> Result<(), ActorError> {
+    pub fn add_verifier(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: AddVerifierParams = decode_params!(args);
         if params.allowance < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
                 illegal_argument,
@@ -126,9 +126,10 @@ impl Actor {
 
     pub fn remove_verifier(
         rt: &mut impl Runtime,
-        verifier_addr: Address,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
-        let verifier = resolve_to_actor_id(rt, &verifier_addr)?;
+        let params: Address = decode_params!(args);
+        let verifier = resolve_to_actor_id(rt, &params)?;
         let verifier = Address::new_id(verifier);
 
         let state: State = rt.state()?;
@@ -141,8 +142,9 @@ impl Actor {
 
     pub fn add_verified_client(
         rt: &mut impl Runtime,
-        params: AddVerifierClientParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: AddVerifierClientParams = decode_params!(args);
         // The caller will be verified by checking table below
         rt.validate_immediate_caller_accept_any()?;
 
@@ -207,8 +209,9 @@ impl Actor {
     /// Removes DataCap allocated to a verified client.
     pub fn remove_verified_client_data_cap(
         rt: &mut impl Runtime,
-        params: RemoveDataCapParams,
+        args: Option<IpldBlock>,
     ) -> Result<RemoveDataCapReturn, ActorError> {
+        let params: RemoveDataCapParams = decode_params!(args);
         let client = resolve_to_actor_id(rt, &params.verified_client_to_remove)?;
         let client = Address::new_id(client);
 
@@ -298,8 +301,9 @@ impl Actor {
     // If no allocations are specified, all eligible allocations are removed.
     pub fn remove_expired_allocations(
         rt: &mut impl Runtime,
-        params: RemoveExpiredAllocationsParams,
+        args: Option<IpldBlock>,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
+        let params: RemoveExpiredAllocationsParams = decode_params!(args);
         // Since the allocations are expired, this is safe to be called by anyone.
         rt.validate_immediate_caller_accept_any()?;
         let curr_epoch = rt.curr_epoch();
@@ -361,8 +365,9 @@ impl Actor {
     // and size match that of the allocation.
     pub fn claim_allocations(
         rt: &mut impl Runtime,
-        params: ClaimAllocationsParams,
+        args: Option<IpldBlock>,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
+        let params: ClaimAllocationsParams = decode_params!(args);
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let provider = rt.message().caller().id().unwrap();
         if params.sectors.is_empty() {
@@ -420,7 +425,8 @@ impl Actor {
                         format!("failed to write claim {}", claim_alloc.allocation_id),
                     )?;
                 if !inserted {
-                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE); // should be unreachable since claim and alloc can't exist at once
+                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE);
+                    // should be unreachable since claim and alloc can't exist at once
                     info!(
                         "claim for allocation {} could not be inserted as it already exists",
                         claim_alloc.allocation_id,
@@ -459,8 +465,9 @@ impl Actor {
     // get claims for a provider
     pub fn get_claims(
         rt: &mut impl Runtime,
-        params: GetClaimsParams,
+        args: Option<IpldBlock>,
     ) -> Result<GetClaimsReturn, ActorError> {
+        let params: GetClaimsParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
         let mut batch_gen = BatchReturnGen::new(params.claim_ids.len());
         let claims = rt
@@ -495,8 +502,9 @@ impl Actor {
     /// even if the term has previously been extended past that by spending new datacap.
     pub fn extend_claim_terms(
         rt: &mut impl Runtime,
-        params: ExtendClaimTermsParams,
+        args: Option<IpldBlock>,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
+        let params: ExtendClaimTermsParams = decode_params!(args);
         // Permissions are checked per-claim.
         rt.validate_immediate_caller_accept_any()?;
         let caller_id = rt.message().caller().id().unwrap();
@@ -558,8 +566,9 @@ impl Actor {
     // If no claims are specified, all eligible claims are removed.
     pub fn remove_expired_claims(
         rt: &mut impl Runtime,
-        params: RemoveExpiredClaimsParams,
+        args: Option<IpldBlock>,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
+        let params: RemoveExpiredClaimsParams = decode_params!(args);
         // Since the claims are expired, this is safe to be called by anyone.
         rt.validate_immediate_caller_accept_any()?;
         let curr_epoch = rt.curr_epoch();
@@ -607,8 +616,9 @@ impl Actor {
     // Returns the ids of the created allocations.
     pub fn universal_receiver_hook(
         rt: &mut impl Runtime,
-        params: UniversalReceiverParams,
+        args: Option<IpldBlock>,
     ) -> Result<AllocationsResponse, ActorError> {
+        let params: UniversalReceiverParams = decode_params!(args);
         // Accept only the data cap token.
         rt.validate_immediate_caller_is(&[DATACAP_TOKEN_ACTOR_ADDR])?;
 
@@ -715,7 +725,7 @@ fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, 
 
 // Invokes BalanceOf on the data cap token actor, and converts the result to whole units of data cap.
 fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
-    let params = serialize(owner, "owner address")?;
+    let params = Some(IpldBlock::serialize_cbor(owner)?);
     let ret = rt
         .send(
             &DATACAP_TOKEN_ACTOR_ADDR,
@@ -740,7 +750,7 @@ fn mint(
     rt.send(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Mint as u64,
-        serialize(&params, "mint params")?,
+        Some(IpldBlock::serialize_cbor(&params)?),
         TokenAmount::zero(),
     )
     .context(format!("failed to send mint {:?} to datacap", params))?;
@@ -758,7 +768,7 @@ fn burn(rt: &mut impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
     rt.send(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Burn as u64,
-        serialize(&params, "burn params")?,
+        Some(IpldBlock::serialize_cbor(&params)?),
         TokenAmount::zero(),
     )
     .context(format!("failed to send burn {:?} to datacap", params))?;
@@ -777,7 +787,7 @@ fn destroy(rt: &mut impl Runtime, owner: &Address, amount: &DataCap) -> Result<(
     rt.send(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Destroy as u64,
-        serialize(&params, "destroy params")?,
+        Some(IpldBlock::serialize_cbor(&params)?),
         TokenAmount::zero(),
     )
     .context(format!("failed to send destroy {:?} to datacap", params))?;
@@ -795,7 +805,7 @@ fn transfer(rt: &mut impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), 
     rt.send(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Transfer as u64,
-        serialize(&params, "transfer params")?,
+        Some(IpldBlock::serialize_cbor(&params)?),
         TokenAmount::zero(),
     )
     .context(format!("failed to send transfer to datacap {:?}", params))?;
@@ -1062,55 +1072,54 @@ impl ActorCode for Actor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
+                Self::constructor(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::AddVerifier) => {
-                Self::add_verifier(rt, cbor::deserialize_params(params)?)?;
+                Self::add_verifier(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::RemoveVerifier) => {
-                Self::remove_verifier(rt, cbor::deserialize_params(params)?)?;
+                Self::remove_verifier(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::AddVerifiedClient) => {
-                Self::add_verified_client(rt, cbor::deserialize_params(params)?)?;
+                Self::add_verified_client(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::RemoveVerifiedClientDataCap) => {
-                let res =
-                    Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::remove_verified_client_data_cap(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::RemoveExpiredAllocations) => {
-                let res = Self::remove_expired_allocations(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::remove_expired_allocations(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ClaimAllocations) => {
-                let res = Self::claim_allocations(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::claim_allocations(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ExtendClaimTerms) => {
-                let res = Self::extend_claim_terms(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::extend_claim_terms(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::GetClaims) => {
-                let res = Self::get_claims(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::get_claims(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::RemoveExpiredClaims) => {
-                let res = Self::remove_expired_claims(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::remove_expired_claims(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::UniversalReceiverHook) => {
-                let res = Self::universal_receiver_hook(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::universal_receiver_hook(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

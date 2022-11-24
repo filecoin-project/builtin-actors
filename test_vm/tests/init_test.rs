@@ -1,12 +1,12 @@
 use fil_actor_init::Exec4Return;
 use fil_actors_runtime::{
-    cbor::serialize,
     runtime::EMPTY_ARR_CID,
     test_utils::{EAM_ACTOR_CODE_ID, EMBRYO_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID},
     EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
+use fvm_shared::ipld_block::IpldBlock;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SEND};
 use num_traits::Zero;
 use test_vm::{actor, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
@@ -51,16 +51,15 @@ fn embryo_deploy() {
     assert_eq!(v.normalize_address(&addr).unwrap(), expect_id_addr);
 
     // Deploy a multisig to the embryo.
-    let msig_ctor_params = serialize(
-        &fil_actor_multisig::ConstructorParams {
+    let msig_ctor_params = Some(
+        IpldBlock::serialize_cbor(&fil_actor_multisig::ConstructorParams {
             signers: vec![EAM_ACTOR_ADDR],
             num_approvals_threshold: 1,
             unlock_duration: 0,
             start_epoch: 0,
-        },
-        "multisig ctor params",
-    )
-    .unwrap();
+        })
+        .unwrap(),
+    );
 
     let deploy = || {
         v.apply_message(

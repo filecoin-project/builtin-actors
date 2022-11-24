@@ -5,8 +5,8 @@ use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::ipld_block::IpldBlock;
 
 mod util;
 
@@ -78,7 +78,7 @@ return
     rt.reset();
     rt.expect_validate_caller_any();
     let returned_bytecode_cid: Cid = rt
-        .call::<evm::EvmContractActor>(evm::Method::GetBytecode as u64, &Default::default())
+        .call::<evm::EvmContractActor>(evm::Method::GetBytecode as u64, None)
         .unwrap()
         .deserialize()
         .unwrap();
@@ -117,7 +117,7 @@ sstore";
     let value: U256 = rt
         .call::<evm::EvmContractActor>(
             evm::Method::GetStorageAt as u64,
-            &RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         )
         .unwrap()
         .deserialize()
@@ -136,7 +136,7 @@ sstore";
     let value: U256 = rt
         .call::<evm::EvmContractActor>(
             evm::Method::GetStorageAt as u64,
-            &RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         )
         .unwrap()
         .deserialize()

@@ -1,5 +1,5 @@
 use fil_actor_evm as evm;
-use fvm_ipld_encoding::{BytesSer, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 
 mod asm;
 mod util;
@@ -23,10 +23,7 @@ revert
     let mut rt = util::construct_and_verify(contract);
     rt.expect_validate_caller_any();
 
-    let result = rt.call::<evm::EvmContractActor>(
-        evm::Method::InvokeContract as u64,
-        &RawBytes::serialize(BytesSer(&[])).unwrap(),
-    );
+    let result = rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, None);
     assert!(result.is_err());
     let e = result.unwrap_err();
     assert_eq!(e.exit_code(), evm::EVM_CONTRACT_REVERTED);

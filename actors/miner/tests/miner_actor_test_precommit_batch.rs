@@ -157,6 +157,7 @@ mod miner_actor_precommit_batch {
     };
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
     use fvm_ipld_encoding::RawBytes;
+    use fvm_shared::ipld_block::IpldBlock;
     use test_case::test_case;
 
     #[test_case(false; "v1")]
@@ -400,7 +401,7 @@ mod miner_actor_precommit_batch {
             rt.expect_send(
                 STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
-                RawBytes::serialize(vdparams).unwrap(),
+                Some(IpldBlock::serialize_cbor(&vdparams).unwrap()),
                 TokenAmount::zero(),
                 RawBytes::serialize(vdreturn).unwrap(),
                 ExitCode::OK,
@@ -417,7 +418,7 @@ mod miner_actor_precommit_batch {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
-                RawBytes::serialize(cron_params).unwrap(),
+                Some(IpldBlock::serialize_cbor(&cron_params).unwrap()),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -425,7 +426,7 @@ mod miner_actor_precommit_batch {
 
             let result = rt.call::<Actor>(
                 Method::PreCommitSectorBatch2 as u64,
-                &RawBytes::serialize(PreCommitSectorBatchParams2 { sectors }).unwrap(),
+                Some(IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 { sectors }).unwrap()),
             );
 
             expect_abort_contains_message(

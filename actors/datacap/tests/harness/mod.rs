@@ -1,7 +1,8 @@
-use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
+use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{
     BurnReturn, MintReturn, TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
 };
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -17,6 +18,7 @@ use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     ActorError, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fvm_shared::ipld_block::IpldBlock;
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
@@ -45,7 +47,7 @@ impl Harness {
         let ret = rt
             .call::<DataCapActor>(
                 Method::Constructor as MethodNum,
-                &RawBytes::serialize(registry).unwrap(),
+                Some(IpldBlock::serialize_cbor(registry).unwrap()),
             )
             .unwrap();
 
@@ -84,7 +86,7 @@ impl Harness {
         rt.expect_send(
             *to,
             frc42_dispatch::method_hash!("Receive"),
-            serialize(&hook_params, "hook params")?,
+            Some(IpldBlock::serialize_cbor(&hook_params).unwrap()),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -92,8 +94,10 @@ impl Harness {
 
         let params = MintParams { to: *to, amount: amount.clone(), operators };
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
-        let ret =
-            rt.call::<DataCapActor>(Method::Mint as MethodNum, &serialize(&params, "params")?)?;
+        let ret = rt.call::<DataCapActor>(
+            Method::Mint as MethodNum,
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        )?;
 
         rt.verify();
         Ok(ret.deserialize().unwrap())
@@ -110,8 +114,10 @@ impl Harness {
         let params = DestroyParams { owner: *owner, amount: amount.clone() };
 
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
-        let ret =
-            rt.call::<DataCapActor>(Method::Destroy as MethodNum, &serialize(&params, "params")?)?;
+        let ret = rt.call::<DataCapActor>(
+            Method::Destroy as MethodNum,
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        )?;
 
         rt.verify();
         Ok(ret.deserialize().unwrap())
@@ -147,15 +153,17 @@ impl Harness {
         rt.expect_send(
             *to,
             frc42_dispatch::method_hash!("Receive"),
-            serialize(&hook_params, "hook params")?,
+            Some(IpldBlock::serialize_cbor(&hook_params).unwrap()),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
 
         let params = TransferParams { to: *to, amount: amount.clone(), operator_data };
-        let ret =
-            rt.call::<DataCapActor>(Method::Transfer as MethodNum, &serialize(&params, "params")?)?;
+        let ret = rt.call::<DataCapActor>(
+            Method::Transfer as MethodNum,
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        )?;
 
         rt.verify();
         Ok(ret.deserialize().unwrap())
@@ -192,7 +200,7 @@ impl Harness {
         rt.expect_send(
             *to,
             frc42_dispatch::method_hash!("Receive"),
-            serialize(&hook_params, "hook params")?,
+            Some(IpldBlock::serialize_cbor(&hook_params).unwrap()),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -202,7 +210,7 @@ impl Harness {
             TransferFromParams { to: *to, from: *from, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
             Method::TransferFrom as MethodNum,
-            &serialize(&params, "params")?,
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         )?;
 
         rt.verify();

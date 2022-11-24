@@ -29,7 +29,6 @@ mod util {
 }
 
 mod construction {
-    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::error::ExitCode;
     use fvm_shared::MethodNum;
@@ -37,6 +36,7 @@ mod construction {
     use fil_actor_verifreg::{Actor as VerifregActor, Method};
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
+    use fvm_shared::ipld_block::IpldBlock;
     use harness::*;
 
     use crate::*;
@@ -69,7 +69,7 @@ mod construction {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<VerifregActor>(
                 Method::Constructor as MethodNum,
-                &RawBytes::serialize(root_pubkey).unwrap(),
+                Some(IpldBlock::serialize_cbor(&root_pubkey).unwrap()),
             ),
         );
     }
@@ -81,9 +81,11 @@ mod verifiers {
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
+    use std::ops::Deref;
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
+    use fvm_shared::ipld_block::IpldBlock;
     use harness::*;
     use util::*;
 
@@ -100,7 +102,7 @@ mod verifiers {
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::AddVerifier as MethodNum,
-                &RawBytes::serialize(params).unwrap(),
+                Some(IpldBlock::serialize_cbor(&params).unwrap()),
             ),
         );
         h.check_state(&rt);
@@ -149,7 +151,7 @@ mod verifiers {
         rt.expect_send(
             verifier_key_address,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             TokenAmount::default(),
             RawBytes::default(),
             ExitCode::OK,
@@ -193,7 +195,7 @@ mod verifiers {
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::RemoveVerifier as MethodNum,
-                &RawBytes::serialize(*VERIFIER).unwrap(),
+                Some(IpldBlock::serialize_cbor(VERIFIER.deref()).unwrap()),
             ),
         );
         h.check_state(&rt);
@@ -239,6 +241,7 @@ mod clients {
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierClientParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
+    use fvm_shared::ipld_block::IpldBlock;
     use harness::*;
     use util::*;
 
@@ -325,7 +328,7 @@ mod clients {
         rt.expect_send(
             client,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             TokenAmount::default(),
             RawBytes::default(),
             ExitCode::OK,
@@ -367,7 +370,7 @@ mod clients {
             ExitCode::USR_NOT_FOUND,
             rt.call::<VerifregActor>(
                 Method::AddVerifiedClient as MethodNum,
-                &RawBytes::serialize(params).unwrap(),
+                Some(IpldBlock::serialize_cbor(&params).unwrap()),
             ),
         );
         h.check_state(&rt);
@@ -891,8 +894,8 @@ mod allocs_claims {
 }
 
 mod datacap {
-    use frc46_token::receiver::types::{UniversalReceiverParams, FRC46_TOKEN_TYPE};
-    use fvm_ipld_encoding::RawBytes;
+    use frc46_token::receiver::FRC46_TOKEN_TYPE;
+    use fvm_actor_utils::receiver::UniversalReceiverParams;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
@@ -908,6 +911,7 @@ mod datacap {
     use fil_actors_runtime::{
         BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR,
     };
+    use fvm_shared::ipld_block::IpldBlock;
     use harness::*;
 
     use crate::*;
@@ -1063,7 +1067,7 @@ mod datacap {
             "caller address",
             rt.call::<VerifregActor>(
                 Method::UniversalReceiverHook as MethodNum,
-                &RawBytes::serialize(&params).unwrap(),
+                Some(IpldBlock::serialize_cbor(&params).unwrap()),
             ),
         );
         rt.verify();
@@ -1095,7 +1099,7 @@ mod datacap {
             "token receiver expected to",
             rt.call::<VerifregActor>(
                 Method::UniversalReceiverHook as MethodNum,
-                &RawBytes::serialize(&params).unwrap(),
+                Some(IpldBlock::serialize_cbor(&params).unwrap()),
             ),
         );
         rt.verify();

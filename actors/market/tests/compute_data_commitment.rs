@@ -8,7 +8,6 @@ use fil_actor_market::{
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
@@ -16,11 +15,13 @@ use fvm_shared::sector::RegisteredSealProof;
 use cid::Cid;
 
 mod harness;
+
 use harness::*;
 
 #[cfg(test)]
 mod compute_data_commitment {
     use super::*;
+    use fvm_shared::ipld_block::IpldBlock;
 
     #[test]
     fn successfully_compute_cid() {
@@ -70,7 +71,7 @@ mod compute_data_commitment {
         let ret: ComputeDataCommitmentReturn = rt
             .call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                &RawBytes::serialize(param).unwrap(),
+                Some(IpldBlock::serialize_cbor(&param).unwrap()),
             )
             .unwrap()
             .deserialize()
@@ -103,7 +104,7 @@ mod compute_data_commitment {
         let ret: ComputeDataCommitmentReturn = rt
             .call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                &RawBytes::serialize(param).unwrap(),
+                Some(IpldBlock::serialize_cbor(&param).unwrap()),
             )
             .unwrap()
             .deserialize()
@@ -177,7 +178,7 @@ mod compute_data_commitment {
         let ret: ComputeDataCommitmentReturn = rt
             .call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                &RawBytes::serialize(param).unwrap(),
+                Some(IpldBlock::serialize_cbor(&param).unwrap()),
             )
             .unwrap()
             .deserialize()
@@ -205,7 +206,7 @@ mod compute_data_commitment {
             ExitCode::USR_NOT_FOUND,
             rt.call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                &RawBytes::serialize(param).unwrap(),
+                Some(IpldBlock::serialize_cbor(&param).unwrap()),
             ),
         );
         check_state(&rt);
@@ -245,7 +246,7 @@ mod compute_data_commitment {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                &RawBytes::serialize(param).unwrap(),
+                Some(IpldBlock::serialize_cbor(&param).unwrap()),
             ),
         );
         check_state(&rt);
@@ -291,7 +292,7 @@ mod compute_data_commitment {
             ExitCode::USR_NOT_FOUND,
             rt.call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                &RawBytes::serialize(param).unwrap(),
+                Some(IpldBlock::serialize_cbor(&param).unwrap()),
             ),
         );
         check_state(&rt);
@@ -342,7 +343,7 @@ mod compute_data_commitment {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                &RawBytes::serialize(param).unwrap(),
+                Some(IpldBlock::serialize_cbor(&param).unwrap()),
             ),
         );
         check_state(&rt);

@@ -8,6 +8,7 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::ipld_block::IpldBlock;
 use fvm_shared::ActorID;
 
 use super::state::State;
@@ -27,13 +28,14 @@ pub struct ResolveAddressResponse {
     pub id: ActorID,
     pub success: bool,
 }
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct SendArgs {
     pub to: Address,
     pub value: TokenAmount,
     #[serde(rename = "MethodNum")]
     pub method: u64,
-    pub params: RawBytes,
+    pub params: Option<IpldBlock>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{actor_error, decode_params, ActorError, AsActorError, SYSTEM_ACTOR_ADDR};
 
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::ipld_block::IpldBlock;
 
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
@@ -40,9 +41,11 @@ pub struct ConstructorParams {
 
 /// Cron actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for Cron actor
-    fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: ConstructorParams = decode_params!(args);
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         rt.create(&State { entries: params.entries })?;
         Ok(())
@@ -50,18 +53,14 @@ impl Actor {
     /// Executes built-in periodic actions, run at every Epoch.
     /// epoch_tick(r) is called after all other messages in the epoch have been applied.
     /// This can be seen as an implicit last message.
-    fn epoch_tick(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn epoch_tick(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
+        // TODO: NO_PARAMS
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st: State = rt.state()?;
         for entry in st.entries {
             // Intentionally ignore any error when calling cron methods
-            let res = rt.send(
-                &entry.receiver,
-                entry.method_num,
-                RawBytes::default(),
-                TokenAmount::zero(),
-            );
+            let res = rt.send(&entry.receiver, entry.method_num, None, TokenAmount::zero());
             if let Err(e) = res {
                 log::error!(
                     "cron failed to send entry to {}, send error code {}",
@@ -78,18 +77,18 @@ impl ActorCode for Actor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
+                Self::constructor(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::EpochTick) => {
-                Self::epoch_tick(rt)?;
+                Self::epoch_tick(rt, args)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),

@@ -43,7 +43,9 @@ pub mod fvm;
 pub(crate) mod hash_algorithm;
 
 pub(crate) mod empty;
+
 pub use empty::EMPTY_ARR_CID;
+use fvm_shared::ipld_block::IpldBlock;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
@@ -185,7 +187,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError>;
 

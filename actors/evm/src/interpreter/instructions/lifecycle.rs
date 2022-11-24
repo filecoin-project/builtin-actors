@@ -1,6 +1,6 @@
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
-use fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes};
+use fvm_ipld_encoding::{strict_bytes, tuple::*};
 use fvm_shared::MethodNum;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use serde_tuple::{Deserialize_tuple, Serialize_tuple};
@@ -9,6 +9,7 @@ use crate::interpreter::stack::Stack;
 use crate::interpreter::{address::EthAddress, U256};
 
 use super::memory::{get_memory_region, MemoryRegion};
+use fvm_shared::ipld_block::IpldBlock;
 use {
     crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
@@ -66,7 +67,7 @@ pub fn create(
 
     let nonce = system.increment_nonce();
     let params = CreateParams { code: input_data.to_vec(), nonce };
-    create_init(stack, system, RawBytes::serialize(&params)?, CREATE_METHOD_NUM, value)
+    create_init(stack, system, Some(IpldBlock::serialize_cbor(&params)?), CREATE_METHOD_NUM, value)
 }
 
 pub fn create2(
@@ -102,14 +103,20 @@ pub fn create2(
     let params = Create2Params { code: input_data.to_vec(), salt };
 
     system.increment_nonce();
-    create_init(stack, system, RawBytes::serialize(&params)?, CREATE2_METHOD_NUM, endowment)
+    create_init(
+        stack,
+        system,
+        Some(IpldBlock::serialize_cbor(&params)?),
+        CREATE2_METHOD_NUM,
+        endowment,
+    )
 }
 
 /// call into Ethereum Address Manager to make the new account
 fn create_init(
     stack: &mut Stack,
     system: &mut System<impl Runtime>,
-    params: RawBytes,
+    params: Option<IpldBlock>,
     method: MethodNum,
     value: TokenAmount,
 ) -> Result<(), StatusCode> {

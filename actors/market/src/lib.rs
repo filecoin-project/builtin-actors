@@ -30,10 +30,11 @@ use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorDowncast, ActorError, AsActorError,
+    actor_error, decode_params, ActorContext, ActorDowncast, ActorError, AsActorError,
     BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fvm_shared::ipld_block::IpldBlock;
 
 use crate::ext::verifreg::{AllocationID, AllocationRequest};
 
@@ -77,7 +78,8 @@ pub enum Method {
 pub struct Actor;
 
 impl Actor {
-    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
+        // TODO: NO_PARAMS
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st = State::new(rt.store()).map_err(|e| {
@@ -88,7 +90,8 @@ impl Actor {
     }
 
     /// Deposits the received value into the balance held in escrow.
-    fn add_balance(rt: &mut impl Runtime, provider_or_client: Address) -> Result<(), ActorError> {
+    fn add_balance(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: Address = decode_params!(args);
         let msg_value = rt.message().value_received();
 
         if msg_value <= TokenAmount::zero() {
@@ -102,7 +105,7 @@ impl Actor {
         // only signing parties can add balance for client AND provider.
         rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
 
-        let (nominal, _, _) = escrow_address(rt, &provider_or_client)?;
+        let (nominal, _, _) = escrow_address(rt, &params)?;
 
         rt.transaction(|st: &mut State, rt| {
             let mut msm = st.mutator(rt.store());
@@ -132,8 +135,9 @@ impl Actor {
     /// If less than the specified amount is available, yields the entire available balance.
     fn withdraw_balance(
         rt: &mut impl Runtime,
-        params: WithdrawBalanceParams,
+        args: Option<IpldBlock>,
     ) -> Result<WithdrawBalanceReturn, ActorError> {
+        let params: WithdrawBalanceParams = decode_params!(args);
         if params.amount < TokenAmount::zero() {
             return Err(actor_error!(illegal_argument, "negative amount: {}", params.amount));
         }
@@ -176,7 +180,7 @@ impl Actor {
             Ok(ex)
         })?;
 
-        rt.send(&recipient, METHOD_SEND, RawBytes::default(), amount_extracted.clone())?;
+        rt.send(&recipient, METHOD_SEND, None, amount_extracted.clone())?;
 
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_extracted })
     }
@@ -184,8 +188,9 @@ impl Actor {
     /// Publish a new set of storage deals (not yet included in a sector).
     fn publish_storage_deals(
         rt: &mut impl Runtime,
-        params: PublishStorageDealsParams,
+        args: Option<IpldBlock>,
     ) -> Result<PublishStorageDealsReturn, ActorError> {
+        let params: PublishStorageDealsParams = decode_params!(args);
         // Deal message must have a From field identical to the provider of all the deals.
         // This allows us to retain and verify only the client's signature in each deal proposal itself.
         rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
@@ -358,7 +363,7 @@ impl Actor {
                     .send(
                         &DATACAP_TOKEN_ACTOR_ADDR,
                         ext::datacap::TRANSFER_FROM_METHOD as u64,
-                        serialize(&params, "transfer parameters")?,
+                        Some(IpldBlock::serialize_cbor(&params)?),
                         TokenAmount::zero(),
                     )
                     .and_then(|ret| datacap_transfer_response(&ret));
@@ -480,8 +485,9 @@ impl Actor {
     /// and return UnsealedCID for the set of deals.
     fn verify_deals_for_activation(
         rt: &mut impl Runtime,
-        params: VerifyDealsForActivationParams,
+        args: Option<IpldBlock>,
     ) -> Result<VerifyDealsForActivationReturn, ActorError> {
+        let params: VerifyDealsForActivationParams = decode_params!(args);
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
@@ -521,8 +527,9 @@ impl Actor {
     /// Activate a set of deals, returning the combined deal space and extra info for verified deals.
     fn activate_deals(
         rt: &mut impl Runtime,
-        params: ActivateDealsParams,
+        args: Option<IpldBlock>,
     ) -> Result<ActivateDealsResult, ActorError> {
+        let params: ActivateDealsParams = decode_params!(args);
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
@@ -654,8 +661,9 @@ impl Actor {
     /// amount to client.
     fn on_miner_sectors_terminate(
         rt: &mut impl Runtime,
-        params: OnMinerSectorsTerminateParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: OnMinerSectorsTerminateParams = decode_params!(args);
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
 
@@ -734,8 +742,9 @@ impl Actor {
 
     fn compute_data_commitment(
         rt: &mut impl Runtime,
-        params: ComputeDataCommitmentParams,
+        args: Option<IpldBlock>,
     ) -> Result<ComputeDataCommitmentReturn, ActorError> {
+        let params: ComputeDataCommitmentParams = decode_params!(args);
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         let st: State = rt.state()?;
@@ -756,7 +765,8 @@ impl Actor {
         Ok(ComputeDataCommitmentReturn { commds })
     }
 
-    fn cron_tick(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn cron_tick(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
+        // TODO: NO_PARAMS
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
         let mut amount_slashed = TokenAmount::zero();
@@ -1012,7 +1022,7 @@ impl Actor {
         })?;
 
         if !amount_slashed.is_zero() {
-            rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount_slashed)?;
+            rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, amount_slashed)?;
         }
         Ok(())
     }
@@ -1276,10 +1286,10 @@ fn deal_proposal_is_internally_valid(
     rt.send(
         &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
-        RawBytes::serialize(ext::account::AuthenticateMessageParams {
+        Some(IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
             signature: signature_bytes,
             message: proposal_bytes,
-        })?,
+        })?),
         TokenAmount::zero(),
     )
     .map_err(|e| e.wrap("proposal authentication failed"))?;
@@ -1314,7 +1324,7 @@ fn request_miner_control_addrs(
     let ret = rt.send(
         &Address::new_id(miner_id),
         ext::miner::CONTROL_ADDRESSES_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
     )?;
     let addrs: ext::miner::GetControlAddressesReturnParams = ret.deserialize()?;
@@ -1353,7 +1363,7 @@ fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower,
     let rwret = rt.send(
         &REWARD_ACTOR_ADDR,
         ext::reward::THIS_EPOCH_REWARD_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
     )?;
     let ret: ThisEpochRewardReturn = rwret.deserialize()?;
@@ -1368,7 +1378,7 @@ fn request_current_network_power(
     let rwret = rt.send(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::CURRENT_TOTAL_POWER_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
     )?;
     let ret: ext::power::CurrentTotalPowerReturnParams = rwret.deserialize()?;
@@ -1384,46 +1394,46 @@ impl ActorCode for Actor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt)?;
+                Self::constructor(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::AddBalance) => {
-                Self::add_balance(rt, cbor::deserialize_params(params)?)?;
+                Self::add_balance(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::WithdrawBalance) => {
-                let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::withdraw_balance(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::PublishStorageDeals) => {
-                let res = Self::publish_storage_deals(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::publish_storage_deals(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::VerifyDealsForActivation) => {
-                let res = Self::verify_deals_for_activation(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::verify_deals_for_activation(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ActivateDeals) => {
-                let res = Self::activate_deals(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::activate_deals(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::OnMinerSectorsTerminate) => {
-                Self::on_miner_sectors_terminate(rt, cbor::deserialize_params(params)?)?;
+                Self::on_miner_sectors_terminate(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ComputeDataCommitment) => {
-                let res = Self::compute_data_commitment(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::compute_data_commitment(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::CronTick) => {
-                Self::cron_tick(rt)?;
+                Self::cron_tick(rt, args)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),

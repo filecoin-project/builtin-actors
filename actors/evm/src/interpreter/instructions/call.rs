@@ -1,8 +1,9 @@
-use fvm_ipld_encoding::{BytesDe, BytesSer};
+use fvm_ipld_encoding::{BytesDe, DAG_CBOR};
 use fvm_shared::{address::Address, METHOD_SEND};
 
 use crate::interpreter::precompiles::PrecompileContext;
 
+use fvm_shared::ipld_block::IpldBlock;
 use {
     super::memory::{copy_to_memory, get_memory_region},
     crate::interpreter::address::EthAddress,
@@ -181,7 +182,7 @@ pub fn call<RT: Runtime>(
                             &dst_addr,
                             method,
                             // TODO: support IPLD codecs #758
-                            RawBytes::serialize(BytesSer(input_data))?,
+                            Some(IpldBlock { codec: DAG_CBOR, data: input_data.to_vec() }),
                             TokenAmount::from(&value),
                         )
                     }
@@ -201,7 +202,7 @@ pub fn call<RT: Runtime>(
                     system.send(
                         &system.rt.message().receiver(),
                         Method::InvokeContractDelegate as u64,
-                        RawBytes::serialize(&params)?,
+                        Some(IpldBlock::serialize_cbor(&params)?),
                         TokenAmount::from(&value),
                     )
                 }
@@ -279,9 +280,14 @@ pub fn callactor(
             &memory[offset..][..size.get()]
         } else {
             &[]
-        }
-        .to_vec();
-        rt.send(&dst_addr, methodnum, RawBytes::from(input_data), TokenAmount::from(&value))
+        };
+        rt.send(
+            &dst_addr,
+            methodnum,
+            // TODO: Correct to assume CBOR here?
+            Some(IpldBlock { codec: DAG_CBOR, data: input_data.to_vec() }),
+            TokenAmount::from(&value),
+        )
     };
 
     if let Err(ae) = result {

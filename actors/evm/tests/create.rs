@@ -9,6 +9,7 @@ use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::ipld_block::IpldBlock;
 
 mod util;
 
@@ -94,7 +95,7 @@ fn test_create() {
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE_METHOD_NUM,
-            RawBytes::serialize(create_params.clone()).unwrap(),
+            Some(IpldBlock::serialize_cbor(&create_params.clone()).unwrap()),
             TokenAmount::from_atto(1),
             RawBytes::serialize(fake_ret).unwrap(),
             ExitCode::OK,
@@ -116,7 +117,7 @@ fn test_create() {
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE_METHOD_NUM,
-            RawBytes::serialize(create_params.clone()).unwrap(),
+            Some(IpldBlock::serialize_cbor(&create_params.clone()).unwrap()),
             TokenAmount::from_atto(1),
             RawBytes::serialize(fake_ret).unwrap(),
             ExitCode::OK,
@@ -138,7 +139,7 @@ fn test_create() {
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE2_METHOD_NUM,
-            RawBytes::serialize(create2_params.clone()).unwrap(),
+            Some(IpldBlock::serialize_cbor(&create2_params.clone()).unwrap()),
             TokenAmount::from_atto(1),
             RawBytes::serialize(fake_ret).unwrap(),
             ExitCode::OK,
@@ -156,7 +157,7 @@ fn test_create() {
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE2_METHOD_NUM,
-            RawBytes::serialize(create2_params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&create2_params).unwrap()),
             TokenAmount::from_atto(1),
             RawBytes::serialize(fake_ret).unwrap(),
             ExitCode::OK,
@@ -175,7 +176,7 @@ fn test_create() {
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE_METHOD_NUM,
-            RawBytes::serialize(create_params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&create_params).unwrap()),
             TokenAmount::from_atto(1),
             RawBytes::serialize(fake_ret).unwrap(),
             ExitCode::OK,

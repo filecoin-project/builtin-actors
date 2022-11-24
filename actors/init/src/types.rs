@@ -5,6 +5,7 @@ use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_shared::address::Address;
+use fvm_shared::ipld_block::IpldBlock;
 
 /// Init actor Constructor parameters
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -16,7 +17,7 @@ pub struct ConstructorParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ExecParams {
     pub code_cid: Cid,
-    pub constructor_params: RawBytes,
+    pub constructor_params: Option<IpldBlock>,
 }
 
 /// Init actor Exec Return value
@@ -32,7 +33,7 @@ pub struct ExecReturn {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct Exec4Params {
     pub code_cid: Cid,
-    pub constructor_params: RawBytes,
+    pub constructor_params: Option<IpldBlock>,
     pub subaddress: RawBytes,
 }
 

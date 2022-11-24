@@ -3,7 +3,7 @@ use std::{borrow::Cow, convert::TryInto, marker::PhantomData, slice::ChunksExact
 use super::{StatusCode, U256};
 
 use fil_actors_runtime::runtime::{Primitives, Runtime};
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
 use fvm_shared::{
     address::Address,
     bigint::BigUint,
@@ -18,6 +18,7 @@ use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
 
+use fvm_shared::ipld_block::IpldBlock;
 pub use substrate_bn::{CurveError, FieldError, GroupError};
 
 lazy_static::lazy_static! {
@@ -454,7 +455,8 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
         rt.send(
             &address,
             method,
-            RawBytes::from(input_data.to_vec()),
+            // TODO: Correct to assume CBOR here?
+            Some(IpldBlock { codec: DAG_CBOR, data: input_data.to_vec() }),
             TokenAmount::from(&ctx.value),
         )
     };

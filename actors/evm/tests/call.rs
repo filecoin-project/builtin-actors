@@ -9,6 +9,7 @@ use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::ipld_block::IpldBlock;
 use fvm_shared::METHOD_SEND;
 
 mod util;
@@ -81,8 +82,11 @@ fn test_call() {
     evm_target_word.to_big_endian(&mut contract_params[..32]);
 
     let proxy_call_contract_params = vec![0u8; 4];
-    let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
-        .expect("failed to serialize input data");
+    // TODO: What's the right serialization?
+    let proxy_call_input_data = Some(
+        IpldBlock::serialize_cbor(&proxy_call_contract_params)
+            .expect("failed to serialize input data"),
+    );
 
     // expected return data
     let mut return_data = vec![0u8; 32];
@@ -149,8 +153,11 @@ fn test_call_convert_to_send() {
         evm_target_word.to_big_endian(&mut contract_params[..32]);
 
         let proxy_call_contract_params = vec![0u8; 4];
-        let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
-            .expect("failed to serialize input data");
+        // TODO: What's the right serialization?
+        let proxy_call_input_data = Some(
+            IpldBlock::serialize_cbor(&proxy_call_contract_params)
+                .expect("failed to serialize input data"),
+        );
 
         // expected return data
         let mut return_data = vec![0u8; 32];
@@ -184,8 +191,7 @@ fn test_reserved_method() {
     // invoke the contract
     rt.expect_validate_caller_any();
 
-    let code =
-        rt.call::<evm::EvmContractActor>(0x42, &RawBytes::default()).unwrap_err().exit_code();
+    let code = rt.call::<evm::EvmContractActor>(0x42, None).unwrap_err().exit_code();
     assert_eq!(ExitCode::USR_UNHANDLED_MESSAGE, code);
 }
 
@@ -197,7 +203,7 @@ fn test_native_call() {
     // invoke the contract
     rt.expect_validate_caller_any();
 
-    let result = rt.call::<evm::EvmContractActor>(1024, &RawBytes::default()).unwrap();
+    let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap();
     assert_eq!(U256::from_big_endian(&result), U256::from(1024));
 }
 
@@ -289,7 +295,7 @@ fn test_callactor() {
     rt.expect_send(
         target,
         0x42,
-        proxy_call_input_data,
+        None,
         TokenAmount::zero(),
         RawBytes::from(return_data),
         ExitCode::OK,

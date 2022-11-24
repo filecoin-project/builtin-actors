@@ -9,6 +9,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::ipld_block::IpldBlock;
 use num_traits::Zero;
 
 fn check_state(rt: &MockRuntime) {
@@ -24,6 +25,7 @@ fn construct_runtime() -> MockRuntime {
         ..Default::default()
     }
 }
+
 #[test]
 fn construct_with_empty_entries() {
     let mut rt = construct_runtime();
@@ -61,6 +63,7 @@ fn epoch_tick_with_empty_entries() {
     construct_and_verify(&mut rt, &ConstructorParams { entries: vec![] });
     epoch_tick_and_verify(&mut rt);
 }
+
 #[test]
 fn epoch_tick_with_entries() {
     let mut rt = construct_runtime();
@@ -80,7 +83,7 @@ fn epoch_tick_with_entries() {
     rt.expect_send(
         entry1.receiver,
         entry1.method_num,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
@@ -88,7 +91,7 @@ fn epoch_tick_with_entries() {
     rt.expect_send(
         entry2.receiver,
         entry2.method_num,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -96,7 +99,7 @@ fn epoch_tick_with_entries() {
     rt.expect_send(
         entry3.receiver,
         entry3.method_num,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
@@ -104,7 +107,7 @@ fn epoch_tick_with_entries() {
     rt.expect_send(
         entry4.receiver,
         entry4.method_num,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
@@ -115,14 +118,14 @@ fn epoch_tick_with_entries() {
 
 fn construct_and_verify(rt: &mut MockRuntime, params: &ConstructorParams) {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-    let ret = rt.call::<CronActor>(1, &RawBytes::serialize(&params).unwrap()).unwrap();
+    let ret = rt.call::<CronActor>(1, Some(IpldBlock::serialize_cbor(&params).unwrap())).unwrap();
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
 }
 
 fn epoch_tick_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-    let ret = rt.call::<CronActor>(2, &RawBytes::default()).unwrap();
+    let ret = rt.call::<CronActor>(2, None).unwrap();
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
     check_state(rt);

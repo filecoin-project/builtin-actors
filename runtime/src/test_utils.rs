@@ -43,6 +43,7 @@ use crate::runtime::{
 };
 use crate::{actor_error, ActorError};
 use fvm_shared::event::ActorEvent;
+use fvm_shared::ipld_block::IpldBlock;
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
 lazy_static::lazy_static! {
@@ -360,7 +361,7 @@ pub struct ExpectCreateActor {
 pub struct ExpectedMessage {
     pub to: Address,
     pub method: MethodNum,
-    pub params: RawBytes,
+    pub params: Option<IpldBlock>,
     pub value: TokenAmount,
 
     // returns from applying expectedMessage
@@ -534,7 +535,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     pub fn call<A: ActorCode>(
         &mut self,
         method_num: MethodNum,
-        params: &RawBytes,
+        params: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError> {
         self.in_call = true;
         let prev_state = self.state;
@@ -648,7 +649,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         &mut self,
         to: Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
         send_return: RawBytes,
         exit_code: ExitCode,
@@ -1072,7 +1073,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         self.require_in_call();

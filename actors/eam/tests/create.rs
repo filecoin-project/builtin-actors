@@ -13,6 +13,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::ipld_block::IpldBlock;
 use rlp::Encodable;
 
 #[test]
@@ -46,7 +47,7 @@ fn call_create() {
         rt.expect_send(
             INIT_ACTOR_ADDR,
             EXEC4_METHOD,
-            RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
             TokenAmount::from_atto(0),
             send_return,
             ExitCode::OK,
@@ -55,7 +56,7 @@ fn call_create() {
         let result = rt
             .call::<eam::EamActor>(
                 eam::Method::Create as u64,
-                &RawBytes::serialize(create_params).unwrap(),
+                Some(IpldBlock::serialize_cbor(&create_params).unwrap()),
             )
             .unwrap()
             .deserialize::<Return>()
@@ -138,7 +139,7 @@ fn call_create2() {
     rt.expect_send(
         INIT_ACTOR_ADDR,
         EXEC4_METHOD,
-        RawBytes::serialize(params).unwrap(),
+        Some(IpldBlock::serialize_cbor(&params).unwrap()),
         TokenAmount::from_atto(0),
         send_return,
         ExitCode::OK,
@@ -147,7 +148,7 @@ fn call_create2() {
     let result = rt
         .call::<eam::EamActor>(
             eam::Method::Create2 as u64,
-            &RawBytes::serialize(create2_params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&create2_params).unwrap()),
         )
         .unwrap()
         .deserialize::<Return>()
@@ -171,8 +172,7 @@ pub fn construct_and_verify() -> MockRuntime {
 
     rt.expect_validate_caller_type(vec![Type::Init]);
 
-    let result =
-        rt.call::<eam::EamActor>(eam::Method::Constructor as u64, &RawBytes::default()).unwrap();
+    let result = rt.call::<eam::EamActor>(eam::Method::Constructor as u64, None).unwrap();
     expect_empty(result);
     rt.verify();
     rt.reset();

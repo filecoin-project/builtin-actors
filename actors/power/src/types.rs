@@ -10,6 +10,8 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
 
+use serde::{Deserialize, Serialize};
+
 pub type SectorTermination = i64;
 
 /// Implicit termination after all deals expire
@@ -54,6 +56,12 @@ pub struct UpdateClaimedPowerParams {
 pub struct EnrollCronEventParams {
     pub event_epoch: ChainEpoch,
     pub payload: RawBytes,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
+#[serde(transparent)]
+pub struct UpdatePledgeTotalParams {
+    pub pledge_delta: TokenAmount,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

@@ -15,6 +15,7 @@ use crate::state::State;
 
 use super::{address::EthAddress, Bytecode};
 
+use fvm_shared::ipld_block::IpldBlock;
 use {
     crate::interpreter::{StatusCode, U256},
     cid::Cid,
@@ -100,7 +101,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         &mut self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         self.flush()?;

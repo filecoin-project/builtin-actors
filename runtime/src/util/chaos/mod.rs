@@ -5,6 +5,7 @@ use cid::Cid;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
+use fvm_shared::ipld_block::IpldBlock;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -13,7 +14,7 @@ pub use types::*;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{ActorCode, Runtime};
-use crate::{actor_error, cbor, ActorError};
+use crate::{actor_error, decode_params, ActorError, AsActorError};
 
 mod state;
 mod types;
@@ -49,10 +50,11 @@ pub enum Method {
 pub struct Actor;
 
 impl Actor {
-    pub fn send(rt: &mut impl Runtime, arg: SendArgs) -> Result<SendReturn, ActorError> {
+    pub fn send(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<SendReturn, ActorError> {
+        let params: SendArgs = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
 
-        let result = rt.send(&arg.to, arg.method, arg.params, arg.value);
+        let result = rt.send(&params.to, params.method, params.params, params.value);
         if let Err(e) = result {
             Ok(SendReturn { return_value: RawBytes::default(), code: e.exit_code() })
         } else {
@@ -60,8 +62,8 @@ impl Actor {
         }
     }
 
-    /// Constructor for Account actor
-    pub fn constructor(_rt: &mut impl Runtime) {
+    /// Constructor for Chaos actor
+    pub fn constructor(_rt: &mut impl Runtime, _params: Option<IpldBlock>) {
         panic!("Constructor should not be called");
     }
 
@@ -74,19 +76,21 @@ impl Actor {
     ///  CALLER_VALIDATION_BRANCH_IS_TYPE validates against an empty caller type set.
     pub fn caller_validation(
         rt: &mut impl Runtime,
-        args: CallerValidationArgs,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
-        match args.branch {
+        let params: CallerValidationArgs = decode_params!(args);
+
+        match params.branch {
             x if x == CALLER_VALIDATION_BRANCH_NONE => {}
             x if x == CALLER_VALIDATION_BRANCH_TWICE => {
                 rt.validate_immediate_caller_accept_any()?;
                 rt.validate_immediate_caller_accept_any()?;
             }
             x if x == CALLER_VALIDATION_BRANCH_IS_ADDRESS => {
-                rt.validate_immediate_caller_is(&args.addrs)?;
+                rt.validate_immediate_caller_is(&params.addrs)?;
             }
             x if x == CALLER_VALIDATION_BRANCH_IS_TYPE => {
-                let types: Vec<Type> = args
+                let types: Vec<Type> = params
                     .types
                     .iter()
                     .map(|typ| rt.resolve_builtin_actor_type(typ).unwrap())
@@ -99,12 +103,14 @@ impl Actor {
     }
 
     // Creates an actor with the supplied CID and Address.
-    pub fn create_actor(rt: &mut impl Runtime, arg: CreateActorArgs) -> Result<(), ActorError> {
+    pub fn create_actor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: CreateActorArgs = decode_params!(args);
+
         rt.validate_immediate_caller_accept_any()?;
         // TODO Temporarily fine to use default as Undefined Cid, but may need to change in the future
-        let actor_cid = if arg.undef_cid { Cid::default() } else { arg.cid };
+        let actor_cid = if params.undef_cid { Cid::default() } else { params.cid };
 
-        let actor_address = arg.actor_id;
+        let actor_address = params.actor_id;
 
         rt.create_actor(actor_cid, actor_address, None)
     }
@@ -112,24 +118,30 @@ impl Actor {
     /// Resolves address, and returns the resolved address (defaulting to 0 ID) and success boolean.
     pub fn resolve_address(
         rt: &mut impl Runtime,
-        args: Address,
+        args: Option<IpldBlock>,
     ) -> Result<ResolveAddressResponse, ActorError> {
+        let params: Address = decode_params!(args);
+
         rt.validate_immediate_caller_accept_any()?;
-        let resolved = rt.resolve_address(&args);
+        let resolved = rt.resolve_address(&params);
         Ok(ResolveAddressResponse { id: resolved.unwrap_or(0), success: resolved.is_some() })
     }
 
-    pub fn delete_actor(rt: &mut impl Runtime, beneficiary: Address) -> Result<(), ActorError> {
+    pub fn delete_actor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: Address = decode_params!(args);
+
         rt.validate_immediate_caller_accept_any()?;
-        rt.delete_actor(&beneficiary)
+        rt.delete_actor(&params)
     }
 
-    pub fn mutate_state(rt: &mut impl Runtime, arg: MutateStateArgs) -> Result<(), ActorError> {
+    pub fn mutate_state(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: MutateStateArgs = decode_params!(args);
+
         rt.validate_immediate_caller_accept_any()?;
 
-        match arg.branch {
+        match params.branch {
             x if x == MUTATE_IN_TRANSACTION => rt.transaction(|s: &mut State, _| {
-                s.value = arg.value;
+                s.value = params.value;
                 Ok(())
             }),
 
@@ -137,14 +149,20 @@ impl Actor {
         }
     }
 
-    pub fn abort_with(arg: AbortWithArgs) -> Result<(), ActorError> {
-        if arg.uncontrolled {
+    pub fn abort_with(_rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: AbortWithArgs = decode_params!(args);
+
+        if params.uncontrolled {
             panic!("Uncontrolled abort/error");
         }
-        Err(ActorError::unchecked(arg.code, arg.message))
+        Err(ActorError::unchecked(params.code, params.message))
     }
 
-    pub fn inspect_runtime(rt: &mut impl Runtime) -> Result<InspectRuntimeReturn, ActorError> {
+    pub fn inspect_runtime(
+        rt: &mut impl Runtime,
+        _args: Option<IpldBlock>,
+    ) -> Result<InspectRuntimeReturn, ActorError> {
+        // TODO: NO_PARAMS
         rt.validate_immediate_caller_accept_any()?;
         Ok(InspectRuntimeReturn {
             caller: rt.message().caller(),
@@ -161,52 +179,52 @@ impl ActorCode for Actor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt);
+                Self::constructor(rt, args);
                 Ok(RawBytes::default())
             }
             Some(Method::CallerValidation) => {
-                Self::caller_validation(rt, cbor::deserialize_params(params)?)?;
+                Self::caller_validation(rt, args)?;
                 Ok(RawBytes::default())
             }
 
             Some(Method::CreateActor) => {
-                Self::create_actor(rt, cbor::deserialize_params(params)?)?;
+                Self::create_actor(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ResolveAddress) => {
-                let res = Self::resolve_address(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::resolve_address(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
 
             Some(Method::Send) => {
-                let res: SendReturn = Self::send(rt, cbor::deserialize_params(params)?)?;
+                let res: SendReturn = Self::send(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
 
             Some(Method::DeleteActor) => {
-                Self::delete_actor(rt, cbor::deserialize_params(params)?)?;
+                Self::delete_actor(rt, args)?;
                 Ok(RawBytes::default())
             }
 
             Some(Method::MutateState) => {
-                Self::mutate_state(rt, cbor::deserialize_params(params)?)?;
+                Self::mutate_state(rt, args)?;
                 Ok(RawBytes::default())
             }
 
             Some(Method::AbortWith) => {
-                Self::abort_with(cbor::deserialize_params(params)?)?;
+                Self::abort_with(rt, args)?;
                 Ok(RawBytes::default())
             }
 
             Some(Method::InspectRuntime) => {
-                let inspect = Self::inspect_runtime(rt)?;
+                let inspect = Self::inspect_runtime(rt, args)?;
                 Ok(RawBytes::serialize(inspect)?)
             }
 
