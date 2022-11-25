@@ -16,6 +16,8 @@ pub mod storage;
 use crate::interpreter::stack::Stack;
 use crate::interpreter::output::StatusCode;
 use crate::interpreter::opcode::{OpCode,StackSpec};
+use crate::interpreter::{ExecutionState, System};
+use fil_actors_runtime::runtime::Runtime;
 
 // macros for the instruction zoo:
 // primops: take values of the stack and return a result value to be pushed on the stack
@@ -58,9 +60,25 @@ macro_rules! def_push {
     }
 }
 
+// stdfuns: take state and system as first args, and args from the stack and return a result value
+// to be pushed in the stack.
+macro_rules! def_stdfun {
+    ($op:ident ($($arg:ident),*) => $impl:path) => {
+        #[allow(non_snake_case)]
+        pub fn $op(state: &mut ExecutionState, system: &System<impl Runtime>) -> Result<(), StatusCode> {
+            check_arity!($op, ($($arg),*));
+            check_stack!($op, state.stack);
+            $(let $arg = state.stack.pop();)*
+            let result = $impl(state, system, $($arg),*)?;
+            state.stack.push(result);
+            Ok(())
+        }
+    }
+}
+
 // auxiliary macros
 macro_rules! check_stack {
-    ($op:ident, $sk:ident) => {{
+    ($op:ident, $sk:expr) => {{
         const SPEC: StackSpec = OpCode::$op.spec();
         if SPEC.required > 0 {
             if !$sk.require(SPEC.required as usize) {
@@ -195,3 +213,5 @@ def_push!{ PUSH29 => stack::push::<29> }
 def_push!{ PUSH30 => stack::push::<30> }
 def_push!{ PUSH31 => stack::push::<31> }
 def_push!{ PUSH32 => stack::push::<32> }
+// stdfuns
+def_stdfun!{ KECCAK256(a, b) => hash::keccak256 }
