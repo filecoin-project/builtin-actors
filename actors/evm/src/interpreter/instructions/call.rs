@@ -14,7 +14,7 @@ use {
     crate::interpreter::System,
     crate::interpreter::U256,
     crate::RawBytes,
-    crate::{DelegateCallParams, Method, EVM_CONTRACT_EXECUTION_ERROR, EVM_CONTRACT_REVERTED},
+    crate::{DelegateCallParams, Method, EVM_CONTRACT_EXECUTION_ERROR},
     fil_actors_runtime::runtime::builtins::Type,
     fil_actors_runtime::runtime::Runtime,
     fil_actors_runtime::ActorError,
@@ -67,36 +67,75 @@ pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCod
     copy_to_memory(&mut state.memory, mem_index, size, input_index, code, true)
 }
 
-pub fn call<RT: Runtime>(
+#[inline]
+pub fn call_call<RT: Runtime>(
+    state: &mut ExecutionState,
+    system: &mut System<RT>,
+    gas: U256,
+    dst: U256,
+    value: U256,
+    input_offset: U256,
+    input_size: U256,
+    output_offset: U256,
+    output_size: U256,
+) -> Result<U256, StatusCode> {
+    call_generic(state, system, CallKind::Call, (gas, dst, value, input_offset, input_size, output_offset, output_size))
+}
+
+#[inline]
+pub fn call_callcode<RT: Runtime>(
+    state: &mut ExecutionState,
+    system: &mut System<RT>,
+    gas: U256,
+    dst: U256,
+    value: U256,
+    input_offset: U256,
+    input_size: U256,
+    output_offset: U256,
+    output_size: U256,
+) -> Result<U256, StatusCode> {
+    call_generic(state, system, CallKind::CallCode, (gas, dst, value, input_offset, input_size, output_offset, output_size))
+}
+
+#[inline]
+pub fn call_delegatecall<RT: Runtime>(
+    state: &mut ExecutionState,
+    system: &mut System<RT>,
+    gas: U256,
+    dst: U256,
+    input_offset: U256,
+    input_size: U256,
+    output_offset: U256,
+    output_size: U256,
+) -> Result<U256, StatusCode> {
+    call_generic(state, system, CallKind::DelegateCall, (gas, dst, U256::zero(), input_offset, input_size, output_offset, output_size))
+}
+
+#[inline]
+pub fn call_staticcall<RT: Runtime>(
+    state: &mut ExecutionState,
+    system: &mut System<RT>,
+    gas: U256,
+    dst: U256,
+    input_offset: U256,
+    input_size: U256,
+    output_offset: U256,
+    output_size: U256,
+) -> Result<U256, StatusCode> {
+    call_generic(state, system, CallKind::StaticCall, (gas, dst, U256::zero(), input_offset, input_size, output_offset, output_size))
+}
+
+pub fn call_generic<RT: Runtime>(
     state: &mut ExecutionState,
     system: &mut System<RT>,
     kind: CallKind,
-) -> Result<(), StatusCode> {
-    let ExecutionState { stack, memory, .. } = state;
+    params: (U256, U256, U256, U256, U256, U256, U256),
+) -> Result<U256, StatusCode> {
+    let ExecutionState { stack: _, memory, .. } = state;
 
     // NOTE gas is currently ignored as FVM's send doesn't allow the caller to specify a gas
     //      limit (external invocation gas limit applies). This may changed in the future.
-    let (gas, dst, value, input_offset, input_size, output_offset, output_size) = match kind {
-        CallKind::Call | CallKind::CallCode => (
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-        ),
-
-        CallKind::DelegateCall | CallKind::StaticCall => (
-            stack.pop(),
-            stack.pop(),
-            U256::from(0),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-            stack.pop(),
-        ),
-    };
+    let (gas, dst, value, input_offset, input_size, output_offset, output_size) = params;
 
     if system.readonly && value > U256::zero() {
         // non-zero sends are side-effects and hence a static mode violation
@@ -225,71 +264,5 @@ pub fn call<RT: Runtime>(
     // copy return data to output region if it is non-zero
     copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
 
-    stack.push(U256::from(call_result));
-    Ok(())
-}
-
-pub fn callactor(
-    state: &mut ExecutionState,
-    system: &System<impl Runtime>,
-) -> Result<(), StatusCode> {
-    let ExecutionState { stack, memory, .. } = state;
-    let rt = &*system.rt; // as immutable reference
-
-    // TODO Until we support readonly (static) calls at the fvm level, we disallow callactor
-    //      when in static mode as it is sticky and there are no guarantee of preserving the
-    //      static invariant
-    if system.readonly {
-        return Err(StatusCode::StaticModeViolation);
-    }
-
-    // stack: GAS DEST VALUE METHODNUM INPUT-OFFSET INPUT-SIZE
-    // NOTE: we don't need output-offset/output-size (which the CALL instructions have)
-    //       becase these are kinda useless; we can just use RETURNDATA anyway.
-    // NOTE: gas is currently ignored
-    let _gas = stack.pop();
-    let dst = stack.pop();
-    let value = stack.pop();
-    let method = stack.pop();
-    let input_offset = stack.pop();
-    let input_size = stack.pop();
-
-    let input_region = get_memory_region(memory, input_offset, input_size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
-
-    let result = {
-        // TODO: this is wrong https://github.com/filecoin-project/ref-fvm/issues/1018
-        let dst_addr: EthAddress = dst.into();
-        let dst_addr: Address = dst_addr.try_into()?;
-
-        if method.bits() > 64 {
-            return Err(StatusCode::ArgumentOutOfRange(format!("bad method number: {}", method)));
-        }
-        let methodnum = method.as_u64();
-
-        let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
-            &memory[offset..][..size.get()]
-        } else {
-            &[]
-        }
-        .to_vec();
-        rt.send(&dst_addr, methodnum, RawBytes::from(input_data), TokenAmount::from(&value))
-    };
-
-    if let Err(ae) = result {
-        return if ae.exit_code() == EVM_CONTRACT_REVERTED {
-            // reverted -- we don't have return data yet
-            // push failure
-            stack.push(U256::zero());
-            Ok(())
-        } else {
-            Err(StatusCode::from(ae))
-        };
-    }
-
-    // save return_data
-    state.return_data = result.unwrap().to_vec().into();
-    // push success
-    stack.push(U256::from(1));
-    Ok(())
+    Ok(U256::from(call_result))
 }

@@ -7,7 +7,6 @@ use {
     super::instructions,
     super::opcode::OpCode,
     super::StatusCode,
-    crate::interpreter::instructions::call::CallKind,
     crate::interpreter::memory::Memory,
     crate::interpreter::stack::Stack,
     crate::interpreter::{Bytecode, Output, System},
@@ -360,35 +359,22 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Continue)
         }}
 
-        CALL: {(m) => {
-            instructions::call::call(m.state, m.system, CallKind::Call)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        CALLCODE: {(m) => {
-            instructions::call::call(m.state, m.system, CallKind::CallCode)?;
-            Ok(ControlFlow::Continue)
-        }}
+        CALL: {std}
+        CALLCODE: {std}
 
         RETURN: {(m) => {
             instructions::control::ret(m.state)?;
             Ok(ControlFlow::Exit)
         }}
 
-        DELEGATECALL: {(m) => {
-            instructions::call::call(m.state, m.system, CallKind::DelegateCall)?;
-            Ok(ControlFlow::Continue)
-        }}
+        DELEGATECALL: {std}
 
         CREATE2: {(m) => {
             instructions::lifecycle::create2(m.state, m.system)?;
             Ok(ControlFlow::Continue)
         }}
 
-        STATICCALL: {(m) => {
-            instructions::call::call(m.state, m.system, CallKind::StaticCall)?;
-            Ok(ControlFlow::Continue)
-        }}
+        STATICCALL: {std}
 
         REVERT: {(m) => {
             instructions::control::ret(m.state)?;

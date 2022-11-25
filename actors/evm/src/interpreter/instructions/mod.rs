@@ -141,6 +141,9 @@ macro_rules! arg_count {
     ($arg:ident, $arg2:ident) => {2};
     ($arg:ident, $arg2:ident, $arg3:ident) => {3};
     ($arg:ident, $arg2:ident, $arg3:ident, $arg4:ident) => {4};
+    ($arg:ident, $arg2:ident, $arg3:ident, $arg4:ident, $arg5:ident) => {5};
+    ($arg:ident, $arg2:ident, $arg3:ident, $arg4:ident, $arg5:ident, $arg6:ident) => {6};
+    ($arg:ident, $arg2:ident, $arg3:ident, $arg4:ident, $arg5:ident, $arg6:ident, $arg7:ident) => {7};
     // can't use this coz we need a literal number
     //($arg: ident, $($rest:ident),*) => { 1 + arg_count!($($rest),*) };
 }
@@ -281,3 +284,7 @@ def_stdlog!{ LOG1(1, (topic1)) }
 def_stdlog!{ LOG2(2, (topic1, topic2)) }
 def_stdlog!{ LOG3(3, (topic1, topic2, topic3)) }
 def_stdlog!{ LOG4(4, (topic1, topic2, topic3, topic4)) }
+def_stdfun!{ CALL(gas, dst, value, ioff, isz, ooff, osz) => call::call_call }
+def_stdfun!{ CALLCODE(gas, dst, value, ioff, isz, ooff, osz) => call::call_callcode }
+def_stdfun!{ DELEGATECALL(gas, dst, ioff, isz, ooff, osz) => call::call_delegatecall }
+def_stdfun!{ STATICCALL(gas, dst, ioff, isz, ooff, osz) => call::call_staticcall }
