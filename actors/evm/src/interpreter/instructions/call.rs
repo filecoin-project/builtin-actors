@@ -30,28 +30,24 @@ pub enum CallKind {
     CallCode,
 }
 
-pub fn calldataload(state: &mut ExecutionState) {
-    let index = state.stack.pop();
+pub fn calldataload(state: &mut ExecutionState, _: &System<impl Runtime>, index: U256)  -> Result<U256, StatusCode> {
     let input_len = state.input_data.len();
+    Ok(if index > U256::from(input_len) {
+        U256::zero()
+    } else {
+        let index_usize = index.as_usize();
+        let end = core::cmp::min(index_usize + 32, input_len);
 
-    state.stack.push({
-        if index > U256::from(input_len) {
-            U256::zero()
-        } else {
-            let index_usize = index.as_usize();
-            let end = core::cmp::min(index_usize + 32, input_len);
+        let mut data = [0; 32];
+        data[..end - index_usize].copy_from_slice(&state.input_data[index_usize..end]);
 
-            let mut data = [0; 32];
-            data[..end - index_usize].copy_from_slice(&state.input_data[index_usize..end]);
-
-            U256::from_big_endian(&data)
-        }
-    });
+        U256::from_big_endian(&data)
+    })
 }
 
 #[inline]
-pub fn calldatasize(state: &mut ExecutionState) {
-    state.stack.push(u128::try_from(state.input_data.len()).unwrap().into());
+pub fn calldatasize(state: &mut ExecutionState, _: &System<impl Runtime>)  -> Result<U256, StatusCode> {
+    Ok(u128::try_from(state.input_data.len()).unwrap().into())
 }
 
 pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {

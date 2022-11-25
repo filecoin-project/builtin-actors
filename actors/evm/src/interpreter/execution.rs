@@ -216,41 +216,13 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         SAR: (primitive)
 
         KECCAK256: (stdfun)
-
-        ADDRESS: {(m) => {
-            instructions::context::address(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        BALANCE: {(m) => {
-            instructions::state::balance(m.state, m.system)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        ORIGIN: {(m) => {
-            instructions::context::origin(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        CALLER: {(m) => {
-            instructions::context::caller(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        CALLVALUE: {(m) => {
-            instructions::context::call_value(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        CALLDATALOAD: {(m) => {
-            instructions::call::calldataload(m.state);
-            Ok(ControlFlow::Continue)
-        }}
-
-        CALLDATASIZE: {(m) => {
-            instructions::call::calldatasize(m.state);
-            Ok(ControlFlow::Continue)
-        }}
+        ADDRESS: (stdfun)
+        BALANCE: (stdfun)
+        ORIGIN: (stdfun)
+        CALLER: (stdfun)
+        CALLVALUE: (stdfun)
+        CALLDATALOAD: (stdfun)
+        CALLDATASIZE: (stdfun)
 
         CALLDATACOPY: {(m) => {
             instructions::call::calldatacopy(m.state)?;

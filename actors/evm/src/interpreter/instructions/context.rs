@@ -1,7 +1,7 @@
 use fvm_shared::clock::ChainEpoch;
 
 use {
-    crate::interpreter::{ExecutionState, System, U256},
+    crate::interpreter::{ExecutionState, System, U256, StatusCode},
     fil_actors_runtime::runtime::chainid,
     fil_actors_runtime::runtime::Runtime,
 };
@@ -33,26 +33,26 @@ pub fn blockhash(state: &mut ExecutionState, system: &System<impl Runtime>) {
 }
 
 #[inline]
-pub fn caller(state: &mut ExecutionState, _: &System<impl Runtime>) {
-    state.stack.push(state.caller.as_evm_word())
+pub fn caller(state: &mut ExecutionState, _: &System<impl Runtime>)  -> Result<U256, StatusCode>  {
+    Ok(state.caller.as_evm_word())
 }
 
 #[inline]
-pub fn address(state: &mut ExecutionState, _system: &System<impl Runtime>) {
-    state.stack.push(state.receiver.as_evm_word())
+pub fn address(state: &mut ExecutionState, _system: &System<impl Runtime>) -> Result<U256, StatusCode> {
+    Ok(state.receiver.as_evm_word())
 }
 
 #[inline]
-pub fn origin(state: &mut ExecutionState, system: &System<impl Runtime>) {
+pub fn origin(_state: &mut ExecutionState, system: &System<impl Runtime>)  -> Result<U256, StatusCode> {
     let origin_addr = system
         .resolve_ethereum_address(&system.rt.message().origin())
         .expect("failed to resolve origin address");
-    state.stack.push(origin_addr.as_evm_word())
+    Ok(origin_addr.as_evm_word())
 }
 
 #[inline]
-pub fn call_value(state: &mut ExecutionState, system: &System<impl Runtime>) {
-    state.stack.push(U256::from(&system.rt.message().value_received()));
+pub fn call_value(_state: &mut ExecutionState, system: &System<impl Runtime>)   -> Result<U256, StatusCode> {
+    Ok(U256::from(&system.rt.message().value_received()))
 }
 
 #[inline]

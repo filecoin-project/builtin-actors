@@ -107,6 +107,7 @@ macro_rules! check_arity {
 }
 
 macro_rules! arg_count {
+    () => {0};
     ($arg:ident) => {1};
     ($arg:ident, $arg2:ident) => {2};
     ($arg:ident, $arg2:ident, $arg3:ident) => {3};
@@ -215,3 +216,10 @@ def_push!{ PUSH31 => stack::push::<31> }
 def_push!{ PUSH32 => stack::push::<32> }
 // stdfuns
 def_stdfun!{ KECCAK256(a, b) => hash::keccak256 }
+def_stdfun!{ ADDRESS() => context::address }
+def_stdfun!{ BALANCE(a) => state::balance }
+def_stdfun!{ ORIGIN() => context::origin }
+def_stdfun!{ CALLER() => context::caller }
+def_stdfun!{ CALLVALUE() => context::call_value }
+def_stdfun!{ CALLDATALOAD(a) => call::calldataload }
+def_stdfun!{ CALLDATASIZE() => call::calldatasize }

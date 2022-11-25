@@ -9,10 +9,11 @@ use {
 
 #[inline]
 pub fn balance(
-    state: &mut ExecutionState,
+    _state: &mut ExecutionState,
     system: &System<impl Runtime>,
-) -> Result<(), StatusCode> {
-    let actor: EthAddress = state.stack.pop().into();
+    actor: U256,
+) -> Result<U256, StatusCode> {
+    let actor: EthAddress = actor.into();
 
     let balance = actor
         .try_into()
@@ -21,8 +22,7 @@ pub fn balance(
         .and_then(|id| system.rt.actor_balance(id).as_ref().map(U256::from))
         .unwrap_or_default();
 
-    state.stack.push(balance);
-    Ok(())
+    Ok(balance)
 }
 
 #[inline]
