@@ -204,6 +204,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     def_opcodes! {
         STOP: {=> Ok(ControlFlow::Exit)}
 
+        // primops
         ADD: {primop}
         MUL: {primop}
         SUB: {primop}
@@ -229,7 +230,9 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         SHL: {primop}
         SHR: {primop}
         SAR: {primop}
+        POP: {primop}
 
+        // std call convenction functionoids
         KECCAK256: {std}
         ADDRESS: {std}
         BALANCE: {std}
@@ -239,10 +242,8 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         CALLDATALOAD: {std}
         CALLDATASIZE: {std}
         CALLDATACOPY: {std}
-
         CODESIZE: {code}
         CODECOPY: {code}
-
         GASPRICE: {std}
         EXTCODESIZE: {std}
         EXTCODECOPY: {std}
@@ -258,37 +259,15 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         CHAINID: {std}
         BASEFEE: {std}
         SELFBALANCE: {std}
-        POP: {primop}
         MLOAD: {std}
         MSTORE: {std}
         MSTORE8: {std}
         SLOAD: {std}
         SSTORE: {std}
-
-        JUMP: {(m) => {
-            m.pc = instructions::control::jump(&mut m.state.stack, m.bytecode)?;
-            Ok(ControlFlow::Jump)
-        }}
-
-        JUMPI: {(m) => {
-            if let Some(dest) = instructions::control::jumpi(&mut m.state.stack, m.bytecode)? {
-                m.pc = dest;
-                Ok(ControlFlow::Jump)
-            } else {
-                Ok(ControlFlow::Continue)
-            }
-        }}
-
-        PC: {(m) => {
-            instructions::control::pc(&mut m.state.stack, m.pc);
-            Ok(ControlFlow::Continue)
-        }}
-
         MSIZE: {std}
         GAS: {std}
 
-        JUMPDEST: {=> Ok(ControlFlow::Continue)} // noop marker opcode for valid jumps addresses
-
+        // push variants
         PUSH1: {push}
         PUSH2: {push}
         PUSH3: {push}
@@ -322,6 +301,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         PUSH31: {push}
         PUSH32: {push}
 
+        // dup variants
         DUP1: {primop}
         DUP2: {primop}
         DUP3: {primop}
@@ -339,6 +319,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         DUP15: {primop}
         DUP16: {primop}
 
+        // swap variants
         SWAP1: {primop}
         SWAP2: {primop}
         SWAP3: {primop}
@@ -356,38 +337,67 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         SWAP15: {primop}
         SWAP16: {primop}
 
+        // event logs
         LOG0: {std}
         LOG1: {std}
         LOG2: {std}
         LOG3: {std}
         LOG4: {std}
 
+        // create variants
         CREATE: {std}
+        CREATE2: {std}
 
+        // call variants
         CALL: {std}
         CALLCODE: {std}
+        DELEGATECALL: {std}
+        STATICCALL: {std}
+
+        // control flow magic
+        JUMPDEST: {=> Ok(ControlFlow::Continue)} // noop marker opcode for valid jumps addresses
+
+        JUMP: {(m) => {
+            if let Some(dest) = instructions::JUMP(&mut m.state.stack, m.bytecode)? {
+                m.pc = dest;
+                Ok(ControlFlow::Jump)
+            } else {
+                // cant happen, unless it's a cosmic ray
+                Err(StatusCode::Failure)
+            }
+        }}
+
+        JUMPI: {(m) => {
+            if let Some(dest) = instructions::JUMPI(&mut m.state.stack, m.bytecode)? {
+                m.pc = dest;
+                Ok(ControlFlow::Jump)
+            } else {
+                Ok(ControlFlow::Continue)
+            }
+        }}
+
+        PC: {(m) => {
+            instructions::PC(&mut m.state.stack, m.pc)?;
+            Ok(ControlFlow::Continue)
+        }}
 
         RETURN: {(m) => {
-            instructions::control::ret(m.state)?;
+            instructions::RETURN(m.state, m.system)?;
             Ok(ControlFlow::Exit)
         }}
 
-        DELEGATECALL: {std}
-        CREATE2: {std}
-        STATICCALL: {std}
-
         REVERT: {(m) => {
-            instructions::control::ret(m.state)?;
+            instructions::REVERT(m.state, m.system)?;
             m.reverted = true;
             Ok(ControlFlow::Exit)
         }}
 
-        INVALID: {=> Err(StatusCode::InvalidInstruction)}
-
         SELFDESTRUCT: {(m) => {
-            instructions::lifecycle::selfdestruct(m.state, m.system)?;
+            instructions::SELFDESTRUCT(m.state, m.system)?;
             Ok(ControlFlow::Exit) // selfdestruct halts the current context
         }}
+
+        INVALID: {=> Err(StatusCode::InvalidInstruction)}
     }
 
     const JMPTABLE: [Instruction<Machine<'r, 'a, RT>>; 256] = Machine::<'r, 'a, RT>::jmptable();

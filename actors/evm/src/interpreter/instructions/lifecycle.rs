@@ -146,11 +146,12 @@ fn create_init(
 pub fn selfdestruct(
     state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
+    beneficiary: U256,
 ) -> Result<(), StatusCode> {
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);
     }
-    let beneficiary_addr: EthAddress = state.stack.pop().into();
+    let beneficiary_addr: EthAddress = beneficiary.into();
     // TODO: how do we handle errors here? Just ignore them?
     state.selfdestroyed = beneficiary_addr.try_into().ok();
     Ok(())

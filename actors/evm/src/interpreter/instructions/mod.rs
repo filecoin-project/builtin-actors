@@ -16,7 +16,7 @@ pub mod storage;
 use crate::interpreter::stack::Stack;
 use crate::interpreter::output::StatusCode;
 use crate::interpreter::opcode::{OpCode,StackSpec};
-use crate::interpreter::{ExecutionState, System};
+use crate::interpreter::{ExecutionState, System, Bytecode, U256};
 use fil_actors_runtime::runtime::Runtime;
 
 // macros for the instruction zoo:
@@ -130,6 +130,34 @@ macro_rules! def_stdlog {
             log::log(state, system, $ntopics, a, b, &[$($topic),*])
         }
     }
+}
+
+// jmp: jump variants
+macro_rules! def_jmp {
+    ($op:ident ($($arg:ident),*) => $impl:path) => {
+        #[allow(non_snake_case)]
+        pub fn $op(sk: &mut Stack, bytecode: &Bytecode) -> Result<Option<usize>, StatusCode> {
+            check_arity!($op, ($($arg),*));
+            check_stack!($op, sk);
+            $(let $arg = sk.pop();)*
+            $impl(bytecode, $($arg),*)
+        }
+    }
+
+}
+
+// special: pc and things like that
+macro_rules! def_special {
+    ($op:ident ($($arg:ident: $t:ty),*) => $value:expr) => {
+        #[allow(non_snake_case)]
+        pub fn $op(sk: &mut Stack, $($arg:$t),*) -> Result<(), StatusCode> {
+            check_stack!($op, sk);
+            let result = $value;
+            sk.push(result);
+            Ok(())
+        }
+    }
+
 }
 
 
@@ -320,3 +348,9 @@ def_stdfun_code!{ CODESIZE() => call::codesize }
 def_stdproc_code!{ CODECOPY(a, b, c) => call::codecopy }
 def_stdfun!{ CREATE(a, b, c) => lifecycle::create }
 def_stdfun!{ CREATE2(a, b, c, d) => lifecycle::create2 }
+def_stdproc!{ RETURN(a, b) => control::output }
+def_stdproc!{ REVERT(a, b) => control::output }
+def_stdproc!{ SELFDESTRUCT(a) => lifecycle::selfdestruct }
+def_jmp!{ JUMP(a) => control::jump }
+def_jmp!{ JUMPI(a, b) => control::jumpi }
+def_special!{ PC(pc: usize) => U256::from(pc) }
