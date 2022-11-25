@@ -99,7 +99,7 @@ macro_rules! def_ins {
         def_ins_raw! { $ins (_m) { $expr } }
     };
 
-    ($ins:ident {($arg:ident) $body:block}) => {
+    ($ins:ident {($arg:ident) => $body:block}) => {
         def_ins_raw! { $ins ($arg) $body }
     };
 
@@ -200,169 +200,169 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         SHR: {"primitive"}
         SAR: {"primitive"}
 
-        KECCAK256: {(m) {
+        KECCAK256: {(m) => {
             instructions::hash::keccak256(m.system, m.state)?;
             Ok(ControlFlow::Continue)
         }}
 
-        ADDRESS: {(m) {
+        ADDRESS: {(m) => {
             instructions::context::address(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        BALANCE: {(m) {
+        BALANCE: {(m) => {
             instructions::state::balance(m.state, m.system)?;
             Ok(ControlFlow::Continue)
         }}
 
-        ORIGIN: {(m) {
+        ORIGIN: {(m) => {
             instructions::context::origin(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        CALLER: {(m) {
+        CALLER: {(m) => {
             instructions::context::caller(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        CALLVALUE: {(m) {
+        CALLVALUE: {(m) => {
             instructions::context::call_value(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        CALLDATALOAD: {(m) {
+        CALLDATALOAD: {(m) => {
             instructions::call::calldataload(m.state);
             Ok(ControlFlow::Continue)
         }}
 
-        CALLDATASIZE: {(m) {
+        CALLDATASIZE: {(m) => {
             instructions::call::calldatasize(m.state);
             Ok(ControlFlow::Continue)
         }}
 
-        CALLDATACOPY: {(m) {
+        CALLDATACOPY: {(m) => {
             instructions::call::calldatacopy(m.state)?;
             Ok(ControlFlow::Continue)
         }}
 
-        CODESIZE: {(m) {
+        CODESIZE: {(m) => {
             instructions::call::codesize(&mut m.state.stack, m.bytecode.as_ref());
             Ok(ControlFlow::Continue)
         }}
 
-        CODECOPY: {(m) {
+        CODECOPY: {(m) => {
             instructions::call::codecopy(m.state, m.bytecode.as_ref())?;
             Ok(ControlFlow::Continue)
         }}
 
-        GASPRICE: {(m) {
+        GASPRICE: {(m) => {
             instructions::context::gas_price(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        EXTCODESIZE: {(m) {
+        EXTCODESIZE: {(m) => {
             instructions::ext::extcodesize(m.state, m.system)?;
             Ok(ControlFlow::Continue)
         }}
 
-        EXTCODECOPY: {(m) {
+        EXTCODECOPY: {(m) => {
             instructions::ext::extcodecopy(m.state, m.system)?;
             Ok(ControlFlow::Continue)
         }}
 
-        RETURNDATASIZE: {(m) {
+        RETURNDATASIZE: {(m) => {
             instructions::control::returndatasize(m.state);
             Ok(ControlFlow::Continue)
         }}
 
-        RETURNDATACOPY: {(m) {
+        RETURNDATACOPY: {(m) => {
             instructions::control::returndatacopy(m.state)?;
             Ok(ControlFlow::Continue)
         }}
 
-        EXTCODEHASH: {(m) {
+        EXTCODEHASH: {(m) => {
             instructions::ext::extcodehash(m.state, m.system)?;
             Ok(ControlFlow::Continue)
         }}
 
-        BLOCKHASH: {(m) {
+        BLOCKHASH: {(m) => {
             instructions::context::blockhash(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        COINBASE: {(m) {
+        COINBASE: {(m) => {
             instructions::context::coinbase(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        TIMESTAMP: {(m) {
+        TIMESTAMP: {(m) => {
             instructions::context::timestamp(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        NUMBER: {(m) {
+        NUMBER: {(m) => {
             instructions::context::block_number(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        DIFFICULTY: {(m) {
+        DIFFICULTY: {(m) => {
             instructions::context::difficulty(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        GASLIMIT: {(m) {
+        GASLIMIT: {(m) => {
             instructions::context::gas_limit(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        CHAINID: {(m) {
+        CHAINID: {(m) => {
             instructions::context::chain_id(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        SELFBALANCE: {(m) {
+        SELFBALANCE: {(m) => {
             instructions::state::selfbalance(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
-        BASEFEE: {(m) {
+        BASEFEE: {(m) => {
             instructions::context::base_fee(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
 
         POP: {"primitive"}
 
-        MLOAD: {(m) {
+        MLOAD: {(m) => {
             instructions::memory::mload(m.state)?;
             Ok(ControlFlow::Continue)
         }}
 
-        MSTORE: {(m) {
+        MSTORE: {(m) => {
             instructions::memory::mstore(m.state)?;
             Ok(ControlFlow::Continue)
         }}
 
-        MSTORE8: {(m) {
+        MSTORE8: {(m) => {
             instructions::memory::mstore8(m.state)?;
             Ok(ControlFlow::Continue)
         }}
 
-        SLOAD: {(m) {
+        SLOAD: {(m) => {
             instructions::storage::sload(m.state, m.system)?;
             Ok(ControlFlow::Continue)
         }}
 
-        SSTORE: {(m) {
+        SSTORE: {(m) => {
             instructions::storage::sstore(m.state, m.system)?;
             Ok(ControlFlow::Continue)
         }}
 
-        JUMP: {(m) {
+        JUMP: {(m) => {
             m.pc = instructions::control::jump(&mut m.state.stack, m.bytecode)?;
             Ok(ControlFlow::Jump)
         }}
 
-        JUMPI: {(m) {
+        JUMPI: {(m) => {
             if let Some(dest) = instructions::control::jumpi(&mut m.state.stack, m.bytecode)? {
                 m.pc = dest;
                 Ok(ControlFlow::Jump)
@@ -371,17 +371,17 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             }
         }}
 
-        PC: {(m) {
+        PC: {(m) => {
             instructions::control::pc(&mut m.state.stack, m.pc);
             Ok(ControlFlow::Continue)
         }}
 
-        MSIZE: {(m) {
+        MSIZE: {(m) => {
             instructions::memory::msize(m.state);
             Ok(ControlFlow::Continue)
         }}
 
-        GAS: {(m) {
+        GAS: {(m) => {
             instructions::context::gas(m.state, m.system);
             Ok(ControlFlow::Continue)
         }}
@@ -455,67 +455,67 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         SWAP15: {"primitive"}
         SWAP16: {"primitive"}
 
-        LOG0: {(m) {
+        LOG0: {(m) => {
             instructions::log::log(m.state, m.system, 0)?;
             Ok(ControlFlow::Continue)
         }}
 
-        LOG1: {(m) {
+        LOG1: {(m) => {
             instructions::log::log(m.state, m.system, 1)?;
             Ok(ControlFlow::Continue)
         }}
 
-        LOG2: {(m) {
+        LOG2: {(m) => {
             instructions::log::log(m.state, m.system, 2)?;
             Ok(ControlFlow::Continue)
         }}
 
-        LOG3: {(m) {
+        LOG3: {(m) => {
             instructions::log::log(m.state, m.system, 3)?;
             Ok(ControlFlow::Continue)
         }}
 
-        LOG4: {(m) {
+        LOG4: {(m) => {
             instructions::log::log(m.state, m.system, 4)?;
             Ok(ControlFlow::Continue)
         }}
 
-        CREATE: {(m) {
+        CREATE: {(m) => {
             instructions::lifecycle::create(m.state, m.system)?;
             Ok(ControlFlow::Continue)
         }}
 
-        CALL: {(m) {
+        CALL: {(m) => {
             instructions::call::call(m.state, m.system, CallKind::Call)?;
             Ok(ControlFlow::Continue)
         }}
 
-        CALLCODE: {(m) {
+        CALLCODE: {(m) => {
             instructions::call::call(m.state, m.system, CallKind::CallCode)?;
             Ok(ControlFlow::Continue)
         }}
 
-        RETURN: {(m) {
+        RETURN: {(m) => {
             instructions::control::ret(m.state)?;
             Ok(ControlFlow::Exit)
         }}
 
-        DELEGATECALL: {(m) {
+        DELEGATECALL: {(m) => {
             instructions::call::call(m.state, m.system, CallKind::DelegateCall)?;
             Ok(ControlFlow::Continue)
         }}
 
-        CREATE2: {(m) {
+        CREATE2: {(m) => {
             instructions::lifecycle::create2(m.state, m.system)?;
             Ok(ControlFlow::Continue)
         }}
 
-        STATICCALL: {(m) {
+        STATICCALL: {(m) => {
             instructions::call::call(m.state, m.system, CallKind::StaticCall)?;
             Ok(ControlFlow::Continue)
         }}
 
-        REVERT: {(m) {
+        REVERT: {(m) => {
             instructions::control::ret(m.state)?;
             m.reverted = true;
             Ok(ControlFlow::Exit)
@@ -523,7 +523,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
 
         INVALID: {=> Err(StatusCode::InvalidInstruction)}
 
-        SELFDESTRUCT: {(m) {
+        SELFDESTRUCT: {(m) => {
             instructions::lifecycle::selfdestruct(m.state, m.system)?;
             Ok(ControlFlow::Exit) // selfdestruct halts the current context
         }}
