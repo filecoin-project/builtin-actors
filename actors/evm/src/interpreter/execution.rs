@@ -87,15 +87,15 @@ macro_rules! def_jmptable {
 }
 
 macro_rules! def_ins {
-    ($ins:ident (primitive)) => {
+    ($ins:ident {primitive}) => {
         def_ins_primitive! { $ins }
     };
 
-    ($ins:ident (push)) => {
+    ($ins:ident {push}) => {
         def_ins_push! { $ins }
     };
 
-    ($ins:ident (stdfun)) => {
+    ($ins:ident {stdfun}) => {
         def_ins_stdfun! { $ins }
     };
 
@@ -189,41 +189,41 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
 
     def_opcodes! {
         STOP: {=> Ok(ControlFlow::Exit)}
-        ADD: (primitive)
-        MUL: (primitive)
-        SUB: (primitive)
-        DIV: (primitive)
-        SDIV: (primitive)
-        MOD: (primitive)
-        SMOD: (primitive)
-        ADDMOD: (primitive)
-        MULMOD: (primitive)
-        EXP: (primitive)
-        SIGNEXTEND: (primitive)
-        LT: (primitive)
-        GT: (primitive)
-        SLT: (primitive)
-        SGT: (primitive)
-        EQ: (primitive)
-        ISZERO: (primitive)
-        AND: (primitive)
-        OR: (primitive)
-        XOR: (primitive)
-        NOT: (primitive)
-        BYTE: (primitive)
-        SHL: (primitive)
-        SHR: (primitive)
-        SAR: (primitive)
+        ADD: {primitive}
+        MUL: {primitive}
+        SUB: {primitive}
+        DIV: {primitive}
+        SDIV: {primitive}
+        MOD: {primitive}
+        SMOD: {primitive}
+        ADDMOD: {primitive}
+        MULMOD: {primitive}
+        EXP: {primitive}
+        SIGNEXTEND: {primitive}
+        LT: {primitive}
+        GT: {primitive}
+        SLT: {primitive}
+        SGT: {primitive}
+        EQ: {primitive}
+        ISZERO: {primitive}
+        AND: {primitive}
+        OR: {primitive}
+        XOR: {primitive}
+        NOT: {primitive}
+        BYTE: {primitive}
+        SHL: {primitive}
+        SHR: {primitive}
+        SAR: {primitive}
 
-        KECCAK256: (stdfun)
-        ADDRESS: (stdfun)
-        BALANCE: (stdfun)
-        ORIGIN: (stdfun)
-        CALLER: (stdfun)
-        CALLVALUE: (stdfun)
-        CALLDATALOAD: (stdfun)
-        CALLDATASIZE: (stdfun)
-        CALLDATACOPY: (stdfun)
+        KECCAK256: {stdfun}
+        ADDRESS: {stdfun}
+        BALANCE: {stdfun}
+        ORIGIN: {stdfun}
+        CALLER: {stdfun}
+        CALLVALUE: {stdfun}
+        CALLDATALOAD: {stdfun}
+        CALLDATASIZE: {stdfun}
+        CALLDATACOPY: {stdfun}
 
         CODESIZE: {(m) => {
             instructions::call::codesize(&mut m.state.stack, m.bytecode.as_ref());
@@ -310,7 +310,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Continue)
         }}
 
-        POP: (primitive)
+        POP: {primitive}
 
         MLOAD: {(m) => {
             instructions::memory::mload(m.state)?;
@@ -368,72 +368,72 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
 
         JUMPDEST: {=> Ok(ControlFlow::Continue)} // noop marker opcode for valid jumps addresses
 
-        PUSH1: (push)
-        PUSH2: (push)
-        PUSH3: (push)
-        PUSH4: (push)
-        PUSH5: (push)
-        PUSH6: (push)
-        PUSH7: (push)
-        PUSH8: (push)
-        PUSH9: (push)
-        PUSH10: (push)
-        PUSH11: (push)
-        PUSH12: (push)
-        PUSH13: (push)
-        PUSH14: (push)
-        PUSH15: (push)
-        PUSH16: (push)
-        PUSH17: (push)
-        PUSH18: (push)
-        PUSH19: (push)
-        PUSH20: (push)
-        PUSH21: (push)
-        PUSH22: (push)
-        PUSH23: (push)
-        PUSH24: (push)
-        PUSH25: (push)
-        PUSH26: (push)
-        PUSH27: (push)
-        PUSH28: (push)
-        PUSH29: (push)
-        PUSH30: (push)
-        PUSH31: (push)
-        PUSH32: (push)
+        PUSH1: {push}
+        PUSH2: {push}
+        PUSH3: {push}
+        PUSH4: {push}
+        PUSH5: {push}
+        PUSH6: {push}
+        PUSH7: {push}
+        PUSH8: {push}
+        PUSH9: {push}
+        PUSH10: {push}
+        PUSH11: {push}
+        PUSH12: {push}
+        PUSH13: {push}
+        PUSH14: {push}
+        PUSH15: {push}
+        PUSH16: {push}
+        PUSH17: {push}
+        PUSH18: {push}
+        PUSH19: {push}
+        PUSH20: {push}
+        PUSH21: {push}
+        PUSH22: {push}
+        PUSH23: {push}
+        PUSH24: {push}
+        PUSH25: {push}
+        PUSH26: {push}
+        PUSH27: {push}
+        PUSH28: {push}
+        PUSH29: {push}
+        PUSH30: {push}
+        PUSH31: {push}
+        PUSH32: {push}
 
-        DUP1: (primitive)
-        DUP2: (primitive)
-        DUP3: (primitive)
-        DUP4: (primitive)
-        DUP5: (primitive)
-        DUP6: (primitive)
-        DUP7: (primitive)
-        DUP8: (primitive)
-        DUP9: (primitive)
-        DUP10: (primitive)
-        DUP11: (primitive)
-        DUP12: (primitive)
-        DUP13: (primitive)
-        DUP14: (primitive)
-        DUP15: (primitive)
-        DUP16: (primitive)
+        DUP1: {primitive}
+        DUP2: {primitive}
+        DUP3: {primitive}
+        DUP4: {primitive}
+        DUP5: {primitive}
+        DUP6: {primitive}
+        DUP7: {primitive}
+        DUP8: {primitive}
+        DUP9: {primitive}
+        DUP10: {primitive}
+        DUP11: {primitive}
+        DUP12: {primitive}
+        DUP13: {primitive}
+        DUP14: {primitive}
+        DUP15: {primitive}
+        DUP16: {primitive}
 
-        SWAP1: (primitive)
-        SWAP2: (primitive)
-        SWAP3: (primitive)
-        SWAP4: (primitive)
-        SWAP5: (primitive)
-        SWAP6: (primitive)
-        SWAP7: (primitive)
-        SWAP8: (primitive)
-        SWAP9: (primitive)
-        SWAP10: (primitive)
-        SWAP11: (primitive)
-        SWAP12: (primitive)
-        SWAP13: (primitive)
-        SWAP14: (primitive)
-        SWAP15: (primitive)
-        SWAP16: (primitive)
+        SWAP1: {primitive}
+        SWAP2: {primitive}
+        SWAP3: {primitive}
+        SWAP4: {primitive}
+        SWAP5: {primitive}
+        SWAP6: {primitive}
+        SWAP7: {primitive}
+        SWAP8: {primitive}
+        SWAP9: {primitive}
+        SWAP10: {primitive}
+        SWAP11: {primitive}
+        SWAP12: {primitive}
+        SWAP13: {primitive}
+        SWAP14: {primitive}
+        SWAP15: {primitive}
+        SWAP16: {primitive}
 
         LOG0: {(m) => {
             instructions::log::log(m.state, m.system, 0)?;
