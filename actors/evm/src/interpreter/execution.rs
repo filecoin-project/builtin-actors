@@ -87,7 +87,7 @@ macro_rules! def_jmptable {
 
 macro_rules! def_ins {
     ($ins:ident {primop}) => {
-        def_ins_primitive! { $ins }
+        def_ins_primop! { $ins }
     };
 
     ($ins:ident {push}) => {
@@ -119,7 +119,7 @@ macro_rules! def_ins_raw {
     };
 }
 
-macro_rules! def_ins_primitive {
+macro_rules! def_ins_primop {
     ($ins:ident) => {
         def_ins_raw!{
             $ins (m) {
