@@ -50,11 +50,7 @@ pub fn calldatasize(state: &mut ExecutionState, _: &System<impl Runtime>)  -> Re
     Ok(u128::try_from(state.input_data.len()).unwrap().into())
 }
 
-pub fn calldatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let mem_index = state.stack.pop();
-    let input_index = state.stack.pop();
-    let size = state.stack.pop();
-
+pub fn calldatacopy(state: &mut ExecutionState, _: &System<impl Runtime>, mem_index: U256, input_index: U256, size: U256) -> Result<(), StatusCode> {
     copy_to_memory(&mut state.memory, mem_index, size, input_index, &state.input_data, true)
 }
 

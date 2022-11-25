@@ -76,6 +76,20 @@ macro_rules! def_stdfun {
     }
 }
 
+// stdproc: like stdfun, but returns no value
+macro_rules! def_stdproc {
+    ($op:ident ($($arg:ident),*) => $impl:path) => {
+        #[allow(non_snake_case)]
+        pub fn $op(state: &mut ExecutionState, system: &System<impl Runtime>) -> Result<(), StatusCode> {
+            check_arity!($op, ($($arg),*));
+            check_stack!($op, state.stack);
+            $(let $arg = state.stack.pop();)*
+            $impl(state, system, $($arg),*)?;
+            Ok(())
+        }
+    }
+}
+
 // auxiliary macros
 macro_rules! check_stack {
     ($op:ident, $sk:expr) => {{
@@ -223,3 +237,4 @@ def_stdfun!{ CALLER() => context::caller }
 def_stdfun!{ CALLVALUE() => context::call_value }
 def_stdfun!{ CALLDATALOAD(a) => call::calldataload }
 def_stdfun!{ CALLDATASIZE() => call::calldatasize }
+def_stdproc!{ CALLDATACOPY(a, b, c) => call::calldatacopy }

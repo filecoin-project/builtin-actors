@@ -223,11 +223,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         CALLVALUE: (stdfun)
         CALLDATALOAD: (stdfun)
         CALLDATASIZE: (stdfun)
-
-        CALLDATACOPY: {(m) => {
-            instructions::call::calldatacopy(m.state)?;
-            Ok(ControlFlow::Continue)
-        }}
+        CALLDATACOPY: (stdfun)
 
         CODESIZE: {(m) => {
             instructions::call::codesize(&mut m.state.stack, m.bytecode.as_ref());
