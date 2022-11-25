@@ -58,6 +58,7 @@ pub fn sar(shift: U256, mut value: U256) -> U256 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::interpreter::stack::Stack;
 
     #[test]
     fn test_instruction_byte() {
@@ -65,29 +66,35 @@ mod tests {
 
         for i in 0u16..32 {
             let mut stack = Stack::new();
-            stack.push(value);
-            stack.push(U256::from(i));
+            unsafe {
+                stack.push(value);
+                stack.push(U256::from(i));
+            }
 
-            byte(&mut stack);
-            let result = stack.pop();
+            crate::interpreter::instructions::BYTE(&mut stack).unwrap();
+            let result = unsafe {stack.pop()};
 
             assert_eq!(result, U256::from(5 * (i + 1)));
         }
 
         let mut stack = Stack::new();
-        stack.push(value);
-        stack.push(U256::from(100u128));
+        unsafe {
+            stack.push(value);
+            stack.push(U256::from(100u128));
+        }
 
-        byte(&mut stack);
-        let result = stack.pop();
+        crate::interpreter::instructions::BYTE(&mut stack).unwrap();
+        let result = unsafe {stack.pop()};
         assert_eq!(result, U256::zero());
 
         let mut stack = Stack::new();
-        stack.push(value);
-        stack.push(U256::from_u128_words(1, 0));
+        unsafe {
+            stack.push(value);
+            stack.push(U256::from_u128_words(1, 0));
+        }
 
-        byte(&mut stack);
-        let result = stack.pop();
+        crate::interpreter::instructions::BYTE(&mut stack).unwrap();
+        let result = unsafe {stack.pop()};
         assert_eq!(result, U256::zero());
     }
 }
