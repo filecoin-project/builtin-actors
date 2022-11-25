@@ -125,6 +125,7 @@ macro_rules! arg_count {
     ($arg:ident) => {1};
     ($arg:ident, $arg2:ident) => {2};
     ($arg:ident, $arg2:ident, $arg3:ident) => {3};
+    ($arg:ident, $arg2:ident, $arg3:ident, $arg4:ident) => {4};
     // can't use this coz we need a literal number
     //($arg: ident, $($rest:ident),*) => { 1 + arg_count!($($rest),*) };
 }
@@ -228,7 +229,7 @@ def_push!{ PUSH29 => stack::push::<29> }
 def_push!{ PUSH30 => stack::push::<30> }
 def_push!{ PUSH31 => stack::push::<31> }
 def_push!{ PUSH32 => stack::push::<32> }
-// stdfuns
+// functionoids
 def_stdfun!{ KECCAK256(a, b) => hash::keccak256 }
 def_stdfun!{ ADDRESS() => context::address }
 def_stdfun!{ BALANCE(a) => state::balance }
@@ -238,3 +239,11 @@ def_stdfun!{ CALLVALUE() => context::call_value }
 def_stdfun!{ CALLDATALOAD(a) => call::calldataload }
 def_stdfun!{ CALLDATASIZE() => call::calldatasize }
 def_stdproc!{ CALLDATACOPY(a, b, c) => call::calldatacopy }
+def_stdfun!{ GASPRICE() => context::gas_price }
+def_stdfun!{ EXTCODESIZE(a) => ext::extcodesize }
+def_stdproc!{ EXTCODECOPY(a, b, c, d) => ext::extcodecopy }
+def_stdfun!{ EXTCODEHASH(a) => ext::extcodehash }
+def_stdfun!{ RETURNDATASIZE() => control::returndatasize }
+def_stdproc!{ RETURNDATACOPY(a, b, c) => control::returndatacopy }
+// CODESIZE
+// COPDECOPY

@@ -87,7 +87,7 @@ macro_rules! def_jmptable {
 }
 
 macro_rules! def_ins {
-    ($ins:ident {primitive}) => {
+    ($ins:ident {primop}) => {
         def_ins_primitive! { $ins }
     };
 
@@ -95,8 +95,8 @@ macro_rules! def_ins {
         def_ins_push! { $ins }
     };
 
-    ($ins:ident {stdfun}) => {
-        def_ins_stdfun! { $ins }
+    ($ins:ident {std}) => {
+        def_ins_std! { $ins }
     };
 
     ($ins:ident {=> $expr:expr}) => {
@@ -142,7 +142,7 @@ macro_rules! def_ins_push {
     }
 }
 
-macro_rules! def_ins_stdfun {
+macro_rules! def_ins_std {
     ($ins:ident) => {
         def_ins_raw!{
             $ins (m) {
@@ -189,41 +189,41 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
 
     def_opcodes! {
         STOP: {=> Ok(ControlFlow::Exit)}
-        ADD: {primitive}
-        MUL: {primitive}
-        SUB: {primitive}
-        DIV: {primitive}
-        SDIV: {primitive}
-        MOD: {primitive}
-        SMOD: {primitive}
-        ADDMOD: {primitive}
-        MULMOD: {primitive}
-        EXP: {primitive}
-        SIGNEXTEND: {primitive}
-        LT: {primitive}
-        GT: {primitive}
-        SLT: {primitive}
-        SGT: {primitive}
-        EQ: {primitive}
-        ISZERO: {primitive}
-        AND: {primitive}
-        OR: {primitive}
-        XOR: {primitive}
-        NOT: {primitive}
-        BYTE: {primitive}
-        SHL: {primitive}
-        SHR: {primitive}
-        SAR: {primitive}
+        ADD: {primop}
+        MUL: {primop}
+        SUB: {primop}
+        DIV: {primop}
+        SDIV: {primop}
+        MOD: {primop}
+        SMOD: {primop}
+        ADDMOD: {primop}
+        MULMOD: {primop}
+        EXP: {primop}
+        SIGNEXTEND: {primop}
+        LT: {primop}
+        GT: {primop}
+        SLT: {primop}
+        SGT: {primop}
+        EQ: {primop}
+        ISZERO: {primop}
+        AND: {primop}
+        OR: {primop}
+        XOR: {primop}
+        NOT: {primop}
+        BYTE: {primop}
+        SHL: {primop}
+        SHR: {primop}
+        SAR: {primop}
 
-        KECCAK256: {stdfun}
-        ADDRESS: {stdfun}
-        BALANCE: {stdfun}
-        ORIGIN: {stdfun}
-        CALLER: {stdfun}
-        CALLVALUE: {stdfun}
-        CALLDATALOAD: {stdfun}
-        CALLDATASIZE: {stdfun}
-        CALLDATACOPY: {stdfun}
+        KECCAK256: {std}
+        ADDRESS: {std}
+        BALANCE: {std}
+        ORIGIN: {std}
+        CALLER: {std}
+        CALLVALUE: {std}
+        CALLDATALOAD: {std}
+        CALLDATASIZE: {std}
+        CALLDATACOPY: {std}
 
         CODESIZE: {(m) => {
             instructions::call::codesize(&mut m.state.stack, m.bytecode.as_ref());
@@ -235,35 +235,12 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Continue)
         }}
 
-        GASPRICE: {(m) => {
-            instructions::context::gas_price(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        EXTCODESIZE: {(m) => {
-            instructions::ext::extcodesize(m.state, m.system)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        EXTCODECOPY: {(m) => {
-            instructions::ext::extcodecopy(m.state, m.system)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        RETURNDATASIZE: {(m) => {
-            instructions::control::returndatasize(m.state);
-            Ok(ControlFlow::Continue)
-        }}
-
-        RETURNDATACOPY: {(m) => {
-            instructions::control::returndatacopy(m.state)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        EXTCODEHASH: {(m) => {
-            instructions::ext::extcodehash(m.state, m.system)?;
-            Ok(ControlFlow::Continue)
-        }}
+        GASPRICE: {std}
+        EXTCODESIZE: {std}
+        EXTCODECOPY: {std}
+        RETURNDATASIZE: {std}
+        RETURNDATACOPY: {std}
+        EXTCODEHASH: {std}
 
         BLOCKHASH: {(m) => {
             instructions::context::blockhash(m.state, m.system);
@@ -310,7 +287,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Continue)
         }}
 
-        POP: {primitive}
+        POP: {primop}
 
         MLOAD: {(m) => {
             instructions::memory::mload(m.state)?;
@@ -401,39 +378,39 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         PUSH31: {push}
         PUSH32: {push}
 
-        DUP1: {primitive}
-        DUP2: {primitive}
-        DUP3: {primitive}
-        DUP4: {primitive}
-        DUP5: {primitive}
-        DUP6: {primitive}
-        DUP7: {primitive}
-        DUP8: {primitive}
-        DUP9: {primitive}
-        DUP10: {primitive}
-        DUP11: {primitive}
-        DUP12: {primitive}
-        DUP13: {primitive}
-        DUP14: {primitive}
-        DUP15: {primitive}
-        DUP16: {primitive}
+        DUP1: {primop}
+        DUP2: {primop}
+        DUP3: {primop}
+        DUP4: {primop}
+        DUP5: {primop}
+        DUP6: {primop}
+        DUP7: {primop}
+        DUP8: {primop}
+        DUP9: {primop}
+        DUP10: {primop}
+        DUP11: {primop}
+        DUP12: {primop}
+        DUP13: {primop}
+        DUP14: {primop}
+        DUP15: {primop}
+        DUP16: {primop}
 
-        SWAP1: {primitive}
-        SWAP2: {primitive}
-        SWAP3: {primitive}
-        SWAP4: {primitive}
-        SWAP5: {primitive}
-        SWAP6: {primitive}
-        SWAP7: {primitive}
-        SWAP8: {primitive}
-        SWAP9: {primitive}
-        SWAP10: {primitive}
-        SWAP11: {primitive}
-        SWAP12: {primitive}
-        SWAP13: {primitive}
-        SWAP14: {primitive}
-        SWAP15: {primitive}
-        SWAP16: {primitive}
+        SWAP1: {primop}
+        SWAP2: {primop}
+        SWAP3: {primop}
+        SWAP4: {primop}
+        SWAP5: {primop}
+        SWAP6: {primop}
+        SWAP7: {primop}
+        SWAP8: {primop}
+        SWAP9: {primop}
+        SWAP10: {primop}
+        SWAP11: {primop}
+        SWAP12: {primop}
+        SWAP13: {primop}
+        SWAP14: {primop}
+        SWAP15: {primop}
+        SWAP16: {primop}
 
         LOG0: {(m) => {
             instructions::log::log(m.state, m.system, 0)?;

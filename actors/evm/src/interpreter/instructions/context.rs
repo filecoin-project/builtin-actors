@@ -62,9 +62,9 @@ pub fn coinbase(state: &mut ExecutionState, _system: &System<impl Runtime>) {
 }
 
 #[inline]
-pub fn gas_price(state: &mut ExecutionState, system: &System<impl Runtime>) {
+pub fn gas_price(_state: &mut ExecutionState, system: &System<impl Runtime>) -> Result<U256, StatusCode> {
     let effective_price = system.rt.base_fee() + system.rt.message().gas_premium();
-    state.stack.push(U256::from(&effective_price));
+    Ok(U256::from(&effective_price))
 }
 
 #[inline]

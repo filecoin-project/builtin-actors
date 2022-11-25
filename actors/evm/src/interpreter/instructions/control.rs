@@ -1,7 +1,8 @@
 use {
     super::memory::get_memory_region, crate::interpreter::output::StatusCode,
     crate::interpreter::stack::Stack, crate::interpreter::Bytecode,
-    crate::interpreter::ExecutionState, crate::interpreter::U256,
+    crate::interpreter::{ExecutionState, System, U256},
+    fil_actors_runtime::runtime::Runtime,
 };
 
 #[inline]
@@ -20,16 +21,12 @@ pub fn ret(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn returndatasize(state: &mut ExecutionState) {
-    state.stack.push(U256::from(state.return_data.len()));
+pub fn returndatasize(state: &mut ExecutionState, _system: &System<impl Runtime>) -> Result<U256, StatusCode> {
+    Ok(U256::from(state.return_data.len()))
 }
 
 #[inline]
-pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let mem_index = state.stack.pop();
-    let input_index = state.stack.pop();
-    let size = state.stack.pop();
-
+pub fn returndatacopy(state: &mut ExecutionState, _system: &System<impl Runtime>, mem_index: U256, input_index: U256, size: U256) -> Result<(), StatusCode> {
     let region = get_memory_region(&mut state.memory, mem_index, size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
