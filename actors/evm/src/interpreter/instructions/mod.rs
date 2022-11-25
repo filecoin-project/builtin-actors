@@ -15,12 +15,15 @@ pub mod storage;
 
 use crate::interpreter::stack::Stack;
 use crate::interpreter::output::StatusCode;
+use crate::interpreter::opcode::{OpCode,StackSpec};
 
 // macros
 macro_rules! def_primop {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
         pub fn $op(sk: &mut Stack) -> Result<(), StatusCode> {
+            check_arity!($op, ($($arg),*));
+            check_stack!($op, sk);
             $(let $arg = sk.pop();)*
             let result = $impl($($arg),*);
             sk.push(result);
@@ -28,6 +31,44 @@ macro_rules! def_primop {
         }
     }
 }
+
+macro_rules! check_stack {
+    ($op:ident, $sk:ident) => {{
+        const SPEC: StackSpec = OpCode::$op.spec();
+        if SPEC.required > 0 {
+            if !$sk.require(SPEC.required as usize) {
+                return Err(StatusCode::StackUnderflow);
+            }
+        }
+        if SPEC.changed > 0 {
+            if !$sk.ensure(SPEC.changed as usize) {
+                return Err(StatusCode::StackOverflow);
+            }
+        }
+    }};
+}
+
+macro_rules! check_arity {
+    ($op:ident, ($($arg:ident),*)) => {{
+        #[allow(dead_code)]
+        const fn checkargs() {
+            const SPEC: StackSpec = OpCode::$op.spec();
+            // the error message is super ugly, but this static asserts we got the
+            // arity of the primop right.
+            const _: [();(arg_count!($($arg),*)) - SPEC.required as usize] = [];
+        }
+        checkargs();
+    }}
+}
+
+macro_rules! arg_count {
+    ($arg:ident) => {1};
+    ($arg:ident, $arg2:ident) => {2};
+    ($arg:ident, $arg2:ident, $arg3:ident) => {3};
+    // can't use this coz we need a literal number
+    //($arg: ident, $($rest:ident),*) => { 1 + arg_count!($($rest),*) };
+}
+
 
 // CHECK+DISPATCH
 // arithmetic
