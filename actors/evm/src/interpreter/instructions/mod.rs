@@ -17,7 +17,8 @@ use crate::interpreter::stack::Stack;
 use crate::interpreter::output::StatusCode;
 use crate::interpreter::opcode::{OpCode,StackSpec};
 
-// macros
+// macros for the instruction zoo:
+// primops: take values of the stack and return a result value to be pushed on the stack
 macro_rules! def_primop {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
@@ -32,6 +33,19 @@ macro_rules! def_primop {
     }
 }
 
+// stackops: operate directly on the stack
+macro_rules! def_stackop {
+    ($op:ident => $impl:path) => {
+        #[allow(non_snake_case)]
+        pub fn $op(sk: &mut Stack) -> Result<(), StatusCode> {
+            check_stack!($op, sk);
+            $impl(sk);
+            Ok(())
+        }
+    }
+}
+
+// auxiliary macros
 macro_rules! check_stack {
     ($op:ident, $sk:ident) => {{
         const SPEC: StackSpec = OpCode::$op.spec();
@@ -70,7 +84,7 @@ macro_rules! arg_count {
 }
 
 
-// CHECK+DISPATCH
+// IMPLEMENTATION
 // arithmetic
 def_primop!{ ADD(a, b) => arithmetic::add }
 def_primop!{ MUL(a, b) => arithmetic::mul }
@@ -99,3 +113,37 @@ def_primop!{ BYTE(a, b) => bitwise::byte }
 def_primop!{ SHL(a, b) => bitwise::shl }
 def_primop!{ SHR(a, b) => bitwise::shr }
 def_primop!{ SAR(a, b) => bitwise::sar }
+// dup
+def_stackop!{ DUP1 => stack::dup::<1> }
+def_stackop!{ DUP2 => stack::dup::<2> }
+def_stackop!{ DUP3 => stack::dup::<3> }
+def_stackop!{ DUP4 => stack::dup::<4> }
+def_stackop!{ DUP5 => stack::dup::<5> }
+def_stackop!{ DUP6 => stack::dup::<6> }
+def_stackop!{ DUP7 => stack::dup::<7> }
+def_stackop!{ DUP8 => stack::dup::<8> }
+def_stackop!{ DUP9 => stack::dup::<9> }
+def_stackop!{ DUP10 => stack::dup::<10> }
+def_stackop!{ DUP11 => stack::dup::<11> }
+def_stackop!{ DUP12 => stack::dup::<12> }
+def_stackop!{ DUP13 => stack::dup::<13> }
+def_stackop!{ DUP14 => stack::dup::<14> }
+def_stackop!{ DUP15 => stack::dup::<15> }
+def_stackop!{ DUP16 => stack::dup::<16> }
+// swap
+def_stackop!{ SWAP1 => stack::swap::<1> }
+def_stackop!{ SWAP2 => stack::swap::<2> }
+def_stackop!{ SWAP3 => stack::swap::<3> }
+def_stackop!{ SWAP4 => stack::swap::<4> }
+def_stackop!{ SWAP5 => stack::swap::<5> }
+def_stackop!{ SWAP6 => stack::swap::<6> }
+def_stackop!{ SWAP7 => stack::swap::<7> }
+def_stackop!{ SWAP8 => stack::swap::<8> }
+def_stackop!{ SWAP9 => stack::swap::<9> }
+def_stackop!{ SWAP10 => stack::swap::<10> }
+def_stackop!{ SWAP11 => stack::swap::<11> }
+def_stackop!{ SWAP12 => stack::swap::<12> }
+def_stackop!{ SWAP13 => stack::swap::<13> }
+def_stackop!{ SWAP14 => stack::swap::<14> }
+def_stackop!{ SWAP15 => stack::swap::<15> }
+def_stackop!{ SWAP16 => stack::swap::<16> }

@@ -87,8 +87,8 @@ macro_rules! def_jmptable {
 }
 
 macro_rules! def_ins {
-    ($ins:ident {"primop"}) => {
-        def_ins_primop! { $ins }
+    ($ins:ident {"primitive"}) => {
+        def_ins_primitive! { $ins }
     };
 
     ($ins:ident {($arg:ident) $body:block}) => {
@@ -107,7 +107,7 @@ macro_rules! def_ins_raw {
     };
 }
 
-macro_rules! def_ins_primop {
+macro_rules! def_ins_primitive {
     ($ins:ident) => {
         def_ins_raw!{
             $ins (m) {
@@ -157,31 +157,31 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Exit)
         }}
 
-        ADD: {"primop"}
-        MUL: {"primop"}
-        SUB: {"primop"}
-        DIV: {"primop"}
-        SDIV: {"primop"}
-        MOD: {"primop"}
-        SMOD: {"primop"}
-        ADDMOD: {"primop"}
-        MULMOD: {"primop"}
-        EXP: {"primop"}
-        SIGNEXTEND: {"primop"}
-        LT: {"primop"}
-        GT: {"primop"}
-        SLT: {"primop"}
-        SGT: {"primop"}
-        EQ: {"primop"}
-        ISZERO: {"primop"}
-        AND: {"primop"}
-        OR: {"primop"}
-        XOR: {"primop"}
-        NOT: {"primop"}
-        BYTE: {"primop"}
-        SHL: {"primop"}
-        SHR: {"primop"}
-        SAR: {"primop"}
+        ADD: {"primitive"}
+        MUL: {"primitive"}
+        SUB: {"primitive"}
+        DIV: {"primitive"}
+        SDIV: {"primitive"}
+        MOD: {"primitive"}
+        SMOD: {"primitive"}
+        ADDMOD: {"primitive"}
+        MULMOD: {"primitive"}
+        EXP: {"primitive"}
+        SIGNEXTEND: {"primitive"}
+        LT: {"primitive"}
+        GT: {"primitive"}
+        SLT: {"primitive"}
+        SGT: {"primitive"}
+        EQ: {"primitive"}
+        ISZERO: {"primitive"}
+        AND: {"primitive"}
+        OR: {"primitive"}
+        XOR: {"primitive"}
+        NOT: {"primitive"}
+        BYTE: {"primitive"}
+        SHL: {"primitive"}
+        SHR: {"primitive"}
+        SAR: {"primitive"}
 
         KECCAK256: {(m) {
             instructions::hash::keccak256(m.system, m.state)?;
@@ -537,165 +537,39 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Continue)
         }}
 
-        DUP1: {(m) {
-            instructions::stack::dup::<1>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
+        DUP1: {"primitive"}
+        DUP2: {"primitive"}
+        DUP3: {"primitive"}
+        DUP4: {"primitive"}
+        DUP5: {"primitive"}
+        DUP6: {"primitive"}
+        DUP7: {"primitive"}
+        DUP8: {"primitive"}
+        DUP9: {"primitive"}
+        DUP10: {"primitive"}
+        DUP11: {"primitive"}
+        DUP12: {"primitive"}
+        DUP13: {"primitive"}
+        DUP14: {"primitive"}
+        DUP15: {"primitive"}
+        DUP16: {"primitive"}
 
-        DUP2: {(m) {
-            instructions::stack::dup::<2>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP3: {(m) {
-            instructions::stack::dup::<3>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP4: {(m) {
-            instructions::stack::dup::<4>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP5: {(m) {
-            instructions::stack::dup::<5>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP6: {(m) {
-            instructions::stack::dup::<6>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP7: {(m) {
-            instructions::stack::dup::<7>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP8: {(m) {
-            instructions::stack::dup::<8>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP9: {(m) {
-            instructions::stack::dup::<9>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP10: {(m) {
-            instructions::stack::dup::<10>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP11: {(m) {
-            instructions::stack::dup::<11>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP12: {(m) {
-            instructions::stack::dup::<12>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP13: {(m) {
-            instructions::stack::dup::<13>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP14: {(m) {
-            instructions::stack::dup::<14>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP15: {(m) {
-            instructions::stack::dup::<15>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DUP16: {(m) {
-            instructions::stack::dup::<16>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP1: {(m) {
-            instructions::stack::swap::<1>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP2: {(m) {
-            instructions::stack::swap::<2>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP3: {(m) {
-            instructions::stack::swap::<3>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP4: {(m) {
-            instructions::stack::swap::<4>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP5: {(m) {
-            instructions::stack::swap::<5>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP6: {(m) {
-            instructions::stack::swap::<6>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP7: {(m) {
-            instructions::stack::swap::<7>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP8: {(m) {
-            instructions::stack::swap::<8>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP9: {(m) {
-            instructions::stack::swap::<9>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP10: {(m) {
-            instructions::stack::swap::<10>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP11: {(m) {
-            instructions::stack::swap::<11>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP12: {(m) {
-            instructions::stack::swap::<12>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP13: {(m) {
-            instructions::stack::swap::<13>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP14: {(m) {
-            instructions::stack::swap::<14>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP15: {(m) {
-            instructions::stack::swap::<15>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SWAP16: {(m) {
-            instructions::stack::swap::<16>(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
+        SWAP1: {"primitive"}
+        SWAP2: {"primitive"}
+        SWAP3: {"primitive"}
+        SWAP4: {"primitive"}
+        SWAP5: {"primitive"}
+        SWAP6: {"primitive"}
+        SWAP7: {"primitive"}
+        SWAP8: {"primitive"}
+        SWAP9: {"primitive"}
+        SWAP10: {"primitive"}
+        SWAP11: {"primitive"}
+        SWAP12: {"primitive"}
+        SWAP13: {"primitive"}
+        SWAP14: {"primitive"}
+        SWAP15: {"primitive"}
+        SWAP16: {"primitive"}
 
         LOG0: {(m) {
             instructions::log::log(m.state, m.system, 0)?;
