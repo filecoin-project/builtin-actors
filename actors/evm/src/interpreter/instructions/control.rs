@@ -1,6 +1,6 @@
 use {
     super::memory::get_memory_region, crate::interpreter::output::StatusCode,
-    crate::interpreter::stack::Stack, crate::interpreter::Bytecode,
+    crate::interpreter::Bytecode,
     crate::interpreter::{ExecutionState, System, U256},
     fil_actors_runtime::runtime::Runtime,
 };
@@ -42,11 +42,6 @@ pub fn returndatacopy(state: &mut ExecutionState, _system: &System<impl Runtime>
     }
 
     Ok(())
-}
-
-#[inline]
-pub fn pc(stack: &mut Stack, pc: usize) {
-    stack.push(U256::from(pc))
 }
 
 #[inline]

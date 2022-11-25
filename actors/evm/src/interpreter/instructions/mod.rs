@@ -27,9 +27,9 @@ macro_rules! def_primop {
         pub fn $op(sk: &mut Stack) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, sk);
-            $(let $arg = sk.pop();)*
+            $(let $arg = unsafe {sk.pop()};)*
             let result = $impl($($arg),*);
-            sk.push(result);
+            unsafe {sk.push(result);}
             Ok(())
         }
     }
@@ -41,7 +41,7 @@ macro_rules! def_stackop {
         #[allow(non_snake_case)]
         pub fn $op(sk: &mut Stack) -> Result<(), StatusCode> {
             check_stack!($op, sk);
-            $impl(sk);
+            unsafe{$impl(sk);}
             Ok(())
         }
     }
@@ -54,7 +54,7 @@ macro_rules! def_push {
         #[allow(non_snake_case)]
         pub fn $op(sk: &mut Stack, code: &[u8]) -> Result<usize, StatusCode> {
             check_stack!($op, sk);
-            let off = $impl(sk, code);
+            let off = unsafe {$impl(sk, code)};
             Ok(off)
         }
     }
@@ -68,9 +68,9 @@ macro_rules! def_stdfun {
         pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, state.stack);
-            $(let $arg = state.stack.pop();)*
+            $(let $arg = unsafe {state.stack.pop()};)*
             let result = $impl(state, system, $($arg),*)?;
-            state.stack.push(result);
+            unsafe {state.stack.push(result);}
             Ok(())
         }
     }
@@ -83,7 +83,7 @@ macro_rules! def_stdproc {
         pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, state.stack);
-            $(let $arg = state.stack.pop();)*
+            $(let $arg = unsafe {state.stack.pop()};)*
             $impl(state, system, $($arg),*)?;
             Ok(())
         }
@@ -97,9 +97,9 @@ macro_rules! def_stdfun_code {
         pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>, code: &[u8]) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, state.stack);
-            $(let $arg = state.stack.pop();)*
+            $(let $arg = unsafe {state.stack.pop()};)*
             let result = $impl(state, system, code, $($arg),*)?;
-            state.stack.push(result);
+            unsafe {state.stack.push(result);}
             Ok(())
         }
     }
@@ -111,7 +111,7 @@ macro_rules! def_stdproc_code {
         pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>, code: &[u8]) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, state.stack);
-            $(let $arg = state.stack.pop();)*
+            $(let $arg = unsafe {state.stack.pop()};)*
             $impl(state, system, code, $($arg),*)?;
             Ok(())
         }
@@ -124,9 +124,9 @@ macro_rules! def_stdlog {
         #[allow(non_snake_case)]
         pub fn $op(state: &mut ExecutionState, system: &System<impl Runtime>) -> Result<(), StatusCode> {
             check_stack!($op, state.stack);
-            let a = state.stack.pop();
-            let b = state.stack.pop();
-            $(let $topic = state.stack.pop();)*
+            let a = unsafe {state.stack.pop()};
+            let b = unsafe {state.stack.pop()};
+            $(let $topic = unsafe {state.stack.pop()};)*
             log::log(state, system, $ntopics, a, b, &[$($topic),*])
         }
     }
@@ -139,7 +139,7 @@ macro_rules! def_jmp {
         pub fn $op(sk: &mut Stack, bytecode: &Bytecode) -> Result<Option<usize>, StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, sk);
-            $(let $arg = sk.pop();)*
+            $(let $arg = unsafe {sk.pop()};)*
             $impl(bytecode, $($arg),*)
         }
     }
@@ -153,7 +153,7 @@ macro_rules! def_special {
         pub fn $op(sk: &mut Stack, $($arg:$t),*) -> Result<(), StatusCode> {
             check_stack!($op, sk);
             let result = $value;
-            sk.push(result);
+            unsafe {sk.push(result)};
             Ok(())
         }
     }

@@ -41,20 +41,8 @@ impl Stack {
         true
     }
 
-    #[inline]
-    pub fn get(&self, i: usize) -> &U256 {
-        let pos = self.d - i - 1;
-        unsafe { self.sk.get_unchecked(pos) }
-    }
-
-    #[inline]
-    pub fn get_mut(&mut self, i: usize) -> &mut U256 {
-        let pos = self.d - i - 1;
-        unsafe { self.sk.get_unchecked_mut(pos) }
-    }
-
     #[inline(always)]
-    pub const fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.d
     }
 
@@ -64,28 +52,36 @@ impl Stack {
     }
 
     #[inline]
-    pub fn push(&mut self, v: U256) {
-        unsafe {
-            *self.sk.get_unchecked_mut(self.d) = v;
-        }
+    pub unsafe fn get(&self, i: usize) -> &U256 {
+        let pos = self.d - i - 1;
+        self.sk.get_unchecked(pos)
+    }
+
+    #[inline]
+    pub unsafe fn get_mut(&mut self, i: usize) -> &mut U256 {
+        let pos = self.d - i - 1;
+        self.sk.get_unchecked_mut(pos)
+    }
+
+    #[inline]
+    pub unsafe fn push(&mut self, v: U256) {
+        *self.sk.get_unchecked_mut(self.d) = v;
         self.d += 1;
     }
 
     #[inline]
-    pub fn pop(&mut self) -> U256 {
+    pub unsafe fn pop(&mut self) -> U256 {
         self.d -= 1;
-        unsafe { *self.sk.get_unchecked(self.d) }
+        *self.sk.get_unchecked(self.d)
     }
 
     #[inline]
-    pub fn swap_top(&mut self, i: usize) {
+    pub unsafe fn swap_top(&mut self, i: usize) {
         let top = self.d - 1;
         let pos = self.d - i - 1;
-        unsafe {
-            let tmp = *self.sk.get_unchecked(top);
-            *self.sk.get_unchecked_mut(top) = *self.sk.get_unchecked(pos);
-            *self.sk.get_unchecked_mut(pos) = tmp;
-        }
+        let tmp = *self.sk.get_unchecked(top);
+        *self.sk.get_unchecked_mut(top) = *self.sk.get_unchecked(pos);
+        *self.sk.get_unchecked_mut(pos) = tmp;
     }
 }
 
