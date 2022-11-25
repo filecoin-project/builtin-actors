@@ -1,4 +1,4 @@
-use {crate::interpreter::U256};
+use crate::interpreter::U256;
 
 #[inline]
 pub fn byte(i: U256, x: U256) -> U256 {
@@ -72,7 +72,7 @@ mod tests {
             }
 
             crate::interpreter::instructions::BYTE(&mut stack).unwrap();
-            let result = unsafe {stack.pop()};
+            let result = unsafe { stack.pop() };
 
             assert_eq!(result, U256::from(5 * (i + 1)));
         }
@@ -84,7 +84,7 @@ mod tests {
         }
 
         crate::interpreter::instructions::BYTE(&mut stack).unwrap();
-        let result = unsafe {stack.pop()};
+        let result = unsafe { stack.pop() };
         assert_eq!(result, U256::zero());
 
         let mut stack = Stack::new();
@@ -94,7 +94,7 @@ mod tests {
         }
 
         crate::interpreter::instructions::BYTE(&mut stack).unwrap();
-        let result = unsafe {stack.pop()};
+        let result = unsafe { stack.pop() };
         assert_eq!(result, U256::zero());
     }
 }

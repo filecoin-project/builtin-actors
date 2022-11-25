@@ -75,7 +75,11 @@ pub fn signextend(a: U256, b: U256) -> U256 {
     if a < 32 {
         let bit_index = 8 * a.low_u32() + 7;
         let mask = U256::MAX >> (U256::BITS - bit_index);
-        if b.bit(bit_index as usize) { b | !mask } else { b & mask }
+        if b.bit(bit_index as usize) {
+            b | !mask
+        } else {
+            b & mask
+        }
     } else {
         b
     }
@@ -106,8 +110,8 @@ pub fn exp(mut base: U256, power: U256) -> U256 {
 
 #[cfg(test)]
 mod test {
-    use crate::interpreter::stack::Stack;
     use super::*;
+    use crate::interpreter::stack::Stack;
 
     mod basic {
         use crate::interpreter::{stack::Stack, U256};
@@ -122,11 +126,15 @@ mod test {
 
         fn expect_stack_value(s: &mut Stack, e: impl Into<U256>, comment: impl AsRef<str>) {
             let mut expected = Stack::new();
-            unsafe {expected.push(e.into());}
+            unsafe {
+                expected.push(e.into());
+            }
 
             // stacks should be _exactly_ the same
-            assert_eq!(unsafe {s.get(0)}, unsafe{expected.get(0)}, "{}", comment.as_ref());
-            unsafe {s.pop();}
+            assert_eq!(unsafe { s.get(0) }, unsafe { expected.get(0) }, "{}", comment.as_ref());
+            unsafe {
+                s.pop();
+            }
         }
 
         #[test]
@@ -267,7 +275,7 @@ mod test {
                 }
                 crate::interpreter::instructions::EXP(&mut stack).unwrap();
                 let res: U256 = ($result).into();
-                assert_eq!(res, unsafe{stack.pop()});
+                assert_eq!(res, unsafe { stack.pop() });
             };
         }
 

@@ -29,7 +29,11 @@ pub enum CallKind {
     CallCode,
 }
 
-pub fn calldataload(state: &mut ExecutionState, _: &System<impl Runtime>, index: U256)  -> Result<U256, StatusCode> {
+pub fn calldataload(
+    state: &mut ExecutionState,
+    _: &System<impl Runtime>,
+    index: U256,
+) -> Result<U256, StatusCode> {
     let input_len = state.input_data.len();
     Ok(if index > U256::from(input_len) {
         U256::zero()
@@ -45,22 +49,42 @@ pub fn calldataload(state: &mut ExecutionState, _: &System<impl Runtime>, index:
 }
 
 #[inline]
-pub fn calldatasize(state: &mut ExecutionState, _: &System<impl Runtime>)  -> Result<U256, StatusCode> {
+pub fn calldatasize(
+    state: &mut ExecutionState,
+    _: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     Ok(u128::try_from(state.input_data.len()).unwrap().into())
 }
 
 #[inline]
-pub fn calldatacopy(state: &mut ExecutionState, _: &System<impl Runtime>, mem_index: U256, input_index: U256, size: U256) -> Result<(), StatusCode> {
+pub fn calldatacopy(
+    state: &mut ExecutionState,
+    _: &System<impl Runtime>,
+    mem_index: U256,
+    input_index: U256,
+    size: U256,
+) -> Result<(), StatusCode> {
     copy_to_memory(&mut state.memory, mem_index, size, input_index, &state.input_data, true)
 }
 
 #[inline]
-pub fn codesize(_state: &mut ExecutionState, _: &System<impl Runtime>, code: &[u8]) -> Result<U256, StatusCode> {
+pub fn codesize(
+    _state: &mut ExecutionState,
+    _: &System<impl Runtime>,
+    code: &[u8],
+) -> Result<U256, StatusCode> {
     Ok(U256::from(code.len()))
 }
 
 #[inline]
-pub fn codecopy(state: &mut ExecutionState, _: &System<impl Runtime>, code: &[u8], mem_index: U256, input_index: U256, size: U256) -> Result<(), StatusCode> {
+pub fn codecopy(
+    state: &mut ExecutionState,
+    _: &System<impl Runtime>,
+    code: &[u8],
+    mem_index: U256,
+    input_index: U256,
+    size: U256,
+) -> Result<(), StatusCode> {
     copy_to_memory(&mut state.memory, mem_index, size, input_index, code, true)
 }
 
@@ -76,7 +100,12 @@ pub fn call_call<RT: Runtime>(
     output_offset: U256,
     output_size: U256,
 ) -> Result<U256, StatusCode> {
-    call_generic(state, system, CallKind::Call, (gas, dst, value, input_offset, input_size, output_offset, output_size))
+    call_generic(
+        state,
+        system,
+        CallKind::Call,
+        (gas, dst, value, input_offset, input_size, output_offset, output_size),
+    )
 }
 
 #[inline]
@@ -91,7 +120,12 @@ pub fn call_callcode<RT: Runtime>(
     output_offset: U256,
     output_size: U256,
 ) -> Result<U256, StatusCode> {
-    call_generic(state, system, CallKind::CallCode, (gas, dst, value, input_offset, input_size, output_offset, output_size))
+    call_generic(
+        state,
+        system,
+        CallKind::CallCode,
+        (gas, dst, value, input_offset, input_size, output_offset, output_size),
+    )
 }
 
 #[inline]
@@ -105,7 +139,12 @@ pub fn call_delegatecall<RT: Runtime>(
     output_offset: U256,
     output_size: U256,
 ) -> Result<U256, StatusCode> {
-    call_generic(state, system, CallKind::DelegateCall, (gas, dst, U256::zero(), input_offset, input_size, output_offset, output_size))
+    call_generic(
+        state,
+        system,
+        CallKind::DelegateCall,
+        (gas, dst, U256::zero(), input_offset, input_size, output_offset, output_size),
+    )
 }
 
 #[inline]
@@ -119,7 +158,12 @@ pub fn call_staticcall<RT: Runtime>(
     output_offset: U256,
     output_size: U256,
 ) -> Result<U256, StatusCode> {
-    call_generic(state, system, CallKind::StaticCall, (gas, dst, U256::zero(), input_offset, input_size, output_offset, output_size))
+    call_generic(
+        state,
+        system,
+        CallKind::StaticCall,
+        (gas, dst, U256::zero(), input_offset, input_size, output_offset, output_size),
+    )
 }
 
 pub fn call_generic<RT: Runtime>(

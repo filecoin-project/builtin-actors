@@ -102,12 +102,12 @@ mod tests {
         let items: [u128; 4] = [0xde, 0xad, 0xbe, 0xef];
 
         for (i, item) in items.iter().copied().enumerate() {
-            unsafe{stack.push(item.into())};
+            unsafe { stack.push(item.into()) };
             assert_eq!(stack.len(), i + 1);
         }
 
-        assert_eq!(unsafe{*stack.get(2)}, U256::from(0xad));
-        assert_eq!(unsafe{stack.pop()}, U256::from(0xef));
-        assert_eq!(unsafe{*stack.get(2)}, U256::from(0xde));
+        assert_eq!(unsafe { *stack.get(2) }, U256::from(0xad));
+        assert_eq!(unsafe { stack.pop() }, U256::from(0xef));
+        assert_eq!(unsafe { *stack.get(2) }, U256::from(0xde));
     }
 }

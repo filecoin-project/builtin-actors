@@ -1,13 +1,17 @@
 use fvm_shared::clock::ChainEpoch;
 
 use {
-    crate::interpreter::{ExecutionState, System, U256, StatusCode},
+    crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::chainid,
     fil_actors_runtime::runtime::Runtime,
 };
 
 #[inline]
-pub fn blockhash(_state: &mut ExecutionState, system: &System<impl Runtime>, bn: U256) -> Result<U256, StatusCode> {
+pub fn blockhash(
+    _state: &mut ExecutionState,
+    system: &System<impl Runtime>,
+    bn: U256,
+) -> Result<U256, StatusCode> {
     let result = bn
         .try_into()
         .ok()
@@ -32,17 +36,23 @@ pub fn blockhash(_state: &mut ExecutionState, system: &System<impl Runtime>, bn:
 }
 
 #[inline]
-pub fn caller(state: &mut ExecutionState, _: &System<impl Runtime>)  -> Result<U256, StatusCode>  {
+pub fn caller(state: &mut ExecutionState, _: &System<impl Runtime>) -> Result<U256, StatusCode> {
     Ok(state.caller.as_evm_word())
 }
 
 #[inline]
-pub fn address(state: &mut ExecutionState, _system: &System<impl Runtime>) -> Result<U256, StatusCode> {
+pub fn address(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     Ok(state.receiver.as_evm_word())
 }
 
 #[inline]
-pub fn origin(_state: &mut ExecutionState, system: &System<impl Runtime>)  -> Result<U256, StatusCode> {
+pub fn origin(
+    _state: &mut ExecutionState,
+    system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     let origin_addr = system
         .resolve_ethereum_address(&system.rt.message().origin())
         .expect("failed to resolve origin address");
@@ -50,18 +60,27 @@ pub fn origin(_state: &mut ExecutionState, system: &System<impl Runtime>)  -> Re
 }
 
 #[inline]
-pub fn call_value(_state: &mut ExecutionState, system: &System<impl Runtime>)   -> Result<U256, StatusCode> {
+pub fn call_value(
+    _state: &mut ExecutionState,
+    system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     Ok(U256::from(&system.rt.message().value_received()))
 }
 
 #[inline]
-pub fn coinbase(_state: &mut ExecutionState, _system: &System<impl Runtime>)    -> Result<U256, StatusCode> {
+pub fn coinbase(
+    _state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     // TODO do we want to return the zero ID address, or just a plain 0?
     Ok(U256::zero())
 }
 
 #[inline]
-pub fn gas_price(_state: &mut ExecutionState, system: &System<impl Runtime>) -> Result<U256, StatusCode> {
+pub fn gas_price(
+    _state: &mut ExecutionState,
+    system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     let effective_price = system.rt.base_fee() + system.rt.message().gas_premium();
     Ok(U256::from(&effective_price))
 }
@@ -72,32 +91,50 @@ pub fn gas(_state: &mut ExecutionState, system: &System<impl Runtime>) -> Result
 }
 
 #[inline]
-pub fn timestamp(_state: &mut ExecutionState, system: &System<impl Runtime>)  -> Result<U256, StatusCode> {
+pub fn timestamp(
+    _state: &mut ExecutionState,
+    system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     Ok(U256::from(system.rt.tipset_timestamp()))
 }
 
 #[inline]
-pub fn block_number(_state: &mut ExecutionState, system: &System<impl Runtime>)  -> Result<U256, StatusCode> {
+pub fn block_number(
+    _state: &mut ExecutionState,
+    system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     Ok(U256::from(system.rt.curr_epoch()))
 }
 
 #[inline]
-pub fn difficulty(_state: &mut ExecutionState, _system: &System<impl Runtime>) -> Result<U256, StatusCode> {
+pub fn difficulty(
+    _state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     Ok(U256::zero())
 }
 
 #[inline]
-pub fn gas_limit(_state: &mut ExecutionState, _system: &System<impl Runtime>) -> Result<U256, StatusCode> {
+pub fn gas_limit(
+    _state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     const BLOCK_GAS_LIMIT: u64 = 10_000_000_000u64;
     Ok(U256::from(BLOCK_GAS_LIMIT))
 }
 
 #[inline]
-pub fn chain_id(_state: &mut ExecutionState, _system: &System<impl Runtime>)  -> Result<U256, StatusCode> {
+pub fn chain_id(
+    _state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     Ok(U256::from(chainid::CHAINID))
 }
 
 #[inline]
-pub fn base_fee(_state: &mut ExecutionState, system: &System<impl Runtime>) -> Result<U256, StatusCode> {
+pub fn base_fee(
+    _state: &mut ExecutionState,
+    system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     Ok(U256::from(&system.rt.base_fee()))
 }

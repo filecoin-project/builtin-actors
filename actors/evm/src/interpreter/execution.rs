@@ -109,7 +109,6 @@ macro_rules! def_ins {
     ($ins:ident {($arg:ident) => $body:block}) => {
         def_ins_raw! { $ins ($arg) $body }
     };
-
 }
 
 macro_rules! def_ins_raw {
@@ -125,46 +124,46 @@ macro_rules! def_ins_raw {
 
 macro_rules! def_ins_primop {
     ($ins:ident) => {
-        def_ins_raw!{
+        def_ins_raw! {
             $ins (m) {
                 instructions::$ins(&mut m.state.stack)?;
                 Ok(ControlFlow::Continue)
             }
         }
-    }
+    };
 }
 
 macro_rules! def_ins_push {
     ($ins:ident) => {
-        def_ins_raw!{
+        def_ins_raw! {
             $ins (m) {
                 m.pc += instructions::$ins(&mut m.state.stack, &m.bytecode[m.pc + 1..])?;
                 Ok(ControlFlow::Continue)
             }
         }
-    }
+    };
 }
 
 macro_rules! def_ins_std {
     ($ins:ident) => {
-        def_ins_raw!{
+        def_ins_raw! {
             $ins (m) {
                 instructions::$ins(m.state, m.system)?;
                 Ok(ControlFlow::Continue)
             }
         }
-    }
+    };
 }
 
 macro_rules! def_ins_code {
     ($ins:ident) => {
-        def_ins_raw!{
+        def_ins_raw! {
             $ins (m) {
                 instructions::$ins(m.state, m.system, m.bytecode.as_ref())?;
                 Ok(ControlFlow::Continue)
             }
         }
-    }
+    };
 }
 
 impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {

@@ -1,12 +1,18 @@
 use {
-    super::memory::get_memory_region, crate::interpreter::output::StatusCode,
+    super::memory::get_memory_region,
+    crate::interpreter::output::StatusCode,
     crate::interpreter::Bytecode,
     crate::interpreter::{ExecutionState, System, U256},
     fil_actors_runtime::runtime::Runtime,
 };
 
 #[inline]
-pub fn output(state: &mut ExecutionState, _system: &System<impl Runtime>, offset: U256, size: U256) -> Result<(), StatusCode> {
+pub fn output(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    offset: U256,
+    size: U256,
+) -> Result<(), StatusCode> {
     if let Some(region) = super::memory::get_memory_region(&mut state.memory, offset, size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?
     {
@@ -18,12 +24,21 @@ pub fn output(state: &mut ExecutionState, _system: &System<impl Runtime>, offset
 }
 
 #[inline]
-pub fn returndatasize(state: &mut ExecutionState, _system: &System<impl Runtime>) -> Result<U256, StatusCode> {
+pub fn returndatasize(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     Ok(U256::from(state.return_data.len()))
 }
 
 #[inline]
-pub fn returndatacopy(state: &mut ExecutionState, _system: &System<impl Runtime>, mem_index: U256, input_index: U256, size: U256) -> Result<(), StatusCode> {
+pub fn returndatacopy(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    mem_index: U256,
+    input_index: U256,
+    size: U256,
+) -> Result<(), StatusCode> {
     let region = get_memory_region(&mut state.memory, mem_index, size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 

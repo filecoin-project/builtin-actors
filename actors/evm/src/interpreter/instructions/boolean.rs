@@ -1,7 +1,4 @@
-use {
-    crate::interpreter::uints::*, crate::interpreter::U256,
-    std::cmp::Ordering,
-};
+use {crate::interpreter::uints::*, crate::interpreter::U256, std::cmp::Ordering};
 
 #[inline]
 pub fn lt(a: U256, b: U256) -> U256 {

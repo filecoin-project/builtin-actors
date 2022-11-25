@@ -2,9 +2,9 @@
 
 use {
     crate::interpreter::memory::Memory,
-    crate::interpreter::{ExecutionState, System, StatusCode, U256},
-    std::num::NonZeroUsize,
+    crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::Runtime,
+    std::num::NonZeroUsize,
 };
 
 /// The size of the EVM 256-bit word in bytes.
@@ -107,7 +107,11 @@ pub fn copy_to_memory(
 }
 
 #[inline]
-pub fn mload(state: &mut ExecutionState, _system: &System<impl Runtime>, index: U256) -> Result<U256, StatusCode> {
+pub fn mload(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    index: U256,
+) -> Result<U256, StatusCode> {
     let region =
         get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
@@ -118,7 +122,12 @@ pub fn mload(state: &mut ExecutionState, _system: &System<impl Runtime>, index: 
 }
 
 #[inline]
-pub fn mstore(state: &mut ExecutionState, _system: &System<impl Runtime>, index: U256, value: U256) -> Result<(), StatusCode> {
+pub fn mstore(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    index: U256,
+    value: U256,
+) -> Result<(), StatusCode> {
     let region =
         get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
@@ -131,7 +140,12 @@ pub fn mstore(state: &mut ExecutionState, _system: &System<impl Runtime>, index:
 }
 
 #[inline]
-pub fn mstore8(state: &mut ExecutionState, _system: &System<impl Runtime>, index: U256, value: U256) -> Result<(), StatusCode> {
+pub fn mstore8(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    index: U256,
+    value: U256,
+) -> Result<(), StatusCode> {
     let region = get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(1).unwrap())
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
@@ -142,7 +156,10 @@ pub fn mstore8(state: &mut ExecutionState, _system: &System<impl Runtime>, index
 }
 
 #[inline]
-pub fn msize(state: &mut ExecutionState,  _system: &System<impl Runtime>) -> Result<U256, StatusCode> {
+pub fn msize(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     Ok(u64::try_from(state.memory.len()).unwrap().into())
 }
 
