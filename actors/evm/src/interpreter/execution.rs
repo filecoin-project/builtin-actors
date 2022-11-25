@@ -95,9 +95,14 @@ macro_rules! def_ins {
         def_ins_push! { $ins }
     };
 
+    ($ins:ident {=> $expr:expr}) => {
+        def_ins_raw! { $ins (_m) { $expr } }
+    };
+
     ($ins:ident {($arg:ident) $body:block}) => {
         def_ins_raw! { $ins ($arg) $body }
     };
+
 }
 
 macro_rules! def_ins_raw {
@@ -168,10 +173,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     }
 
     def_opcodes! {
-        STOP: {(_m) {
-            Ok(ControlFlow::Exit)
-        }}
-
+        STOP: {=> Ok(ControlFlow::Exit)}
         ADD: {"primitive"}
         MUL: {"primitive"}
         SUB: {"primitive"}
@@ -384,10 +386,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Continue)
         }}
 
-        JUMPDEST: {(_m) {
-            // marker opcode for valid jumps addresses
-            Ok(ControlFlow::Continue)
-        }}
+        JUMPDEST: {=> Ok(ControlFlow::Continue)} // noop marker opcode for valid jumps addresses
 
         PUSH1: {"push"}
         PUSH2: {"push"}
@@ -522,9 +521,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Exit)
         }}
 
-        INVALID: {(_m) {
-            Err(StatusCode::InvalidInstruction)
-        }}
+        INVALID: {=> Err(StatusCode::InvalidInstruction)}
 
         SELFDESTRUCT: {(m) {
             instructions::lifecycle::selfdestruct(m.state, m.system)?;
