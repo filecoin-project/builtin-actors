@@ -98,6 +98,10 @@ macro_rules! def_ins {
         def_ins_std! { $ins }
     };
 
+    ($ins:ident {code}) => {
+        def_ins_code! { $ins }
+    };
+
     ($ins:ident {=> $expr:expr}) => {
         def_ins_raw! { $ins (_m) { $expr } }
     };
@@ -146,6 +150,17 @@ macro_rules! def_ins_std {
         def_ins_raw!{
             $ins (m) {
                 instructions::$ins(m.state, m.system)?;
+                Ok(ControlFlow::Continue)
+            }
+        }
+    }
+}
+
+macro_rules! def_ins_code {
+    ($ins:ident) => {
+        def_ins_raw!{
+            $ins (m) {
+                instructions::$ins(m.state, m.system, m.bytecode.as_ref())?;
                 Ok(ControlFlow::Continue)
             }
         }
@@ -225,15 +240,8 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         CALLDATASIZE: {std}
         CALLDATACOPY: {std}
 
-        CODESIZE: {(m) => {
-            instructions::call::codesize(&mut m.state.stack, m.bytecode.as_ref());
-            Ok(ControlFlow::Continue)
-        }}
-
-        CODECOPY: {(m) => {
-            instructions::call::codecopy(m.state, m.bytecode.as_ref())?;
-            Ok(ControlFlow::Continue)
-        }}
+        CODESIZE: {code}
+        CODECOPY: {code}
 
         GASPRICE: {std}
         EXTCODESIZE: {std}

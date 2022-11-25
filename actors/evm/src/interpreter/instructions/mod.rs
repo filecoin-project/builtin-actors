@@ -90,7 +90,35 @@ macro_rules! def_stdproc {
     }
 }
 
-// stdproc: some kind of stdproc...
+// std*_code: code reflective functionoid
+macro_rules! def_stdfun_code {
+    ($op:ident ($($arg:ident),*) => $impl:path) => {
+        #[allow(non_snake_case)]
+        pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>, code: &[u8]) -> Result<(), StatusCode> {
+            check_arity!($op, ($($arg),*));
+            check_stack!($op, state.stack);
+            $(let $arg = state.stack.pop();)*
+            let result = $impl(state, system, code, $($arg),*)?;
+            state.stack.push(result);
+            Ok(())
+        }
+    }
+}
+
+macro_rules! def_stdproc_code {
+    ($op:ident ($($arg:ident),*) => $impl:path) => {
+        #[allow(non_snake_case)]
+        pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>, code: &[u8]) -> Result<(), StatusCode> {
+            check_arity!($op, ($($arg),*));
+            check_stack!($op, state.stack);
+            $(let $arg = state.stack.pop();)*
+            $impl(state, system, code, $($arg),*)?;
+            Ok(())
+        }
+    }
+}
+
+// stdproc: logging functionoid
 macro_rules! def_stdlog {
     ($op:ident ($ntopics:literal, ($($topic:ident),*))) => {
         #[allow(non_snake_case)]
@@ -288,3 +316,5 @@ def_stdfun!{ CALL(gas, dst, value, ioff, isz, ooff, osz) => call::call_call }
 def_stdfun!{ CALLCODE(gas, dst, value, ioff, isz, ooff, osz) => call::call_callcode }
 def_stdfun!{ DELEGATECALL(gas, dst, ioff, isz, ooff, osz) => call::call_delegatecall }
 def_stdfun!{ STATICCALL(gas, dst, ioff, isz, ooff, osz) => call::call_staticcall }
+def_stdfun_code!{ CODESIZE() => call::codesize }
+def_stdproc_code!{ CODECOPY(a, b, c) => call::codecopy }

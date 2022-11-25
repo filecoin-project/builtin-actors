@@ -9,7 +9,6 @@ use {
     crate::interpreter::instructions::memory::MemoryRegion,
     crate::interpreter::output::StatusCode,
     crate::interpreter::precompiles,
-    crate::interpreter::stack::Stack,
     crate::interpreter::ExecutionState,
     crate::interpreter::System,
     crate::interpreter::U256,
@@ -50,20 +49,18 @@ pub fn calldatasize(state: &mut ExecutionState, _: &System<impl Runtime>)  -> Re
     Ok(u128::try_from(state.input_data.len()).unwrap().into())
 }
 
+#[inline]
 pub fn calldatacopy(state: &mut ExecutionState, _: &System<impl Runtime>, mem_index: U256, input_index: U256, size: U256) -> Result<(), StatusCode> {
     copy_to_memory(&mut state.memory, mem_index, size, input_index, &state.input_data, true)
 }
 
 #[inline]
-pub fn codesize(stack: &mut Stack, code: &[u8]) {
-    stack.push(U256::from(code.len()))
+pub fn codesize(_state: &mut ExecutionState, _: &System<impl Runtime>, code: &[u8]) -> Result<U256, StatusCode> {
+    Ok(U256::from(code.len()))
 }
 
-pub fn codecopy(state: &mut ExecutionState, code: &[u8]) -> Result<(), StatusCode> {
-    let mem_index = state.stack.pop();
-    let input_index = state.stack.pop();
-    let size = state.stack.pop();
-
+#[inline]
+pub fn codecopy(state: &mut ExecutionState, _: &System<impl Runtime>, code: &[u8], mem_index: U256, input_index: U256, size: U256) -> Result<(), StatusCode> {
     copy_to_memory(&mut state.memory, mem_index, size, input_index, code, true)
 }
 
