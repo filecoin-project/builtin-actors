@@ -1,3 +1,4 @@
+#![allow(clippy::missing_safety_doc)]
 use {crate::interpreter::stack::Stack, crate::interpreter::U256};
 
 #[inline]

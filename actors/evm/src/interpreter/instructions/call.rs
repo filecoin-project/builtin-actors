@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::{address::Address, METHOD_SEND};
 

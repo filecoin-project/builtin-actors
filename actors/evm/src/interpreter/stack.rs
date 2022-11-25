@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::missing_safety_doc)]
 
 use crate::interpreter::U256;
 
