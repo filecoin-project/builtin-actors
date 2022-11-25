@@ -362,10 +362,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         LOG3: {std}
         LOG4: {std}
 
-        CREATE: {(m) => {
-            instructions::lifecycle::create(m.state, m.system)?;
-            Ok(ControlFlow::Continue)
-        }}
+        CREATE: {std}
 
         CALL: {std}
         CALLCODE: {std}
@@ -376,12 +373,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         }}
 
         DELEGATECALL: {std}
-
-        CREATE2: {(m) => {
-            instructions::lifecycle::create2(m.state, m.system)?;
-            Ok(ControlFlow::Continue)
-        }}
-
+        CREATE2: {std}
         STATICCALL: {std}
 
         REVERT: {(m) => {

@@ -318,3 +318,5 @@ def_stdfun!{ DELEGATECALL(gas, dst, ioff, isz, ooff, osz) => call::call_delegate
 def_stdfun!{ STATICCALL(gas, dst, ioff, isz, ooff, osz) => call::call_staticcall }
 def_stdfun_code!{ CODESIZE() => call::codesize }
 def_stdproc_code!{ CODECOPY(a, b, c) => call::codecopy }
+def_stdfun!{ CREATE(a, b, c) => lifecycle::create }
+def_stdfun!{ CREATE2(a, b, c, d) => lifecycle::create2 }
